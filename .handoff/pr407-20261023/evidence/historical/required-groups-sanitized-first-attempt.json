@@ -1,0 +1,30 @@
+{
+  "source": "Captured completed output of exec session20953; reused log paths were subsequently overwritten by supported Release-host rerun",
+  "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+  "results": [
+    {
+      "name": "test-native",
+      "exit": 2,
+      "seconds": 220.004,
+      "result": "native-runtime21/1405 green; native-catalog7/8 failure on Self migration"
+    },
+    {
+      "name": "test-materials",
+      "exit": 0,
+      "seconds": 89.748
+    },
+    {
+      "name": "test-language-all",
+      "exit": 0,
+      "seconds": 80.276
+    },
+    {
+      "name": "test-projects",
+      "result": "setup interrupted by task-owned group termination before completed coverage receipt"
+    },
+    {
+      "name": "test-tools",
+      "result": "not started in this sequence"
+    }
+  ]
+}

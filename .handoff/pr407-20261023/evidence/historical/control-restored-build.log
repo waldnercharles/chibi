@@ -1,0 +1,78 @@
+[  1%] Built target chibi_json
+[  2%] Built target chibi_support
+[  2%] Built target chibi_fmt
+[  3%] Built target chibi_asset_kdl
+[  6%] Built target chibi_language_syntax
+[  6%] Built target chibi_types
+[  6%] Built target chibi_ui_document_values
+[  7%] Built target chibi_asset_values
+[  8%] Built target chibi_text_search
+[  9%] Built target chibi_shader_runtime
+[ 10%] Built target chibi_mesh_runtime
+[ 11%] Built target chibi_text_source
+[ 12%] Built target chibi_image_catalog
+[ 13%] Built target chibi_ecs
+[ 13%] Building C object sdk/CMakeFiles/chibi_capabilities.dir/private/tmp/chibi-integration-20261022/pr407/source/src/capabilities/operation.c.o
+[ 13%] Built target chibi_events
+[ 13%] Built target chibi_value_document
+[ 14%] Linking C static library libchibi_capabilities.a
+[ 14%] Built target chibi_fields
+[ 15%] Built target chibi_ui_documents
+[ 16%] Built target chibi_capabilities
+[ 17%] Built target chibi_asset_json
+[ 17%] Built target chibi_asset_text
+[ 19%] Built target chibi_model_runtime
+[ 21%] Built target chibi_graph_model
+[ 21%] Built target chibi_input_map
+[ 21%] Built target chibi_reference_index
+[ 23%] Built target chibi_project_document
+[ 24%] Built target chibi_ui_document
+[ 25%] Built target chibi_scheduling
+[ 30%] Built target chibi_builtin_fonts
+[ 30%] Built target chibi_model_bake
+[ 30%] Built target chibi_image_preparation
+[ 30%] Built target chibi_component_presentation
+[ 35%] Built target chibi_language
+[ 46%] Built target chibi_execution
+[ 46%] Built target chibi_native_capabilities
+[ 47%] Built target chibi_field_catalog
+[ 48%] Built target chibi_ui_authoring
+[ 48%] Built target chibi_compiler
+[ 48%] Built target chibi_host_native_catalog
+[ 48%] Built target chibi_studio_capabilities
+[ 49%] Built target chibi_behavior_runtime
+[ 49%] Built target chibi_core_capabilities
+[ 49%] Built target chibi_array_capabilities
+[ 49%] Built target chibi_field_capabilities
+[ 49%] Built target chibi_state_capabilities
+[ 49%] Built target chibi_selection_capabilities
+[ 50%] Built target chibi_set_capabilities
+[ 50%] Built target chibi_comparison_capabilities
+[ 51%] Built target chibi_conversion_capabilities
+[ 51%] Built target chibi_text_capabilities
+[ 52%] Built target chibi_native_prepared
+[ 52%] Built target chibi_scene_runtime
+[ 53%] Built target chibi_vector_capabilities
+[ 53%] Built target chibi_math_capabilities
+[ 54%] Built target chibi_arithmetic_capabilities
+[ 55%] Built target chibi_scene_document
+[ 57%] Built target chibi_authoring
+[ 59%] Built target chibi_compiler_host
+[ 59%] Built target test_behavior_consumer
+[ 68%] Built target chibi_graph_authoring
+[ 69%] Built target chibi_prototype_document
+[ 70%] Built target chibi_build_host
+[ 70%] Linking C executable chibi-compiler-host
+[ 74%] Built target chibi_graph_compilation
+[ 77%] Built target chibi_source_catalog
+[ 81%] Built target chibi_source_presentation
+ld: warning: ignoring duplicate libraries: 'libchibi_asset_values.a', 'libchibi_json.a'
+[ 82%] Built target chibi_studio_graph
+[ 82%] Built target chibi-compiler-host
+[ 82%] Built target chibi_graph_catalog
+[ 82%] Linking C executable chibi-build-host
+ld: warning: ignoring duplicate libraries: 'libchibi_support.a'
+[ 83%] Linking C executable test_language
+[ 83%] Built target chibi-build-host
+ld: warning: ignoring duplicate libraries: 'sdk/language/libchibi_language_syntax.a', 'sdk/libchibi_arithmetic_capabilities.a', 'sdk/libchibi_array_capabilities.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_core_capabilities.a', 'sdk/libchibi_field_capabilities.a', 'sdk/libchibi_field_catalog.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_json.a', 'sdk/libchibi_math_capabilities.a', 'sdk/libchibi_native_prepared.a', 'sdk/libchibi_state_capabilities.a', 'sdk/libchibi_text_capabilities.a', 'sdk/libchibi_value_document.a'
+[100%] Built target test_language

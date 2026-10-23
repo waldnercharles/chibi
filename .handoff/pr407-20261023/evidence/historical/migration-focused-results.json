@@ -1,0 +1,20 @@
+[
+  {
+    "name": "migration-green-release-host",
+    "exit": 0,
+    "seconds": 0.359,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-green-release-host.log"
+  },
+  {
+    "name": "migration-green-build2",
+    "exit": 0,
+    "seconds": 3.456,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-green-build2.log"
+  },
+  {
+    "name": "migration-green-format2",
+    "exit": 1,
+    "seconds": 1.058,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-green-format2.log"
+  }
+]

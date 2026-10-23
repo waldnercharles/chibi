@@ -15,6 +15,7 @@
 static const char *worker_path, *host_path;
 static chibi_build_compiler *build_compiler;
 static char suite[256], root[512], program_path[1024];
+static char git_program[1024];
 static char *program;
 static char last_stderr[CHIBI_BUILD_OUTPUT_CAPACITY];
 static const char *const environment_names[] = {
@@ -69,6 +70,25 @@ static int trace_count(const char *kind)
 {
     return count_in("cmake.trace", kind);
 }
+static void resolve_git()
+{
+    char log[1024];
+    path(log, suite, "git-program.log");
+#ifdef __APPLE__
+    const char *arguments[] = { "xcrun", "--find", "git", NULL };
+#else
+    const char *arguments[] = { "sh", "-c", "command -v git", NULL };
+#endif
+    assert(!tool_run(arguments, suite, log));
+    char *text = tool_read(log);
+    assert(text);
+    text[strcspn(text, "\r\n")] = 0;
+    char *resolved = realpath(text, NULL);
+    assert(resolved && strlen(resolved) < sizeof git_program && !access(resolved, X_OK));
+    strcpy(git_program, resolved);
+    free(resolved);
+    free(text);
+}
 static void reset_fixture(const char *name, int backend)
 {
     snprintf(root, sizeof root, "%s/%s %d", suite, name, backend);
@@ -81,8 +101,16 @@ static void reset_fixture(const char *name, int backend)
         path(file, bin, names[i]);
         assert(!symlink(worker_path, file));
     }
-    /* CMake is the only executable shim selected. Python and its runtime,
-     * sanitizer symbolizers, and git come from the original explicit PATH. */
+    /* Apple's git launcher inspects SDKROOT, which is fake in this fixture.
+     * Exec the previously resolved binary so authored probes and setup use it.
+     * A symlink would make Git derive its resource paths from the fixture. */
+    char git_path[1100];
+    snprintf(git_path, sizeof git_path, "%s\n", git_program);
+    write_file("bin/git-program", git_path);
+    write_file("bin/git", "#!/bin/sh\nIFS= read -r program < \"${0%/*}/git-program\" || exit 1\nexec \"$program\" \"$@\"\n");
+    path(file, bin, "git");
+    assert(!chmod(file, 0700));
+    /* Python, its runtime and sanitizer symbolizers use the original PATH. */
     snprintf(search, sizeof search, "%s:%s", bin, saved_environment[0] ? saved_environment[0] : "/usr/bin:/bin");
     assert(!setenv("PATH", search, 1));
     assert(!unsetenv("CC") && !unsetenv("CXX") && !unsetenv("CMAKE_TOOLCHAIN_FILE"));
@@ -695,6 +723,7 @@ void test_build_toolchain(const char *worker, const char *host)
         const char *value = getenv(environment_names[i]);
         saved_environment[i] = value ? strdup(value) : NULL;
     }
+    resolve_git();
     RUN_TEST_CASE(native_compiler_and_explicit_cache_precedence);
     RUN_TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler);
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);

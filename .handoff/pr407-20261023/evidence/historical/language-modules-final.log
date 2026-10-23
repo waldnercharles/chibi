@@ -1,0 +1,21 @@
+Running: modules_scroll_update_matches_inline_local_and_qualified_helpers (OK) (0.016184 secs)
+Running: modules_unqualified_same_spelled_helpers_are_ambiguous (OK) (0.001812 secs)
+Running: modules_duplicate_qualified_helpers_cannot_publish_by_path_order (OK) (0.000868 secs)
+Running: modules_cross_library_cycles_reject_callers_without_generations (OK) (0.001662 secs)
+Running: modules_library_state_is_not_an_exported_value (OK) (0.001858 secs)
+Running: modules_independent_catalogs_do_not_supply_missing_or_other_bodies (OK) (0.002922 secs)
+Running: modules_nested_same_spelled_helpers_stay_in_lexical_scope (OK) (0.005562 secs)
+Running: modules_imported_scalar_templates_resolve_nested_calls_without_record_types (OK) (0.003318 secs)
+Running: modules_empty_compile_bindings_materialize (OK) (0.001461 secs)
+Running: modules_imported_float_compile_values_survive_dedupe_and_cache_reuse (OK) (0.007187 secs)
+Running: modules_float_specialization_metadata_compares_exact_ieee_bits (OK) (0.004821 secs)
+Running: modules_imported_templates_keep_owner_types_bodies_and_nested_requests (OK) (0.018739 secs)
+Running: modules_imported_template_body_edits_invalidate_linked_generations (OK) (0.019807 secs)
+Running: modules_failed_imported_requests_publish_no_concrete_generation (OK) (0.001398 secs)
+Running: modules_retained_library_state_inherits_consuming_owner (OK) (0.002177 secs)
+Running: modules_systems_reject_task_state_in_imported_libraries (OK) (0.002548 secs)
+Running: modules_library_has_stays_callable_beside_map_methods (OK) (0.000763 secs)
+Running: modules_compile_time_parameters_preserve_constant_mutability (OK) (0.001341 secs)
+===============================================================
+Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 864
+Test command wall time: 0.624s; includes in-test fixture setup; external configuration/build excluded.

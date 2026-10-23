@@ -1,0 +1,2679 @@
+diff --git a/docs/engine-operation-contracts.md b/docs/engine-operation-contracts.md
+new file mode 100644
+index 000000000..5b225e733
+--- /dev/null
++++ b/docs/engine-operation-contracts.md
+@@ -0,0 +1,122 @@
++# Checked core engine operations, version 1
++
++This is the implemented contract for the internal Owner/Self definition and
++callable `Delay`. Public source reads its owner with `self`; `Self()` is rejected.
++The tests use a separate OwnerAlias definition to check callable effect propagation.
++It is the first bounded slice of verified engine operation
++descriptors, not a specification of all host calls or all language semantics.
++The definitions in `runtime/core_definition.c` select a closed operation identity.
++The shared `SCRIPT_ENGINE_OPERATIONS` rows generate both its versioned catalog
++contract and its actual opcode mapping in `execution/operation.h`. Native
++definition packs generate
++the execution binding; a second producer-supplied binding is rejected.
++
++## Checked declaration and execution boundaries
++
++- Owner is a pure, zero-argument function returning one scalar `ecs.entity`
++  handle. It reads the current activation's owner, including after a resume.
++  Its conservative `SCRIPT_EFFECT_INVOCATION_READ` effect prevents callable
++  aliases from reading invocation context in a query predicate. It is not a
++  compile-time constant. Historical `Self()` migration imports use the effect
++  of the same bound `self`: invocation-read in libraries, stable owner in
++  behaviors and systems. That adapter requires the exact canonical identity,
++  valid Owner contract, matching type and unshadowed owner binding; the
++  migration equivalence checks remain exact.
++- Delay is an action with one execution entry, one scalar double duration,
++  one completion outcome and no data result. Its effect is suspension, and it
++  is not pure. Existing numeric argument conversions occur before it executes.
++- These declarations cannot also describe state, component, aggregate or flow
++  access, a receiver, variadic arguments or event sending. Reference/collection
++  results, any scalar semantic flags or type parameters, and mismatched physical
++  types are rejected. Their dormant `component`, `component_field`, `aggregate`,
++  `component_entity`, `component_value`, both elements of `flow.inputs`,
++  `flow.results` and `flow.outcomes`, and `flow.break_entry` must all be zero,
++  matching the shared and raw known-operation producers. Active component/flow
++  declarations remain unknown operations and keep their existing ordinal rules.
++- Raw native packs must supply the matching opcode and a valid declaration.
++  The lowerer validates all known declarations before emitting code, including
++  calls rewritten by analysis into state reads or writes, and independently
++  checks custom linker bindings. A known declaration
++  cannot be replaced with a same-signature generic host callback.
++
++No author-visible syntax or persistence shape changes. Names, display text and
++defaults remain authored by the existing typed definition; this contract does
++not introduce a new callable spelling.
++
++## Ownership, cost and execution guarantees
++
++The `guarantees` bits are positive proofs for the supported implementation.
++An absent bit is unknown. `SCRIPT_OPERATION_UNKNOWN` has no descriptor, even
++when an opaque host declaration is labeled pure. Unknown operations keep their
++existing checked host/command/query path and access policy; this change does
++not certify their effects, enable parallel execution or improve borrowing.
++
++Owner has only scalar outputs, no borrowed payload or result alias,
++no argument retention, and no payload allocation/copy. Ordinary scalar register
++or value-slot transfers are not payload copying. It executes on the thread
++owning the current activation, and cannot reenter authored execution. These
++thread facts do not grant concurrent access to a shared activation or world.
++
++Delay operates on the owning activation thread. It does not guarantee freedom
++from authored reentry: an immediately ready command can synchronously execute
++its authored completion handler. An
++awaited inline delay computes `wake_time = now + duration`: if the result is
++less than or equal to `now`, execution continues immediately. Otherwise it
++saves live values and continuation state, then returns suspended. A NaN wake
++time follows the existing suspended path. Captured values remain owned for the
++activation's lifetime; scalar/pointer slots are saved into activation storage.
++This is not a zero-copy or no-retention operation.
++
++Instance and non-awaited delay calls retain their existing command lowering.
++Command preparation and suspended live-state retention can have allocation and
++copy costs, so the public Delay descriptor promises no bound for either. This
++slice does not change cancellation, wake ordering, argument evaluation, failure
++ordering, or the lifetime rules of the command and task implementations.
++
++## Compatibility and consumers
++
++The capability ABI includes the known operation identity, contract and actual
++instruction names, version, effects and guarantee bits. A same-signature opaque
++host callback has
++a distinct ABI. Opaque capability hashes remain unchanged. Native binding
++lookup checks the resulting ABI, and incremental source catalog comparison
++includes operation identity so compiled callers are not silently reused.
++
++Direct Owner and awaited Delay calls are already emitted as instructions,
++not serialized native imports. Their prepared compatibility continues to use
++the instruction mapping/schema identity. Changing instruction payloads or
++semantics still requires the manual prepared semantic version guard; this
++metadata does not inspect C bodies or replace that obligation. Rebuild prepared
++artifacts after a semantic contract change. No project asset migration or
++project version bump is required for this additive descriptor.
++
++Current main removed the public Delta Time callable and the `dt` and `delta`
++globals in `a0b73aba3`. This recovery reduces the historical PR to Owner and
++Delay. The private `BF_DELTA` instruction still supplies a system's explicit
++Tick payload; it gains no callable descriptor. Global `self` keeps its separate
++typed global binding. Graph Self/Delay nodes consume shared port definitions
++and retain their existing graph mapping.
++
++The existing Assert intrinsic stays `SCRIPT_OPERATION_UNKNOWN`, with its
++current execution binding and no added operation guarantees. Unknown
++capabilities cannot substitute Owner or Delay opcodes. No editor capability or
++authoring service is introduced into a game runtime package; the neutral
++capabilities package depends only on types.
++
++## Evidence and remaining work
++
++The C `--operations` cases exercise generated bindings; invalid declarations,
++duplicate implementations and opcode mismatches; opaque versus known ABI;
++incremental source invalidation; custom linker rejection; and native/compiled
++execution with zero, negative, positive and NaN durations, scalar and string
++values surviving suspension. Existing program, incremental, native catalog and
++prepared checks remain applicable. Execution uses a synthetic clock.
++The [validation report](engine-operation-validation.md) records the reviewed
++implementation, bounded positive matrix, isolated controls and coverage limits.
++
++Remaining L16 work includes verified generic host/capability ownership and
++effects, retained/asynchronous argument contracts, per-argument alias/copy
++metadata, supported typed native/Wasm call lowering, and contracts for actual
++consumer operations. Those require implementation audits and adversarial
++fixtures of their own; no purity whitelist or generic registration framework
++is established here. Global and graph mapping unification is separate work.
+diff --git a/docs/engine-operation-validation.md b/docs/engine-operation-validation.md
+new file mode 100644
+index 000000000..2382a0c76
+--- /dev/null
++++ b/docs/engine-operation-validation.md
+@@ -0,0 +1,293 @@
++# Operation-contract recovery, 2026-10-22
++
++Current recovery is based on main `1bc97b7305ee91102d3ee035e4852aa5341df31c`
++and published PR407 `c541133b689c620a377982ee339c017b6d12b263`.
++The scope is now Owner/Self and Delay because current main removed the public
++Delta Time API. Assert remains an unknown operation. The private system Tick
++instruction is preserved. Scalar validation includes the current collection
++identity field, and Owner carries the invocation-read effect.
++
++Current exact-candidate review, native builds/tests, Wasm validation and
++exporter/import checks are pending. The historical native adaptation tree
++`f8ea41fafb9a428e6a134a3d41acd3e269fd5189` is reported in the PR body but
++was not found in the local primary object store or registered worktrees.
++Its previous test outcomes do not validate this recovery.
++
++The review thread at
++[discussion 4286144466](https://github.com/waldnercharles/chibi/pull/407#discussion_r4286144466)
++requests canonical zero/default dormant metadata. The published repair and
++recovered fixtures retain those checks. The thread remains unresolved; the
++cleared cancellation hold does not resolve the thread or supply merge approval.
++
++All material below records historical evidence for the old Delta-containing
++candidate. Its numeric test-duration policy has since been withdrawn and is
++not a current restriction. No historical result supplies a current pass.
++
++---
++
++# Core operation contract validation
++
++## Reviewed checked-write integration
++
++Candidate `2ae4981bdf7ad6370c904d27a76c114cf05c39d7`, tree
++`5be061a6509e066a57720cb09b9a90c652fdb5d0`, combines the independently tested
++operation fix `f17e7b1406622e8f67f6105c9854aece366cc10c` with eligible main
++`3c65bb60b6f3443aef6ccf4ab15acbe09b04b191`, including checked scalar writes.
++Only the language source list, dispatcher and policy lists needed conflict
++resolution. The lowerer retains the catalog-wide operation guard before the
++checked-write path. The publication ordering, range checks, optimizer barriers,
++register stack-cell reservations and backend implementation remain intact.
++All previous group members and relative order remain; operation, module and
++write selectors each occur once in the 31-selector language and 19-selector
++Wasm groups. The structural sizing subset is not additionally selected.
++
++Independent source/workload review approved this exact combination before the
++five complete production commands below. All exited zero, ran serially, and
++retained their original single shared 60-second deadline. Times exclude builds.
++
++| Invocation | Selectors | Cases passed | Assertions | Seconds |
++| --- | ---: | ---: | ---: | ---: |
++| `group language` | 31 | 412 | 39,562 | 21.345 |
++| `group wasm` | 19 | 256 | 35,641 | 3.531 |
++| `tool native-tools` | 1 | 116 | 33,227 | 23.185 |
++| `tool native-catalog` | 1 | 6 | 346 | 0.103 |
++| `tool language-prepared` | 1 | 19 | 833 | 0.246 |
++
++All nine operation cases ran once per language group, including the complete
++36-rejection matrix and canonical accepts. Module and checked-write cases also
++ran once. Prepared totals combine producer 6/199, runtime-only consumer 12/629
++and parent 1/5. Native-tools uses the compiler-enabled minimal closure; the
++catalog route uses the separately built native/compiler closure with both
++native-runtime and preparation support. Four compile-only currency builds
++passed separately. The 2,897 tracked source files, 89-file/63,497-byte corpus,
++five compiled artifacts and policy worker retained their pre-run identities.
++No unexpected failure, sanitizer report, crash or timeout occurred.
++
++This is exact local-combination evidence, not a claim about a future published
++head. Final documentation/content identity, remote-head verification, current
++integration, server requirements and the explicit publication/merge holds still
++apply. Native VM/SLJIT, Wasm VM/generated execution and the bounded generated-C
++tooling case are covered; browser/GPU/full-engine and leak checks remain unrun.
++The earlier isolated failure and five historical controls below stay separate.
++
++## Isolated dormant metadata regression and repair
++
++A review of published `b255df023158d6b7af3bce644d37c3ca640c29fa` found that
++known-operation declarations rejected active component/aggregate/flow kinds but
++accepted noncanonical dormant metadata. All twelve fields in the
++[closed declaration contract](engine-operation-contracts.md#checked-declaration-and-execution-boundaries)
++are zero in the actual shared and raw Owner/Delta/Delay producers. Active
++unknown-operation contracts can use negative ordinals and are unaffected.
++The three dormant IDs affect the capability ABI; dormant component/flow
++ordinals are not hashed when their kinds are absent, but all twelve fields
++participate in source-catalog snapshot comparison.
++
++Independent review admitted the regression-only
++`d581d39e3a8d393f89170e500bf5840f5640e009`, tree
++`5268109b9919e52032a957336beed3aab49242a1`. The native production route failed
++exactly at `Owner.component = 1`: required declaration rejection was absent.
++It exited one with 8/9 cases passing, 161 assertions, in 0.092 seconds.
++No malformed catalog was lowered or executed; there was no sanitizer finding,
++crash or timeout. The failing source, binary and log are preserved.
++
++Fix `f17e7b1406622e8f67f6105c9854aece366cc10c`, tree
++`434bfcfff23473870c079bd19b46df46dae8151c`, adds only twelve explicit canonical
++zero checks after the unchanged unknown-operation early return. The regression
++inputs, loops and assertions are byte-identical to the failing baseline.
++Independent source review and serial production routes passed under their
++unchanged 60-second ceilings:
++
++| Route | Cases passed | Assertions | Seconds |
++| --- | ---: | ---: | ---: |
++| `language-operations` | 9 | 208 | 0.097 |
++| `wasm-operations` | 9 | 208 | 0.200 |
++
++The full 36-rejection matrix and three canonical raw accepts were reached;
++all eight existing cases passed. Source and five compiled artifact hashes were
++unchanged after both runs. Four compile-only currency builds passed separately.
++The fixed route has 82 catalog attempts (13 accepted, 69 rejected), seven source
++prepare/lower attempts, four finalizations, eight dispatches and two synthetic
++updates capped at 1,000 steps each; prepared bytes remain zero. Only catalog
++construction grew. Newer checked-write main was excluded from this isolated
++red-to-green proof and is integrated separately above. The five older controls
++remain evidence for their exact guard removals, not tests of this new guard.
++
++## Historical operation/module combination
++
++The operation/module combination was independently reviewed and tested on
++2026-10-15 at `a26d0246feb343c93f28979d96cc9e1dd1fd4df8`, tree
++`a6926ee97b9dad41d3e99ab74429b8d2a2f7f95e`, against eligible main
++`f1bfe133afbf214de679ca3da9a12c08b6511788`. Its other parent is the earlier
++published operation head `b4d4c1f9e8ff2b98743958ac899038b49d8cc4c1`.
++Operation implementations/fixtures match that parent; the module export fix and
++fixtures match main. Only build-list, dispatcher and policy membership conflicts
++needed combining. Every previous group member and relative order is preserved.
++
++All five checks passed serially, each as one unchanged production 60-second
++invocation. Times exclude configuration/builds; every command exited zero.
++
++| Invocation | Selectors | Cases passed | Assertions | Seconds |
++| --- | ---: | ---: | ---: | ---: |
++| `group language` | 30 | 397 | 36,563 | 22.088 |
++| `group wasm` | 18 | 241 | 32,680 | 7.618 |
++| `tool native-tools` | 1 | 116 | 29,566 | 22.075 |
++| `tool native-catalog` | 1 | 6 | 346 | 0.199 |
++| `tool language-prepared` | 1 | 19 | 833 | 0.265 |
++
++Each operation and module case ran exactly once per applicable group. Prepared
++counts combine producer 6/199, runtime-only consumer 12/629 and parent 1/5.
++Native-tools used the compiler-only tooling closure; native-catalog used the
++native/compiler-enabled closure and retained all six preparation/native cases.
++Four build-currency checks passed separately. The 64-file reviewed source
++closure, 89-file corpus, policy worker and five output artifacts retained their
++pre-run hashes. The backend/sanitizer limitations below still apply.
++
++This is approval of the exact local combination, not approval of a future
++published head. Final documentation/content identity, updated remote blobs,
++current integration eligibility, server requirements and holds still need
++verification. Earlier operation controls remain historical evidence for their
++unchanged guards and fixtures; they were not rerun for this combination.
++
++## Historical operation validation on the earlier base
++
++The following results predate module integration and are not current-combination
++runs. The earlier published `b4d4c1f9` tree also passed its separate five-check
++review on base `62906a50`; integration was then blocked by main advancing. Its
++retained report and hashes remain distinct from the later combined evidence.
++The older implementation was validated on 2026-10-15 against eligible main
++`62906a504fee6b2e0bd6349a8eeff1450529cd90`:
++
++- Implementation and isolated controls: `986a100726357fdff43deba746ff59674bd53faf`,
++  tree `c948328774187efa69cec3b9e6f0b40342f6362c`.
++- Regular-gate integration: `5fbe3ce5ecc38a2316e57100fbfb92072817ac2f`,
++  tree `c73937726968e019a1137302a4d2dca7c1766902`. Product and fixture sources
++  are identical; the policy adds the operation selector once to each group.
++
++This section records those historical tested heads. It covers
++the [bounded Owner/Delta/Delay contract](engine-operation-contracts.md), not all L16.
++
++## Historical review and build conditions
++
++Independent review checked declaration shape, generated opcode identity, catalog
++ABI domain separation, incremental invalidation, raw/custom binding validation,
++and the whole-catalog boundary before state-read/write rewrites. Unknown host
++operations gain no guarantees. Delay makes no no-reentry promise. The merged
++query/scalar-read implementation remained intact; module work was excluded at
++that earlier stage and is included in the later operation/module combination above.
++
++Four build trees were current: native language, compiler-only tools, native tools
++with compiler support, and Wasm language. Native uses Clang 19.1.7 Debug,
++ASan/UBSan and assertions; leak detection is disabled for the existing tracing
++limitation. Wasm uses Emscripten 6.0.10 Release and Node 24.19.0. Native tools retain
++both native and preparation-gated catalog cases with desktop support disabled.
++Official pinned dependencies and Debian libclang package checksums were verified.
++Existing instrumented C++ dependencies require the C++ sanitizer and standard
++runtime at link time; warnings and sanitizers were not suppressed.
++
++Eight positional test initializers were converted to designated members in two
++isolated prerequisite commits. Review checked every explicit value and implicit
++zero against the actual struct fields; fixture inputs, calls and assertions are
++unchanged. They compiled successfully. Their prototype/UI fixture selectors were
++not independently executed by this matrix.
++
++## Historical selected positive results
++
++These seven routes ran on implementation `986a1007`, serially under the unchanged
++production 60-second supervisor. Times include in-test setup and exclude
++configuration/builds. All exited zero.
++
++| Route | Cases passed | Assertions | Seconds |
++| --- | ---: | ---: | ---: |
++| `native-catalog` | 6 | 346 | 0.112 |
++| `language-program` | 124 | 10,894 | 2.204 |
++| `wasm-program` | 124 | 10,899 | 0.532 |
++| `language-incremental` | 13 | 235 | 0.423 |
++| `language-prepared` | 19 | 833 | 0.235 |
++| `language-operations` | 8 | 153 | 0.083 |
++| `wasm-operations` | 8 | 153 | 0.199 |
++
++Prepared totals combine producer 6/199, runtime-only consumer 12/629 and parent
++1/5. Native execution covers VM/SLJIT; Wasm covers VM/generated Wasm. Source and
++all five output artifact hashes were unchanged after this selected matrix. The
++subsequent regular-group integration is recorded below. The operation fixture's
++then-admitted bounds were eight cases, 42 catalog attempts, seven source
++preparation/lowering attempts, four tiny
++finalizations, eight dispatches and two synthetic updates, with 1,000 steps per
++dispatch/update; see [testing](testing.md#temporary-60-second-policy).
++
++Earlier failures remain part of the evidence: scalar semantic flags were
++incorrectly accepted; a state rewrite bypassed the call-only boundary; Delay's
++initial no-reentry claim was false; fixture syntax and two missing raw Delay
++bindings needed correction. Four existing semantic-negative program calls now
++assert their intended diagnostic. An earlier native-catalog invocation ran zero
++cases because its tools build lacked native support; the six-case result above
++resolves that coverage gap. Those earlier failures are not counted as passes.
++
++## Historical isolated negative controls
++
++On implementation `986a1007`, each control removed exactly one reviewed
++production guard/comparison, leaving fixtures and assertions unchanged. Every run exited one with 7/8 cases passing
++and exactly one predicted assertion failure; no timeout or sanitizer finding.
++
++| Control removed | Observed detection | Assertions | Seconds |
++| --- | --- | ---: | ---: |
++| A: known-operation ABI domain | Known and opaque identities compared equal | 147 | 0.135 |
++| B: snapshot operation comparison | Inappropriate source reuse | 153 | 0.087 |
++| C: native binding guard | Mismatched raw binding was accepted | 145 | 0.092 |
++| D: custom lowerer binding guard | Required boundary diagnostic was missing | 153 | 0.087 |
++| E: whole-catalog entry guard | Direct state-rewrite rejection requirement failed | 149 | 0.087 |
++
++For D, the plan remained invalid with one diagnostic: downstream verification
++still rejected it. This control detects loss of the required boundary diagnostic,
++not unsafe execution. A/C stop before lowering the altered table; D/E never
++finalize or execute altered plans. B uses the two already-admitted valid constant
++libraries. Later unchanged valid cases continue after each expected case failure.
++
++Exact clean source bytes were restored between controls; mutations never
++accumulated. The final restored binary was byte-identical to the clean control
++baseline and passed 8/8 cases, 153 assertions, in 0.092 seconds. The author tree
++and binaries were untouched. Control builds were removed after preserving logs,
++configuration, commands, patches and hashes. Log digests are recorded in
++[evidence](evidence/engine-operations/log-sha256.txt).
++
++## Historical regular gate integration
++
++The standalone routes initially left a regular regression-coverage gap. After
++independent workload admission, `5fbe3ce5` added `language-operations` once to
++`GROUPS["language"]` and `wasm-operations` once to `GROUPS["wasm"]`, preserving
++all previous members and their order. Both complete groups and the C tooling
++policy integration then passed serially, each under one shared 60-second
++production deadline, with no aggregate reconstruction:
++
++| Invocation | Selectors | Cases passed | Assertions | Seconds |
++| --- | ---: | ---: | ---: | ---: |
++| `tool native-tools` | 1 | 116 | 29,566 | 23.114 |
++| `group language` | 29 | 390 | 36,125 | 22.867 |
++| `group wasm` | 17 | 234 | 32,242 | 3.289 |
++
++Each of the eight operation cases ran exactly once in each language group.
++`native-tools` used the compiler-only tools build and exercised the C-owned
++policy integrations against the current checkout; it was neither the unit-only
++route nor the wider native-enabled optional tooling closure. Native corpus
++coverage used exactly 89 files, 63,497 bytes total, largest file 5,489 bytes.
++Source, policy, corpus, all five output artifacts and the policy worker retained
++their pre-run hashes. Configuration/builds were separate from these measurements.
++
++The regular-gate coverage gap is closed. The native language gate is used by the
++existing Linux/macOS CI workflow; the Wasm group is used by `make test-wasm`.
++This does not add or activate a server CI job. These measurements establish
++success for the exact candidate/environment, not a future runtime guarantee.
++The earlier seven selected passes and five controls remain evidence for the
++unchanged implementation, rather than being reported as reruns on `5fbe3ce5`.
++
++## Scope of the result
++
++Independent source/workload/test review approved the bounded implementation and
++its regular-gate integration at the exact tested heads above.
++Publication still requires final head/content identity, integration eligibility,
++applicable server checks and all explicit holds. This matrix does not claim full
++engine, browser, GPU, leak-detection or Wasm-incremental coverage. The five controls
++are detection evidence for those exact removals, not exhaustive ABI verification.
++Direct prepared semantics still require the manual semantic version guard.
++Generic host ownership/effects and separate global/graph mappings remain future
++work described in the contract.
+diff --git a/docs/evidence/engine-operations/log-sha256.txt b/docs/evidence/engine-operations/log-sha256.txt
+new file mode 100644
+index 000000000..9ea5f0a59
+--- /dev/null
++++ b/docs/evidence/engine-operations/log-sha256.txt
+@@ -0,0 +1,55 @@
++# SHA256 of retained independent review evidence.
++# revision6/ and controls/: implementation 986a1007.
++# group-admission/: regular-gate integration 5fbe3ce5.
++# publication/: earlier published b4d4c1f9 on base62906a50.
++# module-integration/: historical local combination a26d0246 on mainf1bfe133.
++# dormant-metadata/: failing d581d39e baseline; fix/: isolated f17e7b14.
++# Names are evidence identifiers, not repository-relative log paths.
++847eaa4b659be5de51ca4d4676fec5f6566eca05d06a499b8a6d1f48fa59a4b2  revision6/native-catalog.log
++206cd0e4ed7653dedfc047e263b4422ac2c248fa85bda4f179b94783ecacce08  revision6/language-program.log
++894821fd1dfef9ffe3bcff8647172519841fb9a5c7208efeb3adfeeed76ebc48  revision6/wasm-program.log
++e94b2ff46babf7d3ed54a78b588bb728458adb31033966fe2e0e06b5e00d0560  revision6/language-incremental.log
++fdb4254366742ddb55dbb6936f10761043cf8ecbdcc45d9ca4600558fc4b0d1c  revision6/language-prepared.log
++de4a8ee41f676e24f727703d784a20bdd536b598d4ecd5ce322b17e83e2e06b8  revision6/language-operations.log
++ff23b577327e0fe1a7dbd3aaf96fb8f79f2cf05d7d5e8a582d2612b93436a257  revision6/wasm-operations.log
++776f242c6fab9a6d6877ef83aec99315baec5a0e6beaa96d35d0ee0b7e27683a  revision6/review-result.txt
++a995ba337a198193332fdbb5df611dcdd7c358d6d60730747ef9335244e12ac9  controls/revision6/control-results.txt
++59f6a7a943ed1ada2553746ec570758c53359ee395d04a812af1460589eda6db  controls/revision6/A-runtime.log
++803d97ec4533585013ef3417c3ba361f1d0b5fe6997bcf71bfa7b6511910c3d4  controls/revision6/B-runtime.log
++965b7d74939e2ba80360e1f872e7ea1042675d4166cfcf35194808d0ec6c44dd  controls/revision6/C-runtime.log
++50c74b7fce3c52d58fad994a132e95608ab44cc50f10773931aa6a30a2bc065b  controls/revision6/D-runtime.log
++5719f9db92ed7abc8410c3fbf00b440d60679e3b6870de89156c2406d364880a  controls/revision6/E-runtime.log
++c39a89d2d4338e0a6462c366d98a0de273141a5b9c4e1bd15d1c56042bfd6993  controls/revision6/restored-runtime.log
++21e4a7cb066632ffd7805bc0cb876d5eb3dda9d3cbc31824cb56f3f634421404  group-admission/native-tools.log
++b1a94806c6f0f210474ab826f53b0fecb55a2d2985bc4ba203af35e496598a3b  group-admission/language-group.log
++8b69070be05737f891f1bf06ed07e7c927f62bc76e2bb9cdc4502ea9c3190f76  group-admission/wasm-group.log
++2901f25c9c48ec56309e41e9431a3a63e4dd2bb60d5811b3e441d4c18a7047a1  group-admission/group-counts.json
++28a34494745e0957b5cef6b73199e46d8c401faf5d746132d7f66dc7427e83a3  group-admission/final-result.txt
++72c0f42edbf51027b519bac9b33194ffd540328824217952343b476d47e7129a  group-admission/final-policy.diff
++4770ec9bfba3ba7ddffae045c290d18c58f4dd010fc0fe06f0eb330a32b130da  group-admission/fixture-source-manifest.txt
++020770a6196317c8fb616e71761d711b6a8b895c1feaf1196561c45fdc06b0eb  group-admission/selector-source-closure.json
++ddca2cd94b2245494b8573ed6cb4864d2f0c682fbf6791de31742c524d8240b3  publication/review-result.txt
++06580d65b82b67e14714c45219254837349503ef2c6dc7114d4f8896abe2d972  module-integration/admission-result.txt
++72bd61cac9661889ace60f52feee2b9dc8e080226153e267a01534c3cff0a22b  module-integration/review-result.txt
++c5822b41c237c1d10b8f0be3022611a69721be5284e2f4198bb011ce026b04aa  module-integration/counts.json
++17022c9f3a1762b68155285f4ea6c9671c661a1665e5838ef8a9f310ee7cad67  module-integration/language-group.log
++59e156d1ce47c3bdf483b6ee2e80d6eb2fcdbdedbe43fbe86f97de69ae80a0b2  module-integration/wasm-group.log
++616321faf6aca7ec0619668951095ef8ef4d7baf6462882dc65e4cd0164cab44  module-integration/native-tools.log
++e4825311fa37143dbd7ac7179e22290d1754db64ef3752a3f17f921885568965  module-integration/native-catalog.log
++01767db903602beb33fc5163398da1f80bd2db595dd7dd00856785d17c68f6e6  module-integration/language-prepared.log
++9a66ed59a38d26888b8d9d40b06a1fe46f1f19bc1cf153bd1a5bb2b5ccf73c3c  dormant-metadata/baseline-native.log
++2aae87121d9a67db7fa9f29cbc271175b6990d17b85e2a168bec6fe3798872d0  dormant-metadata/baseline-result.json
++84362627caf7595c273b7bb48ed15e3c684fa5ac5372e7cf66694375c69c34f4  dormant-metadata/fix/admission-result.txt
++918f59f0ea70a483388aa35d19a5868a4c4417b10dfea7a404afc89bb2cedcdc  dormant-metadata/fix/language-operations.log
++f2e74eace9ea8c9224d595aa086e0df06c011e96bfa468a3002bca676a2fb063  dormant-metadata/fix/wasm-operations.log
++a418e202db6971de338e04042e16ceb03cacdcafaa9774878ebb1dca996d2ab7  dormant-metadata/fix/review-result.txt
++a6dee8f68846454c2efe15b1b036b4bd76589f6ac6f4867e3fbe891593a34ca1  checked-write-integration/admission-result.txt
++4365215045ba674ec28e3d9e7bedfb04be96200c6da9e9492939048e7eb995c6  checked-write-integration/review-result.txt
++dd3f8b2089873e5c74ba927b78e356fa0a60e12545020266c25a1b9a34fb4bdd  checked-write-integration/results.json
++ef50bfd1026c5a69c0903315e28a37b790fc46c982d5ee038b7227bbc56c0303  checked-write-integration/group-counts.json
++3fc0a4eb67bb7926011eb5ed8ad1fcc0daa03348d99490e778fe181ac4face46  checked-write-integration/feature-case-presence.json
++8cb21c96f48c05382d57a0d0bcec684d44f88212a545ac8fec8d589d9bc46dc9  checked-write-integration/group-language.log
++2c3f560dffc723bd886213689bc41e80dc7c477c79cd93eba7eabe651fe2f871  checked-write-integration/group-wasm.log
++ba162684247d93ec51018db6032d9705bf2d7641204c03a90248c87b25f4ed90  checked-write-integration/native-tools.log
++f29566f44ddd9803685ff0621ca73eb421ebf9110299cc4fb63d5d07e239fdb8  checked-write-integration/native-catalog.log
++f493329d23e052dd309b2a2b3cc7bf30b1430502250c82c467c77dfa847b99e6  checked-write-integration/language-prepared.log
+diff --git a/docs/testing.md b/docs/testing.md
+index 41cceb5e1..137a335b3 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -206,6 +206,19 @@ literals with both signs. Seed verification runs one fixed-point compile with a
+ limit and writes only its closure and manifest; a failed compile may make one
+ diagnostic call.
+ 
++`language-operations` checks the closed Owner and Delay declarations and
++bindings, rejects scalar collection/type metadata and dormant access fields,
++and distinguishes known operations from opaque native callbacks. It also
++checks source-cache invalidation, direct-catalog state rewrite rejection,
++custom linker rejection and Owner-alias invocation effects. The execution
++fixture dispatches zero, negative, positive and NaN durations on each backend,
++uses a synthetic clock and a 1,000-instruction budget, and checks owner handles
++and strings across suspension. Native uses bytecode/SLJIT; Wasm uses the same C
++cases with bytecode/generated Wasm. Existing `language-program`,
++`language-incremental`, `native-catalog`, prepared producer/consumer and generated-C
++selectors cover the surrounding consumers. These cases use no rendering, GPU,
++network or test child processes.
++
+ The compiled-runtime rollout passed native, language, tooling, materials and
+ project groups. Browser Wasm execution
+ passed in serial and pthread configurations. URL gesture coverage passed nine
+diff --git a/sdk/CMakeLists.txt b/sdk/CMakeLists.txt
+index a102aca53..ca687b03a 100644
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -191,7 +191,8 @@ target_link_libraries(chibi_value_document PUBLIC chibi_types chibi_asset_values
+ add_library(chibi_capabilities STATIC "${CHIBI_SDK_ROOT}/src/capabilities/catalog.c"
+     "${CHIBI_SDK_ROOT}/src/capabilities/catalog_snapshot.c"
+     "${CHIBI_SDK_ROOT}/src/capabilities/catalog_values.c"
+-    "${CHIBI_SDK_ROOT}/src/capabilities/definition.c")
++    "${CHIBI_SDK_ROOT}/src/capabilities/definition.c"
++    "${CHIBI_SDK_ROOT}/src/capabilities/operation.c")
+ add_library(Chibi::capabilities ALIAS chibi_capabilities)
+ set_target_properties(chibi_capabilities PROPERTIES EXPORT_NAME capabilities)
+ chibi_sdk_headers(chibi_capabilities PUBLIC capabilities/catalog.h capabilities/definition.h
+@@ -202,10 +203,10 @@ add_library(chibi_execution_contract INTERFACE)
+ add_library(Chibi::execution_contract ALIAS chibi_execution_contract)
+ set_target_properties(chibi_execution_contract PROPERTIES EXPORT_NAME execution_contract)
+ chibi_sdk_headers(chibi_execution_contract INTERFACE execution/host.h execution/status.h
+-    execution/service.h execution/log.h execution/instruction.h execution/state.h execution/function.h
++    execution/service.h execution/log.h execution/instruction.h execution/operation.h execution/state.h execution/function.h
+     execution/diagnostic.h execution/backend.h execution/component.h execution/scalar.h execution/borrow.h
+     execution/request.h execution/source_debug.h execution/value_kind.h execution/arguments.h execution/random.h)
+-target_link_libraries(chibi_execution_contract INTERFACE chibi_types)
++target_link_libraries(chibi_execution_contract INTERFACE chibi_types chibi_capabilities)
+ 
+ add_library(chibi_native_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/native_capabilities.c"
+     "${CHIBI_SDK_ROOT}/src/runtime/native_definitions.c"
+diff --git a/sdk/README.md b/sdk/README.md
+index 5e20a449a..76810678e 100644
+--- a/sdk/README.md
++++ b/sdk/README.md
+@@ -49,7 +49,8 @@ target_link_libraries(my_target PRIVATE Chibi::types)
+ Set `CMAKE_PREFIX_PATH` to the installation. `Chibi::support` provides arenas and
+ allocation; `Chibi::ecs` provides entity storage, queries, structural commands and
+ execution views without graph dependencies; `Chibi::execution_contract` provides
+-instruction/host/status contracts.
++instruction/host/status contracts and the checked engine-operation mapping,
++using the parser-free capabilities package for shared semantic descriptors.
+ `Chibi::asset_values` owns document values and their storage. `Chibi::value_document`
+ converts reflected values to owned documents and reads documents into caller-owned
+ arenas. Failed reads leave the output value unchanged. Both are optional dependencies for
+@@ -57,7 +58,11 @@ consumers; execution and ECS do not depend on either target.
+ `Chibi::capabilities` owns declaration identities, types, signatures and effects.
+ It is available without the language parser. `Chibi::native_capabilities` joins
+ those declarations to host, access, command and query descriptors and validates
+-their declaration/layout ABI. The compiler's native binding adapter resolves this
++their declaration/layout ABI. The core Owner/Delay operations generate
++checked bindings from their shared definitions; their signatures, effects,
++ownership guarantees and lowering identity are described in
++[engine operation contracts](../docs/engine-operation-contracts.md).
++The compiler's native binding adapter resolves this
+ table by stable identity. Prepared linkage checks the recorded declaration ABI.
+ `Chibi::core_capabilities`, `Chibi::array_capabilities`,
+ `Chibi::field_capabilities` and `Chibi::state_capabilities` supply shared native
+diff --git a/sdk/contracts.cmake b/sdk/contracts.cmake
+index fac137c03..15994085b 100644
+--- a/sdk/contracts.cmake
++++ b/sdk/contracts.cmake
+@@ -36,7 +36,7 @@ endfunction()
+ 
+ chibi_sdk_contract(chibi_support "${CHIBI_SDK_ROOT}/src/support" m)
+ chibi_sdk_contract(chibi_types "${CHIBI_SDK_ROOT}/src/types" chibi_support m)
+-chibi_sdk_contract(chibi_execution_contract "${CHIBI_SDK_ROOT}/src/execution" chibi_types)
++chibi_sdk_contract(chibi_execution_contract "${CHIBI_SDK_ROOT}/src/execution" chibi_types chibi_capabilities)
+ chibi_sdk_contract(chibi_tasks "${CHIBI_SDK_ROOT}/src/runtime")
+ chibi_sdk_contract(chibi_input_action "${CHIBI_SDK_ROOT}/src/runtime")
+ chibi_sdk_contract(chibi_asset_values "${CHIBI_SDK_ROOT}/src/support" chibi_support)
+diff --git a/src/authoring/source_catalog_snapshot.c b/src/authoring/source_catalog_snapshot.c
+index d27936a31..546697d7c 100644
+--- a/src/authoring/source_catalog_snapshot.c
++++ b/src/authoring/source_catalog_snapshot.c
+@@ -161,9 +161,9 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
+             x->result_count != y->result_count || x->entry_count != y->entry_count ||
+             x->outcome_count != y->outcome_count ||
+             x->completion_outcome != y->completion_outcome ||
+-            x->effects != y->effects || x->receiver != y->receiver ||
+-            x->pure != y->pure || x->variadic != y->variadic ||
+-            x->variadic_optional != y->variadic_optional ||
++            x->effects != y->effects || x->operation != y->operation ||
++            x->receiver != y->receiver || x->pure != y->pure ||
++            x->variadic != y->variadic || x->variadic_optional != y->variadic_optional ||
+             x->numeric_aggregate != y->numeric_aggregate ||
+             x->event_sender != y->event_sender ||
+             !same_parameters(x->parameters, y->parameters, x->parameter_count) ||
+diff --git a/src/capabilities/catalog.c b/src/capabilities/catalog.c
+index e999dd88b..e2cd72b98 100644
+--- a/src/capabilities/catalog.c
++++ b/src/capabilities/catalog.c
+@@ -607,6 +607,22 @@ uint64_t script_catalog_capability_abi(const script_catalog *catalog, const scri
+     hash = abi_word(hash, capability->completion_outcome);
+     hash = abi_word(hash, capability->state_kind);
+     hash = abi_word(hash, capability->effects);
++    if (capability->operation != SCRIPT_OPERATION_UNKNOWN) {
++        /* Preserve opaque-call identities; a checked operation is a different
++         * semantic ABI even when its source signature is identical. */
++        hash = abi_text(hash, "engine-operation");
++        hash = abi_word(hash, capability->operation);
++        const script_operation_contract *contract = script_operation_describe(
++            capability->operation
++        );
++        if (contract) {
++            hash = abi_text(hash, contract->name);
++            hash = abi_text(hash, contract->instruction);
++            hash = abi_word(hash, contract->version);
++            hash = abi_word(hash, contract->effects);
++            hash = abi_word(hash, contract->guarantees);
++        }
++    }
+     hash = abi_word(hash, capability->state_access);
+     hash = abi_word(hash, capability->component_access);
+     if (capability->component_access != SCRIPT_COMPONENT_ACCESS_NONE) {
+diff --git a/src/capabilities/catalog.h b/src/capabilities/catalog.h
+index c6a85330d..2c0290a4e 100644
+--- a/src/capabilities/catalog.h
++++ b/src/capabilities/catalog.h
+@@ -160,6 +160,48 @@ typedef struct
+      * Outcome ordinals: true/body, false/completed. Break is an entry ordinal. */
+     int inputs[2], results[2], outcomes[2], break_entry;
+ } script_catalog_flow;
++/* Closed, implementation-checked operations. Zero grants no extra contract;
++ * generic host declarations must not acquire guarantees from a pure label. */
++enum
++{
++    SCRIPT_OPERATION_SCALAR_ARGUMENTS = 1u << 0,
++    SCRIPT_OPERATION_SCALAR_RESULTS = 1u << 1,
++    SCRIPT_OPERATION_NO_ARGUMENT_RETENTION = 1u << 2,
++    SCRIPT_OPERATION_NO_RESULT_ALIAS = 1u << 3,
++    SCRIPT_OPERATION_NO_ALLOCATION = 1u << 4,
++    SCRIPT_OPERATION_NO_PAYLOAD_COPY = 1u << 5,
++    SCRIPT_OPERATION_ACTIVATION_THREAD = 1u << 6,
++    SCRIPT_OPERATION_NO_REENTRY = 1u << 7,
++    SCRIPT_OPERATION_SAVES_LIVE_VALUES = 1u << 8,
++};
++#define SCRIPT_OPERATION_SCALAR_READ                                             \
++    (SCRIPT_OPERATION_SCALAR_ARGUMENTS | SCRIPT_OPERATION_SCALAR_RESULTS |       \
++     SCRIPT_OPERATION_NO_ARGUMENT_RETENTION | SCRIPT_OPERATION_NO_RESULT_ALIAS | \
++     SCRIPT_OPERATION_NO_ALLOCATION | SCRIPT_OPERATION_NO_PAYLOAD_COPY |         \
++     SCRIPT_OPERATION_ACTIVATION_THREAD | SCRIPT_OPERATION_NO_REENTRY)
++/* Identity, actual instruction name, semantic version, effects, guarantees.
++ * Both catalog ABI and execution binding are generated from these same rows. */
++#define SCRIPT_ENGINE_OPERATIONS(X)                                                 \
++    X(OWNER, OWNER, 1, SCRIPT_EFFECT_INVOCATION_READ, SCRIPT_OPERATION_SCALAR_READ) \
++    X(DELAY,                                                                        \
++      DELAY,                                                                        \
++      1,                                                                            \
++      SCRIPT_EFFECT_SUSPEND,                                                        \
++      SCRIPT_OPERATION_SCALAR_ARGUMENTS | SCRIPT_OPERATION_ACTIVATION_THREAD |      \
++          SCRIPT_OPERATION_SAVES_LIVE_VALUES)
++typedef enum
++{
++    SCRIPT_OPERATION_UNKNOWN,
++#define OPERATION(NAME, INSTRUCTION, VERSION, EFFECTS, GUARANTEES)             \
++    SCRIPT_OPERATION_##NAME,
++    SCRIPT_ENGINE_OPERATIONS(OPERATION)
++#undef OPERATION
++} script_operation;
++typedef struct
++{
++    const char *name, *instruction;
++    unsigned version, effects, guarantees;
++} script_operation_contract;
+ typedef struct
+ {
+     uint64_t id;
+@@ -181,6 +223,7 @@ typedef struct
+     int entry_count, outcome_count;
+     int completion_outcome;
+     unsigned effects;
++    script_operation operation;
+     uint64_t receiver;
+     bool pure, variadic, variadic_optional, numeric_aggregate, event_sender;
+ } script_catalog_capability;
+@@ -284,6 +327,10 @@ uint64_t script_catalog_capability_abi(const script_catalog *, const script_cata
+ /* Bounded exact evidence for declared defaults and specialization constants.
+  * Caller releases the returned dynamic byte array with afree. */
+ bool script_catalog_values_key(const script_catalog *, unsigned char **);
++/* NULL for unknown/unrecognized operations. Absent guarantees are unknown,
++ * never proof of the opposite. Known declarations must match their contract. */
++const script_operation_contract *script_operation_describe(script_operation);
++bool script_catalog_operation_valid(const script_catalog_capability *);
+ const script_catalog_type *script_catalog_type_by_id(const script_catalog *, uint64_t id);
+ const script_catalog_capability *script_catalog_capability_by_id(const script_catalog *, uint64_t id);
+ script_type script_builtin_type(const char *name);
+diff --git a/src/capabilities/definition.c b/src/capabilities/definition.c
+index f9bb00f86..295f6f3eb 100644
+--- a/src/capabilities/definition.c
++++ b/src/capabilities/definition.c
+@@ -314,6 +314,7 @@ static bool add_definition(
+         .outcome_count = acount(a->outcomes),
+         .completion_outcome = completion,
+         .effects = source->effects,
++        .operation = source->operation,
+         .receiver = type_id(source->receiver_type),
+         .pure = source->pure,
+         .variadic = source->variadic,
+@@ -359,6 +360,9 @@ static bool add_definition(
+          (c.component_value != -1 && !ordinal(c.component_value, c.parameter_count)))) {
+         return fail(error, size, source->canonical_name, "Invalid component port ordinal");
+     }
++    if (!script_catalog_operation_valid(&c)) {
++        return fail(error, size, source->canonical_name, "Invalid engine operation declaration");
++    }
+     apush(out->capabilities, c);
+     return true;
+ }
+diff --git a/src/capabilities/definition.h b/src/capabilities/definition.h
+index 3a4c4392e..45b8fa75f 100644
+--- a/src/capabilities/definition.h
++++ b/src/capabilities/definition.h
+@@ -68,6 +68,7 @@ typedef struct
+     /* Original output port index; must identify EXEC, or -1 for no completion. */
+     int completion_output;
+     unsigned effects;
++    script_operation operation;
+     const char *receiver_type;
+     script_state_access state_access;
+     native_state_kind state_kind;
+diff --git a/src/capabilities/operation.c b/src/capabilities/operation.c
+new file mode 100644
+index 000000000..63f6e5742
+--- /dev/null
++++ b/src/capabilities/operation.c
+@@ -0,0 +1,73 @@
++#include "capabilities/catalog.h"
++
++/* These contracts describe existing engine implementations, not host claims.
++ * Delay can lower to a command or suspend the current activation. Its live
++ * values survive suspension; no allocation/copy bound is promised here. */
++#define CONTRACT(NAME, INSTRUCTION, VERSION, EFFECTS, GUARANTEES)              \
++    static const script_operation_contract NAME = { #NAME,                     \
++                                                    #INSTRUCTION,              \
++                                                    VERSION,                   \
++                                                    EFFECTS,                   \
++                                                    GUARANTEES };
++SCRIPT_ENGINE_OPERATIONS(CONTRACT)
++#undef CONTRACT
++
++const script_operation_contract *script_operation_describe(script_operation operation)
++{
++    switch (operation) {
++#define DESCRIBE(NAME, INSTRUCTION, VERSION, EFFECTS, GUARANTEES)              \
++    case SCRIPT_OPERATION_##NAME: return &NAME;
++        SCRIPT_ENGINE_OPERATIONS(DESCRIBE)
++#undef DESCRIBE
++        default: return NULL;
++    }
++}
++static bool scalar(const script_catalog_parameter *parameter, pin_type storage, uint64_t nominal)
++{
++    return parameter && parameter->type.storage == storage &&
++           parameter->type.container == PIN_CONTAINER_SINGLE &&
++           parameter->type.nominal == nominal && !parameter->type.parameter &&
++           !parameter->type.collection && !parameter->type.flags &&
++           parameter->reference_kind == SCRIPT_REFERENCE_NONE && !parameter->member;
++}
++bool script_catalog_operation_valid(const script_catalog_capability *capability)
++{
++    if (capability->operation == SCRIPT_OPERATION_UNKNOWN) {
++        return true;
++    }
++    const script_operation_contract *contract = script_operation_describe(
++        capability->operation
++    );
++    if (!contract || capability->effects != contract->effects ||
++        capability->state_access != SCRIPT_STATE_ACCESS_NONE ||
++        capability->state_kind != NATIVE_STATE_NONE ||
++        capability->component_access != SCRIPT_COMPONENT_ACCESS_NONE ||
++        capability->struct_access != SCRIPT_STRUCT_ACCESS_NONE ||
++        capability->component || capability->component_field || capability->aggregate ||
++        capability->component_entity || capability->component_value ||
++        capability->flow.kind != SCRIPT_FLOW_ACCESS_NONE ||
++        capability->flow.break_entry || capability->receiver ||
++        capability->variadic || capability->variadic_optional ||
++        capability->numeric_aggregate || capability->event_sender) {
++        return false;
++    }
++    for (int i = 0; i < 2; i++) {
++        if (capability->flow.inputs[i] || capability->flow.results[i] ||
++            capability->flow.outcomes[i]) {
++            return false;
++        }
++    }
++    if (capability->operation == SCRIPT_OPERATION_DELAY) {
++        return capability->kind == SCRIPT_CAPABILITY_ACTION &&
++               !capability->pure && capability->parameter_count == 1 &&
++               scalar(capability->parameters, PIN_F64, 0) &&
++               capability->result_count == 0 && capability->entry_count == 1 &&
++               capability->outcome_count == 1 && capability->completion_outcome == 0;
++    }
++    uint64_t nominal = script_catalog_id("type", "ecs.entity");
++    return capability->kind == SCRIPT_CAPABILITY_FUNCTION && capability->pure &&
++           capability->parameter_count == 0 && capability->result_count == 1 &&
++           scalar(capability->results, PIN_HANDLE, nominal) &&
++           capability->entry_count == 0 && capability->outcome_count == 0 &&
++           capability->completion_outcome == -1;
++}
+diff --git a/src/execution/operation.h b/src/execution/operation.h
+new file mode 100644
+index 000000000..c5dad8aa2
+--- /dev/null
++++ b/src/execution/operation.h
+@@ -0,0 +1,19 @@
++#ifndef CHIBI_EXECUTION_OPERATION_H
++#define CHIBI_EXECUTION_OPERATION_H
++
++#include "capabilities/catalog.h"
++#include "execution/instruction.h"
++
++/* The same mapping generates native bindings and verifies lowerer inputs.
++ * Zero is not an operation; unknown capabilities use their generic binding. */
++static inline behavior_function_op behavior_operation_instruction(script_operation operation)
++{
++    switch (operation) {
++#define INSTRUCTION(NAME, OP, VERSION, EFFECTS, GUARANTEES)                    \
++    case SCRIPT_OPERATION_##NAME: return BF_##OP;
++        SCRIPT_ENGINE_OPERATIONS(INSTRUCTION)
++#undef INSTRUCTION
++        default: return 0;
++    }
++}
++#endif
+diff --git a/src/language/lower.c b/src/language/lower.c
+index e2fb33233..1bc170af3 100644
+--- a/src/language/lower.c
++++ b/src/language/lower.c
+@@ -4,6 +4,7 @@
+ #include "execution/delay.h"
+ #include "execution/intrinsics.h"
+ #include "execution/map_intrinsics.h"
++#include "execution/operation.h"
+ #include "execution/scalar.h"
+ #include "execution/state.h"
+ #include "execution/task.h"
+@@ -3225,6 +3226,13 @@ static int call(lower *l, const script_expression *e)
+         error(l, e->range, "Callable capability has no linked execution contract");
+         return -1;
+     }
++    if (cap->operation != SCRIPT_OPERATION_UNKNOWN
++            ? host.intrinsic != behavior_operation_instruction(cap->operation) ||
++                  host.call || host.function || host.command || host.query || host.access
++            : host.intrinsic && host.intrinsic != BF_ASSERT) {
++        error(l, e->range, "Linked native binding differs from engine operation contract");
++        return -1;
++    }
+     if (host.function) {
+         return external_call(l, e, cap, host);
+     }
+@@ -7357,6 +7365,24 @@ static execution_module_plan *lower_analysis(
+         m->diagnostic_count = acount(m->diagnostics);
+         return m;
+     }
++    /* Analysis can rewrite specialized calls into non-call expressions. Check
++     * the entire operation catalog before lowering any of those expressions. */
++    for (int i = 0; i < catalog->capability_count; i++) {
++        if (!script_catalog_operation_valid(&catalog->capabilities[i])) {
++            execution_module_diagnostic diagnostic = { 0 };
++            snprintf(
++                diagnostic.message,
++                sizeof diagnostic.message,
++                "Invalid engine operation declaration: %s",
++                catalog->capabilities[i].name
++            );
++            apush(m->diagnostics, diagnostic);
++        }
++    }
++    m->diagnostic_count = acount(m->diagnostics);
++    if (m->diagnostic_count) {
++        return m;
++    }
+     assert(a->identity);
+     lower l = { .a = a, .catalog = catalog, .bindings = bindings, .module = m };
+     script_catalog merged = *catalog;
+diff --git a/src/language/semantic_calls.c b/src/language/semantic_calls.c
+index 55a709eb7..cf78d612c 100644
+--- a/src/language/semantic_calls.c
++++ b/src/language/semantic_calls.c
+@@ -1195,6 +1195,20 @@ bool script_analyzer_array_changer(const script_catalog_capability *function)
+     }
+     return false;
+ }
++static bool migrated_self(const analyzer *a, const script_catalog_capability *capability)
++{
++    if (!a->migration_import || a->out->kind == SCRIPT_PROGRAM_LIBRARY ||
++        !capability || capability->id != script_catalog_id("capability", "Self") ||
++        capability->operation != SCRIPT_OPERATION_OWNER ||
++        !script_catalog_operation_valid(capability) || a->out->owner_symbol < 0 ||
++        script_analyzer_lookup_name(a, "self") != a->out->owner_symbol) {
++        return false;
++    }
++    const script_symbol *owner = &a->out->symbols[a->out->owner_symbol];
++    return owner->kind == SCRIPT_GLOBAL &&
++           owner->id == script_catalog_id("owner", a->out->identity) &&
++           script_type_equal(capability->results[0].type, owner->type);
++}
+ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
+ {
+     TSNode target = script_analyzer_field(node, "function"),
+@@ -1471,6 +1485,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
+         .member = selected_event,
+         .effects = capability ? capability->effects : 0
+     };
++    /* Legacy Self imports become the same bound self expression. Only a
++     * library's self reads its caller's invocation; behavior/system self is
++     * stable. Keep the catalog contract and the migration oracle exact. */
++    if (migrated_self(a, capability)) {
++        result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
++    }
+     if (capability && a->out->kind == SCRIPT_PROGRAM_LIBRARY &&
+         (capability->id == script_catalog_id("capability", "Self") ||
+          (capability->component && capability->component_entity < 0))) {
+diff --git a/src/runtime/core_definition.c b/src/runtime/core_definition.c
+index 228544b00..606485a8d 100644
+--- a/src/runtime/core_definition.c
++++ b/src/runtime/core_definition.c
+@@ -79,7 +79,8 @@ static const native_capability_definition DEFINITIONS[] = {
+       CORE_DELAY_PRESENTATION,
+       IN(DELAY),
+       OUT(DELAY_OUT),
+-      .effects = SCRIPT_EFFECT_SUSPEND },
++      .effects = SCRIPT_EFFECT_SUSPEND,
++      .operation = SCRIPT_OPERATION_DELAY },
+     { ACTION(CORE_PRINT_NAME, CORE_PRINT_SOURCE, 0),
+       CORE_PRINT_PRESENTATION,
+       IN(PRINT),
+@@ -126,15 +127,17 @@ static const native_capability_definition DEFINITIONS[] = {
+       .component_access = SCRIPT_COMPONENT_ACCESS_REMOVE,
+       .component_entity = -1,
+       .component_value = -1 },
+-    { FUNCTION(CORE_SELF_NAME, CORE_SELF_SOURCE), CORE_SELF_PRESENTATION, OUT(SELF) },
++    { FUNCTION(CORE_SELF_NAME, CORE_SELF_SOURCE),
++      CORE_SELF_PRESENTATION,
++      OUT(SELF),
++      .effects = SCRIPT_EFFECT_INVOCATION_READ,
++      .operation = SCRIPT_OPERATION_OWNER },
+ };
+ static const node_access PRINT_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+ static const native_definition_binding BINDINGS[] = {
+-    { .canonical_name = CORE_DELAY_NAME, .implementation = { .intrinsic = BF_DELAY } },
+     { .canonical_name = CORE_PRINT_NAME,
+       .implementation = { .call = &EXECUTION_PrintString, .access = &PRINT_ACCESS } },
+     { .canonical_name = CORE_ASSERT_NAME, .implementation = { .intrinsic = BF_ASSERT } },
+-    { .canonical_name = CORE_SELF_NAME, .implementation = { .intrinsic = BF_OWNER } },
+ };
+ static const native_global_definition GLOBALS[] = {
+     { .canonical_name = "self", .type = SELF },
+diff --git a/src/runtime/native_capabilities.c b/src/runtime/native_capabilities.c
+index 2a45792fa..8b42e7b09 100644
+--- a/src/runtime/native_capabilities.c
++++ b/src/runtime/native_capabilities.c
+@@ -1,6 +1,7 @@
+ #include "runtime/native_capabilities.h"
+ 
+ #include "capabilities/catalog_index.h"
++#include "execution/operation.h"
+ #include "support/arena.h"
+ #include "support/array.h"
+ #include "support/xalloc.h"
+@@ -260,6 +261,14 @@ static bool add_capability(
+     if (catalog_index_add(index, source->id, acount(n->capabilities)) >= 0) {
+         return reject(error, size, "Duplicate native capability", source->id);
+     }
++    if (!script_catalog_operation_valid(source)) {
++        return reject(
++            error,
++            size,
++            "Invalid engine operation declaration",
++            source->id
++        );
++    }
+     script_catalog_capability copy = *source;
+     copy.name = own(n, source->name);
+     copy.qualified_name = own(n, source->qualified_name);
+@@ -328,9 +337,11 @@ static bool add_binding(
+          copy.command->intrinsic > NODE_COMMAND_DELAY)) {
+         return reject(error, size, "Invalid native command descriptor", copy.id);
+     }
+-    if (copy.intrinsic && copy.intrinsic != BF_DELAY &&
+-        copy.intrinsic != BF_OWNER && copy.intrinsic != BF_ASSERT) {
+-        return reject(error, size, "Unsupported native instruction intrinsic", copy.id);
++    if (declaration->operation != SCRIPT_OPERATION_UNKNOWN
++            ? copy.intrinsic != behavior_operation_instruction(declaration->operation) ||
++                  copy.access || copy.instance_state || copy.query_service
++            : copy.intrinsic && copy.intrinsic != BF_ASSERT) {
++        return reject(error, size, "Native binding differs from engine operation contract", copy.id);
+     }
+     for (int i = 0; i < acount(n->bindings); ++i) {
+         if (n->bindings[i].id == copy.id) {
+@@ -545,6 +556,19 @@ native_capabilities *native_capabilities_new(
+             apush(n->globals, copy);
+         }
+     }
++    for (int i = 0; i < n->catalog.capability_count; i++) {
++        const script_catalog_capability *declaration = &n->capabilities[i];
++        if (declaration->operation != SCRIPT_OPERATION_UNKNOWN &&
++            !native_capabilities_find(n, declaration->id, 0)) {
++            reject(
++                error,
++                size,
++                "Engine operation has no execution binding",
++                declaration->id
++            );
++            goto fail;
++        }
++    }
+     for (int i = 0; i < acount(layouts); i++) {
+         bool exists = false;
+         for (int j = 0; j < acount(n->layouts); j++) {
+diff --git a/src/runtime/native_definitions.c b/src/runtime/native_definitions.c
+index ea59fb5c6..47e2bfc47 100644
+--- a/src/runtime/native_definitions.c
++++ b/src/runtime/native_definitions.c
+@@ -1,5 +1,6 @@
+ #include "runtime/native_definitions.h"
+ 
++#include "execution/operation.h"
+ #include "support/array.h"
+ #include "support/xalloc.h"
+ 
+@@ -103,6 +104,10 @@ static bool prepare(
+             valid = fail(error, size, binding->canonical_name, "Binding has no shared definition");
+             break;
+         }
++        if (definitions[found].operation != SCRIPT_OPERATION_UNKNOWN) {
++            valid = fail(error, size, binding->canonical_name, "Engine operation binding is generated from its definition");
++            break;
++        }
+         for (int j = 0; j < i; ++j) {
+             if (!strcmp(source->bindings[j].canonical_name, binding->canonical_name)) {
+                 valid = fail(error, size, binding->canonical_name, "Duplicate native binding");
+@@ -141,6 +146,23 @@ static bool prepare(
+         assert(b.result_count >= 0);
+         apush(*bindings, b);
+     }
++    const script_catalog *view = native_definition_catalog_view(*catalog);
++    for (int i = 0; i < view->capability_count; i++) {
++        const script_catalog_capability *declaration = &view->capabilities[i];
++        if (declaration->operation == SCRIPT_OPERATION_UNKNOWN) {
++            continue;
++        }
++        native_capability_binding binding = {
++            .id = declaration->id,
++            .intrinsic = behavior_operation_instruction(declaration->operation),
++        };
++        binding.result_pins = native_definition_result_pins(
++            *catalog,
++            binding.id,
++            &binding.result_count
++        );
++        apush(*bindings, binding);
++    }
+     for (int i = 0; i < source->global_binding_count; ++i) {
+         const native_definition_global_binding *binding = &source->global_bindings[i];
+         int found = -1;
+diff --git a/src/runtime/native_definitions.h b/src/runtime/native_definitions.h
+index 3b3e48a00..c045d5836 100644
+--- a/src/runtime/native_definitions.h
++++ b/src/runtime/native_definitions.h
+@@ -31,7 +31,10 @@ typedef struct
+     int layout_count;
+ } native_definition_pack;
+ 
+-/* Owns the same immutable table as native_capabilities_new. Shared definition
++/* Known engine operations generate their binding from the definition; supplying
++ * a second implementation for one is an error. Other operations need an
++ * explicit generic binding and acquire no checked-operation guarantees.
++ * Owns the same immutable table as native_capabilities_new. Shared definition
+  * defaults and names are snapshotted; kernel/access descriptors remain borrowed
+  * for the lifetime of every module that binds them. */
+ native_capabilities *native_capabilities_from_definition_packs(
+diff --git a/test/language/CMakeLists.txt b/test/language/CMakeLists.txt
+index 20d64f9a5..803666cab 100644
+--- a/test/language/CMakeLists.txt
++++ b/test/language/CMakeLists.txt
+@@ -235,7 +235,7 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
+ # The backend-specific fixtures inspect private activation storage. Other tests
+ # continue to compile solely against their public SDK dependencies.
+ set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+-add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c incremental.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
++add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c incremental.c operations.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+ # Package tests consume the owning SDK implementation; extraction stays private.
+ target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
+ target_sources(test_language PRIVATE syntax_corpus.c syntax_chibi.c compiler_fixture.c package_syntax_chibi.c package_paths_chibi.c)
+diff --git a/test/language/format.c b/test/language/format.c
+index a0988c353..3618f15da 100644
+--- a/test/language/format.c
++++ b/test/language/format.c
+@@ -1,5 +1,6 @@
+ #include "authoring/source_format.h"
+ #include "authoring/source_minimize.h"
++#include "runtime/core_definition.h"
+ #include "third_party/pico_headers/pico_unit.h"
+ 
+ #include <ctype.h>
+@@ -11,12 +12,15 @@ static script_syntax *source, *formatted;
+ static char *text, *again;
+ static authoring_format_map edit_map;
+ static script_analysis *state_before, *state_after;
++static native_capabilities *core_native;
+ 
+ static void cleanup()
+ {
+     script_analysis_free(state_before);
+     script_analysis_free(state_after);
+     state_before = state_after = NULL;
++    native_capabilities_free(core_native);
++    core_native = NULL;
+     script_syntax_free(source);
+     script_syntax_free(formatted);
+     free(text);
+@@ -1394,6 +1398,189 @@ TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers)
+     return true;
+ }
+ 
++static bool core_migration_catalog()
++{
++    native_capability_definition alias = { 0 };
++    for (int i = 0; i < CORE_DEFINITION_PACK.definition_count; i++) {
++        if (CORE_DEFINITION_PACK.definitions[i].operation == SCRIPT_OPERATION_OWNER) {
++            alias = CORE_DEFINITION_PACK.definitions[i];
++        }
++    }
++    alias.canonical_name = "OwnerAlias";
++    alias.source_name = "owner_alias";
++    const native_definition_pack definitions[] = {
++        CORE_DEFINITION_PACK,
++        { .definitions = &alias, .definition_count = 1 },
++    };
++    const script_catalog_capability tick_event = {
++        .id = 30,
++        .name = "Tick",
++        .kind = SCRIPT_CAPABILITY_EVENT,
++        .completion_outcome = -1,
++    };
++    const script_catalog catalog = { .capabilities = &tick_event,
++                                     .capability_count = 1,
++                                     .tick_event = 30 };
++    const native_capability_pack pack = { .catalog = &catalog };
++    char error[256];
++    core_native = native_capabilities_from_definition_packs(
++        &pack,
++        1,
++        definitions,
++        NATIVE_COUNT(definitions),
++        error,
++        sizeof error
++    );
++    if (!core_native) {
++        fprintf(stderr, "core migration catalog: %s\n", error);
++    }
++    return core_native != NULL;
++}
++TEST_CASE(source_migration_matches_core_self_effects_in_each_program_context)
++{
++    const char *inputs[] = {
++        "Demo :: behavior { on Tick :: () { e := Self(); same := Self() == "
++        "self; } }",
++        "Demo :: library { Read :: () { e := Self(); same := Self() == self; } "
++        "}",
++        "Demo :: system() where Self() == self {}",
++    };
++    for (int i = 0; i < NATIVE_COUNT(inputs); i++) {
++        cleanup();
++        REQUIRE(core_migration_catalog());
++        const script_catalog *catalog = native_capabilities_catalog(core_native);
++        source = script_parse(inputs[i]);
++        state_before = script_analyze_document(source, catalog, "Demo");
++        REQUIRE(!state_before->valid);
++        script_analysis_free(state_before);
++        state_before = script_analyze_migration_document(source, catalog, "Demo", NULL, 0, false);
++        REQUIRE(state_before->valid && state_before->function_count == 1);
++        bool invocation = i == 1;
++        REQUIRE(
++            !!(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ) == invocation
++        );
++        char error[256];
++        text = authoring_source_migrate_generated(inputs[i], catalog, "Demo", error, sizeof error);
++        if (!text) {
++            fprintf(stderr, "core Self migration: %s\n", error);
++        }
++        REQUIRE(text && !strstr(text, "Self()"));
++        REQUIRE(i == 2 || strstr(text, "e := self"));
++        REQUIRE(strstr(text, "self == self"));
++        formatted = script_parse(text);
++        state_after = script_analyze_document(formatted, catalog, "Demo");
++        REQUIRE(state_after->valid && state_after->function_count == 1);
++        REQUIRE(state_before->functions[0].effects == state_after->functions[0].effects);
++    }
++    return true;
++}
++TEST_CASE(source_migration_preserves_other_invocation_sensitive_calls)
++{
++    REQUIRE(core_migration_catalog());
++    const script_catalog *core = native_capabilities_catalog(core_native);
++    source = script_parse("Demo :: behavior { on Tick :: () { e := owner_alias(); } }");
++    state_before = script_analyze_migration_document(source, core, "Demo", NULL, 0, false);
++    REQUIRE(state_before->valid && state_before->function_count == 1);
++    REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
++    script_analysis_free(state_before);
++    script_syntax_free(source);
++    source = script_parse("Demo :: system() where owner_alias() == self {}");
++    state_before = script_analyze_migration_document(source, core, "Demo", NULL, 0, false);
++    REQUIRE(!state_before->valid);
++    bool rejected = false;
++    for (int i = 0; i < state_before->diagnostic_count; i++) {
++        rejected |= strstr(state_before->diagnostics[i].message, "Query predicate cannot read") !=
++                    NULL;
++    }
++    REQUIRE(rejected);
++    script_catalog_capability caps[NATIVE_COUNT(component_capabilities)];
++    memcpy(caps, component_capabilities, sizeof caps);
++    int multiply = script_catalog_find_capability(&component_catalog, "multiply", SCRIPT_CAPABILITY_FUNCTION);
++    REQUIRE(multiply >= 0);
++    caps[multiply].effects = SCRIPT_EFFECT_INVOCATION_READ;
++    script_catalog catalog = component_catalog;
++    catalog.capabilities = caps;
++    const char *input = "Demo :: behavior { on Tick :: (dt: float) { v := "
++                        "multiply(2.0, 3.0); } }";
++    script_analysis_free(state_before);
++    script_syntax_free(source);
++    source = script_parse(input);
++    REQUIRE(!source->diagnostic_count);
++    state_before = script_analyze_document(source, &catalog, "Demo");
++    REQUIRE(state_before->valid && state_before->function_count == 1);
++    REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
++    text = authoring_source_minimize(input, &catalog, "Demo");
++    REQUIRE(text && strstr(text, "multiply("));
++    formatted = script_parse(text);
++    REQUIRE(!formatted->diagnostic_count);
++    state_after = script_analyze_document(formatted, &catalog, "Demo");
++    REQUIRE(state_after->valid && state_after->function_count == 1);
++    REQUIRE(state_after->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
++    return true;
++}
++TEST_CASE(source_migration_keeps_system_row_owner_distinct)
++{
++    REQUIRE(core_migration_catalog());
++    const script_catalog *core = native_capabilities_catalog(core_native);
++    script_catalog_capability caps[core->capability_count];
++    memcpy(caps, core->capabilities, sizeof caps);
++    script_catalog catalog = *core;
++    catalog.capabilities = caps;
++    int self = script_catalog_find_capability(core, "Self", SCRIPT_CAPABILITY_FUNCTION);
++    REQUIRE(self >= 0);
++    const char
++        *input = "Demo :: system() { e := Self(); same := Self() == self; }";
++    char error[256];
++    text = authoring_source_migrate_generated(input, core, "Demo", error, sizeof error);
++    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
++    /* The pre-operation main definition had UNKNOWN identity and zero
++     * effects. Its migration also refuses the different system-row binding. */
++    caps[self].operation = SCRIPT_OPERATION_UNKNOWN;
++    caps[self].effects = 0;
++    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
++    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
++    return true;
++}
++TEST_CASE(source_migration_rejects_opaque_or_mismatched_self_equivalence)
++{
++    REQUIRE(core_migration_catalog());
++    const script_catalog *core = native_capabilities_catalog(core_native);
++    script_catalog_capability caps[core->capability_count];
++    memcpy(caps, core->capabilities, sizeof caps);
++    script_catalog catalog = *core;
++    catalog.capabilities = caps;
++    int self = script_catalog_find_capability(core, "Self", SCRIPT_CAPABILITY_FUNCTION);
++    REQUIRE(self >= 0);
++    const char *input = "Demo :: behavior { on Tick :: () { e := Self(); } }";
++    caps[self].operation = SCRIPT_OPERATION_UNKNOWN;
++    source = script_parse(input);
++    state_before = script_analyze_migration_document(source, &catalog, "Demo", NULL, 0, false);
++    REQUIRE(state_before->valid && state_before->function_count == 1);
++    REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
++    char error[256];
++    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
++    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
++    caps[self] = core->capabilities[self];
++    script_catalog_parameter result = caps[self].results[0];
++    result.type = (script_type){ .storage = PIN_I32 };
++    caps[self].results = &result;
++    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
++    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
++    caps[self] = core->capabilities[self];
++    caps[self].flow.break_entry = -1;
++    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
++    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
++    text = authoring_source_migrate_generated(
++        "Demo :: behavior { on Tick :: () { self := 5; e := Self(); } }",
++        core,
++        "Demo",
++        error,
++        sizeof error
++    );
++    REQUIRE(!text && error[0]);
++    return true;
++}
++
+ TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner)
+ {
+     script_catalog_capability caps[sizeof component_capabilities / sizeof *component_capabilities + 1];
+@@ -1742,6 +1929,10 @@ void test_language_format()
+     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
+     RUN_TEST_CASE(source_minimize_preserves_accessor_and_operator_comments);
+     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);
++    RUN_TEST_CASE(source_migration_matches_core_self_effects_in_each_program_context);
++    RUN_TEST_CASE(source_migration_preserves_other_invocation_sensitive_calls);
++    RUN_TEST_CASE(source_migration_keeps_system_row_owner_distinct);
++    RUN_TEST_CASE(source_migration_rejects_opaque_or_mismatched_self_equivalence);
+     RUN_TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner);
+     RUN_TEST_CASE(source_migration_preserves_deferred_setter_actions_and_results);
+     RUN_TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers);
+diff --git a/test/language/main.c b/test/language/main.c
+index d0f3315bc..4fb67d7c7 100644
+--- a/test/language/main.c
++++ b/test/language/main.c
+@@ -46,6 +46,7 @@ void test_language_capture();
+ void test_language_query_program();
+ void test_language_query_boundary();
+ void test_language_incremental();
++void test_language_operations();
+ void test_language_modules();
+ void test_numeric_ranges();
+ void test_numeric_exact_core();
+@@ -149,6 +150,7 @@ int main(int argc, char **argv)
+     bool program = argc == 2 && !strcmp(argv[1], "--program");
+     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
+     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
++    bool operations = argc == 2 && !strcmp(argv[1], "--operations");
+     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
+     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
+     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
+@@ -265,8 +267,8 @@ int main(int argc, char **argv)
+          !record_state && !record_services && !record_compatibility &&
+          !record_semantic && !record_prepared_runtime && !outliner_projection &&
+          !row_array && !record_runtime && !runtime_attribution && !wasm &&
+-         !program && !query_program && !incremental && !modules && !ranges &&
+-         !numeric_exact_core && !package_graph && !package_graph_chibi &&
++         !program && !query_program && !incremental && !operations && !modules &&
++         !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
+          !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
+          !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
+          !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
+@@ -296,6 +298,7 @@ int main(int argc, char **argv)
+             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
+             "| --inferred-string-arrays | --inferred-string-array-repro "
+             "| --root-state | --program | --query-program | --incremental | "
++            "--operations | "
+             "--modules | "
+             "--ranges | --numeric-exact-core | --package-graph | "
+             "--package-graph-chibi | --syntax-chibi | "
+@@ -465,6 +468,8 @@ int main(int argc, char **argv)
+         test_language_generic();
+     } else if (modules) {
+         test_language_modules();
++    } else if (operations) {
++        test_language_operations();
+     } else if (incremental) {
+         test_language_incremental();
+     } else if (numeric_exact_core) {
+diff --git a/test/language/operations.c b/test/language/operations.c
+new file mode 100644
+index 000000000..d0a60d1a1
+--- /dev/null
++++ b/test/language/operations.c
+@@ -0,0 +1,552 @@
++#include "authoring/native_bindings.h"
++#include "authoring/source_collection.h"
++#include "backend.h"
++#include "execution/operation.h"
++#include "execution/status.h"
++#include "runtime/core_definition.h"
++#include "third_party/pico_headers/pico_unit.h"
++
++#include <math.h>
++#include <stdio.h>
++#include <string.h>
++
++static native_capabilities *native, *other;
++static script_syntax *syntax;
++static script_analysis *analysis;
++static execution_module_plan *plan;
++static execution_module *module;
++static execution_program *program;
++static authoring_sources *sources[2];
++static void cleanup()
++{
++    execution_program_free(program);
++    execution_module_free(module);
++    execution_module_plan_free(plan);
++    script_analysis_free(analysis);
++    script_syntax_free(syntax);
++    for (int i = 0; i < 2; i++) {
++        authoring_sources_free(sources[i]);
++        sources[i] = NULL;
++    }
++    native_capabilities_free(other);
++    native_capabilities_free(native);
++    program = NULL;
++    module = NULL;
++    plan = NULL;
++    analysis = NULL;
++    syntax = NULL;
++    native = other = NULL;
++}
++static const native_capability_definition *definition(script_operation operation)
++{
++    for (int i = 0; i < CORE_DEFINITION_PACK.definition_count; i++) {
++        if (CORE_DEFINITION_PACK.definitions[i].operation == operation) {
++            return &CORE_DEFINITION_PACK.definitions[i];
++        }
++    }
++    return NULL;
++}
++static const script_catalog_capability *declaration(script_operation operation)
++{
++    return script_catalog_capability_by_id(
++        native_capabilities_catalog(native),
++        native_capability_definition_id(definition(operation))
++    );
++}
++static native_capabilities *single(const native_capability_definition *value, char *error, size_t size)
++{
++    const native_definition_pack pack = { .definitions = value, .definition_count = 1 };
++    return native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, size);
++}
++static native_capabilities *with_core(const native_capability_pack *packs, int count, char *error, size_t size)
++{
++    native_capability_definition alias = *definition(SCRIPT_OPERATION_OWNER);
++    alias.canonical_name = "OwnerAlias";
++    alias.source_name = "owner_alias";
++    const native_definition_pack definitions[] = {
++        CORE_DEFINITION_PACK,
++        { .definitions = &alias, .definition_count = 1 },
++    };
++    return native_capabilities_from_definition_packs(
++        packs,
++        count,
++        definitions,
++        NATIVE_COUNT(definitions),
++        error,
++        size
++    );
++}
++static bool core()
++{
++    char error[256];
++    native = with_core(NULL, 0, error, sizeof error);
++    if (!native) {
++        fprintf(stderr, "operation catalog: %s\n", error);
++    }
++    return native != NULL;
++}
++TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts)
++{
++    REQUIRE(core());
++    const script_catalog *catalog = native_capabilities_catalog(native);
++    const behavior_function_op instructions[] = { BF_OWNER, BF_DELAY };
++    for (int i = SCRIPT_OPERATION_OWNER; i <= SCRIPT_OPERATION_DELAY; i++) {
++        const script_catalog_capability *value = declaration(i);
++        REQUIRE(value && script_catalog_operation_valid(value));
++        const native_capability_binding *binding = native_capabilities_find(
++            native,
++            value->id,
++            script_catalog_capability_abi(catalog, value)
++        );
++        REQUIRE(binding && binding->intrinsic == instructions[i - SCRIPT_OPERATION_OWNER]);
++        REQUIRE(
++            !binding->call && !binding->command && !binding->query && !binding->access
++        );
++        REQUIRE(binding->result_count == value->result_count);
++        const script_operation_contract *contract = script_operation_describe(i);
++        REQUIRE(contract && contract->version == 1 && contract->effects == value->effects);
++        REQUIRE(contract->guarantees & SCRIPT_OPERATION_ACTIVATION_THREAD);
++        if (i == SCRIPT_OPERATION_DELAY) {
++            REQUIRE(!(contract->guarantees & SCRIPT_OPERATION_NO_REENTRY));
++            REQUIRE(contract->guarantees & SCRIPT_OPERATION_SAVES_LIVE_VALUES);
++            REQUIRE(
++                !(contract->guarantees & (SCRIPT_OPERATION_NO_ALLOCATION |
++                                          SCRIPT_OPERATION_NO_PAYLOAD_COPY |
++                                          SCRIPT_OPERATION_NO_ARGUMENT_RETENTION))
++            );
++        } else {
++            REQUIRE(contract->guarantees & SCRIPT_OPERATION_NO_REENTRY);
++            REQUIRE(contract->guarantees & SCRIPT_OPERATION_NO_RESULT_ALIAS);
++            REQUIRE(contract->guarantees & SCRIPT_OPERATION_NO_ALLOCATION);
++        }
++    }
++    REQUIRE(!script_operation_describe(SCRIPT_OPERATION_UNKNOWN));
++    REQUIRE(!script_operation_describe((script_operation)999));
++    REQUIRE(!behavior_operation_instruction(SCRIPT_OPERATION_UNKNOWN));
++    int assertion = script_catalog_find_capability(catalog, "assert", SCRIPT_CAPABILITY_FUNCTION);
++    REQUIRE(assertion >= 0);
++    const script_catalog_capability *assert_capability = &catalog->capabilities[assertion];
++    REQUIRE(assert_capability->operation == SCRIPT_OPERATION_UNKNOWN);
++    const native_capability_binding *assert_binding = native_capabilities_find(
++        native,
++        assert_capability->id,
++        script_catalog_capability_abi(catalog, assert_capability)
++    );
++    REQUIRE(assert_binding && assert_binding->intrinsic == BF_ASSERT);
++    return true;
++}
++TEST_CASE(operations_reject_malformed_shared_declarations)
++{
++    const native_capability_definition original = *definition(SCRIPT_OPERATION_OWNER);
++    char error[256];
++    for (int change = 0; change < 12; change++) {
++        native_capability_definition value = original;
++        native_parameter_definition result = original.outputs[0];
++        value.outputs = &result;
++        switch (change) {
++            case 0: value.effects = SCRIPT_EFFECT_HOST; break;
++            case 1: value.pure = false; break;
++            case 2: value.variadic = true; break;
++            case 3: value.operation = (script_operation)999; break;
++            case 4: result.storage = PIN_F64; break;
++            case 5: result.container = PIN_CONTAINER_ARRAY; break;
++            case 6: result.type_flags = SCRIPT_TYPE_REFERENCE; break;
++            case 7: value.output_count = 0; break;
++            case 8: value.state_access = SCRIPT_STATE_ACCESS_READ; break;
++            case 9:
++                value.inputs = &result;
++                value.input_count = 1;
++                break;
++            case 10: value.kind = SCRIPT_CAPABILITY_EVENT; break;
++            case 11: value.operation = SCRIPT_OPERATION_DELAY; break;
++        }
++        other = single(&value, error, sizeof error);
++        REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
++    }
++    native_capability_definition delay = *definition(SCRIPT_OPERATION_DELAY);
++    delay.effects = 0;
++    other = single(&delay, error, sizeof error);
++    REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
++    return true;
++}
++TEST_CASE(operations_reject_raw_scalar_semantic_metadata)
++{
++    REQUIRE(core());
++    script_catalog_capability value = *declaration(SCRIPT_OPERATION_OWNER);
++    const script_catalog_parameter original = value.results[0];
++    script_catalog_parameter result = original;
++    value.results = &result;
++    const script_catalog catalog = { .capabilities = &value, .capability_count = 1 };
++    const native_capability_binding binding = { .id = value.id, .intrinsic = BF_OWNER };
++    const native_capability_pack pack = { .catalog = &catalog,
++                                          .bindings = &binding,
++                                          .binding_count = 1 };
++    char error[256];
++    other = native_capabilities_new(&pack, 1, error, sizeof error);
++    REQUIRE(other);
++    native_capabilities_free(other);
++    other = NULL;
++    const unsigned flags[] = { SCRIPT_TYPE_ERROR,     SCRIPT_TYPE_OPTIONAL,
++                               SCRIPT_TYPE_REFERENCE, SCRIPT_TYPE_RESULTS,
++                               SCRIPT_TYPE_UNTYPED,   SCRIPT_TYPE_GENERIC,
++                               SCRIPT_TYPE_TASK,      SCRIPT_TYPE_NAMESPACE,
++                               SCRIPT_TYPE_UNION,     SCRIPT_TYPE_SINGLETON,
++                               SCRIPT_TYPE_LITERAL,   SCRIPT_TYPE_BOXED_OPTIONAL };
++    for (int change = 0; change < NATIVE_COUNT(flags) + 4; change++) {
++        result = original;
++        if (change < NATIVE_COUNT(flags)) {
++            result.type.flags = flags[change];
++        } else if (change == NATIVE_COUNT(flags)) {
++            result.type.parameter = 1;
++        } else if (change == NATIVE_COUNT(flags) + 1) {
++            result.reference_kind = SCRIPT_REFERENCE_COMPONENT;
++        } else if (change == NATIVE_COUNT(flags) + 2) {
++            result.member = 1;
++        } else {
++            result.type.collection = 1;
++        }
++        other = native_capabilities_new(&pack, 1, error, sizeof error);
++        if (other) {
++            fprintf(stderr, "raw scalar metadata accepted: change %d\n", change);
++        }
++        REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
++    }
++    return true;
++}
++TEST_CASE(operations_reject_dormant_raw_metadata)
++{
++    REQUIRE(core());
++    for (int operation = SCRIPT_OPERATION_OWNER; operation <= SCRIPT_OPERATION_DELAY;
++         operation++) {
++        const script_catalog_capability original = *declaration(operation);
++        REQUIRE(!original.component && !original.component_field && !original.aggregate);
++        REQUIRE(original.component_entity == 0 && original.component_value == 0);
++        REQUIRE(original.flow.kind == SCRIPT_FLOW_ACCESS_NONE && original.flow.break_entry == 0);
++        for (int i = 0; i < 2; i++) {
++            REQUIRE(
++                original.flow.inputs[i] == 0 && original.flow.results[i] == 0 &&
++                original.flow.outcomes[i] == 0
++            );
++        }
++        script_catalog_capability value = original;
++        const script_catalog catalog = { .capabilities = &value,
++                                         .capability_count = 1 };
++        const native_capability_binding binding = {
++            .id = value.id,
++            .intrinsic = behavior_operation_instruction(operation)
++        };
++        const native_capability_pack pack = { .catalog = &catalog,
++                                              .bindings = &binding,
++                                              .binding_count = 1 };
++        char error[256] = { 0 };
++        other = native_capabilities_new(&pack, 1, error, sizeof error);
++        REQUIRE(other);
++        native_capabilities_free(other);
++        other = NULL;
++        for (int change = 0; change < 12; change++) {
++            value = original;
++            switch (change) {
++                case 0: value.component = 1; break;
++                case 1: value.component_field = 1; break;
++                case 2: value.aggregate = 1; break;
++                case 3: value.component_entity = -1; break;
++                case 4: value.component_value = -1; break;
++                case 5: value.flow.inputs[0] = -1; break;
++                case 6: value.flow.inputs[1] = -1; break;
++                case 7: value.flow.results[0] = -1; break;
++                case 8: value.flow.results[1] = -1; break;
++                case 9: value.flow.outcomes[0] = -1; break;
++                case 10: value.flow.outcomes[1] = -1; break;
++                case 11: value.flow.break_entry = -1; break;
++            }
++            error[0] = '\0';
++            other = native_capabilities_new(&pack, 1, error, sizeof error);
++            if (other || !strstr(error, "Invalid engine operation declaration")) {
++                fprintf(stderr, "dormant metadata: operation %d, field %d: %s\n", operation, change, error);
++            }
++            REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
++        }
++    }
++    return true;
++}
++static const char *opaque_owner(void *, const pin_value *, pin_value *out)
++{
++    out->u64 = 7;
++    return NULL;
++}
++TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi)
++{
++    REQUIRE(core());
++    script_catalog_capability value = *declaration(SCRIPT_OPERATION_OWNER);
++    script_catalog catalog = { .capabilities = &value, .capability_count = 1 };
++    native_capability_binding binding = { .id = value.id, .intrinsic = BF_DELAY };
++    native_capability_pack pack = { .catalog = &catalog,
++                                    .bindings = &binding,
++                                    .binding_count = 1 };
++    char error[256];
++    other = native_capabilities_new(&pack, 1, error, sizeof error);
++    REQUIRE(!other && strstr(error, "differs from engine operation contract"));
++    static const node_host_call call = { .invoke = opaque_owner };
++    binding.intrinsic = 0;
++    binding.call = &call;
++    other = native_capabilities_new(&pack, 1, error, sizeof error);
++    REQUIRE(!other && strstr(error, "differs from engine operation contract"));
++    uint64_t known = script_catalog_capability_abi(&catalog, &value);
++    value.operation = SCRIPT_OPERATION_UNKNOWN;
++    uint64_t opaque = script_catalog_capability_abi(&catalog, &value);
++    REQUIRE(known != opaque);
++    other = native_capabilities_new(&pack, 1, error, sizeof error);
++    REQUIRE(other && native_capabilities_find(other, value.id, opaque));
++    REQUIRE(!native_capabilities_find(other, value.id, known));
++    REQUIRE(!script_operation_describe(
++        native_capabilities_catalog(other)->capabilities[0].operation
++    ));
++    native_capabilities_free(other);
++    other = NULL;
++    binding.call = NULL;
++    binding.intrinsic = BF_OWNER;
++    other = native_capabilities_new(&pack, 1, error, sizeof error);
++    REQUIRE(!other && strstr(error, "differs from engine operation contract"));
++    value.operation = SCRIPT_OPERATION_OWNER;
++    pack.binding_count = 0;
++    other = native_capabilities_new(&pack, 1, error, sizeof error);
++    REQUIRE(!other && strstr(error, "has no execution binding"));
++    const native_definition_binding override = { .canonical_name = CORE_SELF_NAME,
++                                                 .implementation = {
++                                                     .intrinsic = BF_OWNER } };
++    const native_definition_pack shared = { .definitions = definition(SCRIPT_OPERATION_OWNER),
++                                            .definition_count = 1,
++                                            .bindings = &override,
++                                            .binding_count = 1 };
++    other = native_capabilities_from_definition_packs(NULL, 0, &shared, 1, error, sizeof error);
++    REQUIRE(!other && strstr(error, "binding is generated"));
++    return true;
++}
++TEST_CASE(operation_identity_invalidates_source_reuse)
++{
++    REQUIRE(core());
++    script_catalog_capability value = *declaration(SCRIPT_OPERATION_OWNER);
++    const script_catalog catalog = { .capabilities = &value, .capability_count = 1 };
++    const source_catalog_edit edit = {
++        .path = "/operations/libraries/Probe.chibi",
++        .text = "Probe :: library { Value :: () -> int { return 1; } }"
++    };
++    const script_lower_bindings bindings = { .generation = 1 };
++    for (int i = 0; i < 2; i++) {
++        sources[i] = authoring_sources_prepare_incremental(
++            source_catalog_replaced("/operations", &catalog, &edit, 1),
++            &bindings,
++            BEHAVIOR_BYTECODE,
++            i ? sources[0] : NULL
++        );
++        REQUIRE(sources[i] && authoring_sources_count(sources[i]) == 1);
++        REQUIRE(authoring_sources_at(sources[i], 0)->analysis->valid);
++        REQUIRE(authoring_sources_at(sources[i], 0)->module);
++        REQUIRE(!authoring_sources_reused(sources[i]));
++        value.operation = SCRIPT_OPERATION_UNKNOWN;
++    }
++    return true;
++}
++static void diagnostic(const char *phase, const char *source, const script_diagnostic *value)
++{
++    fprintf(
++        stderr,
++        "operation %s %d:%d [%d,%d): %s\nsource: %s\n",
++        phase,
++        value->range.line,
++        value->range.column,
++        value->range.start,
++        value->range.end,
++        value->message,
++        source
++    );
++}
++static bool analyze_source(const char *source, const script_catalog *catalog)
++{
++    syntax = script_parse(source);
++    for (int i = 0; i < syntax->diagnostic_count; i++) {
++        diagnostic("syntax", source, &syntax->diagnostics[i]);
++    }
++    analysis = script_analyze(syntax, catalog);
++    for (int i = 0; i < analysis->diagnostic_count; i++) {
++        diagnostic("semantic", source, &analysis->diagnostics[i]);
++    }
++    return analysis->valid;
++}
++TEST_CASE(operations_reject_direct_catalog_state_rewrites)
++{
++    REQUIRE(core());
++    script_catalog_capability capabilities[] = {
++        *declaration(SCRIPT_OPERATION_OWNER),
++        { .id = 1, .name = "Run", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 }
++    };
++    capabilities[0].name = "ReadOwner";
++    capabilities[0].qualified_name = NULL;
++    const script_catalog catalog = { .capabilities = capabilities,
++                                     .capability_count = NATIVE_COUNT(capabilities),
++                                     .entity_type = script_catalog_id("type", "ecs.entity") };
++    const char *source[] = {
++        "Probe :: behavior { value: entity = 0; on Run :: () { saved := "
++        "ReadOwner<value>(); } }",
++        "Probe :: behavior { value: entity = 0; on Run :: () { "
++        "ReadOwner<value>(self); } }"
++    };
++    const script_state_access access[] = { SCRIPT_STATE_ACCESS_READ,
++                                           SCRIPT_STATE_ACCESS_WRITE };
++    for (int i = 0; i < NATIVE_COUNT(source); i++) {
++        capabilities[0].state_access = access[i];
++        REQUIRE(analyze_source(source[i], &catalog));
++        /* These calls become SYMBOL/STORE expressions, bypassing call lowering. */
++        const script_lower_bindings bindings = { 0 };
++        plan = script_lower(analysis, &catalog, &bindings);
++        REQUIRE(plan && !plan->valid && plan->diagnostic_count == 1);
++        REQUIRE(strstr(plan->diagnostics[0].message, "Invalid engine operation declaration"));
++        execution_module_plan_free(plan);
++        script_analysis_free(analysis);
++        script_syntax_free(syntax);
++        plan = NULL;
++        analysis = NULL;
++        syntax = NULL;
++    }
++    return true;
++}
++static bool wrong_host(void *, uint64_t, script_lower_host *out)
++{
++    *out = (script_lower_host){ .intrinsic = BF_DELAY };
++    return true;
++}
++TEST_CASE(operations_reject_custom_lowerer_binding_mismatch)
++{
++    REQUIRE(core());
++    const script_catalog *catalog = native_capabilities_catalog(native);
++    REQUIRE(
++        analyze_source("Probe :: library { Value :: () -> bool { return owner_alias() == owner_alias(); } }", catalog)
++    );
++    const script_lower_bindings bindings = { .host = wrong_host };
++    plan = script_lower(analysis, catalog, &bindings);
++    REQUIRE(plan && !plan->valid);
++    REQUIRE(plan->diagnostic_count == 2);
++    REQUIRE(strstr(plan->diagnostics[0].message, "differs from engine operation contract"));
++    return true;
++}
++TEST_CASE(owner_alias_preserves_invocation_effects)
++{
++    REQUIRE(core());
++    const script_catalog *catalog = native_capabilities_catalog(native);
++    REQUIRE(declaration(SCRIPT_OPERATION_OWNER)->effects == SCRIPT_EFFECT_INVOCATION_READ);
++    REQUIRE(
++        analyze_source("Probe :: library { Value :: () -> bool { return owner_alias() == owner_alias(); } }", catalog)
++    );
++    REQUIRE(analysis->function_count == 1);
++    REQUIRE(analysis->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
++    script_analysis_free(analysis);
++    script_syntax_free(syntax);
++    syntax = script_parse("Probe :: system() where owner_alias() == owner_alias() {}");
++    analysis = script_analyze(syntax, catalog);
++    REQUIRE(!syntax->diagnostic_count && !analysis->valid);
++    bool rejected = false;
++    for (int i = 0; i < analysis->diagnostic_count; i++) {
++        rejected |= strstr(analysis->diagnostics[i].message, "Query predicate cannot read") !=
++                    NULL;
++    }
++    REQUIRE(rejected);
++    return true;
++}
++static uint64_t state(const char *name)
++{
++    for (int i = 0; i < analysis->symbol_count; i++) {
++        if (analysis->symbols[i].kind == SCRIPT_STATE &&
++            !strcmp(analysis->symbols[i].name, name)) {
++            return analysis->symbols[i].id;
++        }
++    }
++    return 0;
++}
++TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
++{
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    const script_catalog_parameter duration = { .name = "duration",
++                                                .type = { .storage = PIN_F64 } };
++    const script_catalog_capability event = { .id = 1,
++                                              .name = "Run",
++                                              .kind = SCRIPT_CAPABILITY_EVENT,
++                                              .parameters = &duration,
++                                              .parameter_count = 1,
++                                              .completion_outcome = -1 };
++    const script_catalog base = { .capabilities = &event,
++                                  .capability_count = 1,
++                                  .entity_type = script_catalog_id("type", "ecs.entity") };
++    const native_capability_pack pack = { .catalog = &base };
++    const char
++        *source = "Probe :: behavior { before: entity = 0; resumed_value: "
++                  "entity = 0; same: "
++                  "bool = false; "
++                  "text: string = \"old\"; on Run :: (duration: double) { "
++                  "before = "
++                  "owner_alias(); "
++                  "saved := before; same = owner_alias() == self; "
++                  "saved_text := text; "
++                  "text = \"new\"; "
++                  "await delay(duration); resumed_value = saved; text = "
++                  "saved_text; } }";
++    for (int b = 0; b < 2; b++) {
++        cleanup();
++        char error[256];
++        native = with_core(&pack, 1, error, sizeof error);
++        REQUIRE(native);
++        const script_catalog *catalog = native_capabilities_catalog(native);
++        REQUIRE(analyze_source(source, catalog));
++        script_lower_bindings bindings = authoring_native_bindings(native);
++        plan = script_lower(analysis, catalog, &bindings);
++        REQUIRE(plan && plan->valid);
++        module = execution_module_finish(&plan, backends[b], error, sizeof error);
++        REQUIRE(module);
++        program = execution_program_new(module, NULL, NULL);
++        REQUIRE(program);
++        execution_instance *instance = execution_program_attach(program, 7);
++        REQUIRE(instance);
++        const double waits[] = { 0, -1, 0.25, NAN };
++        for (int i = 0; i < 4; i++) {
++            const pin_value argument = { .type = PIN_F64, .d = waits[i] };
++            REQUIRE(
++                execution_instance_dispatch(instance, 1, &argument, 1, i, 0.125, 1000) == FLOW_OK
++            );
++            REQUIRE(execution_instance_state(instance, state("before"))->u64 == 7);
++            REQUIRE(execution_instance_state(instance, state("same"))->b);
++            REQUIRE(execution_instance_pending(instance) == (i >= 2));
++            if (i == 2) {
++                REQUIRE(!strcmp(
++                    pin_text(*execution_instance_state(instance, state("text"))).bytes,
++                    "new"
++                ));
++                REQUIRE(execution_program_update(program, i + 0.25, 0.5, 1000) == FLOW_OK);
++                REQUIRE(!execution_instance_pending(instance));
++            }
++            if (i < 3) {
++                REQUIRE(
++                    execution_instance_state(instance, state("resumed_value"))->u64 == 7
++                );
++                REQUIRE(!strcmp(
++                    pin_text(*execution_instance_state(instance, state("text"))).bytes,
++                    "old"
++                ));
++            }
++        }
++    }
++    return true;
++}
++void test_language_operations()
++{
++    pu_setup(NULL, cleanup);
++    RUN_TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts);
++    RUN_TEST_CASE(operations_reject_malformed_shared_declarations);
++    RUN_TEST_CASE(operations_reject_raw_scalar_semantic_metadata);
++    RUN_TEST_CASE(operations_reject_dormant_raw_metadata);
++    RUN_TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi);
++    RUN_TEST_CASE(operation_identity_invalidates_source_reuse);
++    RUN_TEST_CASE(operations_reject_direct_catalog_state_rewrites);
++    RUN_TEST_CASE(operations_reject_custom_lowerer_binding_mismatch);
++    RUN_TEST_CASE(owner_alias_preserves_invocation_effects);
++    RUN_TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends);
++    pu_clear_setup();
++}
+diff --git a/test/language/program.c b/test/language/program.c
+index ba22da0d2..aa19d9b09 100644
+--- a/test/language/program.c
++++ b/test/language/program.c
+@@ -173,6 +173,7 @@ static const script_catalog_parameter delay_parameter = {
+     .type = { .storage = PIN_F64 },
+ };
+ static const char *const completed[] = { "Completed" };
++static const char *const delay_entries[] = { "In" };
+ static const script_catalog_parameter library_results[] = {
+     { .name = "local_count", .type = { .storage = PIN_F64 } },
+     { .name = "position_x", .type = { .storage = PIN_F64 } },
+@@ -199,6 +200,9 @@ static const script_catalog_capability capabilities[] = {
+     { .id = 20,
+       .name = "Delay",
+       .kind = SCRIPT_CAPABILITY_ACTION,
++      .operation = SCRIPT_OPERATION_DELAY,
++      .entries = delay_entries,
++      .entry_count = 1,
+       .parameters = &delay_parameter,
+       .parameter_count = 1,
+       .outcomes = completed,
+@@ -260,6 +264,8 @@ static const script_catalog_capability capabilities[] = {
+       .result_count = 1,
+       .effects = SCRIPT_EFFECT_HOST },
+ };
++static const native_capability_binding operation_binding = { .id = 20,
++                                                             .intrinsic = BF_DELAY };
+ static const script_catalog_global globals[] = {
+     { .id = 30, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = 700 } },
+     { .id = 31, .name = "dt", .type = { .storage = PIN_F64 } },
+@@ -534,6 +540,8 @@ static bool compile_pack(const char *source, behavior_backend backend, const nat
+ {
+     const native_capability_pack base = {
+         .catalog = &catalog,
++        .bindings = &operation_binding,
++        .binding_count = 1,
+         .layouts = reflected_types,
+         .layout_count = 2,
+     };
+@@ -555,6 +563,8 @@ static bool lowering_reports(const char *source, const native_definition_pack *p
+ {
+     const native_capability_pack base = {
+         .catalog = &catalog,
++        .bindings = &operation_binding,
++        .binding_count = 1,
+         .layouts = reflected_types,
+         .layout_count = 2,
+     };
+@@ -998,6 +1008,8 @@ TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors)
+     for (int backend = 0; backend < 2; backend++) {
+         prepare();
+         const native_capability_pack pack = { .catalog = &active,
++                                              .bindings = &operation_binding,
++                                              .binding_count = 1,
+                                               .layouts = reflected_types,
+                                               .layout_count = 2 };
+         char error[256];
+@@ -8959,6 +8971,16 @@ TEST_CASE(program_task_state_awaits_its_function_results)
+         REQUIRE(
+             !compile_pack(writes[i / 2], i % 2 ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE, &NATIVE_STATE_DEFINITION_PACK)
+         );
++        REQUIRE(
++            state_native && syntax && !syntax->diagnostic_count && analysis &&
++            !analysis->valid
++        );
++        bool incompatible = false;
++        for (int d = 0; d < analysis->diagnostic_count; d++) {
++            incompatible |= strstr(analysis->diagnostics[d].message, "Incompatible types: expected double") !=
++                            NULL;
++        }
++        REQUIRE(incompatible);
+     }
+     return true;
+ }
+diff --git a/test/tools/native_catalog.c b/test/tools/native_catalog.c
+index ce1c7203d..f9d57dd41 100644
+--- a/test/tools/native_catalog.c
++++ b/test/tools/native_catalog.c
+@@ -206,8 +206,10 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
+         HALF = COUNT / 2
+     };
+     char name[] = "Probe";
+-    const script_catalog_parameter result = { .name = "Value",
+-                                              .type = { .storage = PIN_F32 } };
++    const script_catalog_parameter result = {
++        .name = "Value",
++        .type = { .storage = PIN_HANDLE, .nominal = script_catalog_id("type", "ecs.entity") }
++    };
+     script_catalog_capability declarations[COUNT];
+     native_capability_binding bindings[COUNT];
+     for (int i = 0; i < COUNT; i++) {
+@@ -215,6 +217,10 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
+             .id = catalog_test_id(i),
+             .name = name,
+             .kind = SCRIPT_CAPABILITY_FUNCTION,
++            .operation = SCRIPT_OPERATION_OWNER,
++            .effects = SCRIPT_EFFECT_INVOCATION_READ,
++            .pure = true,
++            .completion_outcome = -1,
+             .results = &result,
+             .result_count = 1,
+         };
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index 73a2b6502..10c7b8395 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -121,7 +121,8 @@ Files :: (target: string) -> string[] {
+     if (target == "chibi_capabilities") {
+         return [
+             "src/capabilities/catalog.c", "src/capabilities/catalog_snapshot.c",
+-            "src/capabilities/catalog_values.c", "src/capabilities/definition.c"
++            "src/capabilities/catalog_values.c", "src/capabilities/definition.c",
++            "src/capabilities/operation.c"
+         ];
+     }
+     if (target == "chibi_ecs") {
+@@ -714,7 +715,8 @@ Files :: (target: string) -> string[] {
+             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
+             "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
+             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
+-            "test/language/query_boundary.c", "test/language/incremental.c", "test/language/modules.c",
++            "test/language/query_boundary.c", "test/language/incremental.c", "test/language/operations.c",
++            "test/language/modules.c",
+             "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
+             "test/language/component_write_source.c", "test/language/component_write_ir.c",
+             "test/language/borrow.c", "test/language/reductions.c", "test/language/benchmark.c",
+@@ -975,7 +977,7 @@ pub PublicHeaders :: (target: string) -> string[] {
+         return [
+             "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/component.h",
+             "execution/diagnostic.h", "execution/function.h", "execution/host.h", "execution/instruction.h",
+-            "execution/log.h", "execution/random.h", "execution/request.h", "execution/scalar.h",
++            "execution/log.h", "execution/operation.h", "execution/random.h", "execution/request.h", "execution/scalar.h",
+             "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
+             "execution/value_kind.h"
+         ];
+@@ -1758,7 +1760,7 @@ pub Includes :: (target: string) -> string[] {
+     }
+     if (target == "chibi_scheduling") {
+         return [
+-            "public/scheduling", "public/ecs", "public/types", "public/support", "public/execution_contract",
++            "public/scheduling", "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
+             "public/tasks"
+         ];
+     }
+@@ -1819,7 +1821,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_execution") {
+         return [
+             "public/execution", "private/execution", "private/types",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks"
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks"
+         ];
+     }
+     if (target == "chibi_core_capabilities") {
+@@ -1831,7 +1833,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_behavior_runtime") {
+         return [
+             "public/behavior_runtime", "public/execution", "public/types", "public/support",
+-            "public/execution_contract", "public/ecs", "public/tasks", "public/events"
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"
+         ];
+     }
+     if (target == "chibi_native_prepared") {
+@@ -1844,7 +1846,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_scene_runtime") {
+         return [
+             "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/types",
+-            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events"
++            "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"
+         ];
+     }
+     if (target == "chibi_vector_capabilities") {
+@@ -1893,7 +1895,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_scene_document") {
+         return [
+             "public/scene_document", "public/ecs", "public/types", "public/support", "public/asset_values",
+-            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
++            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities",
+             "public/tasks", "public/events", "public/asset_text"
+         ];
+     }
+@@ -1901,52 +1903,52 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "public/prototype_document", "public/ecs", "public/types", "public/support", "public/asset_values",
+             "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/execution",
+-            "public/execution_contract", "public/tasks", "public/events", "public/asset_text"
++            "public/execution_contract", "public/capabilities", "public/tasks", "public/events", "public/asset_text"
+         ];
+     }
+     if (target == "chibi_native_types") {
+         return [
+-            "public/native_types", "public/ecs", "public/types", "public/support", "public/execution_contract"
++            "public/native_types", "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities"
+         ];
+     }
+     if (target == "chibi_spatial_runtime") {
+         return [
+             "public/spatial_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract"
++            "public/execution_contract", "public/capabilities"
+         ];
+     }
+     if (target == "chibi_native_bindings") {
+         return [
+             "public/native_bindings", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract", "public/native_capabilities", "public/capabilities",
++            "public/execution_contract", "public/capabilities", "public/native_capabilities",
+             "public/spatial_runtime"
+         ];
+     }
+     if (target == "chibi_entity_runtime") {
+         return [
+             "public/entity_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract", "public/execution", "public/tasks", "public/scene_runtime",
+-            "public/behavior_runtime", "public/events", "public/native_capabilities", "public/capabilities",
++            "public/execution_contract", "public/capabilities", "public/execution", "public/tasks", "public/scene_runtime",
++            "public/behavior_runtime", "public/events", "public/native_capabilities",
+             "public/spatial_runtime", "public/tilemap_runtime"
+         ];
+     }
+     if (target == "chibi_rhythm_runtime") {
+         return [
+             "public/rhythm_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract", "public/native_capabilities", "public/capabilities",
++            "public/execution_contract", "public/capabilities", "public/native_capabilities",
+             "public/execution", "public/tasks"
+         ];
+     }
+     if (target == "chibi_particle_runtime") {
+         return [
+             "public/particle_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract", "public/native_capabilities", "public/capabilities"
++            "public/execution_contract", "public/capabilities", "public/native_capabilities"
+         ];
+     }
+     if (target == "chibi_input_runtime") {
+         return [
+             "public/input_runtime", "public/input_action", "public/native_types", "public/ecs", "public/types",
+-            "public/support", "public/execution_contract", "public/native_capabilities", "public/capabilities",
++            "public/support", "public/execution_contract", "public/capabilities", "public/native_capabilities",
+             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
+             "public/spatial_runtime"
+         ];
+@@ -1968,15 +1970,15 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_visual_catalog") {
+         return [
+             "public/visual_catalog", "private/visual_catalog", "public/native_types", "public/ecs",
+-            "public/types", "public/support", "public/execution_contract", "public/shader_runtime",
+-            "public/model_runtime", "public/mesh_runtime", "public/native_capabilities", "public/capabilities",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/shader_runtime",
++            "public/model_runtime", "public/mesh_runtime", "public/native_capabilities",
+             "public/image_catalog"
+         ];
+     }
+     if (target == "chibi_scene_authoring") {
+         return [
+             "public/scene_authoring", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract", "public/scene_document", "public/asset_values",
++            "public/execution_contract", "public/capabilities", "public/scene_document", "public/asset_values",
+             "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/tasks",
+             "public/events"
+         ];
+@@ -1985,7 +1987,7 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "public/scenario_document", "public/asset_values", "public/support", "public/input_runtime",
+             "public/input_action", "public/native_types", "public/ecs", "public/types",
+-            "public/execution_contract", "public/native_capabilities", "public/capabilities",
++            "public/execution_contract", "public/capabilities", "public/native_capabilities",
+             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
+             "public/asset_text"
+         ];
+@@ -2026,9 +2028,9 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_physics_runtime") {
+         return [
+             "public/physics_runtime", "private/physics", "public/native_types", "public/ecs", "public/types",
+-            "public/support", "public/execution_contract", "public/entity_runtime", "public/execution",
++            "public/support", "public/execution_contract", "public/capabilities", "public/entity_runtime", "public/execution",
+             "public/tasks", "public/scene_runtime", "public/behavior_runtime", "public/events",
+-            "public/native_capabilities", "public/capabilities", "public/material_runtime",
++            "public/native_capabilities", "public/material_runtime",
+             "public/field_catalog", "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+             "public/spatial_runtime"
+         ];
+@@ -2036,32 +2038,30 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_physics3d_runtime") {
+         return [
+             "public/physics3d_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
+-            "public/execution_contract", "public/entity_runtime", "public/execution", "public/tasks",
+-            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities",
+-            "public/capabilities", "public/task_pool_runtime", "public/spatial_runtime", "public/mesh_runtime"
++            "public/execution_contract", "public/capabilities", "public/entity_runtime", "public/execution", "public/tasks",
++            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities", "public/task_pool_runtime", "public/spatial_runtime", "public/mesh_runtime"
+         ];
+     }
+     if (target == "chibi_visibility_runtime") {
+         return [
+             "public/visibility_runtime", "public/entity_runtime", "public/native_types", "public/ecs",
+-            "public/types", "public/support", "public/execution_contract", "public/execution", "public/tasks",
+-            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities",
+-            "public/capabilities", "public/physics_runtime", "public/material_runtime", "public/field_catalog",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/execution", "public/tasks",
++            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities", "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+             "public/fields", "public/mesh_runtime", "public/task_pool_runtime", "public/spatial_runtime"
+         ];
+     }
+     if (target == "chibi_graph_model") {
+         return [
+             "public/graph_model", "private/graph", "public/types", "public/support",
+-            "public/execution_contract", "public/asset_values"
++            "public/execution_contract", "public/capabilities", "public/asset_values"
+         ];
+     }
+     if (target == "chibi_graph_authoring") {
+         return [
+             "public/graph_authoring", "private/graph", "public/graph_model", "public/types", "public/support",
+-            "public/execution_contract", "public/ecs", "public/events", "public/asset_values",
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/events", "public/asset_values",
+             "public/asset_text", "public/value_document", "public/conversion_capabilities",
+-            "public/native_capabilities", "public/capabilities", "public/core_capabilities",
++            "public/native_capabilities", "public/core_capabilities",
+             "public/math_capabilities", "public/arithmetic_capabilities", "public/comparison_capabilities",
+             "public/vector_capabilities", "public/text_capabilities", "public/state_capabilities",
+             "public/array_capabilities", "public/selection_capabilities", "public/set_capabilities"
+@@ -2070,10 +2070,9 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_graph_compilation") {
+         return [
+             "public/graph_compilation", "private/graph", "public/graph_authoring", "public/graph_model",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/events",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/events",
+             "public/asset_values", "public/shader_runtime", "public/model_runtime", "public/fields",
+-            "public/tasks", "public/field_catalog", "public/field_capabilities", "public/native_capabilities",
+-            "public/capabilities"
++            "public/tasks", "public/field_catalog", "public/field_capabilities", "public/native_capabilities"
+         ];
+     }
+     if (target == "chibi_host_native_default") {
+@@ -2105,18 +2104,17 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "public/studio_graph", "private/studio_graph", "public/graph_compilation",
+             "public/graph_authoring", "public/graph_model", "public/types", "public/support",
+-            "public/execution_contract", "public/ecs", "public/events", "public/asset_values",
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/events", "public/asset_values",
+             "public/shader_runtime", "public/model_runtime", "public/fields", "public/tasks",
+-            "public/field_catalog", "public/studio_capabilities", "public/native_capabilities",
+-            "public/capabilities"
++            "public/field_catalog", "public/studio_capabilities", "public/native_capabilities"
+         ];
+     }
+     if (target == "chibi_engine") {
+         return [
+             "public/engine", "private/engine", "public/behavior_runtime", "public/execution", "public/types",
+-            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/entity_runtime", "public/native_types", "public/scene_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
++            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
+             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
+             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
+             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
+@@ -2155,10 +2153,10 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "public/asset_authoring", "public/prototype_document", "public/ecs", "public/types",
+             "public/support", "public/asset_values", "public/scene_document", "public/scene_runtime",
+-            "public/behavior_runtime", "public/execution", "public/execution_contract", "public/tasks",
++            "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities", "public/tasks",
+             "public/events", "public/graph_model", "public/reference_index", "public/field_catalog",
+             "public/fields", "public/authoring", "public/compiler", "public/language",
+-            "public/language_syntax", "public/capabilities",
++            "public/language_syntax",
+             "public/native_capabilities", "public/asset_text", "public/ui_document", "public/text_source",
+             "public/text_search", "public/ui_document_values", "public/graph_authoring",
+             "public/graph_compilation", "public/shader_runtime", "public/model_runtime", "public/native_types",
+@@ -2179,7 +2177,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_graph_catalog") {
+         return [
+             "public/graph_catalog", "public/graph_model", "public/types", "public/support",
+-            "public/execution_contract", "public/native_capabilities", "public/capabilities", "public/ecs",
++            "public/execution_contract", "public/capabilities", "public/native_capabilities", "public/ecs",
+             "public/source_presentation", "public/authoring", "public/compiler", "public/language",
+             "public/language_syntax", "public/execution", "public/tasks",
+             "public/reference_index", "public/text_source", "public/text_search", "public/graph_compilation",
+@@ -2190,9 +2188,9 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_player") {
+         return [
+             "public/player", "public/engine", "public/behavior_runtime", "public/execution", "public/types",
+-            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/entity_runtime", "public/native_types", "public/scene_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
++            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
+             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
+             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
+             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
+@@ -2203,9 +2201,9 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_shader_preparation") {
+         return [
+             "public/shader_preparation", "third_party/yyjson", "public/visual_catalog", "public/native_types",
+-            "public/ecs", "public/types", "public/support", "public/execution_contract",
++            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
+             "public/shader_runtime", "public/model_runtime", "public/mesh_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/graph_model", "public/player",
++            "public/native_capabilities", "public/graph_model", "public/player",
+             "public/engine", "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
+             "public/entity_runtime", "public/scene_runtime", "public/scheduling", "public/physics_runtime",
+             "public/material_runtime", "public/field_catalog", "public/fields", "public/task_pool_runtime",
+@@ -2219,10 +2217,10 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_model_authoring") {
+         return [
+             "public/model_authoring", "third_party/yyjson", "public/graph_model", "public/types",
+-            "public/support", "public/execution_contract", "public/model_bake", "public/model_runtime",
++            "public/support", "public/execution_contract", "public/capabilities", "public/model_bake", "public/model_runtime",
+             "public/shader_runtime", "public/mesh_runtime", "public/image_preparation", "public/image_catalog",
+             "public/shader_preparation", "public/visual_catalog", "public/native_types", "public/ecs",
+-            "public/native_capabilities", "public/capabilities", "public/player", "public/engine",
++            "public/native_capabilities", "public/player", "public/engine",
+             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
+             "public/entity_runtime", "public/scene_runtime", "public/scheduling", "public/physics_runtime",
+             "public/material_runtime", "public/field_catalog", "public/fields", "public/task_pool_runtime",
+@@ -2250,14 +2248,14 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_model_import") {
+         return [
+             "public/model_import", "third_party/yyjson", "public/graph_model", "public/types",
+-            "public/support", "public/execution_contract", "public/shader_runtime", "public/platform",
++            "public/support", "public/execution_contract", "public/capabilities", "public/shader_runtime", "public/platform",
+             "public/asset_authoring", "public/prototype_document", "public/ecs", "public/asset_values",
+             "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/execution",
+             "public/tasks", "public/events", "public/reference_index", "public/field_catalog", "public/fields",
+             "public/image_preparation", "public/image_catalog", "public/mesh_runtime", "public/native_types",
+             "public/graph_authoring", "public/graph_compilation", "public/model_runtime", "public/asset_text",
+             "public/json", "public/source_catalog", "public/authoring", "public/compiler", "public/language",
+-            "public/language_syntax", "public/capabilities",
++            "public/language_syntax",
+             "public/native_capabilities", "public/input_map", "public/input_action"
+         ];
+     }
+@@ -2272,9 +2270,9 @@ pub Includes :: (target: string) -> string[] {
+             "public/render", "private/render", "public/platform", "public/ui", "public/json",
+             "public/ui_document_values", "public/support", "public/ui_documents", "public/text_search",
+             "public/engine", "public/behavior_runtime", "public/execution", "public/types",
+-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/entity_runtime", "public/native_types", "public/scene_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
++            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
+             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
+             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
+             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
+@@ -2356,23 +2354,22 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_build_host") {
+         return [
+             "private/build-host", "private/compiler-host", "third_party/yyjson", "public/behavior_runtime",
+-            "public/execution", "public/types", "public/support", "public/execution_contract", "public/ecs",
+-            "public/tasks", "public/events", "public/native_prepared", "public/native_capabilities",
+-            "public/capabilities", "public/text_capabilities", "public/array_capabilities"
++            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs",
++            "public/tasks", "public/events", "public/native_prepared", "public/native_capabilities", "public/text_capabilities", "public/array_capabilities"
+         ];
+     }
+     if (target == "chibi-build-host") {
+         return [
+             "private/build-host", "private/compiler-host", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
+             "public/events"
+         ];
+     }
+     if (target == "chibi_compiler_host") {
+         return [
+             "private/compiler-host", "third_party/yyjson", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+-            "public/events", "public/native_prepared", "public/native_capabilities", "public/capabilities",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
++            "public/events", "public/native_prepared", "public/native_capabilities",
+             "public/text_capabilities", "public/array_capabilities", "public/value_document",
+             "public/asset_values", "public/asset_json", "public/json", "public/language_syntax",
+             "public/asset_text"
+@@ -2381,7 +2378,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi-compiler-host") {
+         return [
+             "third_party/yyjson", "private/compiler-host", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
+             "public/events", "public/asset_text", "public/asset_values", "public/json"
+         ];
+     }
+@@ -2407,11 +2404,10 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "build/tools/chibi_ctl/private", "public/asset_authoring", "public/prototype_document",
+             "public/ecs", "public/types", "public/support", "public/asset_values", "public/scene_document",
+-            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
++            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities",
+             "public/tasks", "public/events", "public/graph_model", "public/reference_index",
+             "public/field_catalog", "public/fields", "public/asset_json", "public/json", "public/asset_text",
+-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
+-            "public/capabilities", "public/native_capabilities",
++            "public/authoring", "public/compiler", "public/language", "public/language_syntax", "public/native_capabilities",
+             "public/component_presentation", "public/graph_authoring", "public/graph_compilation",
+             "public/shader_runtime", "public/model_runtime", "public/graph_catalog",
+             "public/host_native_default", "public/host_native_catalog", "public/image_preparation",
+@@ -2435,9 +2431,9 @@ pub Includes :: (target: string) -> string[] {
+             "private/player", "public/render", "public/platform", "public/ui", "public/json",
+             "public/ui_document_values", "public/support", "public/ui_documents", "public/text_search",
+             "public/engine", "public/behavior_runtime", "public/execution", "public/types",
+-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/entity_runtime", "public/native_types", "public/scene_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
++            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
+             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
+             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
+             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
+@@ -2470,11 +2466,10 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "build/tools/chibi_ctl/private", "public/asset_authoring", "public/prototype_document",
+             "public/ecs", "public/types", "public/support", "public/asset_values", "public/scene_document",
+-            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
++            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities",
+             "public/tasks", "public/events", "public/graph_model", "public/reference_index",
+             "public/field_catalog", "public/fields", "public/asset_json", "public/json", "public/asset_text",
+-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
+-            "public/capabilities", "public/native_capabilities",
++            "public/authoring", "public/compiler", "public/language", "public/language_syntax", "public/native_capabilities",
+             "public/component_presentation", "public/graph_authoring", "public/graph_compilation",
+             "public/shader_runtime", "public/model_runtime", "public/graph_catalog",
+             "public/host_native_default", "public/host_native_catalog", "public/image_preparation",
+@@ -2505,7 +2500,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "test_behavior_consumer") {
+         return [
+             "build/test/language/testing/include", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
+             "public/events"
+         ];
+     }
+@@ -2538,29 +2533,28 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_sdk_contracts") {
+         return [
+             "build/test/tools/testing/include", "public/execution_contract", "public/types",
+-            "public/support", "public/ecs", "public/value_document", "public/asset_values",
+-            "public/native_types", "public/studio_capabilities", "public/native_capabilities",
+-            "public/capabilities"
++            "public/support", "public/capabilities", "public/ecs", "public/value_document", "public/asset_values",
++            "public/native_types", "public/studio_capabilities", "public/native_capabilities"
+         ];
+     }
+     if (target == "chibi_prepared_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
+             "public/events"
+         ];
+     }
+     if (target == "chibi_record_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
+             "public/events"
+         ];
+     }
+     if (target == "chibi_scene_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/scene_runtime", "public/behavior_runtime",
+-            "public/execution", "public/types", "public/support", "public/execution_contract",
++            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities",
+             "public/ecs", "public/tasks", "public/events"
+         ];
+     }
+@@ -2570,7 +2564,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_scene_authoring_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
+-            "public/ecs", "public/types", "public/support", "public/execution_contract",
++            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
+             "public/scene_document", "public/asset_values", "public/scene_runtime",
+             "public/behavior_runtime", "public/execution", "public/tasks", "public/events"
+         ];
+@@ -2578,9 +2572,9 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_scene_snapshot_read_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
+-            "public/ecs", "public/types", "public/support", "public/execution_contract",
++            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
+             "public/source_catalog", "public/authoring", "public/compiler", "public/language",
+-            "public/language_syntax", "public/capabilities",
++            "public/language_syntax",
+             "public/execution", "public/tasks", "public/native_capabilities", "public/reference_index",
+             "public/input_map", "public/input_action", "public/prototype_document",
+             "public/asset_values", "public/scene_document", "public/scene_runtime",
+@@ -2591,9 +2585,9 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             "build/test/tools/testing/include", "public/player", "public/engine",
+             "public/behavior_runtime", "public/execution", "public/types", "public/support",
+-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/entity_runtime", "public/native_types", "public/scene_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/scheduling",
++            "public/native_capabilities", "public/scheduling",
+             "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+             "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+             "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
+@@ -2626,8 +2620,8 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_particle_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/particle_runtime", "public/native_types",
+-            "public/ecs", "public/types", "public/support", "public/execution_contract",
+-            "public/native_capabilities", "public/capabilities"
++            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
++            "public/native_capabilities"
+         ];
+     }
+     if (target == "chibi_png_consumer") {
+@@ -2653,9 +2647,9 @@ pub Includes :: (target: string) -> string[] {
+             "build/test/tools/testing/include", "public/render", "public/platform", "public/ui",
+             "public/json", "public/ui_document_values", "public/support", "public/ui_documents",
+             "public/text_search", "public/engine", "public/behavior_runtime", "public/execution",
+-            "public/types", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/types", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/entity_runtime", "public/native_types", "public/scene_runtime",
+-            "public/native_capabilities", "public/capabilities", "public/scheduling",
++            "public/native_capabilities", "public/scheduling",
+             "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+             "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
+             "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
+@@ -2676,10 +2670,10 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_mesh_preparation_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/model_authoring", "public/graph_model",
+-            "public/types", "public/support", "public/execution_contract", "public/model_bake",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/model_bake",
+             "public/model_runtime", "public/shader_runtime", "public/mesh_runtime",
+             "public/shader_preparation", "public/visual_catalog", "public/native_types", "public/ecs",
+-            "public/native_capabilities", "public/capabilities", "public/player", "public/engine",
++            "public/native_capabilities", "public/player", "public/engine",
+             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
+             "public/entity_runtime", "public/scene_runtime", "public/scheduling",
+             "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+@@ -2693,7 +2687,7 @@ pub Includes :: (target: string) -> string[] {
+     if (target == "chibi_model_import_consumer") {
+         return [
+             "build/test/tools/testing/include", "public/model_import", "public/graph_model",
+-            "public/types", "public/support", "public/execution_contract", "public/shader_runtime",
++            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/shader_runtime",
+             "public/mesh_runtime", "public/graph_authoring", "public/ecs", "public/events",
+             "public/asset_values", "public/graph_compilation", "public/model_runtime", "public/fields",
+             "public/tasks", "public/field_catalog", "public/native_types", "public/asset_text",
+@@ -2769,10 +2763,10 @@ pub Includes :: (target: string) -> string[] {
+         return [
+             ".", "src", "third_party/yyjson", "third-party/source/cute_framework/tools",
+             "public/behavior_runtime", "public/execution", "public/types", "public/support",
+-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
++            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+             "public/scene_runtime", "public/value_document", "public/asset_values", "private/build-host",
+             "private/compiler-host", "public/shader_runtime", "public/authoring", "public/compiler",
+-            "public/language", "public/language_syntax", "public/capabilities",
++            "public/language", "public/language_syntax",
+             "public/native_capabilities", "public/reference_index", "public/array_capabilities",
+             "public/audio_runtime", "public/scene_authoring", "public/native_types",
+             "public/scene_document", "public/source_catalog", "public/input_map", "public/input_action",
+@@ -3900,7 +3894,7 @@ pub LinkOptions :: (target: string) -> string[] {
+ // are.
+ pub Links :: (target: string) -> string[] {
+     if (target == "reflect") {
+-        return ["chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
++        return ["chibi_capabilities", "chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
+     }
+     if (target == "chibi-build-host") {
+         return [
+@@ -3963,9 +3957,9 @@ pub Links :: (target: string) -> string[] {
+             "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
+             "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_scene_runtime",
+             "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_input_runtime",
+-            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities", "chibi_capabilities",
++            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities",
+             "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
++            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_capabilities", "chibi_events", "chibi_types",
+             "chibi_support", "-lm"
+         ];
+     }
+@@ -4001,8 +3995,8 @@ pub Links :: (target: string) -> string[] {
+             "chibi_scenario_document", "chibi_input_runtime", "chibi_behavior_runtime", "chibi_events",
+             "chibi_native_capabilities", "chibi_spatial_runtime", "chibi_input_map", "chibi_asset_text",
+             "chibi_asset_kdl", "chibi_asset_values", "chibi_declared_components", "chibi_execution",
+-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_capabilities", "chibi_native_types",
+-            "chibi_ecs", "chibi_types", "chibi_support", "-lm"
++            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_types",
++            "chibi_ecs", "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
+         ];
+     }
+     if (target == "chibi_ctl" && build.platform() == "Darwin") {
+@@ -4059,7 +4053,7 @@ pub Links :: (target: string) -> string[] {
+             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_ui_document",
+             "chibi_text_source", "chibi_text_search", "chibi_ui_document_values", "chibi_ui_runtime",
+             "chibi_value_document", "chibi_asset_values", "chibi_visual_catalog", "chibi_model_runtime",
+-            "chibi_native_capabilities", "chibi_capabilities", "chibi_native_types", "chibi_ecs",
++            "chibi_native_capabilities", "chibi_native_types", "chibi_ecs", "chibi_capabilities",
+             "chibi_image_catalog", "chibi_shader_runtime", "chibi_mesh_runtime", "chibi_types", "chibi_support",
+             "-lm", "-framework", "Metal", "-framework", "Foundation"
+         ];
+@@ -4099,8 +4093,8 @@ pub Links :: (target: string) -> string[] {
+             "chibi_builtin_fonts", "chibi_ui_documents", "chibi_image_preparation", "chibi_image_catalog",
+             "chibi_shader_runtime", "chibi_compiler_syntax", "chibi_language_syntax",
+             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_compiler_json", "chibi_json",
+-            "chibi_native_capabilities", "chibi_capabilities", "chibi_behavior_runtime", "chibi_execution",
+-            "chibi_ecs", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
++            "chibi_native_capabilities", "chibi_behavior_runtime", "chibi_execution",
++            "chibi_ecs", "chibi_capabilities", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
+             "chibi_support", "-lm"
+         ];
+     }
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+index 3231d4ea8..7a918ab92 100644
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -269,6 +269,7 @@ TOOLS = {
+     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
+     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
+     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
++    'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
+     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
+     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
+     'language-numeric-exact-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+@@ -420,7 +421,7 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
+     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
+ 
+ wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
+-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
++for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
+     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
+ for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
+                  '-imports', '-imports-compiled', '-behaviors',
+@@ -474,7 +475,7 @@ GPU_TOOLS = (
+ 
+ GROUPS = {
+     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
+-             'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
++             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+              'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+              'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
+     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
+@@ -506,7 +507,7 @@ GROUPS = {
+     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
+                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
+                   'contact-benchmark'],
+-    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
++    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
+                  'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
+                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
+                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',

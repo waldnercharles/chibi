@@ -46,6 +46,7 @@ void test_language_capture();
 void test_language_query_program();
 void test_language_query_boundary();
 void test_language_incremental();
+void test_language_operations();
 void test_language_modules();
 void test_numeric_ranges();
 void test_numeric_exact_core();
@@ -149,6 +150,7 @@ int main(int argc, char **argv)
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
+    bool operations = argc == 2 && !strcmp(argv[1], "--operations");
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
@@ -265,8 +267,8 @@ int main(int argc, char **argv)
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
          !row_array && !record_runtime && !runtime_attribution && !wasm &&
-         !program && !query_program && !incremental && !modules && !ranges &&
-         !numeric_exact_core && !package_graph && !package_graph_chibi &&
+         !program && !query_program && !incremental && !operations && !modules &&
+         !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
          !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
          !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
          !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
@@ -296,6 +298,7 @@ int main(int argc, char **argv)
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
+            "--operations | "
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
             "--package-graph-chibi | --syntax-chibi | "
@@ -465,6 +468,8 @@ int main(int argc, char **argv)
         test_language_generic();
     } else if (modules) {
         test_language_modules();
+    } else if (operations) {
+        test_language_operations();
     } else if (incremental) {
         test_language_incremental();
     } else if (numeric_exact_core) {

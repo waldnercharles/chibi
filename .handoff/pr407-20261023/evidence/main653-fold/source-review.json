@@ -1,0 +1,48 @@
+{
+  "reviewers": [
+    "/root/recover_407",
+    "/root/recover_407/review_operation_recovery"
+  ],
+  "event_date": "2026-10-22",
+  "scope": "Source-only main653 composition review; no build, test, active index or source mutation",
+  "reviewed_main_delta": [
+    "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "d0de4a84ecf50badcab661411470bdf6f3da5fa2"
+  ],
+  "preserved_staged_tree": "e12dd7d818f330739aaa8fa26a576221ce344929",
+  "proposed_candidate_tree": "fa24367aa5284d67160118716c538207d3672cd8",
+  "findings": [],
+  "all_42_delta_paths_and_added_removed_lines_match": true,
+  "exact_preserved_operation_and_prepared_files": {
+    "src/capabilities/catalog.c": "e2cd72b984f27769f48628874440dd6256b1de4b",
+    "src/capabilities/catalog.h": "2c0290a4ecd6a11883b4e30dcdc7cb19f9b17e9f",
+    "src/capabilities/operation.c": "63f6e5742105bd7255404d9158d9f346b06338a9",
+    "src/execution/operation.h": "c5dad8aa271310b3f5d3be72aa4696e0d01b41e6",
+    "src/language/lower.c": "7c508aa79099f70a131a5ea514f6b6bd325f637c",
+    "src/language/semantic_calls.c": "cf78d612cf1b5cd8473917a7181eabd74ff84175",
+    "src/runtime/core_definition.c": "606485a8d6f62705206cd3f0b95d34728390b2a1",
+    "src/runtime/native_capabilities.c": "8b42e7b0902abf51f2f3b7bbee3b7d8b1599dcea",
+    "src/runtime/native_definitions.c": "47e2bfc47e39280f77768a4648e6d46c39cdd9ba",
+    "sdk/CMakeLists.txt": "ca687b03ab3f3325852640e72957dbe8b6338740",
+    "sdk/contracts.cmake": "15994085b6c1b30dea03610b872efcc7de442a3e",
+    "test/language/operations.c": "d0a60d1a1812d4b53443fd24f0567a41760af3d0",
+    "test/language/prepared.c": "12a45da32dbcecd6febdc60182504c4c2fec4749",
+    "test/tools/prepared_runtime.c": "d6f41de5054dde189430e0a4820c5237b7faac13"
+  },
+  "ancestry_proof": "independent-tree-proof.json",
+  "additional_affected_selectors_beyond_previous_main665_review": [
+    "build-process",
+    "build-toolchain",
+    "build-graph",
+    "build-sdk"
+  ],
+  "coverage_notes": [
+    "Full build-process covers build-process-files subset",
+    "build-sdk needs candidate Release graph-built private hosts and matching newly pinned archive/link records",
+    "Default test-tools covers desktop-dependencies and seventeen third-party-publish fixture cases",
+    "Language group covers new navigation/format/program migration witnesses",
+    "Existing main665 record/compiler/recovery/C-export and operation/Wasm/installed-SDK obligations remain"
+  ],
+  "limits": "Existing per-operation limits retained; no global test-duration limit introduced",
+  "next_step": "Root may apply exact proposed candidate when reviewed; execution waits for explicit shared resource grant."
+}

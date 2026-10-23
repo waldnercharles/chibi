@@ -95,10 +95,6 @@ Compile :: () -> int {
         build.report("CHIBI_COMPILE and CHIBI_STAGE_ONE_HOST must name chibi-compile and a compiler host")
         return 2
     }
-    closure := Recovered(host, build.root())
-    if (closure == "") {
-        return 1
-    }
     work := Join([output, ".stage-one"])
     input := Join([work, "/input.json"])
     modules := Join([work, "/modules.chibip"])
@@ -107,15 +103,27 @@ Compile :: () -> int {
         build.report(Join(["cannot export stage one's input for ", project, ": ", build.last_stderr()]))
         return 1
     }
-    // CompileBehaviors and BehaviorRejection: package-symbol
-    // project:package_compiler:1:NAME:callable.
-    if (Stage(host, closure, "d95f9895b7a7a764", input, modules) != 0) {
-        Stage(host, closure, "2921ca5ea316f0b", input, "")
-        build.report(Join(["stage one cannot compile ", project, ": ", build.last_stdout()]))
-        return 1
+    command := [compile, "--project-root", project, "--output", output]
+    if (build.trim(build.last_stdout()) == "0") {
+        // No closure has a root when there is no executable source. Native
+        // assembly verifies that the current project still has no source.
+        command = build.concat(command, ["--resources-only"])
+    } else {
+        closure := Recovered(host, build.root())
+        if (closure == "") {
+            return 1
+        }
+        // CompileBehaviors and BehaviorRejection: package-symbol
+        // project:package_compiler:1:NAME:callable.
+        if (Stage(host, closure, "d95f9895b7a7a764", input, modules) != 0) {
+            Stage(host, closure, "2921ca5ea316f0b", input, "")
+            build.report(Join(["stage one cannot compile ", project, ": ", build.last_stdout()]))
+            return 1
+        }
+        command = build.concat(command, ["--modules", modules])
     }
-    if (build.run([compile, "--project-root", project, "--modules", modules, "--output", output]) != 0) {
-        build.report(Join(["cannot assemble ", project, " from stage one's modules: ", build.last_stderr()]))
+    if (build.run(command) != 0) {
+        build.report(Join(["cannot assemble ", project, ": ", build.last_stderr()]))
         return 1
     }
     build.remove(input)

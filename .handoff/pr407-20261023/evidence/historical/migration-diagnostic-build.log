@@ -1,0 +1,69 @@
+[  1%] Built target chibi_support
+[  2%] Built target chibi_json
+[  2%] Built target chibi_fmt
+[  2%] Built target chibi_ui_document_values
+[  3%] Built target chibi_text_search
+[  4%] Built target chibi_asset_kdl
+[  5%] Built target chibi_language_syntax
+[  7%] Built target chibi_types
+[  8%] Built target chibi_asset_values
+[ 10%] Built target chibi_text_source
+[ 12%] Built target chibi_capabilities
+[ 13%] Built target chibi_ecs
+[ 13%] Built target chibi_events
+[ 13%] Built target chibi_value_document
+[ 13%] Built target chibi_native_capabilities
+[ 13%] Built target chibi_fields
+[ 14%] Built target chibi_ui_documents
+[ 15%] Built target chibi_asset_json
+[ 15%] Built target chibi_asset_text
+[ 16%] Built target chibi_vector_capabilities
+[ 17%] Built target chibi_shader_runtime
+[ 19%] Built target chibi_mesh_runtime
+[ 21%] Built target chibi_graph_model
+[ 21%] Built target chibi_input_map
+[ 23%] Built target chibi_project_document
+[ 23%] Built target chibi_reference_index
+[ 24%] Built target chibi_ui_document
+[ 30%] Built target chibi_language
+[ 42%] Built target chibi_execution
+[ 42%] Built target chibi_array_capabilities
+[ 42%] Built target chibi_field_capabilities
+[ 42%] Built target chibi_state_capabilities
+[ 42%] Built target chibi_selection_capabilities
+[ 43%] Built target chibi_set_capabilities
+[ 43%] Built target chibi_comparison_capabilities
+[ 44%] Built target chibi_conversion_capabilities
+[ 44%] Built target chibi_text_capabilities
+[ 46%] Built target chibi_field_catalog
+[ 46%] Built target chibi_math_capabilities
+[ 47%] Built target chibi_arithmetic_capabilities
+[ 49%] Built target chibi_model_runtime
+[ 50%] Built target chibi_ui_authoring
+[ 50%] Built target chibi_compiler
+[ 51%] Built target chibi_behavior_runtime
+[ 51%] Built target chibi_core_capabilities
+[ 53%] Built target chibi_authoring
+[ 53%] Built target test_behavior_consumer
+[ 55%] Built target chibi_native_prepared
+[ 55%] Built target chibi_scene_runtime
+[ 65%] Built target chibi_graph_authoring
+[ 66%] Built target chibi_scene_document
+[ 70%] Built target chibi_graph_compilation
+[ 75%] Built target chibi_source_presentation
+[ 76%] Built target chibi_prototype_document
+[ 79%] Built target chibi_source_catalog
+[ 79%] Building C object CMakeFiles/test_language.dir/format.c.o
+/private/tmp/chibi-integration-20261022/pr407/source/test/language/format.c:1470:335: error: format specifies type 'int' but the argument has type 'uint64_t' (aka 'unsigned long long') [-Werror,-Wformat]
+ 1470 |                 fprintf(stderr, "system symbol %s/%s kind%d/%d storage%d/%d flags%u/%u nominal%llu/%llu parameter%d/%d collection%llu/%llu initializer%d/%d\n", x->name, y->name, x->kind, y->kind, x->type.storage, y->type.storage, x->type.flags, y->type.flags, (unsigned long long)x->type.nominal, (unsigned long long)y->type.nominal, x->type.parameter, y->type.parameter, (unsigned long long)x->type.collection, (unsigned long long)y->type.collection, x->initializer, y->initializer);
+      |                                                                                                                  ~~                                                                                                                                                                                                                           ^~~~~~~~~~~~~~~~~
+      |                                                                                                                  %llu
+/private/tmp/chibi-integration-20261022/pr407/source/test/language/format.c:1470:354: error: format specifies type 'int' but the argument has type 'uint64_t' (aka 'unsigned long long') [-Werror,-Wformat]
+ 1470 |                 fprintf(stderr, "system symbol %s/%s kind%d/%d storage%d/%d flags%u/%u nominal%llu/%llu parameter%d/%d collection%llu/%llu initializer%d/%d\n", x->name, y->name, x->kind, y->kind, x->type.storage, y->type.storage, x->type.flags, y->type.flags, (unsigned long long)x->type.nominal, (unsigned long long)y->type.nominal, x->type.parameter, y->type.parameter, (unsigned long long)x->type.collection, (unsigned long long)y->type.collection, x->initializer, y->initializer);
+      |                                                                                                                     ~~                                                                                                                                                                                                                                           ^~~~~~~~~~~~~~~~~
+      |                                                                                                                     %llu
+2 errors generated.
+make[3]: *** [CMakeFiles/test_language.dir/format.c.o] Error 1
+make[2]: *** [CMakeFiles/test_language.dir/all] Error 2
+make[1]: *** [CMakeFiles/test_language.dir/rule] Error 2
+make: *** [test_language] Error 2

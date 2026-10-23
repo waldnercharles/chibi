@@ -1,0 +1,20 @@
+[
+  {
+    "name": "language-rebuild",
+    "exit": 0,
+    "seconds": 19.557,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-rebuild-current.log"
+  },
+  {
+    "name": "language-operations",
+    "exit": 0,
+    "seconds": 1.662,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-operations-current.log"
+  },
+  {
+    "name": "language-program",
+    "exit": 2,
+    "seconds": 1.765,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-program-current.log"
+  }
+]

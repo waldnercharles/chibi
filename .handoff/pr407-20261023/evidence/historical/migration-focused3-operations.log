@@ -1,0 +1,13 @@
+Running: operations_generate_checked_bindings_and_conservative_contracts (OK) (0.000109 secs)
+Running: operations_reject_malformed_shared_declarations (OK) (0.000013 secs)
+Running: operations_reject_raw_scalar_semantic_metadata (OK) (0.000041 secs)
+Running: operations_reject_dormant_raw_metadata (OK) (0.000028 secs)
+Running: operations_reject_binding_mismatch_and_distinguish_opaque_abi (OK) (0.000036 secs)
+Running: operation_identity_invalidates_source_reuse (OK) (0.000867 secs)
+Running: operations_reject_direct_catalog_state_rewrites (OK) (0.000125 secs)
+Running: operations_reject_custom_lowerer_binding_mismatch (OK) (0.000094 secs)
+Running: owner_alias_preserves_invocation_effects (OK) (0.000074 secs)
+Running: operations_preserve_context_and_delay_lifetimes_on_both_backends (OK) (0.000866 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 193
+Test command wall time: 0.093s; includes in-test fixture setup; external configuration/build excluded.

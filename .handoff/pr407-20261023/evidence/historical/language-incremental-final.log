@@ -1,0 +1,16 @@
+Running: unchanged_sources_reuse_analysis_and_executables_after_old_collection_dies (OK) (0.004175 secs)
+Running: display_edits_reuse_sources_with_independently_owned_catalogs (OK) (0.001913 secs)
+Running: body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources (OK) (0.026657 secs)
+Running: binding_generations_and_backends_are_required_cache_inputs (OK) (0.005886 secs)
+Running: catalog_defaults_effects_units_layouts_and_relationships_invalidate_reuse (OK) (0.009551 secs)
+Running: signature_units_cross_libraries_and_invalidate_same_layout_callers (OK) (0.005727 secs)
+Running: native_signature_unit_snapshots_own_metadata (OK) (0.004266 secs)
+Running: native_definitions_preserve_signature_units (OK) (0.000035 secs)
+Running: invalid_edits_and_document_moves_preserve_previous_generations (OK) (0.003966 secs)
+Running: native_binding_tables_supply_nonrepeating_generation_keys (OK) (0.002148 secs)
+Running: struct_defaults_use_frozen_values_and_actual_snapshot_layout (OK) (0.007382 secs)
+Running: default_comparison_storage_is_bounded (OK) (0.003639 secs)
+Running: struct_default_keys_keep_opaque_bytes_and_do_not_read_malformed_fields (OK) (0.010935 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 235
+Test command wall time: 0.536s; includes in-test fixture setup; external configuration/build excluded.

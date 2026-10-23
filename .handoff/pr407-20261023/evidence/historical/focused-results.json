@@ -1,0 +1,8 @@
+[
+  {
+    "selector": "language-operations",
+    "exit": 1,
+    "seconds": 1.596,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-operations.log"
+  }
+]

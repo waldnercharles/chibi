@@ -1,0 +1,42 @@
+[
+  {
+    "name": "test-native",
+    "exit": 2,
+    "seconds": 10.807,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/test-native-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+    "host": "build-release-cmake/sdk/chibi-build-host"
+  },
+  {
+    "name": "test-materials",
+    "exit": 0,
+    "seconds": 38.512,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/test-materials-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+    "host": "build-release-cmake/sdk/chibi-build-host"
+  },
+  {
+    "name": "test-language-all",
+    "exit": 0,
+    "seconds": 32.712,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/test-language-all-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+    "host": "build-release-cmake/sdk/chibi-build-host"
+  },
+  {
+    "name": "test-projects",
+    "exit": 0,
+    "seconds": 83.072,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/test-projects-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+    "host": "build-release-cmake/sdk/chibi-build-host"
+  },
+  {
+    "name": "test-tools",
+    "exit": 0,
+    "seconds": 44.614,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/test-tools-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+    "host": "build-release-cmake/sdk/chibi-build-host"
+  }
+]

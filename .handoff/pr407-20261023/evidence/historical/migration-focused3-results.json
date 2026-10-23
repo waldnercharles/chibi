@@ -1,0 +1,44 @@
+[
+  {
+    "name": "migration-focused3-build",
+    "exit": 0,
+    "seconds": 4.446,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-build.log"
+  },
+  {
+    "name": "migration-focused3-format",
+    "exit": 0,
+    "seconds": 1.047,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-format.log"
+  },
+  {
+    "name": "migration-focused3-operations",
+    "exit": 0,
+    "seconds": 0.137,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-operations.log"
+  },
+  {
+    "name": "migration-focused3-query",
+    "exit": 0,
+    "seconds": 0.285,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-query.log"
+  },
+  {
+    "name": "migration-focused3-native-build",
+    "exit": 0,
+    "seconds": 9.388,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-native-build.log"
+  },
+  {
+    "name": "migration-focused3-native-catalog",
+    "exit": 0,
+    "seconds": 2.491,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-native-catalog.log"
+  },
+  {
+    "name": "migration-focused3-check-format",
+    "exit": 0,
+    "seconds": 24.086,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-focused3-check-format.log"
+  }
+]

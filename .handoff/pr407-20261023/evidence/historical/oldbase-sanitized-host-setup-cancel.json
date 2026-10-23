@@ -1,0 +1,16 @@
+{
+  "reason": "Switch graph generation to same-source optimized host; native selector group had not started",
+  "process_group": 82025,
+  "processes": [
+    " 4208 82025 82025 /Applications/Xcode.app/Contents/Developer/usr/bin/make test-projects JOBS=2",
+    " 4499  4208 82025 /Applications/Xcode.app/Contents/Developer/usr/bin/make build-release BUILD_TARGET=chibi_ctl chibi",
+    " 4501  4499 82025 /Applications/Xcode.app/Contents/Developer/usr/bin/make build BUILD_DIR=build-release LOCAL_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON BUILD_PROFILE=release BUILD_TARGET=chibi_ctl chibi",
+    " 4504  4501 82025 /bin/sh -c if [ -x \"build-release/sdk/chibi-build-host\" ] && [ \"$(\"build-release/sdk/chibi-build-host\" --protocol-version 2>/dev/null)\" = 8 ]; then /Applications/Xcode.app/Contents/Developer/usr/bin/make toolchain-build; else /Applications/Xcode.app/Contents/Developer/usr/bin/make stage-zero-build; fi",
+    " 4505  4504 82025 /Applications/Xcode.app/Contents/Developer/usr/bin/make stage-zero-build",
+    " 4868  4505 82025 /Applications/Xcode.app/Contents/Developer/usr/bin/make toolchain-build BUILD_HOST=build-release-cmake/sdk/chibi-build-host",
+    " 4877  4868 82025 /opt/homebrew/Cellar/python@3.13/3.13.16_1/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python tools/quiet.py graph -- env CCACHE_BASEDIR=/private/tmp/chibi-integration-20261022/pr407/source build-release-cmake/sdk/chibi-build-host --compiler tools/compiler --compiler-core packages/core --root /private/tmp/chibi-integration-20261022/pr407/source --source tools/toolchain/Graph.chibi --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms 3600000 -- --build /private/tmp/chibi-integration-20261022/pr407/source/build-release --profile release --jobs 2 --all-commands on --target chibi_ctl --target chibi --target chibi-build-host",
+    " 4878  4877 82025 build-release-cmake/sdk/chibi-build-host --compiler tools/compiler --compiler-core packages/core --root /private/tmp/chibi-integration-20261022/pr407/source --source tools/toolchain/Graph.chibi --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms 3600000 -- --build /private/tmp/chibi-integration-20261022/pr407/source/build-release --profile release --jobs 2 --all-commands on --target chibi_ctl --target chibi --target chibi-build-host",
+    "82025 42246 82025 /opt/homebrew/Cellar/python@3.13/3.13.16_1/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python -"
+  ],
+  "correction": "Original reason was stale: actual native failure, materials pass, language-all pass before cancellation terminated projects setup. Corrected result source is captured exec20953 output; original reused log paths were overwritten by Release-host rerun. See required-groups-sanitized-first-attempt.json."
+}

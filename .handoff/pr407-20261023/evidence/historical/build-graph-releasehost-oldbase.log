@@ -1,0 +1,11 @@
+graph commands: 972 of 972 match CMake's in 140 libraries
+graph links: 13 of 13 match CMake's
+graph: the build failed
+graph failed: graph: the build failed
+
+Running: commands_match_cmake (OK) (1.408617 secs)
+Running: links_match_cmake (OK) (0.227826 secs)
+Running: executables_stage_no_headers (OK) (0.042131 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 1005
+Test command wall time: 8.857s; includes in-test fixture setup; external configuration/build excluded.

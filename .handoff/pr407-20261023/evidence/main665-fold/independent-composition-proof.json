@@ -1,0 +1,72 @@
+{
+  "candidate": "e12dd7d818f330739aaa8fa26a576221ce344929",
+  "current_HEAD": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "pending_MERGE_HEAD": "c541133b689c620a377982ee339c017b6d12b263",
+  "working_matches_index": true,
+  "main": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+  "common_base_of_current_HEAD_and_main": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "common_ancestors_of_PR_and_main": [
+    "3c65bb60b6f3443aef6ccf4ab15acbe09b04b191"
+  ],
+  "all_PR_main_common_ancestors_reachable_from_base": true,
+  "simulated_later_main_merge_tree": "e12dd7d818f330739aaa8fa26a576221ce344929",
+  "proof_scope": "For later recovery commit with current1bc/c541 parents and tested e12 tree, unique ordinary main merge base is1bc. Future actual merge must verify same tree, HEADs and no drift. No synthetic or branch commit created.",
+  "main_files_identical_to_main": [
+    "PLAN.md",
+    "docs/package-compiler.md",
+    "docs/self-hosting-build.md",
+    "src/authoring/project_compile.c",
+    "src/authoring/project_compile.h",
+    "src/execution/definition.h",
+    "src/execution/function_builder.c",
+    "src/execution/prepared_record.c",
+    "src/host/compile_main.c",
+    "test/language/package_compiler_chibi.c",
+    "test/language/record_prepared_runtime.c",
+    "test/tools/game_equivalence.c",
+    "test/tools/main.c",
+    "tools/compiler/bootstrap/bootstrap.json",
+    "tools/compiler/bootstrap/compiler.chibip",
+    "tools/compiler/package_compiler/Behavior.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/toolchain/StageOne.chibi"
+  ],
+  "recovery_files_identical_to_frozen": [
+    "docs/engine-operation-contracts.md",
+    "docs/engine-operation-validation.md",
+    "docs/evidence/engine-operations/log-sha256.txt",
+    "sdk/CMakeLists.txt",
+    "sdk/README.md",
+    "sdk/contracts.cmake",
+    "src/authoring/source_catalog_snapshot.c",
+    "src/capabilities/catalog.c",
+    "src/capabilities/catalog.h",
+    "src/capabilities/definition.c",
+    "src/capabilities/definition.h",
+    "src/capabilities/operation.c",
+    "src/execution/operation.h",
+    "src/language/semantic_calls.c",
+    "src/runtime/core_definition.c",
+    "src/runtime/native_capabilities.c",
+    "src/runtime/native_definitions.c",
+    "src/runtime/native_definitions.h",
+    "test/language/CMakeLists.txt",
+    "test/language/format.c",
+    "test/language/main.c",
+    "test/language/operations.c",
+    "test/language/program.c",
+    "test/tools/native_catalog.c",
+    "tools/graph/engine/Targets.chibi"
+  ],
+  "textually_reviewed_overlap": [
+    "docs/testing.md",
+    "src/language/lower.c",
+    "tools/test_policy.py"
+  ],
+  "prepared_proof_files_added_after_merge": [
+    "test/language/prepared.c",
+    "test/tools/prepared_runtime.c"
+  ]
+}

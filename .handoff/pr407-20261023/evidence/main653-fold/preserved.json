@@ -1,0 +1,17 @@
+{
+  "before_tree": "e12dd7d818f330739aaa8fa26a576221ce344929",
+  "candidate_tree": "fa24367aa5284d67160118716c538207d3672cd8",
+  "later_ancestry_merge_simulation_tree": "fa24367aa5284d67160118716c538207d3672cd8",
+  "head": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "merge_head": "c541133b689c620a377982ee339c017b6d12b263",
+  "source_mutated": false,
+  "commits_created": false,
+  "tests_run": false,
+  "files": {
+    "candidate.patch": "11c94b598884ba4b878020a1554e2b846876570c85f35a1c8117e2435a67d8ab",
+    "before.patch": "e2e6a556d6566b29789e31ea716abe424885c29e7571572a4883f1370bab2963",
+    "before.tar": "a97494f9a0e49be3f2c2dddd6c82f547cc6ff3628dd1653d196ea4eca3389a09",
+    "before.index": "586a4aaf70d3102ca10a74dca202e51a219c82917d3c6cfd4da2d1342ae78ead",
+    "incoming-main.patch": "16675af2b9fee94e6c04a66e49aae6d9a31f1ec4c9708f41f88b5ab1e11130bc"
+  }
+}

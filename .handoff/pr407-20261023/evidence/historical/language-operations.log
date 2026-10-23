@@ -1,0 +1,57 @@
+operation syntax 1:19 [18,45): Unexpected syntax
+source: Probe :: behavior { value: entity = 0; on Run { saved := ReadOwner<value>(); } }
+operation syntax 1:78 [77,78): Unexpected syntax
+source: Probe :: behavior { value: entity = 0; on Run { saved := ReadOwner<value>(); } }
+operation semantic 1:19 [18,45): Unexpected syntax
+source: Probe :: behavior { value: entity = 0; on Run { saved := ReadOwner<value>(); } }
+operation semantic 1:78 [77,78): Unexpected syntax
+source: Probe :: behavior { value: entity = 0; on Run { saved := ReadOwner<value>(); } }
+operation semantic 1:58 [57,75): State access requires one declared state name
+source: Probe :: behavior { value: entity = 0; on Run { saved := ReadOwner<value>(); } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (373): analyze_source(source[i], &catalog))
+operation semantic 1:49 [48,62): Unknown callable 'engine["Self"]'
+source: Probe :: library { Value :: () -> bool { return engine["Self"]() == engine["Self"](); } }
+operation semantic 1:69 [68,82): Unknown callable 'engine["Self"]'
+source: Probe :: library { Value :: () -> bool { return engine["Self"]() == engine["Self"](); } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (399): analyze_source("Probe :: library { Value :: () -> bool { return engine[\"Self\"]() == engine[\"Self\"](); } }", catalog))
+operation semantic 1:49 [48,62): Unknown callable 'engine["Self"]'
+source: Probe :: library { Value :: () -> bool { return engine["Self"]() == engine["Self"](); } }
+operation semantic 1:69 [68,82): Unknown callable 'engine["Self"]'
+source: Probe :: library { Value :: () -> bool { return engine["Self"]() == engine["Self"](); } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (414): analyze_source("Probe :: library { Value :: () -> bool { return engine[\"Self\"]() == engine[\"Self\"](); } }", catalog))
+operation syntax 1:1 [0,307): Unexpected syntax
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:1 [0,307): Unexpected syntax
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:1 [0,5): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:21 [20,39): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:41 [40,66): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:68 [67,86): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:88 [87,108): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:279 [278,283): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:286 [285,289): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:293 [292,302): Expected behavior, library or system
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:1 [0,307): Source has no executable declaration
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run(duration) { before = engine["Self"](); saved := before; same = engine["Self"]() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (472): analyze_source(source, catalog))
+Running: operations_generate_checked_bindings_and_conservative_contracts (OK) (0.000659 secs)
+Running: operations_reject_malformed_shared_declarations (OK) (0.000053 secs)
+Running: operations_reject_raw_scalar_semantic_metadata (OK) (0.000109 secs)
+Running: operations_reject_dormant_raw_metadata (OK) (0.000071 secs)
+Running: operations_reject_binding_mismatch_and_distinguish_opaque_abi (OK) (0.000101 secs)
+Running: operation_identity_invalidates_source_reuse (OK) (0.002907 secs)
+Running: operations_reject_direct_catalog_state_rewrites 
+Running: operations_reject_custom_lowerer_binding_mismatch 
+Running: owner_alias_preserves_invocation_effects 
+Running: operations_preserve_context_and_delay_lifetimes_on_both_backends 
+===============================================================
+Summary: Passed: 6 Failed: 4 Total: 10 Suites: 0 Asserts: 120
+Test command wall time: 1.431s; includes in-test fixture setup; external configuration/build excluded.

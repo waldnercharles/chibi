@@ -1,0 +1,26 @@
+[
+  {
+    "name": "language-program-rebuild",
+    "exit": 0,
+    "seconds": 15.853,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-program-rebuild-final.log"
+  },
+  {
+    "name": "language-program",
+    "exit": 0,
+    "seconds": 2.311,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-program-final.log"
+  },
+  {
+    "name": "language-modules",
+    "exit": 0,
+    "seconds": 0.743,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-modules-final.log"
+  },
+  {
+    "name": "language-incremental",
+    "exit": 0,
+    "seconds": 0.706,
+    "log": "/tmp/chibi-integration-20261022/pr407/language-incremental-final.log"
+  }
+]

@@ -1,0 +1,15 @@
+native project migration: Cannot migrate /private/tmp/chibi-native-migration.3qfUXZ/content/behaviors/Demo.chibi: Cannot normalize generated calls in behaviors/Demo.chibi at 1:41: Use self instead of Self() [Self()
+x := self.Transform.x
+self.Transform.x = ]
+(FAILED: test/tools/native_catalog.c (551): steps == CHIBI_PROJECT_VERSION - 25)
+Running: native_application_catalog_links_generated_kernels_and_input_reads (OK) (0.010132 secs)
+Running: native_catalog_ranges_come_from_validated_target_layouts (OK) (0.000056 secs)
+Running: native_catalog_preserves_builtin_relationship_identity_and_traits (OK) (0.000011 secs)
+Running: native_catalog_identity_lookup_preserves_order_and_duplicate_errors (OK) (0.000837 secs)
+Running: language_catalog_identity_lookup_keeps_namespaces_zero_and_order (OK) (0.000872 secs)
+Running: language_catalog_retains_and_validates_merged_relationships (OK) (0.000054 secs)
+Running: language_catalog_preserves_owned_template_and_specialization_metadata (OK) (0.000031 secs)
+Running: native_project_migration_finalizes_generated_accessors_retryably 
+===============================================================
+Summary: Passed: 7 Failed: 1 Total: 8 Suites: 0 Asserts: 376
+Test command wall time: 0.338s; includes in-test fixture setup; external configuration/build excluded.

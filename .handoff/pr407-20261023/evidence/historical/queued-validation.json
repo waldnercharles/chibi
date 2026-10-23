@@ -1,0 +1,50 @@
+{
+  "candidate_tree": "fa24367aa5284d67160118716c538207d3672cd8",
+  "eligible_main": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "state": "NOT RUN; awaiting shared local validation slot",
+  "required_commands": [
+    [
+      "make",
+      "test-native"
+    ],
+    [
+      "make",
+      "test-materials"
+    ],
+    [
+      "make",
+      "test-projects"
+    ],
+    [
+      "make",
+      "test-language-all"
+    ],
+    [
+      "make",
+      "test-tools"
+    ],
+    [
+      "make",
+      "check-format"
+    ]
+  ],
+  "additional_affected_coverage": [
+    "fresh prepared producer and runtime-only consumer containing OwnerAlias/Delay",
+    "installed public SDK headers operations/headless without repository header fallback",
+    "actual operations Wasm consumer; installed Emscripten6.0.9 must not be labeled workflow6.0.10",
+    "language-record-prepared and wasm-record-prepared",
+    "main665 package compiler named-result/resource-only and bootstrap recovery/C-export coverage",
+    "main653 build-process/build-toolchain/build-graph/build-sdk with matching Release hosts/archive link records"
+  ],
+  "finalization": [
+    "only tested and reviewed source may finish pending1bc/c541 merge",
+    "ordinary d0 ancestry merge must reproduce tested source tree and frozenheads",
+    "record real finalcommit and regenerated config/artifact identities; source-tree equality is not binary equality",
+    "recheck review thread/denied review-state mutation and actual servergates before landing"
+  ],
+  "source_reviews": [
+    "main665-fold/source-review.md",
+    "main653-fold/source-review.md"
+  ],
+  "historical_evidence_is_not_this_candidate": true
+}

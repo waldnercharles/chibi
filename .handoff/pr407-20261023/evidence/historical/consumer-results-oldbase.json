@@ -1,0 +1,30 @@
+[
+  {
+    "name": "build-graph",
+    "exit": 0,
+    "seconds": 8.939,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/build-graph-releasehost-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e"
+  },
+  {
+    "name": "native-catalog",
+    "exit": 1,
+    "seconds": 0.416,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/native-catalog-releasehost-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e"
+  },
+  {
+    "name": "language-prepared",
+    "exit": 0,
+    "seconds": 0.771,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/language-prepared-releasehost-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e"
+  },
+  {
+    "name": "c-export-alias",
+    "exit": 0,
+    "seconds": 2.897,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/c-export-alias-releasehost-oldbase.log",
+    "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e"
+  }
+]

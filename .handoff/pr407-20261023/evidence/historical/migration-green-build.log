@@ -1,0 +1,61 @@
+[  1%] Built target chibi_support
+[  2%] Built target chibi_json
+[  2%] Built target chibi_fmt
+[  2%] Built target chibi_ui_document_values
+[  3%] Built target chibi_text_search
+[  4%] Built target chibi_asset_kdl
+[  5%] Built target chibi_language_syntax
+[  7%] Built target chibi_types
+[  8%] Built target chibi_asset_values
+[ 10%] Built target chibi_text_source
+[ 12%] Built target chibi_capabilities
+[ 13%] Built target chibi_ecs
+[ 13%] Built target chibi_events
+[ 13%] Built target chibi_value_document
+[ 13%] Built target chibi_native_capabilities
+[ 13%] Built target chibi_fields
+[ 14%] Built target chibi_ui_documents
+[ 15%] Built target chibi_asset_json
+[ 15%] Built target chibi_asset_text
+[ 16%] Built target chibi_vector_capabilities
+[ 17%] Built target chibi_shader_runtime
+[ 19%] Built target chibi_mesh_runtime
+[ 21%] Built target chibi_graph_model
+[ 21%] Built target chibi_input_map
+[ 23%] Built target chibi_project_document
+[ 23%] Built target chibi_reference_index
+[ 24%] Built target chibi_ui_document
+[ 25%] Building C object sdk/language/CMakeFiles/chibi_language.dir/semantic_calls.c.o
+[ 38%] Built target chibi_execution
+[ 38%] Linking C static library libchibi_language.a
+[ 38%] Built target chibi_array_capabilities
+[ 38%] Built target chibi_field_capabilities
+[ 38%] Built target chibi_state_capabilities
+[ 42%] Built target chibi_language
+[ 42%] Built target chibi_selection_capabilities
+[ 43%] Built target chibi_set_capabilities
+[ 43%] Built target chibi_comparison_capabilities
+[ 44%] Built target chibi_conversion_capabilities
+[ 44%] Built target chibi_text_capabilities
+[ 46%] Built target chibi_field_catalog
+[ 46%] Built target chibi_math_capabilities
+[ 47%] Built target chibi_arithmetic_capabilities
+[ 49%] Built target chibi_model_runtime
+[ 50%] Built target chibi_ui_authoring
+[ 50%] Built target chibi_compiler
+[ 51%] Built target chibi_behavior_runtime
+[ 51%] Built target chibi_core_capabilities
+[ 53%] Built target chibi_authoring
+[ 53%] Built target test_behavior_consumer
+[ 55%] Built target chibi_native_prepared
+[ 55%] Built target chibi_scene_runtime
+[ 65%] Built target chibi_graph_authoring
+[ 66%] Built target chibi_scene_document
+[ 70%] Built target chibi_graph_compilation
+[ 75%] Built target chibi_source_presentation
+[ 76%] Built target chibi_prototype_document
+[ 79%] Built target chibi_source_catalog
+[ 79%] Building C object CMakeFiles/test_language.dir/format.c.o
+[ 80%] Linking C executable test_language
+ld: warning: ignoring duplicate libraries: 'sdk/language/libchibi_language_syntax.a', 'sdk/libchibi_arithmetic_capabilities.a', 'sdk/libchibi_array_capabilities.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_core_capabilities.a', 'sdk/libchibi_field_capabilities.a', 'sdk/libchibi_field_catalog.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_json.a', 'sdk/libchibi_math_capabilities.a', 'sdk/libchibi_native_prepared.a', 'sdk/libchibi_state_capabilities.a', 'sdk/libchibi_text_capabilities.a', 'sdk/libchibi_value_document.a'
+[100%] Built target test_language

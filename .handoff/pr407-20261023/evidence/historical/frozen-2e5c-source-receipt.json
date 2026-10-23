@@ -1,0 +1,14 @@
+{
+  "tree": "2e5cff6fb60a0ce980147f55715dbdc93b7a2a74",
+  "head": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "merge_head": "c541133b689c620a377982ee339c017b6d12b263",
+  "files": {
+    "src/language/semantic_calls.c": "8228da7ea9b8f4a4a1b3c3f62c7c5fa6695edc3775aa5c13f9c7282c4c686665",
+    "test/language/format.c": "6d3ff5a8b70605edd6277688ca97cc03da2e15085285fb71726e46fcef1f7e5e",
+    "src/authoring/source_minimize.c": "280291e9020f4a099478e658e4ec7bdaee69b17ccc98347c1122c202946735c1",
+    "src/execution/prepared.h": "50468500004529a465d64d6236f6d57cc7ce4dcbb6cfe0be0de948466b4186ce",
+    "tools/graph/engine/Targets.chibi": "7f2cac4a6ef13e467c4e19ec4a91606d4e5b0c166d865b4cceccee9f9cb50842"
+  },
+  "prepared_version": 20,
+  "state": "Frozen corrected oldbase; before required-group slot and before any local recovery commit or fa1 merge"
+}

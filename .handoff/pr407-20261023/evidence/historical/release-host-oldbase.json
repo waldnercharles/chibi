@@ -1,0 +1,14 @@
+[
+  {
+    "name": "release-host-configure",
+    "exit": 0,
+    "seconds": 27.999,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/release-host-configure-oldbase.log"
+  },
+  {
+    "name": "release-host-build",
+    "exit": 0,
+    "seconds": 31.161,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/release-host-build-oldbase.log"
+  }
+]

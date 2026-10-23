@@ -1,0 +1,17 @@
+build process cancelled
+stopped after 50 seconds: /private/tmp/chibi-integration-20261022/pr407/source/build/sdk/chibi-build-host --root /private/tmp/chibi-integration-20261022/pr407/source --source tools/toolchain/Graph.chibi --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms 50000 -- --build /private/tmp/chibi-graph-XBiGyY/build --jobs 8 --profile sanitizer --debug-compilation-dir build --warnings on --commands-only on
+graph failed: build process cancelled
+
+(FAILED: test/tools/build_graph.c (333): discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only) == 0)
+(FAILED: test/tools/build_graph.c (689): ninja && doc)
+build process cancelled
+stopped after 50 seconds: /private/tmp/chibi-integration-20261022/pr407/source/build/sdk/chibi-build-host --root /private/tmp/chibi-integration-20261022/pr407/source --source tools/toolchain/Graph.chibi --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms 50000 -- --build /private/tmp/chibi-graph-XBiGyY/launcher --jobs 8 --compiler /usr/bin/false --compiler-id Clang --sanitizers address,undefined --third-party /Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party/1fe620fd961e19f266a18169ae9768692f369d17b3ff46080b2756faef0d3567 --archiver /usr/bin/ar --ranlib /opt/homebrew/opt/llvm/bin/llvm-ranlib --target chibi
+graph failed: build process cancelled
+
+(FAILED: test/tools/build_graph.c (542): !access(header, R_OK))
+Running: commands_match_cmake 
+Running: links_match_cmake 
+Running: executables_stage_no_headers 
+===============================================================
+Summary: Passed: 0 Failed: 3 Total: 3 Suites: 0 Asserts: 4
+Test command wall time: 112.333s; includes in-test fixture setup; external configuration/build excluded.

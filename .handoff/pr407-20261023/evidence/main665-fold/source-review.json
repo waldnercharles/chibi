@@ -1,0 +1,53 @@
+{
+  "reviewers": [
+    "/root/recover_407",
+    "/root/recover_407/review_operation_recovery"
+  ],
+  "event_date": "2026-10-22",
+  "scope": "Source-only composition review; no candidate builds/tests or merge approval",
+  "candidate_tree": "e12dd7d818f330739aaa8fa26a576221ce344929",
+  "reviewed_main_delta": [
+    "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+    "5c28191b3ea53afa232c34e37b14fd9b01024aef"
+  ],
+  "preserved_recovery_tree": "2e5cff6fb60a0ce980147f55715dbdc93b7a2a74",
+  "HEAD": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "MERGE_HEAD": "c541133b689c620a377982ee339c017b6d12b263",
+  "working_matches_index": true,
+  "findings": [],
+  "reviewed_blobs": {
+    "src/execution/definition.h": "023155e448f8e4ebf737aca0c697f4f39636886f",
+    "src/execution/function_builder.c": "f112da791cabcf7d9af4234767d61580bfe5bd6b",
+    "src/execution/prepared_record.c": "6d8d482314f9f6006e09d26915c09f1c2e57dec7",
+    "src/language/lower.c": "7c508aa79099f70a131a5ea514f6b6bd325f637c",
+    "src/language/semantic_calls.c": "cf78d612cf1b5cd8473917a7181eabd74ff84175",
+    "test/language/format.c": "3618f15dae98520d630dfd8fd183ae8c0451b72e",
+    "test/language/prepared.c": "12a45da32dbcecd6febdc60182504c4c2fec4749",
+    "test/tools/prepared_runtime.c": "d6f41de5054dde189430e0a4820c5237b7faac13",
+    "tools/test_policy.py": "eeee0a386979de987b109cfa8817ecaa83d3bb72"
+  },
+  "ancestry_proof": "independent-composition-proof.json",
+  "additional_affected_selectors_outside_five_groups": [
+    "language-record-prepared",
+    "wasm-record-prepared",
+    "language-package-compiler-chibi",
+    "language-package-compiler-chibi-compiled",
+    "language-package-compiler-chibi-types",
+    "language-package-compiler-chibi-types-compiled",
+    "language-package-compiler-chibi-imports",
+    "language-package-compiler-chibi-imports-compiled",
+    "language-package-compiler-chibi-behaviors",
+    "language-package-compiler-chibi-behaviors-rest",
+    "game-equivalence-empty",
+    "bootstrap-recovery",
+    "c-export-alias"
+  ],
+  "limits_preserved": {
+    "record_fields": 128,
+    "record_headers": 256,
+    "compiler_instruction_budget": 20000000,
+    "prepared_execution_budget": 1000,
+    "resource_route_child_seconds": 55
+  },
+  "next_step": "Run one exact combined candidate validation after coordinator shared-slot grant; later ordinary main merge must verify identical tree."
+}

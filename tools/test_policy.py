@@ -20,6 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
                                             'build-cmake' if sys.platform == 'darwin' else 'build'))
 PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
+# Process tables can take seconds to enumerate on a loaded host. Bound a stuck
+# inspection separately from the caller's test timeout.
+PROCESS_INSPECTION_SECONDS = 5
 TOOLS = {
     'fixture-format': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fixture-format',
                        str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
@@ -87,6 +90,10 @@ TOOLS = {
                       '--build-process',
                       str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    'build-process-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                           '--build-process-files',
+                           str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                           str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'compiler-artifact': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                          '--compiler-artifact',
                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -127,11 +134,17 @@ TOOLS = {
                               '--build-graph-resources',
                               str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
                               GRAPH_REFERENCE],
+    'build-sdk': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                  '--build-sdk',
+                  str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build-release/sdk/chibi-build-host')),
+                  str(ROOT / os.environ.get('CHIBI_SDK_GRAPH_BUILD_DIR', 'build-release')),
+                  os.environ.get('CHIBI_SDK_THIRD_PARTY_DIR', '')],
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                         str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
+    'third-party-publish': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--third-party-publish'],
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],
     'whole-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-alias'],
     'whole-integer': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-integer'],
@@ -218,6 +231,10 @@ TOOLS = {
         str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
         str(ROOT / os.environ.get('CHIBI_REFERENCE_COMPILER', 'build/sdk/chibi-compile')),
         str(ROOT / os.environ.get('CHIBI_RELEASE_COMPILER_HOST', 'build-release/sdk/chibi-compiler-host'))],
+    'game-equivalence-empty': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--game-equivalence-empty',
+        str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+        str(ROOT / os.environ.get('CHIBI_REFERENCE_COMPILER', 'build/sdk/chibi-compile')),
+        str(ROOT / os.environ.get('CHIBI_RELEASE_COMPILER_HOST', 'build-release/sdk/chibi-compiler-host'))],
     'terrain-playable-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-playable-render',
         str(ROOT / os.environ.get('CHIBI_TERRAIN_PLAYER', 'dist/sdk/bin/chibi-player')),
         os.environ.get('CHIBI_TERRAIN_ARTIFACT', ''), os.environ.get('CHIBI_TERRAIN_RESOURCES', ''),
@@ -269,6 +286,7 @@ TOOLS = {
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
+    'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
     'language-numeric-exact-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -420,7 +438,7 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -474,7 +492,7 @@ GPU_TOOLS = (
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
              'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
              'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
@@ -506,7 +524,7 @@ GROUPS = {
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
                   'contact-benchmark'],
-    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
+    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
                  'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
@@ -546,7 +564,7 @@ def process_children():
     probe = subprocess.Popen(['ps', '-A', '-o', 'pid=,ppid='],
                              stdout=subprocess.PIPE, text=True)
     try:
-        rows, _ = probe.communicate(timeout=1)
+        rows, _ = probe.communicate(timeout=PROCESS_INSPECTION_SECONDS)
     finally:
         if probe.poll() is None:
             probe.kill()
@@ -581,7 +599,7 @@ def cleanup_reader(subreaper):
     try:
         process_children()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        raise RuntimeError('test cleanup unavailable: no usable proc children reader or ps; no test started') from error
+        raise RuntimeError(f'test cleanup unavailable: no usable proc children reader or ps ({error}); no test started') from error
     return lambda: process_children().get(os.getpid(), [])
 
 

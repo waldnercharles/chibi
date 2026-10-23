@@ -1,0 +1,14 @@
+[
+  {
+    "name": "migration-regression-build",
+    "exit": 0,
+    "seconds": 4.389,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-regression-build.log"
+  },
+  {
+    "name": "migration-regression-red",
+    "exit": 1,
+    "seconds": 1.558,
+    "log": "/private/tmp/chibi-integration-20261022/pr407/migration-regression-red.log"
+  }
+]

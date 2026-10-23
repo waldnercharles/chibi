@@ -49,7 +49,8 @@ target_link_libraries(my_target PRIVATE Chibi::types)
 Set `CMAKE_PREFIX_PATH` to the installation. `Chibi::support` provides arenas and
 allocation; `Chibi::ecs` provides entity storage, queries, structural commands and
 execution views without graph dependencies; `Chibi::execution_contract` provides
-instruction/host/status contracts.
+instruction/host/status contracts and the checked engine-operation mapping,
+using the parser-free capabilities package for shared semantic descriptors.
 `Chibi::asset_values` owns document values and their storage. `Chibi::value_document`
 converts reflected values to owned documents and reads documents into caller-owned
 arenas. Failed reads leave the output value unchanged. Both are optional dependencies for
@@ -57,7 +58,11 @@ consumers; execution and ECS do not depend on either target.
 `Chibi::capabilities` owns declaration identities, types, signatures and effects.
 It is available without the language parser. `Chibi::native_capabilities` joins
 those declarations to host, access, command and query descriptors and validates
-their declaration/layout ABI. The compiler's native binding adapter resolves this
+their declaration/layout ABI. The core Owner/Delay operations generate
+checked bindings from their shared definitions; their signatures, effects,
+ownership guarantees and lowering identity are described in
+[engine operation contracts](../docs/engine-operation-contracts.md).
+The compiler's native binding adapter resolves this
 table by stable identity. Prepared linkage checks the recorded declaration ABI.
 `Chibi::core_capabilities`, `Chibi::array_capabilities`,
 `Chibi::field_capabilities` and `Chibi::state_capabilities` supply shared native

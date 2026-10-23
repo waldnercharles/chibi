@@ -1,0 +1,28 @@
+{
+  "current_tree": "2e5cff6fb60a0ce980147f55715dbdc93b7a2a74",
+  "base": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "pending_merge_parent": "c541133b689c620a377982ee339c017b6d12b263",
+  "worktree_matches_index": true,
+  "next_main": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "current_focused_results": "migration-focused3-results.json",
+  "broad_groups": "queued for shared capacity; must pass before checkpoint commit",
+  "consumer_previous_tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e",
+  "pending": [
+    "corrected oldbase five groups",
+    "ordinary merge checkpoint then fa1 integration",
+    "core operation fresh prepared proof",
+    "final native groups/graph/consumers",
+    "local Wasm6.0.9-git Node26.8.1",
+    "installed minimal language SDK"
+  ],
+  "log_sha256": {
+    "migration-focused3-format.log": "deff17a058eea118957c68ee3047c3d44bdb9a60ac4f3f9bab77e06a74bd3b4f",
+    "migration-focused3-operations.log": "a2befe93e0146763f0e223f60c788f312c9d50fe18a47a3827a8cb81f4a4a6fd",
+    "migration-focused3-query.log": "010500e12ed9fd05baf3479811f90f83532a74a4d27f792efd0281c37b3a5dc9",
+    "migration-focused3-native-catalog.log": "1955e6c962a645e57222f995ec71c9276aa01b7cecc59af7ec3fa059e65ab1ca",
+    "migration-focused3-check-format.log": "9bc7e288a9b6da2f4d4e6cd941320988798228f6ea3b917df2f7527f15e6b680",
+    "build-graph-releasehost-oldbase.log": "df0820338067327442c5be9d7e0a1a28421dfd6c35bdd6ff35af93de67dcea19",
+    "language-prepared-releasehost-oldbase.log": "9058facebee545473d8c1542c9232ae53807254a4d6c8c20d4c943431bf9dab3",
+    "c-export-alias-releasehost-oldbase.log": "6307b4285b710555821fa6d649305ce386d2672556385b2f804c1d53f76f4d3e"
+  }
+}

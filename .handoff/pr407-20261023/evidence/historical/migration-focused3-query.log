@@ -1,0 +1,109 @@
+Running: program_descriptor_field_observers_compare_all_bytes (OK) (0.000203 secs)
+Running: program_reduction_updates_preserve_clock_and_event_order (OK) (0.003269 secs)
+Running: program_reduction_query_rows_count_filtered_candidates (OK) (0.000298 secs)
+Running: program_query_sources_resolve_current_targets_and_nearest_ancestors (OK) (0.001042 secs)
+Running: program_query_required_path_keeps_one_instance_per_root (OK) (0.000271 secs)
+Running: program_query_joins_filter_targets_and_refresh_across_suspension (OK) (0.000890 secs)
+Running: program_query_optional_joins_preserve_missing_target_exclusions (OK) (0.000360 secs)
+Running: program_relationship_loops_stream_targets_explicitly (OK) (0.001022 secs)
+Running: program_query_chained_variables_filter_values_and_keep_event_tuples (OK) (0.002480 secs)
+Running: program_query_rows_keep_locals_and_cancel_removed_tuple (OK) (0.000410 secs)
+Running: program_query_changed_preserves_busy_published_writes (OK) (0.000861 secs)
+Running: program_query_admission_is_frozen_before_row_writes (OK) (0.000303 secs)
+Running: program_query_value_filters_preserve_short_circuit_failure_order (OK) (0.000853 secs)
+Running: program_query_predicates_reuse_bounded_scratch_and_fresh_values (OK) (0.001467 secs)
+Running: query_binding_direct_matches_host_values_and_failures (OK) (0.000399 secs)
+Running: query_binding_rejects_invalid_immediates_and_types (OK) (0.000014 secs)
+Running: query_binding_unused_load_preserves_branches_and_budget (OK) (0.000033 secs)
+Running: query_binding_preserves_live_integer_slots (OK) (0.000041 secs)
+Running: query_binding_prepared_roundtrip_preserves_errors_and_values (OK) (0.000057 secs)
+Running: query_binding_predicate_requires_bound_variables_transitively (OK) (0.000010 secs)
+Running: query_binding_dispatch_has_bounded_measurements QUERY_BINDING path=direct_query_variable backend=vm trial=0 reads=512 us_per_read=0.089844 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=1 reads=512 us_per_read=0.091797 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=2 reads=512 us_per_read=0.087890 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=3 reads=512 us_per_read=0.087891 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=4 reads=512 us_per_read=0.087890 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=0 reads=512 us_per_read=0.021485 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=1 reads=512 us_per_read=0.019531 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=2 reads=512 us_per_read=0.019531 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=3 reads=512 us_per_read=0.021485 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=4 reads=512 us_per_read=0.019531 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.000297 secs)
+Running: query_change_versions_saturate (OK) (0.000004 secs)
+Running: query_predicates_roundtrip_with_services_effects_and_preflight (OK) (0.000136 secs)
+Running: query_binding_publication_and_prepared_reader_reject_forged_bound_masks (OK) (0.000084 secs)
+Running: query_binding_authored_join_lowers_without_host_banks (OK) (0.000055 secs)
+Running: query_binding_order_is_checked_before_publication (OK) (0.000066 secs)
+Running: query_predicate_purity_is_rechecked_after_native_linking (OK) (0.000041 generic 1:44: Compile-time evaluation: Assertion failed: n is negative
+generic 1:44: Compile-time evaluation: Assertion failed: n >= 0
+generic 1:44: Compile-time evaluation: Assertion failed: negative
+generic 1:44: Compile-time evaluation: Assertion failed: n >= 0
+generic 1:92: Conflicting polymorphic argument 'T'
+generic 1:79: Unknown callable 'Same'
+generic 1:74: Compile-time evaluation: only constant values and types are available
+generic 1:54: Compile-time evaluation: bounded execution budget exceeded
+generic 1:78: Type specialization requires each constant parameter exactly once within the specialization budget
+generic 1:78: Compile-time evaluation: requires a terminating authored procedure and constant arguments
+generic 1:78: Type expression must construct a compile-time type
+generic 1:96: Struct literal needs an explicit record or reflected type
+generic 1:97: Unknown/ambiguous literal member 'value'
+generic 1:55: Compile-time evaluation: call depth exceeded
+generic 1:86: Unknown polymorphic argument
+generic 1:77: Unknown callable 'Identity'
+generic 1:86: Unknown argument 'missing'
+generic 1:55: Compile-time evaluation: constant does not fit the conversion type
+generic 1:56: Compile-time evaluation: a conversion argument may only be named wrap or clamp
+generic 1:93: Type expression must construct a compile-time type
+generic 1:51: Compile-time evaluation: wrap and clamp convert between integer types
+generic 1:92: Type expression must construct a compile-time type
+generic 1:43: Record fields require concrete nonoptional value layouts; collections and references are not supported
+generic 1:18: Constructed record requires supported fixed-layout fields
+generic 1:67: Compile-time evaluation: requires a terminating authored procedure and constant arguments
+generic 1:67: Type expression must construct a compile-time type
+generic 1:85: Struct literal needs an explicit record or reflected type
+generic 1:86: Unknown/ambiguous literal member 'items'
+secs)
+Running: query_predicate_purity_follows_each_outlined_callee (OK) (0.000037 secs)
+Running: query_predicate_context_cannot_be_recovered_through_bank_aliases (OK) (0.000015 secs)
+Running: maps_intrinsics_reject_incompatible_result_banks (OK) (0.000003 secs)
+Running: maps_preserve_value_copies_and_snapshot_insertion_order (OK) (0.001252 secs)
+Running: maps_index_finds_every_key_in_insertion_order (OK) (0.021026 secs)
+Running: maps_local_updates_in_place (OK) (0.064820 secs)
+Running: maps_infer_literals_and_compose_with_nested_maps_and_arrays (OK) (0.001604 secs)
+Running: maps_absent_keys_read_zero_values (OK) (0.001900 secs)
+Running: maps_absent_record_keys_read_defaults_or_report_missing_keys (OK) (0.000855 secs)
+Running: maps_and_optionals_coalesce_nil_to_fallbacks (OK) (0.002171 secs)
+Running: maps_reject_missing_context_and_incompatible_key_value_types (OK) (0.000316 secs)
+Running: maps_own_strings_compare_associations_and_reject_nonfinite_keys (OK) (0.000004 secs)
+Running: maps_wire_preserves_nested_types_and_rejects_truncated_payloads (OK) (0.000009 secs)
+Running: maps_wire_charges_the_index_to_the_storage_limit (OK) (0.000016 secs)
+Running: maps_source_literal_round_trips_typed_keys_and_values (OK) (0.000115 secs)
+Running: maps_retain_nested_task_results_until_the_last_handle_is_removed (OK) (0.000924 secs)
+Running: maps_inspection_owns_nested_snapshots_after_mutation_and_program_release (OK) (0.000670 secs)
+Running: iteration_array_items_and_indices_keep_snapshot (OK) (0.000412 secs)
+Running: iteration_unicode_strings_keep_scalar_values_and_snapshot (OK) (0.000358 secs)
+Running: iteration_reference_items_write_source_and_preserve_copied_alias (OK) (0.000629 secs)
+Running: iteration_reference_lifetimes_reject_invalidation_and_suspension (OK) (0.000175 secs)
+Running: iteration_unicode_intrinsics_reject_invalid_scalars (OK) (0.000002 secs)
+Running: iteration_cursor_provenance_rejects_forged_inputs (OK) (0.000005 secs)
+Running: iteration_cursor_survives_suspension (OK) (0.000239 secs)
+===============================================================
+Running: language_generic_suite
+---------------------------------------------------------------
+Running: generic_argument_types_specialize_once_and_execute (OK) (0.000456 secs)
+Running: generic_constant_parameters_and_authored_compile_time_calls (OK) (0.000810 secs)
+Running: compile_time_conversions_follow_runtime_modes (OK) (0.000585 secs)
+Running: generic_explicit_casts_and_typed_locals_infer_the_same_type (OK) (0.000111 secs)
+Running: generic_array_binders_preserve_nested_collection_descriptors (OK) (0.000071 secs)
+Running: generic_reference_arguments_copy_unless_the_parameter_declares_ref (OK) (0.000564 secs)
+Running: generic_constructed_units_compute_return_types_without_stored_dimensions (OK) (0.001286 secs)
+Running: generic_compile_time_assert_fails_compilation (OK) (0.000384 secs)
+Running: generic_constraints_and_compile_time_execution_are_bounded (OK) (0.016391 secs)
+Running: generic_empty_record_bindings_specialize_once (OK) (0.000063 secs)
+Running: compile_time_calls_preserve_numeric_names_and_owned_strings (OK) (0.001595 secs)
+Running: generic_constructed_types_preserve_array_optional_and_reference_modifiers (OK) (0.003652 secs)
+Running: compile_time_string_alias_survives_analysis_destruction (OK) (0.000286 secs)
+Running: legacy_bounded_generic_aliases_migrate_but_unbound_require_binders (OK) (0.000496 secs)
+===============================================================
+Summary: Passed: 65 Failed: 0 Total: 65 Suites: 1 Asserts: 11601
+Test command wall time: 0.241s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,12 @@
+{
+  "head": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "merge_head": "c541133b689c620a377982ee339c017b6d12b263",
+  "before_tree": "2e5cff6fb60a0ce980147f55715dbdc93b7a2a74",
+  "eligible_main": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+  "files": {
+    "eligible-main.patch": "b52a028d6cc446b21afee205496b54cc63a79323c84afa416744ae1c78dbb27f",
+    "before.patch": "e87473657aeff42a0575413e9945f1c0eb0a598c168509630a6ea3cef95743f4",
+    "before.tar": "28c37e6eb6701b47810313c955e92486090e532c46879f83f734b2811681d27b",
+    "before.index": "68a0cb3a48e6e1582b6ab294bf57063d4f25aa6495bada13c30bb02c37f05d43"
+  }
+}

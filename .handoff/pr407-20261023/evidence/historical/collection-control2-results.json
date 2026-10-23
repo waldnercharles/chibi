@@ -1,0 +1,50 @@
+{
+  "results": [
+    {
+      "name": "collection-control2-build",
+      "exit": 0,
+      "seconds": 17.304,
+      "log": "/tmp/chibi-integration-20261022/pr407/collection-control2-build.log"
+    },
+    {
+      "name": "collection-control2-operations",
+      "exit": 1,
+      "seconds": 2.595,
+      "log": "/tmp/chibi-integration-20261022/pr407/collection-control2-operations.log"
+    },
+    {
+      "name": "collection-control2-restored-build",
+      "exit": 0,
+      "seconds": 9.088,
+      "log": "/tmp/chibi-integration-20261022/pr407/collection-control2-restored-build.log"
+    },
+    {
+      "name": "collection-control2-restored-operations",
+      "exit": 0,
+      "seconds": 1.142,
+      "log": "/tmp/chibi-integration-20261022/pr407/collection-control2-restored-operations.log"
+    }
+  ],
+  "negative_control_detected_acceptance": true,
+  "source_sha256": "abc57d54a184835a6b4d0250a209d890c3e24d54b13b908a6691d7074e1ee567",
+  "before_binary_sha256": "dc451a116eedf1c0676b5fca142b0030709ba3bcee21141818b794eda57aa2ce",
+  "after_binary_sha256": "dbb515515943d38fdf6119dfa544932be601a7065e78079a732c3d8d24f1cda7",
+  "binary_equal": false,
+  "text_section_hashes_before": {
+    "__text": "f1b3311cbb53a089d4e371c9e74b5beb04514bfeebe95e2e0d3076905d222ac8",
+    "__stubs": "7ab85026741d6cc4326d8bd5c4052b44bf728bd5ae3d0410c7344893a94b7562",
+    "__cstring": "295ca8c848fc2fa9439056d4191171d2c2ebe8034c0f54ebc6e4565e70e48638",
+    "__const": "308094e2c386be5f6b995a6d2604036e7b10835d088af167d27e3c1f2ccafb08",
+    "__unwind_info": "86e1127e76820081950e0414c4b735a5168a289e377aff06f7cc6c97b1d756cc"
+  },
+  "text_section_hashes_after": {
+    "__text": "f1b3311cbb53a089d4e371c9e74b5beb04514bfeebe95e2e0d3076905d222ac8",
+    "__stubs": "7ab85026741d6cc4326d8bd5c4052b44bf728bd5ae3d0410c7344893a94b7562",
+    "__cstring": "295ca8c848fc2fa9439056d4191171d2c2ebe8034c0f54ebc6e4565e70e48638",
+    "__const": "308094e2c386be5f6b995a6d2604036e7b10835d088af167d27e3c1f2ccafb08",
+    "__unwind_info": "86e1127e76820081950e0414c4b735a5168a289e377aff06f7cc6c97b1d756cc"
+  },
+  "text_sections_equal": true,
+  "source_restored": true,
+  "tree": "0f39cae2e4fdad646332c3e0c3ab743da30ae18e"
+}

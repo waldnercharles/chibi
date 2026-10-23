@@ -314,6 +314,7 @@ static bool add_definition(
         .outcome_count = acount(a->outcomes),
         .completion_outcome = completion,
         .effects = source->effects,
+        .operation = source->operation,
         .receiver = type_id(source->receiver_type),
         .pure = source->pure,
         .variadic = source->variadic,
@@ -358,6 +359,9 @@ static bool add_definition(
         ((c.component_entity != -1 && !ordinal(c.component_entity, c.parameter_count)) ||
          (c.component_value != -1 && !ordinal(c.component_value, c.parameter_count)))) {
         return fail(error, size, source->canonical_name, "Invalid component port ordinal");
+    }
+    if (!script_catalog_operation_valid(&c)) {
+        return fail(error, size, source->canonical_name, "Invalid engine operation declaration");
     }
     apush(out->capabilities, c);
     return true;

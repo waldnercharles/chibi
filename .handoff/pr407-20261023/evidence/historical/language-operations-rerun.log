@@ -1,0 +1,28 @@
+operation semantic 1:49 [48,52): Use self instead of Self()
+source: Probe :: library { Value :: () -> bool { return Self() == Self(); } }
+operation semantic 1:59 [58,62): Use self instead of Self()
+source: Probe :: library { Value :: () -> bool { return Self() == Self(); } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (399): analyze_source("Probe :: library { Value :: () -> bool { return Self() == Self(); } }", catalog))
+operation semantic 1:49 [48,52): Use self instead of Self()
+source: Probe :: library { Value :: () -> bool { return Self() == Self(); } }
+operation semantic 1:59 [58,62): Use self instead of Self()
+source: Probe :: library { Value :: () -> bool { return Self() == Self(); } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (414): analyze_source("Probe :: library { Value :: () -> bool { return Self() == Self(); } }", catalog))
+operation semantic 1:150 [149,153): Use self instead of Self()
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run :: (duration: double) { before = Self(); saved := before; same = Self() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+operation semantic 1:182 [181,185): Use self instead of Self()
+source: Probe :: behavior { before: entity = 0; resumed_value: entity = 0; same: bool = false; text: string = "old"; on Run :: (duration: double) { before = Self(); saved := before; same = Self() == self; saved_text := text; text = "new"; await delay(duration); resumed_value = saved; text = saved_text; } }
+(FAILED: /private/tmp/chibi-integration-20261022/pr407/source/test/language/operations.c (472): analyze_source(source, catalog))
+Running: operations_generate_checked_bindings_and_conservative_contracts (OK) (0.000621 secs)
+Running: operations_reject_malformed_shared_declarations (OK) (0.000077 secs)
+Running: operations_reject_raw_scalar_semantic_metadata (OK) (0.000111 secs)
+Running: operations_reject_dormant_raw_metadata (OK) (0.000125 secs)
+Running: operations_reject_binding_mismatch_and_distinguish_opaque_abi (OK) (0.000201 secs)
+Running: operation_identity_invalidates_source_reuse (OK) (0.003279 secs)
+Running: operations_reject_direct_catalog_state_rewrites (OK) (0.000271 secs)
+Running: operations_reject_custom_lowerer_binding_mismatch 
+Running: owner_alias_preserves_invocation_effects 
+Running: operations_preserve_context_and_delay_lifetimes_on_both_backends 
+===============================================================
+Summary: Passed: 7 Failed: 3 Total: 10 Suites: 0 Asserts: 125
+Test command wall time: 0.956s; includes in-test fixture setup; external configuration/build excluded.

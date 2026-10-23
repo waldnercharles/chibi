@@ -126,8 +126,12 @@ The earlier explicit-call-site rule is superseded. Subsequent discussion
 rejected late cancellation after unrelated post-await effects: a component that
 may still be accessed, including conditionally, must remain a dependency so
 removal cancels before authored continuation. Do not bind every passively stored
-pointer or expose the rejected `on health` spelling. The inference producer and
-dependency-end rules remain separate from the private runtime target list.
+pointer or expose the rejected `on health` spelling. The owner then approved
+retaining an inferred dependency until task completion, including after the
+last access: target removal cancels pending independent effects in that same
+task. Compiler liveness optimizations must not release it early. The inference
+producer and handling of targets selected later remain separate from the
+private runtime target list.
 
 The query owner owns the separate task-lifetime runtime increment in
 `program_tasks.c`, `program_internal.h`, `program_activation.c`, `program.c`,

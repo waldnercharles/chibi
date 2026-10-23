@@ -220,11 +220,19 @@ have been skipped. Earlier effects are not rolled back. This applies to
 removable engine-owned targets used by tasks or behaviors, not only systems;
 ordinary managed pointers retain their allocations.
 
-The inference representation, handling of targets selected later, and when a
-dependency can end remain to be specified. An independent value copied before
-an await is distinct from a retained pointer used afterward. Compiler
-optimizations must not change observable cancellation timing. The runtime's
-fixed target-set prototype is not proof of complete authored inference.
+The owner then approved keeping an inferred dependency until the task finishes,
+even after its final component access. For example, `Poison(health)` applies
+damage, waits, then plays a completion sound without reading health again.
+Removing health during that wait cancels the sound and the rest of Poison.
+Copying a component value inside an already-bound task does not detach the task.
+A surviving caller can start separate work using copied values; ordinary child
+task cancellation still applies, so spawning a child does not let it escape its
+parent's cancellation. Completed successful tasks retain their results.
+
+The inference representation and handling of targets selected later remain to
+be specified. Compiler optimizations must not end a dependency early or change
+observable cancellation timing. The runtime's fixed target-set prototype is
+not proof of complete authored inference.
 
 Removal takes effect at safe execution boundaries. A bound operation must not
 consume a pending request's result or execute another authored continuation

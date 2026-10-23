@@ -1112,7 +1112,10 @@ site and requested inference. Exploring conditional access exposed a key rule:
 do not run unrelated post-await effects before deciding whether a removed target
 was needed. A possible future component access must keep cancellation active
 before continuation, including a conditional access. Passive handle storage
-does not itself establish that use. Dependency-end rules and targets selected
-later remain design questions; cancellation timing must not depend on optimizer
-choices. The private runtime binding seam remains useful; no public modifier is
-approved.
+does not itself establish that use. The owner then approved retaining every
+inferred dependency until task completion, even after the last target access:
+removing health while Poison waits also cancels its later completion sound.
+Copied values do not detach an already-bound task, and ordinary child-task
+cancellation still applies. Targets selected later remain a design question;
+cancellation timing must not depend on optimizer choices. The private runtime
+binding seam remains useful; no public modifier is approved.

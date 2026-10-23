@@ -192,13 +192,15 @@ Approved: operations bound to an original component or entity cancel when that
 target is removed. Removal respects safe execution boundaries and reuses
 task-tree cancellation and typed `Cancelled` results. The owner subsequently
 rejected a public call-site marker and requested inferred dependencies. The
-latest direction cancels at removal while a task may still access its original
-target, including conditional future access; cancellation occurs at a safe
-boundary before further authored continuation. Do not wait until a later access
-and allow unrelated post-await side effects first. This applies to removable
-component/entity targets, not ordinary managed allocations. Completed snapshots
-and value-only work remain a separate precision discussion. No dependency
-inference is implemented by this task prerequisite. Resource cleanup means
+latest direction retains inferred dependencies until task completion, even
+after the final target access. Conditional access also creates a dependency;
+removal cancels at a safe boundary before further authored continuation,
+including unrelated post-await effects in that task. This applies to removable
+component/entity targets, not ordinary managed allocations. Copying values does
+not detach an already-bound task; independent value-only work belongs in a
+separate task and remains subject to ordinary parent/child cancellation. Targets
+selected later still need a precise binding rule. No dependency inference is
+implemented by this task prerequisite. Resource cleanup means
 pending requests and captured values; no authored cleanup callback is implied,
 and earlier effects are not rolled back.
 

@@ -1,6 +1,6 @@
 # The preserved shader contracts are compiled by the ordinary package fixture.
 # This does not install a service or register a compiler Analyze producer.
-foreach(part COMPILER_FACTS:compiler_facts/Facts.chibi SHADER_SOURCE:shader_source/SourceMap.chibi)
+foreach(part COMPILER_FACTS:compiler_facts/Facts.chibi SHADER_SOURCE:shader_source/SourceMap.chibi SHADER_LOWER:shader_source/Lower.chibi)
     string(REPLACE ":" ";" part "${part}")
     list(GET part 0 name)
     list(GET part 1 file)

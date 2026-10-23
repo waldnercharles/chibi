@@ -1,5 +1,6 @@
 #include "compiler_fixture.h"
 #include "package_core_source.h"
+#include "runtime/shaders/program.h"
 #include "shader_source_chibi_source.h"
 #include "syntax_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -7,10 +8,11 @@
 #include "types/union.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
-/* Seven cases, 84 explicit policy calls on bytecode and the configured compiled
- * backend; four source files are prepared once per backend.
+/* Twelve cases, 84 policy and 66 lowering calls on bytecode and the configured
+ * compiled backend; five source files are prepared once per backend.
  * Inputs are explicitly supplied provenance, not compiler-produced facts or
  * authored-material acceptance. Each call has a one-million instruction cap;
  * no rendering, subprocesses, source discovery or prepared service is used. */
@@ -21,8 +23,11 @@ static const uint64_t ALIAS = UINT64_C(0xfedcba9876543212);
 static compiler_fixture fixture;
 static bool prepared;
 static int calls;
+static int lower_calls;
 static arena input, detached, retained[2];
 static pin_value kept[2];
+static arena lower_retained[2];
+static pin_value lower_kept[2];
 
 static void cleanup()
 {
@@ -80,12 +85,21 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
     pin_value value;
     REQUIRE(read(row, name, &value) && value.type == PIN_STR);
     pin_string text = pin_text(value);
+    if (text.length != strlen(expected) || memcmp(text.bytes, expected, text.length)) {
+        fprintf(
+            stderr,
+            "shader text: expected %s, received %.*s\n",
+            expected,
+            (int)text.length,
+            text.bytes
+        );
+    }
     REQUIRE(text.length == strlen(expected) && !memcmp(text.bytes, expected, text.length));
     return true;
 }
-static bool rows(int backend, const char *name, int count, pin_value *out)
+static bool package_rows(int backend, const char *package, const char *name, int count, pin_value *out)
 {
-    const pin_record *shape = compiler_fixture_record(&fixture, backend, PACKAGE, name, &input);
+    const pin_record *shape = compiler_fixture_record(&fixture, backend, package, name, &input);
     REQUIRE(shape);
     pin_array
         *array = pin_array_snapshot_allocate(&input, PIN_STRUCT, shape->type.name, count);
@@ -104,6 +118,10 @@ static bool rows(int backend, const char *name, int count, pin_value *out)
         memset(array->items[i].ptr, 0, shape->type.size);
     }
     return true;
+}
+static bool rows(int backend, const char *name, int count, pin_value *out)
+{
+    return package_rows(backend, PACKAGE, name, count, out);
 }
 static pin_value *row(pin_value *array, int index)
 {
@@ -171,6 +189,12 @@ static bool tagged(
     );
     REQUIRE(type && value->type == PIN_UNION && value->ptr);
     const pin_union *data = value->ptr;
+    if (data->count != count && data->count == 1 && data->values[0].type == PIN_STRUCT) {
+        pin_value message;
+        REQUIRE(read(data->values, "message", &message));
+        pin_string text = pin_text(message);
+        fprintf(stderr, "shader rejected: %.*s\n", (int)text.length, text.bytes);
+    }
     REQUIRE(data->count == count);
     for (int i = 0; i < type->variant_count; i++) {
         if (!strcmp(type->variants[i].name, name)) {
@@ -197,8 +221,11 @@ TEST_CASE(shader_policy_prepares_preserved_sources)
         { "shader_source/SourceMap.chibi",
           SHADER_SOURCE_CHIBI_SOURCE,
           sizeof SHADER_SOURCE_CHIBI_SOURCE - 1 },
+        { "shader_source/Lower.chibi",
+          SHADER_LOWER_CHIBI_SOURCE,
+          sizeof SHADER_LOWER_CHIBI_SOURCE - 1 },
     };
-    REQUIRE(compiler_fixture_prepare(&fixture, sources, 4));
+    REQUIRE(compiler_fixture_prepare(&fixture, sources, 5));
     prepared = true;
     for (int b = 0; b < 2; b++) {
         const pin_record *origin = compiler_fixture_record(
@@ -482,10 +509,460 @@ TEST_CASE(shader_policy_rejects_absent_queries_and_broken_chains)
     }
     return true;
 }
+/* Supplied semantic rows only. The labels below are provenance test bytes,
+ * deliberately not presented as output from an ordinary Analyze producer. */
+static bool facts_rows(int b, const char *name, int count, pin_value *out)
+{
+    return package_rows(b, "project:compiler_facts", name, count, out);
+}
+static bool facts_result(int b, const char *name, const pin_value *payload, int count, pin_value *out)
+{
+    const char *package = "project:compiler_facts";
+    const authoring_package *owner = compiler_fixture_package(&fixture, b, package);
+    REQUIRE(owner && owner->exports && owner->exports->metadata);
+    const script_catalog_type *type = script_catalog_type_by_id(
+        owner->exports->metadata,
+        compiler_fixture_export(&fixture, b, package, "Result")
+    );
+    REQUIRE(type);
+    for (int i = 0; i < type->variant_count; i++) {
+        if (!strcmp(type->variants[i].name, name)) {
+            REQUIRE(!compiler_fixture_union(&input, type->variants[i].tag, payload, count, out));
+            return true;
+        }
+    }
+    REQUIRE(false);
+    return false;
+}
+static bool scalar_facts(int b, pin_value p[10], pin_value *target)
+{
+    p[0] = integer(0);
+    REQUIRE(facts_rows(b, "Document", 1, &p[1]));
+    REQUIRE(put_text(row(&p[1], 0), "identity", "supplied-facts:scalar"));
+    REQUIRE(put_text(row(&p[1], 0), "key", "scalar"));
+    REQUIRE(put_text(row(&p[1], 0), "path", "scalar.chibi"));
+    REQUIRE(put_text(row(&p[1], 0), "text", "scalar fixture provenance"));
+    REQUIRE(facts_rows(b, "Origin", 13, &p[2]));
+    for (int i = 0; i < 13; i++) {
+        pin_value *origin = row(&p[2], i);
+        REQUIRE(put(origin, "document", integer(0)));
+        REQUIRE(put(origin, "node", integer(10000 + i)));
+        REQUIRE(put(origin, "start", integer(i)));
+        REQUIRE(put(origin, "end", integer(i + 1)));
+        REQUIRE(put(origin, "line", integer(1)));
+        REQUIRE(put(origin, "column", integer(i + 1)));
+        REQUIRE(put(origin, "occurrence", identity(UINT64_C(0xfedc000000000000) + i)));
+    }
+    REQUIRE(facts_rows(b, "Type", 2, &p[3]));
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(put(row(&p[3], i), "storage", integer(PIN_F32)));
+    }
+    REQUIRE(facts_rows(b, "Field", 0, &p[4]));
+    REQUIRE(facts_rows(b, "Function", 1, &p[5]));
+    pin_value *function = row(&p[5], 0);
+    REQUIRE(put(function, "semantic", identity(UINT64_C(0x8000000000000001))));
+    REQUIRE(put_text(function, "name", "Shade"));
+    REQUIRE(put(function, "statement_count", integer(3)));
+    REQUIRE(put(function, "native_kind", integer(-1)));
+    REQUIRE(put(function, "intrinsic", integer(-1)));
+    REQUIRE(facts_rows(b, "Binding", 2, &p[6]));
+    for (int i = 0; i < 2; i++) {
+        pin_value *binding = row(&p[6], i);
+        REQUIRE(put(binding, "origin", integer(i ? 5 : 2)));
+        REQUIRE(put_text(binding, "name", i ? "alias" : "value"));
+        REQUIRE(put(binding, "role", integer(1)));
+        REQUIRE(put(binding, "ordinal", integer(i)));
+        REQUIRE(put(binding, "initializer", integer(i)));
+        REQUIRE(put(binding, "write_origin", integer(-1)));
+        REQUIRE(put(binding, "ref_origin", integer(-1)));
+    }
+    REQUIRE(facts_rows(b, "Statement", 3, &p[7]));
+    for (int i = 0; i < 3; i++) {
+        pin_value *statement = row(&p[7], i);
+        REQUIRE(put(statement, "kind", integer(i < 2 ? 1 : 2)));
+        REQUIRE(put(statement, "origin", integer(i * 3 + 1)));
+        REQUIRE(put(statement, "binding", integer(i < 2 ? i : -1)));
+        REQUIRE(put(statement, "expression", integer(i < 2 ? i : 6)));
+    }
+    REQUIRE(facts_rows(b, "Expression", 7, &p[8]));
+    const int kinds[] = { 1, 2, 2, 1, 3, 1, 3 };
+    const int origins[] = { 3, 6, 8, 9, 10, 11, 12 };
+    for (int i = 0; i < 7; i++) {
+        pin_value *expression = row(&p[8], i);
+        REQUIRE(put(expression, "kind", integer(kinds[i])));
+        REQUIRE(put(expression, "origin", integer(origins[i])));
+        REQUIRE(
+            put(expression,
+                "binding",
+                integer(
+                    i == 1   ? 0
+                    : i == 2 ? 1
+                             : -1
+                ))
+        );
+        REQUIRE(put(expression, "callee", integer(-1)));
+        REQUIRE(put(expression, "field", integer(-1)));
+        REQUIRE(put(expression, "operand_type", integer(kinds[i] == 3 ? 0 : -1)));
+        REQUIRE(put(expression, "first_argument", integer(i == 6 ? 2 : 0)));
+        REQUIRE(put(expression, "argument_count", integer(kinds[i] == 3 ? 2 : 0)));
+        REQUIRE(
+            put(expression,
+                "operation",
+                integer(
+                    i == 4   ? 1
+                    : i == 6 ? 2
+                             : 0
+                ))
+        );
+    }
+    REQUIRE(put(row(&p[8], 0), "bits", identity(UINT32_C(0x3f000000))));
+    REQUIRE(put(row(&p[8], 3), "bits", identity(UINT32_C(0x3e000000))));
+    REQUIRE(put(row(&p[8], 5), "bits", identity(UINT32_C(0x40000000))));
+    REQUIRE(facts_rows(b, "Argument", 4, &p[9]));
+    const int operands[] = { 2, 3, 4, 5 };
+    for (int i = 0; i < 4; i++) {
+        pin_value *argument = row(&p[9], i);
+        REQUIRE(put(argument, "expression", integer(operands[i])));
+        REQUIRE(put(argument, "parameter", integer(-1)));
+        REQUIRE(put(argument, "field", integer(-1)));
+        REQUIRE(put(argument, "origin", integer(origins[operands[i]])));
+    }
+    pin_value targets;
+    REQUIRE(rows(b, "ScalarTarget", 1, &targets));
+    *target = *row(&targets, 0);
+    REQUIRE(put(target, "float_storage", integer(PIN_F32)));
+    REQUIRE(put(target, "constant_op", integer(SHADER_CONSTANT)));
+    REQUIRE(put(target, "add_op", integer(SHADER_ADD)));
+    REQUIRE(put(target, "multiply_op", integer(SHADER_MULTIPLY)));
+    return true;
+}
+static bool lower(int b, pin_value p[10], pin_value target, pin_value *out)
+{
+    pin_value args[2];
+    REQUIRE(facts_result(b, "Accepted", p, 10, &args[0]));
+    args[1] = target;
+    lower_calls++;
+    return call(b, "LowerScalar", args, 2, out);
+}
+static bool scalar_graph(const pin_value *payload, shader_graph *graph)
+{
+    REQUIRE(payload[0].type == PIN_STRUCT && payload[0].container == PIN_CONTAINER_ARRAY);
+    const pin_array *nodes = payload[0].ptr;
+    REQUIRE(nodes && nodes->count <= SHADER_NODE_MAX);
+    shader_graph_init(graph);
+    for (int i = 0; i < nodes->count; i++) {
+        pin_value op, left, right, bits, source;
+        REQUIRE(read(&nodes->items[i], "op", &op) && op.type == PIN_I32);
+        REQUIRE(read(&nodes->items[i], "left", &left) && left.type == PIN_I32);
+        REQUIRE(read(&nodes->items[i], "right", &right) && right.type == PIN_I32);
+        REQUIRE(
+            read(&nodes->items[i], "bits", &bits) && bits.type == PIN_U64 &&
+            bits.u64 <= UINT32_MAX
+        );
+        REQUIRE(read(&nodes->items[i], "source_id", &source) && source.type == PIN_U64);
+        REQUIRE(op.i == SHADER_CONSTANT || op.i == SHADER_ADD || op.i == SHADER_MULTIPLY);
+        REQUIRE(left.i >= -1 && left.i < i && right.i >= -1 && right.i < i);
+        int index = shader_graph_add(graph, op.i, 1);
+        REQUIRE(index == i);
+        shader_node *node = &graph->nodes[index];
+        node->input[0] = left.i;
+        node->input[1] = right.i;
+        uint32_t raw = (uint32_t)bits.u64;
+        memcpy(&node->value[0], &raw, sizeof raw);
+        node->source_id = source.u64;
+    }
+    REQUIRE(
+        payload[1].type == PIN_I32 && payload[1].i >= 0 && payload[1].i < nodes->count
+    );
+    graph->output_count = 1;
+    graph->output[0] = payload[1].i;
+    shader_error error = { 0 };
+    REQUIRE(shader_graph_validate(graph, &error));
+    return true;
+}
+TEST_CASE(shader_scalar_facts_lower_to_existing_ir)
+{
+    REQUIRE(prepared);
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        pin_value p[10], target, value;
+        const pin_value *payload;
+        REQUIRE(scalar_facts(b, p, &target));
+        REQUIRE(lower(b, p, target, &value));
+        REQUIRE(tagged(b, &value, "ScalarLowering", "Ready", 5, &payload));
+        const pin_array *nodes = payload[0].ptr;
+        REQUIRE(nodes && nodes->count == 5);
+        const uint64_t ids[] = { 4, 10, 11, 12, 13 };
+        for (int i = 0; i < 5; i++) {
+            REQUIRE(same_identity(&nodes->items[i], "source_id", ids[i]));
+        }
+        REQUIRE(!compiler_fixture_snapshot(&lower_retained[b], &lower_kept[b], &value));
+        REQUIRE(lower(b, p, target, &value));
+        REQUIRE(pin_value_equal(&lower_kept[b], &value));
+        arena_free(&input);
+        REQUIRE(tagged(b, &value, "ScalarLowering", "Ready", 5, &payload));
+        shader_graph graph = { 0 };
+        REQUIRE(scalar_graph(payload, &graph));
+        float values[5][4] = { 0 };
+        shader_error error = { 0 };
+        shader_sample_context sample = { 0 };
+        REQUIRE(shader_graph_eval_values(&graph, &sample, NULL, values, &error));
+        REQUIRE(values[graph.output[0]][0] == 1.25f);
+        const pin_array *results = payload[4].ptr;
+        REQUIRE(results && results->count == 13);
+        int aliases = 0;
+        for (int i = 0; i < results->count; i++) {
+            pin_value source;
+            REQUIRE(read(&results->items[i], "source_id", &source) && source.type == PIN_U64);
+            REQUIRE(same_integer(&results->items[i], "field", -1));
+            if (source.u64 == 3 || source.u64 == 6 || source.u64 == 7 ||
+                source.u64 == 9) {
+                REQUIRE(same_integer(&results->items[i], "node", 0));
+                aliases++;
+            }
+        }
+        REQUIRE(aliases == 4);
+        const pin_array *origins = payload[3].ptr;
+        REQUIRE(origins && origins->count == 13);
+        REQUIRE(same_identity(&origins->items[3], "occurrence", UINT64_C(0xfedc000000000003)));
+        shader_graph_free(&graph);
+    }
+    return true;
+}
+TEST_CASE(shader_scalar_reuses_shared_expression_nodes)
+{
+    REQUIRE(prepared);
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        pin_value p[10], target, value;
+        const pin_value *payload;
+        REQUIRE(scalar_facts(b, p, &target));
+        /* The return multiplies the same unevaluated add expression by itself. */
+        REQUIRE(put(row(&p[9], 3), "expression", integer(4)));
+        REQUIRE(lower(b, p, target, &value));
+        arena_free(&input);
+        REQUIRE(tagged(b, &value, "ScalarLowering", "Ready", 5, &payload));
+        const pin_array *nodes = payload[0].ptr;
+        REQUIRE(nodes && nodes->count == 4);
+        REQUIRE(same_integer(&nodes->items[3], "left", 2));
+        REQUIRE(same_integer(&nodes->items[3], "right", 2));
+        shader_graph graph = { 0 };
+        REQUIRE(scalar_graph(payload, &graph));
+        float values[4][4] = { 0 };
+        shader_sample_context sample = { 0 };
+        shader_error error = { 0 };
+        REQUIRE(shader_graph_eval_values(&graph, &sample, NULL, values, &error));
+        REQUIRE(values[graph.output[0]][0] == 0.390625f);
+        shader_graph_free(&graph);
+    }
+    return true;
+}
+TEST_CASE(shader_scalar_preserves_ordinary_rejection)
+{
+    REQUIRE(prepared);
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        pin_value p[10], target, diagnostics, rejected[2], args[2], value;
+        const pin_value *payload;
+        REQUIRE(scalar_facts(b, p, &target));
+        REQUIRE(package_rows(b, "project:syntax_diagnostics", "Diagnostic", 1, &diagnostics));
+        pin_value diagnostic = *row(&diagnostics, 0);
+        REQUIRE(put(&diagnostic, "document", integer(0)));
+        REQUIRE(put(&diagnostic, "start", integer(2)));
+        REQUIRE(put(&diagnostic, "end", integer(8)));
+        REQUIRE(put_text(&diagnostic, "message", "Ordinary source diagnostic"));
+        rejected[0] = p[1];
+        rejected[1] = diagnostic;
+        REQUIRE(facts_result(b, "Rejected", rejected, 2, &args[0]));
+        args[1] = target;
+        lower_calls++;
+        REQUIRE(call(b, "LowerScalar", args, 2, &value));
+        arena_free(&input);
+        REQUIRE(tagged(b, &value, "ScalarLowering", "Rejected", 1, &payload));
+        REQUIRE(same_text(payload, "message", "Ordinary source diagnostic"));
+        REQUIRE(same_integer(payload, "document", 0));
+        REQUIRE(same_integer(payload, "start", 2));
+        REQUIRE(same_integer(payload, "end", 8));
+        REQUIRE(same_integer(payload, "node", -1));
+        REQUIRE(same_identity(payload, "source_id", 0));
+    }
+    return true;
+}
+TEST_CASE(shader_scalar_constants_preserve_exact_bits)
+{
+    REQUIRE(prepared);
+    const uint32_t bits[] = { UINT32_C(0x80000000), UINT32_C(1), UINT32_C(0x7f7fffff), 0 };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 4; i++) {
+            cleanup();
+            pin_value p[10], target, value;
+            const pin_value *payload;
+            REQUIRE(scalar_facts(b, p, &target));
+            REQUIRE(put(row(&p[5], 0), "first_statement", integer(2)));
+            REQUIRE(put(row(&p[5], 0), "statement_count", integer(1)));
+            REQUIRE(put(row(&p[7], 2), "expression", integer(0)));
+            REQUIRE(put(row(&p[8], 0), "bits", identity(bits[i])));
+            REQUIRE(lower(b, p, target, &value));
+            arena_free(&input);
+            REQUIRE(tagged(b, &value, "ScalarLowering", "Ready", 5, &payload));
+            const pin_array *nodes = payload[0].ptr;
+            REQUIRE(nodes && nodes->count == 1);
+            REQUIRE(same_identity(&nodes->items[0], "bits", bits[i]));
+            shader_graph graph = { 0 };
+            REQUIRE(scalar_graph(payload, &graph));
+            uint32_t actual;
+            memcpy(&actual, &graph.nodes[0].value[0], sizeof actual);
+            REQUIRE(actual == bits[i]);
+            float values[1][4] = { 0 };
+            shader_sample_context sample = { 0 };
+            shader_error error = { 0 };
+            REQUIRE(shader_graph_eval_values(&graph, &sample, NULL, values, &error));
+            memcpy(&actual, &values[0][0], sizeof actual);
+            REQUIRE(actual == bits[i]);
+            shader_graph_free(&graph);
+        }
+    }
+    return true;
+}
+TEST_CASE(shader_scalar_rejects_unsupported_and_invalid_facts)
+{
+    REQUIRE(prepared);
+    static const struct
+    {
+        const char *message;
+        int origin;
+    } cases[] = {
+        { "Shader scalar entry must be pure", 0 },
+        { "Shader scalar entry must be a nullary source function returning "
+          "float",
+          0 },
+        { "Unsupported shader scalar statement", 1 },
+        { "Shader scalar bindings must be immutable", 2 },
+        { "Shader scalar bindings cannot escape by reference", 2 },
+        { "Unsupported shader scalar expression", 3 },
+        { "Unsupported shader scalar binary operation", 10 },
+        { "Unsupported shader scalar binary operation", 10 },
+        { "Unsupported shader scalar expression or type", 3 },
+        { "Shader scalar read requires an initialized immutable local", 6 },
+        { "Shader scalar constants must be finite float32 bits", 3 },
+        { "Shader scalar constants must be finite float32 bits", 3 },
+        { "Shader scalar return must be the final statement", 1 },
+        { "Shader scalar entry needs a final return", 0 },
+        { "Unsupported shader scalar binary operation", 10 },
+        { "Invalid shader scalar operands", 10 },
+        { "Shader scalar expressions contain a cycle", 10 },
+        { "Invalid shader scalar initialization", 1 },
+        { "Shader scalar entry must be a nullary source function returning "
+          "float",
+          0 },
+        { "Unsupported shader scalar expression", 3 },
+        { "Unsupported shader scalar expression", 9 },
+        { "Unsupported shader scalar expression", 3 },
+        { "Unsupported shader scalar expression or type", 3 },
+        { "Unsupported shader scalar expression or type", 3 },
+        { "Shader scalar origin has conflicting results", 3 },
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < (int)(sizeof cases / sizeof cases[0]); i++) {
+            cleanup();
+            pin_value p[10], target, value;
+            const pin_value *payload;
+            REQUIRE(scalar_facts(b, p, &target));
+            switch (i) {
+                case 0:
+                    REQUIRE(put(row(&p[5], 0), "effects", integer(1)));
+                    break;
+                case 1:
+                    REQUIRE(put(row(&p[5], 0), "parameter_count", integer(1)));
+                    break;
+                case 2: REQUIRE(put(row(&p[7], 0), "kind", integer(0))); break;
+                case 3:
+                    REQUIRE(put(row(&p[6], 0), "write_origin", integer(2)));
+                    break;
+                case 4:
+                    REQUIRE(put(row(&p[6], 0), "ref_origin", integer(2)));
+                    break;
+                case 5: REQUIRE(put(row(&p[8], 0), "kind", integer(7))); break;
+                case 6:
+                    REQUIRE(put(row(&p[8], 4), "operation", integer(999)));
+                    break;
+                case 7:
+                    REQUIRE(put(row(&p[8], 4), "operand_type", integer(-1)));
+                    break;
+                case 8:
+                    REQUIRE(put(row(&p[3], 1), "qualifiers", integer(2)));
+                    REQUIRE(put(row(&p[8], 0), "type", integer(1)));
+                    break;
+                case 9:
+                    REQUIRE(put(row(&p[8], 1), "binding", integer(1)));
+                    break;
+                case 10:
+                    REQUIRE(put(row(&p[8], 0), "bits", identity(UINT32_C(0x7fc00001))));
+                    break;
+                case 11:
+                    REQUIRE(put(row(&p[8], 0), "bits", identity(UINT64_C(0x13f000000))));
+                    break;
+                case 12: REQUIRE(put(row(&p[7], 0), "kind", integer(2))); break;
+                case 13:
+                    REQUIRE(put(row(&p[5], 0), "statement_count", integer(2)));
+                    break;
+                case 14:
+                    REQUIRE(put(row(&p[8], 4), "first_argument", integer(4)));
+                    break;
+                case 15:
+                    REQUIRE(put(row(&p[9], 0), "expression", integer(7)));
+                    break;
+                case 16:
+                    REQUIRE(put(row(&p[9], 0), "expression", integer(4)));
+                    break;
+                case 17:
+                    REQUIRE(put(row(&p[6], 0), "initializer", integer(1)));
+                    break;
+                case 18: REQUIRE(put(row(&p[5], 0), "kind", integer(1))); break;
+                case 19: REQUIRE(put(row(&p[8], 0), "kind", integer(5))); break;
+                case 20:
+                    REQUIRE(put(row(&p[8], 2), "kind", integer(7)));
+                    REQUIRE(put(row(&p[8], 3), "kind", integer(7)));
+                    REQUIRE(put(row(&p[9], 0), "expression", integer(3)));
+                    REQUIRE(put(row(&p[9], 1), "expression", integer(2)));
+                    break;
+                case 21:
+                    /* The unsupported initializer is never read by the return. */
+                    REQUIRE(put(row(&p[5], 0), "statement_count", integer(2)));
+                    REQUIRE(put(row(&p[7], 1), "kind", integer(2)));
+                    REQUIRE(put(row(&p[7], 1), "expression", integer(5)));
+                    REQUIRE(put(row(&p[8], 0), "kind", integer(7)));
+                    break;
+                case 22:
+                    REQUIRE(put(row(&p[3], 1), "storage", integer(PIN_F64)));
+                    REQUIRE(put(row(&p[8], 0), "type", integer(1)));
+                    break;
+                case 23:
+                    REQUIRE(put(row(&p[3], 1), "nominal", identity(UINT64_C(0x8000000000000001))));
+                    REQUIRE(put(row(&p[8], 0), "type", integer(1)));
+                    break;
+                case 24:
+                    REQUIRE(put(row(&p[8], 3), "origin", integer(3)));
+                    break;
+            }
+            REQUIRE(lower(b, p, target, &value));
+            arena_free(&input);
+            REQUIRE(tagged(b, &value, "ScalarLowering", "Rejected", 1, &payload));
+            REQUIRE(same_text(payload, "message", cases[i].message));
+            REQUIRE(same_integer(payload, "document", 0));
+            REQUIRE(same_integer(payload, "start", cases[i].origin));
+            REQUIRE(same_integer(payload, "end", cases[i].origin + 1));
+            REQUIRE(same_identity(payload, "source_id", cases[i].origin + 1));
+        }
+    }
+    return true;
+}
+
 TEST_CASE(shader_policy_results_outlive_preparation)
 {
     REQUIRE(prepared);
-    REQUIRE(calls == 84);
+    REQUIRE(lower_calls == 66);
+    REQUIRE(calls == 84 + lower_calls);
     compiler_fixture_free(&fixture);
     cleanup();
     for (int b = 0; b < 2; b++) {
@@ -498,6 +975,21 @@ TEST_CASE(shader_policy_results_outlive_preparation)
         REQUIRE(same_identity(&chain->items[1], "source_id", CALLER));
         REQUIRE(same_integer(&chain->items[0], "document", 1));
         REQUIRE(same_integer(&chain->items[0], "end", 12));
+        REQUIRE(lower_kept[b].type == PIN_UNION && lower_kept[b].ptr);
+        const pin_union *lowered = lower_kept[b].ptr;
+        REQUIRE(lowered->count == 5);
+        const pin_array *documents = lowered->values[2].ptr;
+        REQUIRE(documents && documents->count == 1);
+        REQUIRE(same_text(&documents->items[0], "identity", "supplied-facts:scalar"));
+        REQUIRE(same_text(&documents->items[0], "text", "scalar fixture provenance"));
+        shader_graph graph = { 0 };
+        REQUIRE(scalar_graph(lowered->values, &graph));
+        float values[5][4] = { 0 };
+        shader_sample_context sample = { 0 };
+        shader_error error = { 0 };
+        REQUIRE(shader_graph_eval_values(&graph, &sample, NULL, values, &error));
+        REQUIRE(values[graph.output[0]][0] == 1.25f);
+        shader_graph_free(&graph);
     }
     return true;
 }
@@ -510,14 +1002,22 @@ void test_language_shader_source_chibi()
     RUN_TEST_CASE(shader_policy_guards_ordered_closures_and_generations);
     RUN_TEST_CASE(shader_policy_bounds_tables_and_bytes);
     RUN_TEST_CASE(shader_policy_rejects_absent_queries_and_broken_chains);
+    RUN_TEST_CASE(shader_scalar_facts_lower_to_existing_ir);
+    RUN_TEST_CASE(shader_scalar_reuses_shared_expression_nodes);
+    RUN_TEST_CASE(shader_scalar_preserves_ordinary_rejection);
+    RUN_TEST_CASE(shader_scalar_constants_preserve_exact_bits);
+    RUN_TEST_CASE(shader_scalar_rejects_unsupported_and_invalid_facts);
     RUN_TEST_CASE(shader_policy_results_outlive_preparation);
     pu_clear_setup();
     cleanup();
     compiler_fixture_free(&fixture);
     prepared = false;
     calls = 0;
+    lower_calls = 0;
     for (int b = 0; b < 2; b++) {
         arena_free(&retained[b]);
         kept[b] = (pin_value){ 0 };
+        arena_free(&lower_retained[b]);
+        lower_kept[b] = (pin_value){ 0 };
     }
 }

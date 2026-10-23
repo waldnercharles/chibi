@@ -3656,6 +3656,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_SCALAR_LOWERING_BYTES=bytes:tools/compiler/scalar_lowering/Lower.chibi",
             "CHIBI_SCALAR_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
             "CHIBI_SHADER_SOURCE_BYTES=bytes:tools/compiler/shader_source/SourceMap.chibi",
+            "CHIBI_SHADER_LOWER_BYTES=bytes:tools/compiler/shader_source/Lower.chibi",
             "CHIBI_SIGNATURE_READER_BYTES=bytes:tools/compiler/signature_reader/Reader.chibi",
             "CHIBI_SOURCE_TOKENIZER_BYTES=bytes:tools/compiler/source_tokenizer/Tokenizer.chibi",
             "CHIBI_SYNTAX_DIAGNOSTICS_BYTES=bytes:tools/compiler/syntax_diagnostics/Diagnostics.chibi",

@@ -1,54 +1,1726 @@
 {
-  "leaf_sha256": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24",
-  "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
-  "seed_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
-  "artifacts": {
-    "probe": "c17efd827fa204df9c44233e5ea698dbca771b23ee0babb90f9222875076ba32",
-    "consumer": "b80d4aaeac8dab1642459def289415153292ab93e3fe926a406c5caef65e201f"
+  "status": "WIP: bounded semantic producer and focused verification; independent review/integration pending",
+  "freeze": {
+    "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+    "transport_commit": "e540fd698f0cac3a25ba011242efc6743ad2ef3f",
+    "sources": {
+      "tools/compiler/package_compiler/Steps.chibi": "fae606ce824cd19184a14bfb212562c9b562bdef449c9f3b899d15cc56a0bc0f",
+      "tools/compiler/package_compiler/Scalar.chibi": "2a6ce7d1201fa90d84fb9c1fd146a2946be9154a029db626d0b63c64d4a288e6",
+      "tools/compiler/scalar_facts/Facts.chibi": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24",
+      "test/scalar_facts/cases/Cases.chibi": "ca621e7bc78737f9bc5b6b56339e0cd04cf409acabe096e97c8bf851ef9a6699",
+      "test/scalar_facts/probe/Probe.chibi": "2fb8ad2b5e553aaf484b4a83cdc1feb8938372224e9869ec7885ed70f66eec87",
+      "test/scalar_facts/consumer/Read.chibi": "b15b5774880045795e414db8981dc0c41eb737dcc47b88e1267e3f49f7ef3f8d"
+    },
+    "compiler_input_sha256": "b8cc1155347f5d7d937b3be5b0199c0fc25f4acde496e88ec53f58cc60c62849",
+    "compiler_sources": [
+      {
+        "path": "package_compiler/Compile.chibi",
+        "sha256": "bbe976a6fff052e34b1fecc1eea3c4cd4c72b2c9201cd19c19de1a813eced5f7"
+      },
+      {
+        "path": "package_compiler/Body.chibi",
+        "sha256": "bb20941fc15eed2e235320f0c25816f984250b78227f1367a29050df42a9e061"
+      },
+      {
+        "path": "package_compiler/Steps.chibi",
+        "sha256": "fae606ce824cd19184a14bfb212562c9b562bdef449c9f3b899d15cc56a0bc0f"
+      },
+      {
+        "path": "package_compiler/Maps.chibi",
+        "sha256": "2d9728c9f814557a7d0b3938918e82954b7346cca5fcfcecd8426b9f7a105864"
+      },
+      {
+        "path": "package_compiler/References.chibi",
+        "sha256": "eb8f4548f5675a05f7335a758c11f4e2fda76462b7cdad2f0eaeae9cc41a7cde"
+      },
+      {
+        "path": "package_compiler/Tree.chibi",
+        "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+      },
+      {
+        "path": "package_compiler/Number.chibi",
+        "sha256": "3624ec837dfb7c0442600bfe2a8945a8079d39c7cc8c6ef213cb23f5d7f3f7f3"
+      },
+      {
+        "path": "package_compiler/Behavior.chibi",
+        "sha256": "03b4e04831528254d7f0deb31cbb6e8dfd7d2e07e79a1c31796266e7a2196e76"
+      },
+      {
+        "path": "syntax_diagnostics/Diagnostics.chibi",
+        "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+      },
+      {
+        "path": "source_snapshot/Snapshot.chibi",
+        "sha256": "64ddb8a19fedc78b0920db46e8ad6415d9de85700adb04388186014c934ec41f"
+      },
+      {
+        "path": "compiler_syntax/Syntax.chibi",
+        "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+      },
+      {
+        "path": "package_routes/Routes.chibi",
+        "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+      },
+      {
+        "path": "package_syntax/Extract.chibi",
+        "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+      },
+      {
+        "path": "package_graph/Graph.chibi",
+        "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+      },
+      {
+        "path": "package_paths/Paths.chibi",
+        "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+      },
+      {
+        "path": "lexical_binding/Binding.chibi",
+        "sha256": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450"
+      },
+      {
+        "path": "prepared_writer/Writer.chibi",
+        "sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
+      },
+      {
+        "path": "package_compiler/Scalar.chibi",
+        "sha256": "2a6ce7d1201fa90d84fb9c1fd146a2946be9154a029db626d0b63c64d4a288e6"
+      },
+      {
+        "path": "scalar_facts/Facts.chibi",
+        "sha256": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24"
+      },
+      {
+        "path": "/sdk/core/strings/Strings.chibi",
+        "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
+      }
+    ],
+    "compiler_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+    "entry": "project:package_compiler:1:CollectScalar:callable",
+    "entry_arguments": [
+      "project:string",
+      "path:string",
+      "text:string",
+      "target:package_compiler.Target",
+      "names:string[]"
+    ],
+    "target_source": "tools/compiler/bootstrap/bootstrap.json target[0] and target[2]",
+    "selfhost": {
+      "stage1_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+      "stage2_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+      "stage3_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+      "bytes": 12300558,
+      "equal": true
+    },
+    "cases": 43,
+    "ordinary_positive_closure_parity": 12,
+    "ordinary_negative_diagnostic_parity": 10
   },
-  "cases": [
+  "compile": {
+    "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
+    "compiler_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+    "input_sha256": "b8cc1155347f5d7d937b3be5b0199c0fc25f4acde496e88ec53f58cc60c62849",
+    "fixture_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+    "backend": "sljit",
+    "root_file": "package_compiler/Compile.chibi",
+    "source_count": 20,
+    "host_counters": "compiler-host bytecode=0 sljit=19920689 wasm=0 fallback=0 overflow=0"
+  },
+  "stage2": {
+    "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
+    "compiler_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+    "input_sha256": "b8cc1155347f5d7d937b3be5b0199c0fc25f4acde496e88ec53f58cc60c62849",
+    "fixture_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+    "backend": "sljit",
+    "root_file": "package_compiler/Compile.chibi",
+    "source_count": 20,
+    "host_counters": "compiler-host bytecode=0 sljit=19925159 wasm=0 fallback=0 overflow=0"
+  },
+  "stage3": {
+    "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
+    "compiler_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+    "input_sha256": "b8cc1155347f5d7d937b3be5b0199c0fc25f4acde496e88ec53f58cc60c62849",
+    "fixture_sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0",
+    "backend": "sljit",
+    "root_file": "package_compiler/Compile.chibi",
+    "source_count": 20,
+    "host_counters": "compiler-host bytecode=0 sljit=19925159 wasm=0 fallback=0 overflow=0"
+  },
+  "transport": {
+    "leaf_sha256": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24",
+    "host_sha256": "0d0783e39e8547853c1310945ea4d508c05ae4e8174d4a976e499853b136be1d",
+    "seed_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+    "artifacts": {
+      "probe": "c17efd827fa204df9c44233e5ea698dbca771b23ee0babb90f9222875076ba32",
+      "consumer": "b80d4aaeac8dab1642459def289415153292ab93e3fe926a406c5caef65e201f"
+    },
+    "cases": [
+      {
+        "producer": "bytecode",
+        "consumer": "bytecode",
+        "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+        "envelope_passed_unchanged": true,
+        "producer_process_exited_before_consumer": true,
+        "producer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0",
+        "consumer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+      },
+      {
+        "producer": "bytecode",
+        "consumer": "sljit",
+        "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+        "envelope_passed_unchanged": true,
+        "producer_process_exited_before_consumer": true,
+        "producer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0",
+        "consumer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+      },
+      {
+        "producer": "sljit",
+        "consumer": "bytecode",
+        "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+        "envelope_passed_unchanged": true,
+        "producer_process_exited_before_consumer": true,
+        "producer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0",
+        "consumer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+      },
+      {
+        "producer": "sljit",
+        "consumer": "sljit",
+        "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
+        "envelope_passed_unchanged": true,
+        "producer_process_exited_before_consumer": true,
+        "producer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0",
+        "consumer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+      }
+    ]
+  },
+  "ordinary_parity": [
     {
-      "producer": "bytecode",
-      "consumer": "bytecode",
-      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
-      "envelope_passed_unchanged": true,
-      "producer_process_exited_before_consumer": true,
-      "producer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0",
-      "consumer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+      "name": "int_zero",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "672207ffd419777e2d9f40591ca9fad9eca0db1591dd688aaefbe01caaeaf9fe",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
     },
     {
-      "producer": "bytecode",
-      "consumer": "sljit",
-      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
-      "envelope_passed_unchanged": true,
-      "producer_process_exited_before_consumer": true,
-      "producer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0",
-      "consumer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+      "name": "int_42",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "d8769160eb4159be4afebf14304e2d3ca7aa3bbfc21ca1069d5557a1bb331c41",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
     },
     {
-      "producer": "sljit",
-      "consumer": "bytecode",
-      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
-      "envelope_passed_unchanged": true,
-      "producer_process_exited_before_consumer": true,
-      "producer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0",
-      "consumer_counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+      "name": "int_max",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "993ed2bc67a22085f666fcf396647403f81b6a897e639d84d5bfa654fcfe8359",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
     },
     {
-      "producer": "sljit",
-      "consumer": "sljit",
-      "envelope_sha256": "39eb0cef5c4eec5cf612bde8efc4847696bd30a7a9cd543272a3384a1a4f5855",
-      "envelope_passed_unchanged": true,
-      "producer_process_exited_before_consumer": true,
-      "producer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0",
-      "consumer_counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+      "name": "int_min",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "3cb00b3fe6453d832bac17b3dcd3820a95efa59fe2cbcf5a66035c23af00fe26",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "int64_max",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "f0aaa1cee64f76d585e689247cbe99e2f12575cdf5091ff9c402aad7e86a0362",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "int64_min",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "0693b8a9a05d64202736f83785dedd3cc21b51b9a22aa5f9012c4af5f955fe0c",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "uint64_max",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "b7db0f8be99bc2a0272e9daa981548fd019fc94084d0fd4df85b00cb196c3ebb",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "int8_min",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "3a1471f1127cc250c0406add6defb86f6510d8596d69acdef9872f55a25513a1",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "int8_max",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "d4b763e62d3e169d021d5a3be65db0a95b76a5943de16fce19f5791c3d40473d",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "byte_max",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "62457179b5cb5b3dbd04e4325c67f429e71b87913e0e389bfea67902ddb52417",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "bool",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "962812669f1de453bc307ad77ed9a47c2288a03488bc509781a61cb3212eb39f",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "float",
+      "accepted": true,
+      "closure_equal": true,
+      "closure_sha256": "14e4f2afe0acb7be47221ed336567813ff0e5b87f493302e68faef4a63e03f11",
+      "runs": [
+        {
+          "backend": "bytecode",
+          "counters": "compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0"
+        },
+        {
+          "backend": "sljit",
+          "counters": "compiler-host bytecode=0 sljit=1 wasm=0 fallback=0 overflow=0"
+        }
+      ]
+    },
+    {
+      "name": "int_overflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 42,
+        "end": 52,
+        "line": 2,
+        "column": 28,
+        "document": 0,
+        "message": "Numeric literal is outside the range of int"
+      }
+    },
+    {
+      "name": "int_underflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 42,
+        "end": 53,
+        "line": 2,
+        "column": 28,
+        "document": 0,
+        "message": "Numeric literal is outside the range of int"
+      }
+    },
+    {
+      "name": "u64_overflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 45,
+        "end": 65,
+        "line": 2,
+        "column": 31,
+        "document": 0,
+        "message": "only integer literals of 64 bits are supported"
+      }
+    },
+    {
+      "name": "int64_overflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 44,
+        "end": 63,
+        "line": 2,
+        "column": 30,
+        "document": 0,
+        "message": "Numeric literal is outside the range of int64"
+      }
+    },
+    {
+      "name": "int8_overflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 43,
+        "end": 46,
+        "line": 2,
+        "column": 29,
+        "document": 0,
+        "message": "Numeric literal is outside the range of int8"
+      }
+    },
+    {
+      "name": "int8_underflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 43,
+        "end": 47,
+        "line": 2,
+        "column": 29,
+        "document": 0,
+        "message": "Numeric literal is outside the range of int8"
+      }
+    },
+    {
+      "name": "byte_overflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 43,
+        "end": 46,
+        "line": 2,
+        "column": 29,
+        "document": 0,
+        "message": "Numeric literal is outside the range of byte"
+      }
+    },
+    {
+      "name": "byte_underflow",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 43,
+        "end": 45,
+        "line": 2,
+        "column": 29,
+        "document": 0,
+        "message": "Numeric literal is outside the range of byte"
+      }
+    },
+    {
+      "name": "fraction",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 42,
+        "end": 46,
+        "line": 2,
+        "column": 28,
+        "document": 0,
+        "message": "only integer literals of 64 bits are supported"
+      }
+    },
+    {
+      "name": "exponent",
+      "accepted": false,
+      "diagnostic_equal": true,
+      "diagnostic": {
+        "start": 42,
+        "end": 45,
+        "line": 2,
+        "column": 28,
+        "document": 0,
+        "message": "only integer literals of 64 bits are supported"
+      }
     }
   ],
-  "status": "WIP: synthetic transport capability only; semantic producer not included",
-  "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
-  "source_sha256": {
-    "tools/compiler/scalar_facts/Facts.chibi": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24",
-    "test/scalar_facts/probe/Probe.chibi": "2fb8ad2b5e553aaf484b4a83cdc1feb8938372224e9869ec7885ed70f66eec87",
-    "test/scalar_facts/consumer/Read.chibi": "b15b5774880045795e414db8981dc0c41eb737dcc47b88e1267e3f49f7ef3f8d"
-  }
+  "formatter_sha256": "9b9e7d1108e68cec34b75cd490f49131eda2fadd86fc7c05517e24564fc67817",
+  "semantic_cases": [
+    {
+      "index": 0,
+      "name": "forty_two",
+      "source_sha256": "08cd7eefd36c9b36cd7856e82a7039832dbd27e1ff931d0e08bb198037dad78b",
+      "accepted": true,
+      "value": 42,
+      "diagnostic": {
+        "message": "",
+        "start": 0,
+        "end": 0,
+        "line": 0,
+        "column": 0
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1587 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=27 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d3661d6c2b02ee20029bdbc3cefa05003f8018c406e38055137f293b79400b76"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1587 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=27 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d3661d6c2b02ee20029bdbc3cefa05003f8018c406e38055137f293b79400b76"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "name": "zero",
+      "source_sha256": "1bb0ef069e77a50e9fa046479d8fd8cbf88c70aae638bf75d287ece21dffe020",
+      "accepted": true,
+      "value": 0,
+      "diagnostic": {
+        "message": "",
+        "start": 0,
+        "end": 0,
+        "line": 0,
+        "column": 0
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1571 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=27 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "0e3f111e877214daa51a7ac5dd699d0d16dc0d4c79ef806f88127321e1929f48"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1571 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=27 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "0e3f111e877214daa51a7ac5dd699d0d16dc0d4c79ef806f88127321e1929f48"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "name": "int_max",
+      "source_sha256": "96bb229b0476db30960ea09eb0559ef3c9787c0d9e690bef4af1e5e34fdfd745",
+      "accepted": true,
+      "value": 2147483647,
+      "diagnostic": {
+        "message": "",
+        "start": 0,
+        "end": 0,
+        "line": 0,
+        "column": 0
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1655 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=27 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "22a50fa3d57fd00a8382ebaddd306466e28278a75fef021aee0390e4d48bd0a8"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1655 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=27 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "22a50fa3d57fd00a8382ebaddd306466e28278a75fef021aee0390e4d48bd0a8"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "hex",
+      "source_sha256": "b529b7446c91c78568f6cd65735a8418974fc8fd426f143b789ff885d8fc3681",
+      "accepted": true,
+      "value": 42,
+      "diagnostic": {
+        "message": "",
+        "start": 0,
+        "end": 0,
+        "line": 0,
+        "column": 0
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1595 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=27 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "6d6b8ca00d641f47a18cb046a997e3d2eb6004f0f5c28dd3922be10eef393e4c"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1595 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=27 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "6d6b8ca00d641f47a18cb046a997e3d2eb6004f0f5c28dd3922be10eef393e4c"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "name": "comments",
+      "source_sha256": "bad758186e7a995127b697e8c918760c746c15256281096a2fff0917cca70ca3",
+      "accepted": true,
+      "value": 42,
+      "diagnostic": {
+        "message": "",
+        "start": 0,
+        "end": 0,
+        "line": 0,
+        "column": 0
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1627 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=27 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "9b715c9f48a60124fce2812da30aa3178535e4e231586e2e6385ceeb3110e5a4"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1627 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=27 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "9b715c9f48a60124fce2812da30aa3178535e4e231586e2e6385ceeb3110e5a4"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "name": "overflow",
+      "source_sha256": "f278b79db057db495e8d8bd6825660e855532c7f1f98d7bbcb2a55f178632231",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "Numeric literal is outside the range of int",
+        "start": 42,
+        "end": 52,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1411 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "5cff4ef33096e4ebdcecab4fdb1574cf74720f23255abe605a847f9a219c5dce"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1411 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "5cff4ef33096e4ebdcecab4fdb1574cf74720f23255abe605a847f9a219c5dce"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "name": "u64_overflow",
+      "source_sha256": "6db8e73747cc1894ee6a08b6d86762c32e69248cc0c16569ed66c0ae383946e5",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "only integer literals of 64 bits are supported",
+        "start": 42,
+        "end": 62,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1529 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "25f8b0de5a9a3a8c5af192b46d29a73cb2911872d3aa1d93563b397bec1061ef"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1529 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "25f8b0de5a9a3a8c5af192b46d29a73cb2911872d3aa1d93563b397bec1061ef"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "fraction",
+      "source_sha256": "f021d2e6f7c1d5be64ad33489d396adfa6eadbbd9b9ecbd84f9f9c2b4058d9b8",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "only integer literals of 64 bits are supported",
+        "start": 42,
+        "end": 46,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1373 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "bd52798ad1e35d68726bf817eff1bb13d937a61b2ecb39f717b08068d67b6ad0"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1373 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "bd52798ad1e35d68726bf817eff1bb13d937a61b2ecb39f717b08068d67b6ad0"
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "name": "exponent",
+      "source_sha256": "18316576869a7bc7e06e5a0b088de2731dca4a10e5a1e653b02cb42e3cd02c30",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "only integer literals of 64 bits are supported",
+        "start": 42,
+        "end": 45,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1369 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "60eb30dc1a69d0a46d82dff516d95b5e7aecfbe36ab394112a48a1cc0f5a89ef"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1369 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "60eb30dc1a69d0a46d82dff516d95b5e7aecfbe36ab394112a48a1cc0f5a89ef"
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "name": "negative",
+      "source_sha256": "7cc8723f62edabf666660717bab90455e0a9750a74082a0de459a96e329664f3",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires a direct integer literal",
+        "start": 42,
+        "end": 44,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1079 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "3dfb81c91ec2161cd41b876b77e500c8408dd79e2b79a3495ca376ebde0d53da"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1079 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "3dfb81c91ec2161cd41b876b77e500c8408dd79e2b79a3495ca376ebde0d53da"
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "name": "parentheses",
+      "source_sha256": "646d521042d6c6140093ad2666b747c6ce82e5ea08a99f1bae2e0b913d987c5a",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires a direct integer literal",
+        "start": 42,
+        "end": 46,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1091 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "acd8962d39c20ee46c8dc7402bb46ad1519f4e9ac3cb9f3c31e0718b00e1d4ed"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1091 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "acd8962d39c20ee46c8dc7402bb46ad1519f4e9ac3cb9f3c31e0718b00e1d4ed"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "name": "arithmetic",
+      "source_sha256": "c8efd64439f602dfb33c3833124fdabbd189db3b45b4c169e6e034ae3dbde0ed",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires a direct integer literal",
+        "start": 42,
+        "end": 48,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1087 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "1a17bf459305ed55cdb1dd89389bf57440d17d8fbc4926ee290dd9efc4f9031a"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1087 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "1a17bf459305ed55cdb1dd89389bf57440d17d8fbc4926ee290dd9efc4f9031a"
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "name": "branch",
+      "source_sha256": "73ffeb0eba20915d12cdd52c727b66b0699c1fbc03fbaae2cb6fb3e53f11c217",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one complete return statement",
+        "start": 35,
+        "end": 59,
+        "line": 2,
+        "column": 21
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1191 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "37bdf129366c2af483aa24de23df9734a7ac0b139db9acbdc8ad740cbbacd9d8"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1191 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "37bdf129366c2af483aa24de23df9734a7ac0b139db9acbdc8ad740cbbacd9d8"
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "name": "local",
+      "source_sha256": "6f0570d76661f97f92273e16f23b5621c155472cfcd0fb3fd2820f1b778f88bd",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one complete return statement",
+        "start": 35,
+        "end": 47,
+        "line": 2,
+        "column": 21
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1141 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "e61c929d621fa93043b5a6938b52f695ec0822df5093644cc7e72cee06a8558e"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1141 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "e61c929d621fa93043b5a6938b52f695ec0822df5093644cc7e72cee06a8558e"
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "name": "after_return",
+      "source_sha256": "fcf6f47c18e882ed3e5599ab0625ac19284bfb479cb53786b10c212d72c66cd6",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof does not support additional statements",
+        "start": 46,
+        "end": 60,
+        "line": 2,
+        "column": 32
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1137 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "aad66b5a40a89d104a8d3b9417a907e21a6e57210692964ae2b024cf32f2b077"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1137 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "aad66b5a40a89d104a8d3b9417a907e21a6e57210692964ae2b024cf32f2b077"
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "name": "extra_return",
+      "source_sha256": "0497f86854889eaaa3eb12f82ef8eeb56f36fdacd414df52f9e64e31a042d5c3",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof does not support additional statements",
+        "start": 46,
+        "end": 55,
+        "line": 2,
+        "column": 32
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1097 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d1999fee6afdbc8f9263215ec3510a23d4408d2bb3033b55d1eb1b4da45b3744"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1097 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d1999fee6afdbc8f9263215ec3510a23d4408d2bb3033b55d1eb1b4da45b3744"
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "name": "unknown_call",
+      "source_sha256": "0c09be6fce142970a8ebe2c1104618505d4c6e8023cabf1dafc26b577aafec30",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires a direct integer literal",
+        "start": 42,
+        "end": 51,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1095 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "fd155dd9bdcaffd74f9feebad68f05f4545676d5a90fa9e13f7f8326163ab524"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1095 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "fd155dd9bdcaffd74f9feebad68f05f4545676d5a90fa9e13f7f8326163ab524"
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "name": "parameter",
+      "source_sha256": "26807e4e9b94e5c97f4f7863a4fb3d564917035c78a9d94f502e3970480058f9",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires no parameters",
+        "start": 23,
+        "end": 31,
+        "line": 2,
+        "column": 9
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1233 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "2caf2295de11e38079f0bc8efc41b39233bf97299f4dd1048d2c1a46ef3368b5"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1233 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "2caf2295de11e38079f0bc8efc41b39233bf97299f4dd1048d2c1a46ef3368b5"
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "name": "reference",
+      "source_sha256": "a2267cabb4defef6000a0cdba1136e136042255520ba4610cf1554d0621b1806",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires no parameters",
+        "start": 23,
+        "end": 35,
+        "line": 2,
+        "column": 9
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1253 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "510c27e85e80a7ae7a4dd7bd7e732329285efbb16e0a18ef1bc221e2e99e8a95"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1253 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "510c27e85e80a7ae7a4dd7bd7e732329285efbb16e0a18ef1bc221e2e99e8a95"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "name": "bool_result",
+      "source_sha256": "7726c6a816a7090036b4adf0eb67ec1d12bc23b507fae54bb9319b743e275568",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 29,
+        "end": 33,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1077 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "4a2961078cb670faf192db758e0e7e0a376144c04b82ee7ccc45794694479f9b"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1077 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "4a2961078cb670faf192db758e0e7e0a376144c04b82ee7ccc45794694479f9b"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "name": "int64_result",
+      "source_sha256": "d18f6889df0399d73f7152933f5556a55e661ea2e0e5c2bbd9d66c6c9a2030f7",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 29,
+        "end": 34,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1059 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d087e0c2aae3007e4699538060f30e44ce6a62b4f29dccc4663f71d97d85a654"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1059 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d087e0c2aae3007e4699538060f30e44ce6a62b4f29dccc4663f71d97d85a654"
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "name": "array_result",
+      "source_sha256": "13e7d2451786f4f8c26a302803b25c4c308020436d0cda3b9f368109c5215497",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 29,
+        "end": 34,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1089 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "e5690e10a841d2afd7193e24915809605bc0a2a8b076c2019bdcd4c32df31cfe"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1089 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "e5690e10a841d2afd7193e24915809605bc0a2a8b076c2019bdcd4c32df31cfe"
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "name": "nominal_result",
+      "source_sha256": "66a65258a52474af16a46dbf802e75c771a494b50cce8fbc211eacc207297e48",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "result type is not supported yet",
+        "start": 29,
+        "end": 36,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1029 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "37dcc4ba18588e4193feafcd38864ab9fbcbb1df00e6e6f0e7b355d4812eb448"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1029 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "37dcc4ba18588e4193feafcd38864ab9fbcbb1df00e6e6f0e7b355d4812eb448"
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "name": "named_result",
+      "source_sha256": "04c0d1bb5b64ff3a5b20ec9c00efdb025a7b67cf5f9d91dc3c7b550d92671123",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 29,
+        "end": 37,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1123 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "ee9230a5a40de1412a4e8131e949e6052ba5baad43195002a257552fe8d61f2a"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1123 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "ee9230a5a40de1412a4e8131e949e6052ba5baad43195002a257552fe8d61f2a"
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "name": "struct",
+      "source_sha256": "9c4e890a5d10c7bbed7459b74bee106d5dcacc45c6b1dfa19a70b16878980478",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof supports only one ordinary function declaration",
+        "start": 15,
+        "end": 42,
+        "line": 2,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=897 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "803306ed562fb30cbd803e5aa4236b05856b4c128a1bccdc8f8a8637117affbe"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=897 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "803306ed562fb30cbd803e5aa4236b05856b4c128a1bccdc8f8a8637117affbe"
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "name": "constant",
+      "source_sha256": "e8d7d01c64d64e44f790bfca04bf97472e3bef9d5c0cfb470577fbd35a230937",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof supports only one ordinary function declaration",
+        "start": 15,
+        "end": 27,
+        "line": 2,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=857 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "99896c9d8f6c18c5ec9f3dfabe4f06cadd637a74bcececda2b18ac6c8e9da669"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=857 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "99896c9d8f6c18c5ec9f3dfabe4f06cadd637a74bcececda2b18ac6c8e9da669"
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "name": "second_function",
+      "source_sha256": "979bef19781045ba7bb64861fb205c068960de64679cbe62f47e02bf3920e2ea",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires exactly one function",
+        "start": 48,
+        "end": 80,
+        "line": 3,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=927 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "0938857c088df3e2330656b229586e5e1f7d539e6cfba204513844d62ffce181"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=927 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "0938857c088df3e2330656b229586e5e1f7d539e6cfba204513844d62ffce181"
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "name": "import",
+      "source_sha256": "bf5a27204daac8728f4b7111b8f0efdc340f017852671188a8a56cc1f4249b39",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "Imported package is missing from the snapshot",
+        "start": 30,
+        "end": 47,
+        "line": 2,
+        "column": 16
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1057 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=13 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d96ae5231356945bab8c860a6b0cd9d69fd0b8bd3d7ea7a50b904f975409f629"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1057 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=13 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "d96ae5231356945bab8c860a6b0cd9d69fd0b8bd3d7ea7a50b904f975409f629"
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "name": "attribute_test",
+      "source_sha256": "3288b39ce709f872a73b5a431d67e41e51a47fe6ae7654d35ee1ed3442cb8459",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof does not support function attributes",
+        "start": 15,
+        "end": 20,
+        "line": 2,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=809 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "a00f4169387014ddc1745ea9e74fc5cb82df3471725bd07cf8d7664ce43f1c7c"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=809 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "a00f4169387014ddc1745ea9e74fc5cb82df3471725bd07cf8d7664ce43f1c7c"
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "name": "attribute_pure",
+      "source_sha256": "f1c618eeb5cd29bbc6c168c7cf4d705a8dcee0ca23d31e701568bc02328afa99",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof does not support function attributes",
+        "start": 15,
+        "end": 20,
+        "line": 2,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=809 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "8068a0525b1299f258d0e1a927bd4a5804abf76e9e645bc37e6d992cd8fb12ed"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=809 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "8068a0525b1299f258d0e1a927bd4a5804abf76e9e645bc37e6d992cd8fb12ed"
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "name": "empty",
+      "source_sha256": "dae181d64942b18fb3f378066940c22ae43131c2e1736a777d592a0884c86123",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one complete return statement",
+        "start": 33,
+        "end": 35,
+        "line": 2,
+        "column": 19
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1011 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "78d2f6c1e6e3caf9111128696c2a63093f86293e48e6a1398fe0321dd10faff9"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1011 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "78d2f6c1e6e3caf9111128696c2a63093f86293e48e6a1398fe0321dd10faff9"
+        }
+      ]
+    },
+    {
+      "index": 31,
+      "name": "bare_return",
+      "source_sha256": "e174abed1a2df1f0b65411e443f505f0e10b48d495072d8759ac9d3d1b7439d0",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires a direct integer literal",
+        "start": 35,
+        "end": 42,
+        "line": 2,
+        "column": 21
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1051 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "acb8fc31f9fccb10a6b1797264fc3cd58378bf3f6ab9cf15e6f24f84a3a54be1"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1051 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "acb8fc31f9fccb10a6b1797264fc3cd58378bf3f6ab9cf15e6f24f84a3a54be1"
+        }
+      ]
+    },
+    {
+      "index": 32,
+      "name": "no_result",
+      "source_sha256": "08cbd791a922e29273af76e074ddf5c5c8b2434529155cafd9b2a5a9bb08df11",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 15,
+        "end": 37,
+        "line": 2,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=877 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "134dd9b56b7230b0783fc253aab10c06fcf8b85b048d64701a29b7660c315fc4"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=877 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "134dd9b56b7230b0783fc253aab10c06fcf8b85b048d64701a29b7660c315fc4"
+        }
+      ]
+    },
+    {
+      "index": 33,
+      "name": "no_function",
+      "source_sha256": "a2a71155622a4befa36bc02af2ac596d91aa201c8bcc48667fcd67adee002ea3",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one function in one package",
+        "start": 0,
+        "end": 15,
+        "line": 1,
+        "column": 1
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=645 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=13 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "a63d4efc91a6d92f5d26e4d95e6c04f4f756630e91b054ec666acaf14e87e053"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=645 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=13 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "a63d4efc91a6d92f5d26e4d95e6c04f4f756630e91b054ec666acaf14e87e053"
+        }
+      ]
+    },
+    {
+      "index": 34,
+      "name": "malformed",
+      "source_sha256": "6c187200aba8c41e6975e20f2d5c6b10fe2543a7e2d562205724722b43b0eac6",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "Expected }",
+        "start": 45,
+        "end": 45,
+        "line": 2,
+        "column": 31
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=765 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=13 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "26cff7cd1922eaff7cd4124f24d1c303b301e70e2c22b18b51177829818593c1"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=765 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=13 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "26cff7cd1922eaff7cd4124f24d1c303b301e70e2c22b18b51177829818593c1"
+        }
+      ]
+    },
+    {
+      "index": 35,
+      "name": "nul",
+      "source_sha256": "7f6da05c0ea9c72fd0dd864b9975de3b5f74ff50824ca9b52283326b70d7ddcf",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "Package source contains NUL bytes",
+        "start": 47,
+        "end": 48,
+        "line": 2,
+        "column": 33
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=103 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=13 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "c0ddd02016225eba3009c2fdabea06625b5ed27e1a2377b52cce0fb2aff4b80f"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=103 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=13 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "c0ddd02016225eba3009c2fdabea06625b5ed27e1a2377b52cce0fb2aff4b80f"
+        }
+      ]
+    },
+    {
+      "index": 36,
+      "name": "string_result",
+      "source_sha256": "a9605cd7dd5b8a6a7f667536ad0b012fa5f617d053b9b447a754143302237b9f",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 29,
+        "end": 35,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1067 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "62a55b86a3589c8f3ecdb6516dfc355211d2883f83afd8490a7d4da07472016d"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1067 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "62a55b86a3589c8f3ecdb6516dfc355211d2883f83afd8490a7d4da07472016d"
+        }
+      ]
+    },
+    {
+      "index": 37,
+      "name": "map_result",
+      "source_sha256": "7cde5d9082b40dec23f41bc679f9a5165510178e3b4d8d4ab7ba260c10891b61",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one ordinary int result",
+        "start": 29,
+        "end": 39,
+        "line": 2,
+        "column": 15
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1711 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "e6d7e5342924766a6a3925c515620fb3b03a4c8181462625db3c8e80b7078980"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1711 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "e6d7e5342924766a6a3925c515620fb3b03a4c8181462625db3c8e80b7078980"
+        }
+      ]
+    },
+    {
+      "index": 38,
+      "name": "assert_before",
+      "source_sha256": "3338f4157c09f841f5ade3e77d88fb2378ced04eec4991157af92d2d9abcd2dd",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof requires one complete return statement",
+        "start": 35,
+        "end": 49,
+        "line": 2,
+        "column": 21
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1131 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "90abec07562809f513b454335433a720a4a4d569b39b1d306ffa3c781aeb8b44"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1131 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "90abec07562809f513b454335433a720a4a4d569b39b1d306ffa3c781aeb8b44"
+        }
+      ]
+    },
+    {
+      "index": 39,
+      "name": "return_outcome",
+      "source_sha256": "a21b6a5e176c78c136e06fbadd93d89262b0cb922e5f23e5b77f311928021947",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "scalar proof does not support return outcomes",
+        "start": 43,
+        "end": 47,
+        "line": 2,
+        "column": 29
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1073 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "933b15cf10d54df8048adb11a702811378b8ce4dc329b68110a961e3604c079c"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1073 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "933b15cf10d54df8048adb11a702811378b8ce4dc329b68110a961e3604c079c"
+        }
+      ]
+    },
+    {
+      "index": 40,
+      "name": "float_one",
+      "source_sha256": "e4c9778e0c9b9f41e45bcb1bba75728d57a60086f2ce1c9a435cae5d57ab8e50",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "only integer literals of 64 bits are supported",
+        "start": 42,
+        "end": 45,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1369 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "bd33b41655945bd1aa0d70431dd2c4de516fdf3babd0953a26bcde01fcffb294"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1369 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "bd33b41655945bd1aa0d70431dd2c4de516fdf3babd0953a26bcde01fcffb294"
+        }
+      ]
+    },
+    {
+      "index": 41,
+      "name": "exponent_one",
+      "source_sha256": "90c4ad39077d20dc10fd1f0f27d7f5a7e3d6bcdae606ed55c284233966f53a0f",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "only integer literals of 64 bits are supported",
+        "start": 42,
+        "end": 45,
+        "line": 2,
+        "column": 28
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=1369 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "627f78c0fec1d894adb7253857e633876c58b271940de2f0495abcaf33203d30"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=1369 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "627f78c0fec1d894adb7253857e633876c58b271940de2f0495abcaf33203d30"
+        }
+      ]
+    },
+    {
+      "index": 42,
+      "name": "nul_comment",
+      "source_sha256": "4f301f446e2774a63e3a0a3d17d5e53b311b32fac63a8aecaaa38198efa1ceef",
+      "accepted": false,
+      "value": 0,
+      "diagnostic": {
+        "message": "Package source contains NUL bytes",
+        "start": 31,
+        "end": 32,
+        "line": 3,
+        "column": 10
+      },
+      "runs": [
+        {
+          "backend": "bytecode",
+          "producer_counters": "compiler-host bytecode=103 sljit=0 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=15 sljit=0 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "dde3c2f7d74c881bc8ca5ef53930b49442c06d7b37d6d02f537b5404bcd8832f"
+        },
+        {
+          "backend": "sljit",
+          "producer_counters": "compiler-host bytecode=0 sljit=103 wasm=0 fallback=0 overflow=0",
+          "checker_counters": "compiler-host bytecode=0 sljit=15 wasm=0 fallback=0 overflow=0",
+          "envelope_sha256": "dde3c2f7d74c881bc8ca5ef53930b49442c06d7b37d6d02f537b5404bcd8832f"
+        }
+      ]
+    }
+  ]
 }

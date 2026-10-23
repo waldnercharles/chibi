@@ -1,6 +1,7 @@
 package package_compiler
 
 import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
 import strings "core:strings"
 
 // The steps EmitBody takes for nodes other than control flow. Each reads the
@@ -852,6 +853,27 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks);
 }
 
+// The existing integer-literal semantic decision, shared with the narrow scalar
+// proof producer. Context chooses storage; parsing, range checking and exact
+// bits have one implementation. This does not infer a type from spelling.
+IntegerLiteralResult :: union {
+    Rejected(diagnostic: syntax.Diagnostic) | Checked(bits: uint64)
+}
+ReadIntegerLiteral :: (forest: snapshot.SnapshotNode[], text: string, document: int, node: int,
+                       storage: int) -> IntegerLiteralResult {
+    switch ParseNumber(forest, text, node) {
+        case .Invalid:
+            return IntegerLiteralResult.Rejected(Diagnose(forest, node, document,
+                                                          "only integer literals of 64 bits are supported"));
+        case .Number(negative, magnitude):
+            if (!Fits(negative, magnitude, storage)) {
+                return IntegerLiteralResult.Rejected(Diagnose(forest, node, document,
+                                                              format_text("Numeric literal is outside the range of {}", TypeName(storage))));
+            }
+            return IntegerLiteralResult.Checked(Bits(negative, magnitude));
+    }
+}
+
 // Literals, names, parentheses, field reads and element reads.
 ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
               params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[],
@@ -915,15 +937,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         payload: uint64 = 0;
         literal := "";
         if (kind == "number") {
-            switch ParseNumber(forest, text, item.node) {
-                case .Invalid:
-                    return Fail(forest, item.node, document, "only integer literals of 64 bits are supported");
-                case .Number(negative, magnitude):
-                    if (!Fits(negative, magnitude, storage)) {
-                        return Fail(forest, item.node, document,
-                                    format_text("Numeric literal is outside the range of {}", TypeName(storage)));
-                    }
-                    payload = Bits(negative, magnitude);
+            switch ReadIntegerLiteral(forest, text, document, item.node, storage) {
+                case .Rejected(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Checked(bits):
+                    payload = bits;
             }
         } else if (kind == "boolean") {
             storage = BoolStorage;

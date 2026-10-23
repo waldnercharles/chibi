@@ -1,0 +1,193 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import routes "project:package_routes"
+import strings "core:strings"
+
+// Every rejection is canonical: no partial function or emitted result survives.
+ScalarFailure :: (path: string, key: string, text: string,
+                  diagnostic: syntax.Diagnostic) -> facts.NullaryPureInt32Return {
+    return {accepted: false, value: 0, name: "", path: path, key: key, text: text,
+            declaration_start: 0, declaration_end: 0, declaration_line: 0, declaration_column: 0,
+            body_start: 0, body_end: 0, body_line: 0, body_column: 0,
+            return_start: 0, return_end: 0, return_line: 0, return_column: 0,
+            expression_start: 0, expression_end: 0, expression_line: 0, expression_column: 0,
+            diagnostic_start: diagnostic.start, diagnostic_end: diagnostic.end,
+            diagnostic_line: diagnostic.line, diagnostic_column: diagnostic.column,
+            diagnostic_message: diagnostic.message};
+}
+
+// Opt-in internal producer. The snapshot, declarations, body and literal's
+// context/type/range semantics are the ordinary compiler's, not a second parser
+// or evaluator. Syntax checks below only reject forms this proof cannot express.
+//
+// This first slice deliberately excludes even valid unary negative literals,
+// parentheses, parameters, named results, calls, attributes and extra statements.
+// Passing a body shape gate alone never certifies a function: EmitBody must
+// finish, and its actual semantic effects and calls must be known absent.
+pub CollectScalar :: (project: string, path: string, text: string, target: Target,
+                      names: string[]) -> facts.NullaryPureInt32Return {
+    ops := ResolveOps(names, false);
+    if (!Complete(ops)) {
+        diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: 0,
+                                         message: "scalar proof requires a complete compiler instruction catalog"};
+        return ScalarFailure(path, "", text, diagnostic);
+    }
+    // The raw parser takes a C string. The snapshot's supplied byte count is
+    // not a NUL check when it came from this same length-bearing string.
+    // Diagnose the first invalid byte before crossing that temporary binding.
+    bytes := strings.Bytes(text);
+    byte_index: int = 0;
+    source_line: int = 1;
+    source_column: int = 1;
+    while (byte_index < length(bytes)) {
+        if (bytes[byte_index] == 0) {
+            diagnostic: syntax.Diagnostic = {start: byte_index, end: byte_index + 1,
+                                             line: source_line, column: source_column, document: 0,
+                                             message: "Package source contains NUL bytes"};
+            return ScalarFailure(path, "", text, diagnostic);
+        }
+        if (bytes[byte_index] == 10) {
+            source_line += 1;
+            source_column = 1;
+        } else {
+            source_column += 1;
+        }
+        byte_index += 1;
+    }
+    input: snapshot.Input = {path: path, text: text, has_path: true, has_text: true};
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+                                 has_files: true, has_collections: false, file_count: 1, collection_count: 0};
+    collections: routes.Collection[] = [];
+    switch snapshot.Build(options, collections, [input], [uint64(strings.ByteLength(text))]) {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return ScalarFailure(path, "", text, diagnostic);
+        case .Accepted(roots, documents, nodes, imports, built):
+            document := documents[0];
+            switch built {
+                case .Rejected(error, cycle):
+                    return ScalarFailure(path, document.key, text,
+                                         Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    // Reject anything that could own layout, imports, annotations
+                    // or another function before asking for declarations.
+                    selected: int = -1;
+                    member := FirstMember(nodes, document.syntax_root);
+                    while (member >= 0) {
+                        if (Is(nodes, member, "function_declaration")) {
+                            if (selected >= 0) {
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, member, 0, "scalar proof requires exactly one function"));
+                            }
+                            selected = member;
+                            attribute := Field(nodes, member, "attribute");
+                            if (attribute >= 0) {
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, attribute, 0, "scalar proof does not support function attributes"));
+                            }
+                        } else if (!Is(nodes, member, "package_header")) {
+                            return ScalarFailure(path, document.key, text,
+                                                 Diagnose(nodes, member, 0, "scalar proof supports only one ordinary function declaration"));
+                        }
+                        member = NextMember(nodes, member);
+                    }
+                    if (selected < 0 || length(packages) != 1 || length(imports) != 0) {
+                        return ScalarFailure(path, document.key, text,
+                                             Diagnose(nodes, document.syntax_root, 0, "scalar proof requires one function in one package"));
+                    }
+                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
+                        case .Failed(diagnostic):
+                            return ScalarFailure(path, document.key, text, diagnostic);
+                        case .Collected(callables, params, types, members, constants):
+                            callable := callables[0];
+                            if (callable.count != 0) {
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, Field(nodes, selected, "parameters"), 0,
+                                                              "scalar proof requires no parameters"));
+                            }
+                            result_node := Field(nodes, selected, "results");
+                            if (callable.results != 0 || callable.result != IntStorage ||
+                                callable.result_container != 0 || callable.result_record != -1) {
+                                if (result_node < 0) {
+                                    result_node = selected;
+                                }
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, result_node, 0, "scalar proof requires one ordinary int result"));
+                            }
+                            body := Field(nodes, selected, "body");
+                            returned := FirstMember(nodes, body);
+                            if (!Is(nodes, returned, "return_statement")) {
+                                if (returned < 0) {
+                                    returned = body;
+                                }
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, returned, 0, "scalar proof requires one complete return statement"));
+                            }
+                            outcome := Field(nodes, returned, "outcome");
+                            if (outcome >= 0) {
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, outcome, 0, "scalar proof does not support return outcomes"));
+                            }
+                            extra := NextMember(nodes, returned);
+                            if (extra >= 0) {
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, extra, 0, "scalar proof does not support additional statements"));
+                            }
+                            expression := Field(nodes, returned, "value");
+                            if (!Is(nodes, expression, "number")) {
+                                if (expression < 0) {
+                                    expression = returned;
+                                }
+                                return ScalarFailure(path, document.key, text,
+                                                     Diagnose(nodes, expression, 0, "scalar proof requires a direct integer literal"));
+                            }
+                            natives: Native[] = [];
+                            ports: Port[] = [];
+                            identities: uint64[] = [];
+                            operators: NumericOperator[] = [];
+                            makes: NativeMake[] = [];
+                            indices: int[] = [];
+                            aliases: Name[] = [];
+                            empty_names: string[] = [];
+                            solid := SolidOffsets(text);
+                            switch EmitBody(nodes, text, 0, callables, params, types, members, constants,
+                                            natives, ports, identities, operators, makes, indices, aliases,
+                                            document.key, solid, 0, 0, 0, empty_names, empty_names, indices, ops, target) {
+                                case .Failed(diagnostic):
+                                    return ScalarFailure(path, document.key, text, diagnostic);
+                                case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects):
+                                    if (effects != 0 || length(calls) != 0 || length(hosts) != 0 ||
+                                        length(cells) != 0 || length(roots) != 0) {
+                                        return ScalarFailure(path, document.key, text,
+                                                             Diagnose(nodes, body, 0, "scalar proof requires known effect-free scalar execution"));
+                                    }
+                                    // A second invocation of the SAME semantic decision,
+                                    // not another evaluator or an instruction payload scan.
+                                    switch ReadIntegerLiteral(nodes, text, 0, expression, callable.result) {
+                                        case .Rejected(diagnostic):
+                                            return ScalarFailure(path, document.key, text, diagnostic);
+                                        case .Checked(bits):
+                                            declaration_range := nodes[selected];
+                                            body_range := nodes[body];
+                                            return_range := nodes[returned];
+                                            expression_range := nodes[expression];
+                                            return {accepted: true, value: int(bits), name: callable.name,
+                                                    path: path, key: document.key, text: text,
+                                                    declaration_start: declaration_range.start, declaration_end: declaration_range.end,
+                                                    declaration_line: declaration_range.row + 1, declaration_column: declaration_range.column + 1,
+                                                    body_start: body_range.start, body_end: body_range.end,
+                                                    body_line: body_range.row + 1, body_column: body_range.column + 1,
+                                                    return_start: return_range.start, return_end: return_range.end,
+                                                    return_line: return_range.row + 1, return_column: return_range.column + 1,
+                                                    expression_start: expression_range.start, expression_end: expression_range.end,
+                                                    expression_line: expression_range.row + 1, expression_column: expression_range.column + 1,
+                                                    diagnostic_start: 0, diagnostic_end: 0, diagnostic_line: 0, diagnostic_column: 0,
+                                                    diagnostic_message: ""};
+                                    }
+                            }
+                    }
+            }
+    }
+}

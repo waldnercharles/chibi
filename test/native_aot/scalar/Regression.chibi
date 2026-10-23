@@ -1,0 +1,80 @@
+package scalar_regression
+
+import cases "project:scalar_cases"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import tests "project:scalar_llvm_tests"
+import strings "core:strings"
+
+// The host transports these authored cases; it does not classify source text.
+pub Sources :: () -> string[] {
+    output: string[] = [];
+    for (index in 0..<cases.Count()) {
+        output.append(cases.Source(index));
+    }
+    return output;
+}
+
+pub Tests :: () -> int {
+    return tests.Tests();
+}
+
+// Host invocation selects entries in its root package only. Keep this test
+// forwarding entry authored and preserve the original input record unchanged.
+pub EmitBytes :: (value: facts.NullaryPureInt32Return) -> byte[] {
+    return scalar.EmitBytes(value);
+}
+
+Same :: (left: facts.NullaryPureInt32Return, right: facts.NullaryPureInt32Return) -> bool {
+    return left.accepted == right.accepted && left.value == right.value &&
+           left.name == right.name && left.path == right.path && left.key == right.key && left.text == right.text &&
+           left.declaration_start == right.declaration_start && left.declaration_end == right.declaration_end &&
+           left.declaration_line == right.declaration_line && left.declaration_column == right.declaration_column &&
+           left.body_start == right.body_start && left.body_end == right.body_end &&
+           left.body_line == right.body_line && left.body_column == right.body_column &&
+           left.return_start == right.return_start && left.return_end == right.return_end &&
+           left.return_line == right.return_line && left.return_column == right.return_column &&
+           left.expression_start == right.expression_start && left.expression_end == right.expression_end &&
+           left.expression_line == right.expression_line && left.expression_column == right.expression_column &&
+           left.diagnostic_start == right.diagnostic_start && left.diagnostic_end == right.diagnostic_end &&
+           left.diagnostic_line == right.diagnostic_line && left.diagnostic_column == right.diagnostic_column &&
+           left.diagnostic_message == right.diagnostic_message;
+}
+
+// Negative results are failures. Zero means a checked rejection with no bytes;
+// one means a checked accepted result. Neither is inferred by the transport.
+pub Check :: (value: facts.NullaryPureInt32Return) -> int {
+    checked := cases.Check(value);
+    if (checked != 1) {
+        return checked - 100;
+    }
+    if (scalar.Validate(value) != "") {
+        return -1;
+    }
+    bytes := scalar.EmitBytes(value);
+    switch scalar.Emit(value) {
+        case .Invalid(message):
+            return -2;
+        case .Rejected(projection):
+            if (value.accepted || !Same(value, projection) || length(bytes) != 0) {
+                return -3;
+            }
+            return 0;
+        case .Emitted(text):
+            if (!value.accepted || length(bytes) == 0 ||
+                !strings.Contains(text, "define i32 @chibi_scalar()") ||
+                !strings.Contains(text, format_text("store i32 {:d}, ptr %s0", value.value))) {
+                return -4;
+            }
+            expected := strings.Bytes(text);
+            if (length(expected) != length(bytes)) {
+                return -5;
+            }
+            for (index in 0..<length(expected)) {
+                if (bytes[index] != byte(expected[index])) {
+                    return -6;
+                }
+            }
+            return 1;
+    }
+}

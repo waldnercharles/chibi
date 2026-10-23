@@ -2,12 +2,12 @@
   "format": 1,
   "version": 5,
   "minimum": 2,
-  "revision": "sources-sha256:6507a49c1e27a39e1bdf0cda53a4d589a6629e4554b9f59a548297763b880bdb",
+  "revision": "a4df25ea53c47f2740bce368607957b98fd81c38",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 12098990,
-    "sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e"
+    "bytes": 12300558,
+    "sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -24,8 +24,8 @@
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 198832,
-      "sha256": "a05a1babcbe4ca51ce74daf7599be6a02d72c786e022c056872d1215fa3145e8"
+      "bytes": 199734,
+      "sha256": "fae606ce824cd19184a14bfb212562c9b562bdef449c9f3b899d15cc56a0bc0f"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -56,11 +56,6 @@
       "path": "syntax_diagnostics/Diagnostics.chibi",
       "bytes": 2282,
       "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
-    },
-    {
-      "path": "/sdk/core/strings/Strings.chibi",
-      "bytes": 15843,
-      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
@@ -101,6 +96,21 @@
       "path": "prepared_writer/Writer.chibi",
       "bytes": 26338,
       "sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
+    },
+    {
+      "path": "package_compiler/Scalar.chibi",
+      "bytes": 13169,
+      "sha256": "2a6ce7d1201fa90d84fb9c1fd146a2946be9154a029db626d0b63c64d4a288e6"
+    },
+    {
+      "path": "scalar_facts/Facts.chibi",
+      "bytes": 1580,
+      "sha256": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24"
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "bytes": 15843,
+      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
     }
   ],
   "target": [

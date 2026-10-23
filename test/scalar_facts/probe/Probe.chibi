@@ -1,0 +1,13 @@
+package probe
+import facts "project:scalar_facts"
+// Synthetic transport values, not a semantic proof of the text "42".
+// The real producer must derive an accepted record through shared semantics.
+pub Make :: () -> facts.NullaryPureInt32Return {
+    return {accepted: true, value: 42, name: "Main", path: "Main.chibi", key: "/project/Main.chibi", text: "42",
+            declaration_start: 0, declaration_end: 2, declaration_line: 1, declaration_column: 1,
+            body_start: 0, body_end: 2, body_line: 1, body_column: 1,
+            return_start: 0, return_end: 2, return_line: 1, return_column: 1,
+            expression_start: 0, expression_end: 2, expression_line: 1, expression_column: 1,
+            diagnostic_start: 0, diagnostic_end: 0, diagnostic_line: 0, diagnostic_column: 0,
+            diagnostic_message: ""};
+}

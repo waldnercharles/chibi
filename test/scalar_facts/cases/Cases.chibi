@@ -1,0 +1,175 @@
+package scalar_cases
+
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+// Authored semantic fixtures and assertions. The temporary host adapter only
+// dispatches these sources and transports the producer's unmodified result.
+Sources :: () -> string[] {
+    return [
+        "package scalar\nMain :: () -> int { return 42; }",
+        "package scalar\nMain :: () -> int { return 0; }",
+        "package scalar\nMain :: () -> int { return 2147483647; }",
+        "package scalar\nMain :: () -> int { return 0x2a; }",
+        "// 雪\npackage scalar\n\npub Main :: () -> int {\n    // λ\n    return 42; // trailing\n}\n",
+        "package scalar\nMain :: () -> int { return 2147483648; }",
+        "package scalar\nMain :: () -> int { return 18446744073709551616; }",
+        "package scalar\nMain :: () -> int { return 42.5; }",
+        "package scalar\nMain :: () -> int { return 1e2; }",
+        "package scalar\nMain :: () -> int { return -1; }",
+        "package scalar\nMain :: () -> int { return (42); }",
+        "package scalar\nMain :: () -> int { return 40 + 2; }",
+        "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }",
+        "package scalar\nMain :: () -> int { x: int = 42; return x; }",
+        "package scalar\nMain :: () -> int { return 42; assert(false); }",
+        "package scalar\nMain :: () -> int { return 42; return 0; }",
+        "package scalar\nMain :: () -> int { return unknown(); }",
+        "package scalar\nMain :: (x: int) -> int { return 42; }",
+        "package scalar\nMain :: (x: ref int) -> int { return 42; }",
+        "package scalar\nMain :: () -> bool { return true; }",
+        "package scalar\nMain :: () -> int64 { return 42; }",
+        "package scalar\nMain :: () -> int[] { return [42]; }",
+        "package scalar\nMain :: () -> Missing { return 42; }",
+        "package scalar\nMain :: () -> (x: int) { return 42; }",
+        "package scalar\nValue :: struct { x: int; }\nMain :: () -> int { return 42; }",
+        "package scalar\nN: int : 42;\nMain :: () -> int { return 42; }",
+        "package scalar\nMain :: () -> int { return 42; }\nOther :: () -> int { return 0; }",
+        "package scalar\nimport missing \"project:missing\"\nMain :: () -> int { return 42; }",
+        "package scalar\n@test Main :: () -> int { return 42; }",
+        "package scalar\n@pure Main :: () -> int { return 42; }",
+        "package scalar\nMain :: () -> int {}",
+        "package scalar\nMain :: () -> int { return; }",
+        "package scalar\nMain :: () { return; }",
+        "package scalar\n",
+        "package scalar\nMain :: () -> int { return 42;",
+        "package scalar\nMain :: () -> int { return 42; }\u0000",
+        "package scalar\nMain :: () -> string { return \"42\"; }",
+        "package scalar\nMain :: () -> [int: int] { return [1: 42]; }",
+        "package scalar\nMain :: () -> int { assert(false); return 42; }",
+        "package scalar\nMain :: () -> int { return .Done 42; }",
+        "package scalar\nMain :: () -> int { return 1.0; }",
+        "package scalar\nMain :: () -> int { return 1e0; }",
+        "// 雪\npackage scalar\n// before\u0000after\nMain :: () -> int { return 42; }"];
+}
+pub Count :: () -> int {
+    return length(Sources());
+}
+pub Source :: (index: int) -> string {
+    sources := Sources();
+    return sources[index];
+}
+pub CaseName :: (index: int) -> string {
+    names: string[] = ["forty_two", "zero", "int_max", "hex", "comments", "overflow", "u64_overflow", "fraction", "exponent", "negative", "parentheses", "arithmetic", "branch", "local", "after_return", "extra_return", "unknown_call", "parameter", "reference", "bool_result", "int64_result", "array_result", "nominal_result", "named_result", "struct", "constant", "second_function", "import", "attribute_test", "attribute_pure", "empty", "bare_return", "no_result", "no_function", "malformed", "nul", "string_result", "map_result", "assert_before", "return_outcome", "float_one", "exponent_one", "nul_comment"];
+    return names[index];
+}
+Expected :: (index: int) -> int {
+    values: int[] = [42, 0, 2147483647, 42, 42, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
+    return values[index];
+}
+Excerpt :: (index: int) -> string {
+    values: string[] = ["42", "0", "2147483647", "0x2a", "42", "2147483648", "18446744073709551616", "42.5", "1e2", "-1", "(42)", "40 + 2", "if (true) { return 42; }", "x: int = 42;", "assert(false);", "return 0;", "unknown()", "(x: int)", "(x: ref int)", "bool", "int64", "int[]", "Missing", "(x: int)", "Value :: struct { x: int; }", "N: int : 42;", "Other :: () -> int { return 0; }", "", "@test", "@pure", "{}", "return;", "Main :: () { return; }", "", "", "", "string", "[int: int]", "assert(false);", "Done", "1.0", "1e0", "\u0000"];
+    return values[index];
+}
+Position :: (text: string, start: int, line: int, column: int) -> bool {
+    bytes := strings.Bytes(text);
+    if (start < 0 || start > length(bytes)) {
+        return false;
+    }
+    row: int = 1;
+    col: int = 1;
+    at: int = 0;
+    while (at < start) {
+        if (bytes[at] == 10) {
+            row += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+        at += 1;
+    }
+    return line == row && column == col;
+}
+pub Check :: (proof: facts.NullaryPureInt32Return) -> int {
+    sources := Sources();
+    index: int = 0;
+    while (index < length(sources) && sources[index] != proof.text) {
+        index += 1;
+    }
+    if (!(index < length(sources))) {
+        return -1;
+    } // "unknown scalar fixture source"
+    if (!(proof.path == "Scalar.chibi")) {
+        return -2;
+    } // "source path was not retained"
+    size := strings.ByteLength(proof.text);
+    expected := Expected(index);
+    if (expected < 0) {
+        if (proof.accepted) {
+            return -3;
+        } // "unsupported source was certified"
+        if (!(proof.value == 0 && proof.name == "")) {
+            return -4;
+        } // "rejection leaked a partial result"
+        if (!(proof.declaration_start == 0 && proof.declaration_end == 0 && proof.declaration_line == 0 && proof.declaration_column == 0)) {
+            return -5;
+        } // "rejection leaked a declaration"
+        if (!(proof.body_start == 0 && proof.body_end == 0 && proof.body_line == 0 && proof.body_column == 0)) {
+            return -6;
+        } // "rejection leaked a body"
+        if (!(proof.return_start == 0 && proof.return_end == 0 && proof.return_line == 0 && proof.return_column == 0)) {
+            return -7;
+        } // "rejection leaked a return"
+        if (!(proof.expression_start == 0 && proof.expression_end == 0 && proof.expression_line == 0 && proof.expression_column == 0)) {
+            return -8;
+        } // "rejection leaked an expression"
+        if (!(proof.diagnostic_message != "")) {
+            return -9;
+        } // "rejection needs a diagnostic"
+        if (!(proof.diagnostic_start >= 0 && proof.diagnostic_end >= proof.diagnostic_start && proof.diagnostic_end <= size)) {
+            return -10;
+        } // "diagnostic range is outside its source"
+        if (!(Position(proof.text, proof.diagnostic_start, proof.diagnostic_line, proof.diagnostic_column))) {
+            return -11;
+        } // "diagnostic byte position differs"
+        excerpt := Excerpt(index);
+        if (excerpt != "") {
+            if (!(strings.Slice(proof.text, proof.diagnostic_start, proof.diagnostic_end - proof.diagnostic_start) == excerpt)) {
+                return -12;
+            } // "diagnostic does not identify the unsupported source"
+        }
+        return 1;
+    }
+    if (!(proof.accepted && proof.value == expected)) {
+        return -13;
+    } // "typed scalar result differs"
+    if (!(proof.name == "Main" && proof.key == "project:Scalar.chibi")) {
+        return -14;
+    } // "source identity differs"
+    if (!(proof.diagnostic_message == "" && proof.diagnostic_start == 0 && proof.diagnostic_end == 0 &&
+          proof.diagnostic_line == 0 && proof.diagnostic_column == 0)) {
+        return -15;
+    } // "success retained a diagnostic"
+    if (!(proof.declaration_start >= 0 && proof.declaration_end <= size &&
+          proof.declaration_start <= proof.body_start && proof.body_end <= proof.declaration_end &&
+          proof.body_start < proof.return_start && proof.return_end < proof.body_end &&
+          proof.return_start <= proof.expression_start && proof.expression_end <= proof.return_end &&
+          proof.expression_start < proof.expression_end)) {
+        return -16;
+    } // "complete return/source relation differs"
+    if (!(Position(proof.text, proof.declaration_start, proof.declaration_line, proof.declaration_column))) {
+        return -17;
+    } // "declaration position differs"
+    if (!(Position(proof.text, proof.body_start, proof.body_line, proof.body_column))) {
+        return -18;
+    } // "body position differs"
+    if (!(Position(proof.text, proof.return_start, proof.return_line, proof.return_column))) {
+        return -19;
+    } // "return position differs"
+    if (!(Position(proof.text, proof.expression_start, proof.expression_line, proof.expression_column))) {
+        return -20;
+    } // "expression position differs"
+    if (!(strings.Slice(proof.text, proof.expression_start, proof.expression_end - proof.expression_start) == Excerpt(index))) {
+        return -21;
+    } // "typed literal provenance differs"
+    return 1;
+}

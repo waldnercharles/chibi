@@ -1,45 +1,65 @@
 package scalar_facts
 
-// Internal opt-in proof for one ordinary () -> int function whose entire body
-// is one effect-free integer-literal return. This is not a general IR.
+// Internal opt-in owned result for one source document holding a bounded,
+// acyclic set of ordinary pure functions over int and bool. Each function's
+// whole body returns a literal, a parameter or a direct call of another
+// function of the set, whose arguments are such expressions. This is not a
+// general IR, and no compiler-private identity crosses this boundary.
 //
-// accepted certifies the complete signature, body and result relation, including
-// known zero effects. A rejected value carries only its source and diagnostic;
-// it must never be emitted. No compiler-private identity crosses this boundary.
+// The compiler host passes arrays of flat records, so a module is one array
+// of rows. Row 0 is its Source: `name` is the path and `text` the document.
+// A rejected module has exactly one more row, its Rejection: `text` is the
+// diagnostic's message and the range is its source. Nothing else survives
+// a rejection, and it must never be emitted.
 //
-// All ranges are half-open source-byte offsets into text; lines and columns are
-// one-based source-byte positions. key is the shared source snapshot's document
-// key. Every range belongs to that same document, not to a compiler table.
+// An accepted module's row 1 is its Document: `name` is the shared source
+// snapshot's document key. Then each function follows in declaration order;
+// the first is the module's entry and takes no parameters and returns int:
+// - a Function row: its `name`, result `type`, `count` parameters and
+//   declaration range;
+// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - a Return row: the return statement's range and the `count` operand rows
+//   that follow it;
+// - operand rows in evaluation order, each after the operands it consumes:
+//   a Literal's `value` is the integer, or 0 and 1 for false and true; a
+//   Read's `value` is its parameter's ordinal; a Call's `value` is its
+//   callee's function ordinal, `name` its callee's name and `count` its
+//   arguments, the `count` most recent unconsumed operands in argument order.
+//   The last operand is the function's returned value.
 //
-// The record is flat because the current compiler supports scalar record fields.
-// Strings belong to the invocation's value graph. Retaining this record after
-// invocation teardown requires an owned host snapshot, not a shallow value copy.
-pub NullaryPureInt32Return :: struct {
-    accepted: bool;
+// Ranges are half-open source-byte offsets into the source text; lines and
+// columns are one-based source-byte positions. Fields a row does not use are
+// zero or empty. The rows own their strings: a host snapshot of the array is
+// the retained result, not a view into the producer's invocation.
+pub Row :: struct {
+    kind: int;
+    type: int;
     value: int;
+    count: int;
     name: string;
-    path: string;
-    key: string;
     text: string;
-    declaration_start: int;
-    declaration_end: int;
-    declaration_line: int;
-    declaration_column: int;
-    body_start: int;
-    body_end: int;
-    body_line: int;
-    body_column: int;
-    return_start: int;
-    return_end: int;
-    return_line: int;
-    return_column: int;
-    expression_start: int;
-    expression_end: int;
-    expression_line: int;
-    expression_column: int;
-    diagnostic_start: int;
-    diagnostic_end: int;
-    diagnostic_line: int;
-    diagnostic_column: int;
-    diagnostic_message: string;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
 }
+
+pub SourceRow: int : 0;
+pub RejectionRow: int : 1;
+pub DocumentRow: int : 2;
+pub FunctionRow: int : 3;
+pub ParameterRow: int : 4;
+pub ReturnRow: int : 5;
+pub LiteralRow: int : 6;
+pub ReadRow: int : 7;
+pub CallRow: int : 8;
+
+pub IntType: int : 1;
+pub BoolType: int : 2;
+
+// Bounds both sides check before reading counts: source bytes, functions per
+// module, parameters per function and operands per return.
+pub MaxSource: int : 16384;
+pub MaxFunctions: int : 32;
+pub MaxParameters: int : 8;
+pub MaxOperands: int : 64;

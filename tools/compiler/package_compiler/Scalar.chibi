@@ -6,56 +6,430 @@ import syntax "project:syntax_diagnostics"
 import routes "project:package_routes"
 import strings "core:strings"
 
-// Every rejection is canonical: no partial function or emitted result survives.
-ScalarFailure :: (path: string, key: string, text: string,
-                  diagnostic: syntax.Diagnostic) -> facts.NullaryPureInt32Return {
-    return {accepted: false, value: 0, name: "", path: path, key: key, text: text,
-            declaration_start: 0, declaration_end: 0, declaration_line: 0, declaration_column: 0,
-            body_start: 0, body_end: 0, body_line: 0, body_column: 0,
-            return_start: 0, return_end: 0, return_line: 0, return_column: 0,
-            expression_start: 0, expression_end: 0, expression_line: 0, expression_column: 0,
-            diagnostic_start: diagnostic.start, diagnostic_end: diagnostic.end,
-            diagnostic_line: diagnostic.line, diagnostic_column: diagnostic.column,
-            diagnostic_message: diagnostic.message};
+// Opt-in internal producer of a scalar_facts module. The snapshot,
+// declarations, bodies, literal ranges, parameter bindings and callees are the
+// ordinary compiler's decisions, not a second parser or evaluator. The checks
+// here only reject forms the bounded subset cannot express: every function
+// takes and returns int or bool, and its whole body returns a literal, a
+// parameter or a direct call of a function of the same source, with such
+// arguments. Parentheses, negation, arithmetic, conversions, locals, control
+// flow, attributes, imports, defaults and recursion are excluded.
+//
+// Each body must also pass EmitBody with no effects, host calls or roots,
+// and no cells but its calls' argument and result cells. Its calls go only to
+// functions of the set, so the closure is pure.
+
+ScalarOperands :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Built(rows: facts.Row[])
 }
 
-// Opt-in internal producer. The snapshot, declarations, body and literal's
-// context/type/range semantics are the ordinary compiler's, not a second parser
-// or evaluator. Syntax checks below only reject forms this proof cannot express.
-//
-// This first slice deliberately excludes even valid unary negative literals,
-// parentheses, parameters, named results, calls, attributes and extra statements.
-// Passing a body shape gate alone never certifies a function: EmitBody must
-// finish, and its actual semantic effects and calls must be known absent.
-pub CollectScalar :: (project: string, path: string, text: string, target: Target,
-                      names: string[]) -> facts.NullaryPureInt32Return {
-    ops := ResolveOps(names, false);
-    if (!Complete(ops)) {
-        diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: 0,
-                                         message: "scalar proof requires a complete compiler instruction catalog"};
-        return ScalarFailure(path, "", text, diagnostic);
+ScalarSource :: (path: string, text: string) -> facts.Row {
+    return {kind: facts.SourceRow, type: 0, value: 0, count: 0, name: path, text: text,
+            start: 0, end: 0, line: 0, column: 0};
+}
+// Every rejection is canonical: the source and its diagnostic, so no partial
+// function or operand survives.
+ScalarFailure :: (path: string, text: string, diagnostic: syntax.Diagnostic) -> facts.Row[] {
+    rejection: facts.Row = {kind: facts.RejectionRow, type: 0, value: 0, count: 0, name: "", text: diagnostic.message,
+                            start: diagnostic.start, end: diagnostic.end, line: diagnostic.line,
+                            column: diagnostic.column};
+    return [ScalarSource(path, text), rejection];
+}
+ScalarAt :: (forest: snapshot.SnapshotNode[], node: int, kind: int, type: int, value: int, count: int,
+             name: string) -> facts.Row {
+    item := forest[node];
+    return {kind: kind, type: type, value: value, count: count, name: name, text: "",
+            start: item.start, end: item.end, line: item.row + 1, column: item.column + 1};
+}
+// The scalar type of a storage, 0 for any other.
+ScalarTypeOf :: (storage: int) -> int {
+    if (storage == IntStorage) {
+        return facts.IntType;
     }
-    // The raw parser takes a C string. The snapshot's supplied byte count is
-    // not a NUL check when it came from this same length-bearing string.
-    // Diagnose the first invalid byte before crossing that temporary binding.
+    if (storage == BoolStorage) {
+        return facts.BoolType;
+    }
+    return 0;
+}
+ScalarParam :: (param: Param) -> bool {
+    return ScalarTypeOf(param.storage) != 0 && param.container == 0 && param.record == -1 && !param.reference;
+}
+// The node a signature's rejection points at, or -1 when it is supported.
+ScalarSignature :: (forest: snapshot.SnapshotNode[], params: Param[], callable: Callable) -> int {
+    results := Field(forest, callable.node, "results");
+    if (callable.results != 0 || ScalarTypeOf(callable.result) == 0 || callable.result_container != 0 ||
+        callable.result_record != -1) {
+        if (results < 0) {
+            return callable.node;
+        }
+        return results;
+    }
+    if (callable.count > facts.MaxParameters) {
+        return Field(forest, callable.node, "parameters");
+    }
+    for (index in 0..<callable.count) {
+        param := params[callable.first + index];
+        if (!ScalarParam(param) || param.has_default) {
+            return forest[param.node].parent;
+        }
+    }
+    return -1;
+}
+// The body's single return value, or a diagnostic for any other shape.
+ScalarReturn :: (forest: snapshot.SnapshotNode[], callable: Callable) -> ScalarOperands {
+    body := Field(forest, callable.node, "body");
+    returned := FirstMember(forest, body);
+    if (!Is(forest, returned, "return_statement")) {
+        if (returned < 0) {
+            returned = body;
+        }
+        return ScalarOperands.Failed(Diagnose(forest, returned, 0, "scalar proof requires one complete return statement"));
+    }
+    outcome := Field(forest, returned, "outcome");
+    if (outcome >= 0) {
+        return ScalarOperands.Failed(Diagnose(forest, outcome, 0, "scalar proof does not support return outcomes"));
+    }
+    extra := NextMember(forest, returned);
+    if (extra >= 0) {
+        return ScalarOperands.Failed(Diagnose(forest, extra, 0, "scalar proof does not support additional statements"));
+    }
+    if (Field(forest, returned, "value") < 0) {
+        return ScalarOperands.Failed(Diagnose(forest, returned, 0, "scalar proof requires a returned value"));
+    }
+    return ScalarOperands.Built([ScalarAt(forest, returned, facts.ReturnRow, 0, 0, 0, "")]);
+}
+// The ordinal of the parameter the body's binding of `name` declares, -1 when
+// it is not a parameter. `names` is the body's scope at its start.
+ScalarParameter :: (params: Param[], callable: Callable, names: Name[], name: string) -> int {
+    found := Lookup(names, name);
+    if (found < 0) {
+        return -1;
+    }
+    for (index in 0..<callable.count) {
+        if (params[callable.first + index].node == names[found].node) {
+            return index;
+        }
+    }
+    return -1;
+}
+ScalarMismatch :: (forest: snapshot.SnapshotNode[], node: int, expected: int) -> ScalarOperands {
+    return ScalarOperands.Failed(Diagnose(forest, node, 0, format_text("scalar proof requires a {} value here",
+                                                                       TypeName(expected))));
+}
+// Appends the operand rows of `node`, an expression of storage `expected`,
+// after `rows`, in evaluation order: a call's arguments left to right, then the
+// call. Its callee is the one the ordinary call step resolves.
+ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                  callable: Callable, names: Name[], node: int, expected: int, rows: facts.Row[]) -> ScalarOperands {
+    if (length(rows) >= facts.MaxOperands) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0,
+                                              format_text("scalar proof admits at most {} operands per function",
+                                                          facts.MaxOperands)));
+    }
+    type := ScalarTypeOf(expected);
+    output := rows;
+    if (Is(forest, node, "number")) {
+        if (expected != IntStorage) {
+            return ScalarMismatch(forest, node, expected);
+        }
+        switch ReadIntegerLiteral(forest, text, 0, node, expected) {
+            case .Rejected(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Checked(bits):
+                output.append(ScalarAt(forest, node, facts.LiteralRow, type, int(bits), 0, ""));
+                return ScalarOperands.Built(output);
+        }
+    }
+    if (Is(forest, node, "boolean")) {
+        if (expected != BoolStorage) {
+            return ScalarMismatch(forest, node, expected);
+        }
+        value: int = 0;
+        if (Text(forest, text, node) == "true") {
+            value = 1;
+        }
+        output.append(ScalarAt(forest, node, facts.LiteralRow, type, value, 0, ""));
+        return ScalarOperands.Built(output);
+    }
+    if (Is(forest, node, "identifier")) {
+        ordinal := ScalarParameter(params, callable, names, Text(forest, text, node));
+        if (ordinal < 0) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof reads only parameters"));
+        }
+        if (params[callable.first + ordinal].storage != expected) {
+            return ScalarMismatch(forest, node, expected);
+        }
+        output.append(ScalarAt(forest, node, facts.ReadRow, type, ordinal, 0, ""));
+        return ScalarOperands.Built(output);
+    }
+    if (!Is(forest, node, "call_expression")) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0,
+                                              "scalar proof supports only literals, parameters and direct calls"));
+    }
+    callee := CalledFunction(forest, text, callables, names, callable.package, node);
+    if (!Is(forest, Field(forest, node, "function"), "identifier") || callee < 0) {
+        return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, "function"), 0,
+                                              "scalar proof calls only functions of its own source"));
+    }
+    target := callables[callee];
+    if (target.result != expected) {
+        return ScalarMismatch(forest, node, expected);
+    }
+    count: int = 0;
+    for (argument in Members(forest, Field(forest, node, "arguments"))) {
+        if (Is(forest, argument, "named_argument")) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0, "scalar proof does not support named arguments"));
+        }
+        if (count >= target.count) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "call has the wrong number of arguments"));
+        }
+        switch ScalarOperand(forest, text, callables, params, callable, names, argument,
+                             params[target.first + count].storage, output) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+        count += 1;
+    }
+    if (count != target.count) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "call has the wrong number of arguments"));
+    }
+    if (length(output) >= facts.MaxOperands) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0,
+                                              format_text("scalar proof admits at most {} operands per function",
+                                                          facts.MaxOperands)));
+    }
+    output.append(ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name));
+    return ScalarOperands.Built(output);
+}
+// A function's rows: its signature, its return and the return's operands.
+ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], callables: Callable[],
+                   params: Param[], function: int, ops: Ops, target: Target) -> ScalarOperands {
+    callable := callables[function];
+    rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, ScalarTypeOf(callable.result), 0,
+                                  callable.count, callable.name)];
+    for (index in 0..<callable.count) {
+        param := params[callable.first + index];
+        rows.append(ScalarAt(forest, param.node, facts.ParameterRow, ScalarTypeOf(param.storage), index, 0,
+                             param.name));
+    }
+    returned: facts.Row[] = [];
+    switch ScalarReturn(forest, callable) {
+        case .Failed(diagnostic):
+            return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            returned = built;
+    }
+    aliases: Name[] = [];
+    empty_names: string[] = [];
+    names: Name[] = [];
+    switch Prologue(forest, text, params, callable, aliases, key, solid, 0, empty_names, empty_names, ops, target) {
+        case .Begun(work, begun_names, slots, locals, cells, hosts, code, points, named):
+            names = begun_names;
+    }
+    value := Field(forest, FirstMember(forest, Field(forest, callable.node, "body")), "value");
+    operands: facts.Row[] = [];
+    switch ScalarOperand(forest, text, callables, params, callable, names, value, callable.result, operands) {
+        case .Failed(diagnostic):
+            return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            operands = built;
+    }
+    statement := returned[0];
+    statement.count = length(operands);
+    rows.append(statement);
+    rows.extend(operands);
+    return ScalarOperands.Built(rows);
+}
+// Whether each of `count` cells is an argument or result of an authored call,
+// the only storage a call of this subset takes.
+ScalarCells :: (count: int, calls: Invocation[]) -> bool {
+    for (cell in 0..<count) {
+        owned := false;
+        for (call in calls) {
+            owned = owned || (cell >= call.first && cell < call.first + call.count) ||
+                    (cell >= call.result_first && cell < call.result_first + call.result_count);
+        }
+        if (!owned) {
+            return false;
+        }
+    }
+    return true;
+}
+// The ordinary compiler must emit the body with no semantic effects and none
+// of the storage or host machinery this subset cannot carry: no host calls,
+// traced roots, or cells besides its authored calls' arguments and results.
+ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
+                types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], function: int, ops: Ops,
+                target: Target) -> syntax.Diagnostic {
+    natives: Native[] = [];
+    ports: Port[] = [];
+    identities: uint64[] = [];
+    operators: NumericOperator[] = [];
+    makes: NativeMake[] = [];
+    indices: int[] = [];
+    aliases: Name[] = [];
+    empty_names: string[] = [];
+    switch EmitBody(forest, text, 0, callables, params, types, members, constants, natives, ports, identities,
+                    operators, makes, indices, aliases, key, SolidOffsets(text), 0, 0, function, empty_names,
+                    empty_names, indices, ops, target) {
+        case .Failed(diagnostic):
+            return diagnostic;
+        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects):
+            if (effects != 0 || length(hosts) != 0 || length(roots) != 0 || !ScalarCells(length(cells), calls)) {
+                return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
+                                "scalar proof requires known effect-free scalar execution");
+            }
+            return ScalarPassed();
+    }
+}
+// The first call row that closes a cycle of the module's call relation, or -1.
+// The relation's transitive closure is at most MaxFunctions squared.
+ScalarCycle :: (rows: facts.Row[], count: int) -> int {
+    reach := resize([false], count * count);
+    caller: int = -1;
+    for (row in rows) {
+        if (row.kind == facts.FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == facts.CallRow) {
+            reach[caller * count + row.value] = true;
+        }
+    }
+    for (via in 0..<count) {
+        for (from in 0..<count) {
+            if (reach[from * count + via]) {
+                for (to in 0..<count) {
+                    if (reach[via * count + to]) {
+                        reach[from * count + to] = true;
+                    }
+                }
+            }
+        }
+    }
+    caller = -1;
+    for (index in 0..<length(rows)) {
+        row := rows[index];
+        if (row.kind == facts.FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == facts.CallRow && reach[row.value * count + caller]) {
+            return index;
+        }
+    }
+    return -1;
+}
+// The functions of the module, each checked as a whole before the next.
+ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[],
+                 params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], ops: Ops,
+                 target: Target) -> ScalarOperands {
+    for (callable in callables) {
+        rejected := ScalarSignature(forest, params, callable);
+        if (rejected >= 0) {
+            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, "scalar proof requires int or bool parameters and one int or bool result"));
+        }
+    }
+    first := callables[0];
+    if (first.count != 0) {
+        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "parameters"), 0,
+                                              "scalar proof requires its first function to take no parameters"));
+    }
+    if (first.result != IntStorage) {
+        return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "results"), 0,
+                                              "scalar proof requires its first function to return int"));
+    }
+    solid := SolidOffsets(text);
+    rows: facts.Row[] = [];
+    for (function in 0..<length(callables)) {
+        switch ScalarReturn(forest, callables[function]) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                emitted := ScalarEmits(forest, text, key, callables, params, types, members, constants, function,
+                                       ops, target);
+                if (emitted.message != "") {
+                    return ScalarOperands.Failed(emitted);
+                }
+        }
+        switch ScalarFunction(forest, text, key, solid, callables, params, function, ops, target) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(function_rows):
+                rows.extend(function_rows);
+        }
+    }
+    cycle := ScalarCycle(rows, length(callables));
+    if (cycle >= 0) {
+        call := rows[cycle];
+        diagnostic: syntax.Diagnostic = {start: call.start, end: call.end, line: call.line, column: call.column,
+                                         document: 0, message: "scalar proof does not support recursive calls"};
+        return ScalarOperands.Failed(diagnostic);
+    }
+    return ScalarOperands.Built(rows);
+}
+// No diagnostic: an empty message.
+ScalarPassed :: () -> syntax.Diagnostic {
+    return {start: 0, end: 0, line: 0, column: 0, document: 0, message: ""};
+}
+// The first member of one source document this subset cannot express, which
+// admits only function declarations.
+ScalarMembers :: (forest: snapshot.SnapshotNode[], root: int) -> syntax.Diagnostic {
+    count: int = 0;
+    member := FirstMember(forest, root);
+    while (member >= 0) {
+        if (Is(forest, member, "function_declaration")) {
+            attribute := Field(forest, member, "attribute");
+            if (attribute >= 0) {
+                return Diagnose(forest, attribute, 0, "scalar proof does not support function attributes");
+            }
+            count += 1;
+            if (count > facts.MaxFunctions) {
+                return Diagnose(forest, member, 0,
+                                format_text("scalar proof admits at most {} functions", facts.MaxFunctions));
+            }
+        } else if (!Is(forest, member, "package_header")) {
+            return Diagnose(forest, member, 0, "scalar proof supports only ordinary function declarations");
+        }
+        member = NextMember(forest, member);
+    }
+    if (count == 0) {
+        return Diagnose(forest, root, 0, "scalar proof requires at least one function");
+    }
+    return ScalarPassed();
+}
+// The first NUL byte's diagnostic, or none. The raw parser takes a C string;
+// the snapshot's supplied byte count is not a NUL check when it came from this
+// same length-bearing string.
+ScalarNul :: (text: string) -> syntax.Diagnostic {
     bytes := strings.Bytes(text);
-    byte_index: int = 0;
-    source_line: int = 1;
-    source_column: int = 1;
-    while (byte_index < length(bytes)) {
-        if (bytes[byte_index] == 0) {
-            diagnostic: syntax.Diagnostic = {start: byte_index, end: byte_index + 1,
-                                             line: source_line, column: source_column, document: 0,
-                                             message: "Package source contains NUL bytes"};
-            return ScalarFailure(path, "", text, diagnostic);
+    line: int = 1;
+    column: int = 1;
+    for (index in 0..<length(bytes)) {
+        if (bytes[index] == 0) {
+            return {start: index, end: index + 1, line: line, column: column, document: 0,
+                    message: "Package source contains NUL bytes"};
         }
-        if (bytes[byte_index] == 10) {
-            source_line += 1;
-            source_column = 1;
+        if (bytes[index] == 10) {
+            line += 1;
+            column = 1;
         } else {
-            source_column += 1;
+            column += 1;
         }
-        byte_index += 1;
+    }
+    return ScalarPassed();
+}
+
+pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[]) -> facts.Row[] {
+    ops := ResolveOps(names, false);
+    if (!Complete(ops) || strings.ByteLength(text) > facts.MaxSource) {
+        diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: 0,
+                                         message: "scalar proof requires a complete instruction catalog and at most 16384 source bytes"};
+        return ScalarFailure(path, text, diagnostic);
+    }
+    nul := ScalarNul(text);
+    if (nul.message != "") {
+        return ScalarFailure(path, text, nul);
     }
     input: snapshot.Input = {path: path, text: text, has_path: true, has_text: true};
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
@@ -63,129 +437,37 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
     collections: routes.Collection[] = [];
     switch snapshot.Build(options, collections, [input], [uint64(strings.ByteLength(text))]) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
-            return ScalarFailure(path, "", text, diagnostic);
+            return ScalarFailure(path, text, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
             document := documents[0];
             switch built {
                 case .Rejected(error, cycle):
-                    return ScalarFailure(path, document.key, text,
+                    return ScalarFailure(path, text,
                                          Diagnose(nodes, document.syntax_root, 0, "scalar proof requires an accepted package graph"));
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
-                    // Reject anything that could own layout, imports, annotations
-                    // or another function before asking for declarations.
-                    selected: int = -1;
-                    member := FirstMember(nodes, document.syntax_root);
-                    while (member >= 0) {
-                        if (Is(nodes, member, "function_declaration")) {
-                            if (selected >= 0) {
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, member, 0, "scalar proof requires exactly one function"));
-                            }
-                            selected = member;
-                            attribute := Field(nodes, member, "attribute");
-                            if (attribute >= 0) {
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, attribute, 0, "scalar proof does not support function attributes"));
-                            }
-                        } else if (!Is(nodes, member, "package_header")) {
-                            return ScalarFailure(path, document.key, text,
-                                                 Diagnose(nodes, member, 0, "scalar proof supports only one ordinary function declaration"));
-                        }
-                        member = NextMember(nodes, member);
+                    unsupported := ScalarMembers(nodes, document.syntax_root);
+                    if (unsupported.message != "") {
+                        return ScalarFailure(path, text, unsupported);
                     }
-                    if (selected < 0 || length(packages) != 1 || length(imports) != 0) {
-                        return ScalarFailure(path, document.key, text,
-                                             Diagnose(nodes, document.syntax_root, 0, "scalar proof requires one function in one package"));
+                    if (length(packages) != 1 || length(imports) != 0) {
+                        return ScalarFailure(path, text,
+                                             Diagnose(nodes, document.syntax_root, 0, "scalar proof requires one package without imports"));
                     }
                     switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
                         case .Failed(diagnostic):
-                            return ScalarFailure(path, document.key, text, diagnostic);
+                            return ScalarFailure(path, text, diagnostic);
                         case .Collected(callables, params, types, members, constants):
-                            callable := callables[0];
-                            if (callable.count != 0) {
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, Field(nodes, selected, "parameters"), 0,
-                                                              "scalar proof requires no parameters"));
-                            }
-                            result_node := Field(nodes, selected, "results");
-                            if (callable.results != 0 || callable.result != IntStorage ||
-                                callable.result_container != 0 || callable.result_record != -1) {
-                                if (result_node < 0) {
-                                    result_node = selected;
-                                }
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, result_node, 0, "scalar proof requires one ordinary int result"));
-                            }
-                            body := Field(nodes, selected, "body");
-                            returned := FirstMember(nodes, body);
-                            if (!Is(nodes, returned, "return_statement")) {
-                                if (returned < 0) {
-                                    returned = body;
-                                }
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, returned, 0, "scalar proof requires one complete return statement"));
-                            }
-                            outcome := Field(nodes, returned, "outcome");
-                            if (outcome >= 0) {
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, outcome, 0, "scalar proof does not support return outcomes"));
-                            }
-                            extra := NextMember(nodes, returned);
-                            if (extra >= 0) {
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, extra, 0, "scalar proof does not support additional statements"));
-                            }
-                            expression := Field(nodes, returned, "value");
-                            if (!Is(nodes, expression, "number")) {
-                                if (expression < 0) {
-                                    expression = returned;
-                                }
-                                return ScalarFailure(path, document.key, text,
-                                                     Diagnose(nodes, expression, 0, "scalar proof requires a direct integer literal"));
-                            }
-                            natives: Native[] = [];
-                            ports: Port[] = [];
-                            identities: uint64[] = [];
-                            operators: NumericOperator[] = [];
-                            makes: NativeMake[] = [];
-                            indices: int[] = [];
-                            aliases: Name[] = [];
-                            empty_names: string[] = [];
-                            solid := SolidOffsets(text);
-                            switch EmitBody(nodes, text, 0, callables, params, types, members, constants,
-                                            natives, ports, identities, operators, makes, indices, aliases,
-                                            document.key, solid, 0, 0, 0, empty_names, empty_names, indices, ops, target) {
+                            switch ScalarModule(nodes, text, document.key, callables, params, types, members,
+                                                constants, ops, target) {
                                 case .Failed(diagnostic):
-                                    return ScalarFailure(path, document.key, text, diagnostic);
-                                case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects):
-                                    if (effects != 0 || length(calls) != 0 || length(hosts) != 0 ||
-                                        length(cells) != 0 || length(roots) != 0) {
-                                        return ScalarFailure(path, document.key, text,
-                                                             Diagnose(nodes, body, 0, "scalar proof requires known effect-free scalar execution"));
-                                    }
-                                    // A second invocation of the SAME semantic decision,
-                                    // not another evaluator or an instruction payload scan.
-                                    switch ReadIntegerLiteral(nodes, text, 0, expression, callable.result) {
-                                        case .Rejected(diagnostic):
-                                            return ScalarFailure(path, document.key, text, diagnostic);
-                                        case .Checked(bits):
-                                            declaration_range := nodes[selected];
-                                            body_range := nodes[body];
-                                            return_range := nodes[returned];
-                                            expression_range := nodes[expression];
-                                            return {accepted: true, value: int(bits), name: callable.name,
-                                                    path: path, key: document.key, text: text,
-                                                    declaration_start: declaration_range.start, declaration_end: declaration_range.end,
-                                                    declaration_line: declaration_range.row + 1, declaration_column: declaration_range.column + 1,
-                                                    body_start: body_range.start, body_end: body_range.end,
-                                                    body_line: body_range.row + 1, body_column: body_range.column + 1,
-                                                    return_start: return_range.start, return_end: return_range.end,
-                                                    return_line: return_range.row + 1, return_column: return_range.column + 1,
-                                                    expression_start: expression_range.start, expression_end: expression_range.end,
-                                                    expression_line: expression_range.row + 1, expression_column: expression_range.column + 1,
-                                                    diagnostic_start: 0, diagnostic_end: 0, diagnostic_line: 0, diagnostic_column: 0,
-                                                    diagnostic_message: ""};
-                                    }
+                                    return ScalarFailure(path, text, diagnostic);
+                                case .Built(rows):
+                                    head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
+                                                       name: document.key, text: "", start: 0, end: 0, line: 0,
+                                                       column: 0};
+                                    module: facts.Row[] = [ScalarSource(path, text), head];
+                                    module.extend(rows);
+                                    return module;
                             }
                     }
             }

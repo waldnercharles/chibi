@@ -7,11 +7,11 @@ carries those reviewed pure packages from [3571908d](https://github.com/waldnerc
 onto the current-base [authored LLVM driver](https://github.com/waldnercharles/chibi/commit/ae4828697dfc976a657c33014513f00e047ec422).
 
 It deliberately does **not** carry `package_compiler/Native.chibi`,
-`native_compiler`, or the diagnostic Front/Back packet adapters. There is no
-source-to-LLVM frontend connection in this checkpoint. A new leaf consumer must
-wait for an approved, independently owned semantic producer result. In
-particular, occurrence/type/constant tables alone do not prove a function's
-complete body/result relation. Private frontend Code/Slot IDs are not an API.
+`native_compiler`, or the diagnostic Front/Back packet adapters. Its one source
+connection is the bounded `scalar_facts` handoff in
+`test/native_aot/scalar/README.md`: the compiler's `CollectScalar` produces
+owned rows and `scalar_llvm` lowers them to this plan. Private frontend
+Code/Slot IDs are not an API.
 
 The compiler still runs in the existing bootstrap runtime. Emitted scalar
 objects have no first-party C runtime, pin-value header, context offset or helper
@@ -20,17 +20,25 @@ interface, or the complete allocation/memory/output/free native island.
 
 ## Emitter contract
 
-- Plain `int`/`bool` parameters and one scalar result. The symbol is
-  `chibi_scalar`, or `main` for a zero-argument `int` entry. Foreign bool ABI is
-  not promised. Storage ordinals are backend-internal, not public semantic IDs.
+- A module of at most 32 functions, each a consecutive range of the parameter,
+  slot, local, code and argument tables. Function 0 is the exported entry,
+  `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
+  `internal` `chibi_scalar.N`. Each takes plain `int`/`bool` parameters and
+  returns one scalar result. Foreign bool ABI is not promised. Storage
+  ordinals are backend-internal, not public semantic IDs.
+- `Call` defines a slot from another function's result. Its arguments are
+  slots of the caller's own argument range, each of the callee's parameter
+  type and defined on every path; they load in order, so evaluation order stays
+  visible at O0. The call graph must be acyclic: recursion is rejected.
 - Scalar locals, branches, comparisons, bitwise operations and integer
-  arithmetic. Limits are eight parameters, 128 slots, 64 locals and 256 body
-  instructions. These are plan bounds, not a source-language acceptance claim.
+  arithmetic. Limits per function are eight parameters, 128 slots, 64 locals,
+  256 body instructions and 256 call arguments. These are plan bounds, not a
+  source-language acceptance claim.
 - Integer add/subtract/multiply/negate wrap: no `nsw`/`nuw` promises. Division
   and remainder check zero and signed minimum divided by minus one. Shifts
   check counts against 32, including negative counts.
-- An explicit positive CHECK budget is required. Each invocation initializes a
-  private counter; every CHECK tests remaining budget before decrementing.
+- An explicit positive CHECK budget is required. Each invocation of each
+  function initializes a private counter; every CHECK tests remaining budget before decrementing.
   Budget N admits exactly N CHECKs, not N LLVM/machine instructions. The future
   producer/consumer boundary must agree which checked operations are present;
   this backend does not infer them from source text or facts tables.
@@ -41,16 +49,19 @@ interface, or the complete allocation/memory/output/free native island.
 
 The emitter rejects unsupported instructions/types and validates table bounds,
 operand types, canonical bool constants, unique scalar definitions and control
-flow dominance before writing IR. There are no call, reference, managed-memory
-or conversion operations. The caller must reject nominal/container/reference
+flow dominance before writing IR. There are no indirect call, foreign call,
+reference, managed-memory or conversion operations. The caller must reject nominal/container/reference
 metadata before reducing types to the backend's scalar ordinals. Checked,
 wrapping and clamping conversions must not silently become LLVM casts.
 
 ## Consumers and checks
 
 - `test/native_aot/emitter/Tests.chibi`: pure `Tests() -> int`, zero on success
-  and 1-5 for a failed group. It checks scalar emission, malformed types/control
-  flow, definition dominance, failure labels and explicit budgets.
+  and 1-8 for a failed group. It checks scalar emission, malformed types/control
+  flow, definition dominance, failure labels, explicit budgets, call
+  definitions, malformed calls and cyclic or misplaced call graphs.
+- `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see
+  `test/native_aot/scalar/README.md`.
 - `test/fixtures/native-abi/Checks.chibi`: pure target/type checks; the adjacent
   `Tests.chibi` provides normal authored test wrappers. Neither belongs in a
   production package's dependency closure.
@@ -65,10 +76,10 @@ validation of a new producer or lifetime boundary. Its Div/Mod formatter-limit
 regression remains in these tests: each formatting call stays within the
 bootstrap text formatter's twelve-placeholder bound.
 
-This carry-forward does not change defaults, bootstrap inventories/artifacts,
-runtime ABI or installed SDK routes. Focused validation of the clean combination
-is recorded separately from broad repository test dispatcher/platform CI; those
-broader checks and complete native memory/FFI coverage remain open.
+The emitter changes no defaults, runtime ABI or installed SDK routes, and it is
+not part of the compiler's bootstrap closure. The language test fixture embeds
+it only for the same-process scalar handoff check. Complete native memory/FFI
+coverage remains open.
 
 ### Clean carry-forward validation
 

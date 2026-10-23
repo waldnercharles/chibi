@@ -6,98 +6,294 @@ import abi "project:native_abi"
 import strings "core:strings"
 
 // Internal consumer result, not another source/facts representation. Rejections
-// preserve the exact producer record, including its source and diagnostic.
+// preserve the exact producer rows, including their source and diagnostic.
 pub Result :: union {
-    Rejected(projection: facts.NullaryPureInt32Return) | Invalid(message: string) | Emitted(text: string)
+    Rejected(rows: facts.Row[]) | Invalid(message: string) | Emitted(text: string)
 }
 
-Range :: (start: int, end: int, size: int) -> bool {
-    return start >= 0 && end >= start && end <= size;
+// The most rows a module of the facts bounds holds: its source and document,
+// then per function its signature, return and operands.
+MaxRows: int : 2370;
+
+// The offset each source line starts at, for one-based line/column checks.
+LineStarts :: (text: string) -> int[] {
+    starts: int[] = [0];
+    bytes := strings.Bytes(text);
+    for (index in 0..<length(bytes)) {
+        if (bytes[index] == 10) {
+            starts.append(index + 1);
+        }
+    }
+    return starts;
 }
-Position :: (text: int[], offset: int, line: int, column: int) -> bool {
-    row := 1;
-    col := 1;
-    for (i in 0..<offset) {
-        if (text[i] == 10) {
-            row += 1;
-            col = 1;
+// A half-open range of the source, at its recorded one-based line and column.
+Positioned :: (row: facts.Row, starts: int[], size: int) -> bool {
+    if (row.start < 0 || row.end < row.start || row.end > size || row.line < 1 || row.line > length(starts)) {
+        return false;
+    }
+    first := starts[row.line - 1];
+    return first <= row.start && (row.line == length(starts) || row.start < starts[row.line]) &&
+           row.column == row.start - first + 1;
+}
+Located :: (row: facts.Row, starts: int[], size: int) -> bool {
+    return row.end > row.start && Positioned(row, starts, size);
+}
+Within :: (inner: facts.Row, outer: facts.Row) -> bool {
+    return inner.start >= outer.start && inner.end <= outer.end;
+}
+Unlocated :: (row: facts.Row) -> bool {
+    return row.start == 0 && row.end == 0 && row.line == 0 && row.column == 0;
+}
+Scalar :: (type: int) -> bool {
+    return type == facts.IntType || type == facts.BoolType;
+}
+// The backend's storage ordinal of a scalar type.
+NativeType :: (type: int) -> int {
+    if (type == facts.BoolType) {
+        return 1;
+    }
+    return 6;
+}
+// A rejection keeps exactly its source and one located diagnostic.
+ValidRejection :: (rows: facts.Row[], starts: int[], size: int) -> string {
+    rejection := rows[1];
+    if (length(rows) != 2 || rejection.type != 0 || rejection.value != 0 || rejection.count != 0 ||
+        rejection.name != "" || rejection.text == "") {
+        return "noncanonical rejected scalar module";
+    }
+    if (!Positioned(rejection, starts, size)) {
+        return "invalid scalar diagnostic position";
+    }
+    return "";
+}
+// The row index of each function, after checking the module's row layout and
+// every count against the facts bounds before it is used. Empty when invalid.
+Heads :: (rows: facts.Row[]) -> int[] {
+    heads: int[] = [];
+    empty: int[] = [];
+    at: int = 2;
+    while (at < length(rows)) {
+        function := rows[at];
+        if (function.kind != facts.FunctionRow || function.count < 0 || function.count > facts.MaxParameters ||
+            length(heads) >= facts.MaxFunctions || at + function.count + 1 >= length(rows)) {
+            return empty;
+        }
+        heads.append(at);
+        at += function.count + 1;
+        returned := rows[at];
+        if (returned.kind != facts.ReturnRow || returned.count < 1 || returned.count > facts.MaxOperands ||
+            returned.count > length(rows) - at - 1) {
+            return empty;
+        }
+        at += returned.count + 1;
+    }
+    return heads;
+}
+// One function's signature, return and operands, as a typed evaluation stack:
+// each operand pushes one value; a call pops its arguments in order.
+ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[], size: int) -> string {
+    head := heads[function];
+    declaration := rows[head];
+    if (declaration.name == "" || declaration.text != "" || !Scalar(declaration.type) || declaration.value != 0 ||
+        !Located(declaration, starts, size)) {
+        return "invalid scalar function row";
+    }
+    for (index in 0..<declaration.count) {
+        param := rows[head + 1 + index];
+        if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Scalar(param.type) ||
+            param.value != index || param.count != 0 || !Located(param, starts, size) || !Within(param, declaration)) {
+            return "invalid scalar parameter row";
+        }
+    }
+    returned := rows[head + 1 + declaration.count];
+    if (returned.name != "" || returned.text != "" || returned.type != 0 || returned.value != 0 ||
+        !Located(returned, starts, size) || !Within(returned, declaration)) {
+        return "invalid scalar return row";
+    }
+    stack: int[] = [];
+    first := head + 2 + declaration.count;
+    for (at in first..<first + returned.count) {
+        operand := rows[at];
+        if (operand.text != "" || !Scalar(operand.type) || !Located(operand, starts, size) ||
+            !Within(operand, returned)) {
+            return "invalid scalar operand row";
+        }
+        if (operand.kind == facts.LiteralRow) {
+            if (operand.name != "" || operand.count != 0 ||
+                (operand.type == facts.BoolType && operand.value != 0 && operand.value != 1)) {
+                return "noncanonical scalar literal";
+            }
+        } else if (operand.kind == facts.ReadRow) {
+            if (operand.name != "" || operand.count != 0 || operand.value < 0 || operand.value >= declaration.count ||
+                rows[head + 1 + operand.value].type != operand.type) {
+                return "scalar read differs from its parameter";
+            }
+        } else if (operand.kind == facts.CallRow) {
+            if (operand.value < 0 || operand.value >= length(heads)) {
+                return "scalar call names no function of the module";
+            }
+            callee := rows[heads[operand.value]];
+            if (operand.name != callee.name || operand.type != callee.type || operand.count != callee.count ||
+                operand.count > length(stack)) {
+                return "scalar call differs from its callee's signature";
+            }
+            base := length(stack) - operand.count;
+            for (index in 0..<operand.count) {
+                if (stack[base + index] != rows[heads[operand.value] + 1 + index].type) {
+                    return "scalar call argument differs from its parameter";
+                }
+            }
+            stack = slice(stack, 0, base);
         } else {
-            col += 1;
+            return "invalid scalar operand row";
+        }
+        stack.append(operand.type);
+    }
+    if (length(stack) != 1 || stack[0] != declaration.type) {
+        return "scalar return differs from its function's result";
+    }
+    return "";
+}
+// Whether some call reaches its own caller: the call relation's transitive
+// closure, bounded by MaxFunctions squared.
+Recursive :: (rows: facts.Row[], count: int) -> bool {
+    reach := resize([false], count * count);
+    caller: int = -1;
+    for (row in rows) {
+        if (row.kind == facts.FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == facts.CallRow) {
+            reach[caller * count + row.value] = true;
         }
     }
-    return row == line && col == column;
+    for (via in 0..<count) {
+        for (from in 0..<count) {
+            if (reach[from * count + via]) {
+                for (to in 0..<count) {
+                    if (reach[via * count + to]) {
+                        reach[from * count + to] = true;
+                    }
+                }
+            }
+        }
+    }
+    for (index in 0..<count) {
+        if (reach[index * count + index]) {
+            return true;
+        }
+    }
+    return false;
 }
 
-// This validates the bounded representation, not the truth of a fabricated
-// Accepted record. The caller must bind the actual trusted producer artifact,
+// This validates the bounded representation, not the truth of fabricated
+// accepted rows. The caller must bind the actual trusted producer artifact,
 // source bytes and unchanged result envelope. No source parsing occurs here.
-pub Validate :: (value: facts.NullaryPureInt32Return) -> string {
-    size := strings.ByteLength(value.text);
-    if (size > 16384) {
-        return "scalar consumer source exceeds 16384 bytes";
+pub Validate :: (rows: facts.Row[]) -> string {
+    if (length(rows) < 2 || length(rows) > MaxRows) {
+        return "scalar module row count is out of bounds";
     }
-    if (!value.accepted) {
-        if (value.value != 0 || value.name != "" ||
-            value.declaration_start != 0 || value.declaration_end != 0 ||
-            value.declaration_line != 0 || value.declaration_column != 0 ||
-            value.body_start != 0 || value.body_end != 0 || value.body_line != 0 || value.body_column != 0 ||
-            value.return_start != 0 || value.return_end != 0 || value.return_line != 0 || value.return_column != 0 ||
-            value.expression_start != 0 || value.expression_end != 0 ||
-            value.expression_line != 0 || value.expression_column != 0 || value.diagnostic_message == "") {
-            return "noncanonical rejected scalar projection";
+    source := rows[0];
+    if (source.kind != facts.SourceRow || source.type != 0 || source.value != 0 || source.count != 0 ||
+        source.name == "" || !Unlocated(source)) {
+        return "noncanonical scalar source row";
+    }
+    size := strings.ByteLength(source.text);
+    if (size > facts.MaxSource) {
+        return format_text("scalar consumer source exceeds {} bytes", facts.MaxSource);
+    }
+    starts := LineStarts(source.text);
+    if (rows[1].kind == facts.RejectionRow) {
+        return ValidRejection(rows, starts, size);
+    }
+    document := rows[1];
+    if (document.kind != facts.DocumentRow || document.type != 0 || document.value != 0 || document.count != 0 ||
+        document.name == "" || document.text != "" || !Unlocated(document)) {
+        return "noncanonical accepted scalar module";
+    }
+    heads := Heads(rows);
+    if (length(heads) == 0) {
+        return "invalid scalar module layout";
+    }
+    first := rows[heads[0]];
+    if (first.count != 0 || first.type != facts.IntType) {
+        return "scalar module entry must take no parameters and return int";
+    }
+    for (function in 0..<length(heads)) {
+        error := ValidFunction(rows, heads, function, starts, size);
+        if (error != "") {
+            return error;
         }
-        if (!Range(value.diagnostic_start, value.diagnostic_end, size)) {
-            return "invalid scalar diagnostic range";
-        }
-        if (!Position(strings.Bytes(value.text), value.diagnostic_start,
-                      value.diagnostic_line, value.diagnostic_column)) {
-            return "invalid scalar diagnostic position";
-        }
-        return "";
     }
-    if (value.name == "" || value.path == "" || value.key == "" ||
-        value.diagnostic_start != 0 || value.diagnostic_end != 0 ||
-        value.diagnostic_line != 0 || value.diagnostic_column != 0 || value.diagnostic_message != "") {
-        return "noncanonical accepted scalar projection";
-    }
-    if (!Range(value.declaration_start, value.declaration_end, size) ||
-        !Range(value.body_start, value.body_end, size) ||
-        !Range(value.return_start, value.return_end, size) ||
-        !Range(value.expression_start, value.expression_end, size) ||
-        value.declaration_start == value.declaration_end || value.body_start == value.body_end ||
-        value.return_start == value.return_end || value.expression_start == value.expression_end ||
-        value.body_start < value.declaration_start || value.body_end > value.declaration_end ||
-        value.return_start < value.body_start || value.return_end > value.body_end ||
-        value.expression_start < value.return_start || value.expression_end > value.return_end) {
-        return "invalid scalar body range nesting";
-    }
-    bytes := strings.Bytes(value.text);
-    if (!Position(bytes, value.declaration_start, value.declaration_line, value.declaration_column) ||
-        !Position(bytes, value.body_start, value.body_line, value.body_column) ||
-        !Position(bytes, value.return_start, value.return_line, value.return_column) ||
-        !Position(bytes, value.expression_start, value.expression_line, value.expression_column)) {
-        return "invalid scalar source position";
+    if (Recursive(rows, length(heads))) {
+        return "scalar module calls are recursive";
     }
     return "";
 }
 
-pub Emit :: (value: facts.NullaryPureInt32Return) -> Result {
-    error := Validate(value);
+// Explicit backend-fixture policy: the entry is chibi_scalar() -> i32 and the
+// other functions are internal. Every function starts with one CHECK under
+// budget 1. Neither the export name nor the budget is inferred from source
+// identity, and no general runtime/default budget is introduced. Each operand
+// row is one slot, defined in row order, so evaluation order is the rows'.
+pub Emit :: (rows: facts.Row[]) -> Result {
+    error := Validate(rows);
     if (error != "") {
         return Result.Invalid(error);
     }
-    if (!value.accepted) {
-        return Result.Rejected(value);
+    if (rows[1].kind == facts.RejectionRow) {
+        return Result.Rejected(rows);
     }
-    // Explicit backend-fixture policy: chibi_scalar() -> i32, one entry CHECK
-    // and budget 1. Neither the export name nor the budget is inferred from
-    // source identity, and no general runtime/default budget is introduced.
-    check: native.Instruction = {op: native.Check, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
-    constant: native.Instruction = {op: native.Constant, type: 6, output: 0, left: 0, right: 0, target: 0, literal: value.value};
-    publish: native.Instruction = {op: native.Publish, type: 6, output: 0, left: 0, right: 0, target: 0, literal: 0};
-    finish: native.Instruction = {op: native.Return, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
-    empty: int[] = [];
-    switch native.Emit(abi.LinuxX64(), empty, 6, [6], empty, [check, constant, publish, finish], false, 1) {
+    functions: native.Function[] = [];
+    parameters: int[] = [];
+    slots: int[] = [];
+    locals: int[] = [];
+    code: native.Instruction[] = [];
+    arguments: int[] = [];
+    heads := Heads(rows);
+    for (head in heads) {
+        declaration := rows[head];
+        returned := rows[head + 1 + declaration.count];
+        shape: native.Function = {result: NativeType(declaration.type), first_parameter: length(parameters),
+                                  parameters: declaration.count, first_slot: length(slots), slots: returned.count,
+                                  first_local: 0, locals: 0, first_code: length(code), code: returned.count + 3,
+                                  first_argument: length(arguments), arguments: 0};
+        for (index in 0..<declaration.count) {
+            parameters.append(NativeType(rows[head + 1 + index].type));
+        }
+        check: native.Instruction = {op: native.Check, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        code.append(check);
+        stack: int[] = [];
+        first := head + 2 + declaration.count;
+        for (slot in 0..<returned.count) {
+            operand := rows[first + slot];
+            type := NativeType(operand.type);
+            slots.append(type);
+            item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0, target: 0,
+                                        literal: operand.value};
+            if (operand.kind == facts.ReadRow) {
+                item = {op: native.Argument, type: type, output: slot, left: operand.value, right: 0, target: 0,
+                        literal: 0};
+            } else if (operand.kind == facts.CallRow) {
+                item = {op: native.Call, type: type, output: slot, left: operand.value, right: shape.arguments,
+                        target: operand.count, literal: 0};
+                base := length(stack) - operand.count;
+                for (index in 0..<operand.count) {
+                    arguments.append(stack[base + index]);
+                }
+                shape.arguments += operand.count;
+                stack = slice(stack, 0, base);
+            }
+            code.append(item);
+            stack.append(slot);
+        }
+        publish: native.Instruction = {op: native.Publish, type: shape.result, output: 0, left: stack[0], right: 0,
+                                       target: 0, literal: 0};
+        finish: native.Instruction = {op: native.Return, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
+        code.extend([publish, finish]);
+        functions.append(shape);
+    }
+    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, false, 1) {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
@@ -107,10 +303,10 @@ pub Emit :: (value: facts.NullaryPureInt32Return) -> Result {
 
 // Existing compiler-host --output-bytes rejects an empty result before file
 // publication. Emit retains typed diagnostics; this entry adds no host codec.
-pub EmitBytes :: (value: facts.NullaryPureInt32Return) -> byte[] {
+pub EmitBytes :: (rows: facts.Row[]) -> byte[] {
     output: byte[] = [];
-    switch Emit(value) {
-        case .Rejected(projection):
+    switch Emit(rows) {
+        case .Rejected(rejected):
             return output;
         case .Invalid(message):
             return output;

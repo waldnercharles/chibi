@@ -145,9 +145,10 @@ Suggestion: record fields of every value type, as Odin's structs.
 
 ## Ordinary writes make calls copy their arguments
 
-Runtime. Stage zero passes a function's arguments without copying them only
-when its analysis proves the function leaves the caller's storage alone. Two
-ordinary writes defeat that proof:
+Historical runtime issue. Before the managed-pointer and copy-on-write work,
+stage zero passed arguments without copying only when its analysis proved the
+function left the caller's storage alone. Two ordinary writes defeated that
+proof:
 - Raw pointers have the `uint64` slot type, so the analysis takes any
   `uint64` value for a pointer. Once a function stores a `uint64` parameter
   into a field of a local record, the next write to that record looks like a
@@ -169,11 +170,10 @@ The managed-pointer increment hit the same issue on 2026-10-22: its new
 helpers caused 17 unexpected copying functions, and a process sample during
 self-compilation showed repeated record-array/string snapshots. Fresh
 `append`/`extend` results and local bindings for reassigned parameters restore
-the existing sharing check without exemptions. Union construction now derives
-aliasing from its explicit payload headers; this describes the earlier
-value-array contract. Shared-sequence work replaces ordinary array copies with
-retained identity and explicit outer copies. In that earlier contract, arrays stayed
-independent, while pointer-bearing payloads retain their targets.
+the existing sharing check without exemptions. The current collection model
+keeps ordinary arrays and maps independent through copy-on-write. Union
+construction copies each payload as a value; explicit pointers and views retain
+their shared targets. Copying a collection descriptor need not copy its backing.
 Failure-observation callbacks also disable argument sharing at runtime, even
 when that static check passes. Keep the compiler fixture's diagnostic observer
 opt-in when measuring or validating normal compiler execution.

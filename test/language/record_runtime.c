@@ -3,6 +3,7 @@
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "execution/wasm_jit.h"
@@ -26,6 +27,8 @@ static execution_module *module;
 static behavior_function_builder *builder;
 static uint64_t function_id;
 static behavior_function_context context;
+static behavior_function_context reference_owner;
+static behavior_managed_heap heap;
 static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage, escaped;
@@ -55,6 +58,8 @@ static void finish_call()
 static void cleanup()
 {
     finish_call();
+    behavior_function_release_host(&reference_owner);
+    reference_owner = (behavior_function_context){ 0 };
     execution_module_free(module);
     if (builder) {
         behavior_function_builder_free(builder);
@@ -64,6 +69,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     arena_free(&escaped);
+    behavior_managed_heap_free(&heap);
     free(formatted);
     free(again);
     module = NULL;
@@ -150,6 +156,9 @@ static const behavior_function *body()
 static bool run(behavior_backend backend, const pin_value *args, int count)
 {
     finish_call();
+    if (!heap.owner) {
+        behavior_managed_heap_init(&heap);
+    }
     const behavior_function *function = body();
     REQUIRE(function && function->result_count == 1);
     const pin_record *record = NULL;
@@ -181,6 +190,7 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
                                            .arguments = args,
                                            .argument_count = count,
                                            .results = &result,
+                                           .managed_heap = &heap,
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -232,6 +242,11 @@ static pin_value member(const pin_value *row, int index)
         }
     };
     return field;
+}
+static pin_value array_member(const pin_array *array, int row, int field)
+{
+    pin_value item = pin_array_get(array, row);
+    return member(&item, field);
 }
 TEST_CASE(record_runtime_owned_return_and_value_copy)
 {
@@ -314,7 +329,7 @@ TEST_CASE(record_runtime_array_results)
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile(source, backends[b], false));
-        pin_value null_saved = { 0 };
+        pin_value empty_saved = { 0 };
         REQUIRE(body());
         pin_value args[2] = { { .type = PIN_I32 }, body()->result_defaults[0] };
         args[1].ptr = NULL;
@@ -322,34 +337,41 @@ TEST_CASE(record_runtime_array_results)
             args[0].i = counts[i];
             REQUIRE(run(backends[b], args, 2));
             REQUIRE(result.record && pin_record_valid(result.record));
-            REQUIRE(arena_contains(&storage, result.record));
+            REQUIRE(arena_contains(&heap.storage, result.record));
             REQUIRE(result.type == PIN_STRUCT && result.container == PIN_CONTAINER_ARRAY);
             pin_array *array = result.ptr;
+            REQUIRE(array && array->storage == &heap.storage);
             if (counts[i] < 0) {
-                REQUIRE(!array);
-                REQUIRE(!pin_value_snapshot_to_arena(&escaped, &null_saved, &result));
+                REQUIRE(array->count == 0);
+                REQUIRE(!pin_value_capture_to_arena(&escaped, &empty_saved, &result));
                 continue;
             }
-            REQUIRE(array && array->count == counts[i]);
+            REQUIRE(array->count == counts[i]);
             REQUIRE(result.record == array->record);
-            REQUIRE(arena_contains(&storage, array->record));
+            REQUIRE(arena_contains(&heap.storage, array->record));
             for (int j = 0; j < array->count; j++) {
                 REQUIRE(pin_array_get(array, j).record == array->record);
                 pin_value item = pin_array_get(array, j);
                 REQUIRE(member(&item, 5).i == 1);
             }
         }
-        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        REQUIRE(!pin_value_capture_to_arena(&escaped, &saved, &result));
         finish_call();
+        behavior_managed_heap_free(&heap);
         execution_module_free(module);
         module = NULL;
         pin_array *array = saved.ptr;
-        REQUIRE(null_saved.record && pin_record_valid(null_saved.record));
+        REQUIRE(empty_saved.record && pin_record_valid(empty_saved.record));
         REQUIRE(
-            !null_saved.ptr && null_saved.type == PIN_STRUCT &&
-            null_saved.container == PIN_CONTAINER_ARRAY
+            empty_saved.ptr && empty_saved.type == PIN_STRUCT &&
+            empty_saved.container == PIN_CONTAINER_ARRAY
         );
-        REQUIRE(!strcmp(null_saved.type_name, "Rows.Row"));
+        REQUIRE(((pin_array *)empty_saved.ptr)->count == 0);
+        REQUIRE(!strcmp(empty_saved.type_name, "Rows.Row"));
+        REQUIRE(
+            arena_contains(&escaped, saved.record) &&
+            arena_contains(&escaped, array->record)
+        );
         REQUIRE(pin_record_valid(saved.record) && array->count == 3);
         pin_value last = pin_array_get(array, 2);
         REQUIRE(!strcmp(pin_text(member(&last, 1)).bytes, "C"));
@@ -417,14 +439,15 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         cleanup();
         REQUIRE(compile(producer, backends[b], false));
         REQUIRE(run(backends[b], NULL, 0));
-        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        REQUIRE(!pin_value_capture_to_arena(&escaped, &saved, &result));
         finish_call();
+        behavior_managed_heap_free(&heap);
         execution_module_free(module);
         module = NULL;
         pin_array *original = saved.ptr;
         REQUIRE(original && original->count == 2);
         REQUIRE(compile(consumer, backends[b], false));
-        pin_value args[] = { original->items[0], saved };
+        pin_value args[] = { pin_array_get(original, 0), saved };
         pin_value returned = { 0 };
         for (int call = 0; call < 2; call++) {
             REQUIRE(run(backends[b], args, 2));
@@ -435,10 +458,10 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
             REQUIRE(!strcmp(pin_text(member(&args[0], 0)).bytes, "a"));
             REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "A"));
             REQUIRE(member(&args[0], 5).i == 1);
-            REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
-            REQUIRE(member(&original->items[0], 5).i == 1);
-            REQUIRE(!strcmp(pin_text(member(&original->items[1], 1)).bytes, "B"));
-            REQUIRE(member(&original->items[1], 5).i == 1);
+            REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
+            REQUIRE(array_member(original, 0, 5).i == 1);
+            REQUIRE(!strcmp(pin_text(array_member(original, 1, 1)).bytes, "B"));
+            REQUIRE(array_member(original, 1, 5).i == 1);
             REQUIRE(!pin_value_snapshot_to_arena(&escaped, &returned, &result));
         }
         finish_call();
@@ -449,13 +472,13 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         REQUIRE(!strcmp(pin_text(member(&returned, 1)).bytes, "local"));
         REQUIRE(member(&returned, 5).i == 6);
         REQUIRE(pin_record_valid(original->record));
-        REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
+        REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
         const char *value_consumers[] = { exposed_consumer, inline_consumer };
         const char *labels[] = { "exposed", "inline" };
         const int depths[] = { 8, 5 };
         for (int c = 0; c < 2; c++) {
             REQUIRE(compile(value_consumers[c], backends[b], false));
-            pin_value inputs[] = { original->items[0],
+            pin_value inputs[] = { pin_array_get(original, 0),
                                    saved,
                                    { .type = PIN_I32, .i = 2 } };
             REQUIRE(run(backends[b], inputs, 3));
@@ -464,28 +487,29 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
             REQUIRE(!strcmp(pin_text(member(&inputs[0], 1)).bytes, "A"));
             REQUIRE(member(&inputs[0], 5).i == 1);
             REQUIRE(inputs[1].ptr == original);
-            REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
-            REQUIRE(member(&original->items[0], 5).i == 1);
+            REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
+            REQUIRE(array_member(original, 0, 5).i == 1);
             REQUIRE(inputs[2].i == 2);
             finish_call();
             execution_module_free(module);
             module = NULL;
         }
         REQUIRE(compile(reference_consumer, backends[b], false));
-        behavior_function_context owner = { .value_storage = &escaped };
+        reference_owner = (behavior_function_context){ .value_storage = &escaped,
+                                                       .managed_heap = &heap };
         pin_value references[] = {
-            execution_reference_value(&escaped, &owner, &args[0], args[0]),
-            execution_reference_value(&escaped, &owner, &saved, saved),
+            execution_reference_value(&escaped, &reference_owner, &args[0], args[0]),
+            execution_reference_value(&escaped, &reference_owner, &saved, saved),
         };
         REQUIRE(run(backends[b], references, 2));
         REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "reference"));
         pin_array *changed = saved.ptr;
         REQUIRE(changed && changed->count == 2);
-        REQUIRE(!strcmp(pin_text(member(&changed->items[0], 1)).bytes, "reference-array"));
-        REQUIRE(member(&changed->items[0], 5).i == 8);
+        REQUIRE(!strcmp(pin_text(array_member(changed, 0, 1)).bytes, "reference-array"));
+        REQUIRE(array_member(changed, 0, 5).i == 8);
         REQUIRE(!strcmp(pin_text(member(&result, 1)).bytes, "reference-array"));
         REQUIRE(member(&result, 5).i == 8);
-        REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
+        REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
         finish_call();
         execution_module_free(module);
         module = NULL;

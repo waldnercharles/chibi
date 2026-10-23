@@ -219,10 +219,33 @@ been imported here. A common integration must reconcile their actual schemas
 and produce one matching compiler artifact.
 
 The owner subsequently requested continuing with focused tests and bootstrap
-verification. Runtime, native compiler and authored compiler regressions are now
-being added in the existing C dispatchers. Execution is coordinated with the
-other compiler/runtime work using the shared validation lane; results will be
-recorded after the exact candidate runs.
+verification. Runtime, native compiler and authored compiler regressions use the
+existing C dispatchers. Execution is coordinated with the other compiler/runtime
+work using the shared validation lane.
+
+The fresh native build for frozen tree `cb5cbcfe` completed on 2026-10-22.
+The first `types` run passed all 11 new cases but failed an incorrectly changed
+document-byte ownership assertion: that reader still owns its bytes inline in
+the arena. After restoring that assertion and its existing GC checks, tree
+`f90c191e8be1305f4ea05344e7f01fbf155889c8` passed all 27 `types` cases and 4861
+assertions in 0.550 seconds. Its `language-record-runtime` run passed six of
+eight cases, including all three new resolver cases, and failed two older cases
+because their harness supplied no caller-owned managed heap. It reached 834
+assertions in 0.659 seconds. Source, binary hashes and logs are sealed in
+workspace `.scratch/shared-sequences-20261022/native-phase-result-2.json`.
+
+The subsequent harness migration supplies a fixture-owned heap through result
+inspection. Values intended to survive producer heap and module destruction
+use historical capture before that teardown. Array metadata ownership checks
+follow the actual managed owner, then verify the escaped capture owns its
+layouts. The execution harness also uses the stabilized argument bank while
+suspended, independent union payloads and real managed pointer cells. These
+harness changes await a fresh run. Source review also found obsolete union
+cost/provenance summaries: both constructors now copy payloads as values, so
+their summaries report allocation and possible payload copying without using
+the old keep mask. Empty and cancelled-singleton behavior is preserved. Native
+semantic/execution groups, authored collection/sharing groups and bootstrap
+reproduction remain unrun.
 
 The pointer owner assigned the resolver-aware retained-layout increment to this
 workstream. `pin_record_from_type_resolved` freezes registry-local aliases and

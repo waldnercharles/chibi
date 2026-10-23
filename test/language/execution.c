@@ -91,6 +91,8 @@ static behavior_function *function, *callee;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, managed;
+static behavior_managed_heap invocation_heap;
+static behavior_managed_heap comparison_heap;
 static behavior_managed_heap pointer_heap;
 static behavior_managed_heap secondary_pointer_heap;
 static pin_value pointer_root;
@@ -106,6 +108,7 @@ static void release_invocation()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&invocation_heap);
     arena_free(&storage);
     context = (behavior_function_context){ 0 };
 }
@@ -114,6 +117,7 @@ static void cleanup()
 {
     compiler_fixture_free(&sequences);
     release_invocation();
+    behavior_managed_heap_free(&comparison_heap);
     if (pointer_root_registered) {
         behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
         pointer_root_registered = false;
@@ -167,6 +171,32 @@ static bool finish()
     return function != NULL;
 }
 
+static int invoke(
+    const pin_value *arguments,
+    int count,
+    pin_value *variables,
+    pin_value *results,
+    bool native,
+    unsigned budget,
+    behavior_managed_heap *heap
+)
+{
+    bool resumable = behavior_function_resumable(function);
+    if (resumable) {
+        behavior_function_activation_init(function, &activation);
+    }
+    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
+                                           .arguments = arguments,
+                                           .argument_count = count,
+                                           .variables = variables,
+                                           .results = results,
+                                           .managed_heap = heap,
+                                           .budget = budget };
+    behavior_function_bind_storage(&context, &storage);
+    assert(behavior_function_bind(function, &context, NULL, 0));
+    return behavior_function_run(function, &context, native);
+}
+
 static int run(
     const pin_value *arguments,
     int count,
@@ -177,19 +207,8 @@ static int run(
 )
 {
     release_invocation();
-    bool resumable = behavior_function_resumable(function);
-    if (resumable) {
-        behavior_function_activation_init(function, &activation);
-    }
-    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
-                                           .arguments = arguments,
-                                           .argument_count = count,
-                                           .variables = variables,
-                                           .results = results,
-                                           .budget = budget };
-    behavior_function_bind_storage(&context, &storage);
-    assert(behavior_function_bind(function, &context, NULL, 0));
-    return behavior_function_run(function, &context, native);
+    behavior_managed_heap_init(&invocation_heap);
+    return invoke(arguments, count, variables, results, native, budget, &invocation_heap);
 }
 
 static const char *scale(void *, const pin_value *arguments, pin_value *results)
@@ -933,23 +952,41 @@ TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes)
         REQUIRE(behavior_function_compile(function));
         for (int i = 0; i < 2; i++) {
             arguments[i].ptr = pin_array_allocate(&managed, shape.type, NULL, 1);
+            ((pin_array *)arguments[i].ptr)->items[0] = (pin_value){
+                .type = shape.type
+            };
         }
         for (int backend = 0; backend < 2; backend++) {
             REQUIRE(run(arguments, 2, NULL, results, backend == 1, 100) == FLOW_SUSPENDED_RESULT);
+            /* Value arguments have independent managed shells. Capture the
+             * actual bank while suspended; completion restores the C bank. */
+            const pin_value *active_arguments = context.arguments;
+            pin_value live = active_arguments[0];
+            REQUIRE(active_arguments != arguments);
+            REQUIRE(
+                live.ptr != arguments[0].ptr && live.ptr != active_arguments[1].ptr
+            );
+            REQUIRE(arena_contains(&invocation_heap.storage, live.ptr));
+            REQUIRE(((pin_array *)live.ptr)->count == 1);
+            REQUIRE(pin_array_get(live.ptr, 0).type == shape.type);
             /* Remove the independent argument roots to exercise only saved
              * slot/local metadata, including rejection of the dead array. */
             context.arguments = NULL;
             context.argument_count = 0;
-            visited_aggregate seen = { .expected = arguments[0] };
+            visited_aggregate seen = { .expected = live };
             behavior_function_visit_values(function, &context, count_aggregate, &seen);
             REQUIRE(seen.matches == 2 && seen.others == 0);
-            context.arguments = arguments;
+            context.arguments = active_arguments;
             context.argument_count = 2;
             REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
-            REQUIRE(
-                results[0].ptr == arguments[0].ptr &&
-                results[1].ptr == arguments[0].ptr
-            );
+            REQUIRE(context.arguments == arguments);
+            /* These result banks deliberately expose raw saved addresses;
+             * they do not publish owning language array values. */
+            REQUIRE(results[0].ptr == live.ptr && results[1].ptr == live.ptr);
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(((pin_array *)arguments[i].ptr)->count == 1);
+                REQUIRE(pin_array_get(arguments[i].ptr, 0).type == shape.type);
+            }
         }
     }
     return true;
@@ -1569,9 +1606,8 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
     return true;
 }
 
-/* The result bit runs an intrinsic in the caller's storage, and only those
- * that may build there; union_keep runs only there. It keeps the payload
- * values its mask names when they are held in storage and copies the rest. */
+/* The result bit runs eligible intrinsics in caller storage. Union payloads
+ * remain independent values, including repeated sources and nested unions. */
 TEST_CASE(execution_intrinsics_build_in_result_storage)
 {
     uint64_t push = execution_intrinsic_id(&EXECUTION_array_push_call),
@@ -1606,9 +1642,9 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
     REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
     const pin_union *value = out.ptr;
     REQUIRE(value->tag == 7 && value->count == 3);
-    /* The first is kept; the second is not the storage's, and the mask leaves
-     * out the third. */
-    REQUIRE(value->values[0].ptr == held);
+    REQUIRE(value->values[0].ptr != held);
+    REQUIRE(value->values[0].ptr != value->values[2].ptr);
+    REQUIRE(arena_contains(&storage, value->values[0].ptr));
     REQUIRE(
         value->values[1].ptr != foreign &&
         arena_contains(&storage, value->values[1].ptr)
@@ -1618,57 +1654,74 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
         arena_contains(&storage, value->values[2].ptr)
     );
     REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 2);
-    /* A value kept once is copied where the mask keeps it again. */
+    pin_value changed = { .type = PIN_I32, .i = 9 };
+    REQUIRE(!pin_array_snapshot_set(&storage, value->values[0].ptr, 0, &changed));
+    REQUIRE(pin_array_get(held, 0).i == 1);
+    REQUIRE(pin_array_get(value->values[2].ptr, 0).i == 1);
+    /* A different mask preserves the same independent VALUE contract. */
     args[1].u64 = 5;
     REQUIRE(!EXECUTION_union_keep_call.value(&storage, args, 5, &out));
     value = out.ptr;
-    REQUIRE(value->values[0].ptr == held && value->values[2].ptr != held);
+    REQUIRE(value->values[0].ptr != held && value->values[2].ptr != held);
+    REQUIRE(value->values[0].ptr != value->values[2].ptr);
     REQUIRE(pin_array_get(value->values[2].ptr, 0).i == 1);
-    /* A union it keeps may hold a value another payload keeps, so it is
-     * copied: here the inner union keeps `held`, as the second payload does. */
+    /* Nested payloads copy their outer values independently as well. */
     pin_value inner = out,
               nested[] = { args[0], { .type = PIN_U64, .u64 = 3 }, inner, args[2] };
     REQUIRE(!EXECUTION_union_keep_call.value(&storage, nested, 4, &out));
     value = out.ptr;
-    REQUIRE(value->values[0].ptr != inner.ptr && value->values[1].ptr == held);
+    REQUIRE(value->values[0].ptr != inner.ptr && value->values[1].ptr != held);
+    const pin_union *nested_value = value->values[0].ptr;
+    const pin_union *original = inner.ptr;
+    REQUIRE(nested_value->values[0].ptr != original->values[0].ptr);
+    REQUIRE(!pin_array_snapshot_set(&storage, nested_value->values[0].ptr, 0, &changed));
+    REQUIRE(pin_array_get(original->values[0].ptr, 0).i == 1);
+    REQUIRE(pin_array_get(value->values[1].ptr, 0).i == 1);
     arena_free(&storage);
     arena_free(&other);
-    /* The cost model reports the copy of each managed payload value the
-     * mask leaves out, and a possible one for a value it keeps. */
-    for (uint64_t mask = 0; mask < 2; mask++) {
-        builder = behavior_function_builder_new();
-        pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
-                               { .type = PIN_U64, .u64 = mask },
-                               { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY } },
-                  made = { .type = PIN_UNION };
-        int host = behavior_function_builder_host(
-            builder,
-            &EXECUTION_union_keep_call,
-            &EXECUTION_assignment_access,
-            inputs,
-            3,
-            &made,
-            1
-        );
-        REQUIRE(behavior_function_builder_host_identity(
-            builder,
-            host,
-            keep | EXECUTION_INTRINSIC_IN_RESULT,
-            execution_intrinsic_abi(keep | EXECUTION_INTRINSIC_IN_RESULT)
-        ));
-        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
-                                              .target = host,
-                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
-        emit((behavior_function_instruction){ .op = BF_END });
-        REQUIRE(finish());
-        execution_cost_summary costs = behavior_function_costs(function);
-        REQUIRE(costs.complete);
-        REQUIRE(((costs.proven & EXECUTION_COST_COPY) != 0) == (mask == 0));
-        REQUIRE(((costs.possible & EXECUTION_COST_COPY) != 0) == (mask == 1));
-        behavior_function_free(function);
-        function = NULL;
-        behavior_function_builder_free(builder);
-        builder = NULL;
+    /* Both constructors have the same payload costs, independent of the old
+     * KEEP mask: no payload, plain scalar, collection, and named scalar. */
+    for (int form = 0; form < 3; form++) {
+        for (int payload = -1; payload < 3; payload++) {
+            builder = behavior_function_builder_new();
+            bool keeping = form != 0;
+            pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
+                                   { .type = PIN_U64, .u64 = (uint64_t)(form - 1) },
+                                   { .type = PIN_I32,
+                                     .type_name = payload == 2 ? "fixture.Count" : NULL,
+                                     .container = payload == 1
+                                                    ? PIN_CONTAINER_ARRAY
+                                                    : PIN_CONTAINER_SINGLE } },
+                      made = { .type = PIN_UNION };
+            if (!keeping) {
+                inputs[1] = inputs[2];
+            }
+            uint64_t id = keeping ? keep | EXECUTION_INTRINSIC_IN_RESULT : make;
+            int host = behavior_function_builder_host(
+                builder,
+                keeping ? &EXECUTION_union_keep_call : &EXECUTION_union_make_call,
+                keeping ? &EXECUTION_assignment_access : &EXECUTION_value_access,
+                inputs,
+                (keeping ? 2 : 1) + (payload >= 0),
+                &made,
+                1
+            );
+            REQUIRE(
+                behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+            );
+            emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                                  .target = host,
+                                                  .left = BEHAVIOR_FUNCTION_HOST_DATA });
+            emit((behavior_function_instruction){ .op = BF_END });
+            REQUIRE(finish());
+            execution_cost_summary costs = behavior_function_costs(function);
+            REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE);
+            REQUIRE(costs.possible == (payload >= 1 ? EXECUTION_COST_COPY : 0));
+            behavior_function_free(function);
+            function = NULL;
+            behavior_function_builder_free(builder);
+            builder = NULL;
+        }
     }
     return true;
 }
@@ -2215,25 +2268,58 @@ TEST_CASE(execution_pointer_comparisons_use_location_identity)
     emit((behavior_function_instruction){ .op = BF_END });
     REQUIRE(finish());
     REQUIRE(behavior_function_compile(function));
-    pin_pointer root = { 0 }, other = { 0 };
-    pin_pointer first = { .base = &root, .offset = 4 };
-    pin_pointer same = { .base = &root, .offset = 4 };
-    pin_pointer next = { .base = &root, .offset = 8 };
-    pin_pointer separate = { .base = &other, .offset = 4 };
+    behavior_managed_heap_init(&comparison_heap);
+    type_field fields[] = {
+        { .name = "first", .type = PIN_I32, .type_name = "int" },
+        { .name = "second", .type = PIN_I32, .type_name = "int" },
+    };
+    const pin_record *record = pin_record_create(
+        &comparison_heap.storage,
+        "fixture.pointer_pair",
+        434,
+        fields,
+        2
+    );
+    REQUIRE(record);
+    int32_t pair[] = { 17, 23 };
+    pin_value base = { .type = PIN_STRUCT, .type_name = record->type.name, .record = record };
+    behavior_function_context owner = { .managed_heap = &comparison_heap };
+    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner }, base, base };
+    make[2].ptr = pair;
+    pin_value root = { .type = PIN_POINTER, .type_name = "^fixture.pointer_pair" },
+              other = root;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &root));
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &other));
+    pin_value field[] = { root,
+                          { .type = PIN_I32 },
+                          { .type = PIN_U64, .u64 = record->type.fields[0].offset },
+                          { .type = PIN_BOOL },
+                          base };
+    pin_value first = { .type = PIN_POINTER, .type_name = "^int" },
+              same = first, next = first, separate = first;
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &first));
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &same));
+    REQUIRE(first.ptr != same.ptr);
+    field[2].u64 = record->type.fields[1].offset;
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &next));
+    field[0] = other;
+    field[2].u64 = record->type.fields[0].offset;
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &separate));
     const struct
     {
         pin_pointer *left, *right;
         bool equal;
     } cases[] = {
-        { &first, &same, true },      { &first, &next, false },
-        { &first, &separate, false }, { NULL, NULL, true },
-        { &first, NULL, false },
+        { first.ptr, same.ptr, true },      { first.ptr, next.ptr, false },
+        { first.ptr, separate.ptr, false }, { NULL, NULL, true },
+        { first.ptr, NULL, false },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         pin_value args[] = { { .type = PIN_POINTER, .ptr = cases[i].left },
                              { .type = PIN_POINTER, .ptr = cases[i].right } };
         for (int backend = 0; backend < 2; backend++) {
-            REQUIRE(run(args, 2, NULL, results, backend != 0, 100) == FLOW_OK);
+            release_invocation();
+            REQUIRE(invoke(args, 2, NULL, results, backend != 0, 100, &comparison_heap) == FLOW_OK);
             REQUIRE(results[0].b == cases[i].equal && results[1].b != cases[i].equal);
         }
     }
@@ -2534,7 +2620,8 @@ TEST_CASE(execution_pointer_fields_require_the_full_base_layout)
     REQUIRE(finish());
     REQUIRE(behavior_function_compile(function));
     for (int backend = 0; backend < 2; backend++) {
-        int status = run(NULL, 0, NULL, NULL, backend != 0, 100);
+        release_invocation();
+        int status = invoke(NULL, 0, NULL, NULL, backend != 0, 100, &pointer_heap);
         if (context.failure != BEHAVIOR_FUNCTION_HOST_DATA) {
             fprintf(
                 stderr,

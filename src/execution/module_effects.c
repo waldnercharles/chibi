@@ -1525,30 +1525,20 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
             return;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_NEXT: return;
-        case EXECUTION_INTRINSIC_UNION_KEEP: {
-            /* It copies each managed payload value its mask leaves out, and
-             * one it keeps that its storage does not hold. */
-            origin keep = bank_origin(f, pc, call->first + 1, 0, &c->steps);
-            unsigned proven = EXECUTION_COST_ALLOCATE, possible = 0;
-            for (int i = 0; i < call->result_first - call->first - 2; i++) {
-                const behavior_function_data_value *payload = &f->data_values[call->first + 2 + i];
-                if (!pointer_value(payload->initial, payload->kind)) {
-                    continue;
-                }
-                bool kept = keep.constant && i < 64 && (keep.bits >> i & 1);
-                if (keep.constant && !kept) {
-                    proven |= EXECUTION_COST_COPY;
-                } else {
-                    possible |= EXECUTION_COST_COPY;
-                }
-            }
-            cost_add(c, f, pc, id, proven, possible, "Union construction in the caller's storage copies the payload values it does not keep");
-            return;
-        }
+        case EXECUTION_INTRINSIC_UNION_KEEP:
         case EXECUTION_INTRINSIC_UNION_MAKE: {
-            int count = call->result_first - call->first;
-            if (count > 1) {
-                cost_add(c, f, pc, id, allocate_copy, 0, "Union construction allocates a payload and snapshots supplied values");
+            bool keep = execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_UNION_KEEP;
+            int first = call->first + (keep ? 2 : 1);
+            if (first < call->result_first || keep) {
+                unsigned possible = 0;
+                for (int i = first; i < call->result_first; i++) {
+                    const behavior_function_data_value *payload = &f->data_values[i];
+                    if (pointer_value(payload->initial, payload->kind) ||
+                        snapshot_storage(payload->initial)) {
+                        possible |= EXECUTION_COST_COPY;
+                    }
+                }
+                cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, possible, "Union construction allocates a payload; VALUE copies can share collection backing or import managed payloads");
                 return;
             }
             origin tag = bank_origin(f, pc, call->first, 0, &c->steps);
@@ -2132,14 +2122,19 @@ static void share_host(share_flow *s, int pc)
                 }
                 break;
             case EXECUTION_INTRINSIC_UNION_MAKE:
-                /* Constructors expose their payload headers. The explicit
-                 * VALUE barrier below separates ordinary collection owners. */
+            case EXECUTION_INTRINSIC_UNION_KEEP: {
+                /* Both constructors fork ordinary VALUE owners, while payload
+                 * references can still reach shared mutable targets. */
+                int first = host->first + (execution_intrinsic_kind(id) == EXECUTION_INTRINSIC_UNION_KEEP
+                                               ? 2
+                                               : 1);
                 output = s->retyped && inputs;
-                for (int cell = host->first + 1; cell < host->result_first; cell++) {
+                for (int cell = first; cell < host->result_first; cell++) {
                     output |= share_cell(s, cell) &&
                               mutable_payload(f->data_values[cell].initial, 0);
                 }
                 break;
+            }
             case EXECUTION_INTRINSIC_POINTER_MAKE:
             case EXECUTION_INTRINSIC_POINTER_READ:
             case EXECUTION_INTRINSIC_POINTER_FIELD:
@@ -2178,19 +2173,6 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_VALUE_DROP:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
             case EXECUTION_INTRINSIC_UNION_GET: break;
-            case EXECUTION_INTRINSIC_UNION_KEEP: {
-                /* A payload value it keeps keeps what it reaches; it copies
-                 * those its mask leaves out, as a snapshot does. */
-                int keep = s->cell_literals[host->first + 1];
-                output = s->retyped && inputs;
-                for (int k = 0; k < host->result_first - host->first - 2; k++) {
-                    bool kept = keep < 0 || (k < 31 && (keep >> k & 1));
-                    pin_value payload = f->data_values[host->first + 2 + k].initial;
-                    output |= (kept || mutable_payload(payload, 0)) &&
-                              share_cell(s, host->first + 2 + k);
-                }
-                break;
-            }
             case EXECUTION_INTRINSIC_REFERENCE_FIELD:
             case EXECUTION_INTRINSIC_REFERENCE_UNION:
                 output = share_cell(s, host->first);

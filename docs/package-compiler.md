@@ -51,8 +51,10 @@ import:
 - parameter defaults that are integer, bool or string literals, `(name:
   string = "you", count: int = 1)`: a call that omits trailing arguments
   passes their defaults, as stage zero does. A floating default is rejected;
-- `assert(condition, "message")`, where the target links the core pack's
-  `assert`, as a game does: the call fails when the condition is false, with
+- Unqualified `assert(condition, "message")` is a checked language intrinsic,
+  even when the target has no native `assert` capability. An authored callable
+  of that name takes precedence; qualified calls resolve normally. The intrinsic
+  fails when the condition is false, with
   "Assertion failed: " and the message, or the condition's source when there
   is none or it is empty, as stage zero's `ASSERT` does. Its arguments may be
   named `condition` and `message`; the message must be a string literal.

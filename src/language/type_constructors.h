@@ -29,6 +29,7 @@ typedef struct
     uint64_t id;
     const char *name;
     script_type definition_type;
+    script_type element_type; /* Complete pointee metadata, including collection identity. */
     size_t size;
     bool internal;
     const script_constructor_variant *variants;
@@ -73,6 +74,8 @@ script_catalog_type script_constructor_collection(
     script_type value,
     size_t pointer_size
 );
+/* A pointer's nominal identity includes the complete pointee type tag. */
+script_catalog_type script_constructor_pointer(arena *, script_type pointee, size_t pointer_size);
 /* Pure ownership adapter: copies exactly the selected variants/fields. No
  * lookup, deduplication, type selection or publication policy is performed.
  * False means no publication or a failed metadata snapshot. Accepted output

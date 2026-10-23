@@ -238,7 +238,7 @@ static bool use(const pin_value *row, const pin_array *ids, const script_use *ex
 static bool plan(int b, const pin_value *value, const script_constructor_plan *expected)
 {
     const pin_value *v;
-    REQUIRE(tagged(b, value, CONSTRUCTORS, "Plan", "Constructed", 11, &v));
+    REQUIRE(tagged(b, value, CONSTRUCTORS, "Plan", "Constructed", 13, &v));
     REQUIRE(
         value_type(b, &v[0], expected->type) && v[1].type == PIN_BOOL &&
         v[1].b == expected->publish && v[2].type == PIN_U64 &&
@@ -247,6 +247,8 @@ static bool plan(int b, const pin_value *value, const script_constructor_plan *e
     );
     REQUIRE(
         value_type(b, &v[4], expected->definition_type) &&
+        value_type(b, &v[11], expected->element_type) && v[12].type == PIN_U64 &&
+        v[12].u64 == expected->element_type.collection &&
         v[5].type == PIN_I32 && v[5].i == (int)expected->size &&
         v[6].type == PIN_BOOL && v[6].b == expected->internal
     );
@@ -259,6 +261,11 @@ static bool plan(int b, const pin_value *value, const script_constructor_plan *e
     for (int i = 0; i < expected->variant_count; i++) {
         const script_constructor_variant *s = &expected->variants[i];
         const pin_value *row = &variants->items[i];
+        pin_value collection;
+        REQUIRE(
+            read(row, "collection", &collection) &&
+            collection.type == PIN_U64 && collection.u64 == s->type.collection
+        );
         REQUIRE(
             same_int(row, "catalog_type", s->catalog_type) &&
             same_int(row, "variant", s->variant) && same_int(row, "member", s->member) &&
@@ -494,9 +501,10 @@ static bool reading_value(
 {
     const pin_value *v;
     REQUIRE(
-        tagged(b, value, PACKAGE, "Reading", "Read", 7, &v) &&
+        tagged(b, value, PACKAGE, "Reading", "Read", 8, &v) &&
         value_type(b, &v[0], expected->type)
     );
+    REQUIRE(v[7].type == PIN_U64 && v[7].u64 == expected->type.collection);
     REQUIRE(
         v[1].type == PIN_BOOL && v[1].b == (expected->unit != NULL) &&
         v[2].type == PIN_STR && pin_text(v[2]).bytes &&
@@ -968,7 +976,8 @@ TEST_CASE(record_members_outputs_outlive_all_producers)
         REQUIRE(v[0].type == PIN_STR && !strcmp(pin_text(v[0]).bytes, "label"));
         REQUIRE(v[1].type == PIN_U64 && v[1].u64 == script_catalog_id("record-field", "label"));
         REQUIRE(v[3].type == PIN_BOOL && !v[3].b && v[4].type == PIN_I32 && v[4].i == -1);
-        REQUIRE(v[5].type == PIN_BOOL && !v[5].b && unpack(&v[2], 7, &a));
+        REQUIRE(v[5].type == PIN_BOOL && !v[5].b && unpack(&v[2], 8, &a));
+        REQUIRE(a[7].type == PIN_U64 && a[7].u64 == 0);
         const pin_value *type;
         REQUIRE(unpack(&a[0], 5, &type) && type[0].type == PIN_I32 && type[0].i == PIN_STR);
         const pin_array *errors;

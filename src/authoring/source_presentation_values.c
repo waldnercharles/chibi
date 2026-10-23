@@ -33,6 +33,8 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_UNARY:
         case SCRIPT_EXPR_BINARY: return operator_name(e->op);
         case SCRIPT_EXPR_CAST: return "Cast";
+        case SCRIPT_EXPR_ADDRESS: return "Address";
+        case SCRIPT_EXPR_DEREFERENCE: return "Dereference";
         case SCRIPT_EXPR_CALL: return "Call";
         case SCRIPT_EXPR_MEMBER: return "Field";
         case SCRIPT_EXPR_COMPONENT: return "Component";

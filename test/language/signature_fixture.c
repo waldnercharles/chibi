@@ -153,7 +153,7 @@ static int type_slot(packing *p, script_type type)
         script_type t = p->types[i];
         if (t.storage == type.storage && t.container == type.container &&
             t.flags == type.flags && t.nominal == type.nominal &&
-            t.parameter == type.parameter) {
+            t.parameter == type.parameter && t.collection == type.collection) {
             return i;
         }
     }
@@ -338,7 +338,11 @@ static bool constructors(packing *p, const script_signature_facts *facts, pin_va
         REQUIRE(
             put(p, &definitions->items[i], "id_slot", integer(id)) &&
             put(p, &definitions->items[i], "variant_start", integer(at)) &&
-            put(p, &definitions->items[i], "variant_count", integer(t->variant_count))
+            put(p, &definitions->items[i], "variant_count", integer(t->variant_count)) &&
+            put(p,
+                &definitions->items[i],
+                "element_type",
+                integer(t->type.storage == PIN_POINTER ? type_slot(p, t->element_type) : -1))
         );
         for (int j = 0; j < t->variant_count; j++) {
             int tag = slot(p, t->variants[j].tag),
@@ -399,7 +403,8 @@ static bool pools(packing *p, pin_value *types, pin_value *ids)
             put(p, &rows->items[i], "container", integer(t.container)) &&
             put(p, &rows->items[i], "flags", integer(bits(t.flags))) &&
             put(p, &rows->items[i], "nominal_slot", integer(nominal)) &&
-            put(p, &rows->items[i], "parameter_slot", integer(parameter))
+            put(p, &rows->items[i], "parameter_slot", integer(parameter)) &&
+            put(p, &rows->items[i], "collection", (pin_value){ .type = PIN_U64, .u64 = t.collection })
         );
     }
     *ids = array(p, PIN_U64, p->id_count);

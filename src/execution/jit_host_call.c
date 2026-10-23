@@ -55,6 +55,24 @@ bool behavior_jit_host_call(
     }
     assert(i->target >= 0 && i->target < acount(m->function->host_calls));
     const behavior_function_host_call *spec = &m->function->host_calls[i->target];
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+    sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)behavior_function_host_arguments);
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, error_message),
+        SLJIT_R0,
+        0
+    );
+    struct sljit_jump *arguments_ok = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
+    struct sljit_label *arguments_label = sljit_emit_label(c);
+    if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
+        sljit_set_label(arguments_ok, arguments_label);
+    }
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, data));
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_data_storage, values));
     sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R1, 0, SLJIT_IMM, spec->result_first * sizeof(pin_value));
     sljit_emit_op2(c, SLJIT_ADD, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, spec->first * sizeof(pin_value));

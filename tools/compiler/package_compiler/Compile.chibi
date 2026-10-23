@@ -419,9 +419,43 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
                        node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (!Is(forest, node, "type") || (Field(forest, node, "trait") >= 0 && !Referenced(forest, text, node)) ||
-        Field(forest, node, "arguments") >= 0 || HasToken(forest, node, "?")) {
+        Field(forest, node, "arguments") >= 0) {
         return none;
     }
+    pointer := TypePointerNode(forest, node);
+    if (pointer >= 0) {
+        element := ReadType(forest, text, types, names, package, Field(forest, pointer, "target"));
+        declared := FindPointer(types, element, HasToken(forest, node, "?"));
+        if (declared < 0) { return none; }
+        container: int = 0;
+        child := forest[node].first_child;
+        while (child >= 0) {
+            if (forest[child].kind == "[") { container += 1; }
+            child = forest[child].next_sibling;
+        }
+        if (container > 1 || (container != 0 && HasToken(forest, node, "?"))) { return none; }
+        return {storage: PointerStorage, container: container, record: declared};
+    }
+    grouped := TypeGroupNode(forest, node);
+    if (grouped >= 0) {
+        value := ReadType(forest, text, types, names, package, grouped);
+        child := forest[node].first_child;
+        while (child >= 0) {
+            if (forest[child].kind == "[") {
+                if (value.container != 0) { return none; }
+                value.container = ArrayContainer;
+            }
+            child = forest[child].next_sibling;
+        }
+        if (HasToken(forest, node, "?")) {
+            if (value.storage != PointerStorage || value.container != 0 || value.record < 0) { return none; }
+            nullable := FindPointer(types, PointerElement(types, Typed(-1, value.storage, 0, value.record)), true);
+            if (nullable < 0) { return none; }
+            value.record = nullable;
+        }
+        return value;
+    }
+    if (HasToken(forest, node, "?")) { return none; }
     container: int = 0;
     child := forest[node].first_child;
     while (child >= 0) {
@@ -480,11 +514,7 @@ FindMap :: (types: TypeDecl[], key: ValueType, value: ValueType) -> int {
 // The ID stage zero gives a single key or value type: its storage and the
 // ID of the record, union or native type it names.
 TypeTag :: (types: TypeDecl[], storage: int, record: int) -> uint64 {
-    nominal: uint64 = 0;
-    if (record >= 0) {
-        nominal = types[record].id;
-    }
-    return binding.ID("union-type", format_text("{}:0:{}:0:0", storage, nominal));
+    return SemanticTag(types, {storage: storage, container: 0, record: record});
 }
 // Declares each map type that file `root` spells, inner ones first, when its
 // key is a number, bool or string and its value a single value of a type
@@ -541,7 +571,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
 }
 // Field width, which is also its alignment, as the runtime lays records out.
 FieldSize :: (storage: int, target: Target) -> int {
-    if (storage == TextStorage) {
+    if (storage == TextStorage || storage == PointerStorage) {
         return target.pointer_size;
     }
     if (Integer(storage)) {
@@ -669,7 +699,11 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                         }
                         storage := ScalarStorage(Text(forest, text, Field(forest, item, "type")));
-                        if (storage == 0 || Field(forest, item, "value") >= 0) {
+                        pointer_field := TypePointerNode(forest, Field(forest, item, "type")) >= 0;
+                        initial := Field(forest, item, "value");
+                        nullable_pointer := pointer_field && HasToken(forest, Field(forest, item, "type"), "?");
+                        if ((storage == 0 && !pointer_field) ||
+                            (initial >= 0 && !(nullable_pointer && Is(forest, initial, "nil")))) {
                             return Declarations.Failed(Diagnose(forest, item, file,
                                                                 "record field needs a number, bool or string type and no default"));
                         }
@@ -681,6 +715,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             at += 1;
                         }
+                        if (pointer_field) { storage = PointerStorage; }
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
@@ -704,7 +739,33 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         }
     }
     for (file in files) {
+        types = DeclarePointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
         types = DeclareMaps(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+        types = DeclarePointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+        types = DeclareAddressPointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+    }
+    // Resolve pointer fields after every record name and constructor exists,
+    // including self-referential nullable links.
+    for (file in files) {
+        for (declaration in Members(forest, documents[file].syntax_root)) {
+            if (Is(forest, declaration, "record_declaration")) {
+                holder := FindType(types, package, Text(forest, documents[file].text, Field(forest, declaration, "name")));
+                index := types[holder].first;
+                for (field_node in Members(forest, Field(forest, declaration, "body"))) {
+                    field := members[index];
+                    if (field.storage == PointerStorage) {
+                        resolved := ReadType(forest, documents[file].text, types, Aliases(links, file), package,
+                                             Field(forest, field_node, "type"));
+                        if (resolved.storage != PointerStorage || resolved.container != 0) {
+                            return Declarations.Failed(Diagnose(forest, field_node, file, "record pointer field type is invalid"));
+                        }
+                        field.record = resolved.record;
+                        members[index] = field;
+                    }
+                    index += 1;
+                }
+            }
+        }
     }
     // Payloads may name any type, so they resolve once every type is known.
     for (file in files) {
@@ -1062,7 +1123,10 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                         record: declared.record, has_default: false, default_bits: 0, default_text: "",
                         default_occurrence: default_occurrence, reference: reference,
                         node: Field(forest, parameter, "name")};
-        if (default_value >= 0) {
+        if (default_value >= 0 && declared.storage == PointerStorage && declared.container == 0 &&
+            declared.record >= 0 && types[declared.record].key != 0 && Is(forest, default_value, "nil")) {
+            param.has_default = true;
+        } else if (default_value >= 0) {
             switch LiteralDefault(forest, text, file, default_value, declared) {
                 case .Failed(diagnostic):
                     return Signature.Failed(diagnostic);
@@ -1089,7 +1153,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                 return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
             }
             declared := ReadType(forest, text, types, aliases, package, Field(forest, named, "type"));
-            if (declared.storage == 0 || declared.storage == TextStorage ||
+            if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == PointerStorage ||
                 Pointer(declared.storage, declared.container)) {
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
             }
@@ -1129,10 +1193,10 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
         if (container == MapContainer) {
             value.type_name = types[record].type_name;
             value.has_type_name = true;
-        } else if (storage == StructStorage) {
+        } else if (storage == StructStorage || storage == PointerStorage) {
             value.type_name = types[record].type_name;
             value.has_type_name = true;
-            value.authored = types[record].kind != NativeDecl;
+            value.authored = storage == StructStorage && types[record].kind != NativeDecl;
         }
         return value;
     }
@@ -1141,6 +1205,12 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
         handle.type_name = types[record].type_name;
         handle.has_type_name = true;
         return handle;
+    }
+    if (storage == PointerStorage && record >= 0) {
+        value := ScalarValue(storage, 0);
+        value.type_name = types[record].type_name;
+        value.has_type_name = true;
+        return value;
     }
     if (storage != StructStorage) {
         return ScalarValue(storage, 0);
@@ -1192,7 +1262,7 @@ HashText :: (hash: uint64, text: string) -> uint64 {
 }
 // The runtime's layout hash of a record: its size and field count, then each
 // field's name, offset, size, storage, string descriptor marker and absent type name.
-LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64 {
+LayoutHash :: (record: TypeDecl, fields: TypeMember[], types: TypeDecl[], target: Target) -> uint64 {
     hash: uint64 = 1469598103934665603;
     hash = HashBytes(hash, uint64(record.size), target.pointer_size);
     hash = HashBytes(hash, uint64(record.count), 4);
@@ -1206,7 +1276,11 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64
         if (field.storage == TextStorage) {
             hash = HashBytes(hash, 1, 1);
         }
-        hash = HashText(hash, "");
+        if (field.storage == PointerStorage) {
+            hash = HashText(hash, types[field.record].type_name);
+        } else {
+            hash = HashText(hash, "");
+        }
         at += 1;
     }
     return hash;
@@ -1412,7 +1486,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         } else if (declared.kind == RecordDecl) {
             wide.append(binding.ID("package-symbol",
                                    format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
-            wide.append(LayoutHash(declared, members, target));
+            wide.append(LayoutHash(declared, members, types, target));
             layouts[length(layouts) - 1] = length(wide) - 1;
             requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
                                                name: declared.type_name, size: declared.size, authored: true, first: length(fields),
@@ -1423,9 +1497,19 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 // Record fields are integers, bools or strings, so none names a type or unit.
                 field: writer.Field = {name: members[at].name, kind: members[at].storage, type_name: "",
                                        has_type_name: false, unit: "", has_unit: false};
+                if (members[at].storage == PointerStorage) {
+                    field.type_name = types[members[at].record].type_name;
+                    field.has_type_name = true;
+                }
                 fields.append(field);
                 at += 1;
             }
+        } else if (declared.kind == PointerDecl && declared.key == 0) {
+            wide.append(declared.id);
+            pointer_requirement: writer.Requirement = {id: length(wide) - 1, layout: 0, storage: PointerStorage,
+                                                        name: declared.type_name, size: target.pointer_size,
+                                                        authored: false, first: 0, count: 0};
+            requirements.append(pointer_requirement);
         } else if (declared.kind == NativeDecl) {
             wide.append(declared.id);
             wide.append(declared.layout);

@@ -168,6 +168,17 @@ TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
     fields[0].size = 1;
     REQUIRE(prototype_add_component(loaded, &invalid) == -1);
     REQUIRE(acount(loaded->components) == 0);
+    /* Public documents must reject a live pointer-shaped field rather than
+     * silently omitting it or replacing its address with null. */
+    memcpy(fields, component_fields, sizeof fields);
+    fields[1].type = PIN_POINTER;
+    invalid.type = &malformed;
+    document->components[0].desc = &invalid;
+    bool rejected = !prototype_to_value(document) && !prototype_save(document) &&
+                    !prototype_components_value(document) &&
+                    !prototype_component_value(document, component.name);
+    document->components[0].desc = &component;
+    REQUIRE(rejected);
     return true;
 }
 

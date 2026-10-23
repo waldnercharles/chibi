@@ -7231,9 +7231,10 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
             }
             break;
         }
+        case PIN_POINTER:
         case PIN_TASK:
         case PIN_UNION:
-            assert(false && "Managed task and union values cannot be ECS fields");
+            assert(false && "Managed pointers, tasks and unions cannot be ECS fields");
             break;
         case PIN_FLOW: break;
     }

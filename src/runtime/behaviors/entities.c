@@ -14,6 +14,7 @@
 #include "types/catalog.h"
 #include "types/record.h"
 #include "types/text.h"
+#include "types/trace.h"
 
 #include <assert.h>
 #include <math.h>
@@ -369,7 +370,7 @@ const char *entities_global_name_at(const entities *entities, int index)
 
 static bool global_value_header_valid(const pin_value *value)
 {
-    if (!value || value->type <= PIN_FLOW || value->type > PIN_UNION ||
+    if (!value || value->type <= PIN_FLOW || value->type >= PIN_POINTER ||
         value->container < PIN_CONTAINER_SINGLE ||
         value->container > PIN_CONTAINER_MAP) {
         return false;
@@ -496,7 +497,8 @@ int entities_get_global_value(const entities *entities, const char *name, arena 
 
 int entities_set_global_value(entities *entities, const char *name, const pin_value *value)
 {
-    if (!entities || !name || !name[0] || !global_value_header_valid(value)) {
+    if (!entities || !name || !name[0] || !global_value_header_valid(value) ||
+        pin_value_has_managed_pointer(value)) {
         return -1;
     }
     const global_binding *binding = find_global_binding_const(entities, name);

@@ -1,0 +1,11 @@
+{
+  "head": "81702f624bd025f4e3ae43daa5fd86fc89c48178",
+  "index_tree": "4cc14807c89280feec42adad21119f8655911817",
+  "live_tree": "f0fe82ef0e09532f74c356fc194edf556f78d13d",
+  "untracked": [
+    "tools/compiler/package_compiler/TaskResults.chibi",
+    "tools/compiler/package_compiler/Tasks.chibi"
+  ],
+  "status": " M PLAN.md\n M docs/language-friction.md\n M docs/value-runtime-integration.md\n M docs/value-semantics.md\n M src/toolchain/compiler_target.c\n M test/language/package_compiler_chibi.c\n M test/language/package_compiler_chibi.cmake\n M test/language/package_compiler_chibi_source.h.in\n M test/language/prepared_writer_chibi.c\n M tools/compiler/bounded_compiler/Prepare.chibi\n M tools/compiler/package_compiler/Behavior.chibi\n M tools/compiler/package_compiler/Body.chibi\n M tools/compiler/package_compiler/Compile.chibi\n M tools/compiler/package_compiler/Maps.chibi\n M tools/compiler/package_compiler/Pointers.chibi\n M tools/compiler/package_compiler/References.chibi\n M tools/compiler/package_compiler/Steps.chibi\n M tools/compiler/prepared_writer/Writer.chibi\n M tools/graph/engine/Targets.chibi\n?? tools/compiler/package_compiler/TaskResults.chibi\n?? tools/compiler/package_compiler/Tasks.chibi\n",
+  "index_status": "No staged differences; index tree exactly equals original HEAD tree."
+}

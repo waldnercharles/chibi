@@ -1,0 +1,5 @@
+Running: record_globals_owned_values (OK) (0.000632 secs)
+Running: record_globals_atomic_rejections (OK) (0.000500 secs)
+Running: record_headless_ui_owned_data (OK) (0.000342 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 2201

@@ -1,0 +1,262 @@
+{
+  "base": "81702f624bd025f4e3ae43daa5fd86fc89c48178",
+  "source_tree": "6353f5a382785977b0b9948cfcbcde37facd0d0c",
+  "patch_sha256": "7671cd2db13732011d847edd4325881c25789cfdb98410b47b93a9beae2da301",
+  "supersedes_unpreparable_source_tree": "93c325e56332df8d38c501269ed47c21d37f4e8c",
+  "status": "Local uncommitted source; focused checks passed. No bootstrap, current-main integration, dependency inference or component lifetime execution proof.",
+  "files": [
+    {
+      "path": "PLAN.md",
+      "sha256": "0de8a0e11fb1b70fa95114e1318c1528ab8b6feee481ce12b35a6cf61387a7f1"
+    },
+    {
+      "path": "docs/language-friction.md",
+      "sha256": "3491b4901c1add2bbccd731d6e7dc5714721650e29572f2b5c9ff03113843d6d"
+    },
+    {
+      "path": "docs/value-runtime-integration.md",
+      "sha256": "58deb8c758f2a66536bd6d52c1911c4845fa183929680baa0a4c1c59da3b2cd7"
+    },
+    {
+      "path": "docs/value-semantics.md",
+      "sha256": "27273934506f951f191ce9a25093df0369e5ac617c5c8406c380b0ec3bb70a9b"
+    },
+    {
+      "path": "src/toolchain/compiler_target.c",
+      "sha256": "2197f01220a0a0b871d2a662f47e8fe07474350b0f3eb574b84f9609caeca949"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "sha256": "e25ad6aca0fa2665c1c999975cfbc298769ad1e279f1aeb2fa762a711a6ae43e"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.cmake",
+      "sha256": "412657f8591615141f0fe334904dea640f4ea296c2da0ced38af909ffe6254f9"
+    },
+    {
+      "path": "test/language/package_compiler_chibi_source.h.in",
+      "sha256": "f0cde7db30c1b2c2e9ae3288feb2c95f18578ae2c35c525e9edb88fb9b0e96c0"
+    },
+    {
+      "path": "test/language/prepared_writer_chibi.c",
+      "sha256": "432ffc72334882644d709fa71f199f7f6a41f36d351fa9f3c656fb8e36737cce"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Prepare.chibi",
+      "sha256": "a2d8b1d9541b0a42dd6741e3f08c8311544607119a082ea51538509b74e3296b"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Behavior.chibi",
+      "sha256": "0a0e1d31e3d22d823e109e43bbb6ee3f38f477b8d987161587f2fab862b56cd3"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "sha256": "ad60da2ba6a164bcb6aba1b9611bacf37bd06d5426ae1c264e372f50fe8219c1"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Compile.chibi",
+      "sha256": "cd81d981edb14512ef6f8e727d9352a9ab9bb18cdeaa82b937df060618cd6232"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Maps.chibi",
+      "sha256": "36bd90a461472c97a3d268a2c9ab1a68e6e7591fadec1c7d3a709e04f7b206cf"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Pointers.chibi",
+      "sha256": "4597b20426ea6348c6872d362f67eed2f27c2ccee4862852893397b6d6fa89b5"
+    },
+    {
+      "path": "tools/compiler/package_compiler/References.chibi",
+      "sha256": "9d9d49c2f599333e481fc46a79fb752fb41b4386ac4b868510b352a49c9f9036"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Steps.chibi",
+      "sha256": "aa825e645b2e948447bce53901cb2a4bfe83712781d819b21527fe5b33817d72"
+    },
+    {
+      "path": "tools/compiler/package_compiler/TaskResults.chibi",
+      "sha256": "4f5ca8ea4c5099491c68966f62e6974b9af849a2785b7708ff7287f46cfc0ce5"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Tasks.chibi",
+      "sha256": "d9408ff3600b7f9b0a3de630e9a367896f8c8e78c62f72ff71e6c73e6a92f855"
+    },
+    {
+      "path": "tools/compiler/prepared_writer/Writer.chibi",
+      "sha256": "9151ce777234b5524c4260f2535c3fca08b83e2fb73d732142a6d2bd9add0d64"
+    },
+    {
+      "path": "tools/graph/engine/Targets.chibi",
+      "sha256": "87de7a0010af2b3b8d655a041dbc2f2370bc130607886a4ded019067ef70a23f"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "build-release-cmake/test/language/test_language",
+      "sha256": "4c7f6af51eef8d3884e9087db5e570840e54e33d64b83fe33d550601ad8dedbb",
+      "bytes": 10883120
+    },
+    {
+      "path": "build-release-cmake/sdk/chibi-compiler-host",
+      "sha256": "f02461e4ba91e58f5ba3800ef8a7fda571dd479db4357d336d152005c40d4fa8",
+      "bytes": 1168032
+    }
+  ],
+  "checks": [
+    {
+      "selector": "language-package-compiler-chibi-behaviors-rest",
+      "log": "../tasks-test-8.log",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 31166,
+      "seconds": 18.365
+    },
+    {
+      "selector": "language-package-compiler-chibi",
+      "log": "../base-test.log",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 12273,
+      "seconds": 5.584
+    },
+    {
+      "selector": "language-package-compiler-chibi-behaviors",
+      "log": "../behaviors-test.log",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 11884,
+      "seconds": 4.578
+    },
+    {
+      "selector": "language-package-compiler-chibi-collections",
+      "log": "../collections-test.log",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 4044,
+      "seconds": 8.156
+    },
+    {
+      "selector": "language-package-compiler-chibi-collections-compiled",
+      "log": "../collections-compiled-test.log",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 3798,
+      "seconds": 7.096
+    },
+    {
+      "selector": "language-bounded-compiler-chibi",
+      "log": "../bounded-test.log",
+      "passed": 1,
+      "failed": 0,
+      "assertions": 37483,
+      "seconds": 0.86
+    },
+    {
+      "selector": "language-prepared-writer-chibi",
+      "log": "../writer-test-2.log",
+      "passed": 2,
+      "failed": 0,
+      "assertions": 1034,
+      "seconds": 1.979
+    }
+  ],
+  "logs": [
+    {
+      "path": "../base-test.log",
+      "sha256": "0a5465f372a5e20359f7f53d2fa8783165de86bf07bd9d44acca726313cb29d8"
+    },
+    {
+      "path": "../behaviors-test.log",
+      "sha256": "7a9c0ee8b243a9c31a0c8adb92453d58024ab33567adbd029cc17273da073746"
+    },
+    {
+      "path": "../bounded-test.log",
+      "sha256": "388570cb83c643dfce9ce96efaacf6924c1a4bd1e1270662f2dc19147783114a"
+    },
+    {
+      "path": "../build-2.log",
+      "sha256": "c54b13910e6830035015533b9a5bc2f1bf976c70203dd8d1dad46f8d30a99265"
+    },
+    {
+      "path": "../build-3.log",
+      "sha256": "5384d0f1b433c681c9e6f33b6015b1dd8af381fde9ee64c4bb67412aab7321ec"
+    },
+    {
+      "path": "../build-4.log",
+      "sha256": "97e81881c3f285f98947869d293a75121b8ebdca1890ab7bb4d198a0de47433b"
+    },
+    {
+      "path": "../build-5.log",
+      "sha256": "4137e60b39be36942f383142193c2ea01ec51c32ca4cfa671d989e35f379a785"
+    },
+    {
+      "path": "../build-6.log",
+      "sha256": "68c4f9fd30d392eb6f7dcedf43019e0988cab52c667192a2d40977d4283c6977"
+    },
+    {
+      "path": "../build-7.log",
+      "sha256": "05d963a48ad55ad6d89f3d44dc93aeaf68a0cf75774cf81af5e583de5733c4c8"
+    },
+    {
+      "path": "../build-8.log",
+      "sha256": "ed3e8e91a26367debea32aa88bda26d7cc64ebe8842355439244b53e3b367c2f"
+    },
+    {
+      "path": "../build-9.log",
+      "sha256": "f21ac3d5258e81f875252b61bf33638633a65b936b3532ae0555f501fafc63a6"
+    },
+    {
+      "path": "../build.log",
+      "sha256": "c911a810107adf232a5384449ed4afd6c3b8c3063c310183e2ccc069349eaa46"
+    },
+    {
+      "path": "../collections-compiled-test.log",
+      "sha256": "972358ef662ca5ca7daf904112ea2987acbb2dd6172f01b47200833c7969b7e7"
+    },
+    {
+      "path": "../collections-test.log",
+      "sha256": "57d8ad574cc716e10b587c815353d1de685fa171c6f6fc7f6cd152929a2b9b01"
+    },
+    {
+      "path": "../tasks-test-2.log",
+      "sha256": "22bd670be90f528dae3be2e0925ae5a4b1db4a1d7aa7cf93438e625ab41a94fa"
+    },
+    {
+      "path": "../tasks-test-3.log",
+      "sha256": "a5914750f16f3f1369e98dcbe96cb2d35138bb7d9d8f29bc9a06948df8d9ffbd"
+    },
+    {
+      "path": "../tasks-test-4.log",
+      "sha256": "172d71b071925b503616b2df8654f9eaaeb7d0f6d5536e977eab3bcf3d2c6ed9"
+    },
+    {
+      "path": "../tasks-test-5.log",
+      "sha256": "10ae5d51d4fcb10ade7014ca783a3de751e5cf91fe165173294cc7bd133f543b"
+    },
+    {
+      "path": "../tasks-test-6.log",
+      "sha256": "8c772438be9ebd354672ff1cd257ed11b8a4173d713e631ed28226faceb481c4"
+    },
+    {
+      "path": "../tasks-test-7.log",
+      "sha256": "f25cab59a1362cf97db3342d60d210ee097f5010d43527ed67a160138c21f6a0"
+    },
+    {
+      "path": "../tasks-test-8.log",
+      "sha256": "c98a6a65627bc008cfc9f6498a5288d9c3e3d0c00983e662e9149d6e9599c1b8"
+    },
+    {
+      "path": "../tasks-test.log",
+      "sha256": "262793c6f4c3a51e680a6901e90ca4f358347e4747fcbf405e6da254e9a359c8"
+    },
+    {
+      "path": "../writer-test-2.log",
+      "sha256": "2d7f25adeced4787fea637d45a793ff497ffc6580a557574fc3f42da14762932"
+    },
+    {
+      "path": "../writer-test.log",
+      "sha256": "d67dc23ceece4a90de83a394fab090da50a44ed902ed1c14322c82be2306b73f"
+    }
+  ],
+  "evidence_scope": "Compiler/runtime sources unchanged after build4; subsequent changes are test fixtures and PLAN. Collection checks ran with build4 driver, task/base/behavior/bounded with build8 driver, writer with final build9 driver. Earlier driver hashes were not recorded. Listed binaries are final build9, not retroactive identity claims."
+}

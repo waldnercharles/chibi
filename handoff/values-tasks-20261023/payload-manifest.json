@@ -1,0 +1,637 @@
+[
+  {
+    "path": "handoff/values-tasks-20261023/README.md",
+    "bytes": 8550,
+    "sha256": "aaa63e605acfc24702762aa9bcd8350a85e44efa4c918132bf2aeec34896fc8e"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/manifest.json",
+    "bytes": 12373,
+    "sha256": "fd603919961c5ba0dc8557a68edf7509430f7d608d16a70abcacc0fd0c77b159"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/original-worktree-state.json",
+    "bytes": 1324,
+    "sha256": "07469192ec1283c703e35e9a166bb10be6624a65f51a25d1c950daf7214c630c"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702633959705000-41450-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702633959705000-41453-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702634191949000-41465-graph.log",
+    "bytes": 7521,
+    "sha256": "92d5b3eaf57819b1143776007f01b4b3947edc2b983ef470c630a3830b45193f"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702634196028000-41464-graph.log",
+    "bytes": 7051,
+    "sha256": "6d62afa85072b0771ddb14797417f9bf2933ff939a5404cd1f5520619ecc3f32"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702835555606000-48299-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702835563488000-48302-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702835795011000-48328-graph.log",
+    "bytes": 7051,
+    "sha256": "8e7ecaaea455b08e640a1f0bacdd44b0968299a50a37cf390857c02da98c201e"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792702835796972000-48329-graph.log",
+    "bytes": 7521,
+    "sha256": "3e2e219dd653abf2b2c3102edd4582b14d1aea72752018992c47854208ce6adf"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703301520052000-63427-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703301520704000-63430-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703301747357000-63439-graph.log",
+    "bytes": 3403,
+    "sha256": "d87951332d2ab4705417bcde21629932ccb71256f48674348615a1a5d1334050"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703301751165000-63440-graph.log",
+    "bytes": 2933,
+    "sha256": "a61f648f66b7499369cb2908b222a6653d63086e42305dbb94d392f5ab10a236"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703402192110000-68112-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703402192121000-68115-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703402394492000-68124-graph.log",
+    "bytes": 7521,
+    "sha256": "3e2e219dd653abf2b2c3102edd4582b14d1aea72752018992c47854208ce6adf"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703402398159000-68125-graph.log",
+    "bytes": 7051,
+    "sha256": "8e7ecaaea455b08e640a1f0bacdd44b0968299a50a37cf390857c02da98c201e"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703489408177000-71627-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703489408488000-71630-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703489686019000-71642-graph.log",
+    "bytes": 7521,
+    "sha256": "3e2e219dd653abf2b2c3102edd4582b14d1aea72752018992c47854208ce6adf"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/build-logs/1792703489692915000-71643-graph.log",
+    "bytes": 7051,
+    "sha256": "8e7ecaaea455b08e640a1f0bacdd44b0968299a50a37cf390857c02da98c201e"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/artifact.log",
+    "bytes": 54,
+    "sha256": "ac509f1e4d5c38ef7372058e9862bad13cbcca1b8dbdaba7ba1727e9fcc4838a"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-borrow.log",
+    "bytes": 2403,
+    "sha256": "f29ea7f8d7193d85ede3bb1d99a979a883f19a078a6ec8a854e275e1319ce79f"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-collections-compiled.log",
+    "bytes": 220,
+    "sha256": "a1eadaf5f19c8e02ec280f75513f94a3298c3ab73509dd0d7d7a81fb89ca3922"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-execution.log",
+    "bytes": 3247,
+    "sha256": "c88723167c0c3d127adcc99fa4683131360d0ce5cb263b6a6654899bf15a57ba"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-package-imports.log",
+    "bytes": 1426,
+    "sha256": "d19aca274aef4ad655baf6d4c55c8f24cf1b7d663fe844072d128857a7193b50"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-program.log",
+    "bytes": 33265,
+    "sha256": "365c5fbe3665eaca082c3470f4bdb6f806fe05eb93d1da15906fcf78b772e30c"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-record-prepared.log",
+    "bytes": 650,
+    "sha256": "de4719aef4e2a1591390cf3b45caaad049cc50a985d1a0450b9fbfa38a71e6f0"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-record-services.log",
+    "bytes": 307,
+    "sha256": "2e4df37397828d68c737fec74661d5579811d098ab021a9c9cbbae1e1f2afb9d"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-semantic.log",
+    "bytes": 19512,
+    "sha256": "83d5b241685abd8ce2b5644c760639cb9f575b669476fc732b8aafb82f111edb"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/asan-types.log",
+    "bytes": 1479,
+    "sha256": "4e6447c28b7fcbd78b9e07310c9c041bc73bae1091ab3fc727043c36ada7d5a3"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/bootstrap-after-sharing-sample.txt",
+    "bytes": 14017,
+    "sha256": "0794e2372d7ef80a08e3481124c192b7b083112cfcbf3cba6b4019ccc45425e0"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/bootstrap-final-sample.txt",
+    "bytes": 44045,
+    "sha256": "8ee0b1cfbf2efb4c52b1b99ed15fcd530344fc21bf96edb852217e4f673ec319"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/bootstrap-normal-sample.txt",
+    "bytes": 11220,
+    "sha256": "9cf00687f05545a2ef9fe7e6a270bb826d363678e12f7d46274331a2e63e6cd9"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/bootstrap-sample.txt",
+    "bytes": 13235,
+    "sha256": "5c6911096d420bcfc0ddedb2e6cc9360be5cfc35b9ebc62300a64eaa79df700d"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/bootstrap.log",
+    "bytes": 192,
+    "sha256": "d09afc707dc8cc04eec0b74f4ba5aa1635bdb919cf211b491593aa6d9aa78e7b"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/borrow.log",
+    "bytes": 2403,
+    "sha256": "f3c6063c116448ec851cf35fc2fc2fd77f75e2acfff261a09c0058289d5b1a36"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/build-sanitizer.log",
+    "bytes": 306,
+    "sha256": "6427b09e1baaa629e7b2660c3720402d8b8762c0e1e2482f3ba89cd0b6f62e1f"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/build.log",
+    "bytes": 306,
+    "sha256": "1e4a3db6ee3d1343cbe7d328f0a0eb68589e2c6b4c4cd5fb36c4de25dcfc9fdb"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/bytecode-collections-crash.log",
+    "bytes": 3936,
+    "sha256": "cd53cae875062c3d3af1931931b4fa0fd47bd51834eb7790e82cfc0d8b59f732"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/capture-debug-banks.log",
+    "bytes": 2592,
+    "sha256": "eee5da7f89f20c00d6995ad07207b8ec7ec9a167e5a2d9ffc6706b4e7ee1693a"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/capture-debug-commands.lldb",
+    "bytes": 219,
+    "sha256": "469bd7d595f316697341a0b5ef43288327272dbe3b5a946dcde572fbd456d45a"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/capture-debug-lldb.log",
+    "bytes": 2209,
+    "sha256": "7bb228dce7745857f4bfd5af840acb32a05e5617943356c5a91277b00b50c641"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/collections-compiled.log",
+    "bytes": 5609,
+    "sha256": "16e96fcf801db9ef1b9bedce2ced901194be6b37fad1ff07e2754580c2db4ebd"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/collections.log",
+    "bytes": 1583,
+    "sha256": "d7e3cedf339b9b7879dc0846b9c4ce54a0ded643c9f014f225f571bfa19af2ae"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/compiled-crash.log",
+    "bytes": 5619,
+    "sha256": "6b939728baeb7967cd86ac0594008e4a69b1c63c3df915ca147167049c89a31c"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/constructors-debug.log",
+    "bytes": 2016,
+    "sha256": "65b9808ab8024a4ff1d33464706c1d641e8aeeb379e3395e26c7046efbe3cd4d"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/constructors.log",
+    "bytes": 716,
+    "sha256": "6717da2ce8ee0ad78c68ad330d6f56825edb58c26ceec1bf3880684fe39d3363"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/dependencies.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/execution.log",
+    "bytes": 3226,
+    "sha256": "1cf87bc1902bd0b6411c30f36b66a7b946bfb5eaf7e3bcac7b27d4453c9c7343"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/explicit-ref.patch",
+    "bytes": 2120460,
+    "sha256": "f2c547d21ce34680240f83ad437f951598cca05a6d19b714aa08ee11ecfea34e"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/format.log",
+    "bytes": 4938,
+    "sha256": "505bf61c0a603b74827bb1ae9263cd18de4c3ed682bd4679388055936015e5f8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/imports.log",
+    "bytes": 1680,
+    "sha256": "5607b864ddb8d8f5c3dae83cfb9c640739ef8e58369630398a6392d1bb4fdea9"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/named-binding.log",
+    "bytes": 579,
+    "sha256": "81089b6511638be6ec2949461122eb99aad70255b12b49195a4873f7cb61b8ac"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-compiler-chibi-collections-compiled.log",
+    "bytes": 219,
+    "sha256": "9db97bc1255a0fe8e3bdf82fb3beacaca042e4bf29438575acb1041ae5b4464c"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-compiler-chibi-collections.log",
+    "bytes": 209,
+    "sha256": "1597947111c1d6a32ddf5738b6d37992a585f69626463ab75b579e9b6ecfe9ce"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-compiler-chibi-imports.log",
+    "bytes": 209,
+    "sha256": "0174c4a41cea802e122631f84ace57b36b30be10618e4a70a83bb26397988368"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-compiler-chibi-types.log",
+    "bytes": 205,
+    "sha256": "00977a1a9b5543b81033cbf6997ab22cbadf587829a7e920959fe654d2b6f042"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-compiler-chibi.log",
+    "bytes": 199,
+    "sha256": "39651b8d4f7295c007e0456c5632952213162036881eb7d577e35e7ccaeaa939"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-imports.log",
+    "bytes": 1426,
+    "sha256": "051abd9af2134d0ad6115306993ab0057d9ea2d87593ee732d91eabc08965964"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/package-sharing.log",
+    "bytes": 192,
+    "sha256": "36fdba9ce4dda1550b5436b00e04ddfe8362a7981614987c5c37c22bffe04382"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/prepared-writer-chibi.log",
+    "bytes": 276,
+    "sha256": "e386c71f048c142e69cbbac9d98175fe770b8ddbcf76b16240827e0e321c57d5"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/program-debug.log",
+    "bytes": 1632,
+    "sha256": "0549fc226b5d31ba73389c8a1af878ceb04228a63d2b129392ef7d1bbca7ad74"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/program.log",
+    "bytes": 33265,
+    "sha256": "305847c49cb441d4c1f55a4a9232fa40088cab34b17c61947f2d5f4e84b433d7"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/prototype-document.log",
+    "bytes": 2095,
+    "sha256": "503b1274daed6b3549c42141bb8cd926299b2d16b46ca745b41550ce33930a27"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/record-members-chibi.log",
+    "bytes": 525,
+    "sha256": "d70890b56d5084d56ed3442427415019fe8891f1474c39cf2b890a0bb91b3dac"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/record-prepared.log",
+    "bytes": 570,
+    "sha256": "162dbf71b786167841269d671105cac7ea06e18abf10ae386d50e9a3fb7aee58"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/record-services.log",
+    "bytes": 307,
+    "sha256": "5f93ae3b933138aa89902ca4ecec73fe03041fec5d97a24d551d254f7a6e4146"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/recovery.log",
+    "bytes": 165,
+    "sha256": "01bac6871d68748e295106d08b668ccce01b37c8aae6baed648ae16327c8d4d2"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/runtime-language.log",
+    "bytes": 2438,
+    "sha256": "2369904157b7d2f4a1568bb36068031674ada1086b9901c9622377df155d3f5d"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/sample.log",
+    "bytes": 226,
+    "sha256": "a6a642f72d1d461e4288e26a427f8b20b584628421e7b53552b7df7b2a26010c"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/scalar-lowering-chibi.log",
+    "bytes": 216,
+    "sha256": "45e4372ffb53a109c49bbba1d83fab8490f5656fb49819da9064049085365db8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/semantic.log",
+    "bytes": 19958,
+    "sha256": "89a6a9b6ffdad09433c1f1cdf13bfa4754facae054f4050ad2ff7b64ca1ad482"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/signatures.log",
+    "bytes": 620,
+    "sha256": "0b74bae8c9088c391f276c7ef81be78d4ee7257f2e4d8550f51262d17fcfc06a"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/source-edit.log",
+    "bytes": 4882,
+    "sha256": "f0f2ba5d3ab78129ab1ecca3796c7f38aa1bd2c0fe3926650c46e46e68ac7900"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/source-tokenizer-chibi.log",
+    "bytes": 417,
+    "sha256": "cfca38ced76e0c7d2d0981c3a5ee43785cae490a775f4162c47c5e23f243e5a8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/syntax.log",
+    "bytes": 3180,
+    "sha256": "add88b0aaf0c83453d8f3ba15e0ad9f56008ccf00e8d9ecb7ed50a4a0e3bcfc6"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/types.log",
+    "bytes": 1479,
+    "sha256": "d5746df6eddfcf36348df103f82d69ef1544b1dc0aa32794aadc88a7295939c2"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/managed-pointers/diagnostics/union-members-chibi.log",
+    "bytes": 345,
+    "sha256": "b000be730ca54f19f1a219bf0f0a59f589e11148af2fb6c13d44c4b66d912614"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/manifest.json",
+    "bytes": 49664,
+    "sha256": "87b7f1893c945fea32e033f9dacdd60dc2fd0f1a60a2098c05ecd4b8efd394b6"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/test-log-summaries.json",
+    "bytes": 31453,
+    "sha256": "8b6e79c102b18dd81eb1dc2e9170e65123d0bd309b76242ac63aa21a02e27345"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/build-logs/1792707165668107000-82533-configure-native.log",
+    "bytes": 1094,
+    "sha256": "d9f46ce23f0661052a519d355036bb01d27222e2df0688c0f263f7ffe566e8ef"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/build-logs/1792707175546460000-83400-build.log",
+    "bytes": 232626,
+    "sha256": "910e502b0cf05a14ca6abb5ff053945b8f6e9f59256bb5513e533d1af1ab5823"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/build-logs/1792707184289230000-84634-third-party.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/build-logs/1792707719393826000-41564-graph.log",
+    "bytes": 7494,
+    "sha256": "72191bec202575d72b09504f22a9b79b5f7f8bddc27885025f6803083e262517"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/build-logs/value-main-bootstrap-sample.txt",
+    "bytes": 12664,
+    "sha256": "8664eb239adc62cf1ef6922b99dceec2baaaa08763d2eafbade29d136b9fa4a2"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/build-logs/value-main-build-sample.txt",
+    "bytes": 24380,
+    "sha256": "77e2f0f92e915d342dd81ecf698198dbcd46a3952a86f16ef3bcd8421e22eaff"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/base-test.log",
+    "bytes": 302,
+    "sha256": "0a5465f372a5e20359f7f53d2fa8783165de86bf07bd9d44acca726313cb29d8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/behaviors-test.log",
+    "bytes": 296,
+    "sha256": "7a9c0ee8b243a9c31a0c8adb92453d58024ab33567adbd029cc17273da073746"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/bounded-test.log",
+    "bytes": 5637,
+    "sha256": "388570cb83c643dfce9ce96efaacf6924c1a4bd1e1270662f2dc19147783114a"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-2.log",
+    "bytes": 1702,
+    "sha256": "c54b13910e6830035015533b9a5bc2f1bf976c70203dd8d1dad46f8d30a99265"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-3.log",
+    "bytes": 1702,
+    "sha256": "5384d0f1b433c681c9e6f33b6015b1dd8af381fde9ee64c4bb67412aab7321ec"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-4.log",
+    "bytes": 1731,
+    "sha256": "97e81881c3f285f98947869d293a75121b8ebdca1890ab7bb4d198a0de47433b"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-5.log",
+    "bytes": 1152,
+    "sha256": "4137e60b39be36942f383142193c2ea01ec51c32ca4cfa671d989e35f379a785"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-6.log",
+    "bytes": 1152,
+    "sha256": "68c4f9fd30d392eb6f7dcedf43019e0988cab52c667192a2d40977d4283c6977"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-7.log",
+    "bytes": 1152,
+    "sha256": "05d963a48ad55ad6d89f3d44dc93aeaf68a0cf75774cf81af5e583de5733c4c8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-8.log",
+    "bytes": 1152,
+    "sha256": "ed3e8e91a26367debea32aa88bda26d7cc64ebe8842355439244b53e3b367c2f"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build-9.log",
+    "bytes": 1151,
+    "sha256": "f21ac3d5258e81f875252b61bf33638633a65b936b3532ae0555f501fafc63a6"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/build.log",
+    "bytes": 4609,
+    "sha256": "c911a810107adf232a5384449ed4afd6c3b8c3063c310183e2ccc069349eaa46"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/collections-compiled-test.log",
+    "bytes": 321,
+    "sha256": "972358ef662ca5ca7daf904112ea2987acbb2dd6172f01b47200833c7969b7e7"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/collections-test.log",
+    "bytes": 312,
+    "sha256": "57d8ad574cc716e10b587c815353d1de685fa171c6f6fc7f6cd152929a2b9b01"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/common-reconciliation.md",
+    "bytes": 8596,
+    "sha256": "5d2c8a337c3f107cd72fd27ed591c2afa44c9c84605b07a2cf01aaac51908bee"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/corrected/manifest.json",
+    "bytes": 9002,
+    "sha256": "ec3b329e3822af2c02886a91c2b64f795efd5fd13a994a76f1a914c2ba7f372e"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/corrected/review.md",
+    "bytes": 5002,
+    "sha256": "19af11b9e5e907b829234505cfa510289830277c5904652216b4c49080754c31"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/corrected/source.patch",
+    "bytes": 109761,
+    "sha256": "7671cd2db13732011d847edd4325881c25789cfdb98410b47b93a9beae2da301"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/lifetime-contract/manifest.json",
+    "bytes": 930,
+    "sha256": "9fab3789fed8b3a6cc88edaaa9fd787ebf9d1790dcf7e6974c2e84fdaab25070"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/lifetime-contract/source.patch",
+    "bytes": 6150,
+    "sha256": "b5e44aab0b25663d8b7a7a9b93e5832b9d77bf39c919def6fddc7b6de025586d"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/manifest.json",
+    "bytes": 3124,
+    "sha256": "47dd9e880f621586f293eade7fbad0b88a5e020f0cc310c8960b50d50b9bd649"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/review.md",
+    "bytes": 1325,
+    "sha256": "309df642aadfd677d8e4c042572b338f2f35642f3c09bc1b01e3c391d72c1da5"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/source.patch",
+    "bytes": 79137,
+    "sha256": "ed4b10686eb6c685dd410fd9df4aed243a177ceea0514aac3892299d6c9903ad"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/systems-lifetime-review.md",
+    "bytes": 5620,
+    "sha256": "46b2f861c77747fc1b5c3ba2d0b4d166b5da746b2a76285dc9d6bebd35e23300"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-2.log",
+    "bytes": 1886,
+    "sha256": "22bd670be90f528dae3be2e0925ae5a4b1db4a1d7aa7cf93438e625ab41a94fa"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-3.log",
+    "bytes": 38882,
+    "sha256": "a5914750f16f3f1369e98dcbe96cb2d35138bb7d9d8f29bc9a06948df8d9ffbd"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-4.log",
+    "bytes": 550,
+    "sha256": "172d71b071925b503616b2df8654f9eaaeb7d0f6d5536e977eab3bcf3d2c6ed9"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-5.log",
+    "bytes": 705,
+    "sha256": "10ae5d51d4fcb10ade7014ca783a3de751e5cf91fe165173294cc7bd133f543b"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-6.log",
+    "bytes": 649,
+    "sha256": "8c772438be9ebd354672ff1cd257ed11b8a4173d713e631ed28226faceb481c4"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-7.log",
+    "bytes": 705,
+    "sha256": "f25cab59a1362cf97db3342d60d210ee097f5010d43527ed67a160138c21f6a0"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test-8.log",
+    "bytes": 550,
+    "sha256": "c98a6a65627bc008cfc9f6498a5288d9c3e3d0c00983e662e9149d6e9599c1b8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/tasks-test.log",
+    "bytes": 1858,
+    "sha256": "262793c6f4c3a51e680a6901e90ca4f358347e4747fcbf405e6da254e9a359c8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/writer-test-2.log",
+    "bytes": 379,
+    "sha256": "2d7f25adeced4787fea637d45a793ff497ffc6580a557574fc3f42da14762932"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/receipts/values/task-prerequisite-review/writer-test.log",
+    "bytes": 585,
+    "sha256": "d67dc23ceece4a90de83a394fab090da50a44ed902ed1c14322c82be2306b73f"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/snapshots/failed_recovery_only/source-manifest.json",
+    "bytes": 5764,
+    "sha256": "09c4540d5cd5ab488b7099a94f67d6f4b24cd52c8a7950445046157786191da8"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/snapshots/lifetime_docs_and_live/source-manifest.json",
+    "bytes": 1412,
+    "sha256": "c58e472af20d911c2af55842a7bb12198c256b796e0fca4e5bdd6fce8d78bf31"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/snapshots/managed_pointer_predecessor/source-manifest.json",
+    "bytes": 47105,
+    "sha256": "3ea8a3db326ab93b170df7f56febdfe39dc6346988b89e5bce75ef92b9fda37f"
+  },
+  {
+    "path": "handoff/values-tasks-20261023/snapshots/tested/source-manifest.json",
+    "bytes": 6694,
+    "sha256": "f1cdedbd780e89ae8ed21b60d82b9ad80e524dd6d1e01266644d9a6aea37d7be"
+  }
+]

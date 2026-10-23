@@ -1,0 +1,10 @@
+Running: string_wire_bytes (OK) (0.000297 secs)
+Running: record_prepared_scalar_owners (OK) (0.010759 secs)
+Running: record_prepared_array_owners (OK) (0.013715 secs)
+Running: record_prepared_recursive_codec (OK) (0.000369 secs)
+Running: record_prepared_repeated_headers_charge_hash_work (OK) (0.000440 secs)
+Running: record_prepared_packed_rows_survive_collection (OK) (0.000062 secs)
+Running: record_prepared_table_rejections (OK) (0.000553 secs)
+Running: record_prepared_legacy_and_failure_atomicity (OK) (0.006765 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 1142

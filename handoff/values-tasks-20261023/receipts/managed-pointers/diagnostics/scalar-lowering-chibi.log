@@ -1,0 +1,3 @@
+Running: scalar_lowering_fixed_plans_and_detached_executables_match (OK) (0.069671 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 42896

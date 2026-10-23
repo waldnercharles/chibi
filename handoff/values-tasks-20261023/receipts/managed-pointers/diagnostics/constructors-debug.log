@@ -1,0 +1,31 @@
+(lldb) target create "build-release/test/language/test_language"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64).
+(lldb) settings set -- target.run-args  "--type-constructors-chibi"
+(lldb) run
+Running: type_constructor_raw_facts_match_plans_and_selected_metadata (OK) (0.079021 secs)
+Running: type_constructor_actual_analyzer_facts_match (OK) (0.000738 secs)
+Running: type_constructor_results_and_metadata_outlive_producers (OK) (0.004368 secs)
+Process 6642 launched: '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64)
+Process 6642 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x10)
+       frame #0: 0x000000010024c354 test_language`authoring_packages_count
+test_language`authoring_packages_count:
+->  0x10024c354 <+0>: ldr    w0, [x0, #0x10]
+    0x10024c358 <+4>: ret    
+
+test_language`authoring_packages_reused:
+    0x10024c35c <+0>: ldr    w0, [x0, #0x14]
+    0x10024c360 <+4>: ret    
+Target 0: (test_language) stopped.
+(lldb) bt
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x10)
+   * frame #0: 0x000000010024c354 test_language`authoring_packages_count
+     frame #1: 0x000000010013f7c4 test_language`compiler_fixture_record + 80
+     frame #2: 0x00000001001937f4 test_language`rows + 116
+     frame #3: 0x00000001001905ec test_language`compare + 2336
+     frame #4: 0x000000010018f9d0 test_language`type_constructor_pointer_preserves_complete_pointees + 208
+     frame #5: 0x0000000100001a70 test_language`pu_run_test + 96
+     frame #6: 0x000000010018d83c test_language`test_language_type_constructors_chibi + 124
+     frame #7: 0x00000001000035f0 test_language`main + 6256
+     frame #8: 0x000000018377c4e4 dyld`start + 6992
+Test command wall time: 1.452s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

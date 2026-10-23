@@ -1,0 +1,24 @@
+{
+  "base": "6353f5a382785977b0b9948cfcbcde37facd0d0c",
+  "source_tree": "f0fe82ef0e09532f74c356fc194edf556f78d13d",
+  "patch_sha256": "b5e44aab0b25663d8b7a7a9b93e5832b9d77bf39c919def6fddc7b6de025586d",
+  "status": "Docs-only overlay: direct human approval of whole-task target dependencies after validated task checkpoint. No executable change; tests not repeated.",
+  "files": [
+    {
+      "path": "PLAN.md",
+      "sha256": "d10f0fd775f013901ff0040402d8d6510acee4a2f8b43260c5013eda5d00a8c8"
+    },
+    {
+      "path": "docs/value-semantics.md",
+      "sha256": "d32ed8e2c26e8cfbe8dde06e1e48259aa6ff1d1267fd01da940431300545e475"
+    },
+    {
+      "path": "docs/value-runtime-integration.md",
+      "sha256": "6ba26b559bcc810cc66538d4354431acfc6a1cf9a86247b8c3e35e1d46cc1028"
+    },
+    {
+      "path": "docs/language-friction.md",
+      "sha256": "f6f3b481e506d02c49b0fcaa3f0660e2dffe73f0dcd6578c60fe40332d84f09d"
+    }
+  ]
+}

@@ -1,0 +1,1783 @@
+diff --git a/PLAN.md b/PLAN.md
+index a3f8f47bb..5e5e5bb56 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -188,20 +188,27 @@ remaining lifetime questions; the new changes are not yet implemented.
+ 
+ #### Component lifetime and task cancellation, 2026-10-22
+ 
+-Approved: operations explicitly bound to an original component or entity cancel
+-when that target is removed. Select the binding at the call site and install it
+-before the first task instruction. Removal respects safe execution boundaries;
+-an ordinary stored pointer does not create a task dependency. Reuse task-tree
+-cancellation and typed `Cancelled` results. Resource cleanup means pending
+-requests and captured values; no authored cleanup callback is implied.
+-
+-The query owner implements the runtime seam in a separate query-lifetime
++Approved: operations bound to an original component or entity cancel when that
++target is removed. Removal respects safe execution boundaries and reuses
++task-tree cancellation and typed `Cancelled` results. The owner subsequently
++rejected a public call-site marker and requested inferred dependencies. The
++latest direction cancels at removal while a task may still access its original
++target, including conditional future access; cancellation occurs at a safe
++boundary before further authored continuation. Do not wait until a later access
++and allow unrelated post-await side effects first. This applies to removable
++component/entity targets, not ordinary managed allocations. Completed snapshots
++and value-only work remain a separate precision discussion. No dependency
++inference is implemented by this task prerequisite. Resource cleanup means
++pending requests and captured values; no authored cleanup callback is implied,
++and earlier effects are not rolled back.
++
++The query owner implements the private runtime seam in a separate query-lifetime
+ increment, preserving its frozen query candidate. `program_tasks.c` owns
+ retained target bindings and cancellation; `program_activation.c` checks
+ validity before consuming a request result or executing a continuation. `ecs.c`
+ remains the source of original component identity. Sweep pending tasks even
+-when their requests never complete. Public call-site spelling follows this
+-runtime contract; do not infer dependency from arguments or captures.
++when their requests never complete. Dependency analysis and authored lowering
++follow the settled semantics; no public modifier is implemented.
+ 
+ Use task sequencing for followup actions. The owner rejected `destroy_after()`.
+ `await` followed by an explicit successful-result case already works; current
+@@ -214,6 +221,23 @@ world teardown and successful followups. Shared collection/query representation
+ and artifact work follows [the integration contract](docs/value-runtime-integration.md)
+ under each owner's existing validation restrictions.
+ 
++##### Self-hosted task prerequisite
++
++Implemented existing task behavior in the Chibi package compiler before authored
++dependency inference: identify await/yield in authored bodies, preserve the
++runtime invocation task flag, encode existing task command banks, and lower yield,
++await, cancellation and deadlines through the existing registry. Call arguments
++are evaluated once in source order, with typed success distinct from `Cancelled`.
++Unsupported task result shapes and native asynchronous calls are rejected.
++Focused checks pass for task sequencing/cancellation and invalid forms, ordinary
++packages/behaviors, collection pointer guards, bounded compilation, and native
++writer equivalence with empty command banks. Task execution includes bytecode
++and compiled backends, text with embedded NUL, and record-valued results.
++This local source increment does not change the prepared ABI, introduce target
++binding, or regenerate an artifact. Current-main/game-compiler integration,
++component-lifetime runtime execution, and authored dependency inference remain
++separate work; these focused results do not establish their correctness.
++
+ The current prerequisite is the approved byte-preserving string representation:
+ one immutable public `string` carrying bytes and length, with explicit UTF-8
+ operations. This branch implements descriptors and ownership throughout the
+diff --git a/docs/language-friction.md b/docs/language-friction.md
+index 7059e2d49..610ae52a2 100644
+--- a/docs/language-friction.md
++++ b/docs/language-friction.md
+@@ -1098,11 +1098,21 @@ adopting a public API. Validation must accompany access, or scoped access must
+ prevent invalidation throughout use; a separate validity check cannot make a
+ later access safe across suspension or mutation.
+ 
+-Subsequent approved direction: explicitly bind an operation to its component or
+-entity at the call site, before the task starts. Target removal cancels that
++Subsequent approved direction: bind an operation to its component or entity
++before the task starts. Target removal cancels that
+ task and its children through existing typed `Cancelled` delivery. This prevents
+ invalid continuation for bound work; it does not make arbitrary unbound pointers
+ infallible. Runtime cleanup covers pending requests and captured values, not an
+ authored cancellation callback. Followup actions use task sequencing; no
+ `destroy_after()` API is wanted. Existing `await` and a successful-result check
+ provide sequencing, while `after` currently accepts declared actions only.
++
++The owner then rejected making authors spell out that dependency at the call
++site and requested inference. Exploring conditional access exposed a key rule:
++do not run unrelated post-await effects before deciding whether a removed target
++was needed. A possible future component access must keep cancellation active
++before continuation, including a conditional access. Passive handle storage
++does not itself establish that use. Dependency-end rules and targets selected
++later remain design questions; cancellation timing must not depend on optimizer
++choices. The private runtime binding seam remains useful; no public modifier is
++approved.
+diff --git a/docs/value-runtime-integration.md b/docs/value-runtime-integration.md
+index 7043ff99d..2c67dbfe8 100644
+--- a/docs/value-runtime-integration.md
++++ b/docs/value-runtime-integration.md
+@@ -112,8 +112,8 @@ owns that implementation. Concrete error representation and the public recovery
+ API must be documented before claiming complete recovery support. The owner
+ ruled out `try`/`catch` permanently; authored recovery must use typed values/results.
+ 
+-Subsequent approval: explicitly bind a task to the original target at its call
+-site, before its first instruction. Removal cancels that task and its children
++Subsequent approval: bind a task to the original target before its first
++instruction. Removal cancels that task and its children
+ at safe boundaries, delivering typed `Cancelled` to surviving independent awaiters.
+ Completed successful results remain successful after later target removal.
+ Children inherit retained dependencies so they stay protected after their
+@@ -121,10 +121,18 @@ parent completes. Pointer ownership does not imply dependency. Delayed actions
+ use task sequencing; `destroy_after()`
+ was rejected. See [the lifetime contract](value-semantics.md).
+ 
++The owner later rejected requiring a call-site modifier and requested inference.
++The earlier explicit-call-site rule is superseded. Subsequent discussion
++rejected late cancellation after unrelated post-await effects: a component that
++may still be accessed, including conditionally, must remain a dependency so
++removal cancels before authored continuation. Do not bind every passively stored
++pointer or expose the rejected `on health` spelling. The inference producer and
++dependency-end rules remain separate from the private runtime target list.
++
+ The query owner owns the separate task-lifetime runtime increment in
+ `program_tasks.c`, `program_internal.h`, `program_activation.c`, `program.c`,
+ the narrow ECS cell retain/liveness helpers, and existing C test dispatchers.
+-The pointer owner owns authored call-site lowering and documentation. The first
++The pointer owner owns authored dependency inference and documentation. The first
+ runtime implementation uses retained-cell liveness checks before task start,
+ pending-request result consumption and continuations, plus pending-task sweeps even
+ when a request never completes. Cell invalidation does not execute tasks or
+diff --git a/docs/value-semantics.md b/docs/value-semantics.md
+index 8dfc2d11e..4bc730a47 100644
+--- a/docs/value-semantics.md
++++ b/docs/value-semantics.md
+@@ -191,7 +191,7 @@ owner is implementing this policy; its concrete failure representation and
+ public recovery API must be documented before claiming full recovery support.
+ 
+ The owner subsequently approved prevention through task lifetime binding.
+-An operation explicitly bound to that original target cancels if the target is
++An operation bound to that original target cancels if the target is
+ removed; its children cancel through the existing task tree. Surviving independent
+ awaiters receive the existing typed `Cancelled` result; owned child waiters
+ cancel with their parent. Completed successful tasks remain successful if their
+@@ -199,16 +199,32 @@ former target is removed later. Unrelated tasks can hold the same pointer
+ without acquiring that dependency. Retaining a pointer does not delay deletion,
+ and replacement does not revive a bound operation.
+ 
+-Children inherit the explicit lifetime dependencies when they start. A child
++Children inherit the lifetime dependencies when they start. A child
+ that continues after its parent completes retains those dependencies itself;
+ later target removal cancels the child without changing the parent's retained
+ successful result.
+ 
+-Select the binding at the call site and register it before the task's first
+-instruction. The same task declaration can therefore run with different
+-lifetime dependencies. Do not infer a dependency from pointer arguments,
+-captures, or ordinary pointer access. Exact public spelling remains separate
+-from this approved placement and runtime contract.
++The owner subsequently rejected requiring a call-site marker and asked for
++inferred dependencies. This supersedes the earlier explicit call-site choice;
++the proposed `on health` spelling is rejected. Merely storing a handle must be
++distinguished from work that requires its target. The private runtime interface
++accepts resolved targets before the task's first instruction; the compiler
++producer remains to be implemented.
++
++After exploring dependencies that change as execution progresses, the owner
++rejected waiting until a conditional access to detect removal: unrelated
++post-await side effects might already have run. While a task may still access
++the component, a future conditional access counts as a dependency. Removal must
++cancel before the authored continuation resumes, even if that branch would
++have been skipped. Earlier effects are not rolled back. This applies to
++removable engine-owned targets used by tasks or behaviors, not only systems;
++ordinary managed pointers retain their allocations.
++
++The inference representation, handling of targets selected later, and when a
++dependency can end remain to be specified. An independent value copied before
++an await is distinct from a retained pointer used afterward. Compiler
++optimizations must not change observable cancellation timing. The runtime's
++fixed target-set prototype is not proof of complete authored inference.
+ 
+ Removal takes effect at safe execution boundaries. A bound operation must not
+ consume a pending request's result or execute another authored continuation
+diff --git a/src/toolchain/compiler_target.c b/src/toolchain/compiler_target.c
+index 4693b249f..a40b7af6d 100644
+--- a/src/toolchain/compiler_target.c
++++ b/src/toolchain/compiler_target.c
+@@ -96,6 +96,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script
+         { "value_size", (int)sizeof(pin_value) },
+         { "payload_offset", (int)offsetof(pin_value, d) },
+         { "results_offset", (int)offsetof(behavior_function_context, results) },
++        { "error_status_offset", (int)offsetof(behavior_function_context, error_status) },
+         { "type_offset", (int)offsetof(pin_value, type) },
+         { "container_offset", (int)offsetof(pin_value, container) },
+         { "name_offset", (int)offsetof(pin_value, type_name) },
+diff --git a/test/language/package_compiler_chibi.c b/test/language/package_compiler_chibi.c
+index ee451d378..517ec07b8 100644
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -916,6 +916,11 @@ static const sample samples[] = {
+                  { .function = "Grouped", .arguments = "[]", .expected = "[4]" },
+                  { .function = "Widened", .arguments = "[]", .expected = "[5]" },
+                  { .function = "WholeArray", .arguments = "[]", .expected = "[390]" } } },
++    { .name = "nullable pointer condition observes its original type",
++      .group = COLLECTION_SAMPLES,
++      .source = "package facts\nNullTest :: () -> int { p: ^int? = nil; "
++                "if p == nil { return 1; } return 0; }",
++      .calls = { { .function = "NullTest", .arguments = "[]", .expected = "[1]" } } },
+     { .name = "imported references",
+       .group = COLLECTION_SAMPLES,
+       .source = "package facts\nimport lib \"project:lib\"\n"
+@@ -2362,6 +2367,9 @@ static bool arguments_for(
+     REQUIRE(put(&args[6], "value_size", (int)sizeof(pin_value)));
+     REQUIRE(put(&args[6], "payload_offset", (int)offsetof(pin_value, d)));
+     REQUIRE(put(&args[6], "results_offset", (int)offsetof(behavior_function_context, results)));
++    REQUIRE(
++        put(&args[6], "error_status_offset", (int)offsetof(behavior_function_context, error_status))
++    );
+     REQUIRE(put(&args[6], "type_offset", (int)offsetof(pin_value, type)));
+     REQUIRE(put(&args[6], "container_offset", (int)offsetof(pin_value, container)));
+     REQUIRE(put(&args[6], "name_offset", (int)offsetof(pin_value, type_name)));
+@@ -4764,6 +4772,157 @@ TEST_CASE(package_compiler_keeps_text_state_per_owner)
+     type_catalog_set_project(NULL);
+     return true;
+ }
++/* Task results keep cancellation distinct from valid zero/false/empty values.
++ * Start runs up to its first yield; joining a completed/cancelled task continues
++ * synchronously, and direct await preserves the ordinary return type. */
++TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation)
++{
++    REQUIRE(prepare());
++    const type_desc *const reflected[] = { &spot_type };
++    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
++    type_catalog_set_project(&pack);
++    const char *source =
++        "Tasks :: behavior { started: int = 0; initial: int = 0; zero: int = "
++        "99; "
++        "flags: int = 0; cancelled: int = 0; done: int = 0; failures: int = 0; "
++        "Number :: (value: int) -> int { started += 1; yield; return value } "
++        "Flag :: () -> bool { yield; return false } "
++        "Text :: () -> string { yield; return \"\" } "
++        "Label :: () -> string { yield; return \"ret\\u0000ained\" } "
++        "ReadSpot :: () -> Spot { yield; return self.Spot } "
++        "Void :: () { yield } "
++        "Child :: () { yield; failures += 1000 } "
++        "Parent :: () { Child(); await Delay(100) } "
++        "Run :: () { n := Number(0); initial = started; r := await n; "
++        "if r is Cancelled { failures += 1 } else { "
++        "if (r) is not Cancelled { yield; if r is not Cancelled { zero = r } } "
++        "} "
++        "b := Flag(); br := await b; if br is not Cancelled { if !br { flags "
++        "+= 1 } } "
++        "t := Text(); tr := await t; if tr is not Cancelled { if tr == \"\" { "
++        "flags += 2 } } "
++        "label := Label(); lr := await label; if lr is not Cancelled { "
++        "if lr == \"ret\\u0000ained\" { flags += 32 } } "
++        "s := ReadSpot(); sr := await s; if sr is not Cancelled { "
++        "if sr.w == 9 { flags += 16 } } "
++        "bad := Number(9); cancel bad; cr := await bad; "
++        "if cr is Cancelled { cancelled += 1 } else { failures += cr } "
++        "late := Number(8); cancel late after 0; dr := await late; "
++        "if dr is not Cancelled { failures += dr } else { cancelled += 1 } "
++        "parent := Parent(); cancel parent; pr := await parent; "
++        "if pr is Cancelled { cancelled += 1 } "
++        "v := Void(); vr := await v; if vr is Cancelled { failures += 1 } else "
++        "{ if vr is not Cancelled { flags += 4 } } "
++        "direct := await Number(3); flags += direct; await Delay(0); done = 1 "
++        "} "
++        "on Tick :: () { Run() } }";
++    const char *const states[] = { "initial", "zero",     "flags",  "cancelled",
++                                   "done",    "failures", "started" };
++    const int expected[] = { 1, 0, 58, 3, 1, 0, 4 };
++    for (int b = 0; b < 2; b++) {
++        execution_module *module = NULL;
++        REQUIRE(stage_one_behavior(b, "Tasks", source, &module));
++        player p = { 0 };
++        REQUIRE(play(module, &p));
++        const pin_value delta = { .type = PIN_F32, .f = 1.0f };
++        REQUIRE(execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 10000) == FLOW_OK);
++        const pin_value *initial = execution_instance_state(
++            p.instance,
++            script_catalog_id("symbol", "Tasks:1:initial")
++        );
++        REQUIRE(initial && initial->type == PIN_I32 && initial->i == 1);
++        for (int frame = 1; frame <= 32 && execution_instance_pending(p.instance);
++             frame++) {
++            REQUIRE(execution_program_update(p.program, frame, 1, 10000) == FLOW_OK);
++        }
++        for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
++            char identity[96];
++            snprintf(identity, sizeof identity, "Tasks:1:%s", states[i]);
++            const pin_value *value = execution_instance_state(
++                p.instance,
++                script_catalog_id("symbol", identity)
++            );
++            if (!value || value->type != PIN_I32 || value->i != expected[i]) {
++                fprintf(
++                    stderr,
++                    "task backend %d state %s: type %d value %d expected %d\n",
++                    b,
++                    states[i],
++                    value ? value->type : -1,
++                    value ? value->i : -1,
++                    expected[i]
++                );
++            }
++            REQUIRE(value && value->type == PIN_I32 && value->i == expected[i]);
++        }
++        REQUIRE(execution_instance_pending(p.instance) == 0);
++        stop(&p);
++        execution_module_free(module);
++    }
++    type_catalog_set_project(NULL);
++    return true;
++}
++
++TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes)
++{
++    REQUIRE(prepare());
++    const behavior_rejection rejected[] = {
++        { "B :: behavior { Pair :: () -> (a: int, b: int) { yield; return (1, "
++          "2) } "
++          "on Tick :: () { task := Pair() } }",
++          "task handles with multiple results are not supported yet",
++          false },
++        { "B :: behavior { value: int = 0; F :: () -> int { yield; return 1 } "
++          "Run :: () { t := F(); r := await t; if r is not Cancelled { yield; "
++          "value = r } } "
++          "on Tick :: () { Run() } }",
++          "assigned value differs from its local",
++          false },
++        { "B :: behavior { value: int = 0; F :: () -> int { yield; return 1 } "
++          "Run :: () { t := F(); other := F(); r := await t; if r is not "
++          "Cancelled { "
++          "await other; value = r } } on Tick :: () { Run() } }",
++          "assigned value differs from its local",
++          false },
++        { "B :: behavior { on Tick :: () { cancel 1 } }",
++          "task operation needs a task handle",
++          false },
++        { "B :: behavior { on Tick :: () { n: int = 1; r := await n } }",
++          "await needs a task handle or authored call",
++          false },
++    };
++    for (int b = 0; b < 2; b++) {
++        for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
++            REQUIRE(rejects(b, &rejected[i]));
++        }
++        pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS], out, message;
++        REQUIRE(arguments(b, false, NULL, 0, compile));
++        args[0] = text("MissingTargetFact");
++        args[1] = text("B :: behavior { on Tick :: () { yield } }");
++        memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
++        REQUIRE(put(&args[2], "error_status_offset", 0));
++        REQUIRE(game_arguments(b, &args[8]));
++        REQUIRE(compiler_fixture_call(
++            &fixture,
++            b,
++            PACKAGE,
++            "CompileBehavior",
++            args,
++            BEHAVIOR_ARGUMENTS,
++            COMPILE_BUDGET,
++            &detached,
++            &out
++        ));
++        REQUIRE(out.type == PIN_UNION && out.ptr);
++        const pin_union *result = out.ptr;
++        REQUIRE(result->tag == tag(b, "Rejected"));
++        REQUIRE(get(&result->values[0], "message", &message));
++        REQUIRE(!strcmp(pin_text(message).bytes, "task lowering needs the target error-status offset"));
++        arena_free(&detached);
++    }
++    return true;
++}
++
+ void test_language_package_compiler_chibi()
+ {
+     pu_setup(NULL, cleanup);
+@@ -4835,6 +4994,8 @@ void test_language_package_compiler_chibi_behaviors_rest()
+     pu_setup(NULL, cleanup);
+     RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
+     RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
++    RUN_TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation);
++    RUN_TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes);
+     pu_clear_setup();
+ }
+ void test_language_package_compiler_chibi_sharing()
+diff --git a/test/language/package_compiler_chibi.cmake b/test/language/package_compiler_chibi.cmake
+index ef2816427..9edbf535b 100644
+--- a/test/language/package_compiler_chibi.cmake
++++ b/test/language/package_compiler_chibi.cmake
+@@ -1,5 +1,5 @@
+ # Source-only standalone package compiler fixture.
+-foreach(component Compile Body Steps Maps References Pointers Tree Number Behavior)
++foreach(component Compile Body Steps Maps References Pointers Tasks TaskResults Tree Number Behavior)
+     string(TOUPPER "${component}" component_upper)
+     set(source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_compiler/${component}.chibi")
+     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
+diff --git a/test/language/package_compiler_chibi_source.h.in b/test/language/package_compiler_chibi_source.h.in
+index 3b50de211..9982d8372 100644
+--- a/test/language/package_compiler_chibi_source.h.in
++++ b/test/language/package_compiler_chibi_source.h.in
+@@ -17,6 +17,8 @@ static const char PACKAGE_COMPILER_STEPS_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_ST
+ static const char PACKAGE_COMPILER_MAPS_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_MAPS_BYTES@ 0 };
+ static const char PACKAGE_COMPILER_REFERENCES_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES@ 0 };
+ static const char PACKAGE_COMPILER_POINTERS_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_POINTERS_BYTES@ 0 };
++static const char PACKAGE_COMPILER_TASKS_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_TASKS_BYTES@ 0 };
++static const char PACKAGE_COMPILER_TASK_RESULTS_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_TASKRESULTS_BYTES@ 0 };
+ static const char PACKAGE_COMPILER_TREE_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_TREE_BYTES@ 0 };
+ static const char PACKAGE_COMPILER_NUMBER_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_NUMBER_BYTES@ 0 };
+ static const char PACKAGE_COMPILER_BEHAVIOR_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES@ 0 };
+@@ -39,6 +41,8 @@ static const char PACKAGE_COMPILER_BEHAVIOR_SOURCE[] = { @CHIBI_PACKAGE_COMPILER
+     PACKAGE_COMPILER_SOURCE("package_compiler/Maps.chibi", PACKAGE_COMPILER_MAPS_SOURCE), \
+     PACKAGE_COMPILER_SOURCE("package_compiler/References.chibi", PACKAGE_COMPILER_REFERENCES_SOURCE), \
+     PACKAGE_COMPILER_SOURCE("package_compiler/Pointers.chibi", PACKAGE_COMPILER_POINTERS_SOURCE), \
++    PACKAGE_COMPILER_SOURCE("package_compiler/Tasks.chibi", PACKAGE_COMPILER_TASKS_SOURCE), \
++    PACKAGE_COMPILER_SOURCE("package_compiler/TaskResults.chibi", PACKAGE_COMPILER_TASK_RESULTS_SOURCE), \
+     PACKAGE_COMPILER_SOURCE("package_compiler/Tree.chibi", PACKAGE_COMPILER_TREE_SOURCE), \
+     PACKAGE_COMPILER_SOURCE("package_compiler/Number.chibi", PACKAGE_COMPILER_NUMBER_SOURCE), \
+     PACKAGE_COMPILER_SOURCE("package_compiler/Behavior.chibi", PACKAGE_COMPILER_BEHAVIOR_SOURCE)
+diff --git a/test/language/prepared_writer_chibi.c b/test/language/prepared_writer_chibi.c
+index 225f4e3f8..4aa2af32e 100644
+--- a/test/language/prepared_writer_chibi.c
++++ b/test/language/prepared_writer_chibi.c
+@@ -72,7 +72,7 @@ static const char *const CORPUS[] = { "project:prepared_writer",
+ enum
+ {
+     CORPUS_COUNT = sizeof CORPUS / sizeof *CORPUS,
+-    TABLES = 23,
++    TABLES = 28,
+     BUDGET = 200000000,
+     BYTECODE_MODULE_LIMIT = 512 * 1024
+ };
+@@ -542,12 +542,12 @@ static bool function(model *m, const behavior_function *f)
+         put_bool(&call, "task", v->task);
+         apush(m->calls, call);
+     }
+-    span(m, base + 17, first, acount(f->calls));
++    span(m, base + 22, first, acount(f->calls));
+     int *definitions = NULL;
+     for (int i = 0; i < acount(f->definitions); i++) {
+         apush(definitions, reference(m, f->definitions[i]));
+     }
+-    span(m, base + 18, ints(m, definitions, acount(definitions)), acount(definitions));
++    span(m, base + 23, ints(m, definitions, acount(definitions)), acount(definitions));
+     afree(definitions);
+     first = acount(m->components);
+     for (int i = 0; i < acount(f->components); i++) {
+@@ -556,18 +556,18 @@ static bool function(model *m, const behavior_function *f)
+         put_bool(&component, "binding", f->components[i].binding);
+         apush(m->components, component);
+     }
+-    span(m, base + 19, first, acount(f->components));
++    span(m, base + 24, first, acount(f->components));
+     int *writes = NULL;
+     for (int i = 0; i < acount(f->component_writes); i++) {
+         apush(writes, wide(m, f->component_writes[i]));
+     }
+-    span(m, base + 20, ints(m, writes, acount(writes)), acount(writes));
++    span(m, base + 25, ints(m, writes, acount(writes)), acount(writes));
+     afree(writes);
+     first = acount(m->points);
+     for (int i = 0; i < acount(f->source_points); i++) {
+         point(m, &f->source_points[i]);
+     }
+-    span(m, base + 21, first, acount(f->source_points));
++    span(m, base + 26, first, acount(f->source_points));
+     first = acount(m->watches);
+     for (int i = 0; i < acount(f->source_watches); i++) {
+         const behavior_source_watch *v = &f->source_watches[i];
+@@ -579,7 +579,7 @@ static bool function(model *m, const behavior_function *f)
+         put_bool(&watch, "reference", v->reference);
+         apush(m->watches, watch);
+     }
+-    span(m, base + 22, first, acount(f->source_watches));
++    span(m, base + 27, first, acount(f->source_watches));
+     apush(m->functions, row);
+     return true;
+ }
+@@ -772,6 +772,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
+         rows(m, "ResultLayout", PIN_STRUCT, m->results),
+         rows(m, "Data", PIN_STRUCT, m->data),
+         rows(m, "Host", PIN_STRUCT, m->hosts),
++        rows(m, "Command", PIN_STRUCT, NULL),
+         rows(m, "Call", PIN_STRUCT, m->calls),
+         rows(m, "Reference", PIN_STRUCT, m->references),
+         rows(m, "Component", PIN_STRUCT, m->components),
+@@ -885,7 +886,7 @@ static bool writes_like_native(int b, const execution_module *module, const char
+         );
+         size_t at = bytes ? first_difference(expected, length, bytes) : length;
+         for (size_t i = at > 24 ? at - 24 : 0;
+-             i < at + 24 && i < length && i < (size_t)bytes->count;
++             bytes && i < at + 24 && i < length && i < (size_t)bytes->count;
+              i++) {
+             fprintf(stderr, " %02x/%02x", expected[i], pin_array_get(bytes, i).u8);
+         }
+diff --git a/tools/compiler/bounded_compiler/Prepare.chibi b/tools/compiler/bounded_compiler/Prepare.chibi
+index 144c1e586..8d3fe01a2 100644
+--- a/tools/compiler/bounded_compiler/Prepare.chibi
++++ b/tools/compiler/bounded_compiler/Prepare.chibi
+@@ -143,6 +143,7 @@ Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
+             layouts: writer.ResultLayout[] = [];
+             data: writer.Data[] = [];
+             hosts: writer.Host[] = [];
++            commands: writer.Command[] = [];
+             calls: writer.Call[] = [];
+             components: writer.Component[] = [];
+             points: writer.Point[] = [];
+@@ -151,7 +152,7 @@ Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
+             return writer.Write(writer.Module.Tables(module, 0, abi, pointer_size, wide, values, ints, requirements, fields,
+                                                      event_declarations, event_fields, imports, functions, spans, roots,
+                                                      instructions, prepared_locals, parameters, frames, sources, layouts,
+-                                                     data, hosts, calls, references, components, points, watches, states,
++                                                     data, hosts, commands, calls, references, components, points, watches, states,
+                                                      entries));
+     }
+ }
+diff --git a/tools/compiler/package_compiler/Behavior.chibi b/tools/compiler/package_compiler/Behavior.chibi
+index a2f1c47af..08579ed69 100644
+--- a/tools/compiler/package_compiler/Behavior.chibi
++++ b/tools/compiler/package_compiler/Behavior.chibi
+@@ -534,7 +534,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
+             }
+             callable: Callable = {name: handled_name, package: 0, document: 0, node: member, first: first,
+                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
+-                                  results: 0};
++                                  results: 0, waits: false};
+             callables.append(callable);
+             handled.append(found);
+         } else if (Is(forest, member, "function_declaration")) {
+@@ -562,7 +562,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
+     links: graph.Binding[] = [];
+     constants: ConstDecl[] = [];
+     switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+-                    callables, params, declared_types, members, constants, natives, ports, native_ids,
++                    WaitingCallables(forest, callables), params, declared_types, members, constants, natives, ports, native_ids,
+                     resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
+                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
+                                   make_fields)) {
+diff --git a/tools/compiler/package_compiler/Body.chibi b/tools/compiler/package_compiler/Body.chibi
+index efbcf2839..f57aeea94 100644
+--- a/tools/compiler/package_compiler/Body.chibi
++++ b/tools/compiler/package_compiler/Body.chibi
+@@ -69,12 +69,16 @@ Invocation :: struct {
+     count: int;
+     result_first: int;
+     result_count: int;
++    task: bool;
+ }
+ // A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
+ // when `linked` is not -1. A component reference's make is `written` when
+ // the body writes through the reference.
+ Host :: struct {
+     intrinsic: int;
++    // Nonzero identifies an existing task command, rather than a host intrinsic.
++    command: int;
++    syntax_node: int;
+     linked: int;
+     first: int;
+     result_first: int;
+@@ -2248,6 +2252,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                 code.append(Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
+                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
+             }
++        } else if (kind == "yield_statement" || kind == "cancel_statement" || kind == "await_expression") {
++            step = TaskStep(forest, text, document, callables, params, types, names, callable.package,
++                            values, value_top, item, ops, target, at);
+         } else if (item.phase == CombinePhase) {
+             step = OperatorStep(forest, text, document, types, values, value_top, item, ops, at);
+         } else if (PointerWork(item, kind)) {
+@@ -2289,8 +2296,14 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             next.append(Visit(Field(forest, item.node, "value")));
+             next.append(Resume(item.node, 1, 0, 0));
+         } else if (kind == "is_expression") {
+-            step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
+-                          item, ops, target, at);
++            held := values[value_top - 1];
++            if (held.storage == UnionStorage && held.record >= 0 && types[held.record].kind == TaskResultDecl) {
++                step = TaskResultIsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
++                                        values, value_top, item, ops, target, at);
++            } else {
++                step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
++                              item, ops, target, at);
++            }
+         } else {
+             return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
+         }
+@@ -2520,7 +2533,7 @@ NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint
+                                        payload: 0, text: "", has_text: false, message: "", has_message: false,
+                                        start: placed.start, end: placed.end, line: placed.line, column: placed.column};
+             suspension += 1;
+-        } else if (op == ops.invoke || op == ops.source_point) {
++        } else if (op == ops.invoke || op == ops.source_point || op == ops.suspend) {
+             numbered := numbered_code[at_point];
+             numbered.target = suspension;
+             numbered_code[at_point] = numbered;
+diff --git a/tools/compiler/package_compiler/Compile.chibi b/tools/compiler/package_compiler/Compile.chibi
+index d599c726d..716bbd359 100644
+--- a/tools/compiler/package_compiler/Compile.chibi
++++ b/tools/compiler/package_compiler/Compile.chibi
+@@ -21,6 +21,7 @@ pub Target :: struct {
+     value_size: int;
+     payload_offset: int;
+     results_offset: int;
++    error_status_offset: int;
+     type_offset: int;
+     container_offset: int;
+     name_offset: int;
+@@ -50,6 +51,11 @@ Ops :: struct {
+     write: int;
+     result: int;
+     host_call: int;
++    command_argument: int;
++    command_begin: int;
++    command_result: int;
++    command_output: int;
++    suspend: int;
+     invoke: int;
+     guard: int;
+     check: int;
+@@ -108,6 +114,7 @@ Callable :: struct {
+     result_container: int;
+     result_record: int;
+     results: int;
++    waits: bool;
+ }
+ // A function's parameters, then its named results, and its callable.
+ Signature :: union {
+@@ -208,6 +215,7 @@ Assembly :: union {
+ EffectCall :: struct {
+     caller: int;
+     callee: int;
++    task: bool;
+ }
+ // The target catalog's READ, WRITE, STRUCTURAL, HOST, SUSPEND, RANDOM and
+ // INVOCATION_READ bits.
+@@ -241,6 +249,7 @@ TextStorage: int : 13;
+ HandleStorage: int : 14;
+ StructStorage: int : 15;
+ UnionStorage: int : 18;
++TaskStorage: int : 17;
+ RecordDecl: int : 0;
+ UnionDecl: int : 1;
+ VariantDecl: int : 2;
+@@ -281,7 +290,10 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
+             array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
+             string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
+             load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
+-            host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
++            host_call: Ordinal(names, "HOST_CALL"),
++            command_argument: Ordinal(names, "COMMAND_ARGUMENT"), command_begin: Ordinal(names, "COMMAND_BEGIN"),
++            command_result: Ordinal(names, "COMMAND_RESULT"), command_output: Ordinal(names, "COMMAND_OUTPUT"),
++            suspend: Ordinal(names, "SUSPEND"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
+             check: Ordinal(names, "CHECK"),
+             branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
+             end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
+@@ -300,6 +312,7 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
+ Complete :: (ops: Ops) -> bool {
+     used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
+                    ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
++                   ops.command_argument, ops.command_begin, ops.command_result, ops.command_output, ops.suspend,
+                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
+                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
+                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
+@@ -1190,7 +1203,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
+     }
+     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
+                           result: result.storage, result_container: result.container, result_record: result.record,
+-                          results: length(added) - count};
++                          results: length(added) - count, waits: false};
+     return Signature.Read(callable, added);
+ }
+ ScalarValue :: (storage: int, wide: int) -> writer.Value {
+@@ -1322,9 +1335,10 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
+ // `root`. Dependencies come first, so an importer has every module it imports.
+ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
+-         callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
++         input_callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+          constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], native_effects: int[], ops: Ops,
+          target: Target, abi: uint64) -> Result {
++    callables := WaitingCallables(forest, input_callables);
+     // Each package's identity and module ID, and the fingerprint of its module.
+     package_names: string[] = [];
+     package_ids: uint64[] = [];
+@@ -1433,10 +1447,18 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
+ }
+ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
+              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
+-             links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
+-             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
++             links: graph.Binding[], input_callables: Callable[], params: Param[], input_types: TypeDecl[],
++             input_members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
+              identities: uint64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
+              abi: uint64, game: Game) -> Assembly {
++    callables := input_callables;
++    types := input_types;
++    members := input_members;
++    switch TaskResultDeclarations(callables, params, types, members) {
++        case .Collected(declared_types, declared_members):
++            types = declared_types;
++            members = declared_members;
++    }
+     identity := package_names[package];
+     module := package_ids[package];
+     // A behavior's states, the event each of its functions handles, the
+@@ -1477,6 +1499,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+     sources: writer.Source[] = [];
+     data: writer.Data[] = [];
+     hosts: writer.Host[] = [];
++    commands: writer.Command[] = [];
+     roots: writer.Root[] = [];
+     calls: writer.Call[] = [];
+     references: writer.Reference[] = [];
+@@ -1503,7 +1526,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+             // Stage zero's tag: the union's ID in decimal, then the variant.
+             union_id := binding.ID("package-symbol",
+                                    format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
+-            wide.append(binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
++            tag := binding.ID("union-variant", format_text("{}:{}", union_id, declared.name));
++            if (types[declared.parent].kind == TaskResultDecl) { tag = declared.id; }
++            wide.append(tag);
+             tags[length(tags) - 1] = length(wide) - 1;
+         } else if (declared.kind == RecordDecl) {
+             wide.append(binding.ID("package-symbol",
+@@ -1609,6 +1634,16 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
+                           body_points, body_watches):
+                 direct_effects: int = 0;
++                host_indices: int[] = [];
++                command_indices: int[] = [];
++                host_count: int = 0;
++                command_count: int = 0;
++                for (operation in body_hosts) {
++                    host_indices.append(host_count);
++                    command_indices.append(command_count);
++                    if (operation.command == 0) { host_count += 1; }
++                    else { command_count += 1; }
++                }
+                 base := length(spans);
+                 // Argument defaults and kinds.
+                 spans.append(Range(length(values), callable.count));
+@@ -1673,7 +1708,16 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+                 // Instructions, each with its own value row and source at pc + 1.
+                 spans.append(Range(length(instructions), length(body_code)));
+                 pc: int = 0;
+-                for (code in body_code) {
++                for (body_instruction in body_code) {
++                    code := body_instruction;
++                    if (code.op == ops.host_call) { code.target = host_indices[code.target]; }
++                    if (code.op == ops.command_begin) { code.target = command_indices[code.target]; }
++                    node_id: int = 0;
++                    if (code.op == ops.command_begin || code.op == ops.suspend) {
++                        wide.append(code.payload);
++                        node_id = length(wide) - 1;
++                        code.payload = 0;
++                    }
+                     value := Header(code.value_storage, code.value_container, code.value_record, types, layouts);
+                     if (code.has_text) {
+                         value.text = code.text;
+@@ -1686,7 +1730,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+                     values.append(value);
+                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
+                                                left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
+-                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
++                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: node_id,
+                                                value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
+                     instructions.append(row);
+                     pc += 1;
+@@ -1745,8 +1789,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+                     datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
+                     data.append(datum);
+                 }
+-                spans.append(Range(length(hosts), length(body_hosts)));
++                spans.append(Range(length(hosts), host_count));
+                 for (host in body_hosts) {
++                    if (host.command != 0) { continue; }
+                     capability := length(wide);
+                     host_abi := abi_one;
+                     if (host.linked >= 0) {
+@@ -1762,9 +1807,53 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+                                         outcome_count: 0};
+                     hosts.append(row);
+                 }
++                spans.append(Range(length(commands), command_count));
++                for (operation in body_hosts) {
++                    if (operation.command == 0) { continue; }
++                    wide.append(TaskCommandBase | uint64(operation.command));
++                    command_abi: uint64 = 2;
++                    if (operation.command == DelayCommand) { command_abi = 1; }
++                    wide.append(command_abi);
++                    wide.append(TaskCommandNode(operation.command, operation.syntax_node));
++                    command: writer.Command = {capability: length(wide) - 3, abi: length(wide) - 2,
++                                               first: operation.first, count: operation.result_first - operation.first,
++                                               node: length(wide) - 1, result_first: operation.result_first,
++                                               result_count: operation.result_count};
++                    commands.append(command);
++                    if (operation.command == CancelCommand || operation.command == CancelAfterCommand) {
++                        direct_effects = direct_effects | WriteEffect;
++                    } else { direct_effects = direct_effects | SuspendEffect; }
++                }
++                // The command banks use the same stable cell coordinates as the
++                // body's host banks. Each has independent mutable payload storage.
++                command_cells: int = 0;
++                if (command_count > 0) { command_cells = length(body_cells); }
++                spans.append(Range(length(values), command_cells));
++                at = 0;
++                while (at < command_cells) {
++                    cell := body_cells[at];
++                    initial := Header(cell.storage, cell.container, cell.record, types, layouts);
++                    if (cell.constant != 0) { wide.append(cell.constant); initial.wide = length(wide) - 1; }
++                    if (cell.variant >= 0) { initial.wide = tags[cell.variant]; }
++                    values.append(initial);
++                    at += 1;
++                }
++                spans.append(Range(length(ints), command_cells));
++                at = 0;
++                while (at < command_cells) { ints.append(ValueKind); at += 1; }
++                spans.append(Range(length(values), command_cells));
++                at = 0;
++                while (at < command_cells) {
++                    cell := body_cells[at];
++                    values.append(Header(cell.storage, cell.container, cell.record, types, layouts));
++                    at += 1;
++                }
++                spans.append(Range(length(ints), command_cells));
++                at = 0;
++                while (at < command_cells) { ints.append(ValueKind); at += 1; }
+                 spans.append(Range(length(calls), length(body_calls)));
+                 for (invocation in body_calls) {
+-                    effect_call: EffectCall = {caller: index, callee: invocation.callee};
++                    effect_call: EffectCall = {caller: index, callee: invocation.callee, task: invocation.task};
+                     effect_calls.append(effect_call);
+                     callee := callables[invocation.callee];
+                     if (callee.package == package) {
+@@ -1786,7 +1875,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+                     }
+                     call: writer.Call = {function: length(references) - 1, first: invocation.first,
+                                          count: invocation.count, result_first: invocation.result_first,
+-                                         result_count: invocation.result_count, task: false};
++                                         result_count: invocation.result_count, task: invocation.task};
+                     calls.append(call);
+                 }
+                 // No definitions; then the components the body reads or
+@@ -1891,7 +1980,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+     while (changed) {
+         changed = false;
+         for (called in effect_calls) {
+-            combined := effects[called.caller] | effects[called.callee];
++            inherited := effects[called.callee];
++            if (called.task) { inherited = inherited & ~SuspendEffect; }
++            combined := effects[called.caller] | inherited;
+             if (combined != effects[called.caller]) {
+                 effects[called.caller] = combined;
+                 changed = true;
+@@ -1943,7 +2034,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+     layouts_table: writer.ResultLayout[] = [];
+     return Assembly.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
+                                                                        fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
+-                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, calls,
++                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, commands, calls,
+                                                                        references, components, points, watches, states, entries)), effects);
+ }
+ 
+diff --git a/tools/compiler/package_compiler/Maps.chibi b/tools/compiler/package_compiler/Maps.chibi
+index f15fddcdb..11152a2ba 100644
+--- a/tools/compiler/package_compiler/Maps.chibi
++++ b/tools/compiler/package_compiler/Maps.chibi
+@@ -88,7 +88,7 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
+         index += 2;
+     }
+     cells.append(MapCell(map));
+-    host: Host = {intrinsic: MapMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: MapMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                   result_count: 1, written: false};
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     slots.extend([address, address]);
+@@ -132,7 +132,7 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
+         code.extend(CellWrite(item.storage, at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
+     }
+     cells.append(ItemCell(types, map.record));
+-    host: Host = {intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                   result_count: 1, written: false};
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     read := length(slots);
+@@ -284,7 +284,7 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+     if (store) {
+         intrinsic = MapStoreIntrinsic;
+     }
+-    host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                   result_count: 1, written: false};
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     code.append(SymbolCode(ops, binding.node, node));
+@@ -350,7 +350,7 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
+     code := extend(CellWrite(target.pointer_storage, held.slot, at.cell, ops, target, at.slot, node),
+                    CellWrite(SlotStorage(sought.storage, 0, target), sought.slot, at.cell + 1, ops, target,
+                              at.slot + 1, node));
+-    host: Host = {intrinsic: MapHasIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: MapHasIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
+                   written: false};
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     code.extend(CellRead(BoolStorage, at.cell + 2, ops, target, at.slot + 2, node));
+@@ -430,7 +430,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
+     leave := at.pc + length(code);
+     code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+     cells := MapItemCells(types, held.record, false);
+-    hosts: Host[] = [{intrinsic: MapItemIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
++    hosts: Host[] = [{command: 0, syntax_node: 0, intrinsic: MapItemIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+                       result_count: 1, written: false}];
+     value := at.slot + length(slots) + 3;
+     slots.extend([address, address, address,
+@@ -449,7 +449,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
+         slots.append(address);
+         code.extend(CellWrite(target.pointer_storage, value, at.cell + 4, ops, target, at.slot + length(slots) - 1,
+                               node));
+-        snapshot: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell + 4, result_first: at.cell + 5,
++        snapshot: Host = {command: 0, syntax_node: 0, intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell + 4, result_first: at.cell + 5,
+                           result_count: 1, written: false};
+         hosts.append(snapshot);
+         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
+@@ -468,7 +468,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
+     if (key_node >= 0) {
+         first := at.cell + length(cells);
+         cells.extend(MapItemCells(types, held.record, true));
+-        key_host: Host = {intrinsic: MapItemIntrinsic, linked: -1, first: first, result_first: first + 3,
++        key_host: Host = {command: 0, syntax_node: 0, intrinsic: MapItemIntrinsic, linked: -1, first: first, result_first: first + 3,
+                           result_count: 1, written: false};
+         hosts.append(key_host);
+         slots.extend([address, address, address, ValueLocal(map.key)]);
+diff --git a/tools/compiler/package_compiler/Pointers.chibi b/tools/compiler/package_compiler/Pointers.chibi
+index 7ff354e7e..4d4c770c4 100644
+--- a/tools/compiler/package_compiler/Pointers.chibi
++++ b/tools/compiler/package_compiler/Pointers.chibi
+@@ -155,7 +155,7 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
+                          at.slot + 1, node));
+     cells: Cell[] = [PointerCell(pointer.record), TypedCell(element.storage, element.container, element.record),
+                      TypedCell(element.storage, element.container, element.record)];
+-    host: Host = {intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                   result_count: 1, written: false};
+     roots: Root[] = [];
+     if (Pointer(element.storage, element.container)) {
+@@ -268,7 +268,7 @@ ManagedBoxStep :: (types: TypeDecl[], members: TypeMember[], initial: Value, nam
+     cells: Cell[] = [context,
+                      TypedCell(initial.storage, initial.container, initial.record),
+                      TypedCell(initial.storage, initial.container, initial.record), PointerCell(pointer)];
+-    host: Host = {intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+                   result_count: 1, written: false};
+     binding: Name = {name: name, place: ManagedPlace, index: at.cell + 3, storage: initial.storage,
+                      container: initial.container, record: initial.record, writable: true, node: declaration};
+@@ -296,7 +296,7 @@ PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: in
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     cells: Cell[] = [PointerCell(pointer.record), TypedCell(value.storage, value.container, value.record),
+                      TypedCell(BoolStorage, 0, -1)];
+-    host: Host = {intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                   result_count: 1, written: false};
+     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target)], [], cells, [host], [], [], [], [],
+                         popped, NoValue(), NoValue(), []);
+@@ -317,7 +317,7 @@ PointerReferenceStep :: (pointer: Value, ops: Ops, target: Target, at: Bases,
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     code.extend(CellRead(target.pointer_storage, at.cell + 1, ops, target, at.slot + 1, node));
+     cells: Cell[] = [PointerCell(pointer.record), ReferenceCell(target)];
+-    host: Host = {intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+                   result_count: 1, written: true};
+     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells,
+                         [host], [], [], [], [], 1, Typed(at.slot + 2, ReferenceStorage, 0, -1), NoValue(), []);
+@@ -349,7 +349,7 @@ PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
+     code := CellWrite(PointerStorage, base.slot, at.cell, ops, target, at.slot, node);
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     code.extend(CellRead(PointerStorage, at.cell + 5, ops, target, at.slot + 1, node));
+-    host: Host = {intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
+                   result_count: 1, written: false};
+     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), {storage: PointerStorage, kind: ValueKind}],
+                         [], cells, [host], [], [], [], [], popped,
+@@ -605,7 +605,8 @@ PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int
+         pending = slice(pending, 0, length(pending) - 1);
+         node := forest[at];
+         if (node.start >= start && node.end <= finish) {
+-            if (node.kind == "call_expression") { return true; }
++            if (node.kind == "call_expression" || node.kind == "await_expression" ||
++                node.kind == "yield_statement") { return true; }
+             if (node.kind == "assignment") {
+                 target := Unparenthesized(forest, StatementTarget(forest, at));
+                 if (aliases || (Is(forest, target, "identifier") && Text(forest, text, target) == name)) { return true; }
+@@ -640,7 +641,10 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
+             if (Is(forest, parent, "while_statement")) { consequence = Field(forest, parent, "body"); }
+             truth := consequence >= 0 && forest[walked_child].start >= forest[consequence].start &&
+                      forest[walked_child].end <= forest[consequence].end;
+-            if (PointerGuard(forest, text, condition, binding.name, truth) &&
++            alternative := Field(forest, parent, "alternative");
++            false_branch := alternative >= 0 && forest[walked_child].start >= forest[alternative].start &&
++                            forest[walked_child].end <= forest[alternative].end;
++            if ((truth || false_branch) && PointerGuard(forest, text, condition, binding.name, truth) &&
+                 (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
+                 return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
+                                             binding.name, aliased);
+diff --git a/tools/compiler/package_compiler/References.chibi b/tools/compiler/package_compiler/References.chibi
+index 14de26296..794edb844 100644
+--- a/tools/compiler/package_compiler/References.chibi
++++ b/tools/compiler/package_compiler/References.chibi
+@@ -153,7 +153,7 @@ ReadThroughSlots :: (storage: int, container: int, target: Target) -> Slot[] {
+     return [address, address, value];
+ }
+ ReadThroughHost :: (cell: int) -> Host {
+-    return {intrinsic: ReferenceReadIntrinsic, linked: -1, first: cell, result_first: cell + 1, result_count: 1,
++    return {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: cell, result_first: cell + 1, result_count: 1,
+             written: false};
+ }
+ // The write of the value in slot `value` through the descriptor in slot
+@@ -170,7 +170,7 @@ WriteThroughCells :: (storage: int, container: int, record: int, target: Target)
+     return [ReferenceCell(target), TypedCell(storage, container, record), done];
+ }
+ WriteThroughHost :: (cell: int) -> Host {
+-    return {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: cell, result_first: cell + 2, result_count: 1,
++    return {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: cell, result_first: cell + 2, result_count: 1,
+             written: false};
+ }
+ // A read of `binding`, a ref parameter, through its descriptor, or a boxed
+@@ -331,7 +331,7 @@ MakeValueSlots :: (target: Target) -> Slot[] {
+     return [address, address, address, address, address, DescriptorSlot(target)];
+ }
+ MakeValueHost :: (first: int) -> Host {
+-    return {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
++    return {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+             written: true};
+ }
+ // The argument of a ref parameter of the type item.storage, item.container
+@@ -440,7 +440,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
+                         variant: -1, kind: ValueKind};
+         element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+         cells.extend([ReferenceCell(target), TypedCell(storage, 0, -1), offset, element, ReferenceCell(target)]);
+-        reach: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first, result_first: first + 4,
++        reach: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first, result_first: first + 4,
+                        result_count: 1, written: false};
+         hosts.append(reach);
+         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+@@ -478,7 +478,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document:
+                     kind: ValueKind};
+     element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+     cells: Cell[] = [ReferenceCell(target), TypedCell(field.storage, 0, -1), offset, element, ReferenceCell(target)];
+-    reach: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
++    reach: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
+                    result_count: 1, written: false};
+     hosts: Host[] = [reach];
+     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+diff --git a/tools/compiler/package_compiler/Steps.chibi b/tools/compiler/package_compiler/Steps.chibi
+index c992c33be..c41a35e94 100644
+--- a/tools/compiler/package_compiler/Steps.chibi
++++ b/tools/compiler/package_compiler/Steps.chibi
+@@ -156,7 +156,7 @@ RetainStep :: (kept: Value, ops: Ops, target: Target, at: Bases, item: snapshot.
+     write := Instruction(ops.write, target.pointer_storage, 0, kept.slot, at.slot, 0, item);
+     write.offset = target.payload_offset;
+     code.append(write);
+-    host: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1,
+                   written: false};
+     hosts.append(host);
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, item));
+@@ -866,7 +866,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+         if (built.contains(binding.node)) {
+             intrinsic += InResult;
+         }
+-        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
++        host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                       result_count: 1, written: false};
+         hosts.append(host);
+         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+@@ -1013,6 +1013,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+             return Fail(forest, item.node, document, format_text("Unknown name '{}'", wanted));
+         }
+         binding := names[found];
++        if (binding.place == LocalPlace && binding.storage == UnionStorage && binding.container == 0 &&
++            binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
++            TaskResultPresent(forest, text, binding, item.node)) {
++            return TaskResultReadStep(types, binding, ops, target, at, node);
++        }
+         narrowed: int = -1;
+         if (Single(Typed(-1, binding.storage, binding.container, binding.record), PointerStorage) &&
+             binding.record >= 0 && types[binding.record].key != 0 && PointerPresent(forest, text, binding, item.node)) {
+@@ -1086,7 +1091,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+         cells.append(tag);
+         made: Cell = {storage: UnionStorage, container: 0, record: sum_type, constant: 0, variant: -1, kind: ValueKind};
+         cells.append(made);
+-        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
++        host: Host = {command: 0, syntax_node: 0, intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+                       result_count: 1, written: false};
+         hosts.append(host);
+         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+@@ -1437,7 +1442,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
+     if ((array && BuiltLiteral(forest, built, item.node)) || Returned(forest, item.node)) {
+         intrinsic += InResult;
+     }
+-    host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                   result_count: 1, written: false};
+     hosts.append(host);
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+@@ -1960,7 +1965,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+         if (kept) {
+             intrinsic = UnionKeepIntrinsic + InResult;
+         }
+-        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + shift + count,
++        host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + shift + count,
+                       result_count: 1, written: false};
+         hosts.append(host);
+         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+@@ -2079,7 +2084,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+     }
+     result := Typed(-1, -1, 0, -1);
+     result_count: int = 0;
+-    if (linked && natives[chosen].results > 1) {
++    task := !linked && callables[item.a].waits && !ImmediatelyAwaited(forest, item.node);
++    if (task) {
++        unsupported := TaskResultSupport(callables[item.a], types, params);
++        if (unsupported != "") { return Fail(forest, item.node, document, unsupported); }
++        result = Typed(-1, TaskStorage, 0, item.a);
++        result_count = 1;
++    } else if (linked && natives[chosen].results > 1) {
+         // Several results land in cells a local or `.name` reads.
+         called := natives[chosen];
+         at_result: int = 0;
+@@ -2150,13 +2161,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+         index += 1;
+     }
+     if (linked) {
+-        host: Host = {intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
++        host: Host = {command: 0, syntax_node: 0, intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
+                       result_count: result_count, written: false};
+         hosts.append(host);
+         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     } else {
+         invocation: Invocation = {callee: item.a, first: at.cell, count: total, result_first: at.cell + total,
+-                                  result_count: result_count};
++                                  result_count: result_count, task: task};
+         calls.append(invocation);
+         // Each invocation suspends the caller once; EmitBody numbers it.
+         code.append(Instruction(ops.invoke, 0, 0, at.call, 0, 0, node));
+@@ -2176,6 +2187,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+             roots.append(root);
+         }
+         result.slot = b + total + 1;
++        if (task) {
++            // The returned handle's slot/local roots own observation; scratch
++            // protocol cells must not keep an otherwise discarded task result.
++            empty := at.slot + length(slots);
++            slots.append(ValueLocal(TaskStorage));
++            code.append(ConstantCode(ops, TaskStorage, 0, empty, node));
++            clear := Instruction(ops.write, TaskStorage, 0, empty, b + total, 0, node);
++            clear.offset = target.payload_offset;
++            code.append(clear);
++        }
+     }
+     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result, NoValue(), marks);
+ }
+@@ -2819,14 +2840,14 @@ ReferenceCells :: (target: Target, record: int, facts: uint64[], field: TypeMemb
+ // The reference make and the field reference, written through, over the
+ // cells from `first`.
+ FieldReferenceHosts :: (first: int) -> Host[] {
+-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
++    make: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+                   written: true};
+-    field: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first + 10, result_first: first + 14,
++    field: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first + 10, result_first: first + 14,
+                    result_count: 1, written: false};
+     return [make, field];
+ }
+ WriteHost :: (first: int) -> Host {
+-    return {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: first + 15, result_first: first + 17,
++    return {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: first + 15, result_first: first + 17,
+             result_count: 1, written: false};
+ }
+ // The make, its reference into the first cell of the host after it, a field
+@@ -2906,7 +2927,7 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
+     // cells after the write's.
+     typed: Cell = {storage: declared.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+     cells.extend([ReferenceCell(target), typed]);
+-    copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 18, result_first: first + 19,
++    copy: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 18, result_first: first + 19,
+                   result_count: 1, written: false};
+     hosts.append(copy);
+     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+@@ -2936,9 +2957,9 @@ ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written
+     read: Cell = {storage: StructStorage, container: 0, record: component, constant: 0, variant: -1,
+                   kind: ValueKind};
+     cells := extend(MakeCells(target, component, ComponentFacts(types[component])), [ReferenceCell(target), read]);
+-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
++    make: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+                   written: written};
+-    copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 10, result_first: first + 11,
++    copy: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 10, result_first: first + 11,
+                   result_count: 1, written: false};
+     code := OwnerCode(ops, target, first, entity, at.slot, node);
+     code.extend(ReferenceCode(ops, target, first, first + 11, at.host, at.slot + 4, node));
+@@ -2964,7 +2985,7 @@ ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, next: W
+     bound: Name[] = [];
+     marks: int[] = [];
+     first := at.cell;
+-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
++    make: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+                   written: true};
+     code := OwnerCode(ops, target, first, -1, at.slot, node);
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+@@ -3007,7 +3028,7 @@ ComponentAssignStep :: (forest: snapshot.SnapshotNode[], document: int, types: T
+     code.extend(CellWrite(target.pointer_storage, value.slot, at.cell + 1, ops, target, at.slot + 1, node));
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+-    write: Host = {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
++    write: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                    result_count: 1, written: false};
+     return Step.Emitted(code, [address, address], locals, [ReferenceCell(target), record, done], [write], roots, calls,
+                         bound, next, 1, NoValue(), NoValue(), marks);
+@@ -3363,7 +3384,7 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+     }
+     combined: Cell = {storage: StructStorage, container: 0, record: result.record, constant: 0, variant: -1,
+                       kind: ValueKind};
+-    host: Host = {intrinsic: 0, linked: native, first: at.cell, result_first: at.cell + 2, result_count: 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: 0, linked: native, first: at.cell, result_first: at.cell + 2, result_count: 1,
+                   written: false};
+     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+     code.extend(CallCode(operands, at.cell, at.host, target.pointer_storage, at.slot + length(slots), ops,
+@@ -3412,7 +3433,7 @@ NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, a
+     arguments: Value[] = [object];
+     read: Cell = {storage: field.storage, container: 0, record: field.record, constant: 0, variant: -1,
+                   kind: ValueKind};
+-    host: Host = {intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
+                   written: false};
+     value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
+     code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
+@@ -3525,7 +3546,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[],
+         index += 1;
+     }
+     cells.append(header);
+-    host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
++    host: Host = {command: 0, syntax_node: 0, intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                   result_count: 1, written: false};
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+     code.extend(CellRead(target.pointer_storage, at.cell + length(cells) - 1, ops, target,
+@@ -3662,7 +3683,7 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
+     write := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + 1, 0, node);
+     write.offset = target.payload_offset;
+     code.append(write);
+-    test: Host = {intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
++    test: Host = {command: 0, syntax_node: 0, intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
+                   written: false};
+     hosts.append(test);
+     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+@@ -3714,7 +3735,7 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
+         put := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + length(slots) - 1, 0, node);
+         put.offset = target.payload_offset;
+         code.append(put);
+-        get: Host = {intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1,
++        get: Host = {command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1,
+                      written: false};
+         hosts.append(get);
+         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + length(hosts) - 1,
+diff --git a/tools/compiler/package_compiler/TaskResults.chibi b/tools/compiler/package_compiler/TaskResults.chibi
+new file mode 100644
+index 000000000..d79f9d7a8
+--- /dev/null
++++ b/tools/compiler/package_compiler/TaskResults.chibi
+@@ -0,0 +1,176 @@
++package package_compiler
++
++import snapshot "project:source_snapshot"
++
++// A task join returns the native structural union T | Cancelled. These
++// declarations carry semantic tags, rather than source union variant names.
++TaskResultDecl: int : 7;
++CancelledTag: uint64 : 0x63616e63656c6c65;
++TaskDeclarations :: union {
++    Collected(types: TypeDecl[], members: TypeMember[])
++}
++TaskSuccessValue :: (callable: Callable, params: Param[]) -> ValueType {
++    if (callable.results == 1) {
++        result := params[callable.first + callable.count];
++        return {storage: result.storage, container: result.container, record: result.record};
++    }
++    return {storage: callable.result, container: callable.result_container, record: callable.result_record};
++}
++TaskResultSupport :: (callable: Callable, types: TypeDecl[], params: Param[]) -> string {
++    if (callable.results > 1) { return "task handles with multiple results are not supported yet"; }
++    value := TaskSuccessValue(callable, params);
++    if (value.storage == UnionStorage && value.container == 0) {
++        return "task handles with a union result are not supported yet";
++    }
++    return "";
++}
++TaskSuccessTag :: (callable: Callable, types: TypeDecl[], params: Param[]) -> uint64 {
++    return SemanticTag(types, TaskSuccessValue(callable, params));
++}
++TaskResultRecord :: (types: TypeDecl[], callable: int) -> int {
++    index: int = 0;
++    while (index < length(types)) {
++        if (types[index].kind == TaskResultDecl && types[index].parent == callable) { return index; }
++        index += 1;
++    }
++    return -1;
++}
++TaskResultSuccess :: (types: TypeDecl[], record: int) -> ValueType {
++    declared := types[record];
++    return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
++}
++TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: TypeDecl[],
++                           input_members: TypeMember[]) -> TaskDeclarations {
++    types := input_types;
++    members := input_members;
++    index: int = 0;
++    while (index < length(callables)) {
++        callable := callables[index];
++        if (!callable.waits || TaskResultRecord(types, index) >= 0 ||
++            TaskResultSupport(callable, types, params) != "") { index += 1; continue; }
++        value := TaskSuccessValue(callable, params);
++        success := TaskSuccessTag(callable, types, params);
++        first_tag := success;
++        second_tag := CancelledTag;
++        if (first_tag > second_tag) { first_tag = CancelledTag; second_tag = success; }
++        id := ((uint64(14695981039346656037) ^ first_tag) * uint64(1099511628211) ^ second_tag) * uint64(1099511628211);
++        parent := length(types);
++        declared: TypeDecl = {name: "", type_name: "", package: callable.package, node: -1,
++                              kind: TaskResultDecl, first: parent + 1, count: 2, size: 0, parent: index,
++                              storage: UnionStorage, id: id, layout: 0, component: 0, key: 0,
++                              value_storage: value.storage, value_container: value.container,
++                              value_record: value.record};
++        types.append(declared);
++        tags: uint64[] = [first_tag, second_tag];
++        for (tag in tags) {
++            name := "";
++            count: int = 0;
++            first := length(members);
++            if (tag == CancelledTag) { name = "Cancelled"; }
++            else if (value.storage != 0) {
++                member: TypeMember = {name: "", storage: value.storage, container: value.container,
++                                      record: value.record, offset: 0, writable: false, c_string: false,
++                                      constant: false, read: -1, read_key: ""};
++                members.append(member);
++                count = 1;
++            }
++            variant: TypeDecl = {name: name, type_name: "", package: callable.package, node: -1,
++                                 kind: VariantDecl, first: first, count: count, size: 0, parent: parent,
++                                 storage: UnionStorage, id: tag, layout: 0, component: 0, key: 0,
++                                 value_storage: 0, value_container: 0, value_record: -1};
++            types.append(variant);
++        }
++        index += 1;
++    }
++    return TaskDeclarations.Collected(types, members);
++}
++TaskResultPattern :: (forest: snapshot.SnapshotNode[], text: string, condition: int) -> bool {
++    pattern := Field(forest, condition, "type");
++    return Text(forest, text, pattern) == "Cancelled" && Field(forest, condition, "binding") < 0;
++}
++TaskResultIsStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
++                     members: TypeMember[], names: Name[], scope: int, values: Value[], top: int,
++                     item: Work, ops: Ops, target: Target, at: Bases) -> Step {
++    value := values[top - 1];
++    if (!TaskResultPattern(forest, text, item.node)) {
++        return Fail(forest, item.node, document, "a task result pattern must be Cancelled");
++    }
++    variant := FindVariant(types, value.record, "Cancelled");
++    return MatchStep(forest, text, document, types, members, names, scope, -1, value.slot, variant, -1,
++                     false, Field(forest, item.node, "negated") >= 0, -1, -1, ops, target, at, forest[item.node]);
++}
++// A proof applies only within the tested branch and until a write or call
++// could change the binding. Loop back edges do not preserve an outer proof.
++TaskResultPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
++    // An is-test always observes the original union, including when an
++    // enclosing branch has already proved the success case.
++    subject := node;
++    test := forest[subject].parent;
++    while (Is(forest, test, "parenthesized_expression")) { subject = test; test = forest[subject].parent; }
++    if (Is(forest, test, "is_expression") && Field(forest, test, "value") == subject) { return false; }
++    function := node;
++    while (function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler")) {
++        function = forest[function].parent;
++    }
++    if (function < 0) { return false; }
++    body := Field(forest, function, "body");
++    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body), binding.name);
++    child := node;
++    parent := forest[node].parent;
++    while (parent >= 0 && parent != function) {
++        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
++            condition := Unparenthesized(forest, Field(forest, parent, "condition"));
++            consequence := Field(forest, parent, "consequence");
++            if (Is(forest, parent, "while_statement")) { consequence = Field(forest, parent, "body"); }
++            truth := consequence >= 0 && forest[child].start >= forest[consequence].start && forest[child].end <= forest[consequence].end;
++            alternative := Field(forest, parent, "alternative");
++            false_branch := alternative >= 0 && forest[child].start >= forest[alternative].start &&
++                            forest[child].end <= forest[alternative].end;
++            subject := Unparenthesized(forest, Field(forest, condition, "value"));
++            negated := Field(forest, condition, "negated") >= 0;
++            if (Is(forest, condition, "is_expression") && TaskResultPattern(forest, text, condition) &&
++                Is(forest, subject, "identifier") && Text(forest, text, subject) == binding.name &&
++                (truth || false_branch) && truth == negated && (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
++                return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
++                                            binding.name, aliased);
++            }
++            if (Is(forest, parent, "while_statement")) { return false; }
++        }
++        child = parent;
++        parent = forest[parent].parent;
++    }
++    return false;
++}
++// The structural success payload has no invented Success case: scalar and
++// record results are the original value in payload position zero.
++TaskResultReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Target, at: Bases,
++                       node: snapshot.SnapshotNode) -> Step {
++    value := TaskResultSuccess(types, binding.record);
++    if (value.storage == 0) {
++        return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
++                            document: -1, message: "a completed void task has no result value"});
++    }
++    first := types[binding.record].first;
++    if (types[first].id == CancelledTag) { first += 1; }
++    address := AddressSlot(target);
++    storage := SlotStorage(value.storage, value.container, target);
++    slots: Slot[] = [{storage: UnionStorage, kind: ValueKind}, address, address,
++                     {storage: storage, kind: SlotKind(value.storage, value.container)}];
++    code: Code[] = [Instruction(ops.local, UnionStorage, at.slot, binding.index, 0, 0, node)];
++    code.extend(CellWrite(UnionStorage, at.slot, at.cell, ops, target, at.slot + 1, node));
++    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
++    code.extend(CellRead(storage, at.cell + 4, ops, target, at.slot + 2, node));
++    tag := TypedCell(WordStorage, 0, -1);
++    tag.variant = first;
++    cells: Cell[] = [TypedCell(UnionStorage, 0, binding.record), tag, TypedCell(IntStorage, 0, -1),
++                     TypedCell(BoolStorage, 0, -1), TypedCell(value.storage, value.container, value.record)];
++    host: Host = {command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
++                   result_count: 1, written: false};
++    roots: Root[] = [];
++    if (Pointer(value.storage, value.container)) {
++        root: Root = {slot: at.slot + 3, storage: value.storage, container: value.container, record: value.record};
++        roots.append(root);
++    }
++    return Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], 0,
++                         Typed(at.slot + 3, value.storage, value.container, value.record), NoValue(), []);
++}
+diff --git a/tools/compiler/package_compiler/Tasks.chibi b/tools/compiler/package_compiler/Tasks.chibi
+new file mode 100644
+index 000000000..52e446e0c
+--- /dev/null
++++ b/tools/compiler/package_compiler/Tasks.chibi
+@@ -0,0 +1,219 @@
++package package_compiler
++
++import snapshot "project:source_snapshot"
++import binding "project:lexical_binding"
++
++// These are the existing persistent command identities from execution/task.h.
++TaskCommandBase: uint64 : 0x4348494900000100;
++DelayCommand: int : 1;
++YieldCommand: int : 2;
++JoinCommand: int : 3;
++CancelCommand: int : 4;
++RunningCommand: int : 5;
++CancelAfterCommand: int : 6;
++SuspendEffect: int : 16;
++
++TaskCommandNode :: (command: int, syntax_node: int) -> uint64 {
++    return binding.ID("task-command", format_text("{}:{}", command, syntax_node));
++}
++// The native analyzer identifies waiting functions from their own await/yield
++// syntax. An unawaited call starts independent work and never makes its caller
++// wait. Nested declarations likewise have their own suspension contract.
++WaitingBody :: (forest: snapshot.SnapshotNode[], body: int) -> bool {
++    pending: int[] = [body];
++    top: int = 1;
++    while (top > 0) {
++        top -= 1;
++        node := pending[top];
++        if (Is(forest, node, "yield_statement") || Is(forest, node, "await_expression")) { return true; }
++        if (node != body && (Is(forest, node, "function_declaration") || Is(forest, node, "macro_declaration"))) {
++            continue;
++        }
++        child := forest[node].first_child;
++        while (child >= 0) {
++            if (top < length(pending)) { pending[top] = child; }
++            else { pending.append(child); }
++            top += 1;
++            child = forest[child].next_sibling;
++        }
++    }
++    return false;
++}
++WaitingCallables :: (forest: snapshot.SnapshotNode[], callables: Callable[]) -> Callable[] {
++    marked := callables;
++    index: int = 0;
++    while (index < length(marked)) {
++        row := marked[index];
++        row.waits = WaitingBody(forest, Field(forest, row.node, "body"));
++        marked[index] = row;
++        index += 1;
++    }
++    return marked;
++}
++// Parentheses do not change whether a call is immediately awaited. The call
++// runs as an ordinary invocation in that case, preserving direct-await results.
++ImmediatelyAwaited :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
++    at := node;
++    parent := forest[at].parent;
++    while (Is(forest, parent, "parenthesized_expression")) { at = parent; parent = forest[at].parent; }
++    return Is(forest, parent, "await_expression") && Field(forest, parent, "value") == at;
++}
++// One registry command. Its arguments and result keep body-cell coordinates;
++// assembly gives commands their separate runtime banks and remaps row indices.
++TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Value[], top: int,
++                    item: Work, command: int, success_tag: uint64, result: Value, ops: Ops,
++                    target: Target, at: Bases) -> Step {
++    node := forest[item.node];
++    if (target.error_status_offset <= 0) {
++        return Fail(forest, item.node, document, "task lowering needs the target error-status offset");
++    }
++    code: Code[] = [];
++    slots: Slot[] = [];
++    locals: Slot[] = [];
++    cells: Cell[] = [];
++    hosts: Host[] = [];
++    roots: Root[] = [];
++    calls: Invocation[] = [];
++    bound: Name[] = [];
++    next: Work[] = [];
++    marks: int[] = [];
++    count: int = 0;
++    popped: int = 0;
++    if (command != YieldCommand && command != DelayCommand) {
++        handle := values[top - 1];
++        if (command == CancelAfterCommand) { handle = values[top - 2]; }
++        if (!Single(handle, TaskStorage)) { return Fail(forest, item.node, document, "task operation needs a task handle"); }
++        cells.append(TypedCell(TaskStorage, 0, -1));
++        write := Instruction(ops.command_argument, TaskStorage, 0, handle.slot, 0, at.cell, node);
++        write.offset = target.payload_offset;
++        code.append(write);
++        count = 1;
++        popped = 1;
++    }
++    if (command == JoinCommand) {
++        tag_cell := TypedCell(WordStorage, 0, -1);
++        tag_cell.constant = success_tag;
++        cells.append(tag_cell);
++        count = 2;
++    }
++    if (command == CancelAfterCommand || command == DelayCommand) {
++        duration := values[top - 1];
++        if (!Single(duration, DoubleStorage)) { return Fail(forest, item.node, document, "cancellation duration needs a double"); }
++        cells.append(TypedCell(DoubleStorage, 0, -1));
++        write := Instruction(ops.command_argument, DoubleStorage, 0, duration.slot, 0, at.cell + count, node);
++        write.offset = target.payload_offset;
++        code.append(write);
++        count += 1;
++        popped += 1;
++    }
++    result_count: int = 0;
++    if (result.storage > 0) {
++        result_count = 1;
++        cells.append(TypedCell(result.storage, result.container, result.record));
++    }
++    operation: Host = {intrinsic: 0, command: command, syntax_node: item.node,
++                       linked: -1, first: at.cell, result_first: at.cell + count, result_count: result_count,
++                       written: false};
++    hosts.append(operation);
++    command_node := TaskCommandNode(command, item.node);
++    begin := Instruction(ops.command_begin, 0, 0, 0, 0, at.host, node);
++    begin.payload = command_node;
++    code.append(begin);
++    if (command != RunningCommand) {
++        // Match native await_command: synchronously completed commands proceed
++        // in this activation; only a pending request creates a suspension.
++        slots.extend([ValueLocal(IntStorage), ValueLocal(IntStorage), ValueLocal(BoolStorage)]);
++        status := Instruction(ops.context, IntStorage, at.slot, 0, 0, 0, node);
++        status.offset = target.error_status_offset;
++        code.append(status);
++        code.append(ConstantCode(ops, IntStorage, 0, at.slot + 1, node));
++        code.append(Instruction(ops.gt, IntStorage, at.slot + 2, at.slot, at.slot + 1, -1, node));
++        code.append(Instruction(ops.branch_if, 0, 0, at.slot + 2, 0, at.pc + length(code) + 2, node));
++        code.append(Instruction(ops.jump, 0, 0, 0, 0, at.pc + length(code) + 2, node));
++        suspend := Instruction(ops.suspend, 0, 0, 0, 0, 0, node);
++        suspend.payload = command_node;
++        code.append(suspend);
++    }
++    produced := NoValue();
++    if (Is(forest, item.node, "await_expression")) { produced = Typed(-1, -1, 0, -1); }
++    if (result_count != 0) {
++        loaded := at.slot + length(slots);
++        result_slot: Slot = {storage: SlotStorage(result.storage, result.container, target),
++                             kind: SlotKind(result.storage, result.container)};
++        slots.append(result_slot);
++        read := Instruction(ops.command_result, SlotStorage(result.storage, result.container, target), loaded,
++                            at.cell + count, 0, 0, node);
++        read.offset = target.payload_offset;
++        code.append(read);
++        produced = Typed(loaded, result.storage, result.container, result.record);
++        if (result.storage == UnionStorage) {
++            empty := at.slot + length(slots);
++            slots.append(ValueLocal(UnionStorage));
++            code.append(ConstantCode(ops, UnionStorage, 0, empty, node));
++            clear := Instruction(ops.command_output, UnionStorage, 0, empty, 0, at.cell + count, node);
++            clear.offset = target.payload_offset;
++            code.append(clear);
++        }
++    }
++    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, NoValue(), marks);
++}
++
++// Task syntax delegates to the same commands used by native lowering. Direct
++// authored await returns its declared values; handle await returns the typed
++// success-or-Cancelled union supplied by TaskResults.
++TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
++             params: Param[], types: TypeDecl[], names: Name[], package: int, values: Value[], top: int,
++             item: Work, ops: Ops, target: Target, at: Bases) -> Step {
++    kind := forest[item.node].kind;
++    if (kind == "yield_statement") {
++        return TaskCommandStep(forest, document, values, top, item, YieldCommand, 0, NoValue(), ops, target, at);
++    }
++    if (item.phase == 0) {
++        next: Work[] = [];
++        if (kind == "cancel_statement") {
++            next.append(Visit(Field(forest, item.node, "value")));
++            duration := Field(forest, item.node, "duration");
++            phase: int = 1;
++            if (duration >= 0) { next.append(Expect(duration, DoubleStorage, 0, -1)); phase = 2; }
++            next.append(Resume(item.node, phase, 0, 0));
++        } else {
++            value := Unparenthesized(forest, Field(forest, item.node, "value"));
++            if (Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, names, package, value) < 0) {
++                callee := Field(forest, value, "function");
++                if (Is(forest, callee, "identifier") && NameMatches(Text(forest, text, callee), "Delay")) {
++                    arguments := Members(forest, Field(forest, value, "arguments"));
++                    if (length(arguments) != 1) { return Fail(forest, value, document, "Delay requires one duration"); }
++                    next.append(Expect(arguments[0], DoubleStorage, 0, -1));
++                    next.append(Resume(item.node, 3, 0, 0));
++                    return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
++                }
++                return Fail(forest, value, document, "await of native commands is not supported yet");
++            }
++            next.append(Visit(value));
++            next.append(Resume(item.node, 1, 0, 0));
++        }
++        return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
++    }
++    if (kind == "cancel_statement") {
++        command := CancelCommand;
++        if (item.phase == 2) { command = CancelAfterCommand; }
++        return TaskCommandStep(forest, document, values, top, item, command, 0, NoValue(), ops, target, at);
++    }
++    if (item.phase == 3) {
++        return TaskCommandStep(forest, document, values, top, item, DelayCommand, 0, NoValue(), ops, target, at);
++    }
++    awaited := Unparenthesized(forest, Field(forest, item.node, "value"));
++    value := values[top - 1];
++    if (Is(forest, awaited, "call_expression") && CalledFunction(forest, text, callables, names, package, awaited) >= 0) {
++        return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
++    }
++    if (!Single(value, TaskStorage) || value.record < 0 || value.record >= length(callables)) {
++        return Fail(forest, item.node, document, "await needs a task handle or authored call");
++    }
++    called := callables[value.record];
++    unsupported := TaskResultSupport(called, types, params);
++    if (unsupported != "") { return Fail(forest, item.node, document, unsupported); }
++    result := Typed(-1, UnionStorage, 0, TaskResultRecord(types, value.record));
++    return TaskCommandStep(forest, document, values, top, item, JoinCommand,
++                           TaskSuccessTag(called, types, params), result, ops, target, at);
++}
+diff --git a/tools/compiler/prepared_writer/Writer.chibi b/tools/compiler/prepared_writer/Writer.chibi
+index 92e9c8740..1ff808e60 100644
+--- a/tools/compiler/prepared_writer/Writer.chibi
++++ b/tools/compiler/prepared_writer/Writer.chibi
+@@ -176,6 +176,16 @@ pub Host :: struct {
+     outcome_first: int;
+     outcome_count: int;
+ }
++// Existing asynchronous runtime command; all indices address this function's banks.
++pub Command :: struct {
++    capability: int;
++    abi: int;
++    first: int;
++    count: int;
++    node: int;
++    result_first: int;
++    result_count: int;
++}
+ pub Call :: struct {
+     function: int;
+     first: int;
+@@ -225,13 +235,18 @@ Stacks: int : 13;
+ Results: int : 14;
+ DataValues: int : 15;
+ Hosts: int : 16;
+-Calls: int : 17;
+-Definitions: int : 18;
+-Components: int : 19;
+-ComponentWrites: int : 20;
+-SourcePoints: int : 21;
+-SourceWatches: int : 22;
+-pub Tables: int : 23;
++Commands: int : 17;
++CommandArguments: int : 18;
++CommandArgumentKinds: int : 19;
++CommandResults: int : 20;
++CommandResultKinds: int : 21;
++Calls: int : 22;
++Definitions: int : 23;
++Components: int : 24;
++ComponentWrites: int : 25;
++SourcePoints: int : 26;
++SourceWatches: int : 27;
++pub Tables: int : 28;
+ pub Function :: struct {
+     argument_count: int;
+     result_count: int;
+@@ -273,7 +288,7 @@ pub Module :: union {
+            requirements: Requirement[], fields: Field[], event_declarations: Event[],
+            event_fields: EventField[], imports: Import[], functions: Function[], spans: Span[], roots: Root[],
+            instructions: Instruction[], locals: Local[], parameters: Parameter[], frames: Frame[],
+-           sources: Source[], results: ResultLayout[], data: Data[], hosts: Host[], calls: Call[],
++           sources: Source[], results: ResultLayout[], data: Data[], hosts: Host[], commands: Command[], calls: Call[],
+            references: Reference[], components: Component[], points: Point[], watches: Watch[],
+            states: State[], entries: Entry[])
+ }
+@@ -463,7 +478,7 @@ pub Write :: (module: Module) -> byte[] {
+     switch module {
+         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
+                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
+-                     sources, results, data, hosts, calls, references, components, points, watches, states,
++                     sources, results, data, hosts, commands, calls, references, components, points, watches, states,
+                      entries):
+             // Nested values follow their parent, so encoding from the last
+             // value back finds every nested value already in the pool.
+@@ -521,13 +536,14 @@ pub Write :: (module: Module) -> byte[] {
+                     bytes.extend(Ints([span.count]));
+                     item := span.first;
+                     last := span.first + span.count;
+-                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults) {
++                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults ||
++                        table == CommandArguments || table == CommandResults) {
+                         while (item < last) {
+                             bytes.extend(slice(pool, starts[item], sizes[item]));
+                             item += 1;
+                         }
+                     } else if (table == ArgumentKinds || table == ResultKinds || table == Slots ||
+-                               table == SlotKinds) {
++                               table == SlotKinds || table == CommandArgumentKinds || table == CommandResultKinds) {
+                         bytes.extend(Ints(slice(ints, span.first, span.count)));
+                     } else if (table == Roots) {
+                         while (item < last) {
+@@ -587,8 +603,17 @@ pub Write :: (module: Module) -> byte[] {
+                             bytes.extend(HostBytes(hosts[item], wide));
+                             item += 1;
+                         }
+-                        // Queries, commands and their banks follow host calls; calls follow them.
+-                        bytes.extend(Zeros(6));
++                        // No query rows. Commands and their banks follow separately.
++                        bytes.extend(Zeros(1));
++                    } else if (table == Commands) {
++                        while (item < last) {
++                            command := commands[item];
++                            bytes.extend(Words([wide[command.capability], wide[command.abi], 0, 0]));
++                            bytes.extend(Text("", false));
++                            bytes.extend(Words([Zig(command.first), Zig(command.count), wide[command.node], 0,
++                                                Zig(command.result_first), Zig(command.result_count), 0]));
++                            item += 1;
++                        }
+                     } else if (table == Calls) {
+                         while (item < last) {
+                             bytes.extend(CallBytes(calls[item], references[calls[item].function], wide));
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index b37058df1..af1024a32 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -3637,6 +3637,8 @@ pub Substitutions :: (target: string) -> string[] {
+             "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
+             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
+             "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
++            "CHIBI_PACKAGE_COMPILER_TASKS_BYTES=bytes:tools/compiler/package_compiler/Tasks.chibi",
++            "CHIBI_PACKAGE_COMPILER_TASKRESULTS_BYTES=bytes:tools/compiler/package_compiler/TaskResults.chibi",
+             "CHIBI_PACKAGE_COMPILER_STEPS_BYTES=bytes:tools/compiler/package_compiler/Steps.chibi",
+             "CHIBI_PACKAGE_COMPILER_TREE_BYTES=bytes:tools/compiler/package_compiler/Tree.chibi",
+             "CHIBI_PACKAGE_GRAPH_BYTES=bytes:tools/compiler/package_graph/Graph.chibi",

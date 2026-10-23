@@ -1,0 +1,54 @@
+Source edit kind 0 rejected: Incompatible types: expected double, got string
+Source edit kind 0 rejected: Provide exactly one value expression
+Source edit kind 0 rejected: Source changed; refresh this gesture's semantic generation
+Source edit kind 34 rejected: Incompatible types: expected double, got string
+Source edit kind 34 rejected: Choose a declared variable
+Source edit kind 35 rejected: Operation has no compatible typed operands
+Source edit kind 35 rejected: Choose one valid variable type
+Source edit kind 35 rejected: Choose one valid variable type
+Source edit kind 1 rejected: Incompatible types: expected double, got string
+Source edit kind 20 rejected: Supply the required capability input before creating this call
+Source edit kind 1 rejected: Name this producer's result before connecting it; the connection would evaluate it twice
+Source edit kind 1 rejected: Connection would resolve a producer name to a different declaration in this scope
+Source edit kind 4 rejected: Unknown value 'current'
+Source edit kind 9 rejected: Paste or create complete records within the selected lexical body
+Source edit kind 26 rejected: Only action declarations support disabled source syntax
+Source edit kind 23 rejected: Renaming would capture or change a resolved reference
+Source edit kind 5 rejected: Source literal does not match the declared value type
+Source edit kind 18 rejected: This required input needs an explicit replacement value
+Source edit kind 30 rejected: Extraction cannot change the owning callable of Return
+Source edit kind 30 rejected: Extraction must retain persistent or deferred storage identity
+Source edit kind 30 rejected: Extraction must retain persistent or deferred storage identity
+Source edit kind 32 rejected: Inlining reference parameters requires local reference aliases
+Source edit kind 32 rejected: Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition
+Source edit kind 32 rejected: Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition
+Source edit kind 32 rejected: Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition
+Source edit kind 32 rejected: Inline a whole call statement or complete assigned call result
+Source edit kind 32 rejected: Caller shadows a resolved name used by the authored definition
+Source edit kind 32 rejected: Inlining must retain callable-owned persistent or deferred storage
+Source edit kind 32 rejected: Inlining must retain callable-owned persistent or deferred storage
+Source edit kind 28 rejected: Signature changes would invalidate or capture a body reference
+Source edit kind 28 rejected: Provide one callable signature within 64 KiB: (parameters) or (parameters) -> (results)
+Source edit kind 29 rejected: Connection would resolve a producer name to a different declaration in this scope
+Running: source_capability_creation_uses_properties_operators_and_positional_arguments (OK) (0.002232 secs)
+Running: source_expression_edits_validate_value_scope_and_generation (OK) (0.000406 secs)
+Running: source_setter_value_edits_preserve_the_destination (OK) (0.000255 secs)
+Running: source_variable_get_set_creation_uses_declared_state_and_checked_values (OK) (0.001732 secs)
+Running: source_variable_creation_uses_identifiers_and_keeps_nonliteral_defaults_editable (OK) (0.000775 secs)
+Running: source_variable_types_preserve_comments_values_and_checked_uses (OK) (0.000870 secs)
+Running: source_retype_compact_inferred_retention_preserves_owner (OK) (0.000357 secs)
+Running: source_connections_reference_retained_results_and_reject_repeated_effects (OK) (0.001084 secs)
+Running: source_connections_read_listed_payload_fields (OK) (0.000099 secs)
+Running: source_created_handlers_list_payload_fields (OK) (0.000189 secs)
+Running: source_statement_moves_keep_comments_and_validate_declaration_order (OK) (0.000354 secs)
+Running: source_fused_call_edits_select_expression_or_statement_by_operation (OK) (0.001236 secs)
+Running: source_fused_action_call_mute_edits_its_owned_declaration (OK) (0.000434 secs)
+Running: source_selection_transactions_preserve_names_and_comments (OK) (0.000820 secs)
+Running: source_optional_arguments_and_typed_values_are_checked_atomically (OK) (0.000806 secs)
+Running: source_extraction_preserves_ref_inputs_and_escaping_locals (OK) (0.001335 secs)
+Running: source_ref_calls_are_created_and_inlining_is_rejected (OK) (0.000330 secs)
+Running: source_inline_spells_char_parameters (OK) (0.000454 secs)
+Running: source_inline_renames_resolved_locals_and_preserves_early_return (OK) (0.001968 secs)
+Running: source_signatures_and_bindings_preserve_resolved_body_and_scope (OK) (0.000758 secs)
+===============================================================
+Summary: Passed: 20 Failed: 0 Total: 20 Suites: 0 Asserts: 358

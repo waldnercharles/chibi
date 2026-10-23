@@ -1,0 +1,9 @@
+stage one behavior Tasks rejected: Invalid string literal at 1:334
+(FAILED: ../test/language/package_compiler_chibi.c (4824): stage_one_behavior(b, "Tasks", source, &module))
+Running: package_compiler_compiles_the_other_behaviors (OK) (6.986275 secs)
+Running: package_compiler_keeps_text_state_per_owner (OK) (5.464329 secs)
+Running: package_compiler_runs_task_sequencing_and_cancellation 
+Running: package_compiler_rejects_unhandled_task_result_shapes (OK) (4.466014 secs)
+===============================================================
+Summary: Passed: 3 Failed: 1 Total: 4 Suites: 0 Asserts: 29094
+Test command wall time: 26.554s; includes in-test fixture setup; external configuration/build excluded.

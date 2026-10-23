@@ -1,0 +1,18 @@
+/compiler/facts/Main.chibi:6:60: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:7:47: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:8:39: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:10:48: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:12:56: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:12:69: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:13:76: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:15:61: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:16:72: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:16:76: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:17:93: Managed pointer requires a writable local or record field
+/compiler/facts/Main.chibi:17:102: Managed pointer requires a writable local or record field
+(FAILED: test/language/compiler_fixture.c (213): authoring_packages_valid(fixture->owners[b]))
+(FAILED: test/language/package_compiler_chibi.c (2515): compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 4 : 3))
+(FAILED: test/language/package_compiler_chibi.c (3267): ran)
+Running: package_compiler_builds_runnable_collection_packages 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 2436

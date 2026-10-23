@@ -1,0 +1,102 @@
+(lldb) target create "build-release/test/language/test_language"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64).
+(lldb) settings set -- target.run-args  "--package-compiler-chibi-collections-compiled"
+(lldb) run
+Process 66844 launched: '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64)
+Process 66844 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x8)
+       frame #0: 0x0000000183b51504 libsystem_platform.dylib`_platform_memmove + 420
+libsystem_platform.dylib`_platform_memmove:
+->  0x183b51504 <+420>: ldr    x6, [x1], #0x8
+    0x183b51508 <+424>: str    x6, [x3], #0x8
+    0x183b5150c <+428>: subs   x2, x2, #0x8
+    0x183b51510 <+432>: b.hs   0x183b51504               ; <+420>
+Target 0: (test_language) stopped.
+(lldb) thread backtrace all
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x8)
+   * frame #0: 0x0000000183b51504 libsystem_platform.dylib`_platform_memmove + 420
+     frame #1: 0x00000001003f369c test_language`execution_machine_step + 6364
+     frame #2: 0x000000010042cae8 test_language`behavior_function_run_interpreted + 108
+     frame #3: 0x0000000100425880 test_language`behavior_function_run_once + 292
+     frame #4: 0x000000010015cfd8 test_language`invoke + 2956
+     frame #5: 0x000000010015c358 test_language`compiler_host_invoke + 112
+     frame #6: 0x000000010016fb88 test_language`run + 264
+     frame #7: 0x000000010016f3b0 test_language`run_samples + 9200
+     frame #8: 0x0000000100001a70 test_language`pu_run_test + 96
+     frame #9: 0x000000010016a830 test_language`test_language_package_compiler_chibi_collections_compiled + 44
+     frame #10: 0x0000000100003530 test_language`main + 6064
+     frame #11: 0x000000018377c4e4 dyld`start + 6992
+(lldb) frame select 1
+frame #1: 0x00000001003f369c test_language`execution_machine_step + 6364
+test_language`execution_machine_step:
+->  0x1003f369c <+6364>: mov    w0, #0x7fffffff           ; =2147483647 
+    0x1003f36a0 <+6368>: mov    x16, x24
+    0x1003f36a4 <+6372>: mov    x17, x25
+    0x1003f36a8 <+6376>: b      0x1003f2d58               ; <+3992>
+(lldb) memory read --format x --size 8 --count 7 $x19
+0x16fdfc9a8: 0x0000000b41782e00 0x000000016fdfcb80
+0x16fdfc9b8: 0x0000000b47461c00 0x0000000000000000
+0x16fdfc9c8: 0x0000000000000005 0x000000000000002e
+0x16fdfc9d8: 0x0000000b44a68010
+(lldb) memory read --format x --size 4 --count 30 $x21
+0xb44a695a0: 0x0000004f 0x00000013 0x00000021 0x00000020
+0xb44a695b0: 0x00000000 0x00000000 0x00000000 0x00000054
+0xb44a695c0: 0xffffffff 0x00000000 0x00000008 0x00000000
+0xb44a695d0: 0x00000100 0x00000000 0x00000000 0x00000000
+0xb44a695e0: 0x00000000 0x00000000 0x00000000 0x00000000
+0xb44a695f0: 0x00000000 0x00000000 0x00000000 0x00000000
+0xb44a69600: 0x00000000 0x00000000 0x00000000 0x00000000
+0xb44a69610: 0x00000000 0x00000000
+(lldb) frame select 6
+frame #6: 0x000000010016fb88 test_language`run + 264
+test_language`run:
+->  0x10016fb88 <+264>: mov    x20, x0
+    0x10016fb8c <+268>: ldr    w21, [x23, #0x148]
+    0x10016fb90 <+272>: cmp    w21, #0x0
+    0x10016fb94 <+276>: csel   w8, wzr, w0, ne
+(lldb) register read x19 x20 x21 x22 x23 x24 x25
+     x19 = 0x00000001009824c0  test_language`samples + 18024
+     x20 = 0x0000000b20570000
+     x21 = 0xb51c790cb2e2aaeb
+     x22 = 0x000000010045544b  "[]"
+     x23 = 0x0000000100a76420  test_language`_MergedGlobals
+     x24 = 0x0000000000000001
+     x25 = 0x00000001004f2f0b  "Compiled"
+(lldb) disassemble --frame --count 35
+test_language`run:
+    0x10016fa80 <+0>:   stp    x24, x23, [sp, #-0x40]!
+    0x10016fa84 <+4>:   stp    x22, x21, [sp, #0x10]
+    0x10016fa88 <+8>:   stp    x20, x19, [sp, #0x20]
+    0x10016fa8c <+12>:  stp    x29, x30, [sp, #0x30]
+    0x10016fa90 <+16>:  add    x29, sp, #0x30
+    0x10016fa94 <+20>:  sub    sp, sp, #0x230
+    0x10016fa98 <+24>:  mov    x19, x2
+    0x10016fa9c <+28>:  adrp   x8, 2127
+    0x10016faa0 <+32>:  ldr    x8, [x8, #0xfc0]
+    0x10016faa4 <+36>:  ldr    x8, [x8]
+    0x10016faa8 <+40>:  stur   x8, [x29, #-0x38]
+    0x10016faac <+44>:  cmp    w3, #0x0
+    0x10016fab0 <+48>:  mov    w20, #0x1                 ; =1 
+    0x10016fab4 <+52>:  cinc   w2, w20, eq
+    0x10016fab8 <+56>:  add    x21, sp, #0x28
+    0x10016fabc <+60>:  add    x3, sp, #0x28
+    0x10016fac0 <+64>:  mov    w4, #0x100                ; =256 
+    0x10016fac4 <+68>:  bl     0x10015bfc4               ; compiler_host_load
+    0x10016fac8 <+72>:  adrp   x22, 2311
+    0x10016facc <+76>:  str    x0, [x22, #0x420]
+    0x10016fad0 <+80>:  cbnz   x0, 0x10016fafc           ; <+124>
+    0x10016fad4 <+84>:  adrp   x8, 2127
+    0x10016fad8 <+88>:  ldr    x8, [x8, #0xfc8]
+    0x10016fadc <+92>:  ldr    x0, [x8]
+    0x10016fae0 <+96>:  str    x21, [sp]
+    0x10016fae4 <+100>: adrp   x1, 915
+    0x10016fae8 <+104>: add    x1, x1, #0x70b            ; "package compiler load: %s\n"
+    0x10016faec <+108>: bl     0x100452e80               ; symbol stub for: fprintf
+    0x10016faf0 <+112>: ldr    x8, [x22, #0x420]
+    0x10016faf4 <+116>: cmp    x8, #0x0
+    0x10016faf8 <+120>: cset   w20, ne
+    0x10016fafc <+124>: adrp   x1, 901
+    0x10016fb00 <+128>: add    x1, x1, #0xdc0            ; "host"
+    0x10016fb04 <+132>: adrp   x2, 903
+    0x10016fb08 <+136>: add    x2, x2, #0x99b            ; "test/language/package_compiler_chibi.c"
+Test command wall time: 14.741s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,80 @@
+{
+  "base": "81702f624bd025f4e3ae43daa5fd86fc89c48178",
+  "source_tree": "93c325e56332df8d38c501269ed47c21d37f4e8c",
+  "patch_sha256": "ed4b10686eb6c685dd410fd9df4aed243a177ceea0514aac3892299d6c9903ad",
+  "status": "Source review only; no builds, executed tests, bootstrap regeneration, commit or push for this delta. Existing task prerequisite; no dependency inference.",
+  "files": [
+    {
+      "path": "PLAN.md",
+      "sha256": "e40cab46d8b0181288e7373a8af091d6dbf981acaaec7a067d41b7e761e73529"
+    },
+    {
+      "path": "docs/language-friction.md",
+      "sha256": "3491b4901c1add2bbccd731d6e7dc5714721650e29572f2b5c9ff03113843d6d"
+    },
+    {
+      "path": "docs/value-runtime-integration.md",
+      "sha256": "58deb8c758f2a66536bd6d52c1911c4845fa183929680baa0a4c1c59da3b2cd7"
+    },
+    {
+      "path": "docs/value-semantics.md",
+      "sha256": "27273934506f951f191ce9a25093df0369e5ac617c5c8406c380b0ec3bb70a9b"
+    },
+    {
+      "path": "src/toolchain/compiler_target.c",
+      "sha256": "2197f01220a0a0b871d2a662f47e8fe07474350b0f3eb574b84f9609caeca949"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "sha256": "531f2bc1c2cd71f8553c658db5ac97a9729f88400b63c5e1b0b3d3745ffe2dc0"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.cmake",
+      "sha256": "412657f8591615141f0fe334904dea640f4ea296c2da0ced38af909ffe6254f9"
+    },
+    {
+      "path": "test/language/package_compiler_chibi_source.h.in",
+      "sha256": "f0cde7db30c1b2c2e9ae3288feb2c95f18578ae2c35c525e9edb88fb9b0e96c0"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Prepare.chibi",
+      "sha256": "a2d8b1d9541b0a42dd6741e3f08c8311544607119a082ea51538509b74e3296b"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Behavior.chibi",
+      "sha256": "c63ce316ce6ef763901125d01e18d21bbe5fce7ae0d1f9e24085e075a32a653e"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "sha256": "ad60da2ba6a164bcb6aba1b9611bacf37bd06d5426ae1c264e372f50fe8219c1"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Compile.chibi",
+      "sha256": "8fcbf548e7cac0afaaf2fcb28c7fdd34c42fa2761fa62977c4b8b6ee45182cfd"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Pointers.chibi",
+      "sha256": "0f5325d755bda3ace77e1f4d3fd6e74ada9bc665b2203d5940afe2370778282a"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Steps.chibi",
+      "sha256": "b08077852dc5c14e84f3adf7fc4d1366bdf755781227e395d2eaad272caa06f4"
+    },
+    {
+      "path": "tools/compiler/package_compiler/TaskResults.chibi",
+      "sha256": "04754ab21fd9ca77c55b5591bfffb0aaaa5793a87bf75dd65d585d9ee5c29bbf"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Tasks.chibi",
+      "sha256": "210262c706abb9f4bdb5c5ca817b3a3bbb15d4add77f8bbd70cd16e98971a4c9"
+    },
+    {
+      "path": "tools/compiler/prepared_writer/Writer.chibi",
+      "sha256": "9151ce777234b5524c4260f2535c3fca08b83e2fb73d732142a6d2bd9add0d64"
+    },
+    {
+      "path": "tools/graph/engine/Targets.chibi",
+      "sha256": "87de7a0010af2b3b8d655a041dbc2f2370bc130607886a4ded019067ef70a23f"
+    }
+  ]
+}

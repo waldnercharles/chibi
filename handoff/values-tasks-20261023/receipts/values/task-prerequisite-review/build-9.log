@@ -1,0 +1,7 @@
+[0/2] Re-checking globbed directories...
+[1/3] Building C object test/language/CMakeFiles/test_language.dir/prepared_writer_chibi.c.o
+[2/3] Linking CXX executable test/language/test_language
+ld: warning: ignoring duplicate libraries: '-lc++', 'sdk/language/libchibi_language_syntax.a', 'sdk/libchibi_arithmetic_capabilities.a', 'sdk/libchibi_array_capabilities.a', 'sdk/libchibi_asset_text.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_core_capabilities.a', 'sdk/libchibi_entity_runtime.a', 'sdk/libchibi_field_capabilities.a', 'sdk/libchibi_field_catalog.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_compilation.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_json.a', 'sdk/libchibi_math_capabilities.a', 'sdk/libchibi_mesh_runtime.a', 'sdk/libchibi_native_prepared.a', 'sdk/libchibi_prototype_document.a', 'sdk/libchibi_scene_document.a', 'sdk/libchibi_source_presentation.a', 'sdk/libchibi_state_capabilities.a', 'sdk/libchibi_text_capabilities.a', 'sdk/libchibi_ui_document.a', 'sdk/libchibi_ui_documents.a', 'sdk/libchibi_ui_runtime.a', 'sdk/libchibi_value_document.a'
+real 1.78
+user 0.48
+sys 0.37

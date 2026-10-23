@@ -1,0 +1,179 @@
+{
+  "branch": "codex/wip-values-tasks-tested-20261023",
+  "commit": "f764c07cab5a6371adcfacc3297ed96ba4ea3300",
+  "tree": "6353f5a382785977b0b9948cfcbcde37facd0d0c",
+  "parent": "81702f624bd025f4e3ae43daa5fd86fc89c48178",
+  "comparison_base": "81702f624bd025f4e3ae43daa5fd86fc89c48178",
+  "changed_paths": [
+    "PLAN.md",
+    "docs/language-friction.md",
+    "docs/value-runtime-integration.md",
+    "docs/value-semantics.md",
+    "src/toolchain/compiler_target.c",
+    "test/language/package_compiler_chibi.c",
+    "test/language/package_compiler_chibi.cmake",
+    "test/language/package_compiler_chibi_source.h.in",
+    "test/language/prepared_writer_chibi.c",
+    "tools/compiler/bounded_compiler/Prepare.chibi",
+    "tools/compiler/package_compiler/Behavior.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Maps.chibi",
+    "tools/compiler/package_compiler/Pointers.chibi",
+    "tools/compiler/package_compiler/References.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/compiler/package_compiler/TaskResults.chibi",
+    "tools/compiler/package_compiler/Tasks.chibi",
+    "tools/compiler/prepared_writer/Writer.chibi",
+    "tools/graph/engine/Targets.chibi"
+  ],
+  "files": [
+    {
+      "path": "PLAN.md",
+      "mode": "100644",
+      "blob": "5e5e5bb568e8266b4ef61eabd744ec5ed09d574d",
+      "bytes": 106299,
+      "sha256": "0de8a0e11fb1b70fa95114e1318c1528ab8b6feee481ce12b35a6cf61387a7f1"
+    },
+    {
+      "path": "docs/language-friction.md",
+      "mode": "100644",
+      "blob": "610ae52a2d8ab3cb3882cfd2d51867e7b9155faf",
+      "bytes": 59904,
+      "sha256": "3491b4901c1add2bbccd731d6e7dc5714721650e29572f2b5c9ff03113843d6d"
+    },
+    {
+      "path": "docs/value-runtime-integration.md",
+      "mode": "100644",
+      "blob": "2c67dbfe823ac3cc3e9077807fc5fa0e8a0798d7",
+      "bytes": 14176,
+      "sha256": "58deb8c758f2a66536bd6d52c1911c4845fa183929680baa0a4c1c59da3b2cd7"
+    },
+    {
+      "path": "docs/value-semantics.md",
+      "mode": "100644",
+      "blob": "4bc730a47e17d83f4d890f0a83c70dbae56e7be7",
+      "bytes": 19845,
+      "sha256": "27273934506f951f191ce9a25093df0369e5ac617c5c8406c380b0ec3bb70a9b"
+    },
+    {
+      "path": "src/toolchain/compiler_target.c",
+      "mode": "100644",
+      "blob": "a40b7af6d33cbda99443296c26821029ec725c87",
+      "bytes": 15333,
+      "sha256": "2197f01220a0a0b871d2a662f47e8fe07474350b0f3eb574b84f9609caeca949"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "mode": "100644",
+      "blob": "517ec07b8c06533cb99137902605df1124c005bf",
+      "bytes": 226870,
+      "sha256": "e25ad6aca0fa2665c1c999975cfbc298769ad1e279f1aeb2fa762a711a6ae43e"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.cmake",
+      "mode": "100644",
+      "blob": "9edbf535b34d7c75772355789f87d4a086bdd418",
+      "bytes": 931,
+      "sha256": "412657f8591615141f0fe334904dea640f4ea296c2da0ced38af909ffe6254f9"
+    },
+    {
+      "path": "test/language/package_compiler_chibi_source.h.in",
+      "mode": "100644",
+      "blob": "9982d83728aafa4f8965ee19debb4114c88b2369",
+      "bytes": 3659,
+      "sha256": "f0cde7db30c1b2c2e9ae3288feb2c95f18578ae2c35c525e9edb88fb9b0e96c0"
+    },
+    {
+      "path": "test/language/prepared_writer_chibi.c",
+      "mode": "100644",
+      "blob": "4aa2af32e64a8af886fba297229c4bdabad78dcc",
+      "bytes": 44161,
+      "sha256": "432ffc72334882644d709fa71f199f7f6a41f36d351fa9f3c656fb8e36737cce"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Prepare.chibi",
+      "mode": "100644",
+      "blob": "8d3fe01a24ba6ef35fda46f581a37fff55aa2332",
+      "bytes": 7966,
+      "sha256": "a2d8b1d9541b0a42dd6741e3f08c8311544607119a082ea51538509b74e3296b"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Behavior.chibi",
+      "mode": "100644",
+      "blob": "08579ed69a484c017e8bb321052bb77f79b937c6",
+      "bytes": 28130,
+      "sha256": "0a0e1d31e3d22d823e109e43bbb6ee3f38f477b8d987161587f2fab862b56cd3"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "mode": "100644",
+      "blob": "f57aeea942ec9ea9257729d323820122cacf34e8",
+      "bytes": 120686,
+      "sha256": "ad60da2ba6a164bcb6aba1b9611bacf37bd06d5426ae1c264e372f50fe8219c1"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Compile.chibi",
+      "mode": "100644",
+      "blob": "716bbd359da3a9e2dc0535c0134bc2946e7d77c0",
+      "bytes": 105591,
+      "sha256": "cd81d981edb14512ef6f8e727d9352a9ab9bb18cdeaa82b937df060618cd6232"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Maps.chibi",
+      "mode": "100644",
+      "blob": "11152a2ba1c223fde1eb296983b5888dc8c760ed",
+      "bytes": 26651,
+      "sha256": "36bd90a461472c97a3d268a2c9ab1a68e6e7591fadec1c7d3a709e04f7b206cf"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Pointers.chibi",
+      "mode": "100644",
+      "blob": "4d4c770c4614fac52c3b35b19958ffe36e7fab96",
+      "bytes": 43758,
+      "sha256": "4597b20426ea6348c6872d362f67eed2f27c2ccee4862852893397b6d6fa89b5"
+    },
+    {
+      "path": "tools/compiler/package_compiler/References.chibi",
+      "mode": "100644",
+      "blob": "794edb84457f163d5fc2b228b02c305e5e13a6f0",
+      "bytes": 28523,
+      "sha256": "9d9d49c2f599333e481fc46a79fb752fb41b4386ac4b868510b352a49c9f9036"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Steps.chibi",
+      "mode": "100644",
+      "blob": "c41a35e94254da21ed27611d02cd862a3d1b44a6",
+      "bytes": 202239,
+      "sha256": "aa825e645b2e948447bce53901cb2a4bfe83712781d819b21527fe5b33817d72"
+    },
+    {
+      "path": "tools/compiler/package_compiler/TaskResults.chibi",
+      "mode": "100644",
+      "blob": "d79f9d7a882a010ff858d0a2cd5da573b48d7c58",
+      "bytes": 10230,
+      "sha256": "4f5ca8ea4c5099491c68966f62e6974b9af849a2785b7708ff7287f46cfc0ce5"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Tasks.chibi",
+      "mode": "100644",
+      "blob": "52e446e0c170d71d65513eaf23c9dc14fb33af7d",
+      "bytes": 10963,
+      "sha256": "d9408ff3600b7f9b0a3de630e9a367896f8c8e78c62f72ff71e6c73e6a92f855"
+    },
+    {
+      "path": "tools/compiler/prepared_writer/Writer.chibi",
+      "mode": "100644",
+      "blob": "1ff808e609a0000ace1fce57d19a9fa95ee77c0e",
+      "bytes": 27473,
+      "sha256": "9151ce777234b5524c4260f2535c3fca08b83e2fb73d732142a6d2bd9add0d64"
+    },
+    {
+      "path": "tools/graph/engine/Targets.chibi",
+      "mode": "100644",
+      "blob": "af1024a32e0e666b4a2ac40bce1d032112774a9e",
+      "bytes": 228453,
+      "sha256": "87de7a0010af2b3b8d655a041dbc2f2370bc130607886a4ded019067ef70a23f"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+package_compiler/TaskResults.chibi[17]:123:13: Unexpected syntax
+(FAILED: ../test/language/compiler_fixture.c (182): false)
+(FAILED: ../test/language/package_compiler_chibi.c (2300): compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3))
+(FAILED: ../test/language/package_compiler_chibi.c (4695): prepare())
+package_compiler/TaskResults.chibi[17]:123:13: Unexpected syntax
+(FAILED: ../test/language/compiler_fixture.c (182): false)
+(FAILED: ../test/language/package_compiler_chibi.c (2300): compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3))
+(FAILED: ../test/language/package_compiler_chibi.c (4729): prepare())
+package_compiler/TaskResults.chibi[17]:123:13: Unexpected syntax
+(FAILED: ../test/language/compiler_fixture.c (182): false)
+(FAILED: ../test/language/package_compiler_chibi.c (2300): compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3))
+(FAILED: ../test/language/package_compiler_chibi.c (4780): prepare())
+package_compiler/TaskResults.chibi[17]:123:13: Unexpected syntax
+(FAILED: ../test/language/compiler_fixture.c (182): false)
+(FAILED: ../test/language/package_compiler_chibi.c (2300): compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3))
+(FAILED: ../test/language/package_compiler_chibi.c (4850): prepare())
+Running: package_compiler_compiles_the_other_behaviors 
+Running: package_compiler_keeps_text_state_per_owner 
+Running: package_compiler_runs_task_sequencing_and_cancellation 
+Running: package_compiler_rejects_unhandled_task_result_shapes 
+===============================================================
+Summary: Passed: 0 Failed: 4 Total: 4 Suites: 0 Asserts: 24
+Test command wall time: 0.701s; includes in-test fixture setup; external configuration/build excluded.

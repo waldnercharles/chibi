@@ -1,0 +1,4 @@
+compiler fixture failure: backend=bytecode package=project:prepared_writer entry=Write status=-106 returned=0 failure=other category=4 error_steps=2 context_steps=2 context_budget=200000000 call_budget=200000000 message=Union payload differs from the extraction type source=:0:0
+(FAILED: ../test/language/compiler_fixture.c (382): status == FLOW_OK && state->context.returned)
+prepared writer: backend=0 module=project:syntax_diagnostics native=88388 authored=-1 first difference=0
+Test command wall time: 0.267s; includes in-test fixture setup; external configuration/build excluded.

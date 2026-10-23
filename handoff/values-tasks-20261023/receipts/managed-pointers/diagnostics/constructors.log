@@ -1,0 +1,8 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: type_constructor_raw_facts_match_plans_and_selected_metadata (OK) (0.080143 secs)
+Running: type_constructor_actual_analyzer_facts_match (OK) (0.000628 secs)
+Running: type_constructor_pointer_preserves_complete_pointees (OK) (0.000362 secs)
+Running: type_constructor_results_and_metadata_outlive_producers (OK) (0.002372 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 18234
+Test command wall time: 0.197s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

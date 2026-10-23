@@ -1,0 +1,9 @@
+task backend 0 state flags: type 6 value 55 expected 58
+(FAILED: ../test/language/package_compiler_chibi.c (4855): value && value->type == PIN_I32 && value->i == expected[i])
+Running: package_compiler_compiles_the_other_behaviors (OK) (5.730283 secs)
+Running: package_compiler_keeps_text_state_per_owner (OK) (5.503135 secs)
+Running: package_compiler_runs_task_sequencing_and_cancellation 
+Running: package_compiler_rejects_unhandled_task_result_shapes (OK) (4.497417 secs)
+===============================================================
+Summary: Passed: 3 Failed: 1 Total: 4 Suites: 0 Asserts: 29111
+Test command wall time: 21.874s; includes in-test fixture setup; external configuration/build excluded.

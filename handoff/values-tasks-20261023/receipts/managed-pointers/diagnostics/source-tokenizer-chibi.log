@@ -1,0 +1,6 @@
+Running: source_tokenizer_corpus (OK) (0.478124 secs)
+Source tokenizer corpus: 161 files (2 rejected by Tree-sitter), 1493181 bytes, 259429 tokens, 898 terminators, 0 split >> or >=
+Running: source_tokenizer_sources (OK) (0.016078 secs)
+Running: source_tokenizer_cases (OK) (0.004779 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 10051

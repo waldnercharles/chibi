@@ -1,0 +1,10 @@
+breakpoint set -n box_detach
+breakpoint command add 1
+frame variable box->value box->kept box->holders
+expression -- *box->value
+continue
+DONE
+breakpoint set -n pointer_reference
+run --program
+frame variable *args
+bt 5

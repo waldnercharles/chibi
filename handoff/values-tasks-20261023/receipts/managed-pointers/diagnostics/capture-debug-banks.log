@@ -1,0 +1,47 @@
+(lldb) target create "build/test/language/test_language"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build/test/language/test_language' (arm64).
+(lldb) command source -s 0 '.chibi/managed-pointers/capture-debug-commands.lldb'
+Executing commands in '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/.chibi/managed-pointers/capture-debug-commands.lldb'.
+(lldb) breakpoint set -n box_detach
+Breakpoint 1: where = test_language`box_detach + 36 at program_tasks.c:178:47, address = 0x00000001022c5f70
+(lldb) breakpoint command add 1
+(lldb) breakpoint set -n pointer_reference
+Breakpoint 2: where = test_language`pointer_reference + 48 at intrinsics.c:1272:12, address = 0x0000000101ec8310
+(lldb) run --program
+warning: intrinsics.c: source file checksum mismatch between line table (1cd2888993cf8d759e1740df8b3fb41a) and file on disk ()
+Process 44854 launched: '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build/test/language/test_language' (arm64)
+Process 44854 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 2.1
+       frame #0: 0x0000000101ec8310 test_language`pointer_reference(storage=0x000061900000fdf0, args=0x0000617000007b60, count=1, out=0x0000617000007b88) at intrinsics.c:1272:12
+Target 0: (test_language) stopped.
+(lldb) frame variable *args
+(const pin_value) *args = {
+  type = PIN_POINTER
+   = {
+    b = false
+    i8 = '\0'
+    u8 = '\0'
+    i16 = 0
+    u16 = 0
+    i = 0
+    u = 0
+    i64 = 0
+    u64 = 0
+    f = 0
+    d = 0
+    str = 0x0000000000000000
+    text = NULL
+    ptr = 0x0000000000000000
+    e = 0
+  }
+  container = PIN_CONTAINER_SINGLE
+  type_name = 0x0000616000002318 "__pointer_11153757985688363525"
+  record = NULL
+}
+(lldb) bt 5
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 2.1
+   * frame #0: 0x0000000101ec8310 test_language`pointer_reference(storage=0x000061900000fdf0, args=0x0000617000007b60, count=1, out=0x0000617000007b88) at intrinsics.c:1272:12
+     frame #1: 0x0000000101fa8f8c test_language`execution_machine_step(m=0x000000016fdf2640, pc=12) at machine.c:439:38
+     frame #2: 0x000000010234fc44 test_language`behavior_function_run_interpreted(f=0x0000615000000d00, ctx=0x000061900000fa90) at vm.c:14:18
+     frame #3: 0x00000001022ef7e8 test_language`behavior_function_run_once(f=0x0000615000000d00, ctx=0x000061900000fa90, compiled=false) at runner.c:118:29
+     frame #4: 0x00000001022f03f8 test_language`behavior_function_run(f=0x0000615000000d00, ctx=0x000061900000fa90, compiled=false) at runner.c:134:12

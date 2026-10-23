@@ -1,0 +1,92 @@
+bounded compiler request: backend=0 case=unchanged original
+bounded compiler request: backend=0 case=unchanged repeat
+bounded compiler request: backend=0 case=changed expression
+bounded compiler request: backend=0 case=Boolean operators
+bounded compiler request: backend=0 case=signed minimum
+bounded compiler request: backend=0 case=wrapping addition
+bounded compiler request: backend=0 case=integer arithmetic
+bounded compiler request: backend=0 case=integer bits
+bounded compiler request: backend=0 case=ordered equality
+bounded compiler request: backend=0 case=ordered comparison
+bounded compiler request: backend=0 case=three-file comments and headers
+bounded compiler request: backend=0 case=source exactly at cap
+bounded compiler request: backend=0 case=24 expression rows
+bounded compiler request: backend=0 case=Boolean equality
+bounded compiler request: backend=0 case=syntax invalid
+bounded compiler request: backend=0 case=mixed package names
+bounded compiler request: backend=0 case=extra declaration
+bounded compiler request: backend=0 case=extra return statement
+bounded compiler request: backend=0 case=import
+bounded compiler request: backend=0 case=Boolean returned as int
+bounded compiler request: backend=0 case=int returned as Boolean
+bounded compiler request: backend=0 case=empty source arrays
+bounded compiler request: backend=0 case=source over cap
+bounded compiler request: backend=0 case=mismatched source arrays
+bounded compiler request: backend=0 case=four source files
+bounded compiler request: backend=0 case=function parameter
+bounded compiler request: backend=0 case=template function
+bounded compiler request: backend=0 case=two functions
+bounded compiler request: backend=0 case=floating literal
+bounded compiler request: backend=0 case=unsupported scalar result
+bounded compiler request: backend=0 case=untyped binary expression
+bounded compiler request: backend=0 case=function call
+bounded compiler request: backend=0 case=local statement
+bounded compiler request: backend=0 case=library wrapper
+bounded compiler request: backend=0 case=unsupported conversion
+bounded compiler request: backend=0 case=conversion type arguments
+bounded compiler request: backend=0 case=function named int
+bounded compiler request: backend=0 case=no result
+bounded compiler request: backend=0 case=25 expression rows
+bounded compiler request: backend=0 case=empty project root
+bounded compiler request: backend=0 case=path over cap
+bounded compiler request: backend=0 case=unsupported prepared ABI
+bounded compiler request: backend=0 case=short opcode table
+bounded compiler request: backend=1 case=unchanged original
+bounded compiler request: backend=1 case=unchanged repeat
+bounded compiler request: backend=1 case=changed expression
+bounded compiler request: backend=1 case=Boolean operators
+bounded compiler request: backend=1 case=signed minimum
+bounded compiler request: backend=1 case=wrapping addition
+bounded compiler request: backend=1 case=integer arithmetic
+bounded compiler request: backend=1 case=integer bits
+bounded compiler request: backend=1 case=ordered equality
+bounded compiler request: backend=1 case=ordered comparison
+bounded compiler request: backend=1 case=three-file comments and headers
+bounded compiler request: backend=1 case=source exactly at cap
+bounded compiler request: backend=1 case=24 expression rows
+bounded compiler request: backend=1 case=Boolean equality
+bounded compiler request: backend=1 case=syntax invalid
+bounded compiler request: backend=1 case=mixed package names
+bounded compiler request: backend=1 case=extra declaration
+bounded compiler request: backend=1 case=extra return statement
+bounded compiler request: backend=1 case=import
+bounded compiler request: backend=1 case=Boolean returned as int
+bounded compiler request: backend=1 case=int returned as Boolean
+bounded compiler request: backend=1 case=empty source arrays
+bounded compiler request: backend=1 case=source over cap
+bounded compiler request: backend=1 case=mismatched source arrays
+bounded compiler request: backend=1 case=four source files
+bounded compiler request: backend=1 case=function parameter
+bounded compiler request: backend=1 case=template function
+bounded compiler request: backend=1 case=two functions
+bounded compiler request: backend=1 case=floating literal
+bounded compiler request: backend=1 case=unsupported scalar result
+bounded compiler request: backend=1 case=untyped binary expression
+bounded compiler request: backend=1 case=function call
+bounded compiler request: backend=1 case=local statement
+bounded compiler request: backend=1 case=library wrapper
+bounded compiler request: backend=1 case=unsupported conversion
+bounded compiler request: backend=1 case=conversion type arguments
+bounded compiler request: backend=1 case=function named int
+bounded compiler request: backend=1 case=no result
+bounded compiler request: backend=1 case=25 expression rows
+bounded compiler request: backend=1 case=empty project root
+bounded compiler request: backend=1 case=path over cap
+bounded compiler request: backend=1 case=unsupported prepared ABI
+bounded compiler request: backend=1 case=short opcode table
+bounded compiler attempted work: calls=86 raw_parses=76 target_runs=56 offered_files=94
+bounded compiler bootstrap entries: bytecode=200 sljit=0 wasm=0 fallback=0
+Running: bounded_authored_compiler_builds_detached_runnable_closures (OK) (0.556400 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 37483
+Test command wall time: 0.860s; includes in-test fixture setup; external configuration/build excluded.

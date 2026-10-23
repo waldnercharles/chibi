@@ -1,0 +1,25 @@
+(lldb) target create "build-release/test/language/test_language"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64).
+(lldb) settings set -- target.run-args  "--program"
+(lldb) run
+Running: program_detached_event_batches_keep_managed_arguments (OK) (0.000247 secs)
+Process 39662 launched: '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64)
+Process 39662 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x0)
+       frame #0: 0x000000010040c118 test_language`row_bucket + 60
+test_language`row_bucket:
+->  0x10040c118 <+60>: ldp    x12, x13, [x2]
+    0x10040c11c <+64>: add    x8, x8, x11
+    0x10040c120 <+68>: add    x8, x8, x12
+    0x10040c124 <+72>: eor    x8, x8, x1
+Target 0: (test_language) stopped.
+(lldb) bt
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x0)
+   * frame #0: 0x000000010040c118 test_language`row_bucket + 60
+     frame #1: 0x000000010040c0bc test_language`program_instance_row + 32
+     frame #2: 0x00000001000646d8 test_language`program_staged_replacement_pins_preserved_pointers + 892
+     frame #3: 0x0000000100001a70 test_language`pu_run_test + 96
+     frame #4: 0x000000010006344c test_language`test_language_program + 64
+     frame #5: 0x000000010000378c test_language`main + 6668
+     frame #6: 0x000000018377c4e4 dyld`start + 6992
+Test command wall time: 1.010s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

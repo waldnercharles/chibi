@@ -1,0 +1,8 @@
+Running: signature_reader_type_syntax_and_publication_state_match (OK) (0.170115 secs)
+Running: signature_reader_units_names_diagnostics_and_uses_match Signature reader:29 raw trees,58 calls,9 publications, max41 nodes/depth14
+(OK) (0.013565 secs)
+Running: signature_reader_deep_arrays_do_not_consume_callable_depth Signature deep arrays:65 wrappers,563 bytes,413 nodes/depth138,2 calls
+(OK) (0.129354 secs)
+Running: signature_reader_readings_survive_all_producer_owners (OK) (0.004440 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 210959

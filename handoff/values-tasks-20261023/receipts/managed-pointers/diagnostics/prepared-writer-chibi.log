@@ -1,0 +1,4 @@
+Running: prepared_writer_reproduces_native_modules (OK) (0.809587 secs)
+Running: prepared_writer_fingerprints_and_closes_modules (OK) (0.521264 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 1034

@@ -1,0 +1,43 @@
+{
+  "branch": "codex/wip-values-lifetime-docs-20261023",
+  "commit": "87d65fd981b01648560592153579231e55168812",
+  "tree": "f0fe82ef0e09532f74c356fc194edf556f78d13d",
+  "parent": "f764c07cab5a6371adcfacc3297ed96ba4ea3300",
+  "comparison_base": "f764c07cab5a6371adcfacc3297ed96ba4ea3300",
+  "changed_paths": [
+    "PLAN.md",
+    "docs/language-friction.md",
+    "docs/value-runtime-integration.md",
+    "docs/value-semantics.md"
+  ],
+  "files": [
+    {
+      "path": "PLAN.md",
+      "mode": "100644",
+      "blob": "62675b390c59e56446fc9d2a0f1e7bde5e1ed77a",
+      "bytes": 106438,
+      "sha256": "d10f0fd775f013901ff0040402d8d6510acee4a2f8b43260c5013eda5d00a8c8"
+    },
+    {
+      "path": "docs/language-friction.md",
+      "mode": "100644",
+      "blob": "b385bcf0493581829031996a398a8749cab669fa",
+      "bytes": 60177,
+      "sha256": "f6f3b481e506d02c49b0fcaa3f0660e2dffe73f0dcd6578c60fe40332d84f09d"
+    },
+    {
+      "path": "docs/value-runtime-integration.md",
+      "mode": "100644",
+      "blob": "cce2cb6fbc35085ea1b6e0cb9ce510a16415b5e1",
+      "bytes": 14432,
+      "sha256": "6ba26b559bcc810cc66538d4354431acfc6a1cf9a86247b8c3e35e1d46cc1028"
+    },
+    {
+      "path": "docs/value-semantics.md",
+      "mode": "100644",
+      "blob": "77ecaa6883e801c1f3065e91623a7479034b2402",
+      "bytes": 20367,
+      "sha256": "d32ed8e2c26e8cfbe8dde06e1e48259aa6ff1d1267fd01da940431300545e475"
+    }
+  ]
+}

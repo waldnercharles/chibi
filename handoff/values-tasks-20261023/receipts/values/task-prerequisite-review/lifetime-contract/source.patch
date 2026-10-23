@@ -1,0 +1,94 @@
+diff --git a/PLAN.md b/PLAN.md
+index 5e5e5bb56..62675b390 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -192,13 +192,15 @@ Approved: operations bound to an original component or entity cancel when that
+ target is removed. Removal respects safe execution boundaries and reuses
+ task-tree cancellation and typed `Cancelled` results. The owner subsequently
+ rejected a public call-site marker and requested inferred dependencies. The
+-latest direction cancels at removal while a task may still access its original
+-target, including conditional future access; cancellation occurs at a safe
+-boundary before further authored continuation. Do not wait until a later access
+-and allow unrelated post-await side effects first. This applies to removable
+-component/entity targets, not ordinary managed allocations. Completed snapshots
+-and value-only work remain a separate precision discussion. No dependency
+-inference is implemented by this task prerequisite. Resource cleanup means
++latest direction retains inferred dependencies until task completion, even
++after the final target access. Conditional access also creates a dependency;
++removal cancels at a safe boundary before further authored continuation,
++including unrelated post-await effects in that task. This applies to removable
++component/entity targets, not ordinary managed allocations. Copying values does
++not detach an already-bound task; independent value-only work belongs in a
++separate task and remains subject to ordinary parent/child cancellation. Targets
++selected later still need a precise binding rule. No dependency inference is
++implemented by this task prerequisite. Resource cleanup means
+ pending requests and captured values; no authored cleanup callback is implied,
+ and earlier effects are not rolled back.
+ 
+diff --git a/docs/language-friction.md b/docs/language-friction.md
+index 610ae52a2..b385bcf04 100644
+--- a/docs/language-friction.md
++++ b/docs/language-friction.md
+@@ -1112,7 +1112,10 @@ site and requested inference. Exploring conditional access exposed a key rule:
+ do not run unrelated post-await effects before deciding whether a removed target
+ was needed. A possible future component access must keep cancellation active
+ before continuation, including a conditional access. Passive handle storage
+-does not itself establish that use. Dependency-end rules and targets selected
+-later remain design questions; cancellation timing must not depend on optimizer
+-choices. The private runtime binding seam remains useful; no public modifier is
+-approved.
++does not itself establish that use. The owner then approved retaining every
++inferred dependency until task completion, even after the last target access:
++removing health while Poison waits also cancels its later completion sound.
++Copied values do not detach an already-bound task, and ordinary child-task
++cancellation still applies. Targets selected later remain a design question;
++cancellation timing must not depend on optimizer choices. The private runtime
++binding seam remains useful; no public modifier is approved.
+diff --git a/docs/value-runtime-integration.md b/docs/value-runtime-integration.md
+index 2c67dbfe8..cce2cb6fb 100644
+--- a/docs/value-runtime-integration.md
++++ b/docs/value-runtime-integration.md
+@@ -126,8 +126,12 @@ The earlier explicit-call-site rule is superseded. Subsequent discussion
+ rejected late cancellation after unrelated post-await effects: a component that
+ may still be accessed, including conditionally, must remain a dependency so
+ removal cancels before authored continuation. Do not bind every passively stored
+-pointer or expose the rejected `on health` spelling. The inference producer and
+-dependency-end rules remain separate from the private runtime target list.
++pointer or expose the rejected `on health` spelling. The owner then approved
++retaining an inferred dependency until task completion, including after the
++last access: target removal cancels pending independent effects in that same
++task. Compiler liveness optimizations must not release it early. The inference
++producer and handling of targets selected later remain separate from the
++private runtime target list.
+ 
+ The query owner owns the separate task-lifetime runtime increment in
+ `program_tasks.c`, `program_internal.h`, `program_activation.c`, `program.c`,
+diff --git a/docs/value-semantics.md b/docs/value-semantics.md
+index 4bc730a47..77ecaa688 100644
+--- a/docs/value-semantics.md
++++ b/docs/value-semantics.md
+@@ -220,11 +220,19 @@ have been skipped. Earlier effects are not rolled back. This applies to
+ removable engine-owned targets used by tasks or behaviors, not only systems;
+ ordinary managed pointers retain their allocations.
+ 
+-The inference representation, handling of targets selected later, and when a
+-dependency can end remain to be specified. An independent value copied before
+-an await is distinct from a retained pointer used afterward. Compiler
+-optimizations must not change observable cancellation timing. The runtime's
+-fixed target-set prototype is not proof of complete authored inference.
++The owner then approved keeping an inferred dependency until the task finishes,
++even after its final component access. For example, `Poison(health)` applies
++damage, waits, then plays a completion sound without reading health again.
++Removing health during that wait cancels the sound and the rest of Poison.
++Copying a component value inside an already-bound task does not detach the task.
++A surviving caller can start separate work using copied values; ordinary child
++task cancellation still applies, so spawning a child does not let it escape its
++parent's cancellation. Completed successful tasks retain their results.
++
++The inference representation and handling of targets selected later remain to
++be specified. Compiler optimizations must not end a dependency early or change
++observable cancellation timing. The runtime's fixed target-set prototype is
++not proof of complete authored inference.
+ 
+ Removal takes effect at safe execution boundaries. A bound operation must not
+ consume a pending request's result or execute another authored continuation

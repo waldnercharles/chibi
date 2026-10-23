@@ -1,0 +1,251 @@
+Analysis of sampling chibi-build-host (pid 41573) every 1 millisecond
+Process:         chibi-build-host [41573]
+Path:            /Users/USER/*/chibi-build-host
+Load Address:    0x104624000
+Identifier:      chibi-build-host
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  Python [41564]
+Target Type:     live task
+
+Date/Time:       2026-10-22 16:37:38.584 -0600
+Launch Time:     2026-10-22 16:21:59.394 -0600
+OS Version:      macOS 26.7.1 (25G241)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         1.2G
+Physical footprint (peak):  1.6G
+Idle exit:                  untracked
+----
+
+Call graph:
+    847 Thread_70725540   DispatchQueue_1: com.apple.main-thread  (serial)
+      847 start  (in dyld) + 6992  [0x18377c4e4]
+        847 main  (in chibi-build-host) + 2412  [0x10463cf2c]
+          847 chibi_build_compiler_load  (in chibi-build-host) + 140  [0x104625e88]
+            847 compiler_bootstrap_load  (in chibi-build-host) + 136  [0x10463b790]
+              847 recover  (in chibi-build-host) + 412  [0x10463b588]
+                847 compile  (in chibi-build-host) + 196  [0x1046398c4]
+                  847 compiler_host_invoke_bytes  (in chibi-build-host) + 240  [0x1046307f8]
+                    847 invoke  (in chibi-build-host) + 2956  [0x1046304f4]
+                      841 behavior_function_run_calls  (in chibi-build-host) + 396  [0x1046b308c]
+                      + 837 behavior_function_run_once  (in chibi-build-host) + 532  [0x10470f070]
+                      + ! 516 ???  (in <unknown binary>)  [0x1097505d0]
+                      + ! : 516 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   353 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :   | 313 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0,12,...  [0x183b52730,0x183b5273c,...]
+                      + ! :   | 16 managed_boundary_error  (in chibi-build-host) + 788,792  [0x10474d194,0x10474d198]
+                      + ! :   | 15 DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib) + 8,0,...  [0x183b55914,0x183b5590c,...]
+                      + ! :   | 9 DYLD-STUB$$strcmp  (in chibi-build-host) + 4,0  [0x104751c88,0x104751c84]
+                      + ! :   110 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :   | 86 pin_array_get  (in chibi-build-host) + 88,0,...  [0x104746408,0x1047463b0,...]
+                      + ! :   | 24 managed_boundary_error  (in chibi-build-host) + 756,784,...  [0x10474d174,0x10474d190,...]
+                      + ! :   53 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :     38 managed_boundary_error  (in chibi-build-host) + 804,832,...  [0x10474d1a4,0x10474d1c0,...]
+                      + ! :     15 pin_record_same  (in chibi-build-host) + 0,92  [0x10474c328,0x10474c384]
+                      + ! 136 ???  (in <unknown binary>)  [0x109528140]
+                      + ! : 136 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   129 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :   | 64 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 12,0,...  [0x183b5273c,0x183b52730,...]
+                      + ! :   | 62 managed_boundary_error  (in chibi-build-host) + 792,788  [0x10474d198,0x10474d194]
+                      + ! :   | 2 DYLD-STUB$$strcmp  (in chibi-build-host) + 4  [0x104751c88]
+                      + ! :   | 1 DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib) + 8  [0x183b55914]
+                      + ! :   5 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :   | 3 pin_record_same  (in chibi-build-host) + 92,0  [0x10474c384,0x10474c328]
+                      + ! :   | 2 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :   2 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :     2 managed_boundary_error  (in chibi-build-host) + 748,756  [0x10474d16c,0x10474d174]
+                      + ! 97 ???  (in <unknown binary>)  [0x109748804]
+                      + ! : 97 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   76 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :   | 55 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 12,0,...  [0x183b5273c,0x183b52730,...]
+                      + ! :   | 12 managed_boundary_error  (in chibi-build-host) + 788,792  [0x10474d194,0x10474d198]
+                      + ! :   | 6 DYLD-STUB$$strcmp  (in chibi-build-host) + 4  [0x104751c88]
+                      + ! :   | 3 DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib) + 8  [0x183b55914]
+                      + ! :   17 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :   | 14 pin_array_get  (in chibi-build-host) + 0,88,...  [0x1047463b0,0x104746408,...]
+                      + ! :   | 3 managed_boundary_error  (in chibi-build-host) + 756,784  [0x10474d174,0x10474d190]
+                      + ! :   4 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :     2 managed_boundary_error  (in chibi-build-host) + 804,824  [0x10474d1a4,0x10474d1b8]
+                      + ! :     2 pin_record_same  (in chibi-build-host) + 92  [0x10474c384]
+                      + ! 53 ???  (in <unknown binary>)  [0x109746cbc]
+                      + ! : 53 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   30 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :   | 30 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :   20 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :   | 20 pin_array_get  (in chibi-build-host) + 76,0  [0x1047463fc,0x1047463b0]
+                      + ! :   3 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :     3 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0,12,...  [0x183b52730,0x183b5273c,...]
+                      + ! 6 ???  (in <unknown binary>)  [0x10974681c]
+                      + ! : 6 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   3 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :   | 2 pin_array_get  (in chibi-build-host) + 0,88  [0x1047463b0,0x104746408]
+                      + ! :   | 1 managed_boundary_error  (in chibi-build-host) + 756  [0x10474d174]
+                      + ! :   3 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :     2 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 8,12  [0x183b52738,0x183b5273c]
+                      + ! :     1 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! 6 ???  (in <unknown binary>)  [0x109750800]
+                      + ! : 6 construct_value  (in chibi-build-host) + 672  [0x1046c4030]
+                      + ! :   6 pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+                      + ! :     6 snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+                      + ! :       4 pin_record_snapshot  (in chibi-build-host) + 184  [0x10474c240]
+                      + ! :       | 4 arena_contains  (in chibi-build-host) + 144,116  [0x10463ecb4,0x10463ec98]
+                      + ! :       2 pin_record_snapshot  (in chibi-build-host) + 44  [0x10474c1b4]
+                      + ! :         2 arena_copy_find  (in chibi-build-host) + 0  [0x10463e774]
+                      + ! 4 ???  (in <unknown binary>)  [0x109742570]
+                      + ! : 4 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   3 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :   | 3 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0  [0x183b52730]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :     1 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! 3 ???  (in <unknown binary>)  [0x109741254]
+                      + ! : 3 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :   | 1 pin_array_get  (in chibi-build-host) + 0  [0x1047463b0]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :   | 1 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0  [0x183b52730]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! :     1 managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+                      + ! 3 ???  (in <unknown binary>)  [0x109743954]
+                      + ! : 3 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   2 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :   | 2 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0,8  [0x183b52730,0x183b52738]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :     1 pin_array_get  (in chibi-build-host) + 0  [0x1047463b0]
+                      + ! 2 ???  (in <unknown binary>)  [0x109748668]
+                      + ! 1 ???  (in <unknown binary>)  [0x1094781f4]
+                      + ! : 1 construct_value  (in chibi-build-host) + 100  [0x1046c3df4]
+                      + ! :   1 pin_record_current  (in chibi-build-host) + 0  [0x10474c8b8]
+                      + ! 1 ???  (in <unknown binary>)  [0x10947c290]
+                      + ! : 1 construct_value  (in chibi-build-host) + 672  [0x1046c4030]
+                      + ! :   1 pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+                      + ! :     1 snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+                      + ! :       1 pin_record_snapshot  (in chibi-build-host) + 184  [0x10474c240]
+                      + ! :         1 arena_contains  (in chibi-build-host) + 132  [0x10463eca8]
+                      + ! 1 ???  (in <unknown binary>)  [0x10963c794]
+                      + ! : 1 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+                      + ! :     1 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0  [0x183b52730]
+                      + ! 1 ???  (in <unknown binary>)  [0x1096f4da0]
+                      + ! : 1 construct_value  (in chibi-build-host) + 672  [0x1046c4030]
+                      + ! :   1 pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+                      + ! :     1 snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+                      + ! :       1 pin_record_snapshot  (in chibi-build-host) + 184  [0x10474c240]
+                      + ! :         1 arena_contains  (in chibi-build-host) + 116  [0x10463ec98]
+                      + ! 1 ???  (in <unknown binary>)  [0x109746a3c]
+                      + ! : 1 construct_value  (in chibi-build-host) + 672  [0x1046c4030]
+                      + ! :   1 pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+                      + ! :     1 snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+                      + ! :       1 pin_record_snapshot  (in chibi-build-host) + 184  [0x10474c240]
+                      + ! :         1 arena_contains  (in chibi-build-host) + 144  [0x10463ecb4]
+                      + ! 1 ???  (in <unknown binary>)  [0x109755788]
+                      + ! : 1 behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+                      + ! :   1 managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+                      + ! :     1 managed_boundary_error  (in chibi-build-host) + 776  [0x10474d188]
+                      + ! 1 ???  (in <unknown binary>)  [0x109a9d798]
+                      + ! : 1 union_keep  (in chibi-build-host) + 44  [0x1046c4330]
+                      + ! :   1 pin_union_kept  (in chibi-build-host) + 372  [0x10474d814]
+                      + ! :     1 pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+                      + ! :       1 snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+                      + ! :         1 pin_record_snapshot  (in chibi-build-host) + 184  [0x10474c240]
+                      + ! :           1 arena_contains  (in chibi-build-host) + 132  [0x10463eca8]
+                      + ! 1 ???  (in <unknown binary>)  [0x1096f3c88]
+                      + ! 1 ???  (in <unknown binary>)  [0x10972e784]
+                      + ! 1 ???  (in <unknown binary>)  [0x109745c2c]
+                      + ! 1 ???  (in <unknown binary>)  [0x1097bc200]
+                      + 2 ???  (in <unknown binary>)  [0x1096f0008]
+                      + 2 behavior_function_run_once  (in chibi-build-host) + 524  [0x10470f068]
+                      +   2 behavior_run_record  (in chibi-build-host) + 124  [0x10470ed80]
+                      2 behavior_function_run_calls  (in chibi-build-host) + 808  [0x1046b3228]
+                      + 2 pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+                      +   2 snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+                      +     2 pin_record_snapshot  (in chibi-build-host) + 240  [0x10474c278]
+                      +       2 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x183b51414]
+                      2 behavior_function_run_calls  (in chibi-build-host) + 1376  [0x1046b3460]
+                      + 1 behavior_function_reset_host  (in chibi-build-host) + 448  [0x1046c3058]
+                      + ! 1 _platform_memmove  (in libsystem_platform.dylib) + 96  [0x183b513c0]
+                      + 1 behavior_function_reset_host  (in chibi-build-host) + 504  [0x1046c3090]
+                      +   1 _platform_memset  (in libsystem_platform.dylib) + 176  [0x183b51140]
+                      1 behavior_function_run_calls  (in chibi-build-host) + 1628  [0x1046b355c]
+                      + 1 behavior_function_prepare_data  (in chibi-build-host) + 424  [0x1046c23a8]
+                      +   1 xrealloc  (in chibi-build-host) + 28  [0x10463f880]
+                      +     1 _realloc  (in libsystem_malloc.dylib) + 452  [0x183973f14]
+                      +       1 _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x1839736f8]
+                      +         1 xzm_realloc  (in libsystem_malloc.dylib) + 808  [0x183963eac]
+                      +           1 _xzm_malloc_large_huge  (in libsystem_malloc.dylib) + 464  [0x183963458]
+                      +             1 xzm_segment_group_alloc_chunk  (in libsystem_malloc.dylib) + 504  [0x18394c5f4]
+                      +               1 _xzm_segment_group_find_and_allocate_chunk  (in libsystem_malloc.dylib) + 528  [0x18394cc30]
+                      +                 1 _xzm_segment_group_span_mark_smaller  (in libsystem_malloc.dylib) + 252  [0x18394e154]
+                      1 behavior_function_run_calls  (in chibi-build-host) + 448  [0x1046b30c0]
+
+Total number in stack (recursive counted multiple, when >=5):
+        15       managed_boundary_error  (in chibi-build-host) + 0  [0x10474ce80]
+        10       behavior_function_host_arguments  (in chibi-build-host) + 192  [0x1046c34dc]
+        9       _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0  [0x183b52730]
+        9       managed_boundary_error  (in chibi-build-host) + 788  [0x10474d194]
+        8       managed_boundary_error  (in chibi-build-host) + 748  [0x10474d16c]
+        6       managed_boundary_error  (in chibi-build-host) + 804  [0x10474d1a4]
+        6       pin_array_get  (in chibi-build-host) + 0  [0x1047463b0]
+        6       pin_value_snapshot_to_arena  (in chibi-build-host) + 28  [0x1047471a0]
+        6       snapshot_value  (in chibi-build-host) + 296  [0x104747304]
+        5       arena_contains  (in chibi-build-host) + 0  [0x10463ec24]
+        5       pin_record_snapshot  (in chibi-build-host) + 184  [0x10474c240]
+
+Sort by top of stack, same collapsed (when >= 5):
+        _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib)        444
+        managed_boundary_error  (in chibi-build-host)        196
+        pin_array_get  (in chibi-build-host)        124
+        pin_record_same  (in chibi-build-host)        20
+        DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib)        19
+        DYLD-STUB$$strcmp  (in chibi-build-host)        17
+        arena_contains  (in chibi-build-host)        8
+
+Binary Images:
+       0x104624000 -        0x10479ec37 +chibi-build-host (0) <EC9C4C3F-7AFE-3471-8A4B-4806C579FC51> /Users/*/chibi-build-host
+       0x1836d4000 -        0x183726b4b  libobjc.A.dylib (951.7) <1D62B376-2303-376A-B993-9432A2004EB6> /usr/lib/libobjc.A.dylib
+       0x183727000 -        0x18375bd58  libdyld.dylib (1387) <70073E6E-4CDD-314F-BBDF-EC7FF6CE2DFC> /usr/lib/system/libdyld.dylib
+       0x18375c000 -        0x18380f4ff  dyld (1.0.0 - 1387) <0263B88E-0B22-3B33-BBC0-483BE879B513> /usr/lib/dyld
+       0x183810000 -        0x183813228  libsystem_blocks.dylib (96) <B33F1440-9364-38E4-AF85-8A21BFF24324> /usr/lib/system/libsystem_blocks.dylib
+       0x183814000 -        0x18386855f  libxpc.dylib (3102.160.5) <E26A36A6-4B8F-321C-AE17-54353F9EEE84> /usr/lib/system/libxpc.dylib
+       0x183869000 -        0x1838899ff  libsystem_trace.dylib (1861.160.4) <314A8A89-4715-32B9-ABC2-B3087149C8B7> /usr/lib/system/libsystem_trace.dylib
+       0x18388a000 -        0x1839385f7  libcorecrypto.dylib (1922.160.10) <057A41E9-2A2E-39CD-B198-387734EED870> /usr/lib/system/libcorecrypto.dylib
+       0x183939000 -        0x183989257  libsystem_malloc.dylib (812.160.5) <B7ED74D2-5A24-3F39-9296-EE5688FF4B63> /usr/lib/system/libsystem_malloc.dylib
+       0x18398a000 -        0x1839d123f  libdispatch.dylib (1542.160.2) <80E75F3F-333F-38A8-A3DD-6279FCDB771B> /usr/lib/system/libdispatch.dylib
+       0x1839d2000 -        0x1839d4ffb  libsystem_featureflags.dylib (103) <5725BCFE-07F3-3629-9B44-551A435E2DE2> /usr/lib/system/libsystem_featureflags.dylib
+       0x1839d5000 -        0x183a561e7  libsystem_c.dylib (1752.160.4) <3498CA79-EF40-3587-AD44-75187CEE7D95> /usr/lib/system/libsystem_c.dylib
+       0x183a57000 -        0x183ae7ae7  libc++.1.dylib (2100.43) <32327062-C3A2-389E-ABFE-68A9942422E3> /usr/lib/libc++.1.dylib
+       0x183ae8000 -        0x183b0275f  libc++abi.dylib (2100.43) <CCDE1614-20B7-354C-B201-99C5C4CC589D> /usr/lib/libc++abi.dylib
+       0x183b03000 -        0x183b402f7  libsystem_kernel.dylib (12377.161.15.700.19) <EE805B14-29F2-360D-9A2C-3221A1211833> /usr/lib/system/libsystem_kernel.dylib
+       0x183b41000 -        0x183b4db3b  libsystem_pthread.dylib (539.100.4) <A58BEABD-7AC0-35F8-BCFF-E4FFBD79E938> /usr/lib/system/libsystem_pthread.dylib
+       0x183b4e000 -        0x183b56963  libsystem_platform.dylib (375.120.2) <3AF14164-15FE-3623-9EE3-46DE29FD5B5A> /usr/lib/system/libsystem_platform.dylib
+       0x183b57000 -        0x183b866eb  libsystem_info.dylib (600) <0037F576-2C50-36F0-9F36-6CB7A049D5B1> /usr/lib/system/libsystem_info.dylib
+       0x187b27000 -        0x187b30e5f  libsystem_darwin.dylib (1752.160.4) <B808D04B-2798-36C9-96F6-35534BDFCF11> /usr/lib/system/libsystem_darwin.dylib
+       0x187f92000 -        0x187fa41b6  libsystem_notify.dylib (348.160.3) <922BDCF4-CD33-3EEB-BC56-9DCAE54F8F65> /usr/lib/system/libsystem_notify.dylib
+       0x18a263000 -        0x18a27df7b  libsystem_networkextension.dylib (2226.161.1.700.2) <83F224A4-40C4-3106-A97B-788D1D961DCB> /usr/lib/system/libsystem_networkextension.dylib
+       0x18a300000 -        0x18a317fdf  libsystem_asl.dylib (406) <FF6BE113-1093-3D23-8A55-E0A5B327CA8E> /usr/lib/system/libsystem_asl.dylib
+       0x18beb9000 -        0x18bec1387  libsystem_symptoms.dylib (2169.160.3.701.1) <7F0D4E31-268A-3EBB-8A2C-30CCC771A5A5> /usr/lib/system/libsystem_symptoms.dylib
+       0x19015e000 -        0x190196373  libsystem_containermanager.dylib (725.160.3.701.2) <118BC21E-B17D-32A2-9B65-16256131974F> /usr/lib/system/libsystem_containermanager.dylib
+       0x191570000 -        0x1915745d7  libsystem_configuration.dylib (1405.160.3.701.3) <7725D903-1D37-33E7-82AF-2260661C81A8> /usr/lib/system/libsystem_configuration.dylib
+       0x191575000 -        0x19157b99f  libsystem_sandbox.dylib (2680.160.6.700.3) <7B54AAA3-EB32-3853-8F0E-EB956EC957A1> /usr/lib/system/libsystem_sandbox.dylib
+       0x192bd0000 -        0x192bd31fb  libquarantine.dylib (196.160.2.700.3) <45146171-F0C1-3104-AE01-6AAD841A70B5> /usr/lib/system/libquarantine.dylib
+       0x19336f000 -        0x193375d03  libsystem_coreservices.dylib (191.5.1) <BF51842C-BC69-3725-9EB2-7A52804963F8> /usr/lib/system/libsystem_coreservices.dylib
+       0x1938fe000 -        0x19393ba77  libsystem_m.dylib (3312.100.1) <A2858495-5B01-3D11-955D-FF6F25E88A6E> /usr/lib/system/libsystem_m.dylib
+       0x19393d000 -        0x193940527  libmacho.dylib (1387) <95DEC6C1-4480-3303-8A52-9AFC3D8C9219> /usr/lib/system/libmacho.dylib
+       0x19395a000 -        0x1939673a7  libcommonCrypto.dylib (600035) <EBA6E4D0-4DD2-33BB-BF95-48A58591AAAD> /usr/lib/system/libcommonCrypto.dylib
+       0x193968000 -        0x193971ca3  libunwind.dylib (2100.2) <201827AE-90B0-38B1-9729-50455B607293> /usr/lib/system/libunwind.dylib
+       0x19397a000 -        0x193984c1f  libcopyfile.dylib (240.160.2.702.1) <BA7266A8-BF4B-32BF-A323-F4B2EBCDC0B0> /usr/lib/system/libcopyfile.dylib
+       0x193985000 -        0x193988987  libcompiler_rt.dylib (103.3) <9EE26D98-97BF-3BE0-B6BE-425284AB2D24> /usr/lib/system/libcompiler_rt.dylib
+       0x193989000 -        0x19398d78b  libsystem_collections.dylib (1752.160.4) <34CEFA68-1E15-32F2-A5B1-97C0170A77C5> /usr/lib/system/libsystem_collections.dylib
+       0x19398e000 -        0x1939914cf  libsystem_secinit.dylib (168.100.7) <B6B286B6-6E08-3578-8AFC-E4C55697C760> /usr/lib/system/libsystem_secinit.dylib
+       0x193992000 -        0x193994bf7  libremovefile.dylib (85.100.6) <33530415-3DB6-3556-A59A-24C22681D632> /usr/lib/system/libremovefile.dylib
+       0x193995000 -        0x193995f27  libkeymgr.dylib (31) <AD45B9EE-CE2B-3E1F-B96B-15F7F9FA3712> /usr/lib/system/libkeymgr.dylib
+       0x193996000 -        0x19399ee3f  libsystem_dnssd.dylib (2881.160.4.700.1) <71833E65-58B3-3C06-A4F3-D69D476CCC3C> /usr/lib/system/libsystem_dnssd.dylib
+       0x19399f000 -        0x1939a409b  libcache.dylib (95) <A13AF0DC-5928-38BE-97FF-E04C29EF96AF> /usr/lib/system/libcache.dylib
+       0x1939a5000 -        0x1939a6ce3  libSystem.B.dylib (1356) <E9E4C9A6-16BB-392C-96AA-07797764E2A1> /usr/lib/libSystem.B.dylib
+       0x28767d000 -        0x287684349  libRosetta.dylib (367.9) <3DBB2990-262D-3776-8FAC-B88C0373DCF0> /usr/lib/libRosetta.dylib
+       0x289290000 -        0x289293a4b  libsystem_darwindirectory.dylib (122) <6246210A-5279-391D-8F58-E62A87CAB309> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x289294000 -        0x28929e39b  libsystem_eligibility.dylib (319.160.17) <85C0486B-60BE-3E10-ABBF-DD74341B7376> /usr/lib/system/libsystem_eligibility.dylib
+       0x28929f000 -        0x2892a688b  libsystem_sanitizers.dylib (26.1) <A8C4F7FC-3443-35F7-B306-068D06237ED0> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2892a7000 -        0x2892a7bbf  libsystem_trial.dylib (474.2.18.2.1) <83FF8DEB-1153-35BA-99C3-2AEF9B7559CD> /usr/lib/system/libsystem_trial.dylib

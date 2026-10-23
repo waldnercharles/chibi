@@ -1,0 +1,7 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: named_binding_raw_facts_match (OK) (0.064473 secs)
+Running: named_binding_analyzer_annotations_match (OK) (0.001268 secs)
+Running: named_binding_results_outlive_owners (OK) (0.001182 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 54220
+Test command wall time: 0.405s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

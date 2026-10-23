@@ -1,0 +1,18 @@
+Running: types_nested_pointer_records_require_owned_layout_support (OK) (0.000114 secs)
+Running: types_document_array_collection_retains_split_payloads (OK) (0.000161 secs)
+Running: types_authored_record_document_uses_nested_native_layout (OK) (0.000153 secs)
+Running: types_catalog_composes_ordered_packs (OK) (0.000004 secs)
+Running: types_nested_reflection_reads_writes_and_checks_layout (OK) (0.000018 secs)
+Running: types_array_snapshot_owns_strings_and_names (OK) (0.000052 secs)
+Running: types_collection_follows_values_across_arenas (OK) (0.000013 secs)
+Running: types_union_snapshots_and_heap_copies_own_nested_values (OK) (0.000022 secs)
+Running: types_union_wire_roundtrip_traces_nested_arrays (OK) (0.000097 secs)
+Running: types_plain_struct_array_codecs_preserve_inline_values_and_nulls (OK) (0.000280 secs)
+Running: types_union_wire_rejects_invalid_tags_counts_and_depth (OK) (0.000125 secs)
+Running: types_struct_array_snapshot_retains_nested_payload (OK) (0.000011 secs)
+Running: types_document_snapshot_survives_source_release (OK) (0.000022 secs)
+Running: types_map_documents_own_nested_maps_arrays_and_native_structs (OK) (0.000226 secs)
+Running: types_map_documents_require_authored_declarations_and_reject_malformed_input (OK) (0.001041 secs)
+Running: types_document_rejects_invalid_values_without_publication (OK) (0.000088 secs)
+===============================================================
+Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 230

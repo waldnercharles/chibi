@@ -1,0 +1,1307 @@
+{
+  "branch": "codex/wip-managed-pointers-20261023",
+  "commit": "f04d9d37822edb44a8fb1d1f6f68e5546eb8e049",
+  "tree": "310bf387bc87975d7e263ae88406b4cfaa157d34",
+  "parent": "36f3e9350145242e0c0fc48f9f2e459dbd7c14ef",
+  "comparison_base": "ba8c2851fad53de022f322c0af4e994dcff59204",
+  "changed_paths": [
+    "PLAN.md",
+    "docs/code-language.md",
+    "docs/language-friction.md",
+    "docs/managed-pointers.md",
+    "docs/package-library-plan.md",
+    "docs/testing.md",
+    "sdk/CMakeLists.txt",
+    "src/assets/project.h",
+    "src/assets/project_migrate.c",
+    "src/assets/project_migrate.h",
+    "src/assets/prototype.c",
+    "src/authoring/source_edit_capability.c",
+    "src/authoring/source_edit_inline.c",
+    "src/authoring/source_edit_refactor.c",
+    "src/authoring/source_format.c",
+    "src/authoring/source_graph_library.c",
+    "src/authoring/source_literal.c",
+    "src/authoring/source_package_exports.c",
+    "src/authoring/source_presentation_values.c",
+    "src/automation/controller.c",
+    "src/capabilities/catalog.c",
+    "src/capabilities/catalog.h",
+    "src/capabilities/catalog_values.c",
+    "src/ecs/ecs.c",
+    "src/execution/c.c",
+    "src/execution/call.c",
+    "src/execution/function.c",
+    "src/execution/function.h",
+    "src/execution/function_builder.c",
+    "src/execution/host.c",
+    "src/execution/intrinsics.c",
+    "src/execution/intrinsics.h",
+    "src/execution/jit.c",
+    "src/execution/jit_host_call.c",
+    "src/execution/jit_integer.c",
+    "src/execution/jit_internal.h",
+    "src/execution/jit_registers.c",
+    "src/execution/machine.c",
+    "src/execution/managed.h",
+    "src/execution/module.h",
+    "src/execution/module_effects.c",
+    "src/execution/prepared.h",
+    "src/execution/prepared_record.c",
+    "src/execution/program.c",
+    "src/execution/program_activation.c",
+    "src/execution/program_internal.h",
+    "src/execution/program_observers.c",
+    "src/execution/program_preflight.c",
+    "src/execution/program_storage.c",
+    "src/execution/program_tasks.c",
+    "src/execution/scalar_lowering_plan.c",
+    "src/execution/wasm_emit.c",
+    "src/language/component.c",
+    "src/language/grammar.js",
+    "src/language/lower.c",
+    "src/language/semantic.h",
+    "src/language/semantic_calls.c",
+    "src/language/semantic_context.c",
+    "src/language/semantic_expression.c",
+    "src/language/semantic_generic.c",
+    "src/language/semantic_internal.h",
+    "src/language/semantic_record.c",
+    "src/language/semantic_statement.c",
+    "src/language/semantic_union.c",
+    "src/language/signature_reader.c",
+    "src/language/src/grammar.json",
+    "src/language/src/node-types.json",
+    "src/language/src/parser.c",
+    "src/language/type_constructors.c",
+    "src/language/type_constructors.h",
+    "src/runtime/behaviors/entities.c",
+    "src/toolchain/compiler_host.c",
+    "src/types/array.c",
+    "src/types/index.c",
+    "src/types/pointer.h",
+    "src/types/record.c",
+    "src/types/scalar.h",
+    "src/types/trace.c",
+    "src/types/trace.h",
+    "src/types/type.c",
+    "src/types/value.h",
+    "src/types/value_document.c",
+    "src/types/value_document_read.c",
+    "src/types/value_format.c",
+    "src/types/value_wire.c",
+    "test/authoring/source_edit.c",
+    "test/fixtures/behavior-catalog/project.kdl",
+    "test/fixtures/component-presentation/project.kdl",
+    "test/fixtures/content/behaviors/WaveBehavior.chibi",
+    "test/fixtures/courtyard/project.kdl",
+    "test/fixtures/declared-components/project.kdl",
+    "test/fixtures/environment-authoring/project.kdl",
+    "test/fixtures/feature-coverage/content/behaviors/EntityProbe.chibi",
+    "test/fixtures/feature-coverage/content/behaviors/PanelProbe.chibi",
+    "test/fixtures/feature-coverage/project.kdl",
+    "test/fixtures/graph-routing/content/behaviors/Weapon.chibi",
+    "test/fixtures/graph-routing/project.kdl",
+    "test/fixtures/language/project.kdl",
+    "test/fixtures/material-contracts/project.kdl",
+    "test/fixtures/project.kdl",
+    "test/fixtures/refactor/references/behaviors/Weapon.chibi",
+    "test/fixtures/scene3d/project.kdl",
+    "test/fixtures/sprites/project.kdl",
+    "test/fixtures/studio-workspace/content/behaviors/Weapon.chibi",
+    "test/fixtures/studio-workspace/project.kdl",
+    "test/fixtures/studio/project.kdl",
+    "test/fixtures/terrain-lab/project.kdl",
+    "test/language/borrow.c",
+    "test/language/compiler_fixture.c",
+    "test/language/compiler_fixture.h",
+    "test/language/effects.c",
+    "test/language/execution.c",
+    "test/language/format.c",
+    "test/language/generic.c",
+    "test/language/named_binding_chibi.c",
+    "test/language/package_compiler_chibi.c",
+    "test/language/package_compiler_chibi_source.h.in",
+    "test/language/package_imports.c",
+    "test/language/program.c",
+    "test/language/prototype.c",
+    "test/language/record_members_chibi.c",
+    "test/language/record_prepared_runtime.c",
+    "test/language/record_runtime.c",
+    "test/language/record_services.c",
+    "test/language/row_array.c",
+    "test/language/semantic.c",
+    "test/language/signature_fixture.c",
+    "test/language/signature_reader_chibi.c",
+    "test/language/source_tokenizer_chibi.c",
+    "test/language/syntax.c",
+    "test/language/syntax_corpus.c",
+    "test/language/type_constructors_chibi.c",
+    "test/language/union_members_chibi.c",
+    "test/stories/Controls/content/behaviors/Pilot.chibi",
+    "test/stories/Controls/project.kdl",
+    "test/stories/Counter/content/behaviors/Counter.chibi",
+    "test/stories/Counter/project.kdl",
+    "test/stories/Follow/project.kdl",
+    "test/stories/Motion/project.kdl",
+    "test/stories/Results/project.kdl",
+    "test/tools/main.c",
+    "test/tools/types.c",
+    "tools/compiler/bootstrap.kdl",
+    "tools/compiler/bootstrap/bootstrap.json",
+    "tools/compiler/bootstrap/compiler.chibip",
+    "tools/compiler/bounded_compiler/Compile.chibi",
+    "tools/compiler/callable_headers/Headers.chibi",
+    "tools/compiler/named_binding/Binding.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Pointers.chibi",
+    "tools/compiler/package_compiler/References.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/compiler/prepared_writer/Writer.chibi",
+    "tools/compiler/record_members/Members.chibi",
+    "tools/compiler/scalar_lowering/Lower.chibi",
+    "tools/compiler/signature_reader/Reader.chibi",
+    "tools/compiler/source_tokenizer/Tokenizer.chibi",
+    "tools/compiler/type_constructors/Constructors.chibi",
+    "tools/compiler/union_members/Members.chibi",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "files": [
+    {
+      "path": "PLAN.md",
+      "mode": "100644",
+      "blob": "0f1b2a811cd38b681bc2963fc39220eabf260182",
+      "bytes": 98700,
+      "sha256": "793ca13ef85d3cb6ac3d0205a97c1144879cb970b7e0de3ce01fd9f2a6e78a3a"
+    },
+    {
+      "path": "docs/code-language.md",
+      "mode": "100644",
+      "blob": "da0a993b29917b4bbf687bb4c30660a6d2bfd1c1",
+      "bytes": 26758,
+      "sha256": "661b0fbedb5c83814cc4533e0c091917216de174491b24a305aae8f069ecb517"
+    },
+    {
+      "path": "docs/language-friction.md",
+      "mode": "100644",
+      "blob": "1d365563e80d307b06e2311fe834cf3a9d657eff",
+      "bytes": 55947,
+      "sha256": "34d437870fc4ee3b4eb3b3f81a3f57dbe57007a881aad494d485a525c7d492ad"
+    },
+    {
+      "path": "docs/managed-pointers.md",
+      "mode": "100644",
+      "blob": "8001f0548fc4b7fe807a0acc51027d416f797120",
+      "bytes": 10194,
+      "sha256": "d3c9235c6e5f26324af090f2cfeebe1cd777f1060c0f4fb9b3ba1ac96fa0f935"
+    },
+    {
+      "path": "docs/package-library-plan.md",
+      "mode": "100644",
+      "blob": "8c52771f6cc74a33bcc4fb7d3f1598f45a2f75ab",
+      "bytes": 24854,
+      "sha256": "1a03556884bea76ddfe4304bc69f9b667e2240d1ce142b9337eaf1f4ca83739f"
+    },
+    {
+      "path": "docs/testing.md",
+      "mode": "100644",
+      "blob": "525b31cc52b65c60d5f6c2345cb9ff61b1f1e017",
+      "bytes": 214789,
+      "sha256": "03c1169e7dac78a485984ad36ba2594a1e843046290d91cb0d5bb7a9d651b10c"
+    },
+    {
+      "path": "sdk/CMakeLists.txt",
+      "mode": "100644",
+      "blob": "d2072b7730756074e88d5e1ce5e20d820e26f5fa",
+      "bytes": 45396,
+      "sha256": "7407c01273bcab14877033ab4eb7bfbfe83a2eab3480521dfc6bc849fe262987"
+    },
+    {
+      "path": "src/assets/project.h",
+      "mode": "100644",
+      "blob": "3de5c3674d43e46c20bbe25e0399d74b9c2ff6a0",
+      "bytes": 4815,
+      "sha256": "0cfc18ac879713b5d4c110351ba661a31f24992fa88fa9528d4e3b723da832c2"
+    },
+    {
+      "path": "src/assets/project_migrate.c",
+      "mode": "100644",
+      "blob": "05e4ef3c2c176ae8086cf7003d037dc2df24e42c",
+      "bytes": 243113,
+      "sha256": "4291e8c4e716692bc6e6fec20b0193a34849525c49827efc0ed4b92ad12ea2ae"
+    },
+    {
+      "path": "src/assets/project_migrate.h",
+      "mode": "100644",
+      "blob": "aede12f128c8d3f9dc00f70ed54506a8ec32abf5",
+      "bytes": 8609,
+      "sha256": "423d6dc056753badf3594e93ed2d70e12e80a4324cc7c460b101774bfc6f3c3f"
+    },
+    {
+      "path": "src/assets/prototype.c",
+      "mode": "100644",
+      "blob": "68fec69ae2554719e3a9829cbffdb064a488198f",
+      "bytes": 84996,
+      "sha256": "31f7851a78ef684adaf7ec942257c08f643de7e7318ad95e552dba6cbffcb711"
+    },
+    {
+      "path": "src/authoring/source_edit_capability.c",
+      "mode": "100644",
+      "blob": "4138b7cdd7029ee15ac83b4a69980a5dcc8135e6",
+      "bytes": 36895,
+      "sha256": "5016547517ed7f2ece8133586a317e1694cb632774d41e7e9424521772a811e6"
+    },
+    {
+      "path": "src/authoring/source_edit_inline.c",
+      "mode": "100644",
+      "blob": "0933d8300d26c61d58cf8a16165877acf5084f70",
+      "bytes": 26568,
+      "sha256": "fae174b8ce784d8d6bf512a03537e05c80aa01d85d1242c964e8bf3382ff58a4"
+    },
+    {
+      "path": "src/authoring/source_edit_refactor.c",
+      "mode": "100644",
+      "blob": "c53c37342941c9ce8595243a5ab3de691d716a4c",
+      "bytes": 17885,
+      "sha256": "86f7c8083cfc12f848ac028e4d4cef9c1507106810e5f0f82018162d40e4c7cf"
+    },
+    {
+      "path": "src/authoring/source_format.c",
+      "mode": "100644",
+      "blob": "99cd63fe1d1f8580c79c6c58cfe9c68c6cba7694",
+      "bytes": 21472,
+      "sha256": "f1c6148603c3c679e171c22493c1a11fb6ff73fa683b5f16e277dc9610aef675"
+    },
+    {
+      "path": "src/authoring/source_graph_library.c",
+      "mode": "100644",
+      "blob": "fa7728729274e8162d43e94a7d6ce880417dafe3",
+      "bytes": 11025,
+      "sha256": "b806502ed33020227bb05b77528f9ad319abfbf9e4e6651189629443bc749624"
+    },
+    {
+      "path": "src/authoring/source_literal.c",
+      "mode": "100644",
+      "blob": "6e2fa59e1c9a6ef10a2ff51a802f2aab67baf86c",
+      "bytes": 15795,
+      "sha256": "f284c01f179323a6a9a165f7dc98fa9f8c6b2a28220b3027872d965264c46025"
+    },
+    {
+      "path": "src/authoring/source_package_exports.c",
+      "mode": "100644",
+      "blob": "c810751706234160aa45a5fe5562cac314781c1a",
+      "bytes": 13771,
+      "sha256": "740702e8d59b8f577344d82dfbf5cb8140036b283bd9a0bf22dba7e217676ec5"
+    },
+    {
+      "path": "src/authoring/source_presentation_values.c",
+      "mode": "100644",
+      "blob": "f6230fa4a60df5db866b94aae2552ef1ad5b6f17",
+      "bytes": 16939,
+      "sha256": "526eec9402349445a082c81c35e2c98729cab6847af85819b7819b5824ba4083"
+    },
+    {
+      "path": "src/automation/controller.c",
+      "mode": "100644",
+      "blob": "826fa67fb81880f29e8b972e23a0e4b2e4f1132e",
+      "bytes": 531185,
+      "sha256": "995030c7f1f831a71a91c3019eb4d65a733d8718d25c6b344a8dcf6b55b2c312"
+    },
+    {
+      "path": "src/capabilities/catalog.c",
+      "mode": "100644",
+      "blob": "c5cd8daf7b9e5228dbbbeac2b827691bd8ddca52",
+      "bytes": 24903,
+      "sha256": "a2fcca9ad194b6f6fc6b233232404d20ab1c96ab9608d72b0dd34095948c3185"
+    },
+    {
+      "path": "src/capabilities/catalog.h",
+      "mode": "100644",
+      "blob": "b0c4c2cdb83be6469eb1c38347d1a241de0083b3",
+      "bytes": 11453,
+      "sha256": "a72b4e95b43846695607f2f603445c7a98f49071b914b9042e7aeff1c6ec446f"
+    },
+    {
+      "path": "src/capabilities/catalog_values.c",
+      "mode": "100644",
+      "blob": "23a22bf1d0c7924557852e49e9ac5791b8509560",
+      "bytes": 10392,
+      "sha256": "4b053badb20b5c1ff1c121a676d186aae5bb578e4901f8e95e470747449b0fae"
+    },
+    {
+      "path": "src/ecs/ecs.c",
+      "mode": "100644",
+      "blob": "b09ac1f263b1d4fec1ba28d20b5ffd90b9b3bfc4",
+      "bytes": 79674,
+      "sha256": "3554b526a8ebb4a91d43120e4e5434f3b7dbe1bf715118093b659a0653295338"
+    },
+    {
+      "path": "src/execution/c.c",
+      "mode": "100644",
+      "blob": "66b728493d63b90349c64d9c321afe730d7971f3",
+      "bytes": 54969,
+      "sha256": "5d2a096f544c73574701b050f9033f9cb3e94318383500dd29fe530febeb3c0f"
+    },
+    {
+      "path": "src/execution/call.c",
+      "mode": "100644",
+      "blob": "5239e60ff407b84ce6eae1b6ddf9d2c9392a7539",
+      "bytes": 30791,
+      "sha256": "668d3d207fdd1bfa0f599707fb9724393d09c24b38223dcea981da8b4651b6c7"
+    },
+    {
+      "path": "src/execution/function.c",
+      "mode": "100644",
+      "blob": "eae931af3baf481f70ae7d68e6336323596c2aa7",
+      "bytes": 33672,
+      "sha256": "7d102cb929bd52bb51731e4b06dae940eeb2382c3a738bedef2ddc92e45944d6"
+    },
+    {
+      "path": "src/execution/function.h",
+      "mode": "100644",
+      "blob": "c93f9d2a4769be93f2c26dd4598246880922adc8",
+      "bytes": 24496,
+      "sha256": "45f4624f866386a0d12e80d5793601a29e0a62a7baa564b00a6d26733a96223a"
+    },
+    {
+      "path": "src/execution/function_builder.c",
+      "mode": "100644",
+      "blob": "04e10783b9a7f53844083aa9cc9580e3da8d9e93",
+      "bytes": 100204,
+      "sha256": "b5491214610b8c39e043b15b17bfe53564ec245ce74b3e1bca3a125309cb3490"
+    },
+    {
+      "path": "src/execution/host.c",
+      "mode": "100644",
+      "blob": "876a42d8def5769e2b26bf5d18528c8ef6dab67b",
+      "bytes": 10979,
+      "sha256": "be6d2dd3130156dc938485cdc0725fa1bfe60389bc43f7be907f2fa3b66fd26b"
+    },
+    {
+      "path": "src/execution/intrinsics.c",
+      "mode": "100644",
+      "blob": "8f3babd3ae3b340e918f3963f1978d7045ed0776",
+      "bytes": 75860,
+      "sha256": "350295fb402195249f2ffea14f9de951b9be2b36625d96d40e35c91b85629684"
+    },
+    {
+      "path": "src/execution/intrinsics.h",
+      "mode": "100644",
+      "blob": "3670c9e33ef29d1a4dc539098a7c0bfced4143ef",
+      "bytes": 6954,
+      "sha256": "f2709cc5f858a07c9900e08698b37215312338b091a2025b9f80c4758ea3f0d5"
+    },
+    {
+      "path": "src/execution/jit.c",
+      "mode": "100644",
+      "blob": "bee8d501a1610afa037c4d367aca59d95ee7d2a0",
+      "bytes": 55036,
+      "sha256": "690b66938226ce791d0796f84f6a72f5233f4a56d9d74da21f7f2bce8b05e8fb"
+    },
+    {
+      "path": "src/execution/jit_host_call.c",
+      "mode": "100644",
+      "blob": "151a4267f3f78ff54514ea01c5dc0348c2205392",
+      "bytes": 6672,
+      "sha256": "31e16e7c03697b22348f92bc521cdfda537dbcb6bc61d60fada68ba25949f395"
+    },
+    {
+      "path": "src/execution/jit_integer.c",
+      "mode": "100644",
+      "blob": "c141e1bd3702b62bf0e98c657b900c83e7ad2412",
+      "bytes": 22572,
+      "sha256": "d13b291cfdb6ee98621008075cb7f2e21065e218648628c3d68bd43b201beb38"
+    },
+    {
+      "path": "src/execution/jit_internal.h",
+      "mode": "100644",
+      "blob": "b903a1971fbbf960dbaf85054b53d4eb4437b275",
+      "bytes": 5293,
+      "sha256": "0931d2bfdc97b83ce4f4d3f4738d34ea186f5d67cb9f54f325355a70c58be41d"
+    },
+    {
+      "path": "src/execution/jit_registers.c",
+      "mode": "100644",
+      "blob": "7b55019930b371c7ed16c4e62d8747549ba1f21f",
+      "bytes": 26328,
+      "sha256": "b0632d6e793c16258d8675da116b80ddb2a7ef1a935022f6c3fcbdc94cb5900f"
+    },
+    {
+      "path": "src/execution/machine.c",
+      "mode": "100644",
+      "blob": "96eba8cb8009f88d4b33bcdec220c40bef3f99b2",
+      "bytes": 36204,
+      "sha256": "fdfd48c1753773a1a6bca4033baf42e15250f7fc38a38a16fbc2f8d7fb28d055"
+    },
+    {
+      "path": "src/execution/managed.h",
+      "mode": "100644",
+      "blob": "8413a325efb8288df7b94164eb57bdba3e6ff0dd",
+      "bytes": 1899,
+      "sha256": "f8b4e94a6b85095a60c8dc45c70e059fb7081cecd1001b35fbe37514cde1f537"
+    },
+    {
+      "path": "src/execution/module.h",
+      "mode": "100644",
+      "blob": "84041c813b151ca4b4ffba9279f148989bf67764",
+      "bytes": 14878,
+      "sha256": "a7f5e0c6e676f70835b641f7f1f13db1c194e24c472bfb73d09c18238fb70e3b"
+    },
+    {
+      "path": "src/execution/module_effects.c",
+      "mode": "100644",
+      "blob": "3ce4eb3522144da56e66b91ca7b22b7c1f27bd75",
+      "bytes": 103170,
+      "sha256": "abaec5c392014f077dd7ad6d268194493c29ea6697c3bb1b7e656b8e0507133e"
+    },
+    {
+      "path": "src/execution/prepared.h",
+      "mode": "100644",
+      "blob": "a8681ef91b10f52939d6e4955f0f988786432fa6",
+      "bytes": 4075,
+      "sha256": "97ff1c2bd7ad1163d1c18bc36e4e2566ac1d54b8ad580142f021b6377c44577e"
+    },
+    {
+      "path": "src/execution/prepared_record.c",
+      "mode": "100644",
+      "blob": "21f9c0c6fa1024fffbf3539f089e1adbbf62a76c",
+      "bytes": 18550,
+      "sha256": "f6b1720bd15f46a068fc3fb9761c7246d6be4fae6149d257f2384a66ec334a93"
+    },
+    {
+      "path": "src/execution/program.c",
+      "mode": "100644",
+      "blob": "f5e9030fe9a46eb04169378204c45578e0898e35",
+      "bytes": 113826,
+      "sha256": "1c3d76606fa75adba1f275f7c5c1aad83a79022ba037bcc4ca5fd8dd95de285b"
+    },
+    {
+      "path": "src/execution/program_activation.c",
+      "mode": "100644",
+      "blob": "41321f3a9568c84b4e04085dc95b5c299605bc62",
+      "bytes": 16003,
+      "sha256": "35cef6cd45aed87f6234ada46d25d06f48a902271661cdebe0af2c32aa296e19"
+    },
+    {
+      "path": "src/execution/program_internal.h",
+      "mode": "100644",
+      "blob": "684461522714c17053bb1f87417910ba4cf8a07a",
+      "bytes": 10379,
+      "sha256": "abb745035d261559da66007ad4b946641047754fb1e61f0bbdcf411bccd44b65"
+    },
+    {
+      "path": "src/execution/program_observers.c",
+      "mode": "100644",
+      "blob": "29d24d7339044b9b9e9ff982e3b11af31053664d",
+      "bytes": 9562,
+      "sha256": "4f4af9381da783637b6a7ba9939780b9a7885773ba004a7b28963c5e66185419"
+    },
+    {
+      "path": "src/execution/program_preflight.c",
+      "mode": "100644",
+      "blob": "5c6c13dd2c24121a4d344e738c906b957960ea51",
+      "bytes": 11002,
+      "sha256": "27b90435bca991ac3788503de45a5dae0941a50e2236aa32ef9b750b0434058f"
+    },
+    {
+      "path": "src/execution/program_storage.c",
+      "mode": "100644",
+      "blob": "7a75d9b09657fcc5a4c1708732e259123c66900a",
+      "bytes": 13058,
+      "sha256": "c77a4cb659296dc9ca5ebbd3a80f19af8f46cb190fb2b3da9a00dad9fbea65fc"
+    },
+    {
+      "path": "src/execution/program_tasks.c",
+      "mode": "100644",
+      "blob": "4ab068386e063232b4d98bdbc0c82b31786c8291",
+      "bytes": 25510,
+      "sha256": "f20e8a6316a31aa9c9a838d39d50c23a8094bb425eaf71c81bd455ba24ca755f"
+    },
+    {
+      "path": "src/execution/scalar_lowering_plan.c",
+      "mode": "100644",
+      "blob": "8f6c67947f51730ef19f76ea0e5896fdbb7d674f",
+      "bytes": 18963,
+      "sha256": "cd5dfe57b447d0b073ea1e888af80592863ac311e91666b24af599b1fca91dfb"
+    },
+    {
+      "path": "src/execution/wasm_emit.c",
+      "mode": "100644",
+      "blob": "12ac3f15cb0eef6ff537179420112b4683a074e4",
+      "bytes": 24687,
+      "sha256": "bc7e6865775498595f53fe2c8a4b8476cfa33f7b864cef4c3620826f16c7c133"
+    },
+    {
+      "path": "src/language/component.c",
+      "mode": "100644",
+      "blob": "b4dbf54df46b8a55221f9e599b06c1f37905d825",
+      "bytes": 11504,
+      "sha256": "9a25af2b69aaff9d311d07c8ebf442cf694ac61f160d9107c2b5d04c9e733240"
+    },
+    {
+      "path": "src/language/grammar.js",
+      "mode": "100644",
+      "blob": "6e94933450b192a1cda7fd978425f074f7a28053",
+      "bytes": 26158,
+      "sha256": "b1318f187dbd5281890eef5d5974ecdddd7dddccfb9ef6790512c1eedd7025bb"
+    },
+    {
+      "path": "src/language/lower.c",
+      "mode": "100644",
+      "blob": "682f7b2e786db51c9d99cfe5637e85e12a7f33a9",
+      "bytes": 333055,
+      "sha256": "76befc38f9b6d8c2c4bb3b86d866cd87af239c90def391ab7f5df304b28e4f9c"
+    },
+    {
+      "path": "src/language/semantic.h",
+      "mode": "100644",
+      "blob": "e6b7f97937a6b4639207114ef860cbd1b4fc7a05",
+      "bytes": 13818,
+      "sha256": "5153788c7e1712af87a7d553a62aa10481ef1a933cdcdcb94458f337d5debcd4"
+    },
+    {
+      "path": "src/language/semantic_calls.c",
+      "mode": "100644",
+      "blob": "0d83b8a09f4607b21b32be152322fe12f5a1ad0a",
+      "bytes": 93379,
+      "sha256": "17abf917f6a06be8d00dc772597128d426d13a7fe4ac2bf36a2eba20b230307f"
+    },
+    {
+      "path": "src/language/semantic_context.c",
+      "mode": "100644",
+      "blob": "81e171ce78d2dff601c4593a5607480cbdc2bdda",
+      "bytes": 29009,
+      "sha256": "977849c8a28f862360de636509936b3c9a12bf45d5fbe3536ac459f44dda240d"
+    },
+    {
+      "path": "src/language/semantic_expression.c",
+      "mode": "100644",
+      "blob": "08cc9894e6fb588b8621b47b6159fab928f458cc",
+      "bytes": 71978,
+      "sha256": "1f6cfc12335621df3bb12824ddb4912c9dfbe0088f4c506632e36720fa9591fa"
+    },
+    {
+      "path": "src/language/semantic_generic.c",
+      "mode": "100644",
+      "blob": "fa7712a0df534d62a6ebfaea4c52d731e438e092",
+      "bytes": 56644,
+      "sha256": "e4bed06bf82f8266687fcb8499b65e4f5f05e7ac0487ae3ef8cd125a76616f65"
+    },
+    {
+      "path": "src/language/semantic_internal.h",
+      "mode": "100644",
+      "blob": "7c195fc76a09f022d3837edff6a5b9d7e54edfa2",
+      "bytes": 15040,
+      "sha256": "3bac40e5a7b1f1bd0062330647bef2dc6c9caaaaa02d6193994927d347edea72"
+    },
+    {
+      "path": "src/language/semantic_record.c",
+      "mode": "100644",
+      "blob": "1bb6ca97951cc8a6cd1210bb353553e5a0306eed",
+      "bytes": 10507,
+      "sha256": "ce9b9a053dcc1e21aa1c76e3b2b806470156076afe0942628f9d76f14c0b3ff0"
+    },
+    {
+      "path": "src/language/semantic_statement.c",
+      "mode": "100644",
+      "blob": "0271536c52ca8ac7126d1c7fd410795570f95efc",
+      "bytes": 70336,
+      "sha256": "115063e8cbb14d1341f3135439742015bc0bb1ba53acf0119745d188e46de05b"
+    },
+    {
+      "path": "src/language/semantic_union.c",
+      "mode": "100644",
+      "blob": "65778b5e0fc7de932eb9212d1bdc397f97645f35",
+      "bytes": 27723,
+      "sha256": "62d47265b5009ceaca84f9bcec18b62ba92be8bc60df84406842eee6fb196c97"
+    },
+    {
+      "path": "src/language/signature_reader.c",
+      "mode": "100644",
+      "blob": "66040cf3392950619d2c4cc1649ba9e9368c0ee4",
+      "bytes": 18174,
+      "sha256": "d1ebd06050614dc09932b2b9442653f888701de7509df847dcc582f1e53cb39e"
+    },
+    {
+      "path": "src/language/src/grammar.json",
+      "mode": "100644",
+      "blob": "fafe3999e9c71bb08b921b81d463628e40791aec",
+      "bytes": 159667,
+      "sha256": "6530cad80f75add86ae163591d72fd64d3648e56ff7f0fe42c746f7e51b7fc4e"
+    },
+    {
+      "path": "src/language/src/node-types.json",
+      "mode": "100644",
+      "blob": "e5b49a39df7bf5438b8cbb14f389cd90e815eede",
+      "bytes": 153845,
+      "sha256": "27ee61725d6696299380c9ebe88af0bd526425036097b4b848a334f393ad08e8"
+    },
+    {
+      "path": "src/language/src/parser.c",
+      "mode": "100644",
+      "blob": "412640ca3bcd731ff878b1067e95ac2c43947cee",
+      "bytes": 1771706,
+      "sha256": "c2fba4e67cd4abe7c7103fe4516f1b891451643d22480b9fc34f7cbf5ba77561"
+    },
+    {
+      "path": "src/language/type_constructors.c",
+      "mode": "100644",
+      "blob": "2b4a410aaee5b03207c1ca0d752175f17f54d4d1",
+      "bytes": 11806,
+      "sha256": "95d349d986e1e1ce884ac52e45358e94a7f4085c7bb332c59e9100abf4b9c43b"
+    },
+    {
+      "path": "src/language/type_constructors.h",
+      "mode": "100644",
+      "blob": "c6a72e1df037cdd2dee66a2a98c7043480a311d7",
+      "bytes": 3127,
+      "sha256": "a996aa89303ca9d73240f87252e9ea8392f9f320aaef787291b62b6aed042dea"
+    },
+    {
+      "path": "src/runtime/behaviors/entities.c",
+      "mode": "100644",
+      "blob": "9abf693a8f8adcf1c4312715f834f3432c4c8e7e",
+      "bytes": 46304,
+      "sha256": "0b9e6931807ef343ddc562b3a10eff36c546a3cad73fd60c18e99cfe998c45c4"
+    },
+    {
+      "path": "src/toolchain/compiler_host.c",
+      "mode": "100644",
+      "blob": "9fb361a6cf9a726a61e3c32962e3354e23592f07",
+      "bytes": 27996,
+      "sha256": "d1112cbe297a3ced9162d932c670dc3297b9f9b2b210840407142223e7abb184"
+    },
+    {
+      "path": "src/types/array.c",
+      "mode": "100644",
+      "blob": "b822a33fe280f0a4e575d6af32a919905b4391d0",
+      "bytes": 34526,
+      "sha256": "9119898ae23cf64bc08db3ebe10a81582eb874c3f365e3dddc46bb41a66ff399"
+    },
+    {
+      "path": "src/types/index.c",
+      "mode": "100644",
+      "blob": "e875ff403cb3e959964d851865d5313a1f6836c6",
+      "bytes": 7895,
+      "sha256": "4c29037e5ddc2472866ef2af5796671490341ec9a7048d61f671128241a388ab"
+    },
+    {
+      "path": "src/types/pointer.h",
+      "mode": "100644",
+      "blob": "b416d8c473cd4dc832dd809400e74e658be9fd55",
+      "bytes": 861,
+      "sha256": "418356e8af9b4c7c791253a1877df9378217f81c34beaa87e5836d3b05e33007"
+    },
+    {
+      "path": "src/types/record.c",
+      "mode": "100644",
+      "blob": "3cd37331878d41eef2de76b6c124effa37f1d19c",
+      "bytes": 11557,
+      "sha256": "f0d17b3faf2446896bc9556ca59eb4823ec93a4d4e54b74a16ba0021085ff55b"
+    },
+    {
+      "path": "src/types/scalar.h",
+      "mode": "100644",
+      "blob": "56c0ff6a12d4600d09da241e740d772defd5118d",
+      "bytes": 9283,
+      "sha256": "8e1bc9ebc870768141394a7c0a2415aed6596a01a28eec621c578485fddd8435"
+    },
+    {
+      "path": "src/types/trace.c",
+      "mode": "100644",
+      "blob": "17103a2523a42816cd5aba38869d57e5f5cac274",
+      "bytes": 11385,
+      "sha256": "954a234db2d272dee537cd776d842d6c8e216c91d2c96e6ea90620210eec2d37"
+    },
+    {
+      "path": "src/types/trace.h",
+      "mode": "100644",
+      "blob": "c11f7d658878d977411d3669a247f325591e3754",
+      "bytes": 1108,
+      "sha256": "686d5941aeb390ea686df7a3b528ccce9203b836c5556d5556a9aa4edf610309"
+    },
+    {
+      "path": "src/types/type.c",
+      "mode": "100644",
+      "blob": "b5fec35e5b47316cca47af0bf671eeae8b9fc409",
+      "bytes": 23301,
+      "sha256": "295d10c1d413083c2dccc069d58b1ed3ace08f4eeb807a4673600e99cec0d9f9"
+    },
+    {
+      "path": "src/types/value.h",
+      "mode": "100644",
+      "blob": "d6b31a036048070e13ef9ae6de40db10da4efe57",
+      "bytes": 2643,
+      "sha256": "fdcdb0e09d5406d123d1b7dbfc6a6b2f837579ee6a219ce14b939730e8330f33"
+    },
+    {
+      "path": "src/types/value_document.c",
+      "mode": "100644",
+      "blob": "c782f057470ff0ffb43adad29d1c79d7d52f0236",
+      "bytes": 11332,
+      "sha256": "61cee066073a718fb72f63cf235d4e5b4392358b144b592da7a13df732d36dbe"
+    },
+    {
+      "path": "src/types/value_document_read.c",
+      "mode": "100644",
+      "blob": "8eee16d6d4b178781465e7b878de699fbaeac633",
+      "bytes": 28983,
+      "sha256": "839d39328f9e2a011ad196c00199005e60ae60e2685dfbd6f839b373cb0e5ec5"
+    },
+    {
+      "path": "src/types/value_format.c",
+      "mode": "100644",
+      "blob": "9e02e784ccd86fa0169fb1951c561f6401905960",
+      "bytes": 5255,
+      "sha256": "3a883749fdceea6570ab8f3da23b3614e1fead134580b67a30f48a5f4c126411"
+    },
+    {
+      "path": "src/types/value_wire.c",
+      "mode": "100644",
+      "blob": "1ee048873c82ce05694f564b90423408f504b5da",
+      "bytes": 29404,
+      "sha256": "051be9fbebc80c00639fcb7e05510bf9dc411147c084716bc8e4001a9518c174"
+    },
+    {
+      "path": "test/authoring/source_edit.c",
+      "mode": "100644",
+      "blob": "a7f736690cbd0f01f6d7025667b51c63bfe2f30b",
+      "bytes": 60987,
+      "sha256": "383c3d7370735c80d078d92f8fcde91827178824abf05806492a9621eafefc44"
+    },
+    {
+      "path": "test/fixtures/behavior-catalog/project.kdl",
+      "mode": "100644",
+      "blob": "676c43466ce3db37e84bfae3e678a554cc48270e",
+      "bytes": 94,
+      "sha256": "95cf40c3403b5c1ec1b8418d222728f0f68ddf077835194e3a610eb569aadbe7"
+    },
+    {
+      "path": "test/fixtures/component-presentation/project.kdl",
+      "mode": "100644",
+      "blob": "a10777b65cc8e8791ae6cb073127dc381cc0406d",
+      "bytes": 100,
+      "sha256": "f16a7a3515f381472dbf50aaaf38b256f5c2d0bdb9d2c61c78a4e9075c76f66c"
+    },
+    {
+      "path": "test/fixtures/content/behaviors/WaveBehavior.chibi",
+      "mode": "100644",
+      "blob": "35e0b0669f3faa2fa7a2984476dd8aaf9ff7d4d6",
+      "bytes": 1469,
+      "sha256": "8936b977214879da5df63fc646432860c93e6792ae6c455c17c2b3b62467f96e"
+    },
+    {
+      "path": "test/fixtures/courtyard/project.kdl",
+      "mode": "100644",
+      "blob": "ac8fd3172e7d2c3b3f0d4a678fa7fe35c6f4dde5",
+      "bytes": 77,
+      "sha256": "5675920356958556bc29010c797600e58118ee5fcbc7ca0c75f7a0e7cb288de9"
+    },
+    {
+      "path": "test/fixtures/declared-components/project.kdl",
+      "mode": "100644",
+      "blob": "1a4e37ab1672b351f7ed4df10be1f9ddfa11695c",
+      "bytes": 87,
+      "sha256": "6242ab0e8f871b0771e3c752a34104611264ec5a974b2197d8e18f9fb8b52652"
+    },
+    {
+      "path": "test/fixtures/environment-authoring/project.kdl",
+      "mode": "100644",
+      "blob": "57d9e5e2e373184f75a81c083572b50a2ca51cfd",
+      "bytes": 97,
+      "sha256": "5b5135084ff7cf7c779c8cefd5e358990c3220d1f690b85c8f52a68e0e1f6474"
+    },
+    {
+      "path": "test/fixtures/feature-coverage/content/behaviors/EntityProbe.chibi",
+      "mode": "100644",
+      "blob": "b41668796340b4a8daebc3b560e60cd7b3129b75",
+      "bytes": 1021,
+      "sha256": "7e55130a1076ce9c6cda0dcbe51d8255aecd1b253fba9e2d3f13c134121b6175"
+    },
+    {
+      "path": "test/fixtures/feature-coverage/content/behaviors/PanelProbe.chibi",
+      "mode": "100644",
+      "blob": "df1f690028b9cb94301b45f8fcc7ca3bbc6adcd7",
+      "bytes": 820,
+      "sha256": "34decdf09a4640b21e2a6e2b67884aed029a953803d1d9c9a100bf6d600811ee"
+    },
+    {
+      "path": "test/fixtures/feature-coverage/project.kdl",
+      "mode": "100644",
+      "blob": "9936cf10cac7f84612dea29000083044f08bae3f",
+      "bytes": 88,
+      "sha256": "45291757c51a94d4b3026ca4579a3cfe163f9a09ff891d8b314eedf9253a6218"
+    },
+    {
+      "path": "test/fixtures/graph-routing/content/behaviors/Weapon.chibi",
+      "mode": "100644",
+      "blob": "5048d72d3f2a306def8a3480013e301e21abbed7",
+      "bytes": 1724,
+      "sha256": "84d49e617f6dfad64ba0e16399992ace2863d47e104a7f7a969485ff3b4edd95"
+    },
+    {
+      "path": "test/fixtures/graph-routing/project.kdl",
+      "mode": "100644",
+      "blob": "292698efcbd727c198c2b39ceabffb623af74ecc",
+      "bytes": 88,
+      "sha256": "92173c02a4e50b880480a3c8f6f28c01d3afec22575faad5c956b1476414d3f3"
+    },
+    {
+      "path": "test/fixtures/language/project.kdl",
+      "mode": "100644",
+      "blob": "0feaa764f8c2c94b23662c31fa7d48ff5bd8f93c",
+      "bytes": 86,
+      "sha256": "722869009973d7c88d9f512379bc3a279ef9cdb3b312d5bdd3d93a19ae038da5"
+    },
+    {
+      "path": "test/fixtures/material-contracts/project.kdl",
+      "mode": "100644",
+      "blob": "92e0d13662c11e1e400d72de14193c5ff0fe3412",
+      "bytes": 86,
+      "sha256": "e3d1165bc5902a92163b8c537a72af7fc6e39f6b4f23caa812a92de168fa58e3"
+    },
+    {
+      "path": "test/fixtures/project.kdl",
+      "mode": "100644",
+      "blob": "fb9f5d158ebdd1b0adcae80d61cebf00f4c98afc",
+      "bytes": 85,
+      "sha256": "cdfd5359247d03883776b7933980bdad3cf3569cd703326bfbc16cd75edc70e2"
+    },
+    {
+      "path": "test/fixtures/refactor/references/behaviors/Weapon.chibi",
+      "mode": "100644",
+      "blob": "e3841737cd660e0c61b128f96febe7054e298f41",
+      "bytes": 1626,
+      "sha256": "5505cd8018187729b8031d3762ca6f76f3d00b92a612424728995759fce5f7cf"
+    },
+    {
+      "path": "test/fixtures/scene3d/project.kdl",
+      "mode": "100644",
+      "blob": "86a1aadeb9af22df8e5496d9b818a3b234312e7e",
+      "bytes": 77,
+      "sha256": "1c0b12e3dc97f55a6b03a55b00d25f925f1f380c2ec865844efa7d4479236600"
+    },
+    {
+      "path": "test/fixtures/sprites/project.kdl",
+      "mode": "100644",
+      "blob": "66763990de980642403fcb524307d480c2d7b2ba",
+      "bytes": 84,
+      "sha256": "b655036c719deb0324a67addf0a8d4576a2a0ae887873b895affc154c83e33c6"
+    },
+    {
+      "path": "test/fixtures/studio-workspace/content/behaviors/Weapon.chibi",
+      "mode": "100644",
+      "blob": "74c2110829794f5d8c777bdd838b24c182d0812e",
+      "bytes": 1720,
+      "sha256": "94620a58e076497d78ea55bb2c38d4d5081828664de114e29b9b2d4ca9d5d80d"
+    },
+    {
+      "path": "test/fixtures/studio-workspace/project.kdl",
+      "mode": "100644",
+      "blob": "2af4dc96df39ef2a3030860744857e5669315af5",
+      "bytes": 96,
+      "sha256": "ceb45490baabf517ea116e2cfde5b71ee73ff7b46dbfe8660bd51670e577391e"
+    },
+    {
+      "path": "test/fixtures/studio/project.kdl",
+      "mode": "100644",
+      "blob": "903e7eccd990bbee98613df8caf8ecffca359004",
+      "bytes": 83,
+      "sha256": "f74aceea29e17d5b3e7eca0089e44aef5979708d9b15426ee4e1a20167fde76a"
+    },
+    {
+      "path": "test/fixtures/terrain-lab/project.kdl",
+      "mode": "100644",
+      "blob": "3900535285d6d31f6604ac4838f9bc8434e9a597",
+      "bytes": 80,
+      "sha256": "815f94319bd2a9419fa312a9f4704631d55e6908bf2ced5b209f86188b0e9257"
+    },
+    {
+      "path": "test/language/borrow.c",
+      "mode": "100644",
+      "blob": "f9e10e6edf5134dc9705b8f7f2488ad2d2cb29ba",
+      "bytes": 106146,
+      "sha256": "573c937341128657285609c0afccc8c8f93fd11d38a51f138df9fb75fc159beb"
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "mode": "100644",
+      "blob": "89547ff18fe4e19c49ad462c97bcccbe63942bdc",
+      "bytes": 20948,
+      "sha256": "3ebbbaff2a644b51a4c80792aa90f75bff9e36d3e967030a8709a8d1b698acd5"
+    },
+    {
+      "path": "test/language/compiler_fixture.h",
+      "mode": "100644",
+      "blob": "7e875ccb8630f25df2c116a9788d6bc326ce30d2",
+      "bytes": 3491,
+      "sha256": "0962c26dcde941b32ad3f748421acc7b60a7d0dd2edeff653ff14e3261c8a8e9"
+    },
+    {
+      "path": "test/language/effects.c",
+      "mode": "100644",
+      "blob": "8db89b282b664caa38546613f318eef85b0ec581",
+      "bytes": 8894,
+      "sha256": "91b4e4fc792e95042267d18ae97c41db8f2db3493647e0e5c6d013482a0de7b3"
+    },
+    {
+      "path": "test/language/execution.c",
+      "mode": "100644",
+      "blob": "e357ff438c86476a07e227d15066f92ae5c313c4",
+      "bytes": 128357,
+      "sha256": "ac013aac7e2d2ebe1116341bb6f41d654a9dd9232683cf0c092f4ce5adbaab08"
+    },
+    {
+      "path": "test/language/format.c",
+      "mode": "100644",
+      "blob": "cb923fba33a0c5de4f27cf5ec20fb87d55b19242",
+      "bytes": 69509,
+      "sha256": "312ccfffd0f060711e6783954f6becbeed90cb32519b2ff45940c77e7c28f6ed"
+    },
+    {
+      "path": "test/language/generic.c",
+      "mode": "100644",
+      "blob": "90d4f40fcf88912129d293cfed81047e0b560d4c",
+      "bytes": 36562,
+      "sha256": "688b3cb986bb6e24fb7831956ee8041ffffa900b7e72e11c6e3230d1f4bd49c2"
+    },
+    {
+      "path": "test/language/named_binding_chibi.c",
+      "mode": "100644",
+      "blob": "38cd3ec69959b8999735801b26110679db27e2af",
+      "bytes": 39520,
+      "sha256": "94b84d1576214500d1fd1b85f08764994fdae139325bb701e4ca4ebe87405fd4"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "mode": "100644",
+      "blob": "766ab1d4e23d0271bd3a4e52d4fed329643ac431",
+      "bytes": 200990,
+      "sha256": "39e9a7de7fa741ef498e84ec9a0aa86baf53634b729ba66dcc17e7a1595ede74"
+    },
+    {
+      "path": "test/language/package_compiler_chibi_source.h.in",
+      "mode": "100644",
+      "blob": "3b50de211b2ddfe85166d08b330b9fee2c00abd7",
+      "bytes": 3253,
+      "sha256": "d7e6642746f51b74664c68c5dffe9967143e5f82e3edc200c487ad513d753c98"
+    },
+    {
+      "path": "test/language/package_imports.c",
+      "mode": "100644",
+      "blob": "3e2862694c338478c7a290c2fe45aa3079c811b1",
+      "bytes": 41353,
+      "sha256": "47136f147bc1d31f14dfad30070b23064fb3b186247f92eb75edbb88ae18f676"
+    },
+    {
+      "path": "test/language/program.c",
+      "mode": "100644",
+      "blob": "79036c4940e532cc6a91cfa98687881a872bc12e",
+      "bytes": 486142,
+      "sha256": "a4283702ea903d456c49705b12fdac713790e6a5b835bcbeed32b58525c99b34"
+    },
+    {
+      "path": "test/language/prototype.c",
+      "mode": "100644",
+      "blob": "2bcf5e70733c570fd0b0e6657c75e4c278befe68",
+      "bytes": 36799,
+      "sha256": "f9232554be09fdc2399cd45b6ddf758feaea0120485027ff01ecb90698449a81"
+    },
+    {
+      "path": "test/language/record_members_chibi.c",
+      "mode": "100644",
+      "blob": "c0a32ed57ef2c226efdc5a9e993f94a2dffb4654",
+      "bytes": 39406,
+      "sha256": "c6dde2723db67b40352cf341aebd979cb540a42844e9499fa145d76263996585"
+    },
+    {
+      "path": "test/language/record_prepared_runtime.c",
+      "mode": "100644",
+      "blob": "fafe4e3b8ca570512128abff71711be77a91808f",
+      "bytes": 41918,
+      "sha256": "ee787b1893c11608aac08c721445ff12e9e9fe26568658b3774666bbe896e159"
+    },
+    {
+      "path": "test/language/record_runtime.c",
+      "mode": "100644",
+      "blob": "92e74a07e3f033dfeef61455e1878e315a4a6cbd",
+      "bytes": 22920,
+      "sha256": "c1190dab67fc65e8ba48c84ce650ceada93c9ecffce1a6d2baf8c640377267c4"
+    },
+    {
+      "path": "test/language/record_services.c",
+      "mode": "100644",
+      "blob": "11bf3e592fa8b2bc9c002b07cde5963da9646761",
+      "bytes": 20831,
+      "sha256": "2ea5be68369de0dddde226b97369c99ac2f8d59ca4d70efcd27d50e20eb000ef"
+    },
+    {
+      "path": "test/language/row_array.c",
+      "mode": "100644",
+      "blob": "d57bcc6e387caa98b6351aca3d8463447cf5063f",
+      "bytes": 40135,
+      "sha256": "cbed33b3f68ead4b7a29cbac55462ede458cc29e3fd98431329a6d09c60caadf"
+    },
+    {
+      "path": "test/language/semantic.c",
+      "mode": "100644",
+      "blob": "d7cc76aad6cef5b2f850b84b24a57b1d86f4a73d",
+      "bytes": 109621,
+      "sha256": "c4fc4c8d620d6b63a500e8e49ad867a1764709d61fc1798ab52f3284a72fe6e9"
+    },
+    {
+      "path": "test/language/signature_fixture.c",
+      "mode": "100644",
+      "blob": "9cb3fecd1490eb0191da1c562109d4afbdbf99cb",
+      "bytes": 18900,
+      "sha256": "a7a69de3034efb3fc318a0e07916c5fd246ea778a161599857f357c0bc7e34f9"
+    },
+    {
+      "path": "test/language/signature_reader_chibi.c",
+      "mode": "100644",
+      "blob": "a0a7eff6356f6c31e43612743b3ac11df413a400",
+      "bytes": 66584,
+      "sha256": "aed8284c7b0d121ed958c3e3d4eacb06bb3cfb7b4907efa3a84bff32932c07c3"
+    },
+    {
+      "path": "test/language/source_tokenizer_chibi.c",
+      "mode": "100644",
+      "blob": "b8295bbd8934e08a42c5e175f0df5563de710c21",
+      "bytes": 27184,
+      "sha256": "130bf6e5cbabc4fa9f8616ddb5bcd42dab78c08cc15291cb7f9072e862ae3d6f"
+    },
+    {
+      "path": "test/language/syntax.c",
+      "mode": "100644",
+      "blob": "5f1c47c519fae5eeb3797ca03f19245b18384048",
+      "bytes": 40883,
+      "sha256": "bed7f74f8cad6970853a5721f49b14d40836f95c27c90c35d4046bebb81a88b7"
+    },
+    {
+      "path": "test/language/syntax_corpus.c",
+      "mode": "100644",
+      "blob": "f1bbd846ed4dfdafcd0cb484c54f51fe2cde7595",
+      "bytes": 2663,
+      "sha256": "cd5c5eef0de6aab619168c7c85bdf13f2af09c182d022724e2d7d5c15102ff98"
+    },
+    {
+      "path": "test/language/type_constructors_chibi.c",
+      "mode": "100644",
+      "blob": "79bc81c658817153a9bcfa3445a864e87bc2a4ab",
+      "bytes": 45113,
+      "sha256": "8ba3866a7a07281ebe134844c2f509306f824e5636e803aa6b75b6856fdae36d"
+    },
+    {
+      "path": "test/language/union_members_chibi.c",
+      "mode": "100644",
+      "blob": "16347bf70e762e58e3c3d2048f33c9ec8c6b6b2e",
+      "bytes": 46170,
+      "sha256": "1c87f3cdaeefe8002fe994d1eb69997ae15aadd0fd1d00061572243fac532bdc"
+    },
+    {
+      "path": "test/stories/Controls/content/behaviors/Pilot.chibi",
+      "mode": "100644",
+      "blob": "425ce05b4e9ca54a86e6f8379b12a8370174e9f7",
+      "bytes": 279,
+      "sha256": "f58c1d0e886f173504367205a3be86e59da2d38f11c1753fd1ea2558ed72875e"
+    },
+    {
+      "path": "test/stories/Controls/project.kdl",
+      "mode": "100644",
+      "blob": "c041a2cd8e95ac777d3239a81bc05d5a7bbfea8c",
+      "bytes": 81,
+      "sha256": "d8481320116371584e53b397e290fb24c28c02657fe8e0310dc74cf439bde92a"
+    },
+    {
+      "path": "test/stories/Counter/content/behaviors/Counter.chibi",
+      "mode": "100644",
+      "blob": "c51bd210e9bd29c2e1df1101fc91027924419ee4",
+      "bytes": 189,
+      "sha256": "c62d55a96c89e4dd2c242a604194d915f04ed9217d81c7845eb84c024bda338d"
+    },
+    {
+      "path": "test/stories/Counter/project.kdl",
+      "mode": "100644",
+      "blob": "bb5a1a8a4238a8eec7b652dc6b8784063fb6adb0",
+      "bytes": 80,
+      "sha256": "a5a3ba723da02ea766ff30cfd51e2f9feb79528148ab0cb28ccdb74dd4c2f9e9"
+    },
+    {
+      "path": "test/stories/Follow/project.kdl",
+      "mode": "100644",
+      "blob": "b3e6ee7e7ad86443cfe9e319bf59e624180168d3",
+      "bytes": 79,
+      "sha256": "ddfe22cd1d8ded5688c9a2aea41533872ae62f6624760a35ec05450b1e291538"
+    },
+    {
+      "path": "test/stories/Motion/project.kdl",
+      "mode": "100644",
+      "blob": "a6aeb1e37143c77d9cc71d0f48dac69c84b96747",
+      "bytes": 79,
+      "sha256": "5656fa014485e8e7efb3c9124971fec609759691b664d01f6e64547205c0bd01"
+    },
+    {
+      "path": "test/stories/Results/project.kdl",
+      "mode": "100644",
+      "blob": "e3c65f123752277597a3cecd3b3b0a0207e8f240",
+      "bytes": 80,
+      "sha256": "5a39843ec9bd5e2a2db2d0df211c3766719730970c5637bed72e3911e918e757"
+    },
+    {
+      "path": "test/tools/main.c",
+      "mode": "100644",
+      "blob": "0e5c3ceb6d3fa6c1866bbcc3f9bcc4277e45ef4a",
+      "bytes": 57425,
+      "sha256": "f369b956ffcdb30a4596210e487d215179931e25838ed0c954601d7cf3b69f4f"
+    },
+    {
+      "path": "test/tools/types.c",
+      "mode": "100644",
+      "blob": "9fd394ccef4018ff270f232fd74cf2e834dd7f76",
+      "bytes": 44394,
+      "sha256": "d6ab7f124e2a9e99ffc96ac482886d7614d92a1df4b66d3887af3e454f01f69a"
+    },
+    {
+      "path": "tools/compiler/bootstrap.kdl",
+      "mode": "100644",
+      "blob": "1f1fa5f194b2b7ad0a999844fbf088889c7173d5",
+      "bytes": 579,
+      "sha256": "145e15f7b90482ed57f57cf8e65ba0ee42d005be88ae572ea27136635df656c0"
+    },
+    {
+      "path": "tools/compiler/bootstrap/bootstrap.json",
+      "mode": "100644",
+      "blob": "0c7274ce9806224e8725e2f0a84302dcd950d330",
+      "bytes": 24153,
+      "sha256": "de4a7ea799052dd907e16c329782a9f898628c4a56820ca0fa8b18762e27b78c"
+    },
+    {
+      "path": "tools/compiler/bootstrap/compiler.chibip",
+      "mode": "100644",
+      "blob": "9f612c3ec25a0dd012e88e770d95c73f203d7d76",
+      "bytes": 13104075,
+      "sha256": "f1b5ebbb0aa3de47fb2b47b33d91b98c1dc08204ef3d76ce02e9ab95a90f44f2"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Compile.chibi",
+      "mode": "100644",
+      "blob": "3c7c3665a8f90369d0a068655c3438f6ae2a784a",
+      "bytes": 15592,
+      "sha256": "28fd231200f29f53d1f420b8b42ff0fb07e8d0ab69dfe3004c5d3e9d2d70421a"
+    },
+    {
+      "path": "tools/compiler/callable_headers/Headers.chibi",
+      "mode": "100644",
+      "blob": "d1e974d59e491be4cd2200b815fd731004eac707",
+      "bytes": 45560,
+      "sha256": "6a57fcabaceefd82f58778479c81e9c99ad3e1816c45e05330fd606d486213bc"
+    },
+    {
+      "path": "tools/compiler/named_binding/Binding.chibi",
+      "mode": "100644",
+      "blob": "4a59c2e866d63026ad63bba1caba885631853647",
+      "bytes": 17142,
+      "sha256": "5712b58a52a5b9cbb55bcfcb3a5d15a5b947e27841046abe96dfe1ded22f8ff7"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "mode": "100644",
+      "blob": "84102624b4d019d682c0a25260725e0c7fdcea8c",
+      "bytes": 119848,
+      "sha256": "9033cd6702f86aa16ebe184b4ac17ff06c6304976e2b984844a4fdb4126f2d36"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Compile.chibi",
+      "mode": "100644",
+      "blob": "e21b22832bfa64ff7135746eb13089c331cb58b3",
+      "bytes": 96676,
+      "sha256": "80b283e1e0f001270ef177be50e7448e6b35c84043ab75e67da4ecb5de152167"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Pointers.chibi",
+      "mode": "100644",
+      "blob": "7ff354e7e898a0a03364f6ec3330614cd8a1a4d3",
+      "bytes": 43253,
+      "sha256": "6c59117465a0cc19c66baf6df6d2856d1fe9b5cc207729d25f31b9ae02b98583"
+    },
+    {
+      "path": "tools/compiler/package_compiler/References.chibi",
+      "mode": "100644",
+      "blob": "14de2629600522d97cad35d90377abcd0b6fd66f",
+      "bytes": 28383,
+      "sha256": "fc15921d8ca79214c738dd236adf94dffc63940caeaa9ccb7eb1dbc41e06c674"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Steps.chibi",
+      "mode": "100644",
+      "blob": "0430c0e284194805eb8bd09ceb853cbfce2fe831",
+      "bytes": 193913,
+      "sha256": "dad3a1d2945d8f7bed5b74e251c785799f7a7a027fb184e5487199fb287030ca"
+    },
+    {
+      "path": "tools/compiler/prepared_writer/Writer.chibi",
+      "mode": "100644",
+      "blob": "92e9c87404cb78fdc8c2b2b60786e744e30a6996",
+      "bytes": 26338,
+      "sha256": "345a62b2b220677621446bde9935ac6d91a3e0acc83a5525e50dec56577784a2"
+    },
+    {
+      "path": "tools/compiler/record_members/Members.chibi",
+      "mode": "100644",
+      "blob": "ef7304dce13684f9df636f41a7aefaba470057b3",
+      "bytes": 5670,
+      "sha256": "078573a109f3654663f14031db9055abf28d74f597f41ca5ae9b953665c4861c"
+    },
+    {
+      "path": "tools/compiler/scalar_lowering/Lower.chibi",
+      "mode": "100644",
+      "blob": "aef8d1604baba6e131a61f2fafbdbc7f3b127d60",
+      "bytes": 23733,
+      "sha256": "8eea04b5368e3df071f232a26f3e21785f42204ee22dc64874d6fb96cf6b7401"
+    },
+    {
+      "path": "tools/compiler/signature_reader/Reader.chibi",
+      "mode": "100644",
+      "blob": "f783c62b97fcddb4c7358384fe1263dfa640022a",
+      "bytes": 40955,
+      "sha256": "e4680274631b2c4f8d26ee0a353b6170887ddf06beaf22512b5397e3f5b9d2ab"
+    },
+    {
+      "path": "tools/compiler/source_tokenizer/Tokenizer.chibi",
+      "mode": "100644",
+      "blob": "bf3bddff7f5529ddaf858e7b3e77fddaa8ca6cdf",
+      "bytes": 27848,
+      "sha256": "43b674a878a271f28f0cef35cafda59fa49963152c114bc5be9e0b52cd95594e"
+    },
+    {
+      "path": "tools/compiler/type_constructors/Constructors.chibi",
+      "mode": "100644",
+      "blob": "751a8bd37c93eb0192850f3be73ddd13f729fc20",
+      "bytes": 14638,
+      "sha256": "67268262f399ff3b0b88ae4e409178016b47636ba86f26face82966ebade6775"
+    },
+    {
+      "path": "tools/compiler/union_members/Members.chibi",
+      "mode": "100644",
+      "blob": "7dd1e891ebaf430a7053fa10157c060d2aa2e7da",
+      "bytes": 33395,
+      "sha256": "6b4617d9e7b3e647834e671ea7a10bd4f21fd37032e1b8601153cfe85eb3af18"
+    },
+    {
+      "path": "tools/graph/engine/Targets.chibi",
+      "mode": "100644",
+      "blob": "d1f19538fd2e9da59b0c6e4d650a0d39fbe61535",
+      "bytes": 228709,
+      "sha256": "eaaf7948f739fae1cb77e2ea1836a9d245cc23955710098cb205886aa8a9ee7e"
+    },
+    {
+      "path": "tools/test_policy.py",
+      "mode": "100644",
+      "blob": "1ade6bbf16ef7cb0fb95088e0b1f24208ad01929",
+      "bytes": 138471,
+      "sha256": "37d63eacdfae98230f937c6b42eb53f281255c9d7b0fc4b717b9a4534018d76d"
+    }
+  ]
+}

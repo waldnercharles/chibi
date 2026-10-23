@@ -1,0 +1,7 @@
+Running: record_members_selection_keeps_original_guards (OK) (0.166618 secs)
+Running: record_members_annotations_and_diagnostics (OK) (0.013137 secs)
+Running: record_members_default_boundary_requires_refreshed_facts (OK) (0.002498 secs)
+Running: record_members_publications_continue_before_next_member (OK) (0.003690 secs)
+Running: record_members_outputs_outlive_all_producers (OK) (0.009640 secs)
+===============================================================
+Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 97622

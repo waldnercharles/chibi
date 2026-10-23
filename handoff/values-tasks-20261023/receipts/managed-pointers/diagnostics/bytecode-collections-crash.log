@@ -1,0 +1,71 @@
+(lldb) target create "build-release/test/language/test_language"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64).
+(lldb) settings set -- target.run-args  "--package-compiler-chibi-collections"
+(lldb) run
+Process 78821 launched: '/Users/cwaldner/Personal/chibi/.worktrees/managed-pointers/chibi/build-release/test/language/test_language' (arm64)
+Process 78821 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x0)
+       frame #0: 0x0000000000000000 
+error: memory read failed for 0x0
+Target 0: (test_language) stopped.
+(lldb) thread backtrace all
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x0)
+   * frame #0: 0x0000000000000000 
+     frame #1: 0x00000001003df704 test_language`release_local + 32
+     frame #2: 0x00000001003f39bc test_language`execution_machine_step + 7100
+     frame #3: 0x000000010042cb28 test_language`behavior_function_run_interpreted + 108
+     frame #4: 0x00000001004258c0 test_language`behavior_function_run_once + 292
+     frame #5: 0x00000001003cc88c test_language`behavior_function_run_calls + 396
+     frame #6: 0x000000010015cfd8 test_language`invoke + 2956
+     frame #7: 0x000000010015c358 test_language`compiler_host_invoke + 112
+     frame #8: 0x000000010016fbc4 test_language`run + 324
+     frame #9: 0x000000010016f3ec test_language`run_samples + 9260
+     frame #10: 0x0000000100001a70 test_language`pu_run_test + 96
+     frame #11: 0x000000010016a7f0 test_language`test_language_package_compiler_chibi_collections + 44
+     frame #12: 0x0000000100003520 test_language`main + 6048
+     frame #13: 0x000000018377c4e4 dyld`start + 6992
+(lldb) frame select 1
+frame #1: 0x00000001003df704 test_language`release_local + 32
+test_language`release_local:
+->  0x1003df704 <+32>: mov    w8, #0x1                  ; =1 
+    0x1003df708 <+36>: str    x8, [x19]
+    0x1003df70c <+40>: strb   w8, [x19, #0x8]
+    0x1003df710 <+44>: stur   xzr, [x19, #0x9]
+(lldb) register read x19 x20 x21 x22 x23 x24 x25 x26 x27 x28
+x19          = error: unavailable
+x20          = error: unavailable
+x21          = error: unavailable
+x22          = error: unavailable
+x23          = error: unavailable
+x24          = error: unavailable
+x25          = error: unavailable
+x26          = error: unavailable
+x27          = error: unavailable
+x28          = error: unavailable
+(lldb) disassemble --name execution_machine_step --count 24
+test_language`execution_machine_step:
+    0x1003f1e00 <+0>:  sub    sp, sp, #0x100
+    0x1003f1e04 <+4>:  stp    d9, d8, [sp, #0x90]
+    0x1003f1e08 <+8>:  stp    x28, x27, [sp, #0xa0]
+    0x1003f1e0c <+12>: stp    x26, x25, [sp, #0xb0]
+    0x1003f1e10 <+16>: stp    x24, x23, [sp, #0xc0]
+    0x1003f1e14 <+20>: stp    x22, x21, [sp, #0xd0]
+    0x1003f1e18 <+24>: stp    x20, x19, [sp, #0xe0]
+    0x1003f1e1c <+28>: stp    x29, x30, [sp, #0xf0]
+    0x1003f1e20 <+32>: add    x29, sp, #0xf0
+    0x1003f1e24 <+36>: mov    x19, x0
+    0x1003f1e28 <+40>: ldr    x25, [x0]
+    0x1003f1e2c <+44>: ldr    x8, [x25, #0x158]
+    0x1003f1e30 <+48>: cbz    x8, 0x1003f1e3c           ; <+60>
+    0x1003f1e34 <+52>: ldursw x9, [x8, #-0x10]
+    0x1003f1e38 <+56>: b      0x1003f1e40               ; <+64>
+    0x1003f1e3c <+60>: mov    x9, #0x0                  ; =0 
+    0x1003f1e40 <+64>: ldr    x20, [x19, #0x10]
+    0x1003f1e44 <+68>: mov    w10, #0x28                ; =40 
+    0x1003f1e48 <+72>: ldr    x11, [x19, #0x30]
+    0x1003f1e4c <+76>: mov    w12, #0x78                ; =120 
+    0x1003f1e50 <+80>: smaddl x21, w1, w12, x11
+    0x1003f1e54 <+84>: ldrsw  x11, [x21, #0x8]
+    0x1003f1e58 <+88>: ldrb   w12, [x21, #0x31]
+    0x1003f1e5c <+92>: cbz    w12, 0x1003f1eb4          ; <+180>
+Test command wall time: 17.384s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

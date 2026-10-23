@@ -1,0 +1,966 @@
+[
+  {
+    "receipt": "receipts/values/task-prerequisite-review/base-test.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 12273
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/behaviors-test.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 11884
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/bounded-test.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 37483
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-2.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-3.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-4.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-5.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-6.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-7.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-8.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build-9.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/build.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/collections-compiled-test.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 3798
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/collections-test.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 4044
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-2.log",
+    "summaries": [
+      {
+        "passed": 0,
+        "failed": 4,
+        "total": 4,
+        "assertions": 24
+      }
+    ],
+    "failure_markers": 12,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-3.log",
+    "summaries": [
+      {
+        "passed": 0,
+        "failed": 4,
+        "total": 4,
+        "assertions": 28
+      }
+    ],
+    "failure_markers": 12,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-4.log",
+    "summaries": [
+      {
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "assertions": 31164
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-5.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 1,
+        "total": 4,
+        "assertions": 29094
+      }
+    ],
+    "failure_markers": 1,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-6.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 1,
+        "total": 4,
+        "assertions": 29111
+      }
+    ],
+    "failure_markers": 1,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-7.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 1,
+        "total": 4,
+        "assertions": 29111
+      }
+    ],
+    "failure_markers": 1,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test-8.log",
+    "summaries": [
+      {
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "assertions": 31166
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/tasks-test.log",
+    "summaries": [
+      {
+        "passed": 0,
+        "failed": 4,
+        "total": 4,
+        "assertions": 24
+      }
+    ],
+    "failure_markers": 12,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/writer-test-2.log",
+    "summaries": [
+      {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "assertions": 1034
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/task-prerequisite-review/writer-test.log",
+    "summaries": [],
+    "failure_markers": 1,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/build-logs/1792707165668107000-82533-configure-native.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/build-logs/1792707175546460000-83400-build.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/build-logs/1792707184289230000-84634-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/values/build-logs/1792707719393826000-41564-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/artifact.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-borrow.log",
+    "summaries": [
+      {
+        "passed": 27,
+        "failed": 0,
+        "total": 27,
+        "assertions": 845
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-collections-compiled.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 3652
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-execution.log",
+    "summaries": [
+      {
+        "passed": 36,
+        "failed": 0,
+        "total": 36,
+        "assertions": 3977
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-package-imports.log",
+    "summaries": [
+      {
+        "passed": 14,
+        "failed": 0,
+        "total": 14,
+        "assertions": 1292
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-program.log",
+    "summaries": [
+      {
+        "passed": 167,
+        "failed": 0,
+        "total": 167,
+        "assertions": 12057
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-record-prepared.log",
+    "summaries": [
+      {
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "assertions": 1142
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-record-services.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 2201
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-semantic.log",
+    "summaries": [
+      {
+        "passed": 65,
+        "failed": 0,
+        "total": 65,
+        "assertions": 898
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/asan-types.log",
+    "summaries": [
+      {
+        "passed": 16,
+        "failed": 0,
+        "total": 16,
+        "assertions": 230
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/bootstrap.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 16775
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/borrow.log",
+    "summaries": [
+      {
+        "passed": 27,
+        "failed": 0,
+        "total": 27,
+        "assertions": 845
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/build-sanitizer.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/build.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/bytecode-collections-crash.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/capture-debug-banks.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/capture-debug-lldb.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/collections-compiled.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/collections.log",
+    "summaries": [
+      {
+        "passed": 0,
+        "failed": 1,
+        "total": 1,
+        "assertions": 2436
+      }
+    ],
+    "failure_markers": 3,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/compiled-crash.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/constructors-debug.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/constructors.log",
+    "summaries": [
+      {
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "assertions": 18234
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/dependencies.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/execution.log",
+    "summaries": [
+      {
+        "passed": 34,
+        "failed": 1,
+        "total": 35,
+        "assertions": 3873
+      }
+    ],
+    "failure_markers": 1,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/format.log",
+    "summaries": [
+      {
+        "passed": 59,
+        "failed": 0,
+        "total": 59,
+        "assertions": 5290
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/imports.log",
+    "summaries": [
+      {
+        "passed": 14,
+        "failed": 0,
+        "total": 14,
+        "assertions": 1292
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/named-binding.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 54220
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-compiler-chibi-collections-compiled.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 3652
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-compiler-chibi-collections.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 3882
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-compiler-chibi-imports.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 5481
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-compiler-chibi-types.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 3188
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-compiler-chibi.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 10983
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-imports.log",
+    "summaries": [
+      {
+        "passed": 14,
+        "failed": 0,
+        "total": 14,
+        "assertions": 1292
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/package-sharing.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 11
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/prepared-writer-chibi.log",
+    "summaries": [
+      {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "assertions": 1034
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/program-debug.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/program.log",
+    "summaries": [
+      {
+        "passed": 167,
+        "failed": 0,
+        "total": 167,
+        "assertions": 12057
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/prototype-document.log",
+    "summaries": [
+      {
+        "passed": 23,
+        "failed": 0,
+        "total": 23,
+        "assertions": 321
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/record-members-chibi.log",
+    "summaries": [
+      {
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "assertions": 97622
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/record-prepared.log",
+    "summaries": [
+      {
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "assertions": 1069
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/record-services.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 2201
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/recovery.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/runtime-language.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/sample.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/scalar-lowering-chibi.log",
+    "summaries": [
+      {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 42896
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/semantic.log",
+    "summaries": [
+      {
+        "passed": 65,
+        "failed": 0,
+        "total": 65,
+        "assertions": 898
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/signatures.log",
+    "summaries": [
+      {
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "assertions": 210959
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/source-edit.log",
+    "summaries": [
+      {
+        "passed": 20,
+        "failed": 0,
+        "total": 20,
+        "assertions": 358
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/source-tokenizer-chibi.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 10051
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/syntax.log",
+    "summaries": [
+      {
+        "passed": 23,
+        "failed": 0,
+        "total": 23,
+        "assertions": 255
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/types.log",
+    "summaries": [
+      {
+        "passed": 16,
+        "failed": 0,
+        "total": 16,
+        "assertions": 230
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/diagnostics/union-members-chibi.log",
+    "summaries": [
+      {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 164277
+      }
+    ],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702633959705000-41450-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702633959705000-41453-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702634191949000-41465-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702634196028000-41464-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702835555606000-48299-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702835563488000-48302-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702835795011000-48328-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792702835796972000-48329-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703301520052000-63427-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703301520704000-63430-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703301747357000-63439-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703301751165000-63440-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703402192110000-68112-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703402192121000-68115-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703402394492000-68124-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703402398159000-68125-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703489408177000-71627-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703489408488000-71630-third-party.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703489686019000-71642-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  },
+  {
+    "receipt": "receipts/managed-pointers/build-logs/1792703489692915000-71643-graph.log",
+    "summaries": [],
+    "failure_markers": 0,
+    "note": "Historical output only. Missing summary is not a pass; do not infer exact commit identity from a filename."
+  }
+]

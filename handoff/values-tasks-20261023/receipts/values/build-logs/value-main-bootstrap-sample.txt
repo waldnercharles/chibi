@@ -1,0 +1,132 @@
+Analysis of sampling test_language (pid 23463) every 1 millisecond
+Process:         test_language [23463]
+Path:            /Users/USER/*/test_language
+Load Address:    0x100e98000
+Identifier:      test_language
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  Python [23402]
+Target Type:     live task
+
+Date/Time:       2026-10-22 17:59:28.762 -0600
+Launch Time:     2026-10-22 16:51:09.260 -0600
+OS Version:      macOS 26.7.1 (25G241)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         1.4G
+Physical footprint (peak):  3.6G
+Idle exit:                  untracked
+----
+
+Call graph:
+    737 Thread_71148394   DispatchQueue_1: com.apple.main-thread  (serial)
+      737 start  (in dyld) + 6992  [0x18377c4e4]
+        737 main  (in test_language) + 6096  [0x100e9b550]
+          737 test_language_package_compiler_chibi_bootstrap  (in test_language) + 44  [0x101003fe8]
+            737 pu_run_test  (in test_language) + 96  [0x100e99a70]
+              737 package_compiler_compiles_itself  (in test_language) + 2580  [0x101004a04]
+                737 compiler_host_invoke_bytes  (in test_language) + 240  [0x100ff69dc]
+                  737 invoke  (in test_language) + 2956  [0x100ff66d8]
+                    728 behavior_function_run_calls  (in test_language) + 396  [0x10126778c]
+                    + 725 behavior_function_run_once  (in test_language) + 532  [0x1012c09b0]
+                    + ! 719 ???  (in <unknown binary>)  [0x107a40938]
+                    + ! : 719 behavior_function_host_arguments  (in test_language) + 192  [0x10127781c]
+                    + ! :   552 managed_boundary_error  (in test_language) + 788  [0x1012e8914]
+                    + ! :   | 484 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0,8,...  [0x183b52730,0x183b52738,...]
+                    + ! :   | 55 managed_boundary_error  (in test_language) + 792,788  [0x1012e8918,0x1012e8914]
+                    + ! :   | 9 DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib) + 8,0  [0x183b55914,0x183b5590c]
+                    + ! :   | 4 DYLD-STUB$$strcmp  (in test_language) + 4  [0x1012ee674]
+                    + ! :   96 managed_boundary_error  (in test_language) + 748  [0x1012e88ec]
+                    + ! :   | 61 managed_boundary_error  (in test_language) + 784,748,...  [0x1012e8910,0x1012e88ec,...]
+                    + ! :   | 35 pin_array_get  (in test_language) + 88,0,...  [0x1012e1b88,0x1012e1b30,...]
+                    + ! :   71 managed_boundary_error  (in test_language) + 804  [0x1012e8924]
+                    + ! :     38 managed_boundary_error  (in test_language) + 804,832,...  [0x1012e8924,0x1012e8940,...]
+                    + ! :     33 pin_record_same  (in test_language) + 92,0  [0x1012e7b04,0x1012e7aa8]
+                    + ! 3 ???  (in <unknown binary>)  [0x107a409cc]
+                    + ! : 3 length_snapshot  (in test_language) + 36,0  [0x1010bd538,0x1010bd514]
+                    + ! 2 ???  (in <unknown binary>)  [0x107a40d7c]
+                    + ! : 1 construct_value  (in test_language) + 672  [0x101278870]
+                    + ! : | 1 pin_value_snapshot_to_arena  (in test_language) + 28  [0x1012e2920]
+                    + ! : |   1 snapshot_value  (in test_language) + 296  [0x1012e2a84]
+                    + ! : |     1 pin_record_snapshot  (in test_language) + 368  [0x1012e7a78]
+                    + ! : 1 construct_value  (in test_language) + 804  [0x1012788f4]
+                    + ! 1 ???  (in <unknown binary>)  [0x1079e42a0]
+                    + !   1 construct_value  (in test_language) + 672  [0x101278870]
+                    + !     1 pin_value_snapshot_to_arena  (in test_language) + 28  [0x1012e2920]
+                    + !       1 snapshot_value  (in test_language) + 804  [0x1012e2c80]
+                    + !         1 pin_value_type  (in test_language) + 28  [0x1012e80f0]
+                    + 2 behavior_function_run_once  (in test_language) + 352  [0x1012c08fc]
+                    + 1 behavior_function_run_once  (in test_language) + 524  [0x1012c09a8]
+                    +   1 behavior_run_record  (in test_language) + 36  [0x1012c0668]
+                    7 behavior_function_run_calls  (in test_language) + 808  [0x101267928]
+                    + 7 pin_value_snapshot_to_arena  (in test_language) + 28  [0x1012e2920]
+                    +   7 snapshot_value  (in test_language) + 296  [0x1012e2a84]
+                    +     5 pin_record_snapshot  (in test_language) + 240  [0x1012e79f8]
+                    +     ! 5 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x183b51414]
+                    +     2 pin_record_snapshot  (in test_language) + 184  [0x1012e79c0]
+                    +       2 arena_contains  (in test_language) + 144  [0x1012ed334]
+                    1 behavior_function_run_calls  (in test_language) + 1376  [0x101267b60]
+                    + 1 behavior_function_reset_host  (in test_language) + 448  [0x101277398]
+                    +   1 _platform_memmove  (in libsystem_platform.dylib) + 200  [0x183b51428]
+                    1 behavior_function_run_calls  (in test_language) + 3032  [0x1012681d8]
+                      1 program_world_views_allowed  (in test_language) + 0  [0x1012aa580]
+
+Total number in stack (recursive counted multiple, when >=5):
+
+Sort by top of stack, same collapsed (when >= 5):
+        _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib)        484
+        managed_boundary_error  (in test_language)        154
+        pin_array_get  (in test_language)        35
+        pin_record_same  (in test_language)        33
+        DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib)        9
+        _platform_memmove  (in libsystem_platform.dylib)        6
+
+Binary Images:
+       0x100e98000 -        0x101804a8f +test_language (0) <17A113DE-4206-346B-92C3-E7CBA649E1A8> /Users/*/test_language
+       0x1836d4000 -        0x183726b4b  libobjc.A.dylib (951.7) <1D62B376-2303-376A-B993-9432A2004EB6> /usr/lib/libobjc.A.dylib
+       0x183727000 -        0x18375bd58  libdyld.dylib (1387) <70073E6E-4CDD-314F-BBDF-EC7FF6CE2DFC> /usr/lib/system/libdyld.dylib
+       0x18375c000 -        0x18380f4ff  dyld (1.0.0 - 1387) <0263B88E-0B22-3B33-BBC0-483BE879B513> /usr/lib/dyld
+       0x183810000 -        0x183813228  libsystem_blocks.dylib (96) <B33F1440-9364-38E4-AF85-8A21BFF24324> /usr/lib/system/libsystem_blocks.dylib
+       0x183814000 -        0x18386855f  libxpc.dylib (3102.160.5) <E26A36A6-4B8F-321C-AE17-54353F9EEE84> /usr/lib/system/libxpc.dylib
+       0x183869000 -        0x1838899ff  libsystem_trace.dylib (1861.160.4) <314A8A89-4715-32B9-ABC2-B3087149C8B7> /usr/lib/system/libsystem_trace.dylib
+       0x18388a000 -        0x1839385f7  libcorecrypto.dylib (1922.160.10) <057A41E9-2A2E-39CD-B198-387734EED870> /usr/lib/system/libcorecrypto.dylib
+       0x183939000 -        0x183989257  libsystem_malloc.dylib (812.160.5) <B7ED74D2-5A24-3F39-9296-EE5688FF4B63> /usr/lib/system/libsystem_malloc.dylib
+       0x18398a000 -        0x1839d123f  libdispatch.dylib (1542.160.2) <80E75F3F-333F-38A8-A3DD-6279FCDB771B> /usr/lib/system/libdispatch.dylib
+       0x1839d2000 -        0x1839d4ffb  libsystem_featureflags.dylib (103) <5725BCFE-07F3-3629-9B44-551A435E2DE2> /usr/lib/system/libsystem_featureflags.dylib
+       0x1839d5000 -        0x183a561e7  libsystem_c.dylib (1752.160.4) <3498CA79-EF40-3587-AD44-75187CEE7D95> /usr/lib/system/libsystem_c.dylib
+       0x183a57000 -        0x183ae7ae7  libc++.1.dylib (2100.43) <32327062-C3A2-389E-ABFE-68A9942422E3> /usr/lib/libc++.1.dylib
+       0x183ae8000 -        0x183b0275f  libc++abi.dylib (2100.43) <CCDE1614-20B7-354C-B201-99C5C4CC589D> /usr/lib/libc++abi.dylib
+       0x183b03000 -        0x183b402f7  libsystem_kernel.dylib (12377.161.15.700.19) <EE805B14-29F2-360D-9A2C-3221A1211833> /usr/lib/system/libsystem_kernel.dylib
+       0x183b41000 -        0x183b4db3b  libsystem_pthread.dylib (539.100.4) <A58BEABD-7AC0-35F8-BCFF-E4FFBD79E938> /usr/lib/system/libsystem_pthread.dylib
+       0x183b4e000 -        0x183b56963  libsystem_platform.dylib (375.120.2) <3AF14164-15FE-3623-9EE3-46DE29FD5B5A> /usr/lib/system/libsystem_platform.dylib
+       0x183b57000 -        0x183b866eb  libsystem_info.dylib (600) <0037F576-2C50-36F0-9F36-6CB7A049D5B1> /usr/lib/system/libsystem_info.dylib
+       0x187b27000 -        0x187b30e5f  libsystem_darwin.dylib (1752.160.4) <B808D04B-2798-36C9-96F6-35534BDFCF11> /usr/lib/system/libsystem_darwin.dylib
+       0x187f92000 -        0x187fa41b6  libsystem_notify.dylib (348.160.3) <922BDCF4-CD33-3EEB-BC56-9DCAE54F8F65> /usr/lib/system/libsystem_notify.dylib
+       0x18a263000 -        0x18a27df7b  libsystem_networkextension.dylib (2226.161.1.700.2) <83F224A4-40C4-3106-A97B-788D1D961DCB> /usr/lib/system/libsystem_networkextension.dylib
+       0x18a300000 -        0x18a317fdf  libsystem_asl.dylib (406) <FF6BE113-1093-3D23-8A55-E0A5B327CA8E> /usr/lib/system/libsystem_asl.dylib
+       0x18beb9000 -        0x18bec1387  libsystem_symptoms.dylib (2169.160.3.701.1) <7F0D4E31-268A-3EBB-8A2C-30CCC771A5A5> /usr/lib/system/libsystem_symptoms.dylib
+       0x19015e000 -        0x190196373  libsystem_containermanager.dylib (725.160.3.701.2) <118BC21E-B17D-32A2-9B65-16256131974F> /usr/lib/system/libsystem_containermanager.dylib
+       0x191570000 -        0x1915745d7  libsystem_configuration.dylib (1405.160.3.701.3) <7725D903-1D37-33E7-82AF-2260661C81A8> /usr/lib/system/libsystem_configuration.dylib
+       0x191575000 -        0x19157b99f  libsystem_sandbox.dylib (2680.160.6.700.3) <7B54AAA3-EB32-3853-8F0E-EB956EC957A1> /usr/lib/system/libsystem_sandbox.dylib
+       0x192bd0000 -        0x192bd31fb  libquarantine.dylib (196.160.2.700.3) <45146171-F0C1-3104-AE01-6AAD841A70B5> /usr/lib/system/libquarantine.dylib
+       0x19336f000 -        0x193375d03  libsystem_coreservices.dylib (191.5.1) <BF51842C-BC69-3725-9EB2-7A52804963F8> /usr/lib/system/libsystem_coreservices.dylib
+       0x1938fe000 -        0x19393ba77  libsystem_m.dylib (3312.100.1) <A2858495-5B01-3D11-955D-FF6F25E88A6E> /usr/lib/system/libsystem_m.dylib
+       0x19393d000 -        0x193940527  libmacho.dylib (1387) <95DEC6C1-4480-3303-8A52-9AFC3D8C9219> /usr/lib/system/libmacho.dylib
+       0x19395a000 -        0x1939673a7  libcommonCrypto.dylib (600035) <EBA6E4D0-4DD2-33BB-BF95-48A58591AAAD> /usr/lib/system/libcommonCrypto.dylib
+       0x193968000 -        0x193971ca3  libunwind.dylib (2100.2) <201827AE-90B0-38B1-9729-50455B607293> /usr/lib/system/libunwind.dylib
+       0x19397a000 -        0x193984c1f  libcopyfile.dylib (240.160.2.702.1) <BA7266A8-BF4B-32BF-A323-F4B2EBCDC0B0> /usr/lib/system/libcopyfile.dylib
+       0x193985000 -        0x193988987  libcompiler_rt.dylib (103.3) <9EE26D98-97BF-3BE0-B6BE-425284AB2D24> /usr/lib/system/libcompiler_rt.dylib
+       0x193989000 -        0x19398d78b  libsystem_collections.dylib (1752.160.4) <34CEFA68-1E15-32F2-A5B1-97C0170A77C5> /usr/lib/system/libsystem_collections.dylib
+       0x19398e000 -        0x1939914cf  libsystem_secinit.dylib (168.100.7) <B6B286B6-6E08-3578-8AFC-E4C55697C760> /usr/lib/system/libsystem_secinit.dylib
+       0x193992000 -        0x193994bf7  libremovefile.dylib (85.100.6) <33530415-3DB6-3556-A59A-24C22681D632> /usr/lib/system/libremovefile.dylib
+       0x193995000 -        0x193995f27  libkeymgr.dylib (31) <AD45B9EE-CE2B-3E1F-B96B-15F7F9FA3712> /usr/lib/system/libkeymgr.dylib
+       0x193996000 -        0x19399ee3f  libsystem_dnssd.dylib (2881.160.4.700.1) <71833E65-58B3-3C06-A4F3-D69D476CCC3C> /usr/lib/system/libsystem_dnssd.dylib
+       0x19399f000 -        0x1939a409b  libcache.dylib (95) <A13AF0DC-5928-38BE-97FF-E04C29EF96AF> /usr/lib/system/libcache.dylib
+       0x1939a5000 -        0x1939a6ce3  libSystem.B.dylib (1356) <E9E4C9A6-16BB-392C-96AA-07797764E2A1> /usr/lib/libSystem.B.dylib
+       0x28767d000 -        0x287684349  libRosetta.dylib (367.9) <3DBB2990-262D-3776-8FAC-B88C0373DCF0> /usr/lib/libRosetta.dylib
+       0x289290000 -        0x289293a4b  libsystem_darwindirectory.dylib (122) <6246210A-5279-391D-8F58-E62A87CAB309> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x289294000 -        0x28929e39b  libsystem_eligibility.dylib (319.160.17) <85C0486B-60BE-3E10-ABBF-DD74341B7376> /usr/lib/system/libsystem_eligibility.dylib
+       0x28929f000 -        0x2892a688b  libsystem_sanitizers.dylib (26.1) <A8C4F7FC-3443-35F7-B306-068D06237ED0> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2892a7000 -        0x2892a7bbf  libsystem_trial.dylib (474.2.18.2.1) <83FF8DEB-1153-35BA-99C3-2AEF9B7559CD> /usr/lib/system/libsystem_trial.dylib

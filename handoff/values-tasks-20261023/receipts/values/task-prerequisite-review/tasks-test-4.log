@@ -1,0 +1,7 @@
+Running: package_compiler_compiles_the_other_behaviors (OK) (4.619599 secs)
+Running: package_compiler_keeps_text_state_per_owner (OK) (4.320061 secs)
+Running: package_compiler_runs_task_sequencing_and_cancellation (OK) (4.498150 secs)
+Running: package_compiler_rejects_unhandled_task_result_shapes (OK) (4.284186 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 31164
+Test command wall time: 18.408s; includes in-test fixture setup; external configuration/build excluded.

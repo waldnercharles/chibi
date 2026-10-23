@@ -1,0 +1,46 @@
+[0/2] Re-checking globbed directories...
+-- GLOB mismatch!
+The following files were added:
+  +package_compiler/TaskResults.chibi
+  +package_compiler/Tasks.chibi
+[1/2] Re-running CMake...
+-- Configuring done (2.2s)
+-- Generating done (0.3s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/value-semantics/chibi/build-release-cmake
+[0/4] Re-checking globbed directories...
+[1/37] Building C object sdk/language/CMakeFiles/chibi_language.dir/component.c.o
+[2/37] Building C object sdk/CMakeFiles/chibi_reference_index.dir/__/src/authoring/reference_index.c.o
+[3/37] Linking C static library sdk/language/libchibi_language.a
+[4/37] Linking C static library sdk/libchibi_reference_index.a
+[5/37] Building C object sdk/CMakeFiles/chibi_input_map.dir/__/src/assets/input_map.c.o
+[6/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_nerd_symbols_font.c.o
+[7/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_ui_font.c.o
+[8/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_ui_bold_font.c.o
+[9/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_ui_medium_font.c.o
+[10/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_ui_semibold_font.c.o
+[11/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_ui_numeric_font.c.o
+[12/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/studio_regular_font.c.o
+[13/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/studio_medium_font.c.o
+[14/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/studio_semibold_font.c.o
+[15/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/studio_bold_font.c.o
+[16/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/studio_numeric_font.c.o
+[17/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_noto_sans_font.c.o
+[18/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_noto_sans_semibold_font.c.o
+[19/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_noto_sans_bold_font.c.o
+[20/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_inconsolata_font.c.o
+[21/37] Building C object sdk/CMakeFiles/chibi_builtin_fonts.dir/generated/fonts/editor_code_font.c.o
+[22/37] Building C object sdk/CMakeFiles/chibi_image_preparation.dir/__/src/authoring/image_prepare.c.o
+[23/37] Linking C static library sdk/libchibi_input_map.a
+[24/37] Linking C static library sdk/libchibi_builtin_fonts.a
+[25/37] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/sound_prepare.c.o
+[26/37] Linking C static library sdk/libchibi_image_preparation.a
+[27/37] Linking CXX static library sdk/libchibi_project_compilation.a
+[28/37] Building C object test/language/CMakeFiles/test_language.dir/bounded_compiler_chibi.c.o
+[29/37] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_target.c.o
+[30/37] Building C object test/language/CMakeFiles/test_language.dir/__/__/src/toolchain/compiler_target.c.o
+[31/37] Building C object test/language/CMakeFiles/test_language.dir/prepared_writer_chibi.c.o
+[32/37] Linking C executable sdk/chibi-compiler-host
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_asset_values.a', 'sdk/libchibi_json.a'
+[33/37] Building C object test/language/CMakeFiles/test_language.dir/package_compiler_chibi.c.o
+[34/37] Linking CXX executable test/language/test_language
+ld: warning: ignoring duplicate libraries: '-lc++', 'sdk/language/libchibi_language_syntax.a', 'sdk/libchibi_arithmetic_capabilities.a', 'sdk/libchibi_array_capabilities.a', 'sdk/libchibi_asset_text.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_core_capabilities.a', 'sdk/libchibi_entity_runtime.a', 'sdk/libchibi_field_capabilities.a', 'sdk/libchibi_field_catalog.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_compilation.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_json.a', 'sdk/libchibi_math_capabilities.a', 'sdk/libchibi_mesh_runtime.a', 'sdk/libchibi_native_prepared.a', 'sdk/libchibi_prototype_document.a', 'sdk/libchibi_scene_document.a', 'sdk/libchibi_source_presentation.a', 'sdk/libchibi_state_capabilities.a', 'sdk/libchibi_text_capabilities.a', 'sdk/libchibi_ui_document.a', 'sdk/libchibi_ui_documents.a', 'sdk/libchibi_ui_runtime.a', 'sdk/libchibi_value_document.a'

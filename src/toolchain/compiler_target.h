@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 
+typedef struct native_capabilities native_capabilities;
+
 /* Compile's last six arguments for a catalog, as a JSON array: the value
  * layout, prepared ABI, instruction names, the catalog's callable natives
  * (data functions with no flow, outcomes or suspension), their ports, and each
@@ -38,6 +40,33 @@ char *compiler_target_effects_json(const script_catalog *, size_t *length);
  * Malloc-owned; release with free(). */
 char *compiler_behavior_input_json(
     const script_catalog *,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    size_t *length
+);
+/* The rich behavior compiler's eighteen arguments: the behavior input with
+ * CatalogNative rows adding `direct`, `qualified_name` (falling back to name)
+ * and the script_capability_kind `kind` plus the actual linked `intrinsic`,
+ * CatalogPort rows adding nominal IDs and parameter defaults, then effect
+ * masks in matching order. Callable functions retain their indices;
+ * unsupported functions then actions append,
+ * each in catalog order. Unsupported functions are not direct. Only synchronous
+ * invoke or context actions with one entry/completion and no special execution
+ * contract are direct. Their identity and ABI must match bindings; NULL bindings
+ * keeps actions unsupported while preserving function admission. Fixed nominal
+ * ports are supported only for single native records and handles whose exported type
+ * and alias chain have matching storage and target layout. Authored records,
+ * nominal arrays, sets, maps, nested collections and other flagged types retain
+ * unsupported storage (-1). The bootstrap target and behavior input stay
+ * unchanged. Defaults retain has_default and default_owner; default_supported
+ * is false for aggregate/inferred/container defaults even when the port accepts
+ * an explicitly supplied value. Scalar bits and length-carrying text are copied
+ * into the JSON, with no native addresses. Result ports have no default policy.
+ * Catalog and bindings are borrowed until return. Malloc-owned; release with free(). */
+char *compiler_behavior_catalog_input_json(
+    const script_catalog *,
+    const native_capabilities *bindings,
     const char *const *identities,
     const char *const *sources,
     int count,

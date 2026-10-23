@@ -32,6 +32,9 @@ static char *fixture_source;
 static char output[1024], errors[1024];
 static chibi_process_output out, err;
 static volatile sig_atomic_t cancelled;
+static char prepared_path[PATH_MAX];
+static unsigned char *prepared_bytes;
+static size_t prepared_size;
 
 static double now()
 {
@@ -875,8 +878,9 @@ TEST_CASE(private_host_cli_deadline_unblocks_inherited_signal_masks)
     return startup_interrupted(&fixture, 0, true);
 }
 
-TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
+static bool runtime_signals(bool artifact)
 {
+    REQUIRE(!artifact || prepared_size);
     char directory[PATH_MAX], source[PATH_MAX], marker[PATH_MAX];
     char worker_environment[PATH_MAX + 32];
     snprintf(worker_environment, sizeof worker_environment, "CHIBI_BUILD_WORKER=%s", worker_path);
@@ -890,7 +894,12 @@ TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
     };
     const int signals[] = { SIGINT, SIGTERM };
     for (int i = 0; i < 2; i++) {
-        sdk_path(directory, root, i ? "runtime-sigterm" : "runtime-sigint");
+        sdk_path(
+            directory,
+            root,
+            artifact ? (i ? "artifact-sigterm" : "artifact-sigint")
+                     : (i ? "runtime-sigterm" : "runtime-sigint")
+        );
         REQUIRE(!mkdir(directory, 0700));
         sdk_path(source, directory, "Build.chibi");
         sdk_path(marker, directory, "started");
@@ -900,7 +909,7 @@ TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
             "build.run([build.environment(\"CHIBI_BUILD_WORKER\"), "
             "\"descendant\", build.root(), \"0\", \"0\"]); return 0; }\n"
         );
-        const char *argv[] = {
+        const char *source_argv[] = {
             host_path,
             "--compiler",
             CHIBI_SOURCE_ROOT "/tools/compiler",
@@ -916,6 +925,20 @@ TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
             "10000",
             NULL,
         };
+        char closure[PATH_MAX];
+        sdk_path(closure, directory, "Build.chibip");
+        if (artifact) {
+            char log[PATH_MAX];
+            sdk_path(log, root, "artifact-copy.log");
+            const char *copy[] = { "cp", prepared_path, closure, NULL };
+            REQUIRE(!tool_run(copy, root, log));
+            REQUIRE(!unlink(source));
+        }
+        const char *artifact_argv[] = { host_path,    "--root",       directory,
+                                        "--artifact", closure,        "--entry",
+                                        "Wait",       "--timeout-ms", "10000",
+                                        NULL };
+        const char *const *argv = artifact ? artifact_argv : source_argv;
         out = (chibi_process_output){ .data = output, .capacity = sizeof output };
         err = (chibi_process_output){ .data = errors, .capacity = sizeof errors };
         chibi_process_job job = { 0 };
@@ -968,6 +991,13 @@ TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
         REQUIRE(diagnostic);
         REQUIRE(gone);
     }
+    return true;
+}
+
+TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
+{
+    REQUIRE(runtime_signals(false));
+    REQUIRE(runtime_signals(true));
     return true;
 }
 
@@ -2331,6 +2361,271 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     return true;
 }
 
+static const char
+    PREPARED_SOURCE[] = "package prepared\n"
+                        "import answer \"lib:answer\"\n"
+                        "Build :: () -> int { "
+                        "if(!build.write_file(\"prepared-executed\", "
+                        "build.join(build.arguments(),\"|\"))) { return 1; } "
+                        "build.report(\"prepared report\"); return 23; }\n"
+                        "Inspect :: () -> int { return answer.Value(); }\n"
+                        "Bad :: (number: int) -> int { return number; }\n"
+                        "Wait :: () -> int { return "
+                        "build.run([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                        "\"descendant\", build.root(), \"0\", \"0\"]); }\n";
+
+static chibi_build_options prepared_options(behavior_backend backend)
+{
+    return (chibi_build_options){ .root = root,
+                                  .source_path = prepared_path,
+                                  .artifact = prepared_bytes,
+                                  .artifact_size = prepared_size,
+                                  .entry = "Build",
+                                  .backend = backend,
+                                  .deadline = deadline_after(2) };
+}
+
+TEST_CASE(private_source_export_validates_without_running)
+{
+    char collection[PATH_MAX], directory[PATH_MAX], helper[PATH_MAX];
+    sdk_path(collection, root, "prepared-collection");
+    sdk_path(directory, collection, "answer");
+    sdk_path(helper, directory, "Answer.chibi");
+    REQUIRE(!mkdir(collection, 0700) && !mkdir(directory, 0700));
+    tool_write(helper, "package answer\npub Value :: () -> int { return 47; }\n");
+    const chibi_build_collection named = { "lib", collection };
+    chibi_build_options options = primitive_options(PREPARED_SOURCE, BEHAVIOR_BYTECODE);
+    options.collections = &named;
+    options.collection_count = 1;
+    options.source_path = "Prepared.chibi";
+    options.output_artifact = "Prepared.chibip";
+    options.deadline = deadline_after(10);
+    chibi_build_result result;
+    REQUIRE(chibi_build_invoke(&options, &result));
+    REQUIRE(
+        !result.value && !result.steps && !result.counts.bytecode_entries &&
+        !result.counts.sljit_entries && !result.stdout_size && !result.stderr_size
+    );
+    char marker[PATH_MAX];
+    sdk_path(marker, root, "prepared-executed");
+    REQUIRE(access(marker, F_OK) == -1 && errno == ENOENT);
+    sdk_path(prepared_path, root, "Prepared.chibip");
+    struct stat info;
+    REQUIRE(!stat(prepared_path, &info) && info.st_size > 0);
+    prepared_size = (size_t)info.st_size;
+    prepared_bytes = (unsigned char *)tool_read(prepared_path);
+    REQUIRE(prepared_bytes && prepared_size >= 8 && !memcmp(prepared_bytes, "CHIBICLO", 8));
+
+    char source[PATH_MAX], output[PATH_MAX], log[PATH_MAX];
+    sdk_path(source, root, "Prepared.chibi");
+    sdk_path(output, root, "Prepared-cli.chibip");
+    sdk_path(log, root, "prepared-export.log");
+    tool_write(source, PREPARED_SOURCE);
+    char collection_option[PATH_MAX + 5];
+    snprintf(collection_option, sizeof collection_option, "lib=%s", collection);
+    const char *argv[] = { host_path,
+                           "--root",
+                           root,
+                           "--source",
+                           source,
+                           "--compiler",
+                           CHIBI_SOURCE_ROOT "/tools/compiler",
+                           "--compiler-core",
+                           CHIBI_SOURCE_ROOT "/packages/core",
+                           "--collection",
+                           collection_option,
+                           "--entry",
+                           "Build",
+                           "--timeout-ms",
+                           "10000",
+                           "--output-artifact",
+                           output,
+                           NULL };
+    REQUIRE(!tool_run(argv, root, log));
+    REQUIRE(!stat(output, &info) && info.st_size > 0);
+    REQUIRE(access(marker, F_OK) == -1 && errno == ENOENT);
+    REQUIRE(!unlink(source));
+    REQUIRE(!unlink(helper) && !rmdir(directory) && !rmdir(collection));
+    return true;
+}
+
+TEST_CASE(private_prepared_input_runs_without_a_compiler)
+{
+    REQUIRE(prepared_bytes && prepared_size);
+    const char *arguments[] = { "", "space \"quote\";$literal*" };
+    char marker[PATH_MAX];
+    sdk_path(marker, root, "prepared-executed");
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = prepared_options(backend);
+        options.arguments = arguments;
+        options.argument_count = 2;
+        chibi_build_result result;
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 23 && !result.steps && primitive_backend(&result, backend));
+        REQUIRE(!strcmp(result.stderr_text, "prepared report\n"));
+        char *text = tool_read(marker);
+        bool exact = text && !strcmp(text, "|space \"quote\";$literal*");
+        free(text);
+        REQUIRE(exact && !unlink(marker));
+        options.entry = "Inspect";
+        REQUIRE(chibi_build_invoke(&options, &result));
+        REQUIRE(result.value == 47 && !result.steps && !result.counts.inspection_bytecode_fallbacks);
+        REQUIRE(
+            b ? result.counts.sljit_entries > 1 && !result.counts.bytecode_entries
+              : result.counts.bytecode_entries > 1 && !result.counts.sljit_entries
+        );
+    }
+    return true;
+}
+
+TEST_CASE(private_prepared_cli_is_relocatable_and_compiler_free)
+{
+    REQUIRE(prepared_size);
+    char sdk[PATH_MAX], moved[PATH_MAX], directory[PATH_MAX], host[PATH_MAX],
+        closure[PATH_MAX], log[PATH_MAX];
+    sdk_path(sdk, root, "prepared-sdk");
+    sdk_path(moved, root, "relocated prepared sdk");
+    REQUIRE(!mkdir(sdk, 0700));
+    sdk_path(directory, sdk, "bin");
+    REQUIRE(!mkdir(directory, 0700));
+    sdk_path(host, directory, "chibi-build-host");
+    sdk_path(closure, sdk, "Prepared.chibip");
+    sdk_path(log, root, "prepared-relocation.log");
+    const char *copy_host[] = { "cp", host_path, host, NULL };
+    const char *copy_artifact[] = { "cp", prepared_path, closure, NULL };
+    REQUIRE(!tool_run(copy_host, root, log) && !tool_run(copy_artifact, root, log));
+    REQUIRE(!rename(sdk, moved));
+    sdk_path(host, moved, "bin/chibi-build-host");
+    sdk_path(closure, moved, "Prepared.chibip");
+    const char *permissions[] = { "chmod", "-R", "a-w", moved, NULL };
+    REQUIRE(!tool_run(permissions, root, log));
+    char before[65], after[65];
+    bool valid = sdk_hash(moved, before);
+    const char *argv[] = { host,    "--root",  root,      "--artifact",
+                           closure, "--entry", "Inspect", "--timeout-ms",
+                           "1000",  NULL };
+    const char *environment[] = {
+        "PATH=/chibi/no-native-toolchain",
+#ifdef __APPLE__
+        "ASAN_OPTIONS=external_symbolizer_path=/usr/bin/atos",
+#endif
+        NULL
+    };
+    chibi_process_capture_result result = capture(argv, environment, 2);
+    valid &= result.error == CHIBI_PROCESS_OK && result.status == 47 &&
+             !out.size && !err.size;
+    valid &= sdk_hash(moved, after) && !strcmp(before, after);
+    permissions[2] = "u+w";
+    REQUIRE(!tool_run(permissions, root, log));
+    REQUIRE(valid);
+    return true;
+}
+
+TEST_CASE(private_prepared_inputs_and_entries_fail_closed)
+{
+    REQUIRE(prepared_bytes && prepared_size);
+    for (int i = 0; i < 5; i++) {
+        chibi_build_options options = prepared_options(BEHAVIOR_BYTECODE);
+        if (i == 0) {
+            options.artifact_size = 7;
+        }
+        if (i == 1) {
+            options.entry = "Absent";
+        }
+        if (i == 2) {
+            options.entry = "Bad";
+        }
+        if (i == 3) {
+            options.source_text = PREPARED_SOURCE;
+        }
+        if (i == 4) {
+            options.compiler = build_compiler;
+        }
+        chibi_build_result result;
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(
+            result.diagnostic[0] && !result.steps &&
+            !result.counts.bytecode_entries && !result.counts.sljit_entries
+        );
+    }
+    char marker[PATH_MAX], log[PATH_MAX], invalid[PATH_MAX];
+    sdk_path(marker, root, "prepared-executed");
+    sdk_path(log, root, "prepared-invalid.log");
+    sdk_path(invalid, root, "invalid.chibip");
+    tool_write(invalid, "not a closure");
+    const char *argv[] = { host_path, "--root",  root,    "--artifact",
+                           invalid,   "--entry", "Build", "--timeout-ms",
+                           "1000",    NULL };
+    REQUIRE(tool_run(argv, root, log) == 1);
+    char *text = tool_read(log);
+    bool artifact_error = text && strstr(text, "artifact") &&
+                          !strstr(text, "SDK compiler sources");
+    free(text);
+    REQUIRE(artifact_error);
+    argv[4] = prepared_path;
+    argv[6] = "Bad";
+    REQUIRE(tool_run(argv, root, log) == 1);
+    const char *mixed[] = { host_path,       "--root",      root,
+                            "--artifact",    prepared_path, "--source",
+                            "missing.chibi", "--entry",     "Build",
+                            "--timeout-ms",  "1000",        NULL };
+    REQUIRE(tool_run(mixed, root, log) == 1);
+    REQUIRE(access(marker, F_OK) == -1 && errno == ENOENT);
+    return true;
+}
+
+static void cancel_prepared_publication()
+{
+    cancelled = 1;
+}
+
+TEST_CASE(private_prepared_cancellation_preserves_output)
+{
+    REQUIRE(prepared_bytes && prepared_size);
+    chibi_build_options options = prepared_options(BEHAVIOR_BYTECODE);
+    options.cancelled = &cancelled;
+    cancelled = 1;
+    chibi_build_result result;
+    bool ran = chibi_build_invoke(&options, &result);
+    cancelled = 0;
+    REQUIRE(!ran && !strcmp(result.diagnostic, "build process cancelled"));
+    REQUIRE(!result.steps && !result.counts.bytecode_entries && !result.counts.sljit_entries);
+
+    char output[PATH_MAX];
+    sdk_path(output, root, "prepared-preserved.chibip");
+    tool_write(output, "prior artifact");
+    const char *source = "package prepared\n"
+                         "Build :: () -> int { return 0; }\n"
+                         "Bad :: (number: int) -> int { return number; }\n";
+    options = primitive_options(source, BEHAVIOR_BYTECODE);
+    options.output_artifact = output;
+    options.deadline = deadline_after(10);
+    const char *entries[] = { "Absent", "Bad", "Build" };
+    const char *failures[] = {
+        "build entry was not found",
+        "build entry must be one zero-argument int function",
+        "build process cancelled"
+    };
+    for (int i = 0; i < 3; i++) {
+        options.entry = entries[i];
+        options.cancelled = &cancelled;
+        options.prepared = i == 2 ? cancel_prepared_publication : NULL;
+        options.deadline = deadline_after(10);
+        ran = chibi_build_invoke(&options, &result);
+        cancelled = 0;
+        REQUIRE(!ran && !strcmp(result.diagnostic, failures[i]));
+        REQUIRE(
+            !result.steps && !result.counts.bytecode_entries && !result.counts.sljit_entries
+        );
+        char *text = tool_read(output);
+        bool preserved = text && !strcmp(text, "prior artifact");
+        free(text);
+        REQUIRE(preserved && no_write_temporary("prepared-preserved.chibip."));
+    }
+    return true;
+}
+
 static void build_process(const char *worker, const char *host, bool files_only)
 {
     worker_path = worker;
@@ -2381,6 +2676,11 @@ static void build_process(const char *worker, const char *host, bool files_only)
     RUN_TEST_CASE(ordinary_catalog_rejects_private_process_capabilities);
     RUN_TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements);
     RUN_TEST_CASE(private_host_cli_executes_source_and_reports_errors);
+    RUN_TEST_CASE(private_source_export_validates_without_running);
+    RUN_TEST_CASE(private_prepared_input_runs_without_a_compiler);
+    RUN_TEST_CASE(private_prepared_cli_is_relocatable_and_compiler_free);
+    RUN_TEST_CASE(private_prepared_inputs_and_entries_fail_closed);
+    RUN_TEST_CASE(private_prepared_cancellation_preserves_output);
     RUN_TEST_CASE(default_compiler_follows_relocated_read_only_sdk_and_refuses_corrupt_seed);
     RUN_TEST_CASE(private_host_cli_deadline_covers_changed_compiler_recovery);
     RUN_TEST_CASE(private_host_cli_sigint_covers_changed_compiler_recovery);
@@ -2417,6 +2717,9 @@ static void build_process(const char *worker, const char *host, bool files_only)
 teardown:
     chibi_build_compiler_free(build_compiler);
     build_compiler = NULL;
+    free(prepared_bytes);
+    prepared_bytes = NULL;
+    prepared_size = 0;
     tool_remove_tree(root);
     if (saved_worker) {
         assert(!setenv("CHIBI_BUILD_WORKER", saved_worker, 1));

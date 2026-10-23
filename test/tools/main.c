@@ -202,6 +202,7 @@ int test_terrain_playable_child(
 );
 void test_tool_material_bake(const char *controller);
 int test_tool_game_observe(const char *trace, const char *const *stories, int count);
+void test_tool_game_input(const char *reference);
 void test_tool_game_equivalence(
     const char *observer,
     const char *build_host,
@@ -900,7 +901,8 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if ((argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
+    if ((argc == 3 && !strcmp(argv[1], "--game-input")) ||
+        (argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
         (argc == 5 && !strcmp(argv[1], "--game-equivalence-stage-one")) ||
         (argc == 5 && !strcmp(argv[1], "--game-equivalence-empty")) ||
         (argc >= 5 && argc % 2 && !strcmp(argv[1], "--game-observe"))) {
@@ -913,7 +915,9 @@ int main(int argc, char **argv)
             return test_tool_game_observe(argv[2], (const char *const *)argv + 3, (argc - 3) / 2);
         }
         pu_display_time(true);
-        if (!strcmp(argv[1], "--game-equivalence-empty")) {
+        if (!strcmp(argv[1], "--game-input")) {
+            test_tool_game_input(argv[2]);
+        } else if (!strcmp(argv[1], "--game-equivalence-empty")) {
             test_tool_game_equivalence_empty(argv[0], argv[2], argv[3], argv[4]);
         } else if (!strcmp(argv[1], "--game-equivalence-stage-one")) {
             test_tool_game_equivalence_stage_one(argv[0], argv[2], argv[3], argv[4]);

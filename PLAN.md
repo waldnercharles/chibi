@@ -1,5 +1,102 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Coordinated rich game compiler support, 2026-10-22
+
+The self-hosted default needs the real game catalog, source libraries and native
+action argument binding. PR #664 supplies the named/entity/empty prerequisite;
+its exact tested tree is merged at `fa1b7b2bb` and all three pinned compiler
+self-build jobs plus cross-platform byte identity passed. The local engine
+primary remains on `main`, preserving unrelated design notes.
+
+The next compiler checkpoint keeps ABI20 and the pure compiler target unchanged.
+Rich game ports carry nominal identities resolved against the exported types;
+fixed native structs and handles keep their headers through arguments, single
+and multiple results, aliases, getters and named projections. Unsupported
+catalog rows fail only when used. Actual native effects feed the existing
+fixed point. Native singleton projections retain the selected overload and
+resolved generic type as body-local facts; the ordinary authored result path
+shares the bounded lexical-initializer trace. The emission/value/name layouts
+are unchanged.
+
+`chibi-compile --stage-one-input` and `StageOne.chibi` switch together to the
+matching eighteen-argument rich entries. A focused C input dispatcher verifies
+the production exporter without invoking compiler recovery: the previous CLI
+fails its argument-count check; the updated route passes 1 case / 2,980
+assertions (3.332 seconds including supervisor/fixture setup). This is input
+transport evidence, not a complete self-hosted Terrain Lab proof.
+
+Supplied-module assembly also retains the native asset graph library projection.
+The bridge analyzes library sources from the exact existing catalog, constructs
+owned graph names/defaults, and shares the native graph projection rules. It
+performs no executable compilation or lowering. Executable library modules
+remain the authored compiler's responsibility.
+
+The combined compiler producer succeeds, but the pinned runtime reader rejects
+its repeated authored layout validation at 275,651,830 work units against the
+268,435,456 compiler allowance. The separate runtime repair in PR #665,
+`3dd03160d`, reuses successful exact-pointer proofs within one verification
+attempt. The saved compiler then loads on bytecode and SLJIT at 209,447,093 root
+work units, preserving every header check and all limits. Canonical closure
+storage remains 88,290,711 bytes; prepaid scratch adds 749,504 bytes. The repair
+is merged at `5c28191b3`, now the primary and game-support base. Its exact
+tree `94ebca0fd1fb18e9463aec1cdf8d993ebd368918` passes all five required Make
+groups (1,561 cases / 1,568,825 assertions, 524.965 seconds including builds),
+formatting and independent reviews. The unchanged compiler also reproduces
+identical stages on all three hosted platforms. Runtime publication, final
+combined compiler recovery, representative project builds and matching installed
+resources remain pending. Broader route probes previously exposed a harness
+timeout and intermittent supervision startup failures, then were interrupted;
+they are not passing evidence.
+
+Native synchronous actions/defaults and executable libraries are coordinated in
+separate isolated worktrees. Proposed pointer/query/collection ABI transitions
+and their explicit holds remain separate. Current ABI20 support does not claim
+to implement the selected future query syntax or snapshot/pointer semantics.
+
+The public CLI still invokes the native compiler directly. An installed
+self-hosted selection needs explicit route propagation through build, run,
+check and native export, a content identity for its artifact cache, installed
+StageOne inputs and writable recovery storage outside the SDK. Its implementation
+waits for the typed-asset owner to release the overlapping manifest and assembly
+paths. The selected system/query contract is a separate post-integration gate;
+do not implement retired grammar or switch the global default around it.
+
+Studio compatibility is isolated in draft PR #92 at `7dbe3aac`, with the primary's
+existing 26-file work preserved. Native acceptance passes 25 cases / 13,569
+assertions, and Starter and correctly identified bundled-project startup pass.
+The revised source preflights native C-string representability before any
+history batch writes and uses the byte-preserving codec for scalar collaboration
+strings, rejecting codec failure. Both root reviews clear the exact revised
+tree. Web verification still requires the paired route and a current SDK. The
+earlier copied-project startup failure was expected ordinary-profile
+classification; no engine catalog-profile change is needed.
+
+## Compiler facts and nested records for authored shaders
+
+The coordinated authoring goal also requires a compiler-owned typed-facts seam.
+This is proposed work after the shared native/source call resolution and
+provenance checkpoint is integrated. `compiler_facts.Analyze` should return owned
+flat rows for documents, origins, types/fields, functions, bindings, statements,
+expressions and argument mappings, or a ranged rejection. Capture exact constant
+bits, semantic IDs, normalized conversions, construction/projection, selected
+callees, actual argument evaluation order, final transitive effects, writes and
+reference escapes at the shared semantic decisions. The shader consumer must
+not depend on private `Value`, `Name` or `Work` layouts or reconstruct meaning
+from emitted bytecode. No facts exporter is available yet.
+
+The first reviewed fixture is bounded: a flat `Float3` record, imported
+`TintGain` called twice, an immutable alias and scalar add/multiply. Reject
+unsupported reachable statements with source ranges; preserve the domain's
+mutation, reference, effects, recursion and unknown-native checks. This proves
+analysis and ownership, not rendering.
+
+Real material rendering additionally requires nested record fields such as
+`Sample.uv`, `Parameters.tint` and `Surface.base_color`/`emission`. Implement
+`DeclarePackage` field typing and `LiteralStep` contextual construction and
+projection as a separate reviewed compiler step. PR #665 changes validation
+cost only and does not supply that syntax or lowering support. Keep the current
+ABI20 baseline separate from held pointer/query/common transitions.
+
 ## Coordinated named struct results, 2026-10-22
 
 The next local setup slice extends the ABI20 authored compiler's existing

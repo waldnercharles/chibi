@@ -1,0 +1,901 @@
+diff --git a/test/tools/build_sdk.c b/test/tools/build_sdk.c
+index 08de8ea8d..30beb0445 100644
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -13,15 +13,23 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
++#include <sys/utsname.h>
+ #include <unistd.h>
+ 
+ #define SDK_PATH 4096
+ #define SDK_MANIFEST "share/chibi/compiler-tools.tsv"
+ /* Each packaging or bootstrap operation may compile the compiler twice. */
+ #define SDK_RUN_SECONDS 120
++/* ProjectTools exports several prepared entries and checks their execution. */
++#define PROJECT_RUN_SECONDS 300
++#define PROJECT_SOURCE "share/chibi/tools/toolchain/Project.chibi"
++#define PROJECT_ARTIFACT "share/chibi/tools/toolchain/Project.chibip"
++#define PROJECT_WITNESS "share/chibi/project-host.tsv"
++#define PROJECT_RECEIPT "share/chibi/project-prepare.tsv"
+ 
+ static char host_path[SDK_PATH], build_path[SDK_PATH], archive_path[SDK_PATH];
+ static char suite[SDK_PATH], log_path[SDK_PATH];
++static char project_source[SDK_PATH], project_assembly[SDK_PATH];
+ 
+ static void join(char out[SDK_PATH], const char *base, const char *name)
+ {
+@@ -975,6 +983,526 @@ TEST_CASE(compiler_tools_package_and_run_after_relocation)
+     return true;
+ }
+ 
++static int install_project(const char *build, const char *output, const char *assembly)
++{
++    const char *argv[] = {
++        host_path,
++        "--root",
++        CHIBI_SOURCE_ROOT,
++        "--source",
++        CHIBI_SOURCE_ROOT "/tools/toolchain/SDK.chibi",
++        "--core",
++        CHIBI_SOURCE_ROOT "/packages/core",
++        "--entry",
++        "ProjectTools",
++        "--timeout-ms",
++        "300000",
++        "--",
++        "--build",
++        build,
++        "--output",
++        output,
++        "--third-party",
++        archive_path,
++        "--policy-source",
++        project_source,
++        "--assembly",
++        assembly,
++        "--compiler-backend",
++        "sljit",
++        NULL,
++    };
++    return tool_run_within(argv, suite, log_path, PROJECT_RUN_SECONDS);
++}
++
++TEST_CASE(project_tools_require_executable_assembly_before_staging)
++{
++    char assembly[SDK_PATH], output[SDK_PATH], stage[SDK_PATH];
++    join(assembly, suite, "nonexecutable assembly");
++    REQUIRE(clone_file(project_assembly, assembly));
++    REQUIRE(!chmod(assembly, 0600));
++    join(output, suite, "nonexecutable project tools");
++    join(stage, suite, "nonexecutable project tools.chibi-stage");
++    REQUIRE(install_project(build_path, output, assembly) == 2);
++    char *log = tool_read(log_path);
++    bool refused = log && strstr(log, "sdk: ProjectTools requires");
++    free(log);
++    REQUIRE(refused && !exists(output) && !exists(stage));
++    REQUIRE(same_file(assembly, project_assembly));
++    return true;
++}
++
++TEST_CASE(project_tools_cannot_publish_without_real_prepared_export)
++{
++    char clone[SDK_PATH], output[SDK_PATH], stage[SDK_PATH], host[SDK_PATH];
++    REQUIRE(clone_graph(clone, "project fake build host"));
++    join(host, clone, "sdk/chibi-build-host");
++    REQUIRE(!unlink(host));
++    REQUIRE(clone_file("/usr/bin/true", host));
++    join(output, suite, "forged project tools");
++    join(stage, suite, "forged project tools.chibi-stage");
++    REQUIRE(install_project(clone, output, project_assembly) == 1);
++    char *log = tool_read(log_path);
++    bool refused = log && strstr(log, "sdk: cannot export prepared project policy");
++    free(log);
++    REQUIRE(refused && !exists(output) && !exists(stage));
++    REQUIRE(same_file(host, "/usr/bin/true"));
++    return true;
++}
++
++static const char *const project_keys[] = {
++    "policy-source",
++    "policy-artifact",
++    "host-witness",
++    "compiler",
++    "core",
++    "bootstrap",
++    "source-sha256",
++    "artifact-sha256",
++    "build-host-sha256",
++    "compiler-host-sha256",
++    "assembly-sha256",
++    "inputs-sha256",
++    "inspect-entry",
++    "compile-entry",
++    "platform",
++    "compiler-backend",
++};
++static const char *const project_outputs[] = {
++    PROJECT_SOURCE,
++    PROJECT_ARTIFACT,
++    PROJECT_WITNESS,
++    PROJECT_RECEIPT,
++};
++typedef struct
++{
++    char *path;
++    bool directory;
++} project_owner;
++
++static bool hex_digest(const char *text)
++{
++    return text && strlen(text) == 64 && strspn(text, "0123456789abcdef") == 64;
++}
++
++/* Read complete LF-terminated text, with no embedded NUL or CR. */
++static char *project_table(const char *prefix, const char *relative, const char *header)
++{
++    char path[SDK_PATH];
++    join(path, prefix, relative);
++    char *text = tool_read(path);
++    struct stat info;
++    bool valid = text && !lstat(path, &info) && S_ISREG(info.st_mode) &&
++                 info.st_size > 0 && (size_t)info.st_size == strlen(text) &&
++                 !strchr(text, '\r') && text[strlen(text) - 1] == '\n' &&
++                 !strncmp(text, header, strlen(header));
++    if (!valid) {
++        free(text);
++        return NULL;
++    }
++    return text;
++}
++
++/* Split one TSV record. Blank records and more than three fields are invalid. */
++static int project_row(char **cursor, char *fields[3])
++{
++    char *line = *cursor, *end = strchr(line, '\n');
++    if (!end || end == line) {
++        return -1;
++    }
++    *end = 0;
++    *cursor = end + 1;
++    int count = 1;
++    fields[0] = line;
++    for (char *tab; (tab = strchr(line, '\t'));) {
++        if (count == 3) {
++            return -1;
++        }
++        *tab = 0;
++        fields[count++] = line = tab + 1;
++    }
++    for (int i = 0; i < count; i++) {
++        if (!*fields[i]) {
++            return -1;
++        }
++    }
++    return count;
++}
++
++static bool path_below(const char *path, const char *parent)
++{
++    size_t length = strlen(parent);
++    return !strcmp(path, parent) ||
++           (!strncmp(path, parent, length) && path[length] == '/');
++}
++
++static bool project_witness_matches(const char *prefix, char *const values[16])
++{
++    static const int metadata[] = { 11, 6, 7, 8, 9, 10, 12, 13, 14, 15 };
++    static const char *checks[] = {
++        "prepared-load",
++        "prepared-without-source",
++        "prepared-entry-selection",
++        "reserve-directory",
++        "publish-directory",
++    };
++    static const char header[] = "CHIBI-PROJECT-HOST/1\n";
++    char *text = project_table(prefix, PROJECT_WITNESS, header);
++    if (!text) {
++        return false;
++    }
++    char *cursor = text + sizeof header - 1;
++    bool valid = true;
++    for (int i = 0; valid && i < 15; i++) {
++        char *fields[3];
++        int key = i < 10 ? metadata[i] : 0;
++        const char *name = i < 10 ? project_keys[key] : checks[i - 10];
++        const char *value = i < 10 ? values[key] : "passed";
++        valid = project_row(&cursor, fields) == 2 && !strcmp(fields[0], name) &&
++                !strcmp(fields[1], value);
++    }
++    valid = valid && !*cursor;
++    free(text);
++    return valid;
++}
++
++static bool project_inputs_match(const char *prefix, project_owner *owners, const char *expected)
++{
++    char *text = project_table(prefix, SDK_MANIFEST, "1\n");
++    if (!text) {
++        return false;
++    }
++    sha256 hash;
++    sha256_begin(&hash);
++    bool valid = true;
++    char **listed = NULL;
++    for (char *line = text + 2; valid && *line;) {
++        char *end = strchr(line, '\n'), *tab = strchr(line, '\t');
++        if (!end || !tab || tab > end) {
++            valid = false;
++            break;
++        }
++        *tab = 0;
++        bool owned = false, output = false;
++        for (int i = 0; i < acount(owners); i++) {
++            owned |= !strcmp(line, owners[i].path) ||
++                     (owners[i].directory && path_below(line, owners[i].path));
++        }
++        for (int i = 0; i < 4; i++) {
++            output |= !strcmp(line, project_outputs[i]);
++        }
++        *tab = '\t';
++        if (!output) {
++            sha256_add(&hash, line, (size_t)(end - line) + 1);
++        }
++        *tab = 0;
++        *end = 0;
++        char path[SDK_PATH], digest[65];
++        join(path, prefix, line);
++        valid = owned && file_digest(path, digest) && !strcmp(digest, tab + 1);
++        if (valid) {
++            apush(listed, line);
++        }
++        line = end + 1;
++    }
++    int files = 0;
++    for (int i = 0; valid && i < acount(owners); i++) {
++        char path[SDK_PATH];
++        join(path, prefix, owners[i].path);
++        int count = installed_files(path, prefix, listed);
++        valid = count >= 0;
++        files += count;
++    }
++    char digest[65];
++    sha256_end(&hash, digest);
++    valid = valid && files == acount(listed) && !strcmp(digest, expected);
++    afree(listed);
++    free(text);
++    return valid;
++}
++
++static bool project_receipt_matches(const char *prefix)
++{
++    static const char header[] = "CHIBI-PROJECT-PREPARE/1\n";
++    char *text = project_table(prefix, PROJECT_RECEIPT, header);
++    REQUIRE(text);
++    char *values[16] = { 0 }, **outputs = NULL;
++    project_owner *owners = NULL;
++    char *cursor = text + sizeof header - 1;
++    bool valid = true;
++    while (valid && *cursor) {
++        char *fields[3];
++        int count = project_row(&cursor, fields);
++        if (count < 2) {
++            valid = false;
++            break;
++        }
++        if (count == 3 &&
++            (!strcmp(fields[0], "ownership") || !strcmp(fields[0], "output"))) {
++            valid = relative_file(fields[2]) &&
++                    (!strcmp(fields[1], "file") || !strcmp(fields[1], "directory"));
++            if (!valid) {
++                break;
++            }
++            if (!strcmp(fields[0], "output")) {
++                valid = !strcmp(fields[1], "file");
++                for (int i = 0; valid && i < acount(outputs); i++) {
++                    valid = strcmp(outputs[i], fields[2]) != 0;
++                }
++                apush(outputs, fields[2]);
++                continue;
++            }
++            for (int i = 0; valid && i < acount(owners); i++) {
++                valid = !path_below(fields[2], owners[i].path) &&
++                        !path_below(owners[i].path, fields[2]);
++            }
++            project_owner owner = { fields[2], !strcmp(fields[1], "directory") };
++            apush(owners, owner);
++            continue;
++        }
++        int key = 0;
++        while (key < 16 && strcmp(fields[0], project_keys[key])) {
++            key++;
++        }
++        valid = count == 2 && key < 16 && !values[key];
++        if (valid) {
++            values[key] = fields[1];
++        }
++    }
++    for (int i = 0; valid && i < 16; i++) {
++        valid = values[i] && (i < 6 || i > 11 || hex_digest(values[i]));
++    }
++    static const char *paths[] = {
++        PROJECT_SOURCE,     PROJECT_ARTIFACT,
++        PROJECT_WITNESS,    "share/chibi/compiler",
++        "share/chibi/core", "share/chibi/compiler/bootstrap",
++    };
++    for (int i = 0; valid && i < 6; i++) {
++        valid = !strcmp(values[i], paths[i]);
++    }
++    valid = valid && acount(outputs) == 4 && acount(owners) > 0;
++    for (int i = 0; valid && i < 4; i++) {
++        bool output = false, owner = false;
++        for (int j = 0; j < acount(outputs); j++) {
++            output |= !strcmp(project_outputs[i], outputs[j]);
++        }
++        for (int j = 0; j < acount(owners); j++) {
++            owner |= !owners[j].directory &&
++                     !strcmp(project_outputs[i], owners[j].path);
++        }
++        valid = output && owner;
++    }
++    bool compiler = false, core = false;
++    for (int i = 0; valid && i < acount(owners); i++) {
++        char path[SDK_PATH];
++        struct stat info;
++        join(path, prefix, owners[i].path);
++        valid = !lstat(path, &info) &&
++                (owners[i].directory ? S_ISDIR(info.st_mode) : S_ISREG(info.st_mode));
++        compiler |= owners[i].directory && !strcmp(owners[i].path, paths[3]);
++        core |= owners[i].directory && !strcmp(owners[i].path, paths[4]);
++        valid = valid && !path_below(owners[i].path, paths[5]) &&
++                strcmp(owners[i].path, SDK_MANIFEST) != 0;
++    }
++    valid = valid && compiler && core;
++    static const char *roles[] = {
++        PROJECT_SOURCE,
++        PROJECT_ARTIFACT,
++        "libexec/chibi/chibi-build-host",
++        "libexec/chibi/chibi-compiler-host",
++    };
++    for (int i = 0; valid && i < 4; i++) {
++        char path[SDK_PATH], digest[65];
++        join(path, prefix, roles[i]);
++        valid = file_digest(path, digest) && !strcmp(digest, values[6 + i]);
++    }
++    char assembly_digest[65];
++    struct utsname platform;
++    valid = valid && file_digest(project_assembly, assembly_digest) &&
++            !strcmp(assembly_digest, values[10]) &&
++            !strcmp(values[12], "Inspect") && !strcmp(values[13], "Compile") &&
++            !uname(&platform) && !strcmp(values[14], platform.sysname) &&
++            !strcmp(values[15], "sljit") &&
++            project_inputs_match(prefix, owners, values[11]) &&
++            project_witness_matches(prefix, values);
++    afree(owners);
++    afree(outputs);
++    free(text);
++    REQUIRE(valid);
++    return true;
++}
++
++static bool project_inspect(
++    const char *prefix,
++    bool selfhost,
++    const char *cache,
++    bool ready,
++    char identity[65]
++)
++{
++    char host[SDK_PATH], artifact[SDK_PATH], compiler[SDK_PATH];
++    join(host, prefix, "libexec/chibi/chibi-build-host");
++    join(artifact, prefix, PROJECT_ARTIFACT);
++    join(compiler, prefix, "libexec/chibi/chibi-compiler-host");
++    const char *argv[40] = {
++        host,
++        "--root",
++        suite,
++        "--artifact",
++        artifact,
++        "--entry",
++        "Inspect",
++        "--timeout-ms",
++        "120000",
++        "--",
++        "--route",
++        selfhost ? "selfhost" : "native",
++        "--target",
++        "native",
++        "--sdk-root",
++        prefix,
++        "--inventory",
++        SDK_MANIFEST,
++        "--receipt",
++        PROJECT_RECEIPT,
++        "--build-host",
++        host,
++        "--assembly",
++        project_assembly,
++        "--invocation-entry",
++        "Inspect",
++    };
++    int count = 26;
++    if (selfhost) {
++        argv[count++] = "--compiler-host";
++        argv[count++] = compiler;
++        argv[count++] = "--cache";
++        argv[count++] = cache;
++    }
++    argv[count] = NULL;
++    int status = run_without_toolchain(argv, suite);
++    char *text = tool_read(log_path);
++    static const char frame[] = "CHIBI-INSPECT/1 ";
++    size_t length = text ? strlen(text) : 0, first = sizeof frame - 1;
++    bool valid = status == (ready && !selfhost ? 0 : 1) && length > first + 2 &&
++                 length <= 2048 && !strncmp(text, frame, first) &&
++                 text[length - 1] == '\n' && text[length - 2] == '}' &&
++                 strchr(text, '\n') == text + length - 1;
++    yyjson_doc *doc = valid ? yyjson_read(text + first, length - first - 1, 0) : NULL;
++    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
++    yyjson_val *roles = yyjson_obj_get(root, "roles");
++    yyjson_val *id = yyjson_obj_get(root, "identity");
++    const char *availability = !ready   ? "unavailable"
++                             : selfhost ? "needs-recovery"
++                                        : "ready";
++    const char *diagnostic = !ready   ? "invalid-preparation"
++                           : selfhost ? "recovery-required"
++                                      : "ready";
++    valid = valid && yyjson_obj_size(root) == 5 &&
++            yyjson_equals_str(yyjson_obj_get(root, "route"), selfhost ? "selfhost" : "native") &&
++            yyjson_equals_str(yyjson_obj_get(root, "availability"), availability) &&
++            yyjson_equals_str(yyjson_obj_get(root, "diagnostic"), diagnostic) &&
++            yyjson_arr_size(roles) == (selfhost ? 3u : 2u) &&
++            yyjson_equals_str(yyjson_arr_get(roles, 0), "build-host") &&
++            yyjson_equals_str(yyjson_arr_get(roles, selfhost ? 2 : 1), "assembly") &&
++            (!selfhost || yyjson_equals_str(yyjson_arr_get(roles, 1), "compiler-host")) &&
++            (ready ? hex_digest(yyjson_get_str(id)) : yyjson_is_null(id));
++    if (valid) {
++        snprintf(identity, 65, "%s", ready ? yyjson_get_str(id) : "");
++    }
++    yyjson_doc_free(doc);
++    free(text);
++    REQUIRE(valid);
++    return true;
++}
++
++TEST_CASE(project_tools_preserve_prepared_readiness_after_relocation)
++{
++    char output[SDK_PATH], relocated[SDK_PATH], stage[SDK_PATH], cache[SDK_PATH];
++    join(output, suite, "project tools");
++    join(relocated, suite, "relocated project tools");
++    join(stage, suite, "project tools.chibi-stage");
++    join(cache, suite, "absent project cache");
++    REQUIRE(!install_project(build_path, output, project_assembly));
++    REQUIRE(!exists(stage) && !exists(cache));
++    char source[SDK_PATH];
++    join(source, output, PROJECT_SOURCE);
++    REQUIRE(same_file(source, project_source));
++    REQUIRE(copied(output, "libexec/chibi/chibi-build-host", build_path, "sdk/chibi-build-host"));
++    REQUIRE(copied(output, "libexec/chibi/chibi-compiler-host", build_path, "sdk/chibi-compiler-host"));
++    char artifact[SDK_PATH];
++    struct stat info;
++    join(artifact, output, PROJECT_ARTIFACT);
++    REQUIRE(!stat(artifact, &info) && info.st_size > 0);
++    REQUIRE(project_receipt_matches(output) && manifest_matches(output));
++    char inventory[SDK_PATH], before[65], after[65];
++    join(inventory, output, SDK_MANIFEST);
++    REQUIRE(file_digest(inventory, before));
++    char native[65], selfhost[65], inspected[65];
++    REQUIRE(project_inspect(output, false, cache, true, native));
++    REQUIRE(project_inspect(output, true, cache, true, selfhost));
++    REQUIRE(!exists(cache) && manifest_matches(output));
++    REQUIRE(file_digest(inventory, after) && !strcmp(before, after));
++    REQUIRE(!rename(output, relocated) && !exists(output));
++    REQUIRE(
++        project_inspect(relocated, false, cache, true, inspected) &&
++        !strcmp(native, inspected)
++    );
++    REQUIRE(
++        project_inspect(relocated, true, cache, true, inspected) &&
++        !strcmp(selfhost, inspected)
++    );
++    REQUIRE(!exists(cache) && manifest_matches(relocated));
++
++    /* Public SDK files are outside CompilerTools ownership. */
++    static const char *public[] = { "include", "bin", "lib" };
++    for (int i = 0; i < 3; i++) {
++        char directory[SDK_PATH], path[SDK_PATH];
++        join(directory, relocated, public[i]);
++        REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
++        join(path, directory, "unrelated-sdk-file");
++        tool_write(path, "public SDK content\n");
++    }
++    REQUIRE(
++        project_inspect(relocated, false, cache, true, inspected) &&
++        !strcmp(native, inspected)
++    );
++    REQUIRE(
++        project_inspect(relocated, true, cache, true, inspected) &&
++        !strcmp(selfhost, inspected)
++    );
++    REQUIRE(!exists(cache) && project_receipt_matches(relocated));
++    join(inventory, relocated, SDK_MANIFEST);
++    REQUIRE(file_digest(inventory, after) && !strcmp(before, after));
++    for (int i = 0; i < 3; i++) {
++        char directory[SDK_PATH], path[SDK_PATH];
++        join(directory, relocated, public[i]);
++        join(path, directory, "unrelated-sdk-file");
++        char *text = tool_read(path);
++        bool intact = text && !strcmp(text, "public SDK content\n");
++        free(text);
++        REQUIRE(intact && entries(directory) == 1);
++    }
++
++    char extra[SDK_PATH];
++    join(extra, relocated, "share/chibi/compiler/UnexpectedSDKTest.chibi");
++    REQUIRE(!exists(extra));
++    tool_write(extra, "package unexpected_sdk_test\n");
++    REQUIRE(project_inspect(relocated, false, cache, false, inspected));
++    REQUIRE(project_inspect(relocated, true, cache, false, inspected));
++    REQUIRE(!exists(cache) && !unlink(extra));
++    REQUIRE(
++        project_inspect(relocated, false, cache, true, inspected) &&
++        !strcmp(native, inspected)
++    );
++    REQUIRE(
++        project_inspect(relocated, true, cache, true, inspected) &&
++        !strcmp(selfhost, inspected)
++    );
++    REQUIRE(!exists(cache) && project_receipt_matches(relocated));
++    return true;
++}
++
+ static void resolve(char out[SDK_PATH], const char *path)
+ {
+     char *absolute = realpath(path, NULL);
+@@ -1040,6 +1568,15 @@ void test_build_sdk(const char *host, const char *build, const char *archive)
+     RUN_TEST_CASE(failed_staged_build_host_verification_removes_owned_staging);
+     RUN_TEST_CASE(dependency_link_records_require_whole_archive_paths);
+     RUN_TEST_CASE(compiler_tools_package_and_run_after_relocation);
++    const char *policy = getenv("CHIBI_SDK_PROJECT_SOURCE");
++    const char *assembly = getenv("CHIBI_SDK_PROJECT_ASSEMBLY");
++    if (policy && *policy && assembly && *assembly) {
++        resolve(project_source, policy);
++        resolve(project_assembly, assembly);
++        RUN_TEST_CASE(project_tools_require_executable_assembly_before_staging);
++        RUN_TEST_CASE(project_tools_cannot_publish_without_real_prepared_export);
++        RUN_TEST_CASE(project_tools_preserve_prepared_readiness_after_relocation);
++    }
+     tool_remove_tree(suite);
+ }
+ #endif
+diff --git a/tools/toolchain/SDK.chibi b/tools/toolchain/SDK.chibi
+index 98f8baaf6..a8cbbae0d 100644
+--- a/tools/toolchain/SDK.chibi
++++ b/tools/toolchain/SDK.chibi
+@@ -5,6 +5,8 @@ import strings "core:strings"
+ // Install the graph-built private compiler tools into a fresh prefix. This is
+ // the compiler-tools part of SDK packaging, without public libraries/headers.
+ //   CompilerTools -- --build ABS --output ABS --third-party ABS
++//   ProjectTools -- --build ABS --output ABS --third-party ABS
++//       --policy-source ABS --assembly ABS --compiler-backend sljit|bytecode
+ // The dependency archive must be the one both executable link records name.
+ // Publication refuses existing prefixes; a failed preparation removes only the
+ // sibling stage this invocation reserved. No compiler/bootstrap bytes change.
+@@ -200,7 +202,7 @@ Verify :: () -> int {
+     }
+     return 0;
+ }
+-Prepare :: (stage: string, entries: string[]) -> bool {
++PrepareInputs :: (stage: string, entries: string[]) -> bool {
+     for (item in entries) {
+         if (!CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
+             build.report(Join(["sdk: cannot copy ", build.after(item, "=")]));
+@@ -220,9 +222,258 @@ Prepare :: (stage: string, entries: string[]) -> bool {
+         build.report("sdk: staged build host failed capability verification");
+         return false;
+     }
+-    return build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", Inventory(stage, "")]));
++    return true;
+ }
+-CompilerTools :: () -> int {
++Prepare :: (stage: string, entries: string[]) -> bool {
++    return PrepareInputs(stage, entries) &&
++           build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", Inventory(stage, "")]));
++}
++PolicyOutputs :: () -> string[] {
++    return ["share/chibi/tools/toolchain/Project.chibi",
++            "share/chibi/tools/toolchain/Project.chibip",
++            "share/chibi/project-host.tsv", "share/chibi/project-prepare.tsv"];
++}
++PolicyHas :: (values: string[], value: string) -> bool {
++    for (item in values) {
++        if (item == value) {
++            return true;
++        }
++    }
++    return false;
++}
++PolicyHash :: (value: string) -> bool {
++    if (strings.ByteLength(value) != 64) {
++        return false;
++    }
++    for (byte in strings.Bytes(value)) {
++        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) {
++            return false;
++        }
++    }
++    return true;
++}
++// Both digests use the actual producer inventory order. The final inventory
++// excludes itself; only the four declared outputs are absent from input rows.
++PolicyInventory :: (stage: string, inputs: bool) -> string {
++    text := "";
++    outputs := PolicyOutputs();
++    for (line in build.lines(Inventory(stage, ""))) {
++        path := build.before(line, "\t");
++        if (line != "" && path != "share/chibi/compiler-tools.tsv" &&
++            (!inputs || !PolicyHas(outputs, path))) {
++            text = Join([text, line, "\n"]);
++        }
++    }
++    return text;
++}
++PolicyExport :: (stage: string, source: string, entry: string, artifact: string) -> bool {
++    host := Join([stage, "/libexec/chibi/chibi-build-host"]);
++    return build.run([host, "--root", stage, "--source", source,
++                      "--core", Join([stage, "/share/chibi/core"]),
++                      "--compiler", Join([stage, "/share/chibi/compiler"]),
++                      "--compiler-core", Join([stage, "/share/chibi/core"]),
++                      "--entry", entry, "--timeout-ms", "120000",
++                      "--output-artifact", artifact]) == 0 &&
++           build.file_kind(artifact) == "file" && PolicyHash(build.hash_file(artifact));
++}
++PolicyHostCommand :: (host: string, root: string, artifact: string, entry: string) -> string[] {
++    return ["/usr/bin/env", "PATH=", "CC=/usr/bin/false", "CXX=/usr/bin/false",
++            host, "--root", root, "--artifact", artifact, "--entry", entry,
++            "--timeout-ms", "120000"];
++}
++PolicyRun :: (host: string, root: string, artifact: string, entry: string, arguments: string[]) -> int {
++    return build.run(build.concat(PolicyHostCommand(host, root, artifact, entry),
++                                  build.concat(["--"], arguments)));
++}
++PolicyFrame :: (route: string, availability: string, identity: string, diagnostic: string) -> string {
++    encoded := "null";
++    if (identity != "") {
++        encoded = Join(["\"", identity, "\""]);
++    }
++    roles := "[\"build-host\",\"assembly\"]";
++    if (route == "selfhost") {
++        roles = "[\"build-host\",\"compiler-host\",\"assembly\"]";
++    }
++    return Join(["CHIBI-INSPECT/1 {\"route\":\"", route, "\",\"availability\":\"", availability,
++                 "\",\"identity\":", encoded, ",\"diagnostic\":\"", diagnostic,
++                 "\",\"roles\":", roles, "}\n"]);
++}
++PolicyDispatch :: (host: string, root: string, artifact: string) -> bool {
++    if (PolicyRun(host, root, artifact, "Inspect", []) != 2 || build.last_stdout() != "" ||
++        build.last_stderr() != PolicyFrame("native", "unavailable", "", "invalid-arguments")) {
++        return false;
++    }
++    return PolicyRun(host, root, artifact, "Compile", []) == 2 &&
++           build.last_stdout() == "" && build.last_stderr() == "project: invalid arguments\n";
++}
++// The copied host's supported executable-relative discovery paths all remain
++// below this private prefix. None contains compiler/core or policy source.
++PolicyProof :: (stage: string) -> bool {
++    proof := Join([stage, "/.project-proof"]);
++    prefix := Join([proof, "/prefix"]);
++    binary_dir := Join([prefix, "/libexec/chibi"]);
++    host := Join([binary_dir, "/chibi-build-host"]);
++    work := Join([proof, "/work"]);
++    payload := Join([proof, "/payload"]);
++    artifact := Join([payload, "/Project.chibip"]);
++    probe := Join([payload, "/SDK.chibip"]);
++    actual_host := Join([stage, "/libexec/chibi/chibi-build-host"]);
++    actual_artifact := Join([stage, "/", PolicyOutputs()[1]]);
++    if (!build.reserve_directory(proof) || !build.make_directory(binary_dir) ||
++        !build.make_directory(work) || !build.make_directory(payload) ||
++        !build.copy_file(actual_host, host) || !build.copy_file(actual_artifact, artifact) ||
++        build.hash_file(host) != build.hash_file(actual_host) ||
++        build.hash_file(artifact) != build.hash_file(actual_artifact) ||
++        !PolicyExport(stage, Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"]), "Verify", probe)) {
++        return false;
++    }
++    for (folder in [Join([prefix, "/libexec/share/chibi"]), Join([prefix, "/share/chibi"]),
++                    Join([binary_dir, "/share/chibi"])]) {
++        for (name in ["compiler", "core"]) {
++            if (build.file_kind(Join([folder, "/", name])) != "") {
++                return false;
++            }
++        }
++    }
++    if (!PolicyDispatch(host, work, artifact)) {
++        return false;
++    }
++    forbidden := build.concat(PolicyHostCommand(host, work, artifact, "Inspect"),
++                               ["--core", Join([proof, "/absent-core"])]);
++    if (build.run(forbidden) != 1 || build.last_stdout() != "" ||
++        !strings.HasPrefix(build.last_stderr(), "usage: chibi-build-host")) {
++        return false;
++    }
++    if (PolicyRun(host, work, probe, "Verify", []) != 0 ||
++        build.last_stdout() != "" || build.last_stderr() != "" ||
++        length(build.list_directory(work)) != 0 ||
++        build.hash_file(host) != build.hash_file(actual_host) ||
++        build.hash_file(artifact) != build.hash_file(actual_artifact)) {
++        return false;
++    }
++    return RemoveTree(proof);
++}
++PolicyValues :: (stage: string, arguments: string[], inputs: string) -> string[] {
++    outputs := PolicyOutputs();
++    return ["policy-source", outputs[0], "policy-artifact", outputs[1],
++            "host-witness", outputs[2], "compiler", "share/chibi/compiler",
++            "core", "share/chibi/core", "bootstrap", "share/chibi/compiler/bootstrap",
++            "source-sha256", build.hash_file(Join([stage, "/", outputs[0]])),
++            "artifact-sha256", build.hash_file(Join([stage, "/", outputs[1]])),
++            "build-host-sha256", build.hash_file(Join([stage, "/libexec/chibi/chibi-build-host"])),
++            "compiler-host-sha256", build.hash_file(Join([stage, "/libexec/chibi/chibi-compiler-host"])),
++            "assembly-sha256", build.hash_file(Option(arguments, "--assembly")),
++            "inputs-sha256", build.hash_text(inputs), "inspect-entry", "Inspect",
++            "compile-entry", "Compile", "platform", build.platform(),
++            "compiler-backend", Option(arguments, "--compiler-backend")];
++}
++PolicyStable :: (stage: string, arguments: string[], values: string[]) -> bool {
++    for (key in ["source-sha256", "artifact-sha256", "build-host-sha256",
++                 "compiler-host-sha256", "assembly-sha256", "inputs-sha256"]) {
++        if (!PolicyHash(Option(values, key))) {
++            return false;
++        }
++    }
++    return build.join(PolicyValues(stage, arguments, PolicyInventory(stage, true)), "\n") ==
++               build.join(values, "\n") &&
++           build.hash_file(Option(arguments, "--policy-source")) == Option(values, "source-sha256") &&
++           build.find_executable(Option(arguments, "--assembly")) != "" &&
++           build.find_executable(Join([stage, "/libexec/chibi/chibi-build-host"])) != "" &&
++           build.find_executable(Join([stage, "/libexec/chibi/chibi-compiler-host"])) != "";
++}
++PolicyWitness :: (values: string[]) -> string {
++    text := "CHIBI-PROJECT-HOST/1\n";
++    for (key in ["inputs-sha256", "source-sha256", "artifact-sha256", "build-host-sha256",
++                 "compiler-host-sha256", "assembly-sha256", "inspect-entry", "compile-entry",
++                 "platform", "compiler-backend"]) {
++        text = Join([text, key, "\t", Option(values, key), "\n"]);
++    }
++    return Join([text, "prepared-load\tpassed\nprepared-without-source\tpassed\n",
++                 "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\n"]);
++}
++PolicyReceiptText :: (values: string[], entries: string[]) -> string {
++    text := "CHIBI-PROJECT-PREPARE/1\n";
++    index: int = 0;
++    while (index + 1 < length(values)) {
++        text = Join([text, values[index], "\t", values[index + 1], "\n"]);
++        index += 2;
++    }
++    for (item in entries) {
++        text = Join([text, "ownership\t", build.file_kind(build.after(item, "=")),
++                     "\t", build.before(item, "="), "\n"]);
++    }
++    outputs := PolicyOutputs();
++    // The source is already an Entry. Generated products own individual files;
++    // bootstrap remains inside the compiler Entry's directory ownership.
++    for (index in 1..<length(outputs)) {
++        text = Join([text, "ownership\tfile\t", outputs[index], "\n"]);
++    }
++    for (output in outputs) {
++        text = Join([text, "output\tfile\t", output, "\n"]);
++    }
++    return text;
++}
++PolicyInspect :: (stage: string, arguments: string[], selfhost: bool) -> bool {
++    route := "native";
++    options := ["--route", route, "--target", "native", "--sdk-root", stage,
++                "--inventory", "share/chibi/compiler-tools.tsv", "--receipt", PolicyOutputs()[3],
++                "--build-host", Join([stage, "/libexec/chibi/chibi-build-host"]),
++                "--assembly", Option(arguments, "--assembly"), "--invocation-entry", "Inspect"];
++    expected_status: int = 0;
++    availability := "ready";
++    diagnostic := "ready";
++    if (selfhost) {
++        route = "selfhost";
++        options[1] = route;
++        cache := Join([stage, ".project-cache"]);
++        if (build.file_kind(cache) != "") {
++            return false;
++        }
++        options = build.concat(options, ["--compiler-host", Join([stage, "/libexec/chibi/chibi-compiler-host"]),
++                                          "--cache", cache]);
++        expected_status = 1;
++        availability = "needs-recovery";
++        diagnostic = "recovery-required";
++    }
++    status := PolicyRun(Join([stage, "/libexec/chibi/chibi-build-host"]), stage,
++                        Join([stage, "/", PolicyOutputs()[1]]), "Inspect", options);
++    result := build.last_stderr();
++    identity := build.before(build.after(result, "\"identity\":\""), "\"");
++    return status == expected_status && build.last_stdout() == "" && PolicyHash(identity) &&
++           result == PolicyFrame(route, availability, identity, diagnostic) &&
++           (!selfhost || build.file_kind(Join([stage, ".project-cache"])) == "");
++}
++PrepareProject :: (stage: string, entries: string[], arguments: string[]) -> bool {
++    if (!PrepareInputs(stage, entries)) {
++        return false;
++    }
++    outputs := PolicyOutputs();
++    if (!PolicyExport(stage, Join([stage, "/", outputs[0]]), "Inspect", Join([stage, "/", outputs[1]]))) {
++        build.report("sdk: cannot export prepared project policy");
++        return false;
++    }
++    inputs := PolicyInventory(stage, true);
++    values := PolicyValues(stage, arguments, inputs);
++    if (!PolicyStable(stage, arguments, values) || !PolicyProof(stage) ||
++        !PolicyStable(stage, arguments, values)) {
++        build.report("sdk: prepared project host capability witness failed");
++        return false;
++    }
++    if (!build.write_file(Join([stage, "/", outputs[2]]), PolicyWitness(values)) ||
++        !build.write_file(Join([stage, "/", outputs[3]]), PolicyReceiptText(values, entries))) {
++        return false;
++    }
++    inventory := Join(["1\n", PolicyInventory(stage, false)]);
++    if (!build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), inventory) ||
++        !PolicyInspect(stage, arguments, false) || !PolicyInspect(stage, arguments, true) ||
++        !PolicyStable(stage, arguments, values) ||
++        inventory != Join(["1\n", PolicyInventory(stage, false)])) {
++        build.report("sdk: prepared project readiness or final inventory verification failed");
++        return false;
++    }
++    return true;
++}
++InstallCompilerTools :: (project: bool) -> int {
+     arguments := build.arguments();
+     build_dir := Option(arguments, "--build");
+     output := Option(arguments, "--output");
+@@ -249,6 +500,19 @@ CompilerTools :: () -> int {
+         return 2;
+     }
+     entries := Entries(root, build_dir, third_party);
++    if (project) {
++        source := Option(arguments, "--policy-source");
++        assembly := Option(arguments, "--assembly");
++        backend := Option(arguments, "--compiler-backend");
++        if (!strings.HasPrefix(source, "/") || build.file_kind(source) != "file" ||
++            !strings.HasPrefix(assembly, "/") || build.find_executable(assembly) == "" ||
++            (backend != "sljit" && backend != "bytecode") ||
++            (build.platform() != "Darwin" && build.platform() != "Linux")) {
++            build.report("sdk: ProjectTools requires absolute --policy-source and executable --assembly, --compiler-backend sljit|bytecode, and Darwin or Linux");
++            return 2;
++        }
++        entries = build.concat(entries, [Join(["share/chibi/tools/toolchain/Project.chibi=", source])]);
++    }
+     for (item in entries) {
+         source := build.after(item, "=");
+         if (build.file_kind(source) == "directory" &&
+@@ -292,7 +556,13 @@ CompilerTools :: () -> int {
+         build.report("sdk: cannot reserve staging directory; existing staging is preserved");
+         return 1;
+     }
+-    if (!Prepare(stage, entries) || !build.publish_directory(stage, output)) {
++    prepared := false;
++    if (project) {
++        prepared = PrepareProject(stage, entries, arguments);
++    } else {
++        prepared = Prepare(stage, entries);
++    }
++    if (!prepared || !build.publish_directory(stage, output)) {
+         if (!RemoveTree(stage)) {
+             build.report(Join(["sdk: incomplete staging directory retained at ", stage]));
+         }
+@@ -302,3 +572,11 @@ CompilerTools :: () -> int {
+     build.report(Join(["sdk: installed compiler tools at ", output]));
+     return 0;
+ }
++CompilerTools :: () -> int {
++    return InstallCompilerTools(false);
++}
++// Opt-in preparation. The policy and actual native assembly role are supplied
++// explicitly; protocol 8 alone does not establish the prepared host interface.
++ProjectTools :: () -> int {
++    return InstallCompilerTools(true);
++}

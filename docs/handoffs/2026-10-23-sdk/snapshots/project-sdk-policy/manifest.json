@@ -1,0 +1,24 @@
+{
+  "status": "source-only; uncompiled and unexecuted",
+  "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "tree": "47bbe00d73b04644a6951fc9e4ee81038cfd380c",
+  "files_sha256": {
+    "tools/toolchain/SDK.chibi": "44d8af265c43d5e001ad3955118c69bdb3744076a2349757ca41cbac09f6bcdc",
+    "test/tools/build_sdk.c": "97709571a0d252504f6e1a6cc6dc6c627e0fa455c94fe9578f9eb65aa0000c84"
+  },
+  "patch_sha256": "2c8f9fc7b372af3ec0a8b59936e6ae46bba4384f5b50391132d81134d4c161b7",
+  "project_source_sha256": "f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb",
+  "review": "Independent SDK implementation review: no material findings remain. Test fixture formatting and source review complete.",
+  "validation": "git diff --check and clang-format-22 only; no builds, tests, generation, provisioning or publication",
+  "opt_in_environment": [
+    "CHIBI_SDK_PROJECT_SOURCE",
+    "CHIBI_SDK_PROJECT_ASSEMBLY"
+  ],
+  "pending": [
+    "prepared host CLI combined execution",
+    "Project source compilation and artifact entry retention",
+    "actual ProjectTools SDK opt-in cases",
+    "typed KDL-free integration compatibility",
+    "required repository checks before commit"
+  ]
+}

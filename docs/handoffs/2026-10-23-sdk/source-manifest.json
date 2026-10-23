@@ -1,0 +1,14 @@
+{
+  "docs/handoffs/2026-10-23-sdk/snapshots/project-sdk-policy/manifest.json": {
+    "sha256": "a65d32f949b052cbca28364cb4f9c57fab4a589cd65a612667337cfc1427d4a4",
+    "bytes": 1186,
+    "original_relative_path": ".chibi/project-sdk-policy/manifest.json",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  },
+  "docs/handoffs/2026-10-23-sdk/snapshots/project-sdk-policy/source.patch": {
+    "sha256": "2c8f9fc7b372af3ec0a8b59936e6ae46bba4384f5b50391132d81134d4c161b7",
+    "bytes": 37675,
+    "original_relative_path": ".chibi/project-sdk-policy/source.patch",
+    "role": "unapplied draft/source snapshot or historical source/check receipt"
+  }
+}

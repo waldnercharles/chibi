@@ -116,21 +116,30 @@ Git before installing its fake SDK environment: Apple's Git launcher hangs with
 the fake `SDKROOT`, while the resolved developer-tool executable succeeds. Small
 Git setup/probe checks passed; the full toolchain retry remains pending.
 
-For Linux, use a native Release graph build with the matching pinned dependency
-archive, then run the same C cases:
+For Linux, build the Release graph hosts with the matching pinned dependency
+archive, then run the C cases from a separate CMake-built harness. Linux graph
+test-driver compilation and linking are not supported by this checkpoint:
 
 ```sh
 make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
-make test-build GRAPH_BUILD=1 BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
 CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
   python3 tools/test_policy.py tool build-sdk
 ```
 
-`build-sdk` derives the unpacked archive from the executable link record.
-`GRAPH_BUILD=1` explicitly selects the graph on Linux; the default Linux Make
-path still uses CMake and does not produce the required graph link records.
-`CHIBI_SDK_THIRD_PARTY_DIR` may name that same archive explicitly. This is the
-requested Linux proof recipe; Linux execution remains pending.
+`GRAPH_BUILD=1` selects the graph for the shipped Release hosts and their link
+records. The empty `GRAPH_BUILD=` selects CMake only for the C test harness in
+`build-sdk-tests`; it must not replace the Release graph outputs in
+`build-release`. The Linux CI job records SHA-256 for both shipped hosts and each
+adjacent `.chibi-record` before the harness build and checks them immediately
+afterwards. The generated harness directory is explicitly ignored; source
+cleanliness checks remain enabled.
+
+`build-sdk` derives the unpacked archive from the Release graph executable link
+record. `CHIBI_SDK_THIRD_PARTY_DIR` may name that same archive explicitly. The
+corrected recipe still requires a successful Linux packaging run.
 
 Linux/Windows execution, full SDK headers/libraries and generated CMake exports,
 engine/package identity metadata, browser and Studio consumers remain later

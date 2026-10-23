@@ -363,10 +363,25 @@ jobs:
           install -d -m 700 "$XDG_RUNTIME_DIR"
       - name: Build Release graph compiler and build hosts
         run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
-      - name: Build graph test drivers with the Release host
-        run: make test-build GRAPH_BUILD=1 BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+      - name: Record Release graph tool identities
+        run: |
+          sha256sum \
+            build-release/sdk/chibi-build-host \
+            build-release/sdk/chibi-build-host.chibi-record \
+            build-release/sdk/chibi-compiler-host \
+            build-release/sdk/chibi-compiler-host.chibi-record \
+            > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+          cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+      - name: Build CMake SDK test harness with the Release graph host
+        run: make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+      - name: Verify Release graph tools survived the harness build unchanged
+        run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Verify graph SDK packaging and relocation
-        run: CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" python3 tools/test_policy.py tool build-sdk
+        run: |
+          CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
+          CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+          CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
+            python3 tools/test_policy.py tool build-sdk
       - name: Verify sources remain unchanged
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"

@@ -900,9 +900,29 @@ to its executable. For the installed graph, pass
 `--collection graph=PREFIX/share/chibi/graph`.
 
 `python3 tools/test_policy.py tool build-sdk` runs the C packaging and relocation
-cases after `make test-build` and the Release tool build. The test derives the
-archive location from the graph link record; `CHIBI_SDK_THIRD_PARTY_DIR` can name
-it explicitly. `CHIBI_SDK_GRAPH_BUILD_DIR` and `CHIBI_BUILD_HOST` select other
+cases against the Release graph tools. Linux graph test-driver compilation and
+linking are not supported by this checkpoint, so build only the C harness with
+the supported CMake route in its own directory:
+
+```sh
+make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
+CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
+  python3 tools/test_policy.py tool build-sdk
+```
+
+The CMake harness must leave both shipped Release hosts and their adjacent
+`.chibi-record` files unchanged. Linux CI records and checks those four SHA-256
+identities around the harness build. The separate CMake build supplies the test
+harness; the compiler tools being packaged and relocated remain Release graph
+outputs.
+`/build-sdk-tests/` is the explicitly ignored generated harness directory.
+
+The test derives the archive location from the Release graph link record;
+`CHIBI_SDK_THIRD_PARTY_DIR` can name it explicitly. `CHIBI_TOOLS_BUILD_DIR` selects
+the harness, while `CHIBI_SDK_GRAPH_BUILD_DIR` and `CHIBI_BUILD_HOST` select
 matching graph outputs. The cases exercise recovery and build-program/graph
 compilation after relocation with an empty tool search path. The graph's
 `--profile explicit` disables discovery and requires its compiler, archiver and

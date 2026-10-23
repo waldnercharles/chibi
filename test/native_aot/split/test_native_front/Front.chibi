@@ -1,0 +1,83 @@
+package test_native_front
+
+import frontend "project:package_compiler"
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Scratch diagnostic transport, not a permanent/public frontend API.
+// Success header: version, status, source bytes, main, budget, result, parameter/slot/local/code counts.
+// Then parameters; (kind,storage) slot/local pairs; 16 words per Code (below).
+// Then name count and length-prefixed ASCII opcode names.
+// Failure header: version, status, source bytes, start, end, line, column, document, message byte count; then bytes.
+Failure :: (message: string, start: int, end: int, line: int, column: int,
+            document: int, source_bytes: int) -> int[] {
+    bytes := strings.Bytes(message);
+    data: int[] = [1, 1, source_bytes, start, end, line, column, document, length(bytes)];
+    return extend(data, bytes);
+}
+pub Lower :: (project: string, path: string, source: string, triple: string, pointer_bits: int,
+              main: bool, step_budget: int) -> int[] {
+    target: abi.Target = {triple: triple, pointer_bits: pointer_bits};
+    if (step_budget <= 0 || !abi.Supported(target) || strings.ByteLength(source) > 16384 ||
+        strings.ByteLength(project) == 0 || strings.ByteLength(path) == 0) {
+        return Failure("unsupported native scalar source or target", 0, 0, 1, 1, 0, 0);
+    }
+    // This diagnostic slice accepts NUL-free source only. Reject before the
+    // shared parser host, preserving the first NUL's byte-based source range.
+    source_bytes := strings.Bytes(source);
+    offset: int = 0;
+    line: int = 1;
+    column: int = 1;
+    for (value in source_bytes) {
+        if (value == 0) {
+            return Failure("native scalar source must not contain NUL bytes", offset, offset + 1,
+                           line, column, 0, length(source_bytes));
+        }
+        if (value == 10) { line += 1; column = 1; }
+        else { column += 1; }
+        offset += 1;
+    }
+    input: snapshot.Input = {path: path, text: source, has_path: true, has_text: true};
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+                                 has_files: true, has_collections: false, file_count: 1, collection_count: 0};
+    collections: routes.Collection[] = [];
+    switch frontend.LowerNative(snapshot.Build(options, collections, [input],
+                                               [uint64(strings.ByteLength(source))])) {
+        case .Rejected(error):
+            return Failure(error.message, error.start, error.end, error.line, error.column, error.document, strings.ByteLength(source));
+        case .Lowered(result, parameters, slots, locals, code):
+            if (length(parameters) > 8 || length(slots) > 128 || length(locals) > 64 ||
+                length(code) < 1 || length(code) > 256) {
+                return Failure("native scalar plan exceeds transport limits", 0, 0, 1, 1, 0, 0);
+            }
+            main_flag: int = 0;
+            if (main) { main_flag = 1; }
+            data: int[] = [1, 0, strings.ByteLength(source), main_flag, step_budget, result, length(parameters),
+                           length(slots), length(locals), length(code)];
+            for (parameter in parameters) { data.append(parameter); }
+            for (slot in slots) { data.append(slot.kind); data.append(slot.storage); }
+            for (local in locals) { data.append(local.kind); data.append(local.storage); }
+            for (item in code) {
+                text_flag: int = 0;
+                if (item.has_text) { text_flag = 1; }
+                // Retain every admission field used by the existing EmitPlan.
+                // No kind/record/container/offset/text metadata is erased here.
+                data.append(item.op); data.append(item.type); data.append(item.output);
+                data.append(item.left); data.append(item.right); data.append(item.target);
+                data.append(int(wrap: item.payload)); data.append(item.offset);
+                data.append(text_flag); data.append(item.value_storage);
+                data.append(item.value_container); data.append(item.value_record);
+                data.append(item.start); data.append(item.end); data.append(item.line); data.append(item.column);
+            }
+            names := frontend.NativeInstructionNames();
+            data.append(length(names));
+            for (name in names) {
+                bytes := strings.Bytes(name);
+                data.append(length(bytes));
+                data = extend(data, bytes);
+            }
+            return data;
+    }
+}

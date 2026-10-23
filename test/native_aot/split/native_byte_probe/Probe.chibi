@@ -1,0 +1,14 @@
+package native_byte_probe
+import strings "core:strings"
+pub Bytes :: () -> int[] {
+    parts: string[] = [];
+    values: int[] = [0, 127, 128, 195, 169, 255];
+    for (value in values) { parts.append(format_text("{:c}", value)); }
+    return strings.Bytes(strings.Join(parts, ""));
+}
+pub Diagnostic :: () -> int[] {
+    source: string = "unsupported café 日本語";
+    parts: string[] = [];
+    for (value in strings.Bytes(source)) { parts.append(format_text("{:c}", value)); }
+    return strings.Bytes(strings.Join(parts, ""));
+}

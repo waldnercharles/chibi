@@ -1,0 +1,140 @@
+package test_native_back
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Exact symbolic opcode mapping reused from f190 native_compiler/Compile.chibi.
+NativeOpcode :: (name: string) -> int {
+    if (name == "CONSTANT") { return native.Constant; }
+    if (name == "ARGUMENT") { return native.Argument; }
+    if (name == "LOCAL") { return native.Local; }
+    if (name == "SAVE") { return native.Save; }
+    if (name == "RESULT") { return native.Publish; }
+    if (name == "RETURN") { return native.Return; }
+    if (name == "END") { return native.End; }
+    if (name == "ADD") { return native.Add; }
+    if (name == "SUB") { return native.Sub; }
+    if (name == "MUL") { return native.Mul; }
+    if (name == "DIV") { return native.Div; }
+    if (name == "MOD") { return native.Mod; }
+    if (name == "NEG") { return native.Neg; }
+    if (name == "BIT_AND") { return native.BitAnd; }
+    if (name == "BIT_OR") { return native.BitOr; }
+    if (name == "BIT_XOR") { return native.BitXor; }
+    if (name == "BIT_NOT") { return native.BitNot; }
+    if (name == "SHL") { return native.Shl; }
+    if (name == "SHR") { return native.Shr; }
+    if (name == "LT") { return native.Lt; }
+    if (name == "LE") { return native.Le; }
+    if (name == "GT") { return native.Gt; }
+    if (name == "GE") { return native.Ge; }
+    if (name == "EQ") { return native.Eq; }
+    if (name == "NE") { return native.Ne; }
+    if (name == "BRANCH") { return native.Branch; }
+    if (name == "JUMP") { return native.Jump; }
+    if (name == "CHECK") { return native.Check; }
+    // In particular, CAST/CONVERT are not replaced by LLVM casts: checked,
+    // wrap and clamp conversions need a separately verified lowering.
+    return -1;
+}
+
+// Output is one primitive string array: diagnostic, five source coordinates, IR.
+Failure :: (message: string) -> string[] {
+    return [message, "0", "0", "1", "1", "0", ""];
+}
+At :: (message: string, data: int[], first: int) -> string[] {
+    return [message, format_text("{}", data[first + 12]), format_text("{}", data[first + 13]),
+            format_text("{}", data[first + 14]), format_text("{}", data[first + 15]), "0", ""];
+}
+pub Emit :: (data: int[]) -> string[] {
+    if (length(data) < 3 || length(data) > 20000 || data[0] != 1 || data[2] < 0 || data[2] > 16384) {
+        return Failure("invalid native scalar transport header");
+    }
+    if (data[1] == 1) {
+        if (length(data) < 9 || data[3] < 0 || data[4] < data[3] || data[4] > data[2] ||
+            data[5] < 0 || data[5] > data[2] + 1 || data[6] < 0 || data[6] > data[2] + 1 ||
+            data[7] < -1 || data[7] > 0 || data[8] < 1 || data[8] > 16384 || length(data) != 9 + data[8]) {
+            return Failure("invalid native scalar diagnostic transport");
+        }
+        parts: string[] = [];
+        at: int = 9;
+        while (at < length(data)) {
+            if (data[at] < 0 || data[at] > 255) { return Failure("invalid native scalar diagnostic byte"); }
+            parts.append(format_text("{:c}", data[at])); at += 1;
+        }
+        return [strings.Join(parts, ""), format_text("{}", data[3]), format_text("{}", data[4]),
+                format_text("{}", data[5]), format_text("{}", data[6]), format_text("{}", data[7]), ""];
+    }
+    if (data[1] != 0 || length(data) < 10 || (data[3] != 0 && data[3] != 1) ||
+        data[4] <= 0 || data[6] < 0 || data[6] > 8 || data[7] < 0 || data[7] > 128 ||
+        data[8] < 0 || data[8] > 64 || data[9] < 1 || data[9] > 256) {
+        return Failure("invalid native scalar transport counts");
+    }
+    // Bounded counts above make every subsequent extent calculation nonoverflowing.
+    code_end := 10 + data[6] + 2 * data[7] + 2 * data[8] + 16 * data[9];
+    if (length(data) <= code_end || data[code_end] < 0 || data[code_end] > 64) {
+        return Failure("invalid native scalar transport extent");
+    }
+    names: string[] = [];
+    name_at := code_end + 1;
+    while (length(names) < data[code_end]) {
+        if (name_at >= length(data)) { return Failure("invalid native scalar name extent"); }
+        count := data[name_at]; name_at += 1;
+        if (count < 1 || count > 32 || count > length(data) - name_at) {
+            return Failure("invalid native scalar name extent");
+        }
+        name: string = "";
+        end := name_at + count;
+        while (name_at < end) {
+            value := data[name_at];
+            if ((value < 65 || value > 90) && value != 95) { return Failure("invalid native scalar instruction name"); }
+            name = format_text("{}{:c}", name, value); name_at += 1;
+        }
+        names.append(name);
+    }
+    if (name_at != length(data)) { return Failure("trailing native scalar transport data"); }
+    parameters: int[] = [];
+    at: int = 10;
+    while (length(parameters) < data[6]) { parameters.append(data[at]); at += 1; }
+    slots: int[] = [];
+    while (length(slots) < data[7]) {
+        if (data[at] != 0 || abi.ScalarType(data[at + 1]) == "") {
+            return Failure("native scalar body contains a managed value or pointer");
+        }
+        slots.append(data[at + 1]); at += 2;
+    }
+    locals: int[] = [];
+    while (length(locals) < data[8]) {
+        if (data[at] != 0 || abi.ScalarType(data[at + 1]) == "") {
+            return Failure("native scalar local requires runtime storage");
+        }
+        locals.append(data[at + 1]); at += 2;
+    }
+    first := at;
+    instructions: native.Instruction[] = [];
+    while (length(instructions) < data[9]) {
+        if (data[at] < 0 || data[at] >= length(names) || data[at + 8] < 0 || data[at + 8] > 1 ||
+            data[at + 12] < 0 || data[at + 13] < data[at + 12] || data[at + 13] > data[2] ||
+            data[at + 14] < 0 || data[at + 14] > data[2] + 1 || data[at + 15] < 0 || data[at + 15] > data[2] + 1) {
+            return Failure("invalid native scalar instruction transport");
+        }
+        name := names[data[at]];
+        op := NativeOpcode(name);
+        if (op < 0 || data[at + 7] != 0 || data[at + 8] != 0 || data[at + 10] != 0 ||
+            (name == "CONSTANT" && (data[at + 9] != data[at + 1] || data[at + 11] != -1))) {
+            return At(format_text("unsupported native instruction {} (type {}, value {}, container {}, record {}, offset {}, text {})",
+                                   name, data[at + 1], data[at + 9], data[at + 10], data[at + 11], data[at + 7], data[at + 8] != 0), data, at);
+        }
+        item: native.Instruction = {op: op, type: data[at + 1], output: data[at + 2],
+                                    left: data[at + 3], right: data[at + 4], target: data[at + 5], literal: data[at + 6]};
+        instructions.append(item); at += 16;
+    }
+    switch native.Emit(abi.LinuxX64(), parameters, data[5], slots, locals, instructions, data[3] == 1, data[4]) {
+        case .Rejected(instruction, message):
+            if (instruction >= 0 && instruction < data[9]) { return At(message, data, first + 16 * instruction); }
+            return Failure(message);
+        case .Emitted(ir):
+            return ["", "", "", "", "", "", ir];
+    }
+}

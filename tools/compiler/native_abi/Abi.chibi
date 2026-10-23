@@ -1,0 +1,39 @@
+package native_abi
+
+// Internal contract for the first runtime-free LLVM slice, not a public
+// core package or a foreign ABI. These facts describe the destination, never
+// the host running the compiler. Extend them only with a tested consumer.
+pub Target :: struct {
+    triple: string;
+    pointer_bits: int;
+}
+
+pub LinuxX64 :: () -> Target {
+    return {triple: "x86_64-unknown-linux-gnu", pointer_bits: 64};
+}
+
+// Reject other targets rather than silently applying the first target's ABI.
+// The backend supplies its data layout; no unverified layout is embedded here.
+pub Supported :: (target: Target) -> bool {
+    supported := LinuxX64();
+    return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
+}
+
+// Current compiler storage ordinals, not byte widths or foreign type IDs.
+BoolStorage: int : 1;
+IntStorage: int : 6;
+
+// The internal LLVM value type for this scalar subset. An empty result is an
+// unsupported type, not void: callers must reject it before emitting IR.
+// A caller must first reject containers, nominal types and references; the
+// storage ordinal alone does not describe those properties. In particular,
+// i1 is not a promise about a platform's foreign bool representation.
+pub ScalarType :: (storage: int) -> string {
+    if (storage == BoolStorage) {
+        return "i1";
+    }
+    if (storage == IntStorage) {
+        return "i32";
+    }
+    return "";
+}

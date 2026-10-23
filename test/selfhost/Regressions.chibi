@@ -1,0 +1,18 @@
+package regressions
+
+import bootstrap "project:bootstrap_tests"
+import parser "project:authored_parser"
+import abi "project:native_abi_checks"
+
+pub Tests :: () -> string[] {
+    failures := bootstrap.Tests();
+    result := parser.Check();
+    if (result != 0) {
+        failures.append(format_text("authored parser parity case {}", result));
+    }
+    result = abi.Tests();
+    if (result != 0) {
+        failures.append(format_text("native ABI contract case {}", result));
+    }
+    return failures;
+}

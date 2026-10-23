@@ -1,0 +1,165 @@
+package authored_parser
+
+import parser "project:parser"
+import raw "project:compiler_syntax"
+
+// Every successful parse compares every public fact, not only leaf tokens.
+// This oracle is confined to the parity fixture; the authored parser never
+// invokes raw.Parse and has no native parse capability dependency.
+pub Parity :: (text: string) -> int {
+    switch parser.Parse(text) {
+        case .Rejected(code, diagnostic):
+            return 1;
+        case .Parsed(nodes, fields, named, extra, root):
+            switch raw.Parse(text) {
+                case .Parsed(expected, expected_fields, expected_named, expected_extra, expected_root):
+                    if (root != expected_root || length(nodes) != length(expected)) {
+                        return 2;
+                    }
+                    index: int = 0;
+                    while (index < length(nodes)) {
+                        got := nodes[index];
+                        want := expected[index];
+                        if (got.kind != want.kind || got.start != want.start || got.end != want.end ||
+                            got.row != want.row || got.column != want.column || got.parent != want.parent ||
+                            got.first_child != want.first_child || got.next_sibling != want.next_sibling ||
+                            got.error != want.error || got.missing != want.missing || got.has_error != want.has_error ||
+                            fields[index] != expected_fields[index] || named[index] != expected_named[index] ||
+                            extra[index] != expected_extra[index]) {
+                            return 100 + index;
+                        }
+                        index += 1;
+                    }
+            }
+    }
+    return 0;
+}
+
+pub Cases :: () -> string[] {
+    return [
+        "package sample;",
+        "package sample",
+        "  package sample  \n\n",
+        "// leading\npackage sample\n// trailing\n",
+        "package /*between*/ sample;",
+        "package sample // boundary\nimport \"core:strings\"",
+        "package sample /* line\nboundary */ import s \"core:strings\"",
+        "package sample\r\nimport s \"core:strings\"\r\n",
+        "package sample\nimport \"core:strings\"; import x \"project:x\";",
+        "package sample\nimport /* before alias */ s /* before path */ \"core:strings\";",
+        "package sample\nA :: 0; B :: 12.5; C :: 1e-2; D :: 0x2f;",
+        "package sample\nA :: true\nB :: false\nC :: nil\nD :: null\n",
+        "package sample\npub A :: 1; pub B :: \"hi\";",
+        "package sample\nA :: \"é雪\"\n// café\nB :: 2\n",
+        "package sample\nA /*name*/ :: /*value*/ 1 /*tail*/;",
+        "package sample\nA :: true /*tail*/;",
+        "package sample\nA :: \"a\\n\\\"b\";",
+        "package package\nimport from \"core:strings\";",
+        "package sample\nimport :: 1; package :: 2; struct :: 3;",
+        "package sample\npub import :: 1;",
+        "package sample\nA :: 1 // end\nB :: 2",
+        "package sample\nA :: 1 /* end\n */ B :: 2"
+    ];
+}
+
+pub CheckAccepted :: () -> int {
+    cases := Cases();
+    index: int = 0;
+    while (index < length(cases)) {
+        if (Parity(cases[index]) != 0) {
+            return index + 1;
+        }
+        index += 1;
+    }
+    return 0;
+}
+
+pub Rejection :: (text: string, expected_code: string, expected_start: int, expected_line: int, expected_column: int) -> bool {
+    switch parser.Parse(text) {
+        case .Parsed(nodes, fields, named, extra, root):
+            return false;
+        case .Rejected(code, diagnostic):
+            return code == expected_code && diagnostic.start == expected_start &&
+                   diagnostic.line == expected_line && diagnostic.column == expected_column && diagnostic.message != "";
+    }
+}
+
+pub CheckRejected :: () -> int {
+    if (!Rejection("package", "syntax", 7, 1, 8)) {
+        return 1;
+    }
+    if (!Rejection("package sample\nimport", "syntax", 21, 2, 7)) {
+        return 2;
+    }
+    if (!Rejection("package sample\nimport x", "syntax", 23, 2, 9)) {
+        return 3;
+    }
+    if (!Rejection("package sample\nA ::", "syntax", 19, 2, 5)) {
+        return 4;
+    }
+    if (!Rejection("package sample\npub pub A :: 1", "syntax", 19, 2, 5)) {
+        return 5;
+    }
+    if (!Rejection("package sample\nF :: () {}", "unsupported", 20, 2, 6)) {
+        return 6;
+    }
+    if (!Rejection("package sample\nA :: 1 + 2", "unsupported", 22, 2, 8)) {
+        return 7;
+    }
+    if (!Rejection("package sample\nA: int : 1", "unsupported", 16, 2, 2)) {
+        return 8;
+    }
+    if (!Rejection("package sample\nA :: \"oops", "lexical", 20, 2, 6)) {
+        return 9;
+    }
+    if (!Rejection("package sample\n/*oops", "lexical", 15, 2, 1)) {
+        return 10;
+    }
+    if (!Rejection("package sample\nA :: \"a\u0000b\";", "input", 22, 2, 8)) {
+        return 11;
+    }
+    if (!Rejection("package sample\nA :: \"é\u0000\";", "input", 23, 2, 9)) {
+        return 12;
+    }
+    return 0;
+}
+
+// Every byte prefix of one fixed 65-byte source is either an explicit
+// rejection or an exact raw-fact match; incomplete UTF-8 prefixes are included.
+pub CheckPrefixes :: () -> int {
+    text := "// é\npackage p\nimport x \"core:strings\"\npub A :: true\nB :: \"雪\"\n";
+    count := text_byte_length(text);
+    end: int = 0;
+    while (end <= count) {
+        prefix := text_slice(text, 0, end);
+        switch parser.Parse(prefix) {
+            case .Parsed(nodes, fields, named, extra, root):
+                if (Parity(prefix) != 0) {
+                    return end + 1;
+                }
+            case .Rejected(code, diagnostic):
+                if (diagnostic.start < 0 || diagnostic.end < diagnostic.start ||
+                    diagnostic.end > end || diagnostic.line < 1 || diagnostic.column < 1) {
+                    return end + 1;
+                }
+        }
+        end += 1;
+    }
+    return 0;
+}
+
+pub Check :: () -> int {
+    accepted := CheckAccepted();
+    if (accepted != 0) {
+        return accepted;
+    }
+    rejected := CheckRejected();
+    if (rejected != 0) {
+        return 100 + rejected;
+    }
+    prefixes := CheckPrefixes();
+    if (prefixes != 0) {
+        return 200 + prefixes;
+    }
+    return 0;
+}

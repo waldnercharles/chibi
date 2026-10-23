@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "entry": "0xacf18e429e509cc3",
+  "collections": [
+    {
+      "name": "core",
+      "root": "/sdk/core"
+    },
+    {
+      "name": "bootstrap",
+      "root": "/collections/bootstrap"
+    }
+  ],
+  "files": [
+    {
+      "source": "test/selfhost/Regressions.chibi",
+      "path": "regressions/Tests.chibi"
+    },
+    {
+      "source": "test/tools/bootstrap/ResolverTests.chibi",
+      "path": "bootstrap_tests/ResolverTests.chibi"
+    },
+    {
+      "source": "test/fixtures/authored-parser/Parity.chibi",
+      "path": "authored_parser/Parity.chibi"
+    },
+    {
+      "source": "tools/compiler/parser/Parser.chibi",
+      "path": "parser/Parser.chibi"
+    },
+    {
+      "source": "tools/compiler/source_tokenizer/Tokenizer.chibi",
+      "path": "source_tokenizer/Tokenizer.chibi"
+    },
+    {
+      "source": "tools/compiler/compiler_syntax/Syntax.chibi",
+      "path": "compiler_syntax/Syntax.chibi"
+    },
+    {
+      "source": "tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+      "path": "syntax_diagnostics/Diagnostics.chibi"
+    },
+    {
+      "source": "tools/compiler/native_abi/Abi.chibi",
+      "path": "native_abi/Abi.chibi"
+    },
+    {
+      "source": "test/fixtures/native-abi/Checks.chibi",
+      "path": "native_abi_checks/Checks.chibi"
+    },
+    {
+      "source": "tools/toolchain/bootstrap/resolver/Resolver.chibi",
+      "path": "/collections/bootstrap/resolver/Resolver.chibi"
+    },
+    {
+      "source": "tools/toolchain/bootstrap/resolver/Manifest.chibi",
+      "path": "/collections/bootstrap/resolver/Manifest.chibi"
+    },
+    {
+      "source": "packages/core/strings/Strings.chibi",
+      "path": "/sdk/core/strings/Strings.chibi"
+    }
+  ]
+}

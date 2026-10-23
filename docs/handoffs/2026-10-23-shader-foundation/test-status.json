@@ -1,0 +1,46 @@
+{
+  "historical_d34": {
+    "source_commit": "d34def7202f842b6408f151df96ab5c7d1b343b1",
+    "focused_source_debug": {
+      "passed": 13,
+      "assertions": 165,
+      "seconds": 1.194
+    },
+    "required_groups": "all five passed; see sdf-evidence.json and raw logs",
+    "final_native_seconds": 50.825,
+    "tools": {
+      "passed": 130,
+      "assertions": 27374,
+      "seconds": 87.158
+    },
+    "format": "passed,70.0s"
+  },
+  "superseded_fa1_candidate": {
+    "base": "d34def7202f842b6408f151df96ab5c7d1b343b1",
+    "merge_parent": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "tree": "44de35e447cd870eec5fea334e6f36110e156db1",
+    "required_make_exit": 2,
+    "native_materials_projects_language": "passed",
+    "tools": {
+      "passed": 129,
+      "failed": 1,
+      "failure": "studio acceptance child operation reached existing10s limit"
+    },
+    "runner_recheck": {
+      "passed": 13,
+      "failed": 2,
+      "failures": [
+        "timeout-options",
+        "portable nested cleanup"
+      ]
+    },
+    "format": "passed;126.7s"
+  },
+  "current_d0_integration": {
+    "tree": "e4efa14d334f7dc5b6d465bf1906f77120992084",
+    "builds_tests_format": "not run; source review and diff whitespace only"
+  },
+  "authored_policy_schema": {
+    "compilation_tests_transport_install_gpu": "not run; no prepared service artifact"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "docs/chibi-shaders/PLAN.md": {
+    "git_blob": "bd3a965a3f1f65ce411412a7c93235b92b56fb12",
+    "sha256": "c8bf1e33a64197442a85297592dfaae9cbcf4312bdb88308a0f2acae5073f07c",
+    "bytes": 14559
+  },
+  "docs/chibi-shaders/typed-facts.md": {
+    "git_blob": "4f177ce4f7ed24243c8804c1a35a33ed0c9d8251",
+    "sha256": "9e094ca75419cee85ef26a40c94f514661190d43b32c7823941a3d0e11c36160",
+    "bytes": 4546
+  },
+  "docs/shader-graphs.md": {
+    "git_blob": "d338f8c112850dce3701358424e3fcaf5d3abb68",
+    "sha256": "13759dd75c6cde4b626c7d348b7bd00f324deb699cb5ccea8e7a1859d809c4cf",
+    "bytes": 22844
+  },
+  "sdk/shaders.cmake": {
+    "git_blob": "17421f845d11f21488860e431654acebd7717a01",
+    "sha256": "aae819f01c47104635917657effe253e7b5eb64408aa157c2d73d34ce80a11f4",
+    "bytes": 1600
+  },
+  "src/runtime/shaders/program.c": {
+    "git_blob": "d0829f6d88078d6a847f589fb2e5513bad922cb0",
+    "sha256": "94682d3aa824058c441499464757b1133d0afd8703065b3fe440d3a98df7092e",
+    "bytes": 69303
+  },
+  "src/runtime/shaders/source_debug.c": {
+    "git_blob": "e5c931a10c523ab787caf44cc385bb2c1a918aa3",
+    "sha256": "e5e0c03b9bced64a9e318af7340aef06f50d27106dc06d87d8b054d5133bba59",
+    "bytes": 11236
+  },
+  "src/runtime/shaders/source_debug.h": {
+    "git_blob": "fa588d906049c0c6546c8320dadbb8e370022b47",
+    "sha256": "52b395827dad2cee32428b4d4dd994e6a4a9546f3a0589976d97c52fe0d85553",
+    "bytes": 4326
+  },
+  "src/runtime/shaders/volume.c": {
+    "git_blob": "440ba9ff5dde29dcd5d0c7f7ae9f4fbdb7b19002",
+    "sha256": "af20201d87006db93afe26afece30e90688ab734d5b95572085114f7e7f44ade",
+    "bytes": 6911
+  },
+  "src/runtime/shaders/volume.h": {
+    "git_blob": "60c830e80dafe7b0e12e8f77024a15ea1187040a",
+    "sha256": "a71f7ffc8338fba8472de7ea6c348aa6eae769a83527e2f6e204bf5ad7aa819a",
+    "bytes": 986
+  },
+  "test/execution_selectors.h": {
+    "git_blob": "f139e84124bd7557772fd750b3fa00f2568019f6",
+    "sha256": "3835ca76b63007e81dbef531bb33472e0d2c7d44d7670de07f76fb07f9dd6874",
+    "bytes": 7537
+  },
+  "test/graph/model_sampled.c": {
+    "git_blob": "bd74758270980b7fb1dfb00aa3cc6764ab3730ef",
+    "sha256": "81ff5130639639d8e1373af04883f79c9e467f56922aacf4d4dada5e86fa265e",
+    "bytes": 18043
+  },
+  "test/tools/CMakeLists.txt": {
+    "git_blob": "62e9c886fb75bc81c34188be68d45d1a184b44b0",
+    "sha256": "226b0b03fef99e7aae654a3da179425e57987e9c7fff6ec3de9ced1ce7a34742",
+    "bytes": 37885
+  },
+  "test/tools/main.c": {
+    "git_blob": "ce000429f9bc3ec99daeef326ee872ee0acda810",
+    "sha256": "0f8620680e00626d5e22e0640789128d6bc20f864360d8832647e9e25385b77b",
+    "bytes": 59437
+  },
+  "test/tools/shader_source_debug.c": {
+    "git_blob": "6d23e1df5cdcb33991dd3fe684ff494bd07ffe6b",
+    "sha256": "d8df8017a22cd579af4c66183b1ff21ea67c2069000d2bdb08b747d27e2d7d21",
+    "bytes": 30022
+  },
+  "tools/agent.py": {
+    "git_blob": "23115a1b2e219e3b7314f12c7fb9712f06c2024b",
+    "sha256": "dc5d34a8a34e90128298881168e8e8bb648db037a40b486dee48f0de96682d6f",
+    "bytes": 31758
+  },
+  "tools/graph/engine/Targets.chibi": {
+    "git_blob": "de3cd087c977123a38ff5507f5a5475727ec4562",
+    "sha256": "c53cae1b32aa8d0f74a59b29d4857fd9b1fbe3ec7b4098761ef7db32732fb0f1",
+    "bytes": 228287
+  },
+  "tools/test_policy.py": {
+    "git_blob": "93bad8e709cf2146b91e4ae73882d22179198c38",
+    "sha256": "0df73f7e4a397d392c31ad3c3eb4c5958fec88f811cec6fbe3988b3383df2b8f",
+    "bytes": 65320
+  }
+}

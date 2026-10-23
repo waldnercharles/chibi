@@ -1,0 +1,16 @@
+Running: uv_time_and_uniform_values_follow_one_sample (OK) (0.000055 secs)
+Running: source_results_select_principal_nodes_and_zero_node_aliases (OK) (0.000004 secs)
+Running: helper_expansions_keep_values_and_call_chains_separate (OK) (0.000004 secs)
+Running: snapshot_owns_values_and_exact_source_revision (OK) (0.000013 secs)
+Running: unmapped_ir_needs_no_documents_only_when_capture_had_none (OK) (0.000001 secs)
+Running: source_byte_limits_accept_boundaries_and_preserve_previous_capture (OK) (0.019068 secs)
+Running: document_identity_and_count_limits_reject_excess (OK) (0.000054 secs)
+Running: missing_image_preserves_previous_values_and_reports_source (OK) (0.000055 secs)
+Running: invalid_source_maps_cannot_replace_a_valid_snapshot (OK) (0.000023 secs)
+Running: nonfinite_intermediates_remain_visible_when_output_is_finite (OK) (0.000020 secs)
+Running: sampled_sdf_arithmetic_failure_is_not_a_missing_image (OK) (0.000030 secs)
+Running: bump_and_context_effects_declare_their_cpu_limits (OK) (0.000015 secs)
+Running: decal_facing_declares_coordinate_gradient_dependency (OK) (0.000007 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 165
+Test command wall time: 1.194s; includes in-test fixture setup; external configuration/build excluded.

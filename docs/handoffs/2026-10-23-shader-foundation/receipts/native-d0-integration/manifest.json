@@ -1,0 +1,52 @@
+{
+  "tree": "e4efa14d334f7dc5b6d465bf1906f77120992084",
+  "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "branch_head": "d34def7202f842b6408f151df96ab5c7d1b343b1",
+  "prospective_parents": [
+    "d34def7202f842b6408f151df96ab5c7d1b343b1",
+    "d0de4a84ecf50badcab661411470bdf6f3da5fa2"
+  ],
+  "changed_paths": [
+    "docs/chibi-shaders/PLAN.md",
+    "docs/chibi-shaders/typed-facts.md",
+    "docs/shader-graphs.md",
+    "sdk/shaders.cmake",
+    "src/runtime/shaders/program.c",
+    "src/runtime/shaders/source_debug.c",
+    "src/runtime/shaders/source_debug.h",
+    "src/runtime/shaders/volume.c",
+    "src/runtime/shaders/volume.h",
+    "test/execution_selectors.h",
+    "test/graph/model_sampled.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/main.c",
+    "test/tools/shader_source_debug.c",
+    "tools/agent.py",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "patch_sha256": "7fb61975cee77aa4a4e1ae09298162eeb54556dfdb1037d407df3e3d6e090399",
+  "unchanged_native_sources_from_branch_head": {
+    "src/runtime/shaders/source_debug.c": "e5e0c03b9bced64a9e318af7340aef06f50d27106dc06d87d8b054d5133bba59",
+    "src/runtime/shaders/source_debug.h": "52b395827dad2cee32428b4d4dd994e6a4a9546f3a0589976d97c52fe0d85553",
+    "src/runtime/shaders/program.c": "94682d3aa824058c441499464757b1133d0afd8703065b3fe440d3a98df7092e",
+    "src/runtime/shaders/volume.c": "af20201d87006db93afe26afece30e90688ab734d5b95572085114f7e7f44ade",
+    "src/runtime/shaders/volume.h": "a71f7ffc8338fba8472de7ea6c348aa6eae769a83527e2f6e204bf5ad7aa819a",
+    "test/tools/shader_source_debug.c": "d8df8017a22cd579af4c66183b1ff21ea67c2069000d2bdb08b747d27e2d7d21",
+    "test/graph/model_sampled.c": "81ff5130639639d8e1373af04883f79c9e467f56922aacf4d4dada5e86fa265e"
+  },
+  "excluded": "new authored Facts/SourceMap and current unstaged/untracked design updates",
+  "validation": "source-only review; d0 tests/builds not run; old fa1 failure logs retained",
+  "independent_source_review": {
+    "result": "no source integration findings",
+    "checked": [
+      "CMake and Chibi graph runtime/test/header registration parity",
+      "dispatcher guards and native group/current-main route coexistence",
+      "SDK dependencies",
+      "all sampled-volume callers use diagnostic signature",
+      "new authored source excluded",
+      "whitespace"
+    ],
+    "runtime_validation": "not executed; queued"
+  }
+}

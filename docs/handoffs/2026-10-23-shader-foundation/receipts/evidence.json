@@ -1,0 +1,63 @@
+{
+  "base": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "branch": "codex/chibi-shader-authoring-20261022",
+  "date": "2026-10-22",
+  "sources": {
+    "src/runtime/shaders/source_debug.c": "e5e0c03b9bced64a9e318af7340aef06f50d27106dc06d87d8b054d5133bba59",
+    "src/runtime/shaders/source_debug.h": "52b395827dad2cee32428b4d4dd994e6a4a9546f3a0589976d97c52fe0d85553",
+    "test/tools/shader_source_debug.c": "72fb4af8736563b50316cf7682c33f3c7f37a05477aebacaafc521dbb28dc21e",
+    "test/execution_selectors.h": "3835ca76b63007e81dbef531bb33472e0d2c7d44d7670de07f76fb07f9dd6874",
+    "tools/agent.py": "dc5d34a8a34e90128298881168e8e8bb648db037a40b486dee48f0de96682d6f",
+    "sdk/shaders.cmake": "aae819f01c47104635917657effe253e7b5eb64408aa157c2d73d34ce80a11f4",
+    "tools/graph/engine/Targets.chibi": "f95aee6ec5636cb8b089a113bdb0b135ea1537271e246d286464e154e496184e"
+  },
+  "binaries": {
+    "build-debug/test/tools/test_tools": "414db7b8ed7bd4951199c2b13ea267c1e6c6d24296d4d7f587ac1c6b87a50412",
+    "build-debug/test/language/test_language": "a27d3542a0f4e0d72bde030f21c912a39bafd1bc2e8a0b496c84093178e00c42",
+    "build-debug/bin/chibi_ctl": "5c4df61ddf9312d23aa69adbf151c6e40391defeaa071afba4e21efe8c34fed7",
+    "build-release/bin/chibi_ctl": "27bcee776d0379eccf006f610e732d66fa6b64b8764eddc195ffe6f23a55ae63"
+  },
+  "checks": {
+    "focused": {
+      "cases": 12,
+      "assertions": 144,
+      "log": "focused.log"
+    },
+    "agent-focused": {
+      "exit": 0,
+      "seconds": 1.101,
+      "log": "agent-focused.log"
+    },
+    "test-tools": {
+      "exit": 0,
+      "cases": 116,
+      "assertions": 27281,
+      "seconds": 54.311,
+      "log": "tools.log"
+    },
+    "test-runner-after-agent-mapping": {
+      "exit": 0,
+      "cases": 15,
+      "assertions": 165,
+      "seconds": 32.695,
+      "log": "test-runner.log"
+    },
+    "required-make-groups": {
+      "command": "make -k test-native test-materials test-projects test-language-all BUILD_DIR=build-debug BUILD_PROFILE=debug BUILD_HOST=$PWD/build-cmake/sdk/chibi-build-host",
+      "exit": 0,
+      "seconds": [
+        25.605,
+        14.678,
+        85.544,
+        23.382
+      ],
+      "log": "required-groups.log"
+    },
+    "check-format": {
+      "exit": 0,
+      "seconds": 112.7,
+      "log": "format.log"
+    }
+  },
+  "limits": "Snapshot cases supply IR/source maps. Authored shader compilation, material GPU parity and Studio behavior remain pending dependencies."
+}

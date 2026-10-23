@@ -1,0 +1,3 @@
+{"ok": true, "status": "passed", "reason": "selected_assertions_passed", "coverage": "focused-iteration", "full_verification": false, "elapsed_seconds": 0.545, "capabilities": null, "next_command": "make test-list", "selector": "--shader-source-debug", "artifact_preflight": null, "execution_evidence": null}
+Agent iteration: passed (selected_assertions_passed); coverage is limited to the selected check.
+Test command wall time: 1.101s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,28 @@
+-- Configuring done (1.6s)
+-- Generating done (0.9s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi/build-tools
+[  1%] Built target policy_worker
+[  5%] Built target chibi_support
+[  7%] Built target benchmark_trials
+[  8%] Built target chibi_fmt
+[ 16%] Built target chibi_types
+[ 18%] Built target chibi_asset_values
+[ 19%] Building C object sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi/src/runtime/shaders/program.c.o
+[ 21%] Building C object sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi/src/runtime/shaders/volume.c.o
+[ 25%] Built target chibi_ecs
+[ 28%] Built target chibi_value_document
+[ 29%] Built target chibi_events
+[ 33%] Built target chibi_sdk_contracts
+[ 33%] Linking C static library libchibi_shader_runtime.a
+[ 70%] Built target chibi_execution
+[ 74%] Built target chibi_behavior_runtime
+[ 74%] Built target chibi_prepared_consumer
+[ 74%] Built target chibi_record_consumer
+[ 77%] Built target chibi_scene_runtime
+[ 80%] Built target chibi_shader_runtime
+[ 81%] Building C object CMakeFiles/chibi_shader_bake_consumer.dir/shader_source_debug.c.o
+[ 83%] Built target chibi_scene_consumer
+[ 83%] Built target chibi_shader_bake_consumer
+[ 84%] Linking C executable test_tools
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_behavior_runtime.a'
+[100%] Built target test_tools

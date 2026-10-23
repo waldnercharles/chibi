@@ -1,0 +1,58 @@
+{
+  "base": "3dd7f6e1f3bdb276718d95075b9bdbc87eb0ec49",
+  "branch": "codex/chibi-shader-authoring-20261022",
+  "sources": {
+    "src/runtime/shaders/program.c": "94682d3aa824058c441499464757b1133d0afd8703065b3fe440d3a98df7092e",
+    "src/runtime/shaders/volume.c": "af20201d87006db93afe26afece30e90688ab734d5b95572085114f7e7f44ade",
+    "src/runtime/shaders/volume.h": "a71f7ffc8338fba8472de7ea6c348aa6eae769a83527e2f6e204bf5ad7aa819a",
+    "src/runtime/shaders/source_debug.c": "e5e0c03b9bced64a9e318af7340aef06f50d27106dc06d87d8b054d5133bba59",
+    "src/runtime/shaders/source_debug.h": "52b395827dad2cee32428b4d4dd994e6a4a9546f3a0589976d97c52fe0d85553",
+    "test/tools/shader_source_debug.c": "d8df8017a22cd579af4c66183b1ff21ea67c2069000d2bdb08b747d27e2d7d21",
+    "test/graph/model_sampled.c": "81ff5130639639d8e1373af04883f79c9e467f56922aacf4d4dada5e86fa265e"
+  },
+  "binaries": {
+    "build-debug/test/tools/test_tools": "76201aec355de54a88f7e31a56ef427ccf2a9a8292515d6388e7a403fd9da8ca",
+    "build-debug/test/language/test_language": "95a1781374430481fcaed1e877560f689ca6b21188368855658b3130a24b350a",
+    "build-debug/bin/chibi_ctl": "0a17fc8766ff47036d8f9e46bd9e64483f738bdf44374fa6156acfe7b6e79e58",
+    "build-release/bin/chibi_ctl": "2d7a3403d00c68220e2b371d85170886723550ec407538149ca0905742d57c97",
+    "build-tools/test_tools": "f93ff21ffd4f0b6c6c726e2e4b51b5cef37bc418bdefdd995516a00f86662f47"
+  },
+  "checks": {
+    "red": {
+      "log": "sdf-before.log",
+      "cases_passed": 12,
+      "cases_failed": 1,
+      "symptom": "Sampled SDF image could not be resolved despite valid resident atlas"
+    },
+    "green": {
+      "log": "sdf-after.log",
+      "cases": 13,
+      "assertions": 165,
+      "seconds": 1.194,
+      "exit": 0
+    },
+    "required_groups": {
+      "log": "sdf-required-groups.log",
+      "native_seconds": 19.274,
+      "materials_seconds": 18.46,
+      "projects_seconds": 69.532,
+      "language_seconds": 7.679,
+      "tools_seconds": 87.158,
+      "tools_cases": 130,
+      "tools_assertions": 27374,
+      "exit": 0
+    },
+    "native_after_fresh_error_assertion": {
+      "log": "sdf-native-final.log",
+      "seconds": 50.825,
+      "exit": 0
+    },
+    "format": {
+      "log": "sdf-format.log",
+      "seconds": 70.0,
+      "exit": 0
+    }
+  },
+  "review": "Independent source/contract review clear; numeric success paths unchanged; no alternate evaluator or per-sample full atlas validation",
+  "head": "d34def7202f842b6408f151df96ab5c7d1b343b1"
+}

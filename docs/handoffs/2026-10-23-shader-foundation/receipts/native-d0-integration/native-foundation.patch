@@ -1,0 +1,1653 @@
+diff --git a/docs/chibi-shaders/PLAN.md b/docs/chibi-shaders/PLAN.md
+new file mode 100644
+index 000000000..bd3a965a3
+--- /dev/null
++++ b/docs/chibi-shaders/PLAN.md
+@@ -0,0 +1,230 @@
++# Chibi material and shader source
++
++Status: CPU source-inspection foundation implemented locally, 2026-10-22. No authoring cutover or
++GPU parity claim is established by this plan.
++
++## Ownership and checkpoints
++
++Engine checkout: `/Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi`.
++Branch: `codex/chibi-shader-authoring-20261022`, based on main
++`1bc97b7305ee91102d3ee035e4852aa5341df31c` with ABI20.
++
++This increment owns new shader source packages, shader source inspection,
++associated fixtures and this document. Initially reserve
++`src/runtime/shaders/inspection.[ch]` and new `source_debug.[ch]` files.
++Coordinate additions to SDK/test dispatch files with their owners.
++
++Typed assets owns `packages/game/assets`, `tools/compiler/asset_{compiler,source}`,
++asset compiler adapters, source asset/catalog/edit services and migrated assets,
++including paired Studio changes. Its local checkpoint `a504d8e59` is historical;
++current-main integration and a reviewed clean dependency checkpoint are pending.
++Its contract is ordinary packages with `pub Build() -> byte[]`, typed constructors,
++and `data.Encode` with exact Int/UInt/Real identity. Graph families retain their IR.
++
++The compiler/default owner reserves package compiler, native catalog/exporter,
++StageOne, checked bootstrap and the source-library/native graph projection bridge.
++Use ABI20 and exact catalog identities. Do not independently regenerate bootstrap
++or import proposed pointer, query or ABI21 changes. Their next reviewed checkpoint
++is pending in `codex/selfhost-named-results-20261022`.
++
++## Existing implementation
++
++`src/runtime/shaders/program.h` defines the authoritative topologically ordered
++`shader_graph` and `shader_node`, including `source_id`. `program.c` validates,
++evaluates CPU values and emits GLSL from that IR. The initial limits are 1–4 float
++lanes, 32 parameter slots, 9 surface outputs and 1024 nodes. Matrices do not fit
++this IR yet. `src/graph/shader/shader_adapter.c` lowers the editable graph model;
++`shader_graph_from_graph` and `shader_graph_from_function` preserve source IDs.
++
++`src/runtime/shaders/inspection.[ch]` currently reports static cost estimates.
++CPU inspection can reuse `shader_graph_eval_values`, retaining each intermediate
++value, without adding another interpreter. Existing CPU consumers, prepared IR,
++GLSL emission, material/shape rendering, picking and baking must continue using
++the same program.
++
++`src/authoring/source_graph_library.c` is a limited scalar, pure, single-return
++projection from native semantic analysis. It silently omits unprojectable
++functions. It is not a suitable complete shader source frontend and remains
++reserved to the compiler owner until an explicit interface is agreed.
++
++## Source contract
++
++Author shaders with ordinary Chibi declarations and named
++records. A material names an entry function and its uniform defaults through the
++typed asset contract. The entry takes explicit sample inputs and parameters and
++returns a typed surface record. Imported ordinary pure functions are reusable
++shader libraries. Source is authoritative. Graphs, source maps, prepared IR and
++backend code are derived products of the same revision.
++
++The authored compiler supplies syntax and typed declaration/expression facts.
++An authored Chibi shader-domain pass validates reachable functions and lowers
++those facts directly to existing shader operations. Do not add a new parser,
++embedded shader strings, native semantic compiler, prepared-bytecode decompiler
++or a second CPU implementation. Native adapters only invoke prepared code,
++transport validated owned IR and expose runtime/platform operations.
++
++First source subset: finite `float` and 2/3/4-lane records with 32-bit fields,
++explicitly typed parameters, immutable locals, component construction/projection,
++scalar arithmetic, supported current IR math built-ins, explicit sample
++position/UV/time inputs, one surface return and nonrecursive pure helper calls.
++`number`/`double` arithmetic is not silently narrowed into shader floats. Include
++named Surface construction, sample/parameter record field projection and boolean
++literals at the Unlit boundary. The compiler owner confirmed there is no current
++package compiler built-in vec3 type. Start with ordinary float-field domain
++records and scalar component arithmetic as shown in [typed-facts.md](typed-facts.md).
++Vector operator sugar is a later language increment, not a prerequisite for the
++first shader.
++Surface fields follow the existing output defaults: Base Color `vec3(1)`,
++Emission `vec3(0)`, Roughness `0.5`, Metallic `0`, Normal `vec3(0)`,
++Opacity `1`, Unlit `false`, Height `0`, Occlusion `1`. The zero normal preserves
++the geometry normal. The first material is opaque; mask
++and blend settings stay material metadata with the existing opacity lowering.
++Reachable unsupported statements, types, effects, mutable storage, recursion,
++dynamic indexing, arrays/maps/pointers/tasks, unknown intrinsics and raw GPU
++effects produce diagnostics at their source range. Do not silently omit them.
++Loops, general control flow, matrices and additional rendering stages follow
++only when they have one CPU/GPU contract and IR representation.
++
++The first fixture is an unlit position-based color material with a named helper,
++a uniform gain and nonconstant intermediate values. It must be a real renderable
++material, not just a serializer or disconnected compiler demonstration.
++
++## Source-level CPU inspection
++
++Associate each source operation ID with document identity, byte range and the
++exact source revision. One source expression can lower to several IR nodes;
++synthetic nodes may inherit their originating expression. Each principal source
++result binds explicitly to its IR result node and width; aliases can bind an
++existing node. Auxiliary-node provenance is separate. Repeated helper expansions
++have distinct contextual source IDs, the original occurrence ID and a call-site
++chain, so two calls with different arguments remain distinguishable.
++A debug snapshot owns
++the evaluated values and source-map association for one immutable program/sample.
++Inspection lists source expressions and their typed intermediate values, with
++caller-supplied coordinates, time, uniforms and texture resolver. A stale source
++revision is rejected before values are attached to the editor buffer.
++
++Initial inspection provides source watches and node lookup. Interactive stepping
++and breakpoints are a later Studio increment. They follow shader data dependencies
++in a single sample, not GPU lane or fragment scheduling. Source breakpoints select mapped operations; helper
++expansions retain the originating document and call context. Graph selection and
++source selection resolve through the same IDs. Failed evaluation reports the
++shader operation and mapped source, rather than exposing stale/partial values as
++a successful snapshot. Initial SDK CPU inspection is headless; Studio consumes
++the shared inspection API after the source/graph contract is proved.
++
++## CPU/GPU equivalence limits
++
++Both backends execute the same validated float-lane operations and uniform
++values, but floating point is tolerance-based. libm, GPU approximations, fused
++operations, rounding, denormals and finite-difference thresholds can differ.
++Tests select tolerances for observable operations. Snapshots preserve nonfinite
++intermediates and flag each value and the snapshot, without misreporting an
++arithmetic overflow as a missing-resource failure.
++Do not claim bit identity or full-frame equivalence from a single sample.
++
++CPU textures use resident top-to-bottom straight-alpha RGBA8 base-level pixels,
++explicit sRGB/linear conversion, nearest/bilinear filtering and repeat/clamp.
++The current GPU image path builds mip chains and may use anisotropy and
++`textureGrad`. Minification and implicit footprint/LOD cannot match a CPU base
++sample in general. Inspect this distinction explicitly. Missing image data is an
++evaluation diagnostic. General sampler objects, arbitrary GPU formats and
++readbacks are outside the initial source subset.
++
++CPU normal/bump/triplanar detail uses the existing explicit coordinate gradients
++and finite differences. These are not hardware fragment quad derivatives.
++Arbitrary dFdx/dFdy/fwidth and implicit LOD require a defined neighborhood and
++must be rejected by the initial source pass. Star Field has a fixed CPU angular
++footprint and a GPU fwidth footprint; label its preview approximate. Rasterization,
++lighting, blending, MSAA, discard and divergent lane execution are outside a
++single material sample. Preserve existing validated derivative nesting limits.
++
++## Stages and acceptance
++
++1. Record/review this design and obtain clean dependency checkpoints and file
++   reservations. Independently audit existing IR, CPU/GPU paths and Studio flows.
++2. Add a narrow SDK source-map/CPU snapshot API over the existing evaluator.
++   Prove source ID/range lookup, shared expressions, stale revisions, failure
++   mapping, parameter/sample changes and numeric values with C/pico_unit cases.
++   Cover two expansions of one helper, multiple auxiliary nodes for one source
++   result, aliases emitting no new node and flagged nonfinite intermediates.
++3. Agree compiler typed-fact transport with its owner. Implement the shader-domain
++   validation/lowering in Chibi and source diagnostics. Prove ordinary functions,
++   locals, vectors and imported helper calls with positive and rejection cases.
++   Keep compiler bootstrap changes with the compiler owner.
++4. On the typed asset checkpoint, connect material definition, source compiler,
++   derived graph and existing render catalog. Render the fixture, compare CPU
++   samples and GPU pixels at controlled coordinates and tolerances, and prove
++   source edits update graph/backend/debug products together. Exercise a second
++   material with different content and no dependency on the motivating scene.
++5. Expose source/graph/CPU inspection in Studio through shared SDK APIs. Verify
++   source navigation, dirty edits, error ranges, undo/redo and invalid-source
++   recovery with the owning editor conventions. Extend source operations and
++   libraries incrementally with the same checks and documented limits.
++
++Before publishing each behavior increment, independently review affected source
++and contracts and run appropriate focused cases plus required repository groups:
++`make test-native`, `make test-materials`, `make test-projects`,
++`make test-language-all`, `make test-tools`, and applicable build/format checks.
++GPU checks require an actual supported backend. Report elapsed time and unrun
++coverage; there is no arbitrary global test-duration ceiling. Preserve explicit
++holds, source self-build proof on the three pinned platforms, and dirty primary
++work. PRs carry exact tested commits and evidence, not historical test claims.
++
++## Current checkpoint and next dependency
++
++Stage 2 is implemented in `src/runtime/shaders/source_debug.[ch]`. It owns source
++documents, origin-only call chains, node values and principal results; validates
++the complete current document closure before returning values; preserves the last
++snapshot on capture failure; and retains/flags nonfinite intermediates. Source
++storage is bounded at 256 documents, 512 KiB each and 8 MiB total, with 4096-byte
++identities. SDK and Chibi build-graph registration use the same sources/headers.
++
++Independent source/contract review found and resolved missing origin-only call
++provenance, the Decal Mask gradient flag and unbounded source copies. The twelve
++new C/pico_unit cases pass with 144 assertions. The tooling group passes with
++116 cases / 27,281 assertions in 54.311 seconds, excluding configuration/build.
++The required `make test-native`, `make test-materials`, `make test-projects` and
++`make test-language-all` groups pass in 25.605, 14.678, 85.544 and 23.382 seconds
++respectively, excluding configuration/build. The focused agent route passes,
++and the runner integration cases pass with 15 cases / 165 assertions in 32.695
++seconds after the new command mapping was added. Native Debug and Release
++products built through the Chibi graph. Evidence is retained in
++`.chibi/shader-source/`, including build logs, focused checks and required groups.
++The repository-wide `make check-format` passes in 112.7 seconds.
++These are CPU snapshot
++checks with supplied IR/source maps; they do not establish source compilation,
++material rendering, GPU parity or Studio interaction coverage.
++
++Stage 3 depends on agreed typed-fact transport. The compiler owner confirms
++there is no existing public typed expression table, and will own its semantic
++export. [typed-facts.md](typed-facts.md) records a representative gradient shader
++and the proposed stable facts, avoiding private compiler records and prepared
++bytecode reconstruction. Stages 4–5 additionally depend on the reviewed typed
++asset checkpoint. No shared compiler, asset, bootstrap or Studio edits yet.
++
++### Review follow-up: sampled SDF failure diagnostics
++
++The integration review reproduced a valid resident 2x2x2 atlas being reported as
++missing when upstream `FLT_MAX * 2` produced a nonfinite coordinate. The shared
++evaluator combined resolver and volume-evaluation failure in one diagnostic.
++
++`shader_volume_eval` now accepts an optional `shader_error *` and distinguishes
++invalid metadata/atlas, nonfinite coordinates and nonfinite evaluated distance.
++The shader evaluator reports actual resolver failure separately and forwards
++volume diagnostics with the originating source ID. Successful calculations are
++unchanged. No alternate evaluator or per-sample full-atlas validation is added.
++
++The regression first failed with the original missing-image message. It now
++checks coordinate overflow, finite-coordinate distance overflow, actual resolver
++failure, invalid resident atlas, preservation of the previous snapshot and
++recovery. The focused source-debug selector passes 13 cases / 165 assertions.
++The direct sampled-model caller also checks its metadata diagnostic from a
++cleared error value. Independent source/contract review found no remaining
++defect. Follow-up evidence is retained under `.chibi/shader-source/sdf-*`.
++The five required Make groups passed again. Materials, projects and language
++took 18.460, 69.532 and 7.679 seconds; tooling passed 130 cases / 27,374 assertions
++in 87.158 seconds. The final native run after the fresh-error assertion passed
++in 50.825 seconds. Configuration/build time is excluded. `make check-format`
++passed in 70.0 seconds. Source and binary fingerprints are recorded in
++`.chibi/shader-source/sdf-evidence.json`.
+diff --git a/docs/chibi-shaders/typed-facts.md b/docs/chibi-shaders/typed-facts.md
+new file mode 100644
+index 000000000..4f177ce4f
+--- /dev/null
++++ b/docs/chibi-shaders/typed-facts.md
+@@ -0,0 +1,82 @@
++# Minimal compiler facts for a material
++
++Proposed interface for agreement with the executable compiler owner, 2026-10-22.
++This is not a new public compiler API or implemented source support.
++
++The compiler owner confirmed that current `package_compiler` has no built-in
++vec3 spelling and no public fully typed expression table. It resolves types
++while lowering. Shader work must not consume private Value/Name/Work records or
++decode prepared bytecode to rediscover meaning.
++
++Use ordinary source records with float fields for the first example. `Float2`,
++`Float3`, `Sample` and `Surface` below are proposed domain records in a future
++`game:shaders` package, not names already available to source. A first coherent
++slice can use scalar arithmetic and explicit component construction without
++requiring new generic vector or matrix semantics.
++
++```chibi
++package gradient
++
++import shader "game:shaders"
++
++Parameters :: struct {
++    tint: shader.Float3;
++    gain: float;
++    speed: float;
++}
++
++TintGain :: (tint: shader.Float3, gain: float) -> shader.Float3 {
++    return {x: tint.x * gain, y: tint.y * gain, z: tint.z * gain};
++}
++
++pub Shade :: (sample: shader.Sample, parameters: Parameters) -> shader.Surface {
++    factor: float = sample.uv.x * parameters.gain + sample.time * parameters.speed;
++    color := TintGain(parameters.tint, factor);
++    emission := TintGain(color, float(0.125));
++    return {
++        base_color: color, emission: emission, roughness: float(0.5),
++        metallic: float(0), normal: {x: float(0), y: float(0), z: float(0)},
++        opacity: float(1), unlit: true, height: float(0), occlusion: float(1)
++    };
++}
++```
++
++This gradient is the first candidate fixture. Repeating bands follow when an
++existing float math capability is verified or its domain intrinsic has an
++explicit catalog contract. Do not insert an unresolved intrinsic into a working
++example or accept a precision-losing double call.
++
++The shader pass needs these resolved facts for the reachable entry/helper closure:
++
++| Fact | Minimal data and purpose |
++| --- | --- |
++| Document | Snapshot document identity/text and its immutable node IDs. |
++| Range | Document index, CST node index, half-open byte range and line/column for diagnostics. |
++| Type | Storage, container and stable nominal identity. Record members carry resolved field identity/type and order. No private type-table index. |
++| Function | Stable callable identity, declaration range, ordered parameter identities/types, result type and body statement IDs. |
++| Statement | Kind and range, lexical symbol identity for immutable locals, initializer expression or returned value. Unsupported statement kinds retain ranges for rejection. |
++| Expression | Stable occurrence identity, kind, range, resolved type, ordered child IDs and referenced symbol/member/callable identity. |
++| Operator/call | Resolved scalar operator or stable native intrinsic classification, callable identity, exact argument-to-parameter mapping and effects. Helpers identify their source function. |
++| Literal | Exact typed constant bits or bool. Never parse literal text again or narrow double silently. |
++| Construction/projection | Resolved field identity and expression bindings, including contextual record literals. |
++
++All referenced IDs are snapshot facts or stable semantic identities. No runtime
++registers, compiler slots or private allocation indexes cross this boundary.
++The compiler validates ordinary Chibi names, imports, calls, types and contextual
++construction. The shader pass checks reachable domain types/effects, rejects
++unsupported statements/calls with their ranges, and lowers to the existing
++`shader_graph` operations. Constants, parameters, UV/time reads, components,
++multiply/add and vector construction suffice for this example.
++
++Each helper expansion gets contextual operation IDs and retains its original
++occurrence plus call-site chain. Source result bindings identify the principal
++IR node separately from auxiliary-node provenance. An immutable alias can bind
++an existing node. Neither graph layout nor prepared executable code defines
++shader semantics.
++
++The exact Chibi record/API names and transport envelope remain to be agreed.
++Prefer a private compile-analysis result with owned arrays and source diagnostics
++over widening stable public Compile arguments or changing ABI20. The compiler
++owner exports facts; the shader owner implements the domain pass and existing IR
++adapter. A native transport bridge may copy validated values and invoke the
++authored pass; it must not resolve source semantics.
+diff --git a/docs/shader-graphs.md b/docs/shader-graphs.md
+index 9f8e21188..d338f8c11 100644
+--- a/docs/shader-graphs.md
++++ b/docs/shader-graphs.md
+@@ -313,9 +313,10 @@ batches with different programs. Repeated opaque actors sharing a program and
+ mesh remain instanced. Native 2D compute uses ordered passes; WebGL 2D and the
+ 3D renderer bind their own contiguous sampler sets.
+ 
+-Sampling currently uses the base image level, with no mipmaps or anisotropic
+-filtering. Small distant image detail can therefore alias; those filtering modes
+-remain future work. Images are limited to 2048 pixels per side. The loader checks
++CPU inspection samples the base image level. GPU bilinear image variants have
++mipmaps and anisotropic filtering, and lit 3D materials use coordinate gradients
++to select their sampling footprint. A CPU base-level sample therefore does not
++reproduce a minified GPU pixel. Images are limited to 2048 pixels per side. The loader checks
+ dimensions before full decoding and GPU upload, so oversized replacements report
+ an error and preserve the previous image. The initial image format is RGBA8, so HDR and higher-bit-depth
+ image data are not preserved. CPU/GPU checks allow 0.003 absolute channel error
+diff --git a/sdk/shaders.cmake b/sdk/shaders.cmake
+index 2238ff9ef..17421f845 100644
+--- a/sdk/shaders.cmake
++++ b/sdk/shaders.cmake
+@@ -10,11 +10,13 @@ add_library(chibi_shader_runtime STATIC
+     "${CHIBI_SDK_ROOT}/src/runtime/shaders/effects.c"
+     "${CHIBI_SDK_ROOT}/src/runtime/shaders/image.c"
+     "${CHIBI_SDK_ROOT}/src/runtime/shaders/volume.c"
+-    "${CHIBI_SDK_ROOT}/src/runtime/shaders/inspection.c")
++    "${CHIBI_SDK_ROOT}/src/runtime/shaders/inspection.c"
++    "${CHIBI_SDK_ROOT}/src/runtime/shaders/source_debug.c")
+ add_library(Chibi::shader_runtime ALIAS chibi_shader_runtime)
+ set_target_properties(chibi_shader_runtime PROPERTIES EXPORT_NAME shader_runtime)
+ chibi_sdk_headers(chibi_shader_runtime PUBLIC runtime/shaders/bake.h runtime/shaders/program.h runtime/shaders/prepared.h runtime/shaders/volume.h
+-    runtime/shaders/detail.h runtime/shaders/effects.h runtime/shaders/image.h runtime/shaders/inspection.h)
++    runtime/shaders/detail.h runtime/shaders/effects.h runtime/shaders/image.h runtime/shaders/inspection.h
++    runtime/shaders/source_debug.h)
+ configure_file("${CHIBI_SDK_ROOT}/src/runtime/shaders/prepared_internal.h"
+     "${CMAKE_CURRENT_BINARY_DIR}/private/shader_runtime/runtime/shaders/prepared_internal.h" COPYONLY)
+ target_include_directories(chibi_shader_runtime PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/shader_runtime")
+diff --git a/src/runtime/shaders/program.c b/src/runtime/shaders/program.c
+index c3ba7105a..d0829f6d8 100644
+--- a/src/runtime/shaders/program.c
++++ b/src/runtime/shaders/program.c
+@@ -526,10 +526,12 @@ static bool eval_values(
+         if (n->op == SHADER_SAMPLED_SDF) {
+             shader_image_view image = { 0 };
+             if (!sample->resolve_image ||
+-                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image) ||
+-                !shader_volume_eval(n, &image, a, &v[i][0])) {
++                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image)) {
+                 return fail(error, n->source_id, "Sampled SDF image could not be resolved");
+             }
++            if (!shader_volume_eval(n, &image, a, &v[i][0], error)) {
++                return false;
++            }
+             continue;
+         }
+         if (n->op == SHADER_IMAGE_TEXTURE || n->op == SHADER_IMAGE_TEXTURE_ALPHA) {
+diff --git a/src/runtime/shaders/source_debug.c b/src/runtime/shaders/source_debug.c
+new file mode 100644
+index 000000000..e5c931a10
+--- /dev/null
++++ b/src/runtime/shaders/source_debug.c
+@@ -0,0 +1,312 @@
++#include "runtime/shaders/source_debug.h"
++
++#include "support/array.h"
++#include "support/xalloc.h"
++
++#include <assert.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++struct shader_debug_snapshot
++{
++    shader_debug_document *documents;
++    shader_debug_origin *origins;
++    shader_debug_value *values;
++    shader_debug_value *results;
++    int document_count, origin_count, value_count, result_count;
++    unsigned limitations;
++};
++
++static bool fail(shader_error *error, uint64_t source_id, const char *message)
++{
++    if (error) {
++        error->node = source_id;
++        snprintf(error->message, sizeof error->message, "%s", message);
++    }
++    return false;
++}
++
++static int origin_index(const shader_debug_origin *origins, int count, uint64_t id)
++{
++    for (int i = 0; i < count; i++) {
++        if (origins[i].source_id == id) {
++            return i;
++        }
++    }
++    return -1;
++}
++
++static size_t bounded_length(const char *text, size_t limit)
++{
++    size_t length = 0;
++    while (length <= limit && text[length]) {
++        length++;
++    }
++    return length;
++}
++
++static bool source_map_valid(const shader_debug_source_map *map, int node_count, shader_error *error)
++{
++    const shader_debug_document *documents = map->documents;
++    const shader_debug_origin *origins = map->origins;
++    int document_count = map->document_count, origin_count = map->origin_count;
++    if (document_count < 0 || document_count > SHADER_DEBUG_DOCUMENT_MAX ||
++        origin_count < 0 || origin_count > SHADER_NODE_MAX || map->result_count < 0 ||
++        map->result_count > SHADER_NODE_MAX || (document_count && !documents) ||
++        (origin_count && !origins) || (map->result_count && !map->results)) {
++        return fail(error, 0, "Invalid shader source map size");
++    }
++    size_t lengths[SHADER_DEBUG_DOCUMENT_MAX], total = 0;
++    for (int i = 0; i < document_count; i++) {
++        if (!documents[i].identity || !*documents[i].identity || !documents[i].text) {
++            return fail(error, 0, "Shader source needs document identity and text");
++        }
++        lengths[i] = bounded_length(documents[i].text, SHADER_DEBUG_SOURCE_BYTES_MAX);
++        total += lengths[i];
++        if (lengths[i] > SHADER_DEBUG_SOURCE_BYTES_MAX ||
++            total > SHADER_DEBUG_TOTAL_BYTES_MAX ||
++            bounded_length(documents[i].identity, SHADER_DEBUG_IDENTITY_BYTES_MAX) >
++                SHADER_DEBUG_IDENTITY_BYTES_MAX) {
++            return fail(error, 0, "Shader debug source byte limit exceeded");
++        }
++        for (int j = 0; j < i; j++) {
++            if (!strcmp(documents[i].identity, documents[j].identity)) {
++                return fail(error, 0, "Shader source document identities must be unique");
++            }
++        }
++    }
++    for (int i = 0; i < origin_count; i++) {
++        const shader_debug_origin *origin = &origins[i];
++        if (!origin->source_id || origin->document < 0 ||
++            origin->document >= document_count || origin->start < 0 ||
++            origin->end <= origin->start ||
++            (size_t)origin->end > lengths[origin->document]) {
++            return fail(error, origin->source_id, "Invalid shader source byte range");
++        }
++        if (origin_index(origins, i, origin->source_id) >= 0) {
++            return fail(error, origin->source_id, "Shader source IDs must have unique origins");
++        }
++    }
++    for (int i = 0; i < origin_count; i++) {
++        uint64_t call = origins[i].call_site;
++        int depth = 0;
++        while (call) {
++            int index = origin_index(origins, origin_count, call);
++            if (index < 0 || ++depth > origin_count) {
++                return fail(error, origins[i].source_id, "Invalid shader source call chain");
++            }
++            call = origins[index].call_site;
++        }
++    }
++    for (int i = 0; i < map->result_count; i++) {
++        const shader_debug_result *result = &map->results[i];
++        if (origin_index(origins, origin_count, result->source_id) < 0 ||
++            result->node < 0 || result->node >= node_count) {
++            return fail(error, result->source_id, "Invalid shader source result binding");
++        }
++        for (int j = 0; j < i; j++) {
++            if (map->results[j].source_id == result->source_id) {
++                return fail(error, result->source_id, "Shader source result bindings must be unique");
++            }
++        }
++    }
++    return true;
++}
++
++static unsigned limitations(shader_op op)
++{
++    switch (op) {
++        case SHADER_IMAGE_TEXTURE:
++        case SHADER_IMAGE_TEXTURE_ALPHA: return SHADER_DEBUG_BASE_LEVEL_IMAGES;
++        case SHADER_NORMAL_MAP:
++        case SHADER_BUMP:
++        case SHADER_DECAL_MASK: return SHADER_DEBUG_COORDINATE_GRADIENTS;
++        case SHADER_TRIPLANAR_TEXTURE:
++        case SHADER_TRIPLANAR_TEXTURE_ALPHA:
++            return SHADER_DEBUG_BASE_LEVEL_IMAGES | SHADER_DEBUG_COORDINATE_GRADIENTS;
++        case SHADER_STAR_FIELD: return SHADER_DEBUG_REFERENCE_FOOTPRINT;
++        case SHADER_SURFACE_INFLUENCE: return SHADER_DEBUG_SCENE_INFLUENCE;
++        default: return 0;
++    }
++}
++
++void shader_debug_snapshot_free(shader_debug_snapshot *snapshot)
++{
++    if (!snapshot) {
++        return;
++    }
++    for (int i = 0; i < snapshot->document_count; i++) {
++        free((char *)snapshot->documents[i].identity);
++        free((char *)snapshot->documents[i].text);
++    }
++    free(snapshot->documents);
++    free(snapshot->origins);
++    free(snapshot->values);
++    free(snapshot->results);
++    free(snapshot);
++}
++
++bool shader_debug_capture(
++    const shader_graph *graph,
++    const shader_sample_context *sample,
++    const float (*parameters)[4],
++    const shader_debug_source_map *map,
++    shader_debug_snapshot **result,
++    shader_error *error
++)
++{
++    assert(graph && sample && map && result);
++    if (!shader_graph_validate(graph, error) ||
++        !source_map_valid(map, acount(graph->nodes), error)) {
++        return false;
++    }
++    int count = acount(graph->nodes);
++    const shader_debug_document *documents = map->documents;
++    const shader_debug_origin *origins = map->origins;
++    int document_count = map->document_count, origin_count = map->origin_count;
++    for (int i = 0; i < count; i++) {
++        uint64_t id = graph->nodes[i].source_id;
++        if (id && origin_index(origins, origin_count, id) < 0) {
++            return fail(error, id, "Shader operation has no source origin");
++        }
++    }
++    float (*values)[4] = xcalloc((size_t)count, sizeof *values);
++    bool evaluated = shader_graph_eval_values_validated(graph, sample, parameters, values, error);
++    if (!evaluated) {
++        free(values);
++        return false;
++    }
++    shader_debug_snapshot *snapshot = xcalloc(1, sizeof *snapshot);
++    snapshot->document_count = document_count;
++    snapshot->documents = xcalloc((size_t)document_count, sizeof *snapshot->documents);
++    for (int i = 0; i < document_count; i++) {
++        snapshot->documents[i].identity = xstrdup(documents[i].identity);
++        snapshot->documents[i].text = xstrdup(documents[i].text);
++    }
++    snapshot->origin_count = origin_count;
++    snapshot->origins = xcalloc((size_t)origin_count, sizeof *snapshot->origins);
++    if (origin_count) {
++        memcpy(snapshot->origins, origins, (size_t)origin_count * sizeof *origins);
++    }
++    snapshot->value_count = count;
++    snapshot->values = xcalloc((size_t)count, sizeof *snapshot->values);
++    snapshot->limitations = SHADER_DEBUG_FLOAT_APPROXIMATION;
++    for (int i = 0; i < count; i++) {
++        const shader_node *node = &graph->nodes[i];
++        int origin = origin_index(origins, origin_count, node->source_id);
++        shader_debug_value *value = &snapshot->values[i];
++        value->origin = origin >= 0 ? origins[origin]
++                                    : (shader_debug_origin){ .document = -1 };
++        value->op = node->op;
++        value->width = node->width;
++        memcpy(value->value, values[i], sizeof value->value);
++        value->finite = true;
++        for (int j = 0; j < node->width; j++) {
++            value->finite &= isfinite(value->value[j]);
++        }
++        if (!value->finite) {
++            snapshot->limitations |= SHADER_DEBUG_NONFINITE_VALUE;
++        }
++        snapshot->limitations |= limitations(node->op);
++    }
++    snapshot->result_count = map->result_count;
++    snapshot->results = xcalloc((size_t)map->result_count, sizeof *snapshot->results);
++    for (int i = 0; i < map->result_count; i++) {
++        const shader_debug_result *binding = &map->results[i];
++        int origin = origin_index(origins, origin_count, binding->source_id);
++        snapshot->results[i] = snapshot->values[binding->node];
++        snapshot->results[i].origin = origins[origin];
++    }
++    free(values);
++    shader_debug_snapshot_free(*result);
++    *result = snapshot;
++    return true;
++}
++
++int shader_debug_value_count(const shader_debug_snapshot *snapshot)
++{
++    return snapshot->value_count;
++}
++
++unsigned shader_debug_limitations(const shader_debug_snapshot *snapshot)
++{
++    return snapshot->limitations;
++}
++
++const shader_debug_origin *shader_debug_origin_find(const shader_debug_snapshot *snapshot, uint64_t source_id)
++{
++    int index = origin_index(snapshot->origins, snapshot->origin_count, source_id);
++    return index >= 0 ? &snapshot->origins[index] : NULL;
++}
++
++const shader_debug_document *shader_debug_document_at(const shader_debug_snapshot *snapshot, int document)
++{
++    return document >= 0 && document < snapshot->document_count
++             ? &snapshot->documents[document]
++             : NULL;
++}
++
++static bool documents_match(
++    const shader_debug_snapshot *snapshot,
++    const shader_debug_document *current,
++    int count
++)
++{
++    if (count != snapshot->document_count || (count && !current)) {
++        return false;
++    }
++    for (int i = 0; i < count; i++) {
++        if (!current[i].identity || !current[i].text ||
++            strcmp(current[i].identity, snapshot->documents[i].identity) ||
++            strcmp(current[i].text, snapshot->documents[i].text)) {
++            return false;
++        }
++    }
++    return true;
++}
++
++const shader_debug_value *shader_debug_value_at(
++    const shader_debug_snapshot *snapshot,
++    int node,
++    const shader_debug_document *current,
++    int document_count
++)
++{
++    return node >= 0 && node < snapshot->value_count &&
++                   documents_match(snapshot, current, document_count)
++             ? &snapshot->values[node]
++             : NULL;
++}
++
++const shader_debug_value *shader_debug_source_value(
++    const shader_debug_snapshot *snapshot,
++    uint64_t source_id,
++    const shader_debug_document *current,
++    int document_count
++)
++{
++    if (!documents_match(snapshot, current, document_count)) {
++        return NULL;
++    }
++    for (int i = 0; i < snapshot->result_count; i++) {
++        if (snapshot->results[i].origin.source_id == source_id) {
++            return &snapshot->results[i];
++        }
++    }
++    return NULL;
++}
++
++int shader_debug_find(const shader_debug_snapshot *snapshot, uint64_t source_id, int after)
++{
++    if (!source_id || after < -1 || after >= snapshot->value_count) {
++        return -1;
++    }
++    for (int i = after + 1; i < snapshot->value_count; i++) {
++        if (snapshot->values[i].origin.source_id == source_id) {
++            return i;
++        }
++    }
++    return -1;
++}
+diff --git a/src/runtime/shaders/source_debug.h b/src/runtime/shaders/source_debug.h
+new file mode 100644
+index 000000000..fa588d906
+--- /dev/null
++++ b/src/runtime/shaders/source_debug.h
+@@ -0,0 +1,102 @@
++#ifndef CHIBI_SHADER_SOURCE_DEBUG_H
++#define CHIBI_SHADER_SOURCE_DEBUG_H
++#include "runtime/shaders/program.h"
++
++#define SHADER_DEBUG_DOCUMENT_MAX 256
++#define SHADER_DEBUG_SOURCE_BYTES_MAX 524288
++#define SHADER_DEBUG_TOTAL_BYTES_MAX 8388608
++#define SHADER_DEBUG_IDENTITY_BYTES_MAX 4096
++
++typedef struct
++{
++    const char *identity, *text;
++} shader_debug_document;
++typedef struct
++{
++    uint64_t source_id;
++    uint64_t occurrence,
++        call_site; /* Original occurrence and enclosing call's source_id, or 0. */
++    int document, start, end; /* Half-open byte range in documents[document]. */
++} shader_debug_origin;
++typedef struct
++{
++    uint64_t source_id;
++    int node; /* Principal result, including aliases that emit no new node. */
++} shader_debug_result;
++typedef struct
++{
++    const shader_debug_document *documents;
++    int document_count;
++    const shader_debug_origin *origins;
++    int origin_count;
++    const shader_debug_result *results;
++    int result_count;
++} shader_debug_source_map;
++typedef struct
++{
++    shader_debug_origin origin;
++    shader_op op;
++    int width;
++    float value[4];
++    bool finite;
++} shader_debug_value;
++typedef struct shader_debug_snapshot shader_debug_snapshot;
++enum
++{
++    SHADER_DEBUG_FLOAT_APPROXIMATION = 1 << 0,
++    SHADER_DEBUG_BASE_LEVEL_IMAGES = 1 << 1,
++    SHADER_DEBUG_COORDINATE_GRADIENTS = 1 << 2,
++    SHADER_DEBUG_REFERENCE_FOOTPRINT = 1 << 3,
++    SHADER_DEBUG_SCENE_INFLUENCE = 1 << 4,
++    SHADER_DEBUG_NONFINITE_VALUE = 1 << 5,
++};
++/* Copies source documents, origins and all intermediate values for one sample
++ * of the existing evaluator. Every nonzero IR source_id needs a unique origin;
++ * several auxiliary nodes may share that origin. Source results bind separately
++ * to their principal node. Each helper expansion uses distinct source_ids and
++ * retains its original occurrence plus enclosing call-site chain. Zero IR IDs
++ * are synthetic, unmapped nodes. Nonfinite results are retained and flagged.
++ * The caller pairs this source map with its exact compiled program generation.
++ * Replaces/frees *result only on success. Failure leaves it unchanged and reports
++ * the originating source_id in error->node. No GPU equivalence is implied.
++ * Source text is bounded by SOURCE_BYTES_MAX per document and TOTAL_BYTES_MAX
++ * for the closure; identities have IDENTITY_BYTES_MAX bytes. All are C strings.
++ * Documents/origins are borrowed for the call; snapshots retain no graph,
++ * sample, parameters, resolver or caller-owned source pointers. */
++bool shader_debug_capture(
++    const shader_graph *,
++    const shader_sample_context *,
++    const float (*parameters)[4],
++    const shader_debug_source_map *,
++    shader_debug_snapshot **result,
++    shader_error *
++);
++void shader_debug_snapshot_free(shader_debug_snapshot *);
++int shader_debug_value_count(const shader_debug_snapshot *);
++unsigned shader_debug_limitations(const shader_debug_snapshot *);
++/* Borrowed provenance for the captured generation, including enclosing calls
++ * that emit no node. Value access separately checks the current editor source. */
++const shader_debug_origin *shader_debug_origin_find(const shader_debug_snapshot *, uint64_t source_id);
++const shader_debug_document *shader_debug_document_at(const shader_debug_snapshot *, int document);
++/* Node order is IR dependency order, not GPU lane or fragment execution order.
++ * Values are returned only when the whole current source closure matches the
++ * captured identities/text in document order. This includes callers and helper
++ * documents. For a source-free program pass NULL/0. Borrowed result. */
++const shader_debug_value *shader_debug_value_at(
++    const shader_debug_snapshot *,
++    int node,
++    const shader_debug_document *current,
++    int document_count
++);
++/* Find the next node carrying source_id after `after`, starting with -1.
++ * Returns -1 when absent. Multiple expansions of one source remain inspectable. */
++int shader_debug_find(const shader_debug_snapshot *, uint64_t source_id, int after);
++/* The principal source result, not an arbitrary auxiliary node. Exact source
++ * matching follows value_at. A local alias can refer to an earlier IR value. */
++const shader_debug_value *shader_debug_source_value(
++    const shader_debug_snapshot *,
++    uint64_t source_id,
++    const shader_debug_document *current,
++    int document_count
++);
++#endif
+diff --git a/src/runtime/shaders/volume.c b/src/runtime/shaders/volume.c
+index fce39fd3f..440ba9ff5 100644
+--- a/src/runtime/shaders/volume.c
++++ b/src/runtime/shaders/volume.c
+@@ -8,6 +8,15 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++static bool fail(const shader_node *n, shader_error *error, const char *message)
++{
++    if (error) {
++        error->node = n->source_id;
++        snprintf(error->message, sizeof error->message, "%s", message);
++    }
++    return false;
++}
++
+ bool shader_volume_contract(const shader_node *n)
+ {
+     if (n->parameter < 2 || n->parameter > 144 || !isfinite(n->volume_range) ||
+@@ -77,32 +86,29 @@ bool shader_volume_validate(const shader_node *n, const shader_image_view *image
+                     ) > n->volume_lipschitz) {
+         message = "Sampled SDF gradient exceeds its declared Lipschitz bound";
+     }
+-    if (message && error) {
+-        error->node = n->source_id;
+-        snprintf(error->message, sizeof error->message, "%s", message);
+-    }
+-    return !message;
++    return message ? fail(n, error, message) : true;
+ }
+ bool shader_volume_eval(
+     const shader_node *n,
+     const shader_image_view *image,
+     const float p[3],
+-    float *result
++    float *result,
++    shader_error *error
+ )
+ {
+     if (!shader_volume_contract(n)) {
+-        return false;
++        return fail(n, error, "Sampled SDF metadata is invalid");
+     }
+     int size = n->parameter, columns = tiles(size);
+     if (!image->pixels || image->width != columns * size ||
+         image->height != ((size + columns - 1) / columns) * size) {
+-        return false;
++        return fail(n, error, "Sampled SDF atlas dimensions or pixels are invalid");
+     }
+     int cell[3];
+     float f[3], outside = 0;
+     for (int axis = 0; axis < 3; axis++) {
+         if (!isfinite(p[axis])) {
+-            return false;
++            return fail(n, error, "Sampled SDF coordinates are nonfinite");
+         }
+         float q = fmaxf(-n->value[axis], fminf(n->value[axis], p[axis]));
+         float delta = p[axis] - q;
+@@ -123,7 +129,8 @@ bool shader_volume_eval(
+         d += weight * voxel(n, image, at[0], at[1], at[2]);
+     }
+     *result = d + sqrtf(outside);
+-    return isfinite(*result);
++    return isfinite(*result) ||
++           fail(n, error, "Sampled SDF evaluated distance is nonfinite");
+ }
+ char *shader_volume_glsl(const shader_node *n, const char *prefix, int index)
+ {
+diff --git a/src/runtime/shaders/volume.h b/src/runtime/shaders/volume.h
+index 0b96fa853..60c830e80 100644
+--- a/src/runtime/shaders/volume.h
++++ b/src/runtime/shaders/volume.h
+@@ -6,7 +6,15 @@
+  * Z selects a row-major square tile. No filtering, mips, or color conversion. */
+ bool shader_volume_contract(const shader_node *n);
+ bool shader_volume_validate(const shader_node *, const shader_image_view *, shader_error *);
+-bool shader_volume_eval(const shader_node *, const shader_image_view *, const float p[3], float *);
++/* Reports invalid metadata/atlas, nonfinite coordinates and nonfinite distance
++ * separately. Resource resolution belongs to the caller. error may be NULL. */
++bool shader_volume_eval(
++    const shader_node *,
++    const shader_image_view *,
++    const float p[3],
++    float *,
++    shader_error *
++);
+ char *shader_volume_glsl(const shader_node *, const char *prefix, int index);
+ float shader_graph_lipschitz(const shader_graph *);
+ void shader_graph_copy_images(shader_graph *to, const shader_graph *from);
+diff --git a/test/execution_selectors.h b/test/execution_selectors.h
+index d448afeed..f139e8412 100644
+--- a/test/execution_selectors.h
++++ b/test/execution_selectors.h
+@@ -50,6 +50,8 @@ CHIBI_CPU_SELECTOR("--arena")
+ /* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
+ CHIBI_CPU_SELECTOR("--shader-graphs")
+ CHIBI_CPU_SELECTOR("--shader-bake")
++/* Owned CPU intermediate/source snapshots; no device, files or resolver IO. */
++CHIBI_CPU_SELECTOR("--shader-source-debug")
+ CHIBI_CPU_SELECTOR("--material-bake")
+ CHIBI_CPU_SELECTOR("--environment-authoring")
+ CHIBI_CPU_SELECTOR("--terrain-seams")
+diff --git a/test/graph/model_sampled.c b/test/graph/model_sampled.c
+index 5261a6fb2..bd7475827 100644
+--- a/test/graph/model_sampled.c
++++ b/test/graph/model_sampled.c
+@@ -175,7 +175,9 @@ TEST_CASE(sampled_sdf_models)
+     invalid.parameter = -20;
+     REQUIRE(!shader_volume_validate(&invalid, &image, &error));
+     float rejected;
+-    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected));
++    error = (shader_error){ 0 };
++    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected, &error));
++    REQUIRE(error.node == invalid.source_id && strstr(error.message, "metadata"));
+     shader_graph part_distance, part_hit;
+     shader_graph_init(&part_distance);
+     shader_graph_init(&part_hit);
+diff --git a/test/tools/CMakeLists.txt b/test/tools/CMakeLists.txt
+index c802087b9..62e9c886f 100644
+--- a/test/tools/CMakeLists.txt
++++ b/test/tools/CMakeLists.txt
+@@ -119,7 +119,7 @@ if(TARGET chibi_compiler_host)
+     add_dependencies(test_tools chibi-compiler-host)
+ endif()
+ if(TARGET Chibi::shader_runtime)
+-    add_library(chibi_shader_bake_consumer OBJECT shader_bake.c)
++    add_library(chibi_shader_bake_consumer OBJECT shader_bake.c shader_source_debug.c)
+     target_include_directories(chibi_shader_bake_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+     target_link_libraries(chibi_shader_bake_consumer PRIVATE Chibi::shader_runtime)
+     target_compile_options(chibi_shader_bake_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+diff --git a/test/tools/main.c b/test/tools/main.c
+index 483c02770..ce000429f 100644
+--- a/test/tools/main.c
++++ b/test/tools/main.c
+@@ -30,6 +30,7 @@ int main(int argc, char **argv)
+ #else
+ #ifdef CHIBI_TEST_SHADER_BAKE
+ void test_tool_shader_bake();
++void test_tool_shader_source_debug();
+ #endif
+ #ifdef CHIBI_TEST_TILEMAP
+ void test_tool_tilemap();
+@@ -939,11 +940,16 @@ int main(int argc, char **argv)
+         return 2;
+ #endif
+     }
+-    if (argc == 2 && !strcmp(argv[1], "--shader-bake")) {
++    if (argc == 2 && (!strcmp(argv[1], "--shader-bake") ||
++                      !strcmp(argv[1], "--shader-source-debug"))) {
+ #ifdef CHIBI_TEST_SHADER_BAKE
+         tool_init();
+         pu_display_time(true);
+-        test_tool_shader_bake();
++        if (!strcmp(argv[1], "--shader-source-debug")) {
++            test_tool_shader_source_debug();
++        } else {
++            test_tool_shader_bake();
++        }
+         pu_print_stats();
+         return pu_test_failed() ? 1 : 0;
+ #else
+diff --git a/test/tools/shader_source_debug.c b/test/tools/shader_source_debug.c
+new file mode 100644
+index 000000000..6d23e1df5
+--- /dev/null
++++ b/test/tools/shader_source_debug.c
+@@ -0,0 +1,613 @@
++#include "runtime/shaders/source_debug.h"
++#include "runtime/shaders/volume.h"
++#include "support/xalloc.h"
++#include "third_party/pico_headers/pico_unit.h"
++
++#include <assert.h>
++#include <float.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++static const char material_key[] = "content/materials/Debug.chibi";
++static const char material_text[] = "Shade :: (uv: vec2, time: float, gain: "
++                                    "float) -> Surface {\n"
++                                    "    phase := uv.x * gain + time\n"
++                                    "    first := Twice(uv.x)\n"
++                                    "    second := Twice(time)\n"
++                                    "    alias := first\n"
++                                    "    color := image.Sample(uv)\n"
++                                    "    normal := Bump(phase)\n"
++                                    "    stars := StarField(uv)\n"
++                                    "    activity := Influence(uv)\n"
++                                    "    decal := Decal(uv)\n"
++                                    "}\n";
++static const char helper_key[] = "content/libraries/Math.chibi";
++static const char
++    helper_text[] = "Twice :: (x: float) -> float { return x * 2 }\n";
++static shader_graph graph;
++static shader_debug_snapshot *snapshot;
++static shader_debug_document documents[2];
++static shader_debug_origin origins[16];
++static shader_debug_result results[16];
++static shader_debug_source_map map;
++static shader_error error;
++static char *source_bytes, *identity_bytes;
++
++static void setup()
++{
++    shader_graph_init(&graph);
++    documents[0] = (shader_debug_document){ xstrdup(material_key),
++                                            xstrdup(material_text) };
++    documents[1] = (shader_debug_document){ xstrdup(helper_key), xstrdup(helper_text) };
++    memset(origins, 0, sizeof origins);
++    memset(results, 0, sizeof results);
++    map = (shader_debug_source_map){ .documents = documents,
++                                     .document_count = 2,
++                                     .origins = origins,
++                                     .results = results };
++    error = (shader_error){ 0 };
++}
++static void teardown()
++{
++    shader_debug_snapshot_free(snapshot);
++    snapshot = NULL;
++    free(source_bytes);
++    free(identity_bytes);
++    source_bytes = identity_bytes = NULL;
++    shader_graph_free(&graph);
++    for (int i = 0; i < 2; i++) {
++        free((char *)documents[i].identity);
++        free((char *)documents[i].text);
++        documents[i] = (shader_debug_document){ 0 };
++    }
++}
++static int operation(shader_op op, int width, uint64_t source, int a, int b)
++{
++    int node = shader_graph_add(&graph, op, width);
++    graph.nodes[node].source_id = source;
++    graph.nodes[node].input[0] = a;
++    graph.nodes[node].input[1] = b;
++    graph.output_count = 1;
++    graph.output[0] = node;
++    return node;
++}
++static int constant(float value)
++{
++    int node = operation(SHADER_CONSTANT, 1, 0, -1, -1);
++    graph.nodes[node].value[0] = value;
++    return node;
++}
++static void origin(uint64_t id, int document, const char *text, uint64_t occurrence, uint64_t call)
++{
++    const char *start = strstr(documents[document].text, text);
++    assert(start && map.origin_count < 16);
++    origins[map.origin_count++] = (shader_debug_origin){
++        .source_id = id,
++        .occurrence = occurrence,
++        .call_site = call,
++        .document = document,
++        .start = (int)(start - documents[document].text),
++        .end = (int)(start - documents[document].text + strlen(text))
++    };
++}
++static void result(uint64_t id, int node)
++{
++    assert(map.result_count < 16);
++    results[map.result_count++] = (shader_debug_result){ id, node };
++}
++static bool near(float actual, float expected)
++{
++    return isfinite(actual) && fabsf(actual - expected) < .00001f;
++}
++
++TEST_CASE(uv_time_and_uniform_values_follow_one_sample)
++{
++    int uv = operation(SHADER_UV, 2, 10, -1, -1);
++    int x = operation(SHADER_X, 1, 11, uv, -1);
++    int gain = operation(SHADER_PARAMETER, 1, 12, -1, -1);
++    graph.nodes[gain].value[0] = 2;
++    int scaled = operation(SHADER_MULTIPLY, 1, 13, x, gain);
++    int time = operation(SHADER_TIME, 1, 14, -1, -1);
++    int phase = operation(SHADER_ADD, 1, 15, scaled, time);
++    origin(10, 0, "uv", 100, 0);
++    origin(11, 0, "uv.x", 101, 0);
++    origin(12, 0, "gain", 102, 0);
++    origin(13, 0, "uv.x * gain", 103, 0);
++    origin(14, 0, "time", 104, 0);
++    origin(15, 0, "uv.x * gain + time", 105, 0);
++    result(15, phase);
++    shader_sample_context sample = { .uv = { .25f, .75f }, .time = 1.5f };
++    float parameters[32][4] = { { 4 } };
++    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    REQUIRE(shader_debug_value_count(snapshot) == 6);
++    const shader_debug_value *value = shader_debug_value_at(snapshot, uv, documents, 2);
++    REQUIRE(value && value->op == SHADER_UV && value->width == 2 && value->finite);
++    REQUIRE(near(value->value[0], .25f) && near(value->value[1], .75f));
++    value = shader_debug_value_at(snapshot, scaled, documents, 2);
++    REQUIRE(value && near(value->value[0], 1));
++    value = shader_debug_source_value(snapshot, 15, documents, 2);
++    REQUIRE(value && value->op == SHADER_ADD && near(value->value[0], 2.5f));
++    parameters[0][0] = 6;
++    sample.uv[0] = .5f;
++    sample.time = 2;
++    REQUIRE(near(value->value[0], 2.5f));
++    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    value = shader_debug_source_value(snapshot, 15, documents, 2);
++    REQUIRE(value && near(value->value[0], 5));
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    value = shader_debug_source_value(snapshot, 15, documents, 2);
++    REQUIRE(value && near(value->value[0], 3));
++    REQUIRE(shader_debug_limitations(snapshot) == SHADER_DEBUG_FLOAT_APPROXIMATION);
++    return true;
++}
++TEST_CASE(source_results_select_principal_nodes_and_zero_node_aliases)
++{
++    int two = constant(2), three = constant(3), one = constant(1);
++    int scaled = operation(SHADER_MULTIPLY, 1, 30, two, three);
++    int phase = operation(SHADER_ADD, 1, 30, scaled, one);
++    origin(30, 0, "uv.x * gain + time", 300, 0);
++    origin(31, 0, "alias", 301, 0);
++    result(30, phase);
++    result(31, phase);
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(shader_debug_find(snapshot, 30, -1) == scaled);
++    REQUIRE(shader_debug_find(snapshot, 30, scaled) == phase);
++    REQUIRE(shader_debug_find(snapshot, 30, phase) == -1);
++    REQUIRE(shader_debug_find(snapshot, 31, -1) == -1);
++    const shader_debug_value *value = shader_debug_value_at(snapshot, scaled, documents, 2);
++    REQUIRE(value && value->op == SHADER_MULTIPLY && near(value->value[0], 6));
++    value = shader_debug_source_value(snapshot, 30, documents, 2);
++    REQUIRE(value && value->op == SHADER_ADD && near(value->value[0], 7));
++    value = shader_debug_source_value(snapshot, 31, documents, 2);
++    REQUIRE(value && value->origin.source_id == 31 && near(value->value[0], 7));
++    REQUIRE(value->origin.occurrence == 301 && value->origin.start == origins[1].start);
++    REQUIRE(!shader_debug_source_value(snapshot, 999, documents, 2));
++    REQUIRE(shader_debug_value_at(snapshot, two, documents, 2));
++    REQUIRE(!shader_debug_value_at(snapshot, two, NULL, 0));
++    return true;
++}
++TEST_CASE(helper_expansions_keep_values_and_call_chains_separate)
++{
++    int three = constant(3), five = constant(5), two = constant(2);
++    int first = operation(SHADER_MULTIPLY, 1, 61, three, two);
++    int second = operation(SHADER_MULTIPLY, 1, 62, five, two);
++    origin(50, 0, "Shade", 500, 0);
++    origin(51, 0, "Twice(uv.x)", 501, 50);
++    origin(52, 0, "Twice(time)", 502, 50);
++    origin(61, 1, "x * 2", 600, 51);
++    origin(62, 1, "x * 2", 600, 52);
++    result(61, first);
++    result(62, second);
++    result(51, first);
++    result(52, second);
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    const shader_debug_value *a = shader_debug_source_value(snapshot, 61, documents, 2);
++    const shader_debug_value *b = shader_debug_source_value(snapshot, 62, documents, 2);
++    REQUIRE(a && b && near(a->value[0], 6) && near(b->value[0], 10));
++    REQUIRE(a->origin.occurrence == b->origin.occurrence);
++    REQUIRE(a->origin.source_id != b->origin.source_id);
++    REQUIRE(a->origin.call_site == 51 && b->origin.call_site == 52);
++    REQUIRE(a->origin.document == 1 && b->origin.document == 1);
++    a = shader_debug_source_value(snapshot, 51, documents, 2);
++    b = shader_debug_source_value(snapshot, 52, documents, 2);
++    REQUIRE(a && b && a->origin.call_site == 50 && b->origin.call_site == 50);
++    REQUIRE(near(a->value[0], 6) && near(b->value[0], 10));
++    const shader_debug_origin
++        *call = shader_debug_origin_find(snapshot, a->origin.source_id);
++    REQUIRE(call && call->call_site == 50);
++    const shader_debug_origin *root = shader_debug_origin_find(snapshot, call->call_site);
++    REQUIRE(root && root->source_id == 50 && root->occurrence == 500 && !root->call_site);
++    REQUIRE(!shader_debug_source_value(snapshot, 50, documents, 2));
++    REQUIRE(shader_debug_find(snapshot, 50, -1) == -1);
++    const shader_debug_document *document = shader_debug_document_at(snapshot, root->document);
++    REQUIRE(document && !strcmp(document->identity, material_key));
++    REQUIRE(!strcmp(document->text, material_text));
++    REQUIRE(!shader_debug_origin_find(snapshot, 999));
++    shader_debug_document changed[] = { documents[0], documents[1] };
++    changed[0].text = "Shade :: () {}\n";
++    REQUIRE(!shader_debug_source_value(snapshot, 61, changed, 2));
++    REQUIRE(!shader_debug_value_at(snapshot, first, changed, 2));
++    REQUIRE(!shader_debug_source_value(snapshot, 61, &documents[1], 1));
++    shader_debug_document reordered[] = { documents[1], documents[0] };
++    REQUIRE(!shader_debug_source_value(snapshot, 61, reordered, 2));
++    return true;
++}
++TEST_CASE(snapshot_owns_values_and_exact_source_revision)
++{
++    int node = constant(3.5f);
++    graph.nodes[node].source_id = 10;
++    origin(50, 0, "Shade", 500, 0);
++    origin(10, 0, "gain", 100, 50);
++    result(10, node);
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    shader_debug_document current[] = { { material_key, material_text },
++                                        { helper_key, helper_text } };
++    shader_debug_document renamed[] = { { "content/materials/Renamed.chibi", material_text },
++                                        { helper_key, helper_text } };
++    shader_debug_document edited[] = { { material_key, "Shade :: () {}\n" },
++                                       { helper_key, helper_text } };
++    REQUIRE(!shader_debug_value_at(snapshot, node, renamed, 2));
++    REQUIRE(!shader_debug_source_value(snapshot, 10, renamed, 2));
++    REQUIRE(!shader_debug_value_at(snapshot, node, edited, 2));
++    REQUIRE(!shader_debug_source_value(snapshot, 10, edited, 2));
++    REQUIRE(!shader_debug_value_at(snapshot, node, NULL, 0));
++    REQUIRE(!shader_debug_value_at(snapshot, -1, current, 2));
++    REQUIRE(!shader_debug_value_at(snapshot, 1, current, 2));
++    ((char *)documents[0].text)[0] = '?';
++    ((char *)documents[0].identity)[0] = '?';
++    for (int i = 0; i < 2; i++) {
++        free((char *)documents[i].identity);
++        free((char *)documents[i].text);
++        documents[i] = (shader_debug_document){ 0 };
++    }
++    memset(origins, 0, sizeof origins);
++    memset(results, 0, sizeof results);
++    graph.nodes[node].value[0] = 0;
++    shader_graph_free(&graph);
++    const shader_debug_value *value = shader_debug_source_value(snapshot, 10, current, 2);
++    REQUIRE(value && near(value->value[0], 3.5f));
++    REQUIRE(value->origin.source_id == 10 && value->origin.occurrence == 100);
++    REQUIRE(shader_debug_find(snapshot, 10, -1) == node);
++    const shader_debug_origin *owned = shader_debug_origin_find(snapshot, 10);
++    REQUIRE(owned && owned->occurrence == 100 && owned->call_site == 50);
++    const shader_debug_origin *root = shader_debug_origin_find(snapshot, owned->call_site);
++    REQUIRE(root && root->source_id == 50 && root->occurrence == 500 && !root->call_site);
++    REQUIRE(!shader_debug_source_value(snapshot, 50, current, 2));
++    const shader_debug_document *document = shader_debug_document_at(snapshot, root->document);
++    REQUIRE(document && !strcmp(document->identity, material_key));
++    REQUIRE(!strcmp(document->text, material_text));
++    document = shader_debug_document_at(snapshot, 1);
++    REQUIRE(document && !strcmp(document->identity, helper_key));
++    REQUIRE(!strcmp(document->text, helper_text));
++    REQUIRE(!shader_debug_document_at(snapshot, -1));
++    REQUIRE(!shader_debug_document_at(snapshot, 2));
++    return true;
++}
++TEST_CASE(unmapped_ir_needs_no_documents_only_when_capture_had_none)
++{
++    int node = constant(3);
++    map.document_count = 0;
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    const shader_debug_value *value = shader_debug_value_at(snapshot, node, NULL, 0);
++    REQUIRE(value && value->finite && near(value->value[0], 3));
++    REQUIRE(!shader_debug_value_at(snapshot, node, documents, 2));
++    REQUIRE(!shader_debug_document_at(snapshot, 0));
++    return true;
++}
++TEST_CASE(source_byte_limits_accept_boundaries_and_preserve_previous_capture)
++{
++    int node = constant(3);
++    source_bytes = xmalloc((size_t)SHADER_DEBUG_SOURCE_BYTES_MAX + 2);
++    memset(source_bytes, 'x', (size_t)SHADER_DEBUG_SOURCE_BYTES_MAX + 1);
++    source_bytes[SHADER_DEBUG_SOURCE_BYTES_MAX] = 0;
++    shader_debug_document document = { material_key, source_bytes };
++    map.documents = &document;
++    map.document_count = 1;
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    const shader_debug_value *value = shader_debug_value_at(snapshot, node, &document, 1);
++    REQUIRE(value && near(value->value[0], 3));
++    const shader_debug_document *owned = shader_debug_document_at(snapshot, 0);
++    REQUIRE(owned && strlen(owned->text) == SHADER_DEBUG_SOURCE_BYTES_MAX);
++    shader_debug_snapshot *saved = snapshot;
++    source_bytes[SHADER_DEBUG_SOURCE_BYTES_MAX] = 'x';
++    source_bytes[SHADER_DEBUG_SOURCE_BYTES_MAX + 1] = 0;
++    REQUIRE(!shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && strstr(error.message, "byte limit"));
++    REQUIRE(strlen(owned->text) == SHADER_DEBUG_SOURCE_BYTES_MAX);
++    source_bytes[SHADER_DEBUG_SOURCE_BYTES_MAX] = 0;
++    enum
++    {
++        CLOSURE_DOCUMENTS = SHADER_DEBUG_TOTAL_BYTES_MAX / SHADER_DEBUG_SOURCE_BYTES_MAX
++    };
++    shader_debug_document closure[CLOSURE_DOCUMENTS + 1];
++    char keys[CLOSURE_DOCUMENTS + 1][32];
++    for (int i = 0; i < CLOSURE_DOCUMENTS + 1; i++) {
++        snprintf(keys[i], sizeof keys[i], "content/Library%d.chibi", i);
++        closure[i] = (shader_debug_document){ keys[i], source_bytes };
++    }
++    map.documents = closure;
++    map.document_count = CLOSURE_DOCUMENTS;
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    value = shader_debug_value_at(snapshot, node, closure, CLOSURE_DOCUMENTS);
++    REQUIRE(value && near(value->value[0], 3));
++    saved = snapshot;
++    map.document_count++;
++    REQUIRE(!shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && strstr(error.message, "byte limit"));
++    REQUIRE(shader_debug_value_at(snapshot, node, closure, CLOSURE_DOCUMENTS));
++    return true;
++}
++TEST_CASE(document_identity_and_count_limits_reject_excess)
++{
++    int node = constant(3);
++    identity_bytes = xmalloc((size_t)SHADER_DEBUG_IDENTITY_BYTES_MAX + 2);
++    memset(identity_bytes, 'i', (size_t)SHADER_DEBUG_IDENTITY_BYTES_MAX + 1);
++    identity_bytes[SHADER_DEBUG_IDENTITY_BYTES_MAX] = 0;
++    shader_debug_document document = { identity_bytes, "3" };
++    map.documents = &document;
++    map.document_count = 1;
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(shader_debug_value_at(snapshot, node, &document, 1));
++    shader_debug_snapshot *saved = snapshot;
++    identity_bytes[SHADER_DEBUG_IDENTITY_BYTES_MAX] = 'i';
++    identity_bytes[SHADER_DEBUG_IDENTITY_BYTES_MAX + 1] = 0;
++    REQUIRE(!shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && strstr(error.message, "byte limit"));
++    identity_bytes[SHADER_DEBUG_IDENTITY_BYTES_MAX] = 0;
++    map.document_count = SHADER_DEBUG_DOCUMENT_MAX + 1;
++    REQUIRE(!shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved);
++    REQUIRE(shader_debug_value_at(snapshot, node, &document, 1));
++    return true;
++}
++static bool resolve_image(void *userdata, const shader_image_source *source, shader_image_view *view)
++{
++    if (!userdata || strcmp(source->key, "Mask.png")) {
++        return false;
++    }
++    *view = *(const shader_image_view *)userdata;
++    return true;
++}
++TEST_CASE(missing_image_preserves_previous_values_and_reports_source)
++{
++    int previous = constant(.5f);
++    graph.nodes[previous].source_id = 10;
++    origin(10, 0, "gain", 100, 0);
++    result(10, previous);
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    shader_debug_snapshot *saved = snapshot;
++    shader_graph_free(&graph);
++    shader_graph_init(&graph);
++    map.origin_count = map.result_count = 0;
++    int uv = operation(SHADER_UV, 2, 0, -1, -1);
++    int image = operation(SHADER_IMAGE_TEXTURE, 3, 20, uv, -1);
++    shader_image_source source = { .key = "Mask.png",
++                                   .color_space = SHADER_IMAGE_LINEAR,
++                                   .filter = SHADER_IMAGE_NEAREST,
++                                   .wrap = SHADER_IMAGE_CLAMP };
++    graph.nodes[image].image = shader_graph_add_image(&graph, &source);
++    origin(20, 0, "image.Sample(uv)", 200, 0);
++    result(20, image);
++    sample.resolve_image = resolve_image;
++    REQUIRE(!shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && error.node == 20 && strstr(error.message, "Mask.png"));
++    const shader_debug_value *value = shader_debug_source_value(snapshot, 10, documents, 2);
++    REQUIRE(value && near(value->value[0], .5f));
++    unsigned char pixels[] = { 255, 0, 0, 128 };
++    shader_image_view view = { pixels, 1, 1 };
++    sample.image_userdata = &view;
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    value = shader_debug_source_value(snapshot, 20, documents, 2);
++    REQUIRE(value && value->width == 3 && near(value->value[0], 1));
++    REQUIRE(value->value[1] == 0 && value->value[2] == 0);
++    REQUIRE(shader_debug_limitations(snapshot) & SHADER_DEBUG_BASE_LEVEL_IMAGES);
++    memset(pixels, 0, sizeof pixels);
++    REQUIRE(near(value->value[0], 1));
++    return true;
++}
++TEST_CASE(invalid_source_maps_cannot_replace_a_valid_snapshot)
++{
++    int node = constant(4);
++    graph.nodes[node].source_id = 10;
++    shader_sample_context sample = { 0 };
++    origin(10, 0, "gain", 100, 0);
++    result(10, node);
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    shader_debug_snapshot *saved = snapshot;
++    shader_debug_origin valid = origins[0];
++    for (int invalid = 0; invalid < 12; invalid++) {
++        origins[0] = origins[1] = valid;
++        results[0] = results[1] = (shader_debug_result){ 10, node };
++        map.origin_count = map.result_count = 1;
++        switch (invalid) {
++            case 0: map.origin_count = 2; break;
++            case 1: map.origin_count = map.result_count = 0; break;
++            case 2: origins[0].end = (int)strlen(documents[0].text) + 1; break;
++            case 3: origins[0].start = -1; break;
++            case 4: origins[0].end = origins[0].start; break;
++            case 5: origins[0].document = 2; break;
++            case 6: origins[0].call_site = 99; break;
++            case 7: origins[0].call_site = 10; break;
++            case 8:
++                map.origin_count = 2;
++                origins[0].call_site = 11;
++                origins[1].source_id = 11;
++                origins[1].call_site = 10;
++                break;
++            case 9: results[0].source_id = 99; break;
++            case 10: map.result_count = 2; break;
++            case 11: results[0].node = node + 1; break;
++        }
++        error = (shader_error){ 0 };
++        REQUIRE(!shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++        REQUIRE(snapshot == saved && error.message[0]);
++        const shader_debug_value *value = shader_debug_source_value(snapshot, 10, documents, 2);
++        REQUIRE(value && near(value->value[0], 4));
++    }
++    return true;
++}
++TEST_CASE(nonfinite_intermediates_remain_visible_when_output_is_finite)
++{
++    int large = constant(FLT_MAX), zero = constant(0);
++    int gain = operation(SHADER_PARAMETER, 1, 10, -1, -1);
++    graph.nodes[gain].value[0] = 2;
++    int overflow = operation(SHADER_MULTIPLY, 1, 11, large, gain);
++    int output = operation(SHADER_DIVIDE, 1, 0, overflow, zero);
++    origin(10, 0, "gain", 100, 0);
++    origin(11, 0, "uv.x * gain", 101, 0);
++    result(11, overflow);
++    shader_sample_context sample = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    const shader_debug_value *value = shader_debug_source_value(snapshot, 11, documents, 2);
++    REQUIRE(value && !value->finite && isinf(value->value[0]));
++    value = shader_debug_value_at(snapshot, output, documents, 2);
++    REQUIRE(value && value->finite && value->value[0] == 0);
++    REQUIRE(shader_debug_limitations(snapshot) & SHADER_DEBUG_NONFINITE_VALUE);
++    float parameters[32][4] = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    value = shader_debug_source_value(snapshot, 11, documents, 2);
++    REQUIRE(value && value->finite && value->value[0] == 0);
++    REQUIRE(!(shader_debug_limitations(snapshot) & SHADER_DEBUG_NONFINITE_VALUE));
++    return true;
++}
++typedef struct
++{
++    shader_image_view view;
++    int calls;
++    bool available;
++} volume_resolver;
++static bool resolve_volume(void *userdata, const shader_image_source *source, shader_image_view *view)
++{
++    volume_resolver *resolver = userdata;
++    resolver->calls++;
++    assert(!strcmp(source->key, "Mask.png"));
++    *view = resolver->view;
++    return resolver->available;
++}
++TEST_CASE(sampled_sdf_arithmetic_failure_is_not_a_missing_image)
++{
++    int position = operation(SHADER_PARAMETER, 3, 10, -1, -1);
++    int two = constant(2);
++    int scaled = operation(SHADER_MULTIPLY, 3, 11, position, two);
++    int sdf = operation(SHADER_SAMPLED_SDF, 1, 20, scaled, -1);
++    shader_node *volume = &graph.nodes[sdf];
++    volume->parameter = 2;
++    volume->volume_range = volume->volume_lipschitz = 1;
++    volume->value[0] = volume->value[1] = volume->value[2] = 1;
++    shader_image_source source = { .key = "Mask.png",
++                                   .color_space = SHADER_IMAGE_LINEAR,
++                                   .filter = SHADER_IMAGE_NEAREST,
++                                   .wrap = SHADER_IMAGE_CLAMP };
++    volume->image = shader_graph_add_image(&graph, &source);
++    unsigned char pixels[8 * 4];
++    for (int i = 0; i < 8; i++) {
++        memcpy(pixels + i * 4, (unsigned char[]){ 255, 255, 0, 255 }, 4);
++    }
++    volume_resolver resolver = { .view = { pixels, 4, 2 }, .available = true };
++    REQUIRE(shader_volume_validate(volume, &resolver.view, &error));
++    origin(10, 0, "gain", 100, 0);
++    origin(11, 0, "uv.x * gain", 101, 0);
++    origin(20, 0, "image.Sample(uv)", 200, 0);
++    result(20, sdf);
++    shader_sample_context sample = { .resolve_image = resolve_volume,
++                                     .image_userdata = &resolver };
++    float parameters[32][4] = { 0 };
++    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    const shader_debug_value *value = shader_debug_source_value(snapshot, 20, documents, 2);
++    REQUIRE(value && value->finite && near(value->value[0], 1));
++    shader_debug_snapshot *saved = snapshot;
++    parameters[0][0] = FLT_MAX;
++    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && resolver.calls == 2 && error.node == 20);
++    if (!strstr(error.message, "nonfinite")) {
++        fprintf(stderr, "Sampled SDF overflow diagnostic: %s\n", error.message);
++    }
++    REQUIRE(strstr(error.message, "nonfinite") && strstr(error.message, "coordinates"));
++    REQUIRE(!strstr(error.message, "resolved"));
++    REQUIRE(shader_debug_source_value(snapshot, 20, documents, 2) == value);
++    parameters[0][0] = FLT_MAX / 2;
++    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && resolver.calls == 3 && error.node == 20);
++    REQUIRE(strstr(error.message, "nonfinite") && strstr(error.message, "distance"));
++    parameters[0][0] = 0;
++    resolver.available = false;
++    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && resolver.calls == 4 && error.node == 20);
++    REQUIRE(strstr(error.message, "image could not be resolved"));
++    resolver.available = true;
++    resolver.view.width = 3;
++    REQUIRE(!shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    REQUIRE(snapshot == saved && resolver.calls == 5 && error.node == 20);
++    REQUIRE(strstr(error.message, "atlas dimensions"));
++    REQUIRE(shader_debug_source_value(snapshot, 20, documents, 2) == value);
++    REQUIRE(value->finite && near(value->value[0], 1));
++    resolver.view.width = 4;
++    REQUIRE(shader_debug_capture(&graph, &sample, parameters, &map, &snapshot, &error));
++    value = shader_debug_source_value(snapshot, 20, documents, 2);
++    REQUIRE(value && value->finite && near(value->value[0], 1) && resolver.calls == 6);
++    return true;
++}
++TEST_CASE(bump_and_context_effects_declare_their_cpu_limits)
++{
++    int position = operation(SHADER_PART_POSITION, 3, 0, -1, -1);
++    int height = operation(SHADER_X, 1, 0, position, -1);
++    int strength = constant(1), distance = constant(.001f);
++    int normal = operation(SHADER_NORMAL, 3, 0, -1, -1);
++    int bump = operation(SHADER_BUMP, 3, 20, height, strength);
++    graph.nodes[bump].input[2] = distance;
++    graph.nodes[bump].input[3] = normal;
++    int density = constant(0), brightness = constant(1);
++    int star = operation(SHADER_STAR_FIELD, 3, 21, position, density);
++    graph.nodes[star].input[2] = brightness;
++    int influence = operation(SHADER_SURFACE_INFLUENCE, 3, 22, position, -1);
++    graph.output_count = 3;
++    graph.output[0] = bump;
++    graph.output[1] = star;
++    graph.output[2] = influence;
++    origin(20, 0, "Bump(phase)", 200, 0);
++    origin(21, 0, "StarField(uv)", 201, 0);
++    origin(22, 0, "Influence(uv)", 202, 0);
++    result(20, bump);
++    shader_sample_context sample = { .normal = { 0, 1, 0 } };
++    for (int i = 0; i < 3; i++) {
++        sample.part_from_world[i][i] = 1;
++    }
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    const shader_debug_value *value = shader_debug_source_value(snapshot, 20, documents, 2);
++    REQUIRE(value && near(value->value[0], -sqrtf(.5f)) && near(value->value[1], sqrtf(.5f)));
++    unsigned flags = SHADER_DEBUG_FLOAT_APPROXIMATION |
++                     SHADER_DEBUG_COORDINATE_GRADIENTS |
++                     SHADER_DEBUG_REFERENCE_FOOTPRINT | SHADER_DEBUG_SCENE_INFLUENCE;
++    REQUIRE(shader_debug_limitations(snapshot) == flags);
++    return true;
++}
++TEST_CASE(decal_facing_declares_coordinate_gradient_dependency)
++{
++    int position = operation(SHADER_PART_POSITION, 3, 0, -1, -1);
++    int half = operation(SHADER_CONSTANT, 3, 0, -1, -1);
++    for (int i = 0; i < 3; i++) {
++        graph.nodes[half].value[i] = 1;
++    }
++    int feather = constant(0), facing = constant(.5f);
++    int decal = operation(SHADER_DECAL_MASK, 1, 20, position, half);
++    graph.nodes[decal].input[2] = feather;
++    graph.nodes[decal].input[3] = facing;
++    origin(20, 0, "Decal(uv)", 200, 0);
++    result(20, decal);
++    shader_sample_context sample = { .normal = { 0, 0, 1 } };
++    for (int i = 0; i < 3; i++) {
++        sample.part_from_world[i][i] = 1;
++    }
++    REQUIRE(shader_debug_capture(&graph, &sample, NULL, &map, &snapshot, &error));
++    const shader_debug_value *value = shader_debug_source_value(snapshot, 20, documents, 2);
++    REQUIRE(value && value->value[0] == 1);
++    REQUIRE(shader_debug_limitations(snapshot) & SHADER_DEBUG_COORDINATE_GRADIENTS);
++    return true;
++}
++void test_tool_shader_source_debug()
++{
++    pu_setup(setup, teardown);
++    RUN_TEST_CASE(uv_time_and_uniform_values_follow_one_sample);
++    RUN_TEST_CASE(source_results_select_principal_nodes_and_zero_node_aliases);
++    RUN_TEST_CASE(helper_expansions_keep_values_and_call_chains_separate);
++    RUN_TEST_CASE(snapshot_owns_values_and_exact_source_revision);
++    RUN_TEST_CASE(unmapped_ir_needs_no_documents_only_when_capture_had_none);
++    RUN_TEST_CASE(source_byte_limits_accept_boundaries_and_preserve_previous_capture);
++    RUN_TEST_CASE(document_identity_and_count_limits_reject_excess);
++    RUN_TEST_CASE(missing_image_preserves_previous_values_and_reports_source);
++    RUN_TEST_CASE(invalid_source_maps_cannot_replace_a_valid_snapshot);
++    RUN_TEST_CASE(nonfinite_intermediates_remain_visible_when_output_is_finite);
++    RUN_TEST_CASE(sampled_sdf_arithmetic_failure_is_not_a_missing_image);
++    RUN_TEST_CASE(bump_and_context_effects_declare_their_cpu_limits);
++    RUN_TEST_CASE(decal_facing_declares_coordinate_gradient_dependency);
++    pu_setup(NULL, NULL);
++}
+diff --git a/tools/agent.py b/tools/agent.py
+index 078883b88..23115a1b2 100644
+--- a/tools/agent.py
++++ b/tools/agent.py
+@@ -59,6 +59,7 @@ CPU_SELECTORS = {
+     '--render-geometry': 'render-geometry',
+     '--shader-graphs': 'shader-graphs',
+     '--shader-bake': 'shader-bake',
++    '--shader-source-debug': 'shader-source-debug',
+     '--material-bake': 'material-bake',
+     '--environment-authoring': 'environment-authoring',
+     '--terrain-seams': 'terrain-seams',
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index 29017657f..de3cd087c 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -137,7 +137,8 @@ Files :: (target: string) -> string[] {
+         return [
+             "src/runtime/shaders/bake.c", "src/runtime/shaders/program.c", "src/runtime/shaders/prepared.c",
+             "src/runtime/shaders/detail.c", "src/runtime/shaders/effects.c", "src/runtime/shaders/image.c",
+-            "src/runtime/shaders/volume.c", "src/runtime/shaders/inspection.c"
++            "src/runtime/shaders/volume.c", "src/runtime/shaders/inspection.c",
++            "src/runtime/shaders/source_debug.c"
+         ];
+     }
+     if (target == "chibi_model_runtime") {
+@@ -769,7 +770,7 @@ Files :: (target: string) -> string[] {
+         return ["test/tools/scene.c", "test/tools/scene_prepared.c"];
+     }
+     if (target == "chibi_shader_bake_consumer") {
+-        return ["test/tools/shader_bake.c"];
++        return ["test/tools/shader_bake.c", "test/tools/shader_source_debug.c"];
+     }
+     if (target == "chibi_scene_authoring_consumer") {
+         return ["test/authoring/scene_hierarchy.c"];
+@@ -991,7 +992,7 @@ pub PublicHeaders :: (target: string) -> string[] {
+         return [
+             "runtime/shaders/bake.h", "runtime/shaders/detail.h", "runtime/shaders/effects.h",
+             "runtime/shaders/image.h", "runtime/shaders/inspection.h", "runtime/shaders/prepared.h",
+-            "runtime/shaders/program.h", "runtime/shaders/volume.h"
++            "runtime/shaders/program.h", "runtime/shaders/volume.h", "runtime/shaders/source_debug.h"
+         ];
+     }
+     if (target == "chibi_model_runtime") {
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+index a5ba66b85..93bad8e70 100644
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -63,6 +63,7 @@ TOOLS = {
+     'prototype-expansion': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-expansion',
+                             str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
+     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
++    'shader-source-debug': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-source-debug'],
+     'ecs-query': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query'],
+     'ecs-strings': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-strings'],
+     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
+@@ -508,7 +509,7 @@ GROUPS = {
+                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
+                'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
+                'asset-source', 'behavior-loader', 'engine-clock', 'preview-layout', 'fields',
+-               'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs', 'shader-bake', 'terrain-seams', 'terrain-storage',
++               'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs', 'shader-bake', 'shader-source-debug', 'terrain-seams', 'terrain-storage',
+                'material-surface-mesh', 'scene3d-camera', 'scene3d-volume', 'scene3d-terrain'],
+     # Whole projects, imported assets and the Release chibi_ctl, chibi and
+     # chibi-compile: feature coverage, project validation and prototype expansion,

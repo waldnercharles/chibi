@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/waldnercharles/chibi.git",
+  "branch": "codex/chibi-shader-foundation-d0-handoff-20261023",
+  "status": "WIP source-reviewed; current candidate untested",
+  "published_foundation": {
+    "branch": "codex/chibi-shader-authoring-20261022",
+    "commit": "d34def7202f842b6408f151df96ab5c7d1b343b1"
+  },
+  "source_commit": "1c1599fa1ca2405e0ee1d6a57dc7a9146db3b252",
+  "source_tree": "e4efa14d334f7dc5b6d465bf1906f77120992084",
+  "source_parents": [
+    "d34def7202f842b6408f151df96ab5c7d1b343b1",
+    "d0de4a84ecf50badcab661411470bdf6f3da5fa2"
+  ],
+  "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "delta_paths": 17,
+  "active_source": "repository paths listed in source-manifest.json",
+  "recovery_only": "recovery-fa1/* are superseded historical patches/plan, not applied source",
+  "original_state": "original-state.json",
+  "handoff_only_changes": "this directory in the checkpoint tip",
+  "build_products": "not included; old binary hashes are historical receipts only",
+  "overlapping_work": "frozen; no further local overlapping implementation after handoff"
+}

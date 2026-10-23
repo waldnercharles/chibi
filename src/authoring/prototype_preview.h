@@ -52,8 +52,8 @@ int prototype_preview_launch(
     char *error,
     size_t error_size
 );
-/* Launch a scene fixture in authored order. An entity's own behavior list
- * replaces its prototype's, matching scene loading. */
+/* Launch a scene fixture in authored order, including an empty scene (NULL, 0).
+ * An entity's own behavior list replaces its prototype's, matching scene loading. */
 int prototype_preview_launch_scene(
     prototype_preview *preview,
     const prototype_preview_scene_entity *entities,

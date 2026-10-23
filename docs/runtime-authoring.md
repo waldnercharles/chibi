@@ -684,6 +684,7 @@ printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"M
 ```
 
 Inspect `behavior_failures` and the deterministic state evidence in the response.
+An empty scene is valid: its clock and input advance without authored entities.
 Choose affected-contract checks using the [testing instructions](testing.md).
 A short sample run does not establish full runtime or rendering coverage.
 

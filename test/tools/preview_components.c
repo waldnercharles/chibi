@@ -17,6 +17,7 @@ static char directory[] = "/tmp/chibi-preview-components-XXXXXX";
 static bool owns_directory;
 static declared_components *previous;
 static chibi_preview_run *run;
+static prototype_preview *empty_preview;
 static char error[512];
 
 static void cleanup()
@@ -26,11 +27,15 @@ static void cleanup()
     }
     chibi_preview_free(run);
     run = NULL;
+    prototype_preview_free(empty_preview);
+    empty_preview = NULL;
     declared_components_free(previous);
     previous = NULL;
     if (owns_directory) {
         tool_remove_tree(directory);
+        owns_directory = false;
     }
+    error[0] = 0;
 }
 
 static void write_asset(const char *name, const char *text)
@@ -202,9 +207,37 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
     return true;
 }
 
+TEST_CASE(empty_scene_launch_accepts_zero_entities_and_rejects_invalid_arrays)
+{
+    prototype_registry registry = { 0 };
+    empty_preview = prototype_preview_new(&registry);
+    REQUIRE(empty_preview);
+    REQUIRE(prototype_preview_launch_scene(NULL, NULL, 0, error, sizeof error) == ECS_ERR_ARGUMENT);
+    REQUIRE(
+        prototype_preview_launch_scene(empty_preview, NULL, -1, error, sizeof error) == ECS_ERR_ARGUMENT
+    );
+    REQUIRE(
+        prototype_preview_launch_scene(empty_preview, NULL, 1, error, sizeof error) == ECS_ERR_ARGUMENT
+    );
+    REQUIRE(prototype_preview_launch_scene(empty_preview, NULL, 0, error, sizeof error) == ECS_OK);
+    REQUIRE(prototype_preview_entity_count(empty_preview) == 0);
+    REQUIRE(prototype_preview_tick(empty_preview, 0) == 0);
+    REQUIRE(prototype_preview_tick(empty_preview, 1.0 / 60) == 0);
+    REQUIRE(prototype_preview_entity_count(empty_preview) == 0);
+    prototype_preview_stop(empty_preview);
+    prototype_preview_scene_entity unused = { 0 };
+    REQUIRE(
+        prototype_preview_launch_scene(empty_preview, &unused, 0, error, sizeof error) == ECS_OK
+    );
+    REQUIRE(prototype_preview_tick(empty_preview, 0) == 0);
+    REQUIRE(prototype_preview_entity_count(empty_preview) == 0);
+    return true;
+}
+
 void test_preview_components()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(preview_owns_project_components_until_its_world_is_freed);
+    RUN_TEST_CASE(empty_scene_launch_accepts_zero_entities_and_rejects_invalid_arrays);
     pu_clear_setup();
 }

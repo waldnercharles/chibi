@@ -260,7 +260,7 @@ int prototype_preview_launch_scene(
     size_t error_size
 )
 {
-    if (!preview || !entities || entity_count <= 0) {
+    if (!preview || entity_count < 0 || (entity_count && !entities)) {
         return ECS_ERR_ARGUMENT;
     }
     clear_entity(preview);
@@ -481,7 +481,8 @@ int prototype_preview_start_scene(
             }
         }
     }
-    int linked = link_scene(preview->world, entities, entity_count, preview->entities + base, error, error_size);
+    const ecs_entity *spawned = entity_count ? preview->entities + base : NULL;
+    int linked = link_scene(preview->world, entities, entity_count, spawned, error, error_size);
     if (linked != ECS_OK) {
         preview->live->runtime->deferred = false;
         clear_entity(preview);

@@ -285,6 +285,49 @@ TEST_CASE(public_asset_constructors_reach_native_readers)
     return true;
 }
 
+TEST_CASE(empty_scene_scenarios_run_and_still_validate_source)
+{
+    /* The scaffold's valid empty scene has a clock even without actors. */
+    const int frames[] = { 0, 2 };
+    for (size_t i = 0; i < sizeof frames / sizeof *frames; i++) {
+        char request[160];
+        snprintf(
+            request,
+            sizeof request,
+            "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\","
+            "\"name\":\"Start\",\"frames\":%d}",
+            frames[i]
+        );
+        REQUIRE(ctl(true, request) == 0);
+        REQUIRE(
+            yyjson_is_uint(result("frames")) &&
+            yyjson_get_uint(result("frames")) == (uint64_t)frames[i]
+        );
+        REQUIRE(
+            yyjson_is_uint(result("authored_entities")) &&
+            !yyjson_get_uint(result("authored_entities"))
+        );
+    }
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2}") ==
+        0
+    );
+    REQUIRE(yyjson_is_arr(result("entities")) && !yyjson_arr_size(result("entities")));
+    write_file("game/content/scenes/Start.chibi", "package asset\npub Build :: () -> byte[] {\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2}") !=
+        0
+    );
+    REQUIRE(failure_code() && !strcmp(failure_code(), "validation_failed"));
+    REQUIRE(failure() && strstr(failure(), "source or native asset preparation failed"));
+    char *output = tool_read(log_path);
+    bool located = output && strstr(output, "line 2, column ") &&
+                   strstr(output, "Expected }");
+    free(output);
+    REQUIRE(located);
+    return true;
+}
+
 TEST_CASE(stopped_runs_are_reported)
 {
     /* Invalid durations must refuse before the child can create its marker. */
@@ -3220,6 +3263,7 @@ void test_tool_validate_project(const char *binary)
     pu_setup(setup, teardown);
     RUN_TEST_CASE(new_project_is_valid);
     RUN_TEST_CASE(public_asset_constructors_reach_native_readers);
+    RUN_TEST_CASE(empty_scene_scenarios_run_and_still_validate_source);
     RUN_TEST_CASE(stopped_runs_are_reported);
     RUN_TEST_CASE(ui_style_problems_are_listed);
     RUN_TEST_CASE(start_scene_outside_scenes_is_parsed);

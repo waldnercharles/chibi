@@ -7935,11 +7935,6 @@ static int prepare_scene_scenario(
     if (status == CHIBI_AUTOMATION_OK) {
         status = enter_scenario_scene(context, scene_json, error, error_size);
     }
-    /* A scene a script loads may start empty; a scenario needs something to run. */
-    if (status == CHIBI_AUTOMATION_OK && !acount(context->scene->entities)) {
-        set_error(error, error_size, "scene has no entities");
-        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
     free(scene_json);
     if (status == CHIBI_AUTOMATION_OK) {
         status = register_scenario_prototypes(root, context, error, error_size);

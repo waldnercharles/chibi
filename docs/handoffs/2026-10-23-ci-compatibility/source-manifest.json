@@ -1,0 +1,77 @@
+{
+  "active_location": "typed owner candidate; archived copies in this checkpoint are unapplied drafts",
+  "typed_head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "preserved_merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "typed_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "source_files": [
+    {
+      "path": ".github/scripts/compiler-self-build.ps1",
+      "blob": "0810c7bc21d57531e5e6639ac113dd5178b31bc1",
+      "bytes": 19069,
+      "sha256": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4"
+    },
+    {
+      "path": ".github/workflows/compiler-recovery.yml",
+      "blob": "7b1810dbf401851cf77811c12e721e6f9de2da2c",
+      "bytes": 6981,
+      "sha256": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1"
+    },
+    {
+      "path": ".github/workflows/compiler-runtime-seed.yml",
+      "blob": "05dcec1a4f6df5d2162d10096b2fb87474531211",
+      "bytes": 18609,
+      "sha256": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b"
+    },
+    {
+      "path": "Makefile",
+      "blob": "498c42ba1b47139ff962ecfbcce1c2e3a8e99fa6",
+      "bytes": 27280,
+      "sha256": "68259fa4df3cd77cb83eb482ef23f26327454a396d1e60756e1de130e480b22f"
+    },
+    {
+      "path": "src/host/build_host.h",
+      "blob": "a44b96597e7b962fc179b8ec73d5fd40c8bb5483",
+      "bytes": 2753,
+      "sha256": "d3778bd316a110b5298ceb34b088693010e37d6e0c5e6c776bd99e6d0b754b48"
+    },
+    {
+      "path": "test/tools/build_process.c",
+      "blob": "979450efca1124cabc7f9be16d3b3477e7d63291",
+      "bytes": 100749,
+      "sha256": "9063e811eb05172d801ee73b5d8826e47bdfa9e334d0dea6614d9cbd52aa7578"
+    },
+    {
+      "path": "test/tools/build_toolchain.c",
+      "blob": "8df7257ab26b54816c4350b286dc1eb5740b34a9",
+      "bytes": 31347,
+      "sha256": "57df4670fde288517b5c18a6ab623a3a98003ddc3dcb332f9f506d83629f3f07"
+    },
+    {
+      "path": "docs/self-hosting-build.md",
+      "blob": "4c7c37ffdab2c43ddd7c28ce8e9154d113ab463e",
+      "bytes": 63926,
+      "sha256": "d9137eee4a76ed7d13952a2a1edad20a344ec0ca969136f598baa633dd533d9b"
+    }
+  ],
+  "original_index_backups_excluded_from_portable_payload": [
+    {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/candidate.index",
+      "reason": "machine-local Git index, binary or build output; original retained locally"
+    },
+    {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/index-before-red",
+      "reason": "machine-local Git index, binary or build output; original retained locally"
+    },
+    {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-compatibility-applied/index-before",
+      "reason": "machine-local Git index, binary or build output; original retained locally"
+    }
+  ],
+  "complete_typed_source_remote": {
+    "branch": "codex/typed-assets-source-handoff-20261023",
+    "commit": "2227496827abb8ef59578216b65573f8cc6fae39",
+    "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "evidence_commit": "6160eb6fab0f3fcabcae8de82424c9b350d33981",
+    "manifest_path": "docs/handoffs/2026-10-23-typed-assets/active-source-manifest.json"
+  }
+}

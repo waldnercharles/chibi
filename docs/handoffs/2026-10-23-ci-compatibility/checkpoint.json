@@ -1,0 +1,293 @@
+{
+  "state": "WIP recovery/evidence checkpoint; no implementation added; no merge readiness",
+  "observed_utc": "2026-10-23T18:46:22.323400+00:00",
+  "repository": "https://github.com/waldnercharles/chibi",
+  "branch": "codex/ci-compatibility-handoff-20261023",
+  "checkpoint_base": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17",
+  "existing_landed_repair_remote": "codex/ci-sdk-linux-repairs-20261022 at8f9dbf5e8edb68269c820bc99baf84bf18bc9c17, reused as base without duplication",
+  "active_source_in_checkpoint": "Base8f9 only; all additions are under docs/handoffs. The eight current-source file copies and patches are archived drafts, not applied over8f9.",
+  "typed_dependency": {
+    "owner_thread": "01a160a6-7daa-74e1-b595-8af541a773eb",
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_parent": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "remote_checkpoint": {
+      "source_branch": "codex/typed-assets-source-handoff-20261023",
+      "source_commit": "2227496827abb8ef59578216b65573f8cc6fae39",
+      "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "evidence_branch": "codex/typed-assets-handoff-20261023",
+      "evidence_commit": "6160eb6fab0f3fcabcae8de82424c9b350d33981",
+      "status": "remote refs and exact source tree verified; reused, not duplicated"
+    }
+  },
+  "drafts": [
+    {
+      "name": "typed CI host compatibility",
+      "patch": "drafts/typed-host-compatibility/ci-compatibility.patch",
+      "sha256": "aeaa4e46ded85875499d9230087cfef451cf0a4a6264c1e3776b0deac4f9f453",
+      "base_head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "base_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "status": "source-reviewed; applied to typed966->f854; workflows actionlint passed; PS AST/runtime proof unrun",
+      "required_pin": "compiler-runtime-2026-10-22.2 unchanged; generic consumer does not enable QueryTarget or NativeRecovery"
+    },
+    {
+      "name": "protocol9 transition",
+      "patch": "evidence/protocol9/protocol9.patch",
+      "sha256": "30112d927517beb11440e7527fd53813342b1b0fdc7d7adfda2778c215ca1a4c",
+      "base_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+      "candidate_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "status": "source-reviewed; targeted red/green and actual normal-Make upgrade passed; full gates incomplete"
+    }
+  ],
+  "checks": {
+    "red-driver-build": {
+      "status": "passed",
+      "tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+      "exit_code": 0,
+      "elapsed_seconds": 9.89,
+      "log_sha256": "0bea87efa86f70c3d23f80b7196c577e0caf70add8cc7b4a904a223e699fae73",
+      "summaries": {
+        "passed": 0,
+        "failed": 0,
+        "assertions": 0,
+        "rows": 0
+      }
+    },
+    "red-build-toolchain": {
+      "status": "failed",
+      "tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+      "exit_code": 1,
+      "elapsed_seconds": 33.178,
+      "log_sha256": "3cbcd82d33f0b6f130b150690264c3b81e8f1cd21e085663a71274531b1c6b81",
+      "summaries": {
+        "passed": 10,
+        "failed": 1,
+        "assertions": 164,
+        "rows": 1
+      },
+      "classification": "expected negative control on regression-only source, before protocol9 fix"
+    },
+    "ordinary-release-upgrade": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "exit_code": 0,
+      "elapsed_seconds": 19.637,
+      "log_sha256": "8c3f8efa13bd81675c8618ca3f52f83ca97a98c04a83a1dd4d4e72a3edbc8e01",
+      "summaries": {
+        "passed": 0,
+        "failed": 0,
+        "assertions": 0,
+        "rows": 0
+      }
+    },
+    "green-build-toolchain": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "exit_code": 0,
+      "elapsed_seconds": 34.028,
+      "log_sha256": "e5270be0bee0be30283eb63233d9318ccd84e03087cf33d6849d4984c7275cfc",
+      "summaries": {
+        "passed": 11,
+        "failed": 0,
+        "assertions": 168,
+        "rows": 1
+      }
+    },
+    "green-build-process": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "exit_code": 0,
+      "elapsed_seconds": 23.655,
+      "log_sha256": "3d11fb1998e9ecd1ac517e07dc77d926a6fe7e17deb50dca116a3df321ad36b1",
+      "summaries": {
+        "passed": 45,
+        "failed": 0,
+        "assertions": 8975,
+        "rows": 1
+      }
+    },
+    "required-test-native": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "exit_code": 0,
+      "elapsed_seconds": 1733.444,
+      "log_sha256": "4a333f20d7790863855a438cbc193fca41dd066fb355f33491d4c398f12222c9",
+      "summaries": {
+        "passed": 632,
+        "failed": 0,
+        "assertions": 236737,
+        "rows": 75
+      }
+    },
+    "required-test-materials": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "exit_code": 0,
+      "elapsed_seconds": 165.991,
+      "log_sha256": "3858541052e265483221ae8e20ab2f77089f8e7ecaac196b2e6910d1d2c43281",
+      "summaries": {
+        "passed": 110,
+        "failed": 0,
+        "assertions": 270494,
+        "rows": 9
+      }
+    },
+    "required-test-projects": {
+      "status": "failed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "exit_code": 2,
+      "elapsed_seconds": 9910.833,
+      "log_sha256": "88e66e3227f4a5c0b0f86005abe8d209c794493fd3bbbcd885ca51df0cc35695",
+      "summaries": {
+        "passed": 59,
+        "failed": 1,
+        "assertions": 10645,
+        "rows": 3
+      },
+      "classification": "substantive unresolved Constructor-scenario failure on final6ef source"
+    },
+    "required-test-language-all": {
+      "status": "unrun",
+      "reason": "test-projects failed; no restart or further validation authorized for handoff"
+    },
+    "required-test-tools": {
+      "status": "unrun",
+      "reason": "test-projects failed; no restart or further validation authorized for handoff"
+    }
+  },
+  "failure": {
+    "group": "test-projects",
+    "selector": "validate-project",
+    "scenario": "Constructor",
+    "source": "test/tools/validate_project.c:279",
+    "message": "run_scenario Constructor: validation_failed, scene has no entities",
+    "project_group_summary": "mesh10pass/9971; model-import22pass/345; validate-project27pass1fail/329. Later project selectors unrun.",
+    "model_capacity_case": "PASSED,9299.756898 pico CPU seconds; distinct from reported chat/model-capacity interruption",
+    "chat_interruption": "Coordinator reports earlier CI chat ended with model-capacity error; not a C test assertion and not the capacity-case outcome",
+    "executed_project_selectors": [
+      "mesh-files",
+      "model-import",
+      "validate-project"
+    ],
+    "unrun_project_selectors": [
+      "prototype-expansion",
+      "controller",
+      "feature-coverage",
+      "render-fixture",
+      "material-bake",
+      "environment-authoring",
+      "terrain-checkpoint",
+      "terrain-storage-commands",
+      "terrain-playable",
+      "published-docs",
+      "chibi-cli",
+      "compiled-project-format"
+    ],
+    "project_executed_summary": {
+      "passed_cases": 59,
+      "failed_cases": 1,
+      "assertions": 10645,
+      "summary_rows": 3
+    },
+    "model_capacity_timing_kind": "pico_unit clock() CPU seconds; not elapsed wall time",
+    "project_test_wall_seconds": 9802.406
+  },
+  "execution_handoff": {
+    "state": "released; no remaining CI execution ownership",
+    "processes": [
+      {
+        "step": "red-driver-build",
+        "historical_pid": 76622,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "red-build-toolchain",
+        "historical_pid": 77103,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "ordinary-release-upgrade",
+        "historical_pid": 79693,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "green-build-toolchain",
+        "historical_pid": 81911,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "green-build-process",
+        "historical_pid": 84194,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "required-test-native",
+        "historical_pid": 92646,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "required-test-materials",
+        "historical_pid": 21407,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "required-test-projects",
+        "historical_pid": 24057,
+        "current_command": null,
+        "owned_process_present": false
+      },
+      {
+        "step": "model-import driver",
+        "historical_pid": 25206,
+        "current_command": null,
+        "owned_process_present": false
+      }
+    ],
+    "no_process_started_or_stopped_for_handoff": true,
+    "no_new_build_or_test_started": true
+  },
+  "reviews": [
+    "CI script/workflow source review and actionlint clear; see archived review receipts",
+    "Protocol9 independent and typed source review clear; actual targeted red/green proof retained",
+    "No passing full required-gate claim; no clean checkpoint Prepare/Prove claim"
+  ],
+  "holds": [
+    "Constructor project failure unresolved",
+    "Language/tools and remaining project selectors unrun",
+    "Actual PowerShell AST/Prepare/Prove and hosted all-platform current-source proof unrun; local pwsh absent",
+    "No new native provisioning, compiler runtime release, real replacement pin, merge or default change",
+    "Source eligibility, independent reviews and original PR/publication denials remain in force; cloud owns compiler/LLVM now"
+  ],
+  "local_only_dependencies": [
+    "SDK68e package and local reference/Graph hosts, drivers, archives and build outputs excluded; hashes/config evidence retained",
+    "Original dirty indexes, ignored source artifacts and worktrees retained locally; raw Git index files excluded",
+    "Original receipt paths are machine-local provenance. Remap them; do not run archived local runners unchanged."
+  ],
+  "next_steps": [
+    "Cloud verifies this CI handoff and reused-artifacts.json, then uses the verified typed222749 source and6160 evidence checkpoints; no duplicate typed-source checkpoint is needed.",
+    "Inspect/repair Constructor scenario on an eligible cloud candidate; retain this original failed evidence",
+    "Run appropriate remaining required groups and platform checks on the repaired source; do not claim native/material results cover changed source without analysis",
+    "After a reviewed clean checkpoint, run actual generic pinned.2 Prepare/Prove; native query/recovery/new producer publication stays a separate gate"
+  ],
+  "implementation_handoff": "I will make no further overlapping implementation changes after this handoff and will hold these candidates pending cloud confirmation.",
+  "other_preserved_local_states": [
+    {
+      "repository": "chibi",
+      "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/ci-publication-recovery/chibi",
+      "state": "Original pending merge/index retained; superseded CI repair is already published at8f9, not duplicated here"
+    },
+    {
+      "repository": "chibi",
+      "worktree": "/Users/cwaldner/Personal/chibi/.worktrees/ci-sdk-validation/chibi",
+      "state": "Frozen historical validation checkout/binaries retained locally; not a current6ef pass"
+    }
+  ],
+  "reused_remote_artifacts": 52
+}

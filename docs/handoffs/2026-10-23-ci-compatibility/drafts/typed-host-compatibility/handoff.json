@@ -1,0 +1,49 @@
+{
+  "scope": "Source-only compatibility preparation complete; isolated patch only",
+  "base_head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "base_staged_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "future_reservations": [
+    ".github/scripts/compiler-self-build.ps1",
+    ".github/workflows/compiler-recovery.yml",
+    ".github/workflows/compiler-runtime-seed.yml",
+    "tools/compiler/runtime.json",
+    "docs/self-hosting-build.md proof/release evidence"
+  ],
+  "files": {
+    "workflow-static-checks.json": "96d7a07416ee5220ca044266142dd917675a73b2722819f3cf77ca61fd750bb2",
+    "provision-plan.md": "ff07bae6dc60f9243da6a02caa0d16430d30abaa1caaaea3145f605aae4888c8",
+    "source-observation.json": "02f8868b7d490dfff328b6e6c07eb40154fabbaf7675a9c1a289c04bd6baad82",
+    "PLAN.md": "c94f9dd4d2fcc314115d9fd3aa4b023781811f736b2ea14ab3840af6f66f180e",
+    "handoff-before-compatibility-clarification.json": "ff164595bdb0788295701f2f87b8d2ce00b5191f0a1b9075eaf9ce30bf0edf26",
+    "ci-compatibility.patch": "aeaa4e46ded85875499d9230087cfef451cf0a4a6264c1e3776b0deac4f9f453",
+    "patch-receipt.json": "016d376675508a03475431992576b9b0a9b4fb5091254f9ee9c2827f7a82ef56",
+    "workflows.patch": "7c518c754412138bdefe2bd3ff06121cb61e125fd69df4f4ed10e7c5a2f149cc",
+    "input-plan.md": "6360f6fead396e8b17ab2860a1140a8ac3c06f1f6b90b26a10cfcdc59763e6b1",
+    "base/.github/workflows/compiler-runtime-seed.yml": "5eb2bb4c04c536a6982ed831e0f0a695d639b2aecf02ee098659d8818e35372e",
+    "base/.github/workflows/compiler-recovery.yml": "60d42ec076ed0e87bf86331eb8587a8762898f142793e4125107b0a74c59178d",
+    "candidate/.github/workflows/compiler-runtime-seed.yml": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b",
+    "candidate/.github/workflows/compiler-recovery.yml": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1",
+    "candidate/.github/scripts/compiler-self-build.ps1": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4",
+    "candidate/tools/compiler/runtime.json": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09"
+  },
+  "source_unchanged": true,
+  "heavy_execution": "not performed; current coordinated local lane belongs elsewhere",
+  "release_or_dispatch": "not performed",
+  "next": "Coordinator reviews/applies isolated source patch only after final eligible compiler/host contract reconciliation; native provisioning and later real pin values remain separate authorized steps.",
+  "compatibility_boundaries": {
+    "generic_artifact_consumer": {
+      "pin": "compiler-runtime-2026-10-22.2 preserved",
+      "invokes_native_bootstrap": false,
+      "invokes_target_query": false,
+      "KDL_removal_alone_proves_incompatibility": false,
+      "eligibility": "Actual prepared ABI/native catalog, corrected CLI arguments, executed stage1/stage2, output contracts and byte equality; current typed execution proof unrun by this lane."
+    },
+    "new_native_interfaces": {
+      "old_native_bootstrap": "Requires bootstrap.kdl; does not establish KDL-free native recovery compatibility.",
+      "old_target_query": "Not implemented.",
+      "required_before_adoption": "Matching reviewed native source, actual all-platform native/bootstrap/target proofs, then a new published runtime and coordinated consumer pin/interface update."
+    },
+    "patch_behavior": "No code, workflow or pin delta in this clarification. Generic consumer remains on .2 without NativeRecovery/QueryTarget; the separate producer opts into both."
+  },
+  "supersedes_handoff_sha256": "ff164595bdb0788295701f2f87b8d2ce00b5191f0a1b9075eaf9ce30bf0edf26"
+}

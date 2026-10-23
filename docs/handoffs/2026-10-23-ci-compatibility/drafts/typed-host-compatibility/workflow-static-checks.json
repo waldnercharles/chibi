@@ -1,0 +1,42 @@
+{
+  "scope": "Source-only isolated workflow candidates; no proof invocation, native build, download, provisioning, publication, dispatch or tracked edits.",
+  "base_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "workflows": {
+    ".github/workflows/compiler-runtime-seed.yml": {
+      "base_sha256": "5eb2bb4c04c536a6982ed831e0f0a695d639b2aecf02ee098659d8818e35372e",
+      "candidate_sha256": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b",
+      "actionlint_exit_code": 0,
+      "actionlint_output": ""
+    },
+    ".github/workflows/compiler-recovery.yml": {
+      "base_sha256": "60d42ec076ed0e87bf86331eb8587a8762898f142793e4125107b0a74c59178d",
+      "candidate_sha256": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1",
+      "actionlint_exit_code": 0,
+      "actionlint_output": ""
+    }
+  },
+  "workflows_patch_sha256": "7c518c754412138bdefe2bd3ff06121cb61e125fd69df4f4ed10e7c5a2f149cc",
+  "shared_ps1_sha256_at_review": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4",
+  "runtime_pin": {
+    "candidate_present": true,
+    "candidate_sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+    "expected_preserved_sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09"
+  },
+  "static_structure": {
+    "workflow_names_triggers_permissions_concurrency_unchanged": true,
+    "existing_job_ids_names_runners_needs_conditions_unchanged": true,
+    "three_platform_os_arch_pairs_unchanged": true,
+    "consumer_diff_exactly_repository_timeout_and_future_target_uploads": true,
+    "consumer_query_and_native_recovery_disabled": true
+  },
+  "powershell_ast_parse": {
+    "status": "not_run",
+    "reason": "pwsh unavailable locally; no installation or download authorized"
+  },
+  "powershell_source_review": [
+    "Generic consumer passes Repository/positive per-call timeout, retains PinnedRuntime and no-C setup.",
+    "Producer source guards bracket external build and proof; native-build.json is created after Prove.",
+    "Producer target and both stage manifests use JsonNode.Parse/DeepEquals; raw target digest separately binds native-build/evidence.",
+    "Producer compare binds both stage bytes, native output, runtime bytes, clean source identity, and platform."
+  ]
+}

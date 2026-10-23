@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "purpose": "Preserve historical patch context and log whitespace byte-for-byte while committed text passes normal whitespace checks. Decode only; this executes no source.",
+  "files": [
+    {
+      "decoded_path": "drafts/typed-host-compatibility/ci-compatibility.patch",
+      "transport_path": "drafts/typed-host-compatibility/ci-compatibility.patch.b64",
+      "encoding": "base64",
+      "decoded_bytes": 28138,
+      "decoded_sha256": "aeaa4e46ded85875499d9230087cfef451cf0a4a6264c1e3776b0deac4f9f453"
+    },
+    {
+      "decoded_path": "drafts/typed-host-compatibility/workflows.patch",
+      "transport_path": "drafts/typed-host-compatibility/workflows.patch.b64",
+      "encoding": "base64",
+      "decoded_bytes": 18369,
+      "decoded_sha256": "7c518c754412138bdefe2bd3ff06121cb61e125fd69df4f4ed10e7c5a2f149cc"
+    },
+    {
+      "decoded_path": "evidence/typed-readiness/sdk-oracle-context.patch",
+      "transport_path": "evidence/typed-readiness/sdk-oracle-context.patch.b64",
+      "encoding": "base64",
+      "decoded_bytes": 1809,
+      "decoded_sha256": "acb833370191ab062584e04d3dc04b4ced8ef4e150fd5186586d2f8c72e462ae"
+    }
+  ]
+}

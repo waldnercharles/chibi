@@ -1,0 +1,52 @@
+{
+  "status": "Isolated source-preparation patch, not applied or executed",
+  "base_head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "base_staged_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "patch_sha256": "aeaa4e46ded85875499d9230087cfef451cf0a4a6264c1e3776b0deac4f9f453",
+  "changed_files": {
+    ".github/scripts/compiler-self-build.ps1": {
+      "base_sha256": "60af9ae7dcd63ed926d8530db70520c5731e8dbf47848fd785000d9f2259b764",
+      "candidate_sha256": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4"
+    },
+    ".github/workflows/compiler-runtime-seed.yml": {
+      "base_sha256": "5eb2bb4c04c536a6982ed831e0f0a695d639b2aecf02ee098659d8818e35372e",
+      "candidate_sha256": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b"
+    },
+    ".github/workflows/compiler-recovery.yml": {
+      "base_sha256": "60d42ec076ed0e87bf86331eb8587a8762898f142793e4125107b0a74c59178d",
+      "candidate_sha256": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1"
+    }
+  },
+  "reserved_unchanged_runtime_pin": {
+    "path": "tools/compiler/runtime.json",
+    "sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+    "tag": "compiler-runtime-2026-10-22.2",
+    "reason": "Future publication identity/host byte hashes do not exist; no placeholder pin or unsupported query/native flags enabled for old host."
+  },
+  "checks": {
+    "apply_check": "passed against exact observed worktree",
+    "whitespace": "git apply --check --whitespace=error passed",
+    "workflow_lint": "both actionlint clean; see workflow-static-checks.json",
+    "source_review": "Independent final script and workflow review found no remaining concrete defect; previous in-source build path was corrected in candidate workflow",
+    "pure_selector_and_prepare_body": "byte-identical to observed typed original",
+    "powershell_ast": "not run; pwsh absent, no tool installation performed",
+    "runtime_proof": "not run; no native builds/host execution/provisioning/publication/CI dispatch authorized"
+  },
+  "source_preservation": "All 15 observed source hashes and staged tree unchanged",
+  "scope": "Caller-owned1800000ms per invocation, explicit generic CLI timeout, parent supervision, distinct native source-contract route, actual six-fact/native+stage/source/build receipts. Producer only enables new native query/recovery; consumer keeps .2 pin and generic route. No cybersecurity work.",
+  "compatibility_boundaries": {
+    "generic_artifact_consumer": {
+      "pin": "compiler-runtime-2026-10-22.2 preserved",
+      "invokes_native_bootstrap": false,
+      "invokes_target_query": false,
+      "KDL_removal_alone_proves_incompatibility": false,
+      "eligibility": "Actual prepared ABI/native catalog, corrected CLI arguments, executed stage1/stage2, output contracts and byte equality; current typed execution proof unrun by this lane."
+    },
+    "new_native_interfaces": {
+      "old_native_bootstrap": "Requires bootstrap.kdl; does not establish KDL-free native recovery compatibility.",
+      "old_target_query": "Not implemented.",
+      "required_before_adoption": "Matching reviewed native source, actual all-platform native/bootstrap/target proofs, then a new published runtime and coordinated consumer pin/interface update."
+    },
+    "patch_behavior": "No code, workflow or pin delta in this clarification. Generic consumer remains on .2 without NativeRecovery/QueryTarget; the separate producer opts into both."
+  }
+}

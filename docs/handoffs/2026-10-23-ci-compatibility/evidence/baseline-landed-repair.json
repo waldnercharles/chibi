@@ -1,0 +1,148 @@
+{
+  "commit": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17",
+  "tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+  "tracked_status": "clean",
+  "hosted_runs": {
+    "39891362350": {
+      "conclusion": "success",
+      "head": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17",
+      "jobs": [
+        {
+          "id": 120211639309,
+          "name": "Studio build and startup",
+          "conclusion": "success"
+        },
+        {
+          "id": 120211639442,
+          "name": "Graph SDK packaging and relocation (Linux)",
+          "conclusion": "success"
+        },
+        {
+          "id": 120211639484,
+          "name": "Engine build and native tests (macOS)",
+          "conclusion": "success"
+        },
+        {
+          "id": 120211639570,
+          "name": "Engine build and native tests",
+          "conclusion": "success"
+        },
+        {
+          "id": 120211639665,
+          "name": "Paired Studio SDK verification / Paired Studio native and Web SDK verification",
+          "conclusion": "success"
+        },
+        {
+          "id": 120211639698,
+          "name": "clang-format",
+          "conclusion": "success"
+        },
+        {
+          "id": 120211640101,
+          "name": "Studio build (Windows)",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 120211672596,
+          "name": "Engine build and compile smoke test (Windows)",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    "39891496704": {
+      "conclusion": "success",
+      "head": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17",
+      "jobs": [
+        {
+          "id": 120212077420,
+          "name": "Compiler self-build (macos-15)",
+          "conclusion": "success"
+        },
+        {
+          "id": 120212077729,
+          "name": "Compiler self-build (windows-2022)",
+          "conclusion": "success"
+        },
+        {
+          "id": 120212077840,
+          "name": "Compiler self-build (ubuntu-24.04)",
+          "conclusion": "success"
+        },
+        {
+          "id": 120212295732,
+          "name": "Compiler self-build across platforms",
+          "conclusion": "success"
+        }
+      ]
+    }
+  },
+  "receipts": {
+    ".chibi/ci-recovery/final-candidate.json": "feb5b1926fea7d0742bbdb35402872486a26961b626ecc308086f8834c563a17",
+    ".chibi/ci-recovery/hosted-linux-native-39891362350/audit.json": "d2dd8ec32cfb00a91e96276ba2afa9cf7413df24013fe07b433e8e5196d3e78f",
+    ".chibi/ci-recovery/hosted-macos-native-39891362350/audit.json": "f9264ddb1a8ce442eb572a9e8ca2fdc8db9b58d8359853ee21506d2115c7e0aa",
+    ".chibi/ci-recovery/hosted-linux-sdk-39891362350/audit.json": "7037cf3e6b1fcb0f1e4c563c2bfc0baf4cff84a88b25ca2e55c23e7cb5f630a6",
+    ".chibi/ci-recovery/hosted-studio-39891362350/default-script-audit.json": "0d8975ab14f87bfecc1ac3336df14e0faf55e8f67680f68f0ee2309a2528de72",
+    ".chibi/ci-recovery/hosted-studio-39891362350/paired-script-audit.json": "5a05ace5d9971010b0e307ce475993d78861acd983fc42c609a9940fdae48b2e",
+    ".chibi/ci-recovery/compiler-proof-audit/audit-39891496704-20261023T025556Z-76f2f41c.json": "a656eaeb4e2afbd4d1f53ed712e425d745933914720891ac625400886ffacbf9",
+    ".chibi/ci-recovery/pr653-final-body.txt": "fb611b10ed79f3c05284119b18b6fa657bcb6c8f9dfd67875de99669333bf0cf",
+    ".chibi/ci-recovery/pr653-final-title.txt": "724aa49cb020fecc3c4881050408f7d7ca0f0a68c53d3681aa813f766d69e29e"
+  },
+  "local_groups": {
+    "cases": 1592,
+    "assertions": 1570365
+  },
+  "hosted_linux_native": {
+    "cases": 1596,
+    "assertions": 1570372,
+    "four_extra_cases": [
+      "nested_cancellation_cleans_detached_descendants",
+      "orphan_setsid_cleanup",
+      "missing_proc_uses_portable_discovery",
+      "pending_termination_still_cleans_up"
+    ]
+  },
+  "hosted_macos_native": {
+    "cases": 1592,
+    "assertions": 1570365
+  },
+  "graph_sdk": {
+    "Linux": {
+      "cases": 8,
+      "assertions": 201
+    },
+    "local_macos": {
+      "cases": 8,
+      "assertions": 205
+    },
+    "difference": "Existing case-insensitive filesystem alias containment branch."
+  },
+  "limits": [
+    "Windows native/Studio intentionally paused; three-platform compiler proof is separate.",
+    "Starter native two-frame smoke and serial Web compilation do not establish authored Studio UI/browser runtime/visual acceptance.",
+    "SDK/product bytes are not in Studio evidence artifact; their build checks occurred in successful jobs.",
+    "No cybersecurity review added.",
+    "Coordinator ordinarily merged PR653; original PR662/666 ancestry preserved and reconciled merged. Branches retained."
+  ],
+  "scratch": "Alternate regression binary/object/archive outputs removed. Original hosted artifacts, logs, source variants, build products and audit receipts retained for traceability.",
+  "landing": {
+    "coordinator_landed_commit": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+    "tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+    "pull_requests": {
+      "653": {
+        "merged": true,
+        "merge_commit_sha": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+        "head": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17"
+      },
+      "662": {
+        "merged": true,
+        "merge_commit_sha": "c9ffc252105513c1c1935d246413197ec23d8c1f",
+        "head": "3c9db9b8b8c9103d35c8f82bfc21f2bf5b113e98"
+      },
+      "666": {
+        "merged": true,
+        "merge_commit_sha": "c88680df14431367433ab6be5004bb3ddd408da7",
+        "head": "8c5a6e6f0c5437f8f0a06d25c2e311fa1031f977"
+      }
+    }
+  }
+}

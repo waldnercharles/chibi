@@ -1,0 +1,73 @@
+{
+  "state": "execution released for cloud handoff",
+  "observed_utc": "2026-10-23T18:49:29.628523+00:00",
+  "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "preserved_merge_parent": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "project_status": "failed Constructor scenario; log SHA88e66e3227f4a5c0b0f86005abe8d209c794493fd3bbbcd885ca51df0cc35695",
+  "remaining_groups": "language/tools not started; remaining12 project selectors unrun",
+  "process_audit": [
+    {
+      "step": "red-driver-build",
+      "historical_pid": 76622,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "red-build-toolchain",
+      "historical_pid": 77103,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "ordinary-release-upgrade",
+      "historical_pid": 79693,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "green-build-toolchain",
+      "historical_pid": 81911,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "green-build-process",
+      "historical_pid": 84194,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "required-test-native",
+      "historical_pid": 92646,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "required-test-materials",
+      "historical_pid": 21407,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "required-test-projects",
+      "historical_pid": 24057,
+      "current_command": null,
+      "owned_process_present": false
+    },
+    {
+      "step": "model-import driver",
+      "historical_pid": 25206,
+      "current_command": null,
+      "owned_process_present": false
+    }
+  ],
+  "no_remaining_local_execution_ownership": true,
+  "no_process_started_or_stopped_for_handoff": true,
+  "implementation_freeze": "No further overlapping local implementation changes after handoff; candidates held pending cloud confirmation.",
+  "supersedes_stale_running_ledgers": [
+    "evidence/protocol9/execution.json",
+    "evidence/required-gate-plan/plan.json"
+  ],
+  "runtime_ownership": "Cloud/coordinator must establish its own execution scheduling; this record does not grant a queued local measurement or restart."
+}

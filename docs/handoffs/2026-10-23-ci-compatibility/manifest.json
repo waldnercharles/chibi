@@ -1,0 +1,148 @@
+{
+  "format": 1,
+  "scope": "WIP archival CI drafts and execution handoff; existing typed/protocol evidence reused by verified remote reference",
+  "base_commit": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17",
+  "file_count": 28,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 8625,
+      "sha256": "92d3ca2228cdceab68798e83a3826b3089e88d6d41ab53fb714caeda510521d4"
+    },
+    {
+      "path": "checkpoint.json",
+      "bytes": 11642,
+      "sha256": "2dbdc1076523992f45883a8a4af5467e2d121a04725a8c345c59bbeade5da5ce"
+    },
+    {
+      "path": "decode-evidence.py",
+      "bytes": 1111,
+      "sha256": "d45f80bbc96b03a238b693722a6165cee157cb603b0fabc1490dbd011bdac030"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/PLAN.md",
+      "bytes": 14504,
+      "sha256": "c94f9dd4d2fcc314115d9fd3aa4b023781811f736b2ea14ab3840af6f66f180e"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/base/.github/workflows/compiler-recovery.yml",
+      "bytes": 6692,
+      "sha256": "60d42ec076ed0e87bf86331eb8587a8762898f142793e4125107b0a74c59178d"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/base/.github/workflows/compiler-runtime-seed.yml",
+      "bytes": 7825,
+      "sha256": "5eb2bb4c04c536a6982ed831e0f0a695d639b2aecf02ee098659d8818e35372e"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/candidate/.github/scripts/compiler-self-build.ps1",
+      "bytes": 19069,
+      "sha256": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/candidate/.github/workflows/compiler-recovery.yml",
+      "bytes": 6981,
+      "sha256": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/candidate/.github/workflows/compiler-runtime-seed.yml",
+      "bytes": 18609,
+      "sha256": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/candidate/tools/compiler/runtime.json",
+      "bytes": 883,
+      "sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/ci-compatibility.patch.b64",
+      "bytes": 38014,
+      "sha256": "f5dc45dde885f5633d002ac70f139dd8711cf7c77e94619cd1d4514bea113ddf"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/handoff-before-compatibility-clarification.json",
+      "bytes": 2347,
+      "sha256": "ff164595bdb0788295701f2f87b8d2ce00b5191f0a1b9075eaf9ce30bf0edf26"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/handoff.json",
+      "bytes": 3613,
+      "sha256": "33b450f0c1698ffeac2a9fe5affc60d149d219c3200c50b5e75026aab9a249c8"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/input-plan.md",
+      "bytes": 9301,
+      "sha256": "6360f6fead396e8b17ab2860a1140a8ac3c06f1f6b90b26a10cfcdc59763e6b1"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/patch-receipt.json",
+      "bytes": 3495,
+      "sha256": "016d376675508a03475431992576b9b0a9b4fb5091254f9ee9c2827f7a82ef56"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/provision-plan.md",
+      "bytes": 12378,
+      "sha256": "ff07bae6dc60f9243da6a02caa0d16430d30abaa1caaaea3145f605aae4888c8"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/source-observation.json",
+      "bytes": 1856,
+      "sha256": "02f8868b7d490dfff328b6e6c07eb40154fabbaf7675a9c1a289c04bd6baad82"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/workflow-static-checks.json",
+      "bytes": 2289,
+      "sha256": "96d7a07416ee5220ca044266142dd917675a73b2722819f3cf77ca61fd750bb2"
+    },
+    {
+      "path": "drafts/typed-host-compatibility/workflows.patch.b64",
+      "bytes": 24815,
+      "sha256": "a29bc51443e7b0804647e4e23b86ee594c45c32f0bd0fe4ba8eeb32d7a18f385"
+    },
+    {
+      "path": "evidence/baseline-landed-repair.json",
+      "bytes": 5480,
+      "sha256": "4fee22a2c65cec9cc31ae54f49fe94a5a4eeba64f4a61ab900756e8c1a8621a9"
+    },
+    {
+      "path": "evidence/protocol9/base/Makefile",
+      "bytes": 27280,
+      "sha256": "1c801a29be10a759077ef4c6caf52055b938481b84dc9e72e8e07a2958a2c97f"
+    },
+    {
+      "path": "evidence/protocol9/candidate/Makefile",
+      "bytes": 27280,
+      "sha256": "68259fa4df3cd77cb83eb482ef23f26327454a396d1e60756e1de130e480b22f"
+    },
+    {
+      "path": "evidence/typed-readiness/sdk-oracle-context.patch.b64",
+      "bytes": 2444,
+      "sha256": "0a8716bfca8e89bf1ac8ed5ba40d7aeecd8504036f3b104a5873eb93440abecf"
+    },
+    {
+      "path": "execution-handoff.json",
+      "bytes": 2415,
+      "sha256": "0d6e93417a0c41ce81baaaa5a3a7f469a69e3112fa17ca7ab32bfcbaa526d30f"
+    },
+    {
+      "path": "payload-origins.json",
+      "bytes": 50658,
+      "sha256": "5562eba8a2907703a0cb72be8867a6bd2b93c86b9f89c8fd2f35802f25ccb4e9"
+    },
+    {
+      "path": "reused-artifacts.json",
+      "bytes": 43870,
+      "sha256": "e6b1e8e4b9d9e623da83b29a0170fc88c33629c7bf04b3f6ba438dc78181ca52"
+    },
+    {
+      "path": "source-manifest.json",
+      "bytes": 3282,
+      "sha256": "9fc253024d908980009f01a59b446d6758138db02b9992b4c05d78327c573f78"
+    },
+    {
+      "path": "transport.json",
+      "bytes": 1169,
+      "sha256": "55adb64782a6b0102785275f32d79d6eba12cc51d2e31f6e911a7215346a11ea"
+    }
+  ]
+}

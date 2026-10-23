@@ -1,0 +1,231 @@
+package native_driver_tests
+
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+Invoke :: (settings: string[], input: string, output: string,
+           opt: string, llc: string, linker: string, mode: string) -> int {
+    return build.probe([
+        settings[0], "--root", build.root(), "--source", settings[1],
+        "--core", settings[3], "--compiler", settings[2], "--compiler-core", settings[3],
+        "--entry", "Build", "--timeout-ms", "30000", "--",
+        input, output, opt, llc, linker, mode
+    ]);
+}
+
+Failure :: (name: string) -> int {
+    build.report(Join(["native-driver test failed: ", name]));
+    build.report(build.last_stderr());
+    return 1;
+}
+
+Absent :: (output: string) -> bool {
+    return build.file_kind(output) == "" && build.file_kind(Join([output, ".partial"])) == "";
+}
+
+// Actual CLI integration, not an alternate implementation of driver semantics.
+// All fixtures/output paths are below a directory this invocation reserves.
+Tests :: () -> int {
+    settings := build.arguments();
+    if (length(settings) != 9) {
+        build.report("usage: HOST DRIVER COMPILER CORE EMITTED42.ll FRESH_TEST_DIR OPT LLC LINKER");
+        return 2;
+    }
+    root := settings[5];
+    if (!build.reserve_directory(root)) {
+        return Failure("fresh test directory");
+    }
+    input := Join([root, "/input with spaces.ll"]);
+    opt := Join([root, "/opt tool"]);
+    llc := Join([root, "/llc tool"]);
+    if (!build.copy_file(settings[4], input) || !build.copy_file(settings[6], opt) ||
+        !build.copy_file(settings[7], llc)) {
+        return Failure("space-path fixtures");
+    }
+    for (mode in ["0", "2"]) {
+        output := Join([root, "/success with spaces ", mode]);
+        if (Invoke(settings, input, output, opt, llc, settings[8], mode) != 0) {
+            return Failure(Join(["native build O", mode]));
+        }
+        program := Join([output, "/program"]);
+        receipt := Join([output, "/receipt.txt"]);
+        before := build.hash_file(receipt);
+        binary := build.hash_file(program);
+        if (before == "" || binary == "" || build.probe([program]) != 42) {
+            return Failure(Join(["native result O", mode]));
+        }
+        record := build.read_file(receipt);
+        if (!strings.Contains(record, "output-kind executable\n") ||
+            !strings.Contains(record, Join(["input-sha256 ", build.hash_file(input), "\n"])) ||
+            !strings.Contains(record, Join(["program-sha256 ", binary, "\n"])) ||
+            !strings.Contains(record, Join(["opt-sha256 ", build.hash_file(opt), "\n"])) ||
+            !strings.Contains(record, Join(["llc-sha256 ", build.hash_file(llc), "\n"]))) {
+            return Failure("receipt hashes");
+        }
+        if (Invoke(settings, input, output, opt, llc, settings[8], mode) == 0 ||
+            build.hash_file(receipt) != before || build.hash_file(program) != binary ||
+            build.file_kind(Join([output, ".partial"])) != "") {
+            return Failure("existing complete output preservation");
+        }
+        // Receipts/IR remain evidence; remove generated executable/object bytes.
+        if (!build.remove(program) || !build.remove(Join([output, "/object.o"]))) {
+            return Failure("generated binary cleanup");
+        }
+    }
+    bad := Join([root, "/bad.ll"]);
+    if (!build.write_file(bad, "this is not LLVM IR\n")) {
+        return Failure("bad IR fixture");
+    }
+    output := Join([root, "/verifier-failure"]);
+    if (Invoke(settings, bad, output, opt, llc, settings[8], "0") == 0 || !Absent(output)) {
+        return Failure("verifier failure cleanup");
+    }
+    triple := "target triple = \"x86_64-unknown-linux-gnu\"";
+    wrong := "target triple = \"aarch64-unknown-linux-gnu\"";
+    text := build.read_file(input);
+    // Canonical metadata, not target-looking comments or a raw substring.
+    replacements := ["", wrong, Join([triple, "\n", wrong]),
+                     Join(["target datalayout = \"e-p:32:32\"\n", triple]),
+                     Join(["; ", triple]), Join(["; ", triple, "\n", wrong])];
+    for (i in 0..<length(replacements)) {
+        metadata := Join([root, "/metadata-", format_text("{}", i), ".ll"]);
+        output = Join([root, "/metadata-rejection-", format_text("{}", i)]);
+        if (!build.write_file(metadata, strings.ReplaceAll(text, triple, replacements[i])) ||
+            Invoke(settings, metadata, output, opt, llc, settings[8], "0") == 0 || !Absent(output)) {
+            return Failure("canonical metadata rejection");
+        }
+    }
+    // LLVM resolves repeated declarations to its final canonical target. The
+    // driver admits that verified meaning, not provenance of the input text.
+    metadata := Join([root, "/duplicate-supported-last.ll"]);
+    output = Join([root, "/duplicate-supported-last"]);
+    if (!build.write_file(metadata, strings.ReplaceAll(text, triple, Join([wrong, "\n", triple]))) ||
+        Invoke(settings, metadata, output, opt, llc, settings[8], "0") != 0 ||
+        build.probe([Join([output, "/program"])]) != 42 ||
+        !build.remove(Join([output, "/program"])) || !build.remove(Join([output, "/object.o"]))) {
+        return Failure("canonical supported-last target");
+    }
+    false_tool := build.find_executable("false");
+    if (false_tool == "") {
+        return Failure("negative process tool");
+    }
+    output = Join([root, "/object-failure"]);
+    if (Invoke(settings, input, output, opt, false_tool, settings[8], "0") == 0 || !Absent(output)) {
+        return Failure("object stage failure cleanup");
+    }
+    output = Join([root, "/link-failure"]);
+    if (Invoke(settings, input, output, opt, llc, false_tool, "0") == 0 || !Absent(output)) {
+        return Failure("link stage failure cleanup");
+    }
+    output = Join([root, "/stale"]);
+    partial := Join([output, ".partial"]);
+    marker := Join([partial, "/prior-owner"]);
+    if (!build.reserve_directory(partial) || !build.write_file(marker, "keep\n")) {
+        return Failure("stale partial fixture");
+    }
+    if (Invoke(settings, input, output, opt, llc, settings[8], "0") == 0 ||
+        build.read_file(marker) != "keep\n" || build.file_kind(output) != "") {
+        return Failure("stale partial preservation");
+    }
+    if (!build.remove(opt) || !build.remove(llc)) {
+        return Failure("tool-copy cleanup");
+    }
+    build.report("native-driver: O0/O2, argv spaces, receipt hashes, canonical target/layout, verifier/stage failures and prior-output preservation passed");
+    return 0;
+}
+
+InvokeObject :: (settings: string[], input: string, output: string,
+                 opt: string, llc: string, mode: string) -> int {
+    return build.probe([
+        settings[0], "--root", build.root(), "--source", settings[1],
+        "--core", settings[3], "--compiler", settings[2], "--compiler-core", settings[3],
+        "--entry", "Object", "--timeout-ms", "30000", "--",
+        input, output, opt, llc, mode
+    ]);
+}
+
+// The parameterized scalar module needs no main wrapper or dummy linker.
+Objects :: () -> int {
+    settings := build.arguments();
+    if (length(settings) != 8) {
+        build.report("usage: HOST DRIVER COMPILER CORE PARAMETER_IR FRESH_TEST_DIR OPT LLC");
+        return 2;
+    }
+    root := settings[5];
+    if (!build.reserve_directory(root)) {
+        return Failure("fresh object test directory");
+    }
+    input := Join([root, "/parameter input with spaces.ll"]);
+    if (!build.copy_file(settings[4], input)) {
+        return Failure("parameter fixture");
+    }
+    opt := settings[6];
+    llc := settings[7];
+    for (mode in ["0", "2"]) {
+        output := Join([root, "/object with spaces ", mode]);
+        if (InvokeObject(settings, input, output, opt, llc, mode) != 0) {
+            return Failure(Join(["object build O", mode]));
+        }
+        object := Join([output, "/object.o"]);
+        receipt := Join([output, "/receipt.txt"]);
+        binary := build.hash_file(object);
+        before := build.hash_file(receipt);
+        record := build.read_file(receipt);
+        if (binary == "" || before == "" || build.file_kind(Join([output, "/program"])) != "" ||
+            !strings.Contains(record, "output-kind object\n") ||
+            !strings.Contains(record, Join(["input-sha256 ", build.hash_file(input), "\n"])) ||
+            !strings.Contains(record, Join(["object-sha256 ", binary, "\n"])) ||
+            !strings.Contains(record, Join(["opt-sha256 ", build.hash_file(opt), "\n"])) ||
+            !strings.Contains(record, Join(["llc-sha256 ", build.hash_file(llc), "\n"])) ||
+            strings.Contains(record, "\nlinker ") || strings.Contains(record, "linker-sha256 ") ||
+            strings.Contains(record, "program-sha256 ") || strings.Contains(record, "stage link\n")) {
+            return Failure("object-only receipt and artifacts");
+        }
+        if (InvokeObject(settings, input, output, opt, llc, mode) == 0 ||
+            build.hash_file(receipt) != before || build.hash_file(object) != binary ||
+            build.file_kind(Join([output, ".partial"])) != "") {
+            return Failure("existing object publication preservation");
+        }
+        if (!build.remove(object)) {
+            return Failure("generated object cleanup");
+        }
+    }
+    bad := Join([root, "/bad.ll"]);
+    if (!build.write_file(bad, "not LLVM IR\n")) {
+        return Failure("object verifier fixture");
+    }
+    output := Join([root, "/verifier-failure"]);
+    if (InvokeObject(settings, bad, output, opt, llc, "0") == 0 || !Absent(output)) {
+        return Failure("object verifier failure cleanup");
+    }
+    false_tool := build.find_executable("false");
+    true_tool := build.find_executable("true");
+    if (false_tool == "" || true_tool == "") {
+        return Failure("object negative tools");
+    }
+    for (tool in [false_tool, true_tool]) {
+        output = Join([root, "/emission-failure"]);
+        if (InvokeObject(settings, input, output, opt, tool, "0") == 0 || !Absent(output)) {
+            return Failure("object emission failure or missing artifact cleanup");
+        }
+    }
+    output = Join([root, "/bad-mode"]);
+    if (InvokeObject(settings, input, output, opt, llc, "1") != 2 || !Absent(output)) {
+        return Failure("object optimization admission");
+    }
+    output = Join([root, "/stale"]);
+    partial := Join([output, ".partial"]);
+    marker := Join([partial, "/prior-owner"]);
+    if (!build.reserve_directory(partial) || !build.write_file(marker, "keep\n")) {
+        return Failure("object stale partial fixture");
+    }
+    if (InvokeObject(settings, input, output, opt, llc, "0") == 0 ||
+        build.read_file(marker) != "keep\n" || build.file_kind(output) != "") {
+        return Failure("object stale partial preservation");
+    }
+    build.report("native-driver: Object O0/O2, receipt kind and hashes, no linker/program, verifier/emission failures and prior-output preservation passed");
+    return 0;
+}

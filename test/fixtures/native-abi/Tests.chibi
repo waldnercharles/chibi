@@ -1,0 +1,16 @@
+package native_abi_checks
+
+@test
+LinuxTargetIsExplicit :: () {
+    assert(TargetChecks() == 0, "exact destination triple and pointer width");
+}
+
+@test
+OtherTargetsAreRejected :: () {
+    assert(RejectedTargetChecks() == 0, "unsupported targets must not inherit the initial ABI");
+}
+
+@test
+OnlyPlainBoolAndIntHaveScalarTypes :: () {
+    assert(ScalarTypeChecks() == 0, "only plain bool and int have an internal LLVM type");
+}

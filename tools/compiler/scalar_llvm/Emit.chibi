@@ -1,0 +1,123 @@
+package scalar_llvm
+
+import facts "project:scalar_facts"
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Internal consumer result, not another source/facts representation. Rejections
+// preserve the exact producer record, including its source and diagnostic.
+pub Result :: union {
+    Rejected(projection: facts.NullaryPureInt32Return) | Invalid(message: string) | Emitted(text: string)
+}
+
+Range :: (start: int, end: int, size: int) -> bool {
+    return start >= 0 && end >= start && end <= size;
+}
+Position :: (text: int[], offset: int, line: int, column: int) -> bool {
+    row := 1;
+    col := 1;
+    for (i in 0..<offset) {
+        if (text[i] == 10) {
+            row += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    return row == line && col == column;
+}
+
+// This validates the bounded representation, not the truth of a fabricated
+// Accepted record. The caller must bind the actual trusted producer artifact,
+// source bytes and unchanged result envelope. No source parsing occurs here.
+pub Validate :: (value: facts.NullaryPureInt32Return) -> string {
+    size := strings.ByteLength(value.text);
+    if (size > 16384) {
+        return "scalar consumer source exceeds 16384 bytes";
+    }
+    if (!value.accepted) {
+        if (value.value != 0 || value.name != "" ||
+            value.declaration_start != 0 || value.declaration_end != 0 ||
+            value.declaration_line != 0 || value.declaration_column != 0 ||
+            value.body_start != 0 || value.body_end != 0 || value.body_line != 0 || value.body_column != 0 ||
+            value.return_start != 0 || value.return_end != 0 || value.return_line != 0 || value.return_column != 0 ||
+            value.expression_start != 0 || value.expression_end != 0 ||
+            value.expression_line != 0 || value.expression_column != 0 || value.diagnostic_message == "") {
+            return "noncanonical rejected scalar projection";
+        }
+        if (!Range(value.diagnostic_start, value.diagnostic_end, size)) {
+            return "invalid scalar diagnostic range";
+        }
+        if (!Position(strings.Bytes(value.text), value.diagnostic_start,
+                      value.diagnostic_line, value.diagnostic_column)) {
+            return "invalid scalar diagnostic position";
+        }
+        return "";
+    }
+    if (value.name == "" || value.path == "" || value.key == "" ||
+        value.diagnostic_start != 0 || value.diagnostic_end != 0 ||
+        value.diagnostic_line != 0 || value.diagnostic_column != 0 || value.diagnostic_message != "") {
+        return "noncanonical accepted scalar projection";
+    }
+    if (!Range(value.declaration_start, value.declaration_end, size) ||
+        !Range(value.body_start, value.body_end, size) ||
+        !Range(value.return_start, value.return_end, size) ||
+        !Range(value.expression_start, value.expression_end, size) ||
+        value.declaration_start == value.declaration_end || value.body_start == value.body_end ||
+        value.return_start == value.return_end || value.expression_start == value.expression_end ||
+        value.body_start < value.declaration_start || value.body_end > value.declaration_end ||
+        value.return_start < value.body_start || value.return_end > value.body_end ||
+        value.expression_start < value.return_start || value.expression_end > value.return_end) {
+        return "invalid scalar body range nesting";
+    }
+    bytes := strings.Bytes(value.text);
+    if (!Position(bytes, value.declaration_start, value.declaration_line, value.declaration_column) ||
+        !Position(bytes, value.body_start, value.body_line, value.body_column) ||
+        !Position(bytes, value.return_start, value.return_line, value.return_column) ||
+        !Position(bytes, value.expression_start, value.expression_line, value.expression_column)) {
+        return "invalid scalar source position";
+    }
+    return "";
+}
+
+pub Emit :: (value: facts.NullaryPureInt32Return) -> Result {
+    error := Validate(value);
+    if (error != "") {
+        return Result.Invalid(error);
+    }
+    if (!value.accepted) {
+        return Result.Rejected(value);
+    }
+    // Explicit backend-fixture policy: chibi_scalar() -> i32, one entry CHECK
+    // and budget 1. Neither the export name nor the budget is inferred from
+    // source identity, and no general runtime/default budget is introduced.
+    check: native.Instruction = {op: native.Check, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
+    constant: native.Instruction = {op: native.Constant, type: 6, output: 0, left: 0, right: 0, target: 0, literal: value.value};
+    publish: native.Instruction = {op: native.Publish, type: 6, output: 0, left: 0, right: 0, target: 0, literal: 0};
+    finish: native.Instruction = {op: native.Return, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
+    empty: int[] = [];
+    switch native.Emit(abi.LinuxX64(), empty, 6, [6], empty, [check, constant, publish, finish], false, 1) {
+        case .Rejected(instruction, message):
+            return Result.Invalid(message);
+        case .Emitted(text):
+            return Result.Emitted(text);
+    }
+}
+
+// Existing compiler-host --output-bytes rejects an empty result before file
+// publication. Emit retains typed diagnostics; this entry adds no host codec.
+pub EmitBytes :: (value: facts.NullaryPureInt32Return) -> byte[] {
+    output: byte[] = [];
+    switch Emit(value) {
+        case .Rejected(projection):
+            return output;
+        case .Invalid(message):
+            return output;
+        case .Emitted(text):
+            for (item in strings.Bytes(text)) {
+                output.append(byte(item));
+            }
+            return output;
+    }
+}

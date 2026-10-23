@@ -3503,6 +3503,81 @@ TEST_CASE(package_compiler_omits_debug_info)
     }
     return true;
 }
+/* Stage zero currently resolves assert through its native catalog, so its
+ * ordinary pure-target oracle cannot model this authored intrinsic contract.
+ * Compile directly with no game/native assertion pack and inspect the emitted
+ * checked instruction before running both execution backends. Existing oracle
+ * samples remain unchanged. */
+TEST_CASE(package_compiler_asserts_without_native_capability)
+{
+    REQUIRE(prepare());
+    const sample cases[] = {
+        { .source = "package facts\n"
+                    "Double :: (n: int) -> int {\n"
+                    "    assert(condition: n > 0, message: \"n is "
+                    "positive\");\n"
+                    "    return n * 2;\n}\n",
+          .calls = { { .function = "Double", .arguments = "[3]", .expected = "[6]" },
+                     { .function = "Double",
+                       .arguments = "[-1]",
+                       .expected = NULL,
+                       .diagnostic = "Assertion failed: n is positive" } } },
+        { .source = "package facts\n"
+                    "assert :: (n: int) -> int { return n + 7; }\n"
+                    "Main :: () -> int { return assert(3); }\n",
+          .calls = { { .function = "Main", .arguments = "[]", .expected = "[10]" } } },
+        { .source = "package facts\n"
+                    "import lib \"project:lib\"\n"
+                    "Main :: () -> int { return lib.assert(3); }\n",
+          .library = "package lib\npub assert :: (n: int) -> int { return n + "
+                     "9; }\n",
+          .calls = { { .function = "Main", .arguments = "[]", .expected = "[12]" } } }
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        source_package_input inputs[SAMPLE_INPUTS];
+        int count = sample_inputs(&cases[i], inputs);
+        for (int b = 0; b < 2; b++) {
+            pin_value out;
+            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
+            arena_free(&detached);
+            native_capabilities *native;
+            package_collection *packages = read_packages(bytes, length, &native);
+            REQUIRE(packages);
+            int checked = 0;
+            for (int p = 0; p < package_collection_count(packages); p++) {
+                const execution_module_plan
+                    *plan = &package_collection_module(packages, p)->plan;
+                for (int f = 0; f < plan->function_count; f++) {
+                    const behavior_function *body = plan->functions[f].body;
+                    for (int op = 0; op < acount(body->instructions); op++) {
+                        if (body->instructions[op].op == BF_ASSERT) {
+                            REQUIRE(body->instructions[op].target == BEHAVIOR_FUNCTION_DATA);
+                            REQUIRE(!acount(body->host_calls));
+                            checked++;
+                        }
+                    }
+                }
+            }
+            package_collection_free(packages);
+            native_capabilities_free(native);
+            REQUIRE(checked == (i == 0));
+            bool ran = true;
+            for (int c = 0; ran && c < CALLS && cases[i].calls[c].function; c++) {
+                for (int backend = 0; ran && backend < 2; backend++) {
+                    ran = run(bytes, length, &cases[i].calls[c], backend);
+                }
+            }
+            free(bytes);
+            REQUIRE(ran);
+        }
+    }
+    return true;
+}
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -5072,6 +5147,7 @@ void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_packages);
+    RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_types()

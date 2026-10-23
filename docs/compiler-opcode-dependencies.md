@@ -52,3 +52,18 @@ debug points/watches and negative cases), and receive independent review of
 the exact candidate. The historical LLVM source-native proof is retained on
 its own branch and is not a current-main compatibility claim. Bootstrap seed
 publication and integration remain gated on that evidence.
+
+## First code experiment
+
+The six-helper change lowers reconstructed work to **264,940,375** units,
+saving 3,256,968 and leaving 3,495,081 units of headroom without relaxing the
+host. Three successive compiler generations load successfully and are
+byte-identical:
+`6affbe6529cfda5fa3315bdf3f0cbabf9e9f00728f8c195a1e60afd8ad4eb7e0`.
+This is a measured improvement, not a claim of unlimited compiler growth;
+future frontend/emission decomposition still needs an explicit design.
+
+The code checkpoint is WIP: the checked-in bootstrap closure and inventory
+have intentionally not been published before independent exact-head review.
+Old/new compiler, debug/watch and native source compatibility proofs remain
+the integration gate; the fixed point alone does not replace those tests.

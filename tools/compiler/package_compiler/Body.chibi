@@ -356,12 +356,12 @@ PointAt :: (key: string, solid: int[], kind: int, meaning: uint64, completion: b
 }
 // A return's SOURCE_POINT, which EmitBody makes the function's completion
 // point at the return.
-CompletionCode :: (ops: Ops, node: snapshot.SnapshotNode) -> Code {
-    return Instruction(ops.source_point, 0, 0, CompletionPoint, 0, 0, node);
+CompletionCode :: (opcode: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(opcode, 0, 0, CompletionPoint, 0, 0, node);
 }
 // The point of the expression at `node`.
-ExpressionCode :: (ops: Ops, node: snapshot.SnapshotNode) -> Code {
-    return Instruction(ops.source_point, 0, 0, ExpressionPoint, 0, 0, node);
+ExpressionCode :: (opcode: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(opcode, 0, 0, ExpressionPoint, 0, 0, node);
 }
 // A point at `node` of the symbol that the node `declared` declares, -1 when
 // the source declares none.
@@ -369,8 +369,8 @@ SymbolCode :: (ops: Ops, declared: int, node: snapshot.SnapshotNode) -> Code {
     return Instruction(ops.source_point, 0, 0, SymbolPoint, declared, 0, node);
 }
 // A point at `node` of a record of `kind` whose occurrence is `occurrence`.
-OccurrenceCode :: (ops: Ops, kind: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
-    return {op: ops.source_point, type: 0, output: 0, left: OccurrencePoint, right: kind, target: 0, offset: 0,
+OccurrenceCode :: (opcode: int, kind: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
+    return {op: opcode, type: 0, output: 0, left: OccurrencePoint, right: kind, target: 0, offset: 0,
             value_storage: 0, value_container: 0, value_record: -1, payload: occurrence, text: "", has_text: false,
             message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
             column: node.column + 1};
@@ -413,7 +413,7 @@ ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 // An identifier's points as stage zero evaluates it: the expression's, then
 // the name's when it names one.
 NamePoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ops: Ops, node: int) -> Code[] {
-    code: Code[] = [ExpressionCode(ops, forest[node])];
+    code: Code[] = [ExpressionCode(ops.source_point, forest[node])];
     found := Lookup(names, Text(forest, text, node));
     if (found >= 0 && names[found].place != AliasPlace) {
         code.append(SymbolCode(ops, names[found].node, forest[node]));
@@ -427,7 +427,7 @@ TargetPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], o
     code: Code[] = [];
     at := node;
     while (Is(forest, at, "member_expression")) {
-        code.append(ExpressionCode(ops, forest[at]));
+        code.append(ExpressionCode(ops.source_point, forest[at]));
         at = Field(forest, at, "object");
     }
     if (Is(forest, at, "identifier")) {
@@ -484,8 +484,8 @@ ScalarWatch :: (ops: Ops, slot: int, storage: int, ordinal: int, output: bool, n
 // expression, with that occurrence. Stage zero reads another package's default
 // from that package's catalog as a constant at the call's arguments. Its
 // occurrence is 0 and is resolved in the caller's document.
-DefaultWatch :: (ops: Ops, slot: int, storage: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
-    return {op: ops.source_watch, type: storage, output: 1, left: slot, right: 0, target: Pending, offset: 0,
+DefaultWatch :: (opcode: int, slot: int, storage: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
+    return {op: opcode, type: storage, output: 1, left: slot, right: 0, target: Pending, offset: 0,
             value_storage: storage, value_container: 0, value_record: -1, payload: occurrence, text: "",
             has_text: false, message: "", has_message: false, start: node.start, end: node.end,
             line: node.row + 1, column: node.column + 1};
@@ -550,8 +550,8 @@ WithoutDebug :: (ops: Ops, code: Code[]) -> Code[] {
     return stripped;
 }
 // The SOURCE_POINT of points[point].
-PointCode :: (ops: Ops, point: int, node: snapshot.SnapshotNode) -> Code {
-    return Instruction(ops.source_point, 0, 0, point, 0, 0, node);
+PointCode :: (opcode: int, point: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(opcode, 0, 0, point, 0, 0, node);
 }
 // Whether stage zero lowers a node of `kind` as a statement, with a point.
 Statement :: (kind: string) -> bool {
@@ -1029,8 +1029,8 @@ Computes :: (ops: Ops, op: int, storage: int) -> bool {
 // A constant of an integer or bool type. One literal holds `bits`: stage
 // zero takes any uint64 for a pointer, and storing one into a local record's
 // field would make this function, and every caller, copy its arguments.
-ConstantCode :: (ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
-    return {op: ops.constant, type: storage, output: output, left: 0, right: 0, target: 0, offset: 0,
+ConstantCode :: (opcode: int, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
+    return {op: opcode, type: storage, output: output, left: 0, right: 0, target: 0, offset: 0,
             value_storage: storage, value_container: 0, value_record: -1, payload: bits, text: "",
             has_text: false, message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
             column: node.column + 1};
@@ -1635,7 +1635,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
             location = length(cells) - 1;
         } else {
             slots.append(ValueLocal(result.storage));
-            code.append(ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
+            code.append(ConstantCode(ops.constant, result.storage, 0, length(slots) - 1, declaration));
             locals.append(ValueLocal(result.storage));
             code.append(Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
                                     declaration));
@@ -1647,7 +1647,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     }
     // Initial result construction precedes the function's first point.
     points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
-    code.append(PointCode(ops, 0, declaration));
+    code.append(PointCode(ops.source_point, 0, declaration));
     return Start.Begun(work, names, slots, locals, cells, hosts, code, points, named);
 }
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
@@ -1720,7 +1720,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
         if (ops.debug && item.phase == 0 && Statement(kind)) {
             points.append(PointAt(key, solid, StatementRecord, 0, false, node, node));
-            code.append(PointCode(ops, length(points) - 1, node));
+            code.append(PointCode(ops.source_point, length(points) - 1, node));
             // Stage zero assigns each returned value to a result, a statement
             // of its own.
             value := Field(forest, item.node, "value");
@@ -1732,7 +1732,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
             for (each in returned) {
                 points.append(PointAt(key, solid, StatementRecord, 0, false, forest[each], forest[each]));
-                code.append(PointCode(ops, length(points) - 1, forest[each]));
+                code.append(PointCode(ops.source_point, length(points) - 1, forest[each]));
             }
         }
         // Stage zero reads `-1` as one literal.
@@ -1740,7 +1740,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    Text(forest, text, Field(forest, node.parent, "operator")) == "-";
         if (ops.debug && item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
             points.append(PointIn(document_hash, solid, ExpressionRecord, node));
-            code.append(PointCode(ops, length(points) - 1, node));
+            code.append(PointCode(ops.source_point, length(points) - 1, node));
             // A name's symbol, or a package constant's, which is a symbol of
             // its own document.
             constant: int = -1;
@@ -1761,7 +1761,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 }
             }
             if (constant >= 0) {
-                code.append(OccurrenceCode(ops, SymbolRecord, constants[constant].occurrence, node));
+                code.append(OccurrenceCode(ops.source_point, SymbolRecord, constants[constant].occurrence, node));
             }
         }
         // The step a node other than control flow takes.
@@ -1915,7 +1915,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     empty = length(code);
                     code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
                     slots.append(ValueLocal(IntStorage));
-                    code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+                    code.append(ConstantCode(ops.constant, IntStorage, 1, length(slots) - 1, node));
                     slots.append(ValueLocal(IntStorage));
                     code.append(Instruction(ops.sub, IntStorage, length(slots) - 1, ends[1], length(slots) - 2,
                                             -1, node));
@@ -2030,7 +2030,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, Pending, node));
                 }
                 slots.append(ValueLocal(IntStorage));
-                code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+                code.append(ConstantCode(ops.constant, IntStorage, 1, length(slots) - 1, node));
                 step_op := ops.add;
                 if (loop.reverse) {
                     step_op = ops.sub;
@@ -2186,7 +2186,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         return Body.Failed(Diagnose(forest, pattern, document, "Unreachable duplicate union pattern"));
                     }
                     covered.append(variant);
-                    code.append(ExpressionCode(ops, forest[pattern]));
+                    code.append(ExpressionCode(ops.source_point, forest[pattern]));
                     at.pc = length(code);
                     bindings := Field(forest, pattern, "bindings");
                     count: int = 0;
@@ -2500,7 +2500,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     // A function completes at its end, and one with named results returns
     // them.
     points.append(PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
-    code.append(PointCode(ops, length(points) - 1, declaration));
+    code.append(PointCode(ops.source_point, length(points) - 1, declaration));
     if (callable.results > 0) {
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};

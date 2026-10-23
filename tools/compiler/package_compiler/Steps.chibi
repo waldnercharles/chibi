@@ -103,9 +103,9 @@ ElementLoad :: (array: int, position: int, storage: int, packable: bool, first: 
     stride := Instruction(ops.load, target.pointer_storage, first + 2, array, 0, 0, node);
     stride.offset = target.stride_offset;
     code.append(stride);
-    code.append(ConstantCode(ops, target.pointer_storage, 0, first + 3, node));
+    code.append(ConstantCode(ops.constant, target.pointer_storage, 0, first + 3, node));
     code.append(Instruction(ops.ne, target.pointer_storage, first + 4, first + 2, first + 3, -1, node));
-    code.append(ConstantCode(ops, target.pointer_storage, uint64(target.value_size), first + 5, node));
+    code.append(ConstantCode(ops.constant, target.pointer_storage, uint64(target.value_size), first + 5, node));
     code.append(Instruction(ops.select, target.pointer_storage, first + 6, first + 4, first + 2, first + 5, node));
     code.append(CastCode(ops, target.pointer_storage, first + 7, position, 0, node));
     code.append(Instruction(ops.mul, target.pointer_storage, first + 8, first + 7, first + 6, -1, node));
@@ -120,7 +120,7 @@ ElementLoad :: (array: int, position: int, storage: int, packable: bool, first: 
         code.append(Instruction(ops.save, target.pointer_storage, 0, first + 11, 0, local, node));
         return append(code, Instruction(ops.local, target.pointer_storage, first + 12, local, 0, 0, node));
     }
-    code.append(ConstantCode(ops, target.pointer_storage, uint64(target.payload_offset), first + 11, node));
+    code.append(ConstantCode(ops.constant, target.pointer_storage, uint64(target.payload_offset), first + 11, node));
     code.append(Instruction(ops.select, target.pointer_storage, first + 12, first + 4, first + 3, first + 11, node));
     code.append(Instruction(ops.add, target.pointer_storage, first + 13, first + 10, first + 12, -1, node));
     return append(code, Instruction(ops.load, SlotStorage(storage, 0, target), first + 14, first + 13, 0, 0, node));
@@ -323,9 +323,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         if (Parameter(forest, binding)) {
                             code.extend(NamePoints(forest, text, names, ops, destination));
                         } else {
-                            code.append(ExpressionCode(ops, forest[destination]));
+                            code.append(ExpressionCode(ops.source_point, forest[destination]));
                         }
-                        code.append(ExpressionCode(ops, forest[value]));
+                        code.append(ExpressionCode(ops.source_point, forest[value]));
                         code.extend(NamePoints(forest, text, names, ops, ArrayArgument(forest, value)));
                         argument := ItemArgument(forest, value);
                         container: int = 0;
@@ -430,7 +430,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 binding := names[found];
                 compound: int = 0;
-                code.append(ExpressionCode(ops, forest[destination]));
+                code.append(ExpressionCode(ops.source_point, forest[destination]));
                 if (operator != "") {
                     compound = 1;
                 }
@@ -451,7 +451,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (callable.result != 0) {
                 return Fail(forest, item.node, document, "return needs a value");
             }
-            code.append(CompletionCode(ops, node));
+            code.append(CompletionCode(ops.source_point, node));
             code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, node));
         } else {
             next.append(expected);
@@ -639,7 +639,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 next.append(Resume(item.node, RetainedPhase, -1, 0));
             } else {
                 code.append(SymbolCode(ops, -1, forest[Field(forest, item.node, "value")]));
-                code.append(CompletionCode(ops, node));
+                code.append(CompletionCode(ops.source_point, node));
                 code.append(Instruction(ops.result, result.storage, 0, result.slot, 0, 0, node));
                 code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, node));
             }
@@ -679,7 +679,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             // Copy the cell's whole header, type name and layout included,
             // into result zero.
             code.append(SymbolCode(ops, -1, forest[Field(forest, item.node, "value")]));
-            code.append(CompletionCode(ops, node));
+            code.append(CompletionCode(ops.source_point, node));
             slots.append(address);
             code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot, at.cell - 1, 0, 0, node));
             slots.append(address);
@@ -895,7 +895,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, item.node, document, "unsupported nil or null value");
         }
         slots.append(ValueLocal(HandleStorage));
-        code.append(ConstantCode(ops, HandleStorage, 0, at.slot, node));
+        code.append(ConstantCode(ops.constant, HandleStorage, 0, at.slot, node));
         if (kind == "number") {
             code.extend(LiteralWatch(forest, ops, at.slot, HandleStorage, item.node));
         }
@@ -941,7 +941,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         }
         slot: Slot = {storage: storage, kind: ValueKind};
         slots.append(slot);
-        constant := ConstantCode(ops, storage, payload, at.slot, node);
+        constant := ConstantCode(ops.constant, storage, payload, at.slot, node);
         constant.text = literal;
         constant.has_text = kind == "string";
         code.append(constant);
@@ -955,7 +955,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         declared := constants[ConstantOf(forest, text, constants, names, package, item.node)];
         slot: Slot = {storage: declared.storage, kind: ValueKind};
         slots.append(slot);
-        code.append(ConstantCode(ops, declared.storage, declared.bits, at.slot, node));
+        code.append(ConstantCode(ops.constant, declared.storage, declared.bits, at.slot, node));
         produced = Typed(at.slot, declared.storage, 0, -1);
     } else if (kind == "identifier") {
         wanted := Text(forest, text, item.node);
@@ -1041,7 +1041,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         // its key.
         field := members[KeyedMember(forest, text, types, members, names, item.node)];
         key: Value = {slot: at.slot, storage: ports[natives[field.read].first].storage, container: 0, record: -1};
-        constant := ConstantCode(ops, key.storage, 0, at.slot, node);
+        constant := ConstantCode(ops.constant, key.storage, 0, at.slot, node);
         constant.text = field.read_key;
         constant.has_text = true;
         shifted: Bases = {pc: at.pc + 1, slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
@@ -1061,7 +1061,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         // A constant member of a global, such as an input action, is its name.
         field := members[ConstantMember(forest, text, types, members, names, item.node)];
         slots.append(ValueLocal(field.storage));
-        constant := ConstantCode(ops, field.storage, 0, at.slot, node);
+        constant := ConstantCode(ops.constant, field.storage, 0, at.slot, node);
         constant.text = field.name;
         constant.has_text = true;
         code.append(constant);
@@ -1189,7 +1189,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             // A native record's record field lies inside it.
             word: Slot = {storage: target.pointer_storage, kind: ValueKind};
             slots.append(word);
-            offset := ConstantCode(ops, target.pointer_storage, uint64(field.offset), at.slot, node);
+            offset := ConstantCode(ops.constant, target.pointer_storage, uint64(field.offset), at.slot, node);
             code.append(offset);
             slots.append(address);
             code.append(Instruction(ops.add, target.pointer_storage, at.slot + 1, object.slot, at.slot, -1,
@@ -1804,10 +1804,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         while (omitted < callables[item.a].count) {
             param := params[callables[item.a].first + omitted];
             if (callables[item.a].package == package) {
-                code.append(OccurrenceCode(ops, ExpressionRecord, param.default_occurrence,
+                code.append(OccurrenceCode(ops.source_point, ExpressionRecord, param.default_occurrence,
                                            forest[Field(forest, forest[param.node].parent, "value")]));
             } else {
-                code.append(ExpressionCode(ops, forest[Field(forest, item.node, "arguments")]));
+                code.append(ExpressionCode(ops.source_point, forest[Field(forest, item.node, "arguments")]));
             }
             omitted += 1;
         }
@@ -1910,16 +1910,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         while (length(arguments) < called.count) {
             param := params[called.first + length(arguments)];
             slots.append(ValueLocal(param.storage));
-            constant := ConstantCode(ops, param.storage, param.default_bits, at.slot + length(slots) - 1, node);
+            constant := ConstantCode(ops.constant, param.storage, param.default_bits, at.slot + length(slots) - 1, node);
             constant.text = param.default_text;
             constant.has_text = param.storage == TextStorage;
             code.append(constant);
             if (called.package == package) {
-                code.append(DefaultWatch(ops, at.slot + length(slots) - 1, param.storage,
+                code.append(DefaultWatch(ops.source_watch, at.slot + length(slots) - 1, param.storage,
                                          param.default_occurrence,
                                          forest[Field(forest, forest[param.node].parent, "value")]));
             } else {
-                code.append(DefaultWatch(ops, at.slot + length(slots) - 1, param.storage, uint64(0),
+                code.append(DefaultWatch(ops.source_watch, at.slot + length(slots) - 1, param.storage, uint64(0),
                                          forest[Field(forest, item.node, "arguments")]));
             }
             arguments.append(Typed(at.slot + length(slots) - 1, param.storage, 0, -1));
@@ -2138,7 +2138,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
                         return Fail(forest, item.node, document, "Numeric literal is outside the range of its type");
                 }
                 slots.append(ValueLocal(HandleStorage));
-                code.append(ConstantCode(ops, HandleStorage, 0, at.slot, node));
+                code.append(ConstantCode(ops.constant, HandleStorage, 0, at.slot, node));
                 code.extend(LiteralWatch(forest, ops, at.slot, HandleStorage, literal.record));
                 if (operator == "+") {
                     code.append(ScalarWatch(ops, at.slot, HandleStorage, 0, true, node));
@@ -2189,7 +2189,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
         } else if ((operator == "!" || operator == "not") && Single(operand, BoolStorage)) {
             // Not is equality with false.
             slots.append(flag);
-            code.append(ConstantCode(ops, BoolStorage, 0, at.slot + length(slots) - 1, node));
+            code.append(ConstantCode(ops.constant, BoolStorage, 0, at.slot + length(slots) - 1, node));
             right_slot = at.slot + length(slots) - 1;
             op = ops.eq;
         } else if (operator == "+" && integer) {
@@ -2332,7 +2332,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
                                 Typed(left_slot, BoolStorage, 0, -1), NoValue(), marks);
         }
         slots.append(flag);
-        code.append(ConstantCode(ops, BoolStorage, 0, at.slot + length(slots) - 1, node));
+        code.append(ConstantCode(ops.constant, BoolStorage, 0, at.slot + length(slots) - 1, node));
         right_slot = at.slot + length(slots) - 1;
         op = ops.eq;
     }
@@ -2371,7 +2371,7 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, l
     slot: Slot = {storage: storage, kind: ValueKind};
     slots.append(slot);
     // The literal is watched once its use gives it a type.
-    code = extend([ConstantCode(ops, storage, bits, at.slot, node)],
+    code = extend([ConstantCode(ops.constant, storage, bits, at.slot, node)],
                   LiteralWatch(forest, ops, at.slot, storage, literal.record));
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
@@ -2412,7 +2412,7 @@ ForStep :: (array: Value, packable: bool, reverse: bool, ops: Ops, target: Targe
         start_count := Instruction(ops.load, IntStorage, at.slot + 2, at.slot + 1, 0, 0, node);
         start_count.offset = target.count_offset;
         code.append(start_count);
-        code.append(ConstantCode(ops, IntStorage, 1, at.slot + 3, node));
+        code.append(ConstantCode(ops.constant, IntStorage, 1, at.slot + 3, node));
         code.append(Instruction(ops.sub, IntStorage, at.slot + 4, at.slot + 2, at.slot + 3, -1, node));
     } else {
         slots.append(number);
@@ -2443,7 +2443,7 @@ ForStep :: (array: Value, packable: bool, reverse: bool, ops: Ops, target: Targe
     code.append(Instruction(ops.local, IntStorage, b + 3, at.local, 0, 0, node));
     if (reverse) {
         slots.append(number);
-        code.append(ConstantCode(ops, IntStorage, 0, b + 4, node));
+        code.append(ConstantCode(ops.constant, IntStorage, 0, b + 4, node));
         slots.append(flag);
         code.append(Instruction(ops.ge, IntStorage, b + 5, b + 3, b + 4, -1, node));
     } else {
@@ -2976,7 +2976,7 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                 bits = float_bits;
             }
     }
-    code := extend([ConstantCode(ops, storage, bits, at.slot, node)],
+    code := extend([ConstantCode(ops.constant, storage, bits, at.slot, node)],
                    LiteralWatch(forest, ops, at.slot, storage, literal.record));
     slots: Slot[] = [ValueLocal(storage)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
@@ -3120,7 +3120,7 @@ NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], 
             context := Instruction(ops.context, target.pointer_storage, header + 1, 0, 0, 0, node);
             context.offset = target.results_offset;
             code.append(context);
-            code.append(ConstantCode(ops, IntStorage, uint64(index), header + 2, node));
+            code.append(ConstantCode(ops.constant, IntStorage, uint64(index), header + 2, node));
             destination := Instruction(ops.index, target.pointer_storage, header + 3, header + 1, header + 2, 0,
                                        node);
             destination.offset = target.value_size;
@@ -3161,7 +3161,7 @@ NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code
                     callable: Callable, named: int, value: int, item: Work, ops: Ops, target: Target, at: Bases,
                     node: snapshot.SnapshotNode) -> Step {
     if (value < 0) {
-        return NamedResultsStep(extend(before, [CompletionCode(ops, node)]), ops, target, params, callable, named,
+        return NamedResultsStep(extend(before, [CompletionCode(ops.source_point, node)]), ops, target, params, callable, named,
                                 at, node);
     }
     returned := NamedReturnValues(forest, value);
@@ -3184,7 +3184,7 @@ ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[],
                 values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases,
                 node: snapshot.SnapshotNode) -> Step {
     if (item.a == callable.results) {
-        return NamedResultsStep([CompletionCode(ops, node)], ops, target, params, callable, named, at, node);
+        return NamedResultsStep([CompletionCode(ops.source_point, node)], ops, target, params, callable, named, at, node);
     }
     code: Code[] = [];
     slots: Slot[] = [];

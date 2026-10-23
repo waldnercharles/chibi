@@ -123,9 +123,9 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     code := extend(CellWrite(target.pointer_storage, map.slot, at.cell, ops, target, at.slot, node),
                    CellWrite(SlotStorage(key.storage, 0, target), key.slot, at.cell + 1, ops, target, at.slot + 1, node));
     if (HasZero(item.storage)) {
-        code.append(ExpressionCode(ops, node));
+        code.append(ExpressionCode(ops.source_point, node));
         slots.append(ValueLocal(item.storage));
-        code.append(ConstantCode(ops, item.storage, 0, at.slot + 2, node));
+        code.append(ConstantCode(ops.constant, item.storage, 0, at.slot + 2, node));
         code.append(WatchCode(ops, at.slot + 2, item.storage, 0, -1, 0, true, node, target));
         cells.append(ItemCell(types, map.record));
         slots.append(address);
@@ -211,7 +211,7 @@ MapStoreStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     next: Work[] = [Expect(Field(forest, destination, "index"), map.key, 0, -1),
                     Expect(Field(forest, item.node, "value"), map.value_storage, 0, map.value_record),
                     Resume(item.node, MapStorePhase, found, 0)];
-    code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops, forest[destination])];
+    code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops.source_point, forest[destination])];
     return Step.Emitted(code, [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
 }
 // `delete m[k]` and `m.delete(k)` on a local map, which stage zero lowers as
@@ -238,8 +238,8 @@ MapDeleteStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     if (found < 0) {
         return Fail(forest, object, document, "deleting a key needs a local map");
     }
-    code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops, forest[object]),
-                    ExpressionCode(ops, forest[removal])];
+    code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops.source_point, forest[object]),
+                    ExpressionCode(ops.source_point, forest[removal])];
     resume := Resume(item.node, MapDeletePhase, found, object);
     resume.c = removal;
     next: Work[] = [Expect(key, types[names[found].record].key, 0, -1), resume];
@@ -322,7 +322,7 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     if (item.phase == 0) {
         code: Code[] = [];
         if (negated) {
-            code.append(ExpressionCode(ops, node));
+            code.append(ExpressionCode(ops.source_point, node));
         }
         resume := Resume(item.node, KeyPhase, 0, 0);
         resume.c = MapHasMark;
@@ -360,7 +360,7 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
         code.append(ScalarWatch(ops, answer, BoolStorage, 0, true, node));
         // Not is equality with false.
         slots.append(flag);
-        code.append(ConstantCode(ops, BoolStorage, 0, at.slot + 4, node));
+        code.append(ConstantCode(ops.constant, BoolStorage, 0, at.slot + 4, node));
         slots.append(flag);
         code.append(Instruction(ops.eq, BoolStorage, at.slot + 5, answer, at.slot + 4, -1, node));
         answer = at.slot + 5;
@@ -408,7 +408,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     slots: Slot[] = [number];
-    code: Code[] = [ConstantCode(ops, IntStorage, 0, at.slot, node)];
+    code: Code[] = [ConstantCode(ops.constant, IntStorage, 0, at.slot, node)];
     locals: Slot[] = [ValueLocal(IntStorage)];
     code.append(Instruction(ops.save, IntStorage, 0, at.slot, 0, at.local, node));
     b := at.slot + 1;

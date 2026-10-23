@@ -1,0 +1,250 @@
+diff --git a/tools/toolchain/SDK.chibi b/tools/toolchain/SDK.chibi
+--- a/tools/toolchain/SDK.chibi
++++ b/tools/toolchain/SDK.chibi
+@@ -378,6 +378,77 @@
+     return PolicyRun(host, root, artifact, "Compile", []) == 2 &&
+            build.last_stdout() == "" && build.last_stderr() == "project: invalid arguments\n";
+ }
++// Keep the new binding inside generated source text. Whole-package preparation
++// must not impose it on legacy CompilerTools or the existing SDK.Verify entry.
++PolicyPairSource :: () -> string {
++    return Join([
++        "package pair_probe\nimport strings \"core:strings\"\n",
++        "Verify :: () -> int {\n",
++        "    for (name in [\"00\", \"10\", \"01\", \"11\"]) {\n",
++        "        root := strings.Join([build.root(), \"/\", name, \"/\"], \"\");\n",
++        "        if (build.publish_pair(strings.Join([root, \"source0\"], \"\"),\n",
++        "                               strings.Join([root, \"destination0\"], \"\"),\n",
++        "                               strings.Join([root, \"source1\"], \"\"),\n",
++        "                               strings.Join([root, \"destination1\"], \"\")) != 0) {\n",
++        "            return 1;\n        }\n    }\n    return 0;\n}\n"
++    ]);
++}
++PolicyPairProof :: (stage: string, proof: string) -> bool {
++    host := Join([proof, "/prefix/libexec/chibi/chibi-build-host"]);
++    work := Join([proof, "/work"]);
++    source := Join([proof, "/PairProbe.chibi"]);
++    artifact := Join([proof, "/payload/PairProbe.chibip"]);
++    if (length(build.list_directory(work)) != 0 ||
++        !build.write_file(source, PolicyPairSource()) ||
++        !PolicyExport(stage, source, "Verify", artifact)) {
++        return false;
++    }
++    hash := build.hash_file(artifact);
++    if (!PolicyHash(hash) || !build.remove(source) || build.file_kind(source) != "") {
++        return false;
++    }
++    // The parent seeds and later inspects the files. A child that returns zero
++    // without executing the native cannot satisfy these observed transitions.
++    for (name in ["00", "10", "01", "11"]) {
++        directory := Join([work, "/", name]);
++        if (!build.reserve_directory(directory) ||
++            !build.write_file(Join([directory, "/source0"]), Join(["new0:", name, "\n"])) ||
++            !build.write_file(Join([directory, "/source1"]), Join(["new1:", name, "\n"]))) {
++            return false;
++        }
++        if (strings.HasPrefix(name, "1") &&
++            !build.write_file(Join([directory, "/destination0"]), Join(["old0:", name, "\n"]))) {
++            return false;
++        }
++        if (strings.HasSuffix(name, "1") &&
++            !build.write_file(Join([directory, "/destination1"]), Join(["old1:", name, "\n"]))) {
++            return false;
++        }
++    }
++    if (PolicyRun(host, work, artifact, "Verify", []) != 0 ||
++        build.last_stdout() != "" || build.last_stderr() != "" ||
++        build.hash_file(artifact) != hash || build.file_kind(source) != "") {
++        return false;
++    }
++    for (name in ["00", "10", "01", "11"]) {
++        directory := Join([work, "/", name]);
++        if (build.join(build.list_directory(directory), "\n") != "destination0\ndestination1" ||
++            build.file_kind(Join([directory, "/source0"])) != "" ||
++            build.file_kind(Join([directory, "/source1"])) != "" ||
++            build.file_kind(Join([directory, "/destination0"])) != "file" ||
++            build.file_kind(Join([directory, "/destination1"])) != "file" ||
++            build.read_file(Join([directory, "/destination0"])) != Join(["new0:", name, "\n"]) ||
++            build.read_file(Join([directory, "/destination1"])) != Join(["new1:", name, "\n"]) ||
++            !RemoveTree(directory)) {
++            return false;
++        }
++    }
++    if (length(build.list_directory(work)) != 0 || build.hash_file(artifact) != hash) {
++        return false;
++    }
++    build.report(Join(["sdk: prepared publish-pair probe ", hash]));
++    return true;
++}
+ // The copied host's supported executable-relative discovery paths all remain
+ // below this private prefix. None contains compiler/core or policy source.
+ PolicyProof :: (stage: string) -> bool {
+@@ -419,6 +490,7 @@
+     if (PolicyRun(host, work, probe, "Verify", []) != 0 ||
+         build.last_stdout() != "" || build.last_stderr() != "" ||
+         length(build.list_directory(work)) != 0 ||
++        !PolicyPairProof(stage, proof) ||
+         build.hash_file(host) != build.hash_file(actual_host) ||
+         build.hash_file(artifact) != build.hash_file(actual_artifact)) {
+         return false;
+@@ -454,14 +526,14 @@
+            build.find_executable(Join([stage, "/libexec/chibi/chibi-compiler-host"])) != "";
+ }
+ PolicyWitness :: (values: string[]) -> string {
+-    text := "CHIBI-PROJECT-HOST/1\n";
++    text := "CHIBI-PROJECT-HOST/2\n";
+     for (key in ["inputs-sha256", "source-sha256", "artifact-sha256", "build-host-sha256",
+                  "compiler-host-sha256", "assembly-sha256", "inspect-entry", "compile-entry",
+                  "platform", "compiler-backend"]) {
+         text = Join([text, key, "\t", Option(values, key), "\n"]);
+     }
+     return Join([text, "prepared-load\tpassed\nprepared-without-source\tpassed\n",
+-                 "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\n"]);
++                 "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\npublish-pair\tpassed\n"]);
+ }
+ PolicyReceiptText :: (values: string[], entries: string[]) -> string {
+     text := "CHIBI-PROJECT-PREPARE/1\n";
+diff --git a/test/tools/build_sdk.c b/test/tools/build_sdk.c
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -1335,15 +1335,16 @@
+         "prepared-entry-selection",
+         "reserve-directory",
+         "publish-directory",
++        "publish-pair",
+     };
+-    static const char header[] = "CHIBI-PROJECT-HOST/1\n";
++    static const char header[] = "CHIBI-PROJECT-HOST/2\n";
+     char *text = project_table(prefix, PROJECT_WITNESS, header);
+     if (!text) {
+         return false;
+     }
+     char *cursor = text + sizeof header - 1;
+     bool valid = true;
+-    for (int i = 0; valid && i < 15; i++) {
++    for (int i = 0; valid && i < 16; i++) {
+         char *fields[3];
+         int key = i < 10 ? metadata[i] : 0;
+         const char *name = i < 10 ? project_keys[key] : checks[i - 10];
+@@ -1606,6 +1607,113 @@
+     return true;
+ }
+ 
++/* Preserve every inventory byte except this output's existing digest. */
++static bool rehash_project_witness(const char *prefix)
++{
++    char path[SDK_PATH], digest[65];
++    join(path, prefix, PROJECT_WITNESS);
++    REQUIRE(file_digest(path, digest));
++    char *text = project_table(prefix, SDK_MANIFEST, "1\n");
++    REQUIRE(text);
++    int matches = 0;
++    size_t name_length = strlen(PROJECT_WITNESS);
++    for (char *line = text + 2; *line;) {
++        char *end = strchr(line, '\n');
++        assert(end);
++        if ((size_t)(end - line) == name_length + 1 + 64 &&
++            !memcmp(line, PROJECT_WITNESS, name_length) && line[name_length] == '\t') {
++            memcpy(line + name_length + 1, digest, 64);
++            matches++;
++        }
++        line = end + 1;
++    }
++    if (matches == 1) {
++        join(path, prefix, SDK_MANIFEST);
++        tool_write(path, text);
++    }
++    free(text);
++    REQUIRE(matches == 1);
++    return true;
++}
++
++static bool project_rejects_invalid_witnesses(
++    const char *prefix,
++    const char *cache,
++    const char *native,
++    const char *selfhost
++)
++{
++    char witness[SDK_PATH], inventory[SDK_PATH];
++    join(witness, prefix, PROJECT_WITNESS);
++    join(inventory, prefix, SDK_MANIFEST);
++    char *original = project_table(prefix, PROJECT_WITNESS, "CHIBI-PROJECT-HOST/2\n");
++    char *manifest = project_table(prefix, SDK_MANIFEST, "1\n");
++    REQUIRE(original && manifest);
++    static const char directory[] = "publish-directory\tpassed\n";
++    static const char pair[] = "publish-pair\tpassed\n";
++    static const char
++        tail[] = "publish-directory\tpassed\npublish-pair\tpassed\n";
++    static const char extra[] = "unexpected-publish-pair\tpassed\n";
++    static const char *variants[] = {
++        "HOST/1",     "missing pair",   "duplicate pair",
++        "extra pair", "reordered pair",
++    };
++    size_t length = strlen(original), pair_length = sizeof pair - 1;
++    REQUIRE(
++        length >= sizeof tail - 1 &&
++        !memcmp(original + length - (sizeof tail - 1), tail, sizeof tail - 1)
++    );
++    char *changed = xmalloc(length + sizeof extra + sizeof pair);
++    char inventory_hash[65], witness_hash[65], inspected[65];
++    REQUIRE(file_digest(inventory, inventory_hash) && file_digest(witness, witness_hash));
++    bool valid = true;
++    for (int i = 0; valid && i < 5; i++) {
++        strcpy(changed, original);
++        switch (i) {
++            case 0:
++                changed[sizeof "CHIBI-PROJECT-HOST/" - 1] = '1';
++                break;
++            case 1: changed[length - pair_length] = 0; break;
++            case 2: strcpy(changed + length, pair); break;
++            case 3: strcpy(changed + length, extra); break;
++            case 4:
++                memcpy(changed + length - (sizeof tail - 1), pair, pair_length);
++                memcpy(changed + length - (sizeof directory - 1), directory, sizeof directory - 1);
++                break;
++            default: assert(false);
++        }
++        tool_write(witness, changed);
++        char mutated_inventory[65], mutated_witness[65], after[65];
++        valid = rehash_project_witness(prefix) && manifest_matches(prefix) &&
++                file_digest(inventory, mutated_inventory) &&
++                file_digest(witness, mutated_witness) &&
++                project_inspect(prefix, false, cache, false, inspected) &&
++                project_inspect(prefix, true, cache, false, inspected) &&
++                !exists(cache) && file_digest(inventory, after) &&
++                !strcmp(mutated_inventory, after) && file_digest(witness, after) &&
++                !strcmp(mutated_witness, after) && manifest_matches(prefix);
++        if (!valid) {
++            fprintf(stderr, "prepared Inspect accepted or changed %s witness\n", variants[i]);
++        }
++    }
++    tool_write(witness, original);
++    tool_write(inventory, manifest);
++    free(changed);
++    free(manifest);
++    free(original);
++    char after[65];
++    REQUIRE(
++        valid && !exists(cache) && manifest_matches(prefix) &&
++        project_receipt_matches(prefix)
++    );
++    REQUIRE(project_inspect(prefix, false, cache, true, inspected) && !strcmp(native, inspected));
++    REQUIRE(project_inspect(prefix, true, cache, true, inspected) && !strcmp(selfhost, inspected));
++    REQUIRE(!exists(cache) && manifest_matches(prefix));
++    REQUIRE(file_digest(inventory, after) && !strcmp(inventory_hash, after));
++    REQUIRE(file_digest(witness, after) && !strcmp(witness_hash, after));
++    return true;
++}
++
+ TEST_CASE(project_tools_preserve_prepared_readiness_after_relocation)
+ {
+     char output[SDK_PATH], relocated[SDK_PATH], stage[SDK_PATH], cache[SDK_PATH];
+@@ -1643,6 +1751,7 @@
+         !strcmp(selfhost, inspected)
+     );
+     REQUIRE(!exists(cache) && manifest_matches(relocated));
++    REQUIRE(project_rejects_invalid_witnesses(relocated, cache, native, selfhost));
+ 
+     /* Public SDK files are outside CompilerTools ownership. */
+     static const char *public[] = { "include", "bin", "lib" };

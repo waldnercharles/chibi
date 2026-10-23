@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-23",
+  "status": "source-only narrow header-control correction; independent and root review pending; unexecuted",
+  "predecessor": {
+    "directory": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-pair",
+    "patch_sha256": "5313d58493d88c60b1aff73eca7d3a257a9ceccb8964123b251be5bf6c1f2b04",
+    "manifest_sha256": "1c26f76d7858adb927b340f31bf8917a8e20c4153fcf5c09ee64d2a8aa158c48",
+    "status": "HOLD: HOST/1 control also removed pair row; preserved as superseded evidence; previous forwarded source clearance is not root final approval"
+  },
+  "baseline": {
+    "warm_patch_sha256": "7936ed238acb008383b710f6e08a66b515598fdcb9f1618a16af3bc79ea95a8a",
+    "warm_manifest_sha256": "a898671b9e0b379d1e4ce3c5f65df0b78089e434e0daaf3650e53ddb1b639765",
+    "sdk_index_tree": "47bbe00d73b04644a6951fc9e4ee81038cfd380c"
+  },
+  "fix": "Case0 changes only HOST/2 header to HOST/1 and retains all ten metadata plus six check rows. Case1 independently removes the pair check row.",
+  "files": {
+    "tools/toolchain/SDK.chibi": {
+      "before_sha256": "d66e0de1e0d84579d250bad9a83bb482c3472bc00cd1cd448028262b4fb4a3b7",
+      "after_sha256": "dd68b7dca55788f1491f4383f59e113dc890959a7af8d3e5aa400729f84f13ee",
+      "bytes": 40945
+    },
+    "test/tools/build_sdk.c": {
+      "before_sha256": "6820476e16e84083558dffa430a1e3881f622d7c25d61e5e345bd40810684dfd",
+      "after_sha256": "89d9cdf7b4a2ae99bdb7cd5e1b9d28f46e6e599c77683d3d635a3a5af2addd74",
+      "bytes": 70916
+    }
+  },
+  "patch_sha256": "55c4d44aaf19a9109495aa062373a7f27e58164f9a8c429ecaa3aa939485bcd4",
+  "correction_patch_sha256": "9ee20da1fd5bd5490e08e0aa21a78a8b15f347cc63731fd902025fed73df7f77",
+  "checks": [
+    "full warm-based patch application with whitespace=error",
+    "one-line predecessor correction patch application with whitespace=error",
+    "SDK bytes identical to predecessor dd68",
+    "old frozen patch and manifest hashes preserved"
+  ],
+  "remaining_gates": [
+    "independent and root exact successor source review",
+    "native941 implementation/hash/ABI and fault proof",
+    "corrected Project publisher and HOST/2 reader source hash",
+    "actual prepared/installed/relocated SDK execution"
+  ],
+  "execution": "none; no source import, build, export, runtime test, runtime witness or adoption"
+}

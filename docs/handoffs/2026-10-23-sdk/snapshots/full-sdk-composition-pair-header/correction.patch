@@ -1,0 +1,11 @@
+diff --git a/test/tools/build_sdk.c b/test/tools/build_sdk.c
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -1672,7 +1672,6 @@
+         switch (i) {
+             case 0:
+                 changed[sizeof "CHIBI-PROJECT-HOST/" - 1] = '1';
+-                changed[length - pair_length] = 0;
+                 break;
+             case 1: changed[length - pair_length] = 0; break;
+             case 2: strcpy(changed + length, pair); break;

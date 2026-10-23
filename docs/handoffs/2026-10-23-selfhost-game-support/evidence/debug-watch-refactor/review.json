@@ -1,0 +1,7 @@
+{
+  "Body_sha256": "9f428286509eee9915ef41bde7648ab86ea86fccf0214fe3e212ba181dad32c0",
+  "minimal_patch_sha256": "6ed16d8c4c542484d6563e08ee2fa2e8c972877b165b5f3e099051d0e915646c",
+  "root_review": "clear; exact2blocks/baseoffsets/deltaownership/guardandcompoundwatchchecked",
+  "independent_review": "clear; tuplepaths/CellRead/root/watchindex/order/prefiximmutability/removedlocalschecked",
+  "executed": false
+}

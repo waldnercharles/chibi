@@ -1,0 +1,19 @@
+{
+  "status": "source-only proposed acceptance map; unexecuted; no implementation/source import",
+  "tree": "1a59410022d128108e7744cf2b5641047a44d713",
+  "files": {
+    "docs/package-compiler.md": "38523488979f5dd9435b20a0ebd82fb8e311be0994895e3f819a766d7b6a91d1",
+    "tools/compiler/package_compiler/Behavior.chibi": "bf1fc927fc873a13d9880046a002f646b2af2e4494c65cc8778e5b1ba87f592d",
+    "tools/compiler/package_compiler/Body.chibi": "9f428286509eee9915ef41bde7648ab86ea86fccf0214fe3e212ba181dad32c0",
+    "tools/compiler/package_compiler/Steps.chibi": "fb8bef6bc05fbdb3ee137b7576d7d97d2acf2861138b79267943c9c8bda08813",
+    "tools/compiler/package_compiler/Compile.chibi": "d8f2e0e8698de16da6369cc78ae05e1a6e29aea14287dd65474f7f086cacbaae",
+    "test/language/package_compiler_chibi.c": "52109159cabee65a5f7eeb702481ec07bac596374359399f4719143d75eadff1",
+    "test/language/modules.c": "1ddcb9084551447d97aee2b562a75841ea3cf0bc822ee09242ee1fa2bd15f3ba",
+    "test/language/record_semantic.c": "21cb34fa2b6d7f81bd7924617da1b5505e2011a7069504de2a03b12e114e481d",
+    "test/language/record_runtime.c": "628ae55e3f4a77a4d0909275b0a7015a676da83ace437dedba59e0a5bb41202a",
+    "test/language/semantic.c": "2b9ed9007cb4f763c8c096543ad8969cd23eb363a33e937892ac0a86fb47b1ac",
+    "test/language/nominal_binding_chibi.c": "93c15aed839bec29e5ddb6860c5429c88dfdd212e52237f5c8cfb03beb38cb72",
+    "test/language/navigation.c": "3834ddfdefaf2cc963aba516c28cc8e0efac9e16e7c631f8adaa226ca265b9a8"
+  },
+  "map_sha256": "f849c1ca177f70cebe50b2d2c21a81e537c1e1f3c115a66d6f3a17d376cfc60d"
+}

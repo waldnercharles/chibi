@@ -1,0 +1,17 @@
+{
+  "request": 212975283,
+  "services": 5593,
+  "owned": 38838089,
+  "charged": 43860704,
+  "remaining": 210629435,
+  "shortfall_before_services": 2345848,
+  "module": "project:package_compiler",
+  "functions": 366,
+  "encoded_module_bytes": 11949364,
+  "layout_work": 231747812,
+  "failure": "execution_wire_reserve called from preparation_budget after records finalize before definition verification",
+  "source_tree": "2acb927a94319b4bfff42fa56d5af613e4b664da",
+  "log_sha256": "d423bb7808f987f92beccf3e0e4b996d029fef6fd38291f7093f90e0152cb8a2",
+  "limits_unchanged": true,
+  "artifact_capture": false
+}

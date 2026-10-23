@@ -1,0 +1,305 @@
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=types-begin owned=632 charged=632 remaining=268434373 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=types-end owned=2148 charged=3312 remaining=268431693 work=404 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=imports-end owned=2148 charged=3312 remaining=268431693 work=404 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=functions-end owned=1146259 charged=1247272 remaining=267187733 work=4405 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=payload-end owned=1157499 charged=1260072 remaining=267174933 work=4405 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=records-begin owned=1157754 charged=1260327 remaining=267174678 work=4405 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=records-end owned=1158042 charged=1260615 remaining=267174390 work=9266 error=
+STORAGE_DIAG_2AC_PREPARATION module=e42babfeac98ab9a functions=51 request=2534819 services=133 owned=1158042 charged=1260615 remaining=267174390
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=preparation-end owned=3693941 charged=3796514 remaining=264638491 work=9266 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=definitions-end owned=3693941 charged=3808850 remaining=264626155 work=9266 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=finish-end owned=3693941 charged=3808850 remaining=265978773 work=9266 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=types-begin owned=632 charged=632 remaining=265978141 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=types-end owned=5954 charged=9568 remaining=265969205 work=3969 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=imports-end owned=5954 charged=9568 remaining=265969205 work=3969 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=functions-end owned=118392 charged=130668 remaining=265848105 work=50141 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=payload-end owned=121638 charged=133899 remaining=265844874 work=50141 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=records-begin owned=121648 charged=133909 remaining=265844864 work=50141 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=records-end owned=122224 charged=134485 remaining=265844288 work=61638 error=
+STORAGE_DIAG_2AC_PREPARATION module=4c6f1b4413491195 functions=2 request=366006 services=11 owned=122224 charged=134485 remaining=265844288
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=preparation-end owned=488374 charged=500635 remaining=265478138 work=61638 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=definitions-end owned=488374 charged=500635 remaining=265478138 work=61638 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=finish-end owned=488374 charged=500635 remaining=265715138 work=61638 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=types-begin owned=632 charged=632 remaining=265714506 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=types-end owned=13064 charged=17944 remaining=265697194 work=10403 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=imports-end owned=13608 charged=18488 remaining=265696650 work=14764 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=functions-end owned=435762 charged=495261 remaining=265219877 work=349241 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=payload-end owned=439126 charged=498551 remaining=265216587 work=349241 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=records-begin owned=439166 charged=498591 remaining=265216547 work=349241 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=records-end owned=444478 charged=503903 remaining=265211235 work=429746 error=
+STORAGE_DIAG_2AC_PREPARATION module=78f689cebe89a59a functions=8 request=1725570 services=64 owned=444478 charged=503903 remaining=265211235
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=preparation-end owned=2170576 charged=2230001 remaining=263485137 work=429746 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=definitions-end owned=2170576 charged=2230001 remaining=263485137 work=429746 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=finish-end owned=2170576 charged=2230001 remaining=264780187 work=429746 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=types-begin owned=632 charged=632 remaining=264779555 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=types-end owned=149446 charged=269496 remaining=264510691 work=247975 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=types-begin owned=632 charged=632 remaining=264509515 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=types-end owned=5954 charged=9568 remaining=264500579 work=3969 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=imports-end owned=6498 charged=10112 remaining=264500035 work=8330 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=functions-end owned=91795 charged=115590 remaining=264394557 work=115075 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=payload-end owned=95029 charged=118815 remaining=264391332 work=115075 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=records-begin owned=95034 charged=118820 remaining=264391327 work=115075 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=records-end owned=96442 charged=120228 remaining=264389919 work=130929 error=
+STORAGE_DIAG_2AC_PREPARATION module=a6475343733ffc2c functions=1 request=272061 services=8 owned=96442 charged=120228 remaining=264389919
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=preparation-end owned=368647 charged=392433 remaining=264117714 work=130929 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=definitions-end owned=368647 charged=392433 remaining=264117714 work=130929 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=finish-end owned=368647 charged=392433 remaining=264289604 work=130929 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=types-begin owned=632 charged=632 remaining=264288972 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=types-end owned=39266 charged=67880 remaining=264221724 work=48946 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=types-begin owned=632 charged=632 remaining=264220548 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=types-end owned=11802 charged=17944 remaining=264203236 work=9109 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=types-begin owned=632 charged=632 remaining=264202460 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=types-end owned=3528 charged=5416 remaining=264197676 work=1514 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=imports-end owned=4072 charged=5960 remaining=264197132 work=5875 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=functions-end owned=126168 charged=138318 remaining=264064774 work=33057 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=payload-end owned=129434 charged=141559 remaining=264061533 work=33057 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=records-begin owned=129449 charged=141574 remaining=264061518 work=33057 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=records-end owned=129833 charged=141958 remaining=264061134 work=37813 error=
+STORAGE_DIAG_2AC_PREPARATION module=de5b39e14721516b functions=3 request=363875 services=21 owned=129833 charged=141958 remaining=264061134
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=preparation-end owned=493892 charged=506017 remaining=263697075 work=37813 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=definitions-end owned=493892 charged=506017 remaining=263697075 work=37813 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=finish-end owned=493892 charged=506017 remaining=263923289 work=37813 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=imports-end owned=12346 charged=18488 remaining=263922889 work=42977 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=functions-end owned=411793 charged=474770 remaining=263466607 work=253208 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=payload-end owned=415177 charged=478070 remaining=263463307 work=253208 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=records-begin owned=415222 charged=478115 remaining=263463262 work=253208 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=records-end owned=420694 charged=483587 remaining=263457790 work=322765 error=
+STORAGE_DIAG_2AC_PREPARATION module=8141d5fd100f8b93 functions=9 request=1495592 services=68 owned=420694 charged=483587 remaining=263457790
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=preparation-end owned=1916846 charged=1979739 remaining=261961638 work=322765 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=definitions-end owned=1916846 charged=1979739 remaining=261961638 work=322765 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=finish-end owned=1916846 charged=1979739 remaining=263061199 work=322765 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=types-begin owned=632 charged=632 remaining=263060567 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=types-end owned=11802 charged=17848 remaining=263043351 work=12659 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=imports-end owned=12346 charged=18392 remaining=263042807 work=130074 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=functions-end owned=184881 charged=204172 remaining=262857027 work=447232 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=payload-end owned=188133 charged=207406 remaining=262853793 work=447232 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=records-begin owned=188143 charged=207416 remaining=262853783 work=447232 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=records-end owned=191471 charged=210744 remaining=262850455 work=495388 error=
+STORAGE_DIAG_2AC_PREPARATION module=2dcbaf63a28fc69e functions=2 request=573833 services=16 owned=191471 charged=210744 remaining=262850455
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=preparation-end owned=765448 charged=784721 remaining=262276478 work=495388 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=definitions-end owned=765448 charged=784721 remaining=262276478 work=495388 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=finish-end owned=765448 charged=784721 remaining=262634685 work=495388 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=types-begin owned=632 charged=632 remaining=262634053 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=types-end owned=8000 charged=9696 remaining=262624989 work=5629 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=imports-end owned=8544 charged=10240 remaining=262624445 work=9990 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=functions-end owned=849354 charged=926329 remaining=261708356 work=361051 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=payload-end owned=852758 charged=929639 remaining=261705046 work=361051 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=records-begin owned=852808 charged=929689 remaining=261704996 work=361051 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=records-end owned=864104 charged=940985 remaining=261693700 work=483547 error=
+STORAGE_DIAG_2AC_FUNCTION module=7b4cbeac49c69223 index=3 preparation=2729378 matrices=926800 instructions=2316 slots=1497 locals=49 data=363 hosts=78 source=project:package_graph/Graph.chibi start=2839 end=2866
+STORAGE_DIAG_2AC_PREPARATION module=7b4cbeac49c69223 functions=10 request=3698728 services=176 owned=864104 charged=940985 remaining=261693700
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=preparation-end owned=4564256 charged=4641137 remaining=257993548 work=483547 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=definitions-end owned=4564256 charged=4657569 remaining=257977116 work=483547 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=finish-end owned=4564256 charged=4657569 remaining=260605758 work=483547 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=imports-end owned=39810 charged=68424 remaining=260605758 work=1144503 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=functions-end owned=975884 charged=1177595 remaining=259496587 work=4009073 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=payload-end owned=979392 charged=1180957 remaining=259493225 work=4009073 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=records-begin owned=979472 charged=1181037 remaining=259493145 work=4009073 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=records-end owned=997040 charged=1198605 remaining=259475577 work=4509724 error=
+STORAGE_DIAG_2AC_FUNCTION module=a8119b9f2e28947e index=15 preparation=2236452 matrices=627520 instructions=1960 slots=1197 locals=31 data=769 hosts=125 source=project:source_snapshot/Snapshot.chibi start=9228 end=9255
+STORAGE_DIAG_2AC_PREPARATION module=a8119b9f2e28947e functions=16 request=3559338 services=177 owned=997040 charged=1198605 remaining=259475577
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=preparation-end owned=4557810 charged=4759375 remaining=255914807 work=4509724 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=definitions-end owned=4557810 charged=4759375 remaining=255914807 work=4509724 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=finish-end owned=4557810 charged=4759375 remaining=258604517 work=4509724 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=types-begin owned=632 charged=632 remaining=258603885 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=types-end owned=38500 charged=68120 remaining=258536397 work=43334 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=imports-end owned=39044 charged=68664 remaining=258535853 work=47695 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=functions-end owned=1928471 charged=2240441 remaining=256364076 work=1438687 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=payload-end owned=1933721 charged=2245474 remaining=256359043 work=1438687 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=records-begin owned=1933841 charged=2245594 remaining=256358923 work=1438687 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=records-end owned=1946033 charged=2257786 remaining=256346731 work=1716951 error=
+STORAGE_DIAG_2AC_FUNCTION module=61058c5dc9ed077d index=20 preparation=4890289 matrices=2127392 instructions=3498 slots=2328 locals=56 data=674 hosts=138 source=project:prepared_writer/Writer.chibi start=14430 end=24562
+STORAGE_DIAG_2AC_PREPARATION module=61058c5dc9ed077d functions=24 request=8698344 services=320 owned=1946033 charged=2257786 remaining=256346731
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=preparation-end owned=10646953 charged=10958706 remaining=247645811 work=1716951 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=definitions-end owned=10646953 charged=10962850 remaining=247641667 work=1716951 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=finish-end owned=10646953 charged=10962850 remaining=254220099 work=1716951 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=imports-end owned=149990 charged=270040 remaining=254220099 work=5995031 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=functions-end owned=32685340 charged=37185120 remaining=217305019 work=159087358 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=payload-end owned=32754444 charged=37250580 remaining=217239559 work=159087358 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=records-begin owned=32755989 charged=37252125 remaining=217238014 work=159087358 error=
+STORAGE_DIAG_2AC_RECORD_CHECK module=8fb3be3da78425e0 index=123 request=82272 remaining=217167998
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=records-end owned=33482773 charged=37978909 remaining=216511230 work=202919341 error=
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=13 preparation=2772271 matrices=89040 instructions=741 slots=396 locals=20 data=298 hosts=44 source=project:package_compiler/Behavior.chibi start=14787 end=17803
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=14 preparation=1804187 matrices=457504 instructions=1681 slots=1006 locals=36 data=567 hosts=77 source=project:package_compiler/Behavior.chibi start=18106 end=25068
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=122 preparation=1273934 matrices=268920 instructions=1244 slots=796 locals=11 data=397 hosts=61 source=project:package_compiler/Body.chibi start=61658 end=67212
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=123 preparation=41413918 matrices=30452272 instructions=13741 slots=8723 locals=167 data=3777 hosts=620 source=project:package_compiler/Body.chibi start=67213 end=117814
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=145 preparation=4201347 matrices=1656832 instructions=3235 slots=1975 locals=58 data=985 hosts=102 source=project:package_compiler/Compile.chibi start=22881 end=37482
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=146 preparation=1490067 matrices=356880 instructions=1486 slots=861 locals=48 data=291 hosts=33 source=project:package_compiler/Compile.chibi start=38001 end=44016
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=148 preparation=1177826 matrices=239000 instructions=1194 slots=720 locals=27 data=405 hosts=34 source=project:package_compiler/Compile.chibi start=46015 end=51051
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=161 preparation=12344516 matrices=7017312 instructions=6545 slots=4209 locals=77 data=1895 hosts=378 source=project:package_compiler/Compile.chibi start=61372 end=89881
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=171 preparation=1097321 matrices=220600 instructions=1102 slots=715 locals=14 data=310 hosts=45 source=project:package_compiler/Maps.chibi start=1792 end=4720
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=180 preparation=2530366 matrices=258984 instructions=1198 slots=770 locals=11 data=382 hosts=53 source=project:package_compiler/Maps.chibi start=16034 end=19371
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=183 preparation=2931785 matrices=500240 instructions=1689 slots=1100 locals=10 data=605 hosts=76 source=project:package_compiler/Maps.chibi start=21093 end=26454
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=214 preparation=2669927 matrices=194856 instructions=1058 slots=654 locals=14 data=302 hosts=42 source=project:package_compiler/References.chibi start=10604 end=14510
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=220 preparation=2699357 matrices=191912 instructions=1042 slots=647 locals=18 data=277 hosts=29 source=project:package_compiler/References.chibi start=16798 end=20875
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=222 preparation=1688056 matrices=188968 instructions=1026 slots=651 locals=11 data=336 hosts=44 source=project:package_compiler/References.chibi start=21636 end=25044
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=227 preparation=1329438 matrices=215800 instructions=1078 slots=704 locals=7 data=368 hosts=45 source=project:package_compiler/Steps.chibi start=4446 end=7472
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=234 preparation=20934229 matrices=13750608 instructions=9240 slots=5825 locals=114 data=2415 hosts=241 source=project:package_compiler/Steps.chibi start=12439 end=48954
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=235 preparation=9568761 matrices=5146416 instructions=5642 slots=3548 locals=72 data=1656 hosts=175 source=project:package_compiler/Steps.chibi start=49020 end=69951
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=236 preparation=2456212 matrices=761376 instructions=2162 slots=1341 locals=27 data=642 hosts=69 source=project:package_compiler/Steps.chibi start=70236 end=78370
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=239 preparation=16710114 matrices=10437952 instructions=8103 slots=5009 locals=131 data=2087 hosts=202 source=project:package_compiler/Steps.chibi start=79628 end=112376
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=240 preparation=5435622 matrices=2378992 instructions=3861 slots=2365 locals=83 data=1124 hosts=158 source=project:package_compiler/Steps.chibi start=112440 end=125754
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=242 preparation=2126558 matrices=338160 instructions=1408 slots=894 locals=7 data=508 hosts=80 source=project:package_compiler/Steps.chibi start=127568 end=132065
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=243 preparation=2729148 matrices=292320 instructions=1304 slots=820 locals=13 data=404 hosts=58 source=project:package_compiler/Steps.chibi start=132403 end=136915
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=277 preparation=1069632 matrices=197616 instructions=1073 slots=692 locals=7 data=373 hosts=59 source=project:package_compiler/Steps.chibi start=163791 end=167481
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=280 preparation=1607258 matrices=128440 instructions=844 slots=560 locals=7 data=225 hosts=36 source=project:package_compiler/Steps.chibi start=169162 end=171664
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=298 preparation=2170498 matrices=616000 instructions=1924 slots=1214 locals=19 data=683 hosts=97 source=project:package_compiler/Steps.chibi start=189924 end=196863
+STORAGE_DIAG_2AC_PREPARATION module=8fb3be3da78425e0 functions=309 request=188248625 services=4803 owned=33482773 charged=37978909 remaining=216511230
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=preparation-end owned=221769838 charged=226265974 remaining=28224165 work=202919341 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=definitions-end owned=221769838 charged=226454890 remaining=28035249 work=202919341 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=finish-end owned=221769838 charged=226454890 remaining=181946807 work=202919341 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=types-begin owned=632 charged=632 remaining=268434373 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=types-end owned=2148 charged=3312 remaining=268431693 work=404 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=imports-end owned=2148 charged=3312 remaining=268431693 work=404 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=functions-end owned=1146259 charged=1247272 remaining=267187733 work=4405 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=payload-end owned=1157499 charged=1260072 remaining=267174933 work=4405 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=records-begin owned=1157754 charged=1260327 remaining=267174678 work=4405 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=records-end owned=1158042 charged=1260615 remaining=267174390 work=9266 error=
+STORAGE_DIAG_2AC_PREPARATION module=e42babfeac98ab9a functions=51 request=2534819 services=133 owned=1158042 charged=1260615 remaining=267174390
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=preparation-end owned=3693941 charged=3796514 remaining=264638491 work=9266 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=definitions-end owned=3693941 charged=3808850 remaining=264626155 work=9266 error=
+STORAGE_DIAG_2AC_PHASE module=e42babfeac98ab9a phase=finish-end owned=3693941 charged=3808850 remaining=265978773 work=9266 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=types-begin owned=632 charged=632 remaining=265978141 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=types-end owned=5954 charged=9568 remaining=265969205 work=3969 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=imports-end owned=5954 charged=9568 remaining=265969205 work=3969 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=functions-end owned=118392 charged=130668 remaining=265848105 work=50141 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=payload-end owned=121638 charged=133899 remaining=265844874 work=50141 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=records-begin owned=121648 charged=133909 remaining=265844864 work=50141 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=records-end owned=122224 charged=134485 remaining=265844288 work=61638 error=
+STORAGE_DIAG_2AC_PREPARATION module=4c6f1b4413491195 functions=2 request=366006 services=11 owned=122224 charged=134485 remaining=265844288
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=preparation-end owned=488374 charged=500635 remaining=265478138 work=61638 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=definitions-end owned=488374 charged=500635 remaining=265478138 work=61638 error=
+STORAGE_DIAG_2AC_PHASE module=4c6f1b4413491195 phase=finish-end owned=488374 charged=500635 remaining=265715138 work=61638 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=types-begin owned=632 charged=632 remaining=265714506 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=types-end owned=13064 charged=17944 remaining=265697194 work=10403 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=imports-end owned=13608 charged=18488 remaining=265696650 work=14764 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=functions-end owned=435762 charged=495261 remaining=265219877 work=349241 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=payload-end owned=439126 charged=498551 remaining=265216587 work=349241 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=records-begin owned=439166 charged=498591 remaining=265216547 work=349241 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=records-end owned=444478 charged=503903 remaining=265211235 work=429746 error=
+STORAGE_DIAG_2AC_PREPARATION module=78f689cebe89a59a functions=8 request=1725570 services=64 owned=444478 charged=503903 remaining=265211235
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=preparation-end owned=2170576 charged=2230001 remaining=263485137 work=429746 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=definitions-end owned=2170576 charged=2230001 remaining=263485137 work=429746 error=
+STORAGE_DIAG_2AC_PHASE module=78f689cebe89a59a phase=finish-end owned=2170576 charged=2230001 remaining=264780187 work=429746 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=types-begin owned=632 charged=632 remaining=264779555 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=types-end owned=161798 charged=270136 remaining=264510051 work=281829 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=types-begin owned=632 charged=632 remaining=264508875 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=types-end owned=39266 charged=67880 remaining=264441627 work=48946 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=types-begin owned=632 charged=632 remaining=264440451 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=types-end owned=11802 charged=17944 remaining=264423139 work=9109 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=types-begin owned=632 charged=632 remaining=264422363 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=types-end owned=3528 charged=5416 remaining=264417579 work=1514 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=imports-end owned=4072 charged=5960 remaining=264417035 work=5875 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=functions-end owned=126168 charged=138318 remaining=264284677 work=33057 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=payload-end owned=129434 charged=141559 remaining=264281436 work=33057 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=records-begin owned=129449 charged=141574 remaining=264281421 work=33057 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=records-end owned=129833 charged=141958 remaining=264281037 work=37813 error=
+STORAGE_DIAG_2AC_PREPARATION module=de5b39e14721516b functions=3 request=363875 services=21 owned=129833 charged=141958 remaining=264281037
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=preparation-end owned=493892 charged=506017 remaining=263916978 work=37813 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=definitions-end owned=493892 charged=506017 remaining=263916978 work=37813 error=
+STORAGE_DIAG_2AC_PHASE module=de5b39e14721516b phase=finish-end owned=493892 charged=506017 remaining=264143192 work=37813 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=imports-end owned=12346 charged=18488 remaining=264142792 work=42977 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=functions-end owned=411793 charged=474770 remaining=263686510 work=253208 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=payload-end owned=415177 charged=478070 remaining=263683210 work=253208 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=records-begin owned=415222 charged=478115 remaining=263683165 work=253208 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=records-end owned=420694 charged=483587 remaining=263677693 work=322765 error=
+STORAGE_DIAG_2AC_PREPARATION module=8141d5fd100f8b93 functions=9 request=1495592 services=68 owned=420694 charged=483587 remaining=263677693
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=preparation-end owned=1916846 charged=1979739 remaining=262181541 work=322765 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=definitions-end owned=1916846 charged=1979739 remaining=262181541 work=322765 error=
+STORAGE_DIAG_2AC_PHASE module=8141d5fd100f8b93 phase=finish-end owned=1916846 charged=1979739 remaining=263281102 work=322765 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=types-begin owned=632 charged=632 remaining=263280470 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=types-end owned=11802 charged=17848 remaining=263263254 work=12659 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=types-begin owned=632 charged=632 remaining=263262478 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=types-end owned=5954 charged=9568 remaining=263253542 work=3969 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=imports-end owned=6498 charged=10112 remaining=263252998 work=8330 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=functions-end owned=91795 charged=115590 remaining=263147520 work=115075 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=payload-end owned=95029 charged=118815 remaining=263144295 work=115075 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=records-begin owned=95034 charged=118820 remaining=263144290 work=115075 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=records-end owned=96442 charged=120228 remaining=263142882 work=130929 error=
+STORAGE_DIAG_2AC_PREPARATION module=a6475343733ffc2c functions=1 request=272061 services=8 owned=96442 charged=120228 remaining=263142882
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=preparation-end owned=368647 charged=392433 remaining=262870677 work=130929 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=definitions-end owned=368647 charged=392433 remaining=262870677 work=130929 error=
+STORAGE_DIAG_2AC_PHASE module=a6475343733ffc2c phase=finish-end owned=368647 charged=392433 remaining=263042567 work=130929 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=imports-end owned=12346 charged=18392 remaining=263042167 work=130074 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=functions-end owned=184881 charged=204172 remaining=262856387 work=447232 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=payload-end owned=188133 charged=207406 remaining=262853153 work=447232 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=records-begin owned=188143 charged=207416 remaining=262853143 work=447232 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=records-end owned=191471 charged=210744 remaining=262849815 work=495388 error=
+STORAGE_DIAG_2AC_PREPARATION module=2dcbaf63a28fc69e functions=2 request=573833 services=16 owned=191471 charged=210744 remaining=262849815
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=preparation-end owned=765448 charged=784721 remaining=262275838 work=495388 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=definitions-end owned=765448 charged=784721 remaining=262275838 work=495388 error=
+STORAGE_DIAG_2AC_PHASE module=2dcbaf63a28fc69e phase=finish-end owned=765448 charged=784721 remaining=262634045 work=495388 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=types-begin owned=632 charged=632 remaining=262633413 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=types-end owned=8000 charged=9696 remaining=262624349 work=5629 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=imports-end owned=8544 charged=10240 remaining=262623805 work=9990 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=functions-end owned=849354 charged=926329 remaining=261707716 work=361051 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=payload-end owned=852758 charged=929639 remaining=261704406 work=361051 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=records-begin owned=852808 charged=929689 remaining=261704356 work=361051 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=records-end owned=864104 charged=940985 remaining=261693060 work=483547 error=
+STORAGE_DIAG_2AC_FUNCTION module=7b4cbeac49c69223 index=3 preparation=2729378 matrices=926800 instructions=2316 slots=1497 locals=49 data=363 hosts=78 source=project:package_graph/Graph.chibi start=2839 end=2866
+STORAGE_DIAG_2AC_PREPARATION module=7b4cbeac49c69223 functions=10 request=3698728 services=176 owned=864104 charged=940985 remaining=261693060
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=preparation-end owned=4564256 charged=4641137 remaining=257992908 work=483547 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=definitions-end owned=4564256 charged=4657569 remaining=257976476 work=483547 error=
+STORAGE_DIAG_2AC_PHASE module=7b4cbeac49c69223 phase=finish-end owned=4564256 charged=4657569 remaining=260605118 work=483547 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=imports-end owned=39810 charged=68424 remaining=260605118 work=1144503 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=functions-end owned=975884 charged=1177595 remaining=259495947 work=4009073 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=payload-end owned=979392 charged=1180957 remaining=259492585 work=4009073 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=records-begin owned=979472 charged=1181037 remaining=259492505 work=4009073 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=records-end owned=997040 charged=1198605 remaining=259474937 work=4509724 error=
+STORAGE_DIAG_2AC_FUNCTION module=a8119b9f2e28947e index=15 preparation=2236452 matrices=627520 instructions=1960 slots=1197 locals=31 data=769 hosts=125 source=project:source_snapshot/Snapshot.chibi start=9228 end=9255
+STORAGE_DIAG_2AC_PREPARATION module=a8119b9f2e28947e functions=16 request=3559338 services=177 owned=997040 charged=1198605 remaining=259474937
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=preparation-end owned=4557810 charged=4759375 remaining=255914167 work=4509724 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=definitions-end owned=4557810 charged=4759375 remaining=255914167 work=4509724 error=
+STORAGE_DIAG_2AC_PHASE module=a8119b9f2e28947e phase=finish-end owned=4557810 charged=4759375 remaining=258603877 work=4509724 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=types-begin owned=632 charged=632 remaining=258603245 work=0 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=types-end owned=38500 charged=68120 remaining=258535757 work=43334 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=imports-end owned=39044 charged=68664 remaining=258535213 work=47695 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=functions-end owned=1928471 charged=2240441 remaining=256363436 work=1438687 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=payload-end owned=1933721 charged=2245474 remaining=256358403 work=1438687 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=records-begin owned=1933841 charged=2245594 remaining=256358283 work=1438687 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=records-end owned=1946033 charged=2257786 remaining=256346091 work=1716951 error=
+STORAGE_DIAG_2AC_FUNCTION module=61058c5dc9ed077d index=20 preparation=4890289 matrices=2127392 instructions=3498 slots=2328 locals=56 data=674 hosts=138 source=project:prepared_writer/Writer.chibi start=14430 end=24562
+STORAGE_DIAG_2AC_PREPARATION module=61058c5dc9ed077d functions=24 request=8698344 services=320 owned=1946033 charged=2257786 remaining=256346091
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=preparation-end owned=10646953 charged=10958706 remaining=247645171 work=1716951 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=definitions-end owned=10646953 charged=10962850 remaining=247641027 work=1716951 error=
+STORAGE_DIAG_2AC_PHASE module=61058c5dc9ed077d phase=finish-end owned=10646953 charged=10962850 remaining=254219459 work=1716951 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=imports-end owned=162342 charged=270680 remaining=254219459 work=6028885 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=functions-end owned=37985205 charged=43088139 remaining=211402000 work=180092020 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=payload-end owned=38067749 charged=43166119 remaining=211324020 work=180092020 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=records-begin owned=38069584 charged=43167954 remaining=211322185 work=180092020 error=
+STORAGE_DIAG_2AC_RECORD_CHECK module=8fb3be3da78425e0 index=156 request=81280 remaining=211208745
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=records-end owned=38897712 charged=43996082 remaining=210494057 work=232269185 error=
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=13 preparation=2772271 matrices=89040 instructions=741 slots=396 locals=20 data=298 hosts=44 source=project:package_compiler/Behavior.chibi start=14920 end=17936
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=17 preparation=1245271 matrices=252000 instructions=1259 slots=732 locals=32 data=398 hosts=49 source=project:package_compiler/Behavior.chibi start=23397 end=28919
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=19 preparation=3510191 matrices=1254848 instructions=2800 slots=1722 locals=50 data=800 hosts=153 source=project:package_compiler/Behavior.chibi start=29781 end=40272
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=153 preparation=1273934 matrices=268920 instructions=1244 slots=796 locals=11 data=397 hosts=61 source=project:package_compiler/Body.chibi start=73302 end=78856
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=156 preparation=39910059 matrices=29157432 instructions=13448 slots=8528 locals=162 data=3767 hosts=629 source=project:package_compiler/Body.chibi start=83878 end=134125
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=182 preparation=4201347 matrices=1656832 instructions=3235 slots=1975 locals=58 data=985 hosts=102 source=project:package_compiler/Compile.chibi start=27388 end=41989
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=183 preparation=1490067 matrices=356880 instructions=1486 slots=861 locals=48 data=291 hosts=33 source=project:package_compiler/Compile.chibi start=42508 end=48523
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=184 preparation=1468894 matrices=45936 instructions=521 slots=282 locals=13 data=178 hosts=24 source=project:package_compiler/Compile.chibi start=48751 end=51202
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=185 preparation=1177826 matrices=239000 instructions=1194 slots=720 locals=27 data=405 hosts=34 source=project:package_compiler/Compile.chibi start=51343 end=56379
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=204 preparation=10959662 matrices=6008544 instructions=6056 slots=3863 locals=81 data=1799 hosts=372 source=project:package_compiler/Compile.chibi start=78585 end=105068
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=214 preparation=1097321 matrices=220600 instructions=1102 slots=715 locals=14 data=310 hosts=45 source=project:package_compiler/Maps.chibi start=1792 end=4720
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=223 preparation=2530366 matrices=258984 instructions=1198 slots=770 locals=11 data=382 hosts=53 source=project:package_compiler/Maps.chibi start=16028 end=19365
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=226 preparation=2931785 matrices=500240 instructions=1689 slots=1100 locals=10 data=605 hosts=76 source=project:package_compiler/Maps.chibi start=21087 end=26448
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=257 preparation=2669927 matrices=194856 instructions=1058 slots=654 locals=14 data=302 hosts=42 source=project:package_compiler/References.chibi start=10880 end=14786
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=263 preparation=2707577 matrices=192464 instructions=1045 slots=648 locals=18 data=279 hosts=29 source=project:package_compiler/References.chibi start=17074 end=21144
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=265 preparation=1688056 matrices=188968 instructions=1026 slots=651 locals=11 data=336 hosts=44 source=project:package_compiler/References.chibi start=21905 end=25313
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=270 preparation=1329438 matrices=215800 instructions=1078 slots=704 locals=7 data=368 hosts=45 source=project:package_compiler/Steps.chibi start=4446 end=7472
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=277 preparation=21637608 matrices=14286888 instructions=9448 slots=5947 locals=119 data=2488 hosts=252 source=project:package_compiler/Steps.chibi start=12439 end=50384
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=278 preparation=10836463 matrices=6059136 instructions=6107 slots=3854 locals=84 data=1754 hosts=180 source=project:package_compiler/Steps.chibi start=50450 end=73083
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=279 preparation=2456212 matrices=761376 instructions=2162 slots=1341 locals=27 data=642 hosts=69 source=project:package_compiler/Steps.chibi start=73368 end=81502
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=290 preparation=2357917 matrices=710704 instructions=2065 slots=1288 locals=38 data=618 hosts=94 source=project:package_compiler/Steps.chibi start=92283 end=99959
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=292 preparation=20379386 matrices=13269472 instructions=9163 slots=5656 locals=153 data=2393 hosts=245 source=project:package_compiler/Steps.chibi start=100729 end=137766
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=293 preparation=5435622 matrices=2378992 instructions=3861 slots=2365 locals=83 data=1124 hosts=158 source=project:package_compiler/Steps.chibi start=137830 end=151144
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=295 preparation=2126558 matrices=338160 instructions=1408 slots=894 locals=7 data=508 hosts=80 source=project:package_compiler/Steps.chibi start=152958 end=157455
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=296 preparation=2729148 matrices=292320 instructions=1304 slots=820 locals=13 data=404 hosts=58 source=project:package_compiler/Steps.chibi start=157793 end=162305
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=333 preparation=1069632 matrices=197616 instructions=1073 slots=692 locals=7 data=373 hosts=59 source=project:package_compiler/Steps.chibi start=190466 end=194156
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=336 preparation=1607258 matrices=128440 instructions=844 slots=560 locals=7 data=225 hosts=36 source=project:package_compiler/Steps.chibi start=195837 end=198339
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=344 preparation=1645204 matrices=103632 instructions=761 slots=481 locals=5 data=216 hosts=19 source=project:package_compiler/Steps.chibi start=206380 end=209329
+STORAGE_DIAG_2AC_FUNCTION module=8fb3be3da78425e0 index=356 preparation=2170498 matrices=616000 instructions=1924 slots=1214 locals=19 data=683 hosts=97 source=project:package_compiler/Steps.chibi start=224332 end=231271
+STORAGE_DIAG_2AC_PREPARATION module=8fb3be3da78425e0 functions=367 request=210384750 services=5608 owned=38897712 charged=43996082 remaining=210494057
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=preparation-end owned=249327342 charged=254425712 remaining=64427 work=232269185 error=
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=definitions-end owned=249327342 charged=254482972 remaining=7167 work=232269185 error=prepared definition verification failed
+STORAGE_DIAG_2AC_PHASE module=8fb3be3da78425e0 phase=finish-end owned=249327342 charged=254482972 remaining=7167 work=232269185 error=prepared definition verification failed
+Prepared module project:package_compiler: prepared definition verification failed: prepared descriptor ownership exceeds budget

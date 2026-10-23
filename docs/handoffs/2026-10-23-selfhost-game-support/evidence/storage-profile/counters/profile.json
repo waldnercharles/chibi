@@ -1,0 +1,36 @@
+{
+  "argv": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi/.chibi/game-support/combined-d0/storage-profile/counters/diagnostic-build-host",
+    "--compiler",
+    "tools/compiler",
+    "--compiler-core",
+    "packages/core",
+    "--root",
+    "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi",
+    "--source",
+    "tools/toolchain/Build.chibi",
+    "--core",
+    "packages/core",
+    "--entry",
+    "Build",
+    "--timeout-ms",
+    "1800000",
+    "--",
+    "third-party",
+    "build"
+  ],
+  "candidate_tree": "2acb927a94319b4bfff42fa56d5af613e4b664da",
+  "host_sha256": "c873cf702101f387465c05a17b52a02cac0fc18504afaa2f2ae6dbc1fac6c567",
+  "instrumentation_manifest_sha256": "1737d69aa3f4a71c1e2ad8cc9b3b3420f685ff2ab81ba4720b4759dc36692013",
+  "bootstrap_sha256": "41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e",
+  "environment": {
+    "CHIBI_STORAGE_DIAG": "1"
+  },
+  "started_utc": "2026-10-23T05:07:44.024210+00:00",
+  "pid": 57418,
+  "exit_code": 1,
+  "elapsed_seconds": 58.501,
+  "completed_utc": "2026-10-23T05:08:42.529435+00:00",
+  "log_sha256": "d423bb7808f987f92beccf3e0e4b996d029fef6fd38291f7093f90e0152cb8a2",
+  "production_source_verified_unchanged": true
+}

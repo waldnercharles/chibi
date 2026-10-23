@@ -1,0 +1,29 @@
+{
+  "candidate_tree": "2acb927a94319b4bfff42fa56d5af613e4b664da",
+  "instrumentation_manifest_sha256": "1737d69aa3f4a71c1e2ad8cc9b3b3420f685ff2ab81ba4720b4759dc36692013",
+  "original_host_sha256": "20722c4105ea3dfc59e2105797b8707cf99544e14d58d259435f9d128374d839",
+  "started_utc": "2026-10-23T05:07:34.065877+00:00",
+  "argv": [
+    "cmake",
+    "--build",
+    "build-cmake",
+    "--target",
+    "chibi-build-host",
+    "--parallel",
+    "4"
+  ],
+  "pid": 57178,
+  "diagnostic_host": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi/.chibi/game-support/combined-d0/storage-profile/counters/diagnostic-build-host",
+    "size": 22434496,
+    "sha256": "c873cf702101f387465c05a17b52a02cac0fc18504afaa2f2ae6dbc1fac6c567"
+  },
+  "exit_code": 0,
+  "elapsed_seconds": 3.284,
+  "source_restored": true,
+  "host_restored": true,
+  "cleanup_errors": [],
+  "native_archives": "diagnostic objects until next ordinary rebuild; no validation claim",
+  "completed_utc": "2026-10-23T05:07:37.352009+00:00",
+  "log_sha256": "75e11a7a15f3425b795bf858041a5394388c1a1113f55f596f7c1febb46aef10"
+}

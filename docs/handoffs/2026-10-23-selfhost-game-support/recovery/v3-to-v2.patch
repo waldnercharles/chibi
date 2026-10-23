@@ -1,0 +1,133 @@
+diff --git a/tools/compiler/package_compiler/Body.chibi b/tools/compiler/package_compiler/Body.chibi
+index a35651f19e1a194e5f4c2813d987b156f709eed8..f68543bdb3a5efe7355c5eb0253af13aec0b45e2 100644
+--- a/tools/compiler/package_compiler/Body.chibi
++++ b/tools/compiler/package_compiler/Body.chibi
+@@ -2065,69 +2065,6 @@ DebugPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ty
+     }
+     return DebugPrefix.Read(code, slots, points);
+ }
+-DebugOutput :: union {
+-    Read(code: Code[], slots: Slot[], roots: Root[])
+-}
+-// Output watches after a node's step, with only their added tables. Result
+-// cells already have absolute indices; new slots start at the caller's base.
+-DebugWatches :: (forest: snapshot.SnapshotNode[], item: Work, produced: Value, negated: bool,
+-                 callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[],
+-                 ops: Ops, target: Target, slot_base: int) -> DebugOutput {
+-    node := forest[item.node];
+-    kind := node.kind;
+-    code: Code[] = [];
+-    slots: Slot[] = [];
+-    roots: Root[] = [];
+-    // The value an expression produced is watched as its output; the
+-    // step that gives a number literal its type watches it.
+-    if (produced.storage > 0 && Expression(kind) && !negated &&
+-        !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
+-        code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
+-                              0, true, node, target));
+-    }
+-    // A call's several results are each watched, numbered.
+-    if (kind == "call_expression" &&
+-        (produced.storage == FunctionResultsStorage || produced.storage == ResultsStorage)) {
+-        count: int = 0;
+-        if (produced.storage == FunctionResultsStorage) {
+-            count = callables[produced.record].results;
+-        } else {
+-            count = natives[produced.record].results;
+-        }
+-        at_result: int = 0;
+-        while (at_result < count) {
+-            storage: int = 0;
+-            container: int = 0;
+-            record: int = -1;
+-            if (produced.storage == FunctionResultsStorage) {
+-                called := callables[produced.record];
+-                result := params[called.first + called.count + at_result];
+-                storage = result.storage;
+-                container = result.container;
+-                record = result.record;
+-            } else {
+-                linked := natives[produced.record];
+-                storage = ports[linked.first + linked.parameters + at_result].storage;
+-                container = ports[linked.first + linked.parameters + at_result].container;
+-                record = ports[linked.first + linked.parameters + at_result].record;
+-            }
+-            address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+-            loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
+-            slots.extend([address, loaded]);
+-            code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target,
+-                                 slot_base + length(slots) - 2, node));
+-            if (Pointer(storage, container)) {
+-                root: Root = {slot: slot_base + length(slots) - 1, storage: storage,
+-                              container: container, record: record};
+-                roots.append(root);
+-            }
+-            code.append(WatchCode(ops, slot_base + length(slots) - 1, storage, container, record, at_result,
+-                                  true, node, target));
+-            at_result += 1;
+-        }
+-    }
+-    return DebugOutput.Read(code, slots, roots);
+-}
+ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+              constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: uint64[],
+@@ -2904,13 +2841,51 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             }
+             pass += 1;
+         }
+-        if (ops.debug) {
+-            switch DebugWatches(forest, item, produced, negated, callables, params, natives, ports, ops,
+-                                target, length(slots)) {
+-                case .Read(added_code, added_slots, added_roots):
+-                    code.extend(added_code);
+-                    slots.extend(added_slots);
+-                    roots.extend(added_roots);
++        // The value an expression produced is watched as its output; the
++        // step that gives a number literal its type watches it.
++        if (ops.debug && produced.storage > 0 && Expression(kind) && !negated &&
++            !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
++            code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
++                                  0, true, node, target));
++        }
++        // A call's several results are each watched, numbered.
++        if (ops.debug && kind == "call_expression" &&
++            (produced.storage == FunctionResultsStorage || produced.storage == ResultsStorage)) {
++            count: int = 0;
++            if (produced.storage == FunctionResultsStorage) {
++                count = callables[produced.record].results;
++            } else {
++                count = natives[produced.record].results;
++            }
++            at_result: int = 0;
++            while (at_result < count) {
++                storage: int = 0;
++                container: int = 0;
++                record: int = -1;
++                if (produced.storage == FunctionResultsStorage) {
++                    called := callables[produced.record];
++                    result := params[called.first + called.count + at_result];
++                    storage = result.storage;
++                    container = result.container;
++                    record = result.record;
++                } else {
++                    linked := natives[produced.record];
++                    storage = ports[linked.first + linked.parameters + at_result].storage;
++                    container = ports[linked.first + linked.parameters + at_result].container;
++                    record = ports[linked.first + linked.parameters + at_result].record;
++                }
++                address: Slot = {storage: target.pointer_storage, kind: AddressKind};
++                loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
++                slots.extend([address, loaded]);
++                code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target, length(slots) - 2,
++                                     node));
++                if (Pointer(storage, container)) {
++                    root: Root = {slot: length(slots) - 1, storage: storage, container: container, record: record};
++                    roots.append(root);
++                }
++                code.append(WatchCode(ops, length(slots) - 1, storage, container, record, at_result, true, node,
++                                      target));
++                at_result += 1;
+             }
+         }
+         // A compound assignment watches the value it stores at its target.

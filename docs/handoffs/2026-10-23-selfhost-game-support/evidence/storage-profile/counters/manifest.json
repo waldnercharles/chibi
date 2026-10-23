@@ -1,0 +1,18 @@
+{
+  "candidate_tree": "2acb927a94319b4bfff42fa56d5af613e4b664da",
+  "purpose": "temporary diagnostics only; no production limit or control-flow change",
+  "files": {
+    "src/types/value_wire.c": {
+      "original_sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+      "instrumented_sha256": "3e359bcc0e7615afb46e85603d4cdd9e8f77a3958cfbafac6a9bcc9df764ec16"
+    },
+    "src/execution/prepared.c": {
+      "original_sha256": "0657d31c420dfc38090ac63ad11eabeeadd9147662fd986ae7636af4854fb441",
+      "instrumented_sha256": "4993a6a6ef687d82ca8ae5a0b7839a666b6cc9034706a42aa1ddf5db151bb24a"
+    },
+    "src/execution/prepared_record.c": {
+      "original_sha256": "bc7034a3d758be9ee3ef1630123d532e9d7726f4a81527a2d31cc4dd515df170",
+      "instrumented_sha256": "5d306af715b4208c086a883feb5e7ab0ab1627fc874f63f6098b82d250545749"
+    }
+  }
+}

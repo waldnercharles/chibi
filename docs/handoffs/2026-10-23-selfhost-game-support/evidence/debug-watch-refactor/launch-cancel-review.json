@@ -1,0 +1,15 @@
+{
+  "status": "source only; no process launch/build/test",
+  "fix": "Record cancellation throughout Popen construction and PID receipt capture; honor pending cancellation before launch and after child ownership, then raise during wait.",
+  "files": {
+    "measure-v3/run_profile.py": {
+      "before_sha256": "476ea97d8bcebe4876b0736ef4363475b95aafe372f23c1becb896faf122e5bf",
+      "after_sha256": "bb057adf6e87264d371a6fee87bea60b4b6f376a83281aa1ae65465ee33c2288"
+    },
+    "ordinary-host/run_build.py": {
+      "before_sha256": "25b84b4d1a655c86b290116bc88cca1e7d3fa2252cb5cc887d0c566895b78c78",
+      "after_sha256": "5edd1edb062107fcf907bf78895616c5128f96bf98fd893868af33a1be92753a"
+    }
+  },
+  "candidate_tree": "1a59410022d128108e7744cf2b5641047a44d713"
+}

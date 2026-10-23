@@ -1,0 +1,13 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Configuring done (1.5s)
+-- Generating done (0.3s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi/build-cmake
+[0/4] Re-checking globbed directories...
+[1/9] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared_record.c.o
+[2/9] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/value_wire.c.o
+[3/9] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared.c.o
+[4/9] Linking C static library sdk/libchibi_types.a
+[5/9] Linking C static library sdk/libchibi_execution.a
+[6/9] Linking C executable sdk/chibi-build-host
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_support.a'

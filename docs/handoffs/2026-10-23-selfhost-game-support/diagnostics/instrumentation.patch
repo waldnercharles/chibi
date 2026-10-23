@@ -1,0 +1,136 @@
+--- a/src/types/value_wire.c
++++ b/src/types/value_wire.c
+@@ -14,9 +14,18 @@
+ #include <assert.h>
+ #include <limits.h>
+ #include <string.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <execinfo.h>
+ 
+ static void fail(execution_wire *w, const char *error)
+ {
++    if (getenv("CHIBI_STORAGE_DIAG") && !w->error && strstr(error, "storage")) {
++        fprintf(stderr, "STORAGE_DIAG_2AC_FAIL error=%s owned=%zu charged=%zu remaining=%zu offset=%zu size=%zu\n", error, w->owned_bytes, w->storage_charged, w->storage_budget ? *w->storage_budget : 0, w->offset, w->size);
++        void *trace[16];
++        int count = backtrace(trace, 16);
++        backtrace_symbols_fd(trace, count, 2);
++    }
+     if (!w->error) {
+         w->error = error;
+     }
+@@ -61,6 +70,7 @@
+                       : before + *w->storage_budget;
+     void *value = arena_alloc_bounded(w->storage, bytes, budget);
+     if (!value) {
++        if (getenv("CHIBI_STORAGE_DIAG")) fprintf(stderr, "STORAGE_DIAG_2AC_ALLOCATE request=%zu arena_before=%zu arena_budget=%zu\n", bytes, before, budget);
+         fail(w, "Prepared aggregate storage budget exceeded");
+         return NULL;
+     }
+@@ -822,6 +832,7 @@
+     }
+     if (w->storage_budget) {
+         if (bytes > *w->storage_budget) {
++            if (getenv("CHIBI_STORAGE_DIAG")) fprintf(stderr, "STORAGE_DIAG_2AC_RESERVE request=%zu\n", bytes);
+             fail(w, "Prepared aggregate storage budget exceeded");
+             return false;
+         }
+--- a/src/execution/prepared.c
++++ b/src/execution/prepared.c
+@@ -851,6 +851,16 @@
+     }
+     for (int i = 0; i < acount(c->functions); i++) {
+         size_t next = behavior_function_preparation_bytes(c->functions[i]);
++        if (getenv("CHIBI_STORAGE_DIAG") && next >= 1024u * 1024u) {
++            const behavior_function *f = c->functions[i];
++            const behavior_function_source *source = NULL;
++            for (int j = 0; j < acount(f->sources); j++) {
++                if (f->sources[j].asset_name && *f->sources[j].asset_name) { source = &f->sources[j]; break; }
++            }
++            size_t ins = acount(f->instructions), slots = acount(f->slots), locals = acount(f->locals);
++            size_t matrices = (ins + 1) * ((slots / 64 + 1) + ((slots + locals + 63) / 64 + 1)) * sizeof(uint64_t);
++            fprintf(stderr, "STORAGE_DIAG_2AC_FUNCTION module=%016llx index=%d preparation=%zu matrices=%zu instructions=%zu slots=%zu locals=%zu data=%d hosts=%d source=%s start=%d end=%d\n", (unsigned long long)c->plan->id, i, next, matrices, ins, slots, locals, acount(f->data_values), acount(f->host_calls), source ? source->asset_name : "", source ? source->start : -1, source ? source->end : -1);
++        }
+         if (next > SIZE_MAX - bytes) {
+             w->error = "prepared finalization count exceeds budget";
+             return false;
+@@ -870,6 +880,7 @@
+         w->error = "prepared service requirement count exceeds budget";
+         return false;
+     }
++    if (getenv("CHIBI_STORAGE_DIAG")) fprintf(stderr, "STORAGE_DIAG_2AC_PREPARATION module=%016llx functions=%d request=%zu services=%zu owned=%zu charged=%zu remaining=%zu\n", (unsigned long long)c->plan->id, acount(c->functions), bytes, services, w->owned_bytes, w->storage_charged, *w->storage_budget);
+     if (!execution_wire_reserve(w, bytes) ||
+         !execution_wire_reserve(w, services * sizeof *c->plan->services)) {
+         return false;
+@@ -931,9 +942,14 @@
+     if (!w->error && !c.plan->id) {
+         w->error = "module lacks stable identity";
+     }
++    uint64_t diag_id = c.plan->id;
++#define STORAGE_PHASE(phase) do { if (getenv("CHIBI_STORAGE_DIAG")) fprintf(stderr, "STORAGE_DIAG_2AC_PHASE module=%016llx phase=%s owned=%zu charged=%zu remaining=%zu work=%zu error=%s\n", (unsigned long long)diag_id, phase, w->owned_bytes, w->storage_charged, *remaining, c.record_work, w->error ? w->error : ""); } while (0)
++    STORAGE_PHASE("types-begin");
+     prepared_types(&c);
++    STORAGE_PHASE("types-end");
+     events(&c);
+     imports(&c, 0);
++    STORAGE_PHASE("imports-end");
+     int count = 0;
+     prepared_table(w, &count, sizeof(behavior_function) + sizeof(execution_artifact));
+     if (!w->error) {
+@@ -949,16 +965,21 @@
+         w->storage = &c.functions[i]->owned;
+         prepared_function(&c, c.functions[i]);
+     }
++    STORAGE_PHASE("functions-end");
+     w->storage = &c.plan->storage;
+     payload(&c);
++    STORAGE_PHASE("payload-end");
+     if (!w->error && w->offset != length) {
+         w->error = "trailing prepared bytes";
+     }
+     if (!w->error) {
+         owners(&c);
+     }
++    STORAGE_PHASE("records-begin");
+     if (!w->error && prepared_records_finalize(&c)) {
++        STORAGE_PHASE("records-end");
+         preparation_budget(&c);
++        STORAGE_PHASE("preparation-end");
+     }
+     /* The verifier's own diagnostic, kept for the reader's message. */
+     char verification[256] = "";
+@@ -977,6 +998,7 @@
+             w->storage_charged += growth;
+         }
+     }
++    STORAGE_PHASE("definitions-end");
+     execution_module *m = NULL;
+     if (!w->error) {
+         c.plan->valid = true;
+@@ -993,6 +1015,8 @@
+             *remaining = available - bytes;
+         }
+     }
++    STORAGE_PHASE("finish-end");
++#undef STORAGE_PHASE
+     if (!m) {
+         *remaining = initial;
+         if (w->error && size) {
+--- a/src/execution/prepared_record.c
++++ b/src/execution/prepared_record.c
+@@ -5,6 +5,7 @@
+ #include "types/record.h"
+ 
+ #include <stdlib.h>
++#include <stdio.h>
+ #include <string.h>
+ 
+ /* Computational work is separate from encoded records and owned bytes. */
+@@ -490,6 +491,7 @@
+         /* Both the temporary preflight table and the later verifier table are
+          * charged before either allocation. Canonical reconciliation refunds
+          * this scratch when the module is accepted. */
++        if (getenv("CHIBI_STORAGE_DIAG") && bytes >= 32768) fprintf(stderr, "STORAGE_DIAG_2AC_RECORD_CHECK module=%016llx index=%d request=%zu remaining=%zu\n", (unsigned long long)c->plan->id, j, 2 * bytes, *c->wire.storage_budget);
+         if (!execution_wire_reserve(&c->wire, 2 * bytes)) {
+             return false;
+         }

@@ -112,8 +112,8 @@ owns that implementation. Concrete error representation and the public recovery
 API must be documented before claiming complete recovery support. The owner
 ruled out `try`/`catch` permanently; authored recovery must use typed values/results.
 
-Subsequent approval: explicitly bind a task to the original target at its call
-site, before its first instruction. Removal cancels that task and its children
+Subsequent approval: bind a task to the original target before its first
+instruction. Removal cancels that task and its children
 at safe boundaries, delivering typed `Cancelled` to surviving independent awaiters.
 Completed successful results remain successful after later target removal.
 Children inherit retained dependencies so they stay protected after their
@@ -121,10 +121,18 @@ parent completes. Pointer ownership does not imply dependency. Delayed actions
 use task sequencing; `destroy_after()`
 was rejected. See [the lifetime contract](value-semantics.md).
 
+The owner later rejected requiring a call-site modifier and requested inference.
+The earlier explicit-call-site rule is superseded. Subsequent discussion
+rejected late cancellation after unrelated post-await effects: a component that
+may still be accessed, including conditionally, must remain a dependency so
+removal cancels before authored continuation. Do not bind every passively stored
+pointer or expose the rejected `on health` spelling. The inference producer and
+dependency-end rules remain separate from the private runtime target list.
+
 The query owner owns the separate task-lifetime runtime increment in
 `program_tasks.c`, `program_internal.h`, `program_activation.c`, `program.c`,
 the narrow ECS cell retain/liveness helpers, and existing C test dispatchers.
-The pointer owner owns authored call-site lowering and documentation. The first
+The pointer owner owns authored dependency inference and documentation. The first
 runtime implementation uses retained-cell liveness checks before task start,
 pending-request result consumption and continuations, plus pending-task sweeps even
 when a request never completes. Cell invalidation does not execute tasks or

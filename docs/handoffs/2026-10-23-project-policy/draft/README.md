@@ -1,0 +1,55 @@
+# Pair transport source draft
+
+Ignored source-only implementation for independent review. Nothing here is imported, staged, compiled, run, packaged or adopted. CI owns the execution lane. The live untracked Project.chibi stays at f798, and immutable source32/typed6ef trees and all live/index files remain unedited.
+
+## Composition
+
+`baseline-manifest.json` records every input read with `git show TREE:path` and its exact SHA256. `candidate/` contains the complete proposed files; `source.patch` is the mixed-baseline delta, with each file's baseline recorded in `manifest.json`.
+
+- Host catalog/internal header and existing build-process dispatcher derive from source32 tree `1a59410022d128108e7744cf2b5641047a44d713`. Its prepared artifact runtime, CLI and public host header are required unchanged inputs. The required header is protocol8, SHA256 `a807397748e6c7c678899b036c4f6750585defc9e0b37aefbe88627c17380083`; runtime C is `4aff77146002466bcb69c83d920e8760830e346e01d13fb5e4e5fd74a5966a81`. No protocol bump is part of this delta.
+- Native authoring writer, authored Targets/build-graph tests, project preparation CMake, test CMake and feature-gap file derive from typed tree `6ef6b76e5c7e83b328e2973cc15c42fc79804043`. This retains its unrelated typed/native changes. The initial typed6ef SDK CMake pair delta is preserved in pre-warm/. Final SDK CMake instead composes ONLY pair additions on reviewed SDK warm SHA256 `2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1`, preserving its compiler configure/install filtering. baseline/sdk-warm and the per-file basemap record this explicitly. The separate SDK Engine/NativeBuildFiles filtering changes remain required composition inputs owned by that lane. This is explicit composition with source32 host files, not a claim that typed6ef's protocol9 route equals the source32 prepared runtime.
+- Project derives from frozen f798 SHA256 `f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb`. Its unchanged full bytes also become a historical test fixture. The first pair draft at `d5c6193221ee314415fc0ddd34682699b5b164248ceeeeb39074185160a81ca7` is retained under `review-v1/` to record the repaired ownership finding.
+- New files have no production baseline. No source32 or typed6ef file outside this explicit delta is silently replaced. This patch alone is not a complete clean integration candidate.
+
+## Private transport
+
+Reserved binding941 is `build.publish_pair(source0: string, destination0: string, source1: string, destination1: string) -> int`. All four catalog parameters have c_string=true; the single I32 result has HOST effect. It is absent from scene catalogs. No current CLI/default selects it.
+
+The shared private C module prepares and reserves BOTH backup slots and full diagnostic/result storage before the first prior destination mutation. Empty reservations and old bytes moved onto them have separate flags. Backing up old bytes uses ordinary rename over an owned placeholder. Final publication/restoration uses either native replacing behavior or strict Darwin/Linux exclusive moves, selected by a private C enum. No duplicated rollback loop or public mode switch exists.
+
+Strict host admission requires four absolute paths, regular nonlink sources, missing-or-regular nonlink destinations, one physical existing parent, no duplicate/crossover names and no existing same-inode aliases/hardlinks. It rechecks caller entries after backup reservations to reject generated-name aliases. Two initially absent case aliases cannot both commit because every final move is genuinely exclusive. Native callers retain output spelling, relative cwd interpretation, fixed suffix, parent creation, mkstemp staging and original Windows/Web ordinary rename semantics. The private header is not installed as a public SDK API.
+
+The host reserves sufficient remaining fixed stderr capacity before backup preparation. It appends the prepared diagnostic directly, without build.report, allocation or another readiness check after execute. Primitive result storage exists before execution. Invalid raw admission, host readiness and insufficient diagnostic capacity can reject the host call before old mutation without producing an int disposition; sources remain caller-owned. After initial readiness/c_string conversion, the callback preallocates a smaller escaped raw-source-argument block when it fits. It appends this evidence only on raw-admission/full-diagnostic-capacity rejection. If even that complete block cannot fit, it reports the capture-capacity limitation without replacing/truncating earlier stderr. These names are caller arguments, not an attestation that valid files exist. Initial READY, c_string/binding checks, VM pre-entry cancellation and already-full/truncated capture can fail without complete recovery evidence. No absolute evidence guarantee or successful Compile log is claimed. Preparation failures return1 with only owned empty reservations cleaned. Accepted execution transfers disposable source ownership to the common transaction.
+
+| Result | Meaning |
+| --- | --- |
+| 0 | Both files committed; accepted source names consumed and scratch removed. |
+| 1 | Not committed; prior bytes AND prior absence preserved/restored. Disposable staging cleanup may be diagnosed as retained. |
+| 2 | Not committed; restoration incomplete, including inability to remove a new file at an originally absent destination. Preserve every unrecovered old backup. |
+| 3 | Both files committed; housekeeping retained. Never roll back after this commit point. |
+
+Consumed source names and ENOENT are normal. Results retain full escaped path names and flags. Native writes the full prepared diagnostic on any nonzero status and keeps a bounded summary in its existing error buffer. Native bool success is0/3. Failed log delivery does not alter commit disposition.
+
+There is no writer lock, crash journal, fsync durability or atomic-pair reader guarantee. Cooperative cancellation is checked just before execute and deferred through the fixed transaction; an outer host check may still report cancellation after commit. Abrupt termination or concurrent external mutation can interrupt work and leave diagnosed recovery files. Callers must exclusively own transaction entries for its duration.
+
+## Project policy
+
+Both final binary and sidecar pass protected SDK/cache/actual-role path checks before work reservation. Both staged siblings are checked before AND after reserving each numbered work directory. Assembly writes only to this staged pair. Project requires both files, revalidates installed identity after the child, then successfully removes its owned input/modules directory before raw publication.
+
+A successful raw0/3 returns without another capability. Any attempted raw publication failure also returns without cleanup, because the kernel may have released the numbered namespace. A private Assemble result2 carries this ownership fact to Compile, which returns1 immediately. Unaccepted staging can remain diagnosed; no generic cleanup ever deletes final destinations. Earlier authored failures retain caller ownership, remove staged siblings while their work reservation remains held, and remove work last. Staging cleanup failure keeps the reservation.
+
+Inspect's five-field frame/schema and its read-only behavior are unchanged. Preparation remains CHIBI-PROJECT-PREPARE/1. Witness becomes CHIBI-PROJECT-HOST/2 with the same ten ordered metadata rows, prior five passed checks and final publish-pair passed row. This source expectation does not attest execution. The separate SDK producer/probe owner must generate and run its prepared four-prior-state proof with the actual same hash-bound copied host. Its normal0 proof does not replace native fault1/2/3 coverage.
+
+## Authored C coverage, all unexecuted
+
+C/header sources were formatted only inside candidate/ with Homebrew clang-format22.1.8. Formatting was independently reviewed as preserving behavior; no compiler validation ran.
+
+The existing --build-process-files and --build-process dispatchers call the added file_pair.c suite; no new executable or selector is introduced. Its pertransaction failure-bit seam has no environment controls, callbacks or process-global state. Production plans use zero failure bits.
+
+Cases cover four prior-presence combinations; each backup reservation, old-byte move and final-move failure; both restoration failures with retained old bytes; failure removing a new originally absent/present destination; postcommit backup cleanup across prior states; both staging cleanup failures; native relative paths; raw duplicate/overlap/hardlink/link/relative/capacity rejection; and conditional missing-name case aliases. Additional cases cover raw initial cancellation/deadline preservation, full native-route Compile success with both new final bytes/no publication scratch, post-child identity drift preserving the old pair, and protected sidecar aliases to SDK/cache/executed roles rejecting before the child. These use stand-in child scripts and fixed/controlled identity seams. Source-level coverage is not a runtime pass.
+
+The missing-sidecar regression verifies the exact full f798 fixture hash, renames only its identity declaration to substitute a fixed identity, and requires both full historical/current policies to compile and execute. A fake native assembler writes only the binary. Actual f798 must return0 and replace that binary while leaving its real old sidecar; the repaired policy must return1 and preserve the old pair. Thus missing new function/type/entry cannot count as a passing regression.
+
+Two additional regressions exercise real Compile cleanup: an authored callee stand-in consumes staging and immediately reuses N, checking the next owner's work/pair survives; a nonempty staged sidecar directory forces prepublication removal failure and checks the work reservation, old final pair, retained payload and exact full-path stderr stream.
+
+Private capability fixture exclusion is documented in coverage-gaps.txt. Pending coverage includes actual native writer compatibility builds on Darwin/Linux/Windows/Web, prepared941 binding execution, actual native/selfhost Terrain artifact/sidecar/export parity, broader strict admission variants such as different parents/filesystems and nonregular destinations, existing case aliases, path-bound stress/escaped diagnostics, cancellation/abrupt kill, and clean combined integration. Targets mirrors the added support/build-host/test sources, private file-pair/project_compilation/build-host copies and private include order. PrivateHeaders represents CMake COPYONLY source headers through the established graph staging mechanism; no new Configures or public export row is needed. The existing build-graph support case now expects all eight actual support sources and checks the private header against CMake bytes plus public-header absence. Existing compile-command parity compares every newly listed source. No graph/native proof, coverage pass or prepared witness has been minted by this draft.

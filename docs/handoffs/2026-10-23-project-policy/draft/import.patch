@@ -1,0 +1,3605 @@
+diff --git a/sdk/CMakeLists.txt b/sdk/CMakeLists.txt
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -128,10 +128,14 @@
+     "${CHIBI_SDK_ROOT}/src/support/sha256.c"
+     "${CHIBI_SDK_ROOT}/src/support/arena.c"
+     "${CHIBI_SDK_ROOT}/src/support/file_io.c"
++    "${CHIBI_SDK_ROOT}/src/support/file_pair.c"
+     "${CHIBI_SDK_ROOT}/src/support/text_edit.c"
+     "${CHIBI_SDK_ROOT}/src/support/xalloc.c"
+     "${CHIBI_SDK_ROOT}/src/support/rcss_map.c")
+ add_library(Chibi::support ALIAS chibi_support)
++configure_file("${CHIBI_SDK_ROOT}/src/support/file_pair.h"
++    "${CMAKE_CURRENT_BINARY_DIR}/private/file-pair/support/file_pair.h" COPYONLY)
++target_include_directories(chibi_support PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/file-pair")
+ set_target_properties(chibi_support PROPERTIES EXPORT_NAME support)
+ target_compile_features(chibi_support PUBLIC c_std_23)
+ if(CHIBI_WEB_THREADS)
+@@ -609,11 +613,14 @@
+         "${CHIBI_SDK_ROOT}/src/host/build_catalog.c"
+         "${CHIBI_SDK_ROOT}/src/host/build_values.c"
+         "${CHIBI_SDK_ROOT}/src/host/build_io.c"
++        "${CHIBI_SDK_ROOT}/src/host/build_pair.c"
+         "${CHIBI_SDK_ROOT}/src/authoring/source_package_files.c")
+     foreach(header build_host build_host_internal build_values build_io process)
+         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+             "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
+     endforeach()
++    configure_file("${CHIBI_SDK_ROOT}/src/support/file_pair.h"
++        "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/file_pair.h" COPYONLY)
+     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
+         "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
+     configure_file("${CHIBI_SDK_ROOT}/src/authoring/source_package_io.h"
+diff --git a/sdk/project_preparation.cmake b/sdk/project_preparation.cmake
+--- a/sdk/project_preparation.cmake
++++ b/sdk/project_preparation.cmake
+@@ -56,6 +56,8 @@
+     "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/toolchain/compiler_syntax.h" COPYONLY)
+ configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.h"
+     "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/toolchain/compiler_json.h" COPYONLY)
++configure_file("${CHIBI_SDK_ROOT}/src/support/file_pair.h"
++    "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/support/file_pair.h" COPYONLY)
+ target_include_directories(chibi_project_compilation PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation")
+ target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation")
+ target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document chibi_project_document
+diff --git a/src/authoring/project_compile.c b/src/authoring/project_compile.c
+--- a/src/authoring/project_compile.c
++++ b/src/authoring/project_compile.c
+@@ -19,6 +19,7 @@
+ #include "support/asset_document.h"
+ #include "support/asset_format.h"
+ #include "support/file_io.h"
++#include "support/file_pair.h"
+ #include "support/xalloc.h"
+ #include "toolchain/compiler_json.h"
+ #include "toolchain/compiler_syntax.h"
+@@ -62,31 +63,6 @@
+     free(temporary);
+     return NULL;
+ }
+-static bool backup_file(const char *path, char **backup)
+-{
+-    struct stat info;
+-    if (lstat(path, &info)) {
+-        return errno == ENOENT;
+-    }
+-    if (!S_ISREG(info.st_mode)) {
+-        errno = EINVAL;
+-        return false;
+-    }
+-    char *temporary = temporary_path(path);
+-    int fd = mkstemp(temporary);
+-    if (fd < 0) {
+-        free(temporary);
+-        return false;
+-    }
+-    close(fd);
+-    if (rename(path, temporary)) {
+-        unlink(temporary);
+-        free(temporary);
+-        return false;
+-    }
+-    *backup = temporary;
+-    return true;
+-}
+ /* Creates the directories above `path` that do not exist yet. */
+ static bool make_parents(const char *path)
+ {
+@@ -112,54 +88,51 @@
+     size_t length = strlen(output) + sizeof ".resources.json";
+     char *manifest = xmalloc(length);
+     snprintf(manifest, length, "%s.resources.json", output);
+-    const char *paths[] = { output, manifest };
+-    char *temporary[] = { NULL, NULL };
++    char *temporary[2] = { 0 };
+     if (make_parents(output)) {
+         temporary[0] = write_temporary(output, artifact->data, artifact->size);
+     }
+-    char *backups[2] = { 0 };
+-    bool published[2] = { 0 };
+-    bool valid = temporary[0] != NULL;
+-    if (valid) {
++    if (temporary[0]) {
+         temporary[1] = write_temporary(
+             manifest,
+             artifact->manifest,
+             strlen(artifact->manifest)
+         );
+-        valid = temporary[1] != NULL;
+-    }
+-    for (int i = 0; valid && i < 2; i++) {
+-        valid = backup_file(paths[i], &backups[i]);
+-    }
+-    for (int i = 0; valid && i < 2; i++) {
+-        valid = rename(temporary[i], paths[i]) == 0;
+-        published[i] = valid;
+-    }
+-    if (!valid) {
+-        snprintf(error, size, "Cannot publish prepared artifact pair: %s", strerror(errno));
++    }
++    bool valid = false;
++    if (temporary[0] && temporary[1]) {
++        file_pair_plan plan = { .source = { temporary[0], temporary[1] },
++                                .destination = { output, manifest },
++                                .mode = FILE_PAIR_NATIVE };
++        file_pair pair;
++        if (file_pair_prepare(&pair, &plan)) {
++            int status = file_pair_execute(&pair);
++            valid = status == 0 || status == 3;
++        }
++        if (pair.status) {
++            /* Complete recovery paths live in prepared storage. A bounded
++             * error summary cannot carry them all. Log failure never changes
++             * the transaction's commit disposition. */
++            fwrite(pair.diagnostic, 1, pair.diagnostic_size, stderr);
++        }
++        if (!valid) {
++            snprintf(error, size, "Cannot publish prepared artifact pair: status %d; see recovery paths", pair.status);
++        }
++        if (!pair.admitted) {
++            unlink(temporary[0]);
++            unlink(temporary[1]);
++        }
++        file_pair_dispose(&pair);
++    } else {
++        snprintf(error, size, "Cannot stage prepared artifact pair: %s", strerror(errno));
+         for (int i = 0; i < 2; i++) {
+-            if (published[i]) {
+-                unlink(paths[i]);
++            if (temporary[i]) {
++                unlink(temporary[i]);
+             }
+-            if (backups[i] && rename(backups[i], paths[i])) {
+-                snprintf(error, size, "Cannot restore prior artifact; retained backup: %s", backups[i]);
+-                /* Preserve the old bytes when external filesystem mutation
+-                 * prevents restoration; report their exact recovery path. */
+-                free(backups[i]);
+-                backups[i] = NULL;
+-            }
+-        }
+-    }
+-    for (int i = 0; i < 2; i++) {
+-        if (temporary[i]) {
+-            unlink(temporary[i]);
+-            free(temporary[i]);
+-        }
+-        if (backups[i]) {
+-            unlink(backups[i]);
+-            free(backups[i]);
+-        }
+-    }
++        }
++    }
++    free(temporary[0]);
++    free(temporary[1]);
+     free(manifest);
+     return valid;
+ }
+diff --git a/src/host/build_catalog.c b/src/host/build_catalog.c
+--- a/src/host/build_catalog.c
++++ b/src/host/build_catalog.c
+@@ -392,6 +392,12 @@
+ static const script_catalog_parameter move_parameters[] = {
+     { .name = "source", .type = { .storage = PIN_STR }, .c_string = true },
+     { .name = "destination", .type = { .storage = PIN_STR }, .c_string = true },
++};
++static const script_catalog_parameter pair_parameters[] = {
++    { .name = "source0", .type = { .storage = PIN_STR }, .c_string = true },
++    { .name = "destination0", .type = { .storage = PIN_STR }, .c_string = true },
++    { .name = "source1", .type = { .storage = PIN_STR }, .c_string = true },
++    { .name = "destination1", .type = { .storage = PIN_STR }, .c_string = true },
+ };
+ static const script_catalog_parameter text_result = { .name = "value",
+                                                       .type = { .storage = PIN_STR } };
+@@ -443,7 +449,8 @@
+     X(937, "build.replace", replace_parameters, 3, text_result, value_replace)                  \
+     X(938, "build.byte_list", &path_parameter, 1, text_result, build_byte_list)                 \
+     X(939, "build.reserve_directory", &path_parameter, 1, bool_result, build_reserve_directory) \
+-    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory)
++    X(940, "build.publish_directory", move_parameters, 2, bool_result, build_publish_directory) \
++    X(941, "build.publish_pair", pair_parameters, 4, int_result, build_host_publish_pair)
+ #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
+     { .id = ID,                                                                \
+       .name = NAME,                                                            \
+diff --git a/src/host/build_host_internal.h b/src/host/build_host_internal.h
+--- a/src/host/build_host_internal.h
++++ b/src/host/build_host_internal.h
+@@ -41,6 +41,7 @@
+ const char *build_host_start(void *, const pin_value *, pin_value *);
+ const char *build_host_wait(void *, const pin_value *, pin_value *);
+ void build_host_stop_jobs(build_host *);
++const char *build_host_publish_pair(void *, const pin_value *, pin_value *);
+ /* The build.* natives, for the build host's catalog. */
+ const native_capability_pack *build_host_natives();
+ #endif
+diff --git a/src/host/build_pair.c b/src/host/build_pair.c
+new file mode 100644
+--- /dev/null
++++ b/src/host/build_pair.c
+@@ -0,0 +1,195 @@
++#include "host/build_host_internal.h"
++#include "support/file_pair.h"
++#include "support/xalloc.h"
++
++#include <assert.h>
++#include <errno.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++
++static bool same_file(const struct stat *left, const struct stat *right)
++{
++    return left->st_dev == right->st_dev && left->st_ino == right->st_ino;
++}
++static bool entry(const char *path, bool source, struct stat *info, bool *present)
++{
++    if (!lstat(path, info)) {
++        *present = true;
++        return S_ISREG(info->st_mode);
++    }
++    *present = false;
++    return !source && errno == ENOENT;
++}
++/* All entries share one physical existing directory. Normalize only the
++ * parents; retain each requested leaf spelling for exclusive-move admission. */
++static bool raw_paths(const char *const input[4], char *paths[4], struct stat before[4], bool present[4])
++{
++    char *parent = NULL;
++    struct stat first = { 0 };
++    bool valid = true;
++    for (int i = 0; valid && i < 4; i++) {
++        const char *slash = strrchr(input[i], '/');
++        if (input[i][0] != '/' || !slash || !slash[1] ||
++            !strcmp(slash + 1, ".") || !strcmp(slash + 1, "..")) {
++            valid = false;
++            break;
++        }
++        size_t length = (size_t)(slash - input[i]);
++        char *prefix = xmalloc(length + 2);
++        memcpy(prefix, input[i], length);
++        prefix[length] = 0;
++        if (!length) {
++            strcpy(prefix, "/");
++        }
++        char *canonical = realpath(prefix, NULL);
++        free(prefix);
++        struct stat directory;
++        if (!canonical || stat(canonical, &directory) ||
++            !S_ISDIR(directory.st_mode) || (i && !same_file(&first, &directory))) {
++            free(canonical);
++            valid = false;
++            break;
++        }
++        if (!i) {
++            parent = canonical;
++            first = directory;
++        } else {
++            free(canonical);
++        }
++        size_t size = strlen(parent) + strlen(slash + 1) + 2;
++        paths[i] = xmalloc(size);
++        snprintf(paths[i], size, "%s%s%s", parent, !strcmp(parent, "/") ? "" : "/", slash + 1);
++        valid = entry(paths[i], !(i & 1), &before[i], &present[i]);
++        for (int j = 0; valid && j < i; j++) {
++            valid = strcmp(paths[i], paths[j]) &&
++                    !(present[i] && present[j] && same_file(&before[i], &before[j]));
++        }
++    }
++    free(parent);
++    return valid;
++}
++/* Preparation may create only its two empty backup reservations. Recheck
++ * every caller entry so a generated backup cannot occupy a requested name,
++ * including a previously absent case alias. No old bytes have moved yet. */
++static bool prepared_paths(
++    const file_pair *pair,
++    char *const paths[4],
++    const struct stat before[4],
++    const bool present[4]
++)
++{
++    struct stat backups[2];
++    for (int i = 0; i < 2; i++) {
++        if (lstat(pair->backup[i], &backups[i]) || !S_ISREG(backups[i].st_mode)) {
++            return false;
++        }
++    }
++    if (same_file(&backups[0], &backups[1])) {
++        return false;
++    }
++    for (int i = 0; i < 4; i++) {
++        struct stat after;
++        bool exists;
++        if (!entry(paths[i], !(i & 1), &after, &exists) ||
++            exists != present[i] || (exists && !same_file(&before[i], &after))) {
++            return false;
++        }
++        for (int j = 0; exists && j < 2; j++) {
++            if (same_file(&after, &backups[j])) {
++                return false;
++            }
++        }
++    }
++    return pair->existed[0] == present[1] && pair->existed[1] == present[3];
++}
++static void append(build_host *host, const char *text, size_t size)
++{
++    chibi_build_result *result = host->result;
++    assert(size < sizeof result->stderr_text - result->stderr_size);
++    memcpy(result->stderr_text + result->stderr_size, text, size);
++    result->stderr_size += size;
++    result->stderr_text[result->stderr_size] = 0;
++}
++const char *build_host_publish_pair(void *service, const pin_value *arguments, pin_value *results)
++{
++    build_host *host = service;
++    if (!host) {
++        return "build host service is unavailable";
++    }
++    const char *error = build_host_ready(host);
++    if (error) {
++        return error;
++    }
++    const char *input[4];
++    for (int i = 0; i < 4; i++) {
++        error = build_values_cstring(&host->values, arguments[i], &input[i]);
++        if (error) {
++            return error;
++        }
++    }
++    results[0].i = 1;
++    size_t remaining = sizeof host->result->stderr_text - host->result->stderr_size - 1;
++    const char *sources[] = { input[0], input[2] };
++    size_t evidence_size = 0;
++    char *evidence = host->result->stderr_truncated
++                       ? NULL
++                       : file_pair_source_diagnostic(sources, remaining, &evidence_size);
++    char *paths[4] = { 0 };
++    struct stat before[4];
++    bool present[4];
++    if (!raw_paths(input, paths, before, present)) {
++        if (evidence) {
++            append(host, evidence, evidence_size);
++        }
++        for (int i = 0; i < 4; i++) {
++            free(paths[i]);
++        }
++        bool reported = evidence != NULL;
++        free(evidence);
++        return reported ? "invalid build artifact-pair paths; staging retained" : "invalid build artifact-pair paths; staging retained; recovery paths exceed capture capacity";
++    }
++    file_pair_plan plan = { .source = { paths[0], paths[2] },
++                            .destination = { paths[1], paths[3] },
++                            .mode = FILE_PAIR_EXCLUSIVE };
++    /* Reserve the full result/diagnostic bound before backup preparation.
++     * Appending after admission cannot allocate, truncate, or check READY. */
++    if (host->result->stderr_truncated ||
++        file_pair_diagnostic_capacity(&plan) > remaining) {
++        if (evidence) {
++            append(host, evidence, evidence_size);
++        }
++        for (int i = 0; i < 4; i++) {
++            free(paths[i]);
++        }
++        bool reported = evidence != NULL;
++        free(evidence);
++        return reported
++                 ? "build artifact-pair diagnostic capacity exceeded; staging "
++                   "retained"
++                 : "build artifact-pair diagnostic capacity exceeded; staging "
++                   "retained; recovery paths exceed capture capacity";
++    }
++    file_pair pair;
++    if (file_pair_prepare(&pair, &plan)) {
++        if (!prepared_paths(&pair, paths, before, present)) {
++            pair.system_error = EINVAL;
++            file_pair_abort(&pair);
++        } else {
++            error = build_host_ready(host);
++            if (error) {
++                file_pair_abort(&pair);
++            } else {
++                results[0].i = file_pair_execute(&pair);
++            }
++        }
++    }
++    append(host, pair.diagnostic, pair.diagnostic_size);
++    file_pair_dispose(&pair);
++    free(evidence);
++    for (int i = 0; i < 4; i++) {
++        free(paths[i]);
++    }
++    return error;
++}
+diff --git a/src/support/file_pair.c b/src/support/file_pair.c
+new file mode 100644
+--- /dev/null
++++ b/src/support/file_pair.c
+@@ -0,0 +1,336 @@
++#ifndef _GNU_SOURCE
++#define _GNU_SOURCE
++#endif
++#include "support/file_pair.h"
++
++#include "support/xalloc.h"
++
++#include <assert.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#if defined(__linux__)
++#include <sys/syscall.h>
++#endif
++
++static bool fail(file_pair *pair, file_pair_operation operation, int entry)
++{
++    if (!(pair->plan.failures & FILE_PAIR_FAIL(operation, entry))) {
++        return false;
++    }
++    errno = EIO;
++    return true;
++}
++static void failure(file_pair *pair, file_pair_operation operation, int entry)
++{
++    if (!pair->system_error) {
++        pair->system_error = errno;
++        pair->failed_operation = operation;
++        pair->failed_entry = entry;
++    }
++}
++static int move(file_pair *pair, file_pair_operation operation, int entry, const char *source, const char *destination)
++{
++    if (fail(pair, operation, entry)) {
++        return -1;
++    }
++    if (operation == FILE_PAIR_BACKUP || pair->plan.mode == FILE_PAIR_NATIVE) {
++        return rename(source, destination);
++    }
++    switch (pair->plan.mode) {
++        case FILE_PAIR_EXCLUSIVE:
++#if defined(__APPLE__)
++            return renamex_np(source, destination, RENAME_EXCL);
++#elif defined(__linux__)
++            return (int)syscall(SYS_renameat2, AT_FDCWD, source, AT_FDCWD, destination, 1 /* RENAME_NOREPLACE */);
++#else
++            errno = ENOTSUP;
++            return -1;
++#endif
++        case FILE_PAIR_NATIVE: break;
++    }
++    assert(false);
++    return -1;
++}
++static bool remove_owned(file_pair *pair, file_pair_operation operation, int entry, const char *path)
++{
++    if (!fail(pair, operation, entry) && (!unlink(path) || errno == ENOENT)) {
++        return true;
++    }
++    failure(pair, operation, entry);
++    return false;
++}
++static size_t quoted_size(const char *path)
++{
++    size_t size = 2;
++    for (const unsigned char *at = (const unsigned char *)path; *at; at++) {
++        size += *at >= 32 && *at <= 126 && *at != '"' && *at != '\\' ? 1 : 4;
++    }
++    return size;
++}
++static char *quote(char *out, const char *path)
++{
++    static const char hex[] = "0123456789abcdef";
++    *out++ = '"';
++    for (const unsigned char *at = (const unsigned char *)path; *at; at++) {
++        if (*at >= 32 && *at <= 126 && *at != '"' && *at != '\\') {
++            *out++ = (char)*at;
++        } else {
++            *out++ = '\\';
++            *out++ = 'x';
++            *out++ = hex[*at >> 4];
++            *out++ = hex[*at & 15];
++        }
++    }
++    *out++ = '"';
++    *out++ = '\n';
++    *out = 0;
++    return out;
++}
++char *file_pair_source_diagnostic(const char *const sources[2], size_t limit, size_t *size)
++{
++    static const char
++        first[] = "artifact-pair not admitted; raw source arguments\nsource0 ";
++    static const char second[] = "source1 ";
++    *size = strlen(first) + quoted_size(sources[0]) + 1 + strlen(second) +
++            quoted_size(sources[1]) + 1;
++    if (*size > limit) {
++        return NULL;
++    }
++    char *text = xmalloc(*size + 1);
++    memcpy(text, first, strlen(first));
++    char *out = quote(text + strlen(first), sources[0]);
++    memcpy(out, second, strlen(second));
++    out = quote(out + strlen(second), sources[1]);
++    assert((size_t)(out - text) == *size);
++    return text;
++}
++size_t file_pair_diagnostic_capacity(const file_pair_plan *plan)
++{
++    size_t capacity = 1024;
++    for (int i = 0; i < 2; i++) {
++        capacity += quoted_size(plan->source[i]) +
++                    2 * quoted_size(plan->destination[i]) + strlen(".tmp.XXXXXX");
++    }
++    return capacity;
++}
++static void diagnose(file_pair *pair)
++{
++    pair->diagnostic_size = 0;
++    if (!pair->status) {
++        pair->diagnostic[0] = 0;
++        return;
++    }
++    int length = snprintf(
++        pair->diagnostic,
++        pair->diagnostic_capacity,
++        "artifact-pair status=%d operation=%d entry=%d errno=%d\n",
++        pair->status,
++        pair->failed_operation,
++        pair->failed_entry,
++        pair->system_error
++    );
++    assert(length > 0);
++    pair->diagnostic_size = (size_t)length;
++    for (int i = 0; i < 2; i++) {
++        length = snprintf(
++            pair->diagnostic + pair->diagnostic_size,
++            pair->diagnostic_capacity - pair->diagnostic_size,
++            "source%d consumed=%d retained=%d ",
++            i,
++            pair->consumed[i],
++            pair->retained_source[i]
++        );
++        pair->diagnostic_size += (size_t)length;
++        pair->diagnostic_size = (size_t)(quote(
++                                             pair->diagnostic + pair->diagnostic_size,
++                                             pair->plan.source[i]
++                                         ) -
++                                         pair->diagnostic);
++        length = snprintf(
++            pair->diagnostic + pair->diagnostic_size,
++            pair->diagnostic_capacity - pair->diagnostic_size,
++            "destination%d prior=%d published=%d ",
++            i,
++            pair->existed[i],
++            pair->published[i]
++        );
++        pair->diagnostic_size += (size_t)length;
++        pair->diagnostic_size = (size_t)(quote(
++                                             pair->diagnostic + pair->diagnostic_size,
++                                             pair->plan.destination[i]
++                                         ) -
++                                         pair->diagnostic);
++        length = snprintf(
++            pair->diagnostic + pair->diagnostic_size,
++            pair->diagnostic_capacity - pair->diagnostic_size,
++            "backup%d old-bytes=%d retained=%d ",
++            i,
++            pair->old_moved[i],
++            pair->retained_backup[i]
++        );
++        pair->diagnostic_size += (size_t)length;
++        pair->diagnostic_size = (size_t)(quote(pair->diagnostic + pair->diagnostic_size, pair->backup[i]) -
++                                         pair->diagnostic);
++    }
++    assert(pair->diagnostic_size < pair->diagnostic_capacity);
++}
++static bool cleanup(file_pair *pair)
++{
++    bool clean = true;
++    for (int i = 0; i < 2; i++) {
++        if (pair->admitted && !pair->consumed[i]) {
++            pair->retained_source[i] = !remove_owned(
++                pair,
++                FILE_PAIR_REMOVE_SOURCE,
++                i,
++                pair->plan.source[i]
++            );
++            clean &= !pair->retained_source[i];
++        }
++        if (!pair->reserved[i]) {
++            continue;
++        }
++        if (pair->old_moved[i] && !pair->committed) {
++            pair->retained_backup[i] = true;
++            clean = false;
++            continue;
++        }
++        pair->retained_backup[i] = !remove_owned(pair, FILE_PAIR_REMOVE_BACKUP, i, pair->backup[i]);
++        clean &= !pair->retained_backup[i];
++        if (!pair->retained_backup[i]) {
++            pair->reserved[i] = false;
++            pair->old_moved[i] = false;
++        }
++    }
++    return clean;
++}
++bool file_pair_prepare(file_pair *pair, const file_pair_plan *plan)
++{
++    *pair = (file_pair){ .plan = *plan, .status = 1, .failed_entry = -1 };
++    size_t capacity = file_pair_diagnostic_capacity(plan);
++    for (int i = 0; i < 2; i++) {
++        size_t size = strlen(plan->destination[i]) + sizeof ".tmp.XXXXXX";
++        pair->backup[i] = xmalloc(size);
++        snprintf(pair->backup[i], size, "%s.tmp.XXXXXX", plan->destination[i]);
++    }
++    pair->diagnostic = xmalloc(capacity);
++    pair->diagnostic_capacity = capacity;
++    for (int i = 0; i < 2; i++) {
++        struct stat info;
++        if (!lstat(plan->destination[i], &info)) {
++            pair->existed[i] = true;
++            if (!S_ISREG(info.st_mode)) {
++                errno = EINVAL;
++                failure(pair, FILE_PAIR_RESERVE, i);
++                file_pair_abort(pair);
++                return false;
++            }
++        } else if (errno != ENOENT) {
++            failure(pair, FILE_PAIR_RESERVE, i);
++            file_pair_abort(pair);
++            return false;
++        }
++    }
++    for (int i = 0; i < 2; i++) {
++        int fd = fail(pair, FILE_PAIR_RESERVE, i) ? -1 : mkstemp(pair->backup[i]);
++        if (fd < 0) {
++            failure(pair, FILE_PAIR_RESERVE, i);
++            file_pair_abort(pair);
++            return false;
++        }
++        pair->reserved[i] = true;
++        if (close(fd)) {
++            failure(pair, FILE_PAIR_RESERVE, i);
++            file_pair_abort(pair);
++            return false;
++        }
++    }
++    pair->prepared = true;
++    return true;
++}
++int file_pair_abort(file_pair *pair)
++{
++    assert(!pair->admitted);
++    cleanup(pair);
++    pair->status = 1;
++    diagnose(pair);
++    return pair->status;
++}
++int file_pair_execute(file_pair *pair)
++{
++    assert(pair->prepared && !pair->admitted);
++    pair->admitted = true;
++    bool valid = true;
++    for (int i = 0; valid && i < 2; i++) {
++        if (pair->existed[i]) {
++            valid = !move(pair, FILE_PAIR_BACKUP, i, pair->plan.destination[i], pair->backup[i]);
++            pair->old_moved[i] = valid;
++            if (!valid) {
++                failure(pair, FILE_PAIR_BACKUP, i);
++            }
++        }
++    }
++    for (int i = 0; valid && i < 2; i++) {
++        valid = !move(
++            pair,
++            FILE_PAIR_PUBLISH,
++            i,
++            pair->plan.source[i],
++            pair->plan.destination[i]
++        );
++        pair->published[i] = valid;
++        pair->consumed[i] = valid;
++        if (!valid) {
++            failure(pair, FILE_PAIR_PUBLISH, i);
++        }
++    }
++    pair->committed = valid;
++    pair->status = valid ? 0 : 1;
++    if (!valid) {
++        for (int i = 0; i < 2; i++) {
++            bool absent = true;
++            if (pair->published[i]) {
++                absent = remove_owned(pair, FILE_PAIR_REMOVE_NEW, i, pair->plan.destination[i]);
++                if (absent) {
++                    pair->published[i] = false;
++                } else {
++                    pair->status = 2;
++                }
++            }
++            if (pair->old_moved[i]) {
++                if (absent && !move(
++                                  pair,
++                                  FILE_PAIR_RESTORE,
++                                  i,
++                                  pair->backup[i],
++                                  pair->plan.destination[i]
++                              )) {
++                    pair->old_moved[i] = false;
++                    pair->reserved[i] = false;
++                } else {
++                    failure(pair, FILE_PAIR_RESTORE, i);
++                    pair->retained_backup[i] = true;
++                    pair->status = 2;
++                }
++            }
++        }
++    }
++    bool clean = cleanup(pair);
++    if (pair->committed && !clean) {
++        pair->status = 3;
++    }
++    diagnose(pair);
++    return pair->status;
++}
++void file_pair_dispose(file_pair *pair)
++{
++    free(pair->backup[0]);
++    free(pair->backup[1]);
++    free(pair->diagnostic);
++    *pair = (file_pair){ 0 };
++}
+diff --git a/src/support/file_pair.h b/src/support/file_pair.h
+new file mode 100644
+--- /dev/null
++++ b/src/support/file_pair.h
+@@ -0,0 +1,67 @@
++#ifndef CHIBI_SUPPORT_FILE_PAIR_INTERNAL_H
++#define CHIBI_SUPPORT_FILE_PAIR_INTERNAL_H
++
++#include <stdbool.h>
++#include <stddef.h>
++
++/* Private two-file transport. Callers own path storage through dispose.
++ * Native callers stage their own bytes; the host admits arbitrary paths.
++ * No operation changes cwd or interprets project/compiler metadata. */
++typedef enum
++{
++    FILE_PAIR_NATIVE,
++    FILE_PAIR_EXCLUSIVE
++} file_pair_mode;
++typedef enum
++{
++    FILE_PAIR_RESERVE,
++    FILE_PAIR_BACKUP,
++    FILE_PAIR_PUBLISH,
++    FILE_PAIR_REMOVE_NEW,
++    FILE_PAIR_RESTORE,
++    FILE_PAIR_REMOVE_SOURCE,
++    FILE_PAIR_REMOVE_BACKUP,
++    FILE_PAIR_OPERATION_COUNT
++} file_pair_operation;
++
++/* The private test dispatcher can fail a particular operation/entry without
++ * process-global callbacks or environment controls. Production passes zero. */
++#define FILE_PAIR_FAIL(OP, ENTRY) (1u << ((OP) * 2 + (ENTRY)))
++typedef struct
++{
++    const char *source[2], *destination[2];
++    file_pair_mode mode;
++    unsigned failures;
++} file_pair_plan;
++
++typedef struct
++{
++    file_pair_plan plan;
++    char *backup[2];
++    bool existed[2], reserved[2], old_moved[2], published[2];
++    bool consumed[2], retained_source[2], retained_backup[2];
++    bool admitted, committed, prepared;
++    int status, system_error, failed_operation, failed_entry;
++    char *diagnostic;
++    size_t diagnostic_capacity, diagnostic_size;
++} file_pair;
++
++/* Exact conservative diagnostic bound; includes escaped full path names. */
++size_t file_pair_diagnostic_capacity(const file_pair_plan *);
++/* Error-only pre-admission evidence. Returns allocated escaped source names
++ * if their complete block fits limit; otherwise NULL without allocation.
++ * Size always receives the required byte count, excluding NUL. */
++char *file_pair_source_diagnostic(const char *const sources[2], size_t limit, size_t *size);
++/* Reserves BOTH empty backup slots and all result/diagnostic storage before
++ * any old destination moves. Failure cleans only owned empty reservations;
++ * sources remain caller-owned. Full retained paths stay in this result. */
++bool file_pair_prepare(file_pair *, const file_pair_plan *);
++/* Reject a prepared but unadmitted transaction, cleaning empty reservations.
++ * Execute transfers disposable source ownership and defers cancellation.
++ * 0 committed/clean; 1 prior state restored; 2 restoration incomplete;
++ * 3 committed with housekeeping retained. Neither function allocates. */
++int file_pair_abort(file_pair *);
++int file_pair_execute(file_pair *);
++/* Frees storage only. Never removes retained files. */
++void file_pair_dispose(file_pair *);
++#endif
+diff --git a/test/fixtures/feature-coverage/coverage-gaps.txt b/test/fixtures/feature-coverage/coverage-gaps.txt
+--- a/test/fixtures/feature-coverage/coverage-gaps.txt
++++ b/test/fixtures/feature-coverage/coverage-gaps.txt
+@@ -75,3 +75,8 @@
+ function Save Terrain
+ function Load Terrain
+ function Terrain Storage Result
++
++# build.publish_pair is private tool.build authority and cannot enter scenes.
++# --build-process-files covers its raw admission and two-file dispositions;
++# the SDK HOST/2 prepared probe separately checks the installed binding.
++# No scene-visible function is omitted.
+diff --git a/test/fixtures/toolchain/Project-before-pair.chibi b/test/fixtures/toolchain/Project-before-pair.chibi
+new file mode 100644
+--- /dev/null
++++ b/test/fixtures/toolchain/Project-before-pair.chibi
+@@ -0,0 +1,893 @@
++package toolchain
++
++import strings "core:strings"
++
++// Internal source draft. Nothing invokes or installs this policy yet.
++//
++// The prepared caller supplies raw role paths and the actual invocation entry.
++// It must bind those paths to the executable/artifact it actually invokes.
++// build.* cannot inspect its own loaded artifact or attest a host self-check.
++// Packaging must execute the checks recorded by the witness before adoption.
++// Protocol 8 alone does not establish prepared input or bindings 939/940.
++//
++// Both entries accept paired --key VALUE arguments only. Common keys:
++// --route native|selfhost --target native|web --sdk-root ABSOLUTE
++// --inventory RELATIVE --receipt RELATIVE --build-host ABSOLUTE
++// --assembly ABSOLUTE --invocation-entry Inspect|Compile.
++// Selfhost also takes --compiler-host ABSOLUTE --cache ABSOLUTE.
++// Compile takes --project-root ABSOLUTE --output ABSOLUTE and, for selfhost,
++// --budget POSITIVE_DECIMAL --timeout-ms POSITIVE_DECIMAL.
++// Inspect rejects project/output/budget/timeout: it never reads a project.
++//
++// CHIBI-PROJECT-PREPARE/1 is a new producer contract, not existing SDK data.
++// It is LF-terminated TSV. Each scalar key occurs once:
++// policy-source, policy-artifact, host-witness, compiler, core, bootstrap,
++// source-sha256, artifact-sha256, build-host-sha256, compiler-host-sha256,
++// assembly-sha256, inputs-sha256, inspect-entry, compile-entry, platform,
++// compiler-backend. Repeated ownership rows are ownership<TAB>file|directory
++// <TAB>RELATIVE. They come from the actual SDK Entries destination and kind.
++// Repeated output<TAB>file<TAB>RELATIVE rows name generated policy outputs.
++// They must include source, artifact, witness and this receipt, exactly once.
++// inputs-sha256 hashes the final TSV's non-output rows, including their LF,
++// in TSV order. It excludes every declared output, so no self-hash is needed.
++// Source/artifact hashes and a pre-inventory witness bind preparation; the
++// final compiler-tools.tsv binds all outputs including receipt and witness.
++// The final TSV retains its existing 1<LF>relative<TAB>SHA256<LF> format.
++// It excludes itself. Ownership does not claim unrelated SDK files.
++//
++// Installed inputs must remain immutable for one invocation. Content is
++// checked again before publishing a recovery or project result. This is
++// not a filesystem snapshot or protection against concurrent hostile edits.
++// StageOne.chibi must become an adapter or be removed when this is adopted;
++// keeping two permanent recovery/compile policies is not the handoff.
++
++ProjectReceipt :: union {
++    Read(values: string[], owners: string[], kinds: string[], outputs: string[]) | Invalid
++}
++
++ProjectJoin :: (parts: string[]) -> string {
++    return build.join(parts, "");
++}
++
++ProjectHas :: (values: string[], value: string) -> bool {
++    for (item in values) {
++        if (item == value) {
++            return true;
++        }
++    }
++    return false;
++}
++
++ProjectValue :: (pairs: string[], key: string) -> string {
++    index: int = 0;
++    while (index + 1 < length(pairs)) {
++        if (pairs[index] == key) {
++            return pairs[index + 1];
++        }
++        index += 2;
++    }
++    return "";
++}
++
++ProjectHex :: (value: string, count: int) -> bool {
++    if (strings.ByteLength(value) != count) {
++        return false;
++    }
++    for (byte in strings.Bytes(value)) {
++        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) {
++            return false;
++        }
++    }
++    return true;
++}
++
++ProjectRelative :: (path: string) -> bool {
++    if (path == "" || strings.HasPrefix(path, "/") ||
++        strings.ContainsAny(path, "\\\t\r\n") || strings.IndexByte(path, 0) >= 0) {
++        return false;
++    }
++    for (part in strings.Split(path, "/")) {
++        if (part == "" || part == "." || part == "..") {
++            return false;
++        }
++    }
++    return true;
++}
++
++ProjectAbsolute :: (path: string) -> bool {
++    return strings.HasPrefix(path, "/") && ProjectRelative(strings.Slice(path, 1, strings.ByteLength(path)));
++}
++
++ProjectBelow :: (path: string, directory: string) -> bool {
++    return path == directory || strings.HasPrefix(path, ProjectJoin([directory, "/"]));
++}
++
++ProjectParent :: (path: string) -> string {
++    if (path == "/" || path == "") {
++        return "";
++    }
++    slash := strings.LastIndexByte(path, 47);
++    if (slash == 0) {
++        return "/";
++    }
++    return strings.Slice(path, 0, slash);
++}
++
++// The existing stamp contract starts with device:inode. Later metadata is
++// deliberately excluded: directory contents and times can change.
++ProjectFileIdentity :: (path: string) -> string {
++    stamp := build.file_stamp(path);
++    if (stamp == "") {
++        return "";
++    }
++    device := build.before(stamp, ":");
++    inode := build.before(build.after(stamp, ":"), ":");
++    if (device == "" || inode == "") {
++        return "";
++    }
++    return ProjectJoin([device, ":", inode]);
++}
++
++// The protected directory must exist. Missing source suffixes are safe to
++// walk upward; a case alias still reaches the same physical ancestor.
++ProjectInside :: (path: string, directory: string) -> bool {
++    identity := ProjectFileIdentity(directory);
++    if (path == "" || identity == "" || build.file_kind(directory) != "directory") {
++        return true;
++    }
++    current := path;
++    while (current != "") {
++        if (ProjectFileIdentity(current) == identity) {
++            return true;
++        }
++        current = ProjectParent(current);
++    }
++    return false;
++}
++
++// Canonicalize existing ancestors without creating missing directories.
++ProjectFuturePath :: (path: string) -> string {
++    if (!ProjectAbsolute(path)) {
++        return "";
++    }
++    result := "";
++    missing := false;
++    for (part in strings.Split(strings.Slice(path, 1, strings.ByteLength(path)), "/")) {
++        result = ProjectJoin([result, "/", part]);
++        if (!missing) {
++            kind := build.file_kind(result);
++            if (kind == "") {
++                missing = true;
++            } else {
++                result = build.resolve_path(result);
++                if (result == "" || build.file_kind(result) != "directory") {
++                    return "";
++                }
++            }
++        }
++    }
++    return result;
++}
++
++ProjectArguments :: (arguments: string[], compiling: bool) -> bool {
++    allowed := ["--route", "--target", "--sdk-root", "--inventory", "--receipt",
++                "--build-host", "--assembly", "--invocation-entry", "--compiler-host", "--cache"];
++    if (compiling) {
++        allowed = build.concat(allowed, ["--project-root", "--output", "--budget", "--timeout-ms"]);
++    }
++    seen: string[] = [];
++    index: int = 0;
++    while (index < length(arguments)) {
++        key := arguments[index];
++        if (index + 1 >= length(arguments) || !ProjectHas(allowed, key) ||
++            ProjectHas(seen, key) || arguments[index + 1] == "") {
++            return false;
++        }
++        seen = build.concat(seen, [key]);
++        index += 2;
++    }
++    for (key in ["--route", "--target", "--sdk-root", "--inventory", "--receipt",
++                 "--build-host", "--assembly", "--invocation-entry"]) {
++        if (!ProjectHas(seen, key)) {
++            return false;
++        }
++    }
++    route := ProjectValue(arguments, "--route");
++    target := ProjectValue(arguments, "--target");
++    if ((route != "native" && route != "selfhost") || (target != "native" && target != "web")) {
++        return false;
++    }
++    if (route == "selfhost" && (ProjectValue(arguments, "--compiler-host") == "" ||
++                                ProjectValue(arguments, "--cache") == "")) {
++        return false;
++    }
++    if (route == "native" && (ProjectValue(arguments, "--compiler-host") != "" ||
++                              ProjectValue(arguments, "--cache") != "")) {
++        return false;
++    }
++    if (!compiling) {
++        return ProjectValue(arguments, "--invocation-entry") == "Inspect";
++    }
++    if (ProjectValue(arguments, "--invocation-entry") != "Compile" ||
++        ProjectValue(arguments, "--project-root") == "" || ProjectValue(arguments, "--output") == "") {
++        return false;
++    }
++    if (route == "native") {
++        return ProjectValue(arguments, "--budget") == "" && ProjectValue(arguments, "--timeout-ms") == "";
++    }
++    for (key in ["--budget", "--timeout-ms"]) {
++        number := ProjectValue(arguments, key);
++        if (number == "" || strings.HasPrefix(number, "0")) {
++            return false;
++        }
++        for (byte in strings.Bytes(number)) {
++            if (byte < 48 || byte > 57) {
++                return false;
++            }
++        }
++    }
++    return true;
++}
++
++ProjectReadReceipt :: (text: string) -> ProjectReceipt {
++    values: string[] = [];
++    owners: string[] = [];
++    kinds: string[] = [];
++    outputs: string[] = [];
++    if (!strings.HasPrefix(text, "CHIBI-PROJECT-PREPARE/1\n") ||
++        !strings.HasSuffix(text, "\n") || strings.Contains(text, "\r") || strings.IndexByte(text, 0) >= 0) {
++        return ProjectReceipt.Invalid;
++    }
++    scalar := ["policy-source", "policy-artifact", "host-witness", "compiler", "core", "bootstrap",
++               "source-sha256", "artifact-sha256", "build-host-sha256", "compiler-host-sha256",
++               "assembly-sha256", "inputs-sha256", "inspect-entry", "compile-entry", "platform", "compiler-backend"];
++    body := strings.Slice(text, strings.ByteLength("CHIBI-PROJECT-PREPARE/1\n"),
++                          strings.ByteLength(text) - strings.ByteLength("CHIBI-PROJECT-PREPARE/1\n") - 1);
++    for (line in strings.Split(body, "\n")) {
++        fields := strings.Split(line, "\t");
++        if (length(fields) == 3 && (fields[0] == "ownership" || fields[0] == "output")) {
++            if (!ProjectRelative(fields[2]) || (fields[1] != "file" && fields[1] != "directory")) {
++                return ProjectReceipt.Invalid;
++            }
++            if (fields[0] == "output") {
++                if (fields[1] != "file" || ProjectHas(outputs, fields[2])) {
++                    return ProjectReceipt.Invalid;
++                }
++                outputs = build.concat(outputs, [fields[2]]);
++                continue;
++            }
++            for (owner in owners) {
++                if (ProjectBelow(owner, fields[2]) || ProjectBelow(fields[2], owner)) {
++                    return ProjectReceipt.Invalid;
++                }
++            }
++            owners = build.concat(owners, [fields[2]]);
++            kinds = build.concat(kinds, [fields[1]]);
++            continue;
++        }
++        if (length(fields) != 2 || !ProjectHas(scalar, fields[0]) || fields[1] == "" ||
++            ProjectValue(values, fields[0]) != "") {
++            return ProjectReceipt.Invalid;
++        }
++        values = build.concat(values, fields);
++    }
++    for (key in scalar) {
++        value := ProjectValue(values, key);
++        if (value == "" || (strings.HasSuffix(key, "-sha256") && !ProjectHex(value, 64))) {
++            return ProjectReceipt.Invalid;
++        }
++    }
++    for (key in ["policy-source", "policy-artifact", "host-witness", "compiler", "core", "bootstrap"]) {
++        if (!ProjectRelative(ProjectValue(values, key))) {
++            return ProjectReceipt.Invalid;
++        }
++    }
++    if (length(owners) == 0 || ProjectValue(values, "inspect-entry") != "Inspect" ||
++        ProjectValue(values, "compile-entry") != "Compile" ||
++        (ProjectValue(values, "compiler-backend") != "sljit" && ProjectValue(values, "compiler-backend") != "bytecode")) {
++        return ProjectReceipt.Invalid;
++    }
++    return ProjectReceipt.Read(values, owners, kinds, outputs);
++}
++
++ProjectReceiptValues :: (receipt: ProjectReceipt) -> string[] {
++    switch receipt {
++    case ProjectReceipt.Read(values, owners, kinds, outputs):
++        return values;
++    case ProjectReceipt.Invalid:
++        return [];
++    }
++}
++
++ProjectOwned :: (owners: string[], kinds: string[], relative: string) -> bool {
++    index: int = 0;
++    while (index < length(owners)) {
++        if (relative == owners[index] ||
++            (kinds[index] == "directory" && ProjectBelow(relative, owners[index]))) {
++            return true;
++        }
++        index += 1;
++    }
++    return false;
++}
++
++ProjectPlainPath :: (root: string, relative: string) -> bool {
++    path := root;
++    parts := strings.Split(relative, "/");
++    index: int = 0;
++    while (index < length(parts)) {
++        // A case-insensitive lookup can resolve an alias the producer did
++        // not copy. Match the actual entry spelling, without banning hardlinks.
++        if (!ProjectHas(build.list_directory(path), parts[index])) {
++            return false;
++        }
++        path = ProjectJoin([path, "/", parts[index]]);
++        kind := build.file_kind(path);
++        if (kind == "link" || kind == "other" || kind == "" ||
++            (index + 1 < length(parts) && kind != "directory")) {
++            return false;
++        }
++        index += 1;
++    }
++    return true;
++}
++
++// Returns an exact file count, or -1. Links and nonregular data are rejected.
++ProjectWalk :: (root: string, relative: string, paths: string[], manifest: string) -> int {
++    path := ProjectJoin([root, "/", relative]);
++    kind := build.file_kind(path);
++    if (relative == manifest) {
++        if (kind == "file") {
++            return 0;
++        }
++        return -1;
++    }
++    if (kind == "file") {
++        if (ProjectHas(paths, relative)) {
++            return 1;
++        }
++        return -1;
++    }
++    if (kind != "directory") {
++        return -1;
++    }
++    count: int = 0;
++    for (name in build.list_directory(path)) {
++        child := ProjectJoin([relative, "/", name]);
++        if (!ProjectRelative(child)) {
++            return -1;
++        }
++        below := ProjectWalk(root, child, paths, manifest);
++        if (below < 0) {
++            return -1;
++        }
++        count += below;
++    }
++    return count;
++}
++
++ProjectInventory :: (root: string, manifest: string, text: string,
++                     receipt_path: string, receipt: ProjectReceipt) -> bool {
++    switch receipt {
++    case ProjectReceipt.Read(values, owners, kinds, outputs):
++        return ProjectInventoryRows(root, manifest, text, receipt_path, values, owners, kinds, outputs);
++    case ProjectReceipt.Invalid:
++        return false;
++    }
++}
++
++ProjectInventoryRows :: (root: string, manifest: string, text: string, receipt_path: string,
++                         values: string[], owners: string[], kinds: string[], receipt_outputs: string[]) -> bool {
++    if (!ProjectRelative(manifest) || manifest == receipt_path ||
++        !strings.HasPrefix(text, "1\n") || !strings.HasSuffix(text, "\n") ||
++        strings.Contains(text, "\r") || strings.IndexByte(text, 0) >= 0) {
++        return false;
++    }
++    paths: string[] = [];
++    inputs := "";
++    body := strings.Slice(text, 2, strings.ByteLength(text) - 3);
++    for (line in strings.Split(body, "\n")) {
++        fields := strings.Split(line, "\t");
++        if (length(fields) != 2 || !ProjectRelative(fields[0]) || !ProjectHex(fields[1], 64) ||
++            fields[0] == manifest || ProjectHas(paths, fields[0]) || !ProjectOwned(owners, kinds, fields[0]) ||
++            !ProjectPlainPath(root, fields[0])) {
++            return false;
++        }
++        path := ProjectJoin([root, "/", fields[0]]);
++        if (build.file_kind(path) != "file" || build.hash_file(path) != fields[1]) {
++            return false;
++        }
++        paths = build.concat(paths, [fields[0]]);
++        if (!ProjectHas(receipt_outputs, fields[0])) {
++            inputs = ProjectJoin([inputs, line, "\n"]);
++        }
++    }
++    if (build.hash_text(inputs) != ProjectValue(values, "inputs-sha256")) {
++        return false;
++    }
++    outputs := [receipt_path, ProjectValue(values, "policy-source"),
++                ProjectValue(values, "policy-artifact"), ProjectValue(values, "host-witness")];
++    if (length(receipt_outputs) != length(outputs)) {
++        return false;
++    }
++    checked: string[] = [];
++    for (output in outputs) {
++        if (ProjectHas(checked, output) || !ProjectHas(receipt_outputs, output) || !ProjectHas(paths, output)) {
++            return false;
++        }
++        checked = build.concat(checked, [output]);
++    }
++    for (key in ["compiler", "core", "bootstrap"]) {
++        relative := ProjectValue(values, key);
++        if (!ProjectOwned(owners, kinds, relative) || !ProjectPlainPath(root, relative) ||
++            build.file_kind(ProjectJoin([root, "/", relative])) != "directory") {
++            return false;
++        }
++    }
++    count: int = 0;
++    index: int = 0;
++    while (index < length(owners)) {
++        relative := owners[index];
++        if (!ProjectPlainPath(root, relative) ||
++            build.file_kind(ProjectJoin([root, "/", relative])) != kinds[index]) {
++            return false;
++        }
++        below := ProjectWalk(root, relative, paths, manifest);
++        if (below < 0) {
++            return false;
++        }
++        count += below;
++        index += 1;
++    }
++    return count == length(paths) && count > 0;
++}
++
++// This is verification of producer-recorded evidence, not a runtime probe.
++ProjectWitness :: (values: string[]) -> string {
++    lines := ["CHIBI-PROJECT-HOST/1"];
++    for (key in ["inputs-sha256", "source-sha256", "artifact-sha256", "build-host-sha256", "compiler-host-sha256",
++                 "assembly-sha256", "inspect-entry", "compile-entry", "platform", "compiler-backend"]) {
++        lines = build.concat(lines, [ProjectJoin([key, "\t", ProjectValue(values, key)])]);
++    }
++    return ProjectJoin([build.join(lines, "\n"), "\nprepared-load\tpassed\nprepared-without-source\tpassed\n",
++                        "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\n"]);
++}
++
++// Empty means unavailable. No source compilation, process or project read.
++ProjectIdentity :: (arguments: string[]) -> string {
++    root := ProjectValue(arguments, "--sdk-root");
++    manifest := ProjectValue(arguments, "--inventory");
++    receipt_path := ProjectValue(arguments, "--receipt");
++    if (!ProjectAbsolute(root) || !ProjectRelative(manifest) || !ProjectRelative(receipt_path)) {
++        return "";
++    }
++    root = build.resolve_path(root);
++    if (root == "" || build.file_kind(root) != "directory" || !ProjectPlainPath(root, manifest) ||
++        !ProjectPlainPath(root, receipt_path) || build.file_kind(ProjectJoin([root, "/", manifest])) != "file" ||
++        build.file_kind(ProjectJoin([root, "/", receipt_path])) != "file") {
++        return "";
++    }
++    receipt_text := build.read_file(ProjectJoin([root, "/", receipt_path]));
++    receipt := ProjectReadReceipt(receipt_text);
++    values := ProjectReceiptValues(receipt);
++    inventory := build.read_file(ProjectJoin([root, "/", manifest]));
++    if (!ProjectInventory(root, manifest, inventory, receipt_path, receipt) ||
++        ProjectValue(values, "platform") != build.platform() ||
++        build.hash_file(ProjectJoin([root, "/", ProjectValue(values, "policy-source")])) != ProjectValue(values, "source-sha256") ||
++        build.hash_file(ProjectJoin([root, "/", ProjectValue(values, "policy-artifact")])) != ProjectValue(values, "artifact-sha256") ||
++        build.read_file(ProjectJoin([root, "/", ProjectValue(values, "host-witness")])) != ProjectWitness(values)) {
++        return "";
++    }
++    role_hashes: string[] = [];
++    keys := ["--build-host", "--assembly"];
++    if (ProjectValue(arguments, "--route") == "selfhost") {
++        keys = build.concat(keys, ["--compiler-host"]);
++    }
++    for (key in keys) {
++        path := ProjectValue(arguments, key);
++        if (!ProjectAbsolute(path)) {
++            return "";
++        }
++        path = build.resolve_path(path);
++        if (path == "" || build.file_kind(path) != "file" || build.find_executable(path) == "") {
++            return "";
++        }
++        hash := build.hash_file(path);
++        expected := "assembly-sha256";
++        if (key == "--build-host") {
++            expected = "build-host-sha256";
++        } else if (key == "--compiler-host") {
++            expected = "compiler-host-sha256";
++        }
++        if (hash != ProjectValue(values, expected)) {
++            return "";
++        }
++        role_hashes = build.concat(role_hashes, [ProjectJoin([key, "\t", hash])]);
++    }
++    return build.hash_text(build.join(["CHIBI-PROJECT-IDENTITY/1", ProjectValue(arguments, "--route"),
++                                      ProjectValue(arguments, "--target"), build.platform(),
++                                      build.hash_text(inventory), build.hash_text(receipt_text),
++                                      build.join(role_hashes, "\n")], "\n"));
++}
++
++ProjectCacheRoot :: (arguments: string[]) -> string {
++    cache := ProjectFuturePath(ProjectValue(arguments, "--cache"));
++    sdk := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++    if (cache == "" || sdk == "" || ProjectInside(cache, sdk)) {
++        return "";
++    }
++    // An absent cache cannot contain the existing SDK. Once it exists,
++    // reject that reverse containment using directory identity as well.
++    if (build.file_kind(cache) != "" && ProjectInside(sdk, cache)) {
++        return "";
++    }
++    return cache;
++}
++
++ProjectOutputPath :: (arguments: string[], cache: string) -> string {
++    output := ProjectValue(arguments, "--output");
++    slash := strings.LastIndexByte(output, 47);
++    if (!ProjectAbsolute(output) || slash <= 0) {
++        return "";
++    }
++    parent := ProjectFuturePath(strings.Slice(output, 0, slash));
++    sdk := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++    if (parent == "" || sdk == "") {
++        return "";
++    }
++    output = ProjectJoin([parent, "/", strings.Slice(output, slash + 1, strings.ByteLength(output))]);
++    if (build.file_kind(parent) != "directory" || ProjectInside(output, sdk) ||
++        (cache != "" && ProjectInside(output, cache))) {
++        return "";
++    }
++    existing := build.resolve_path(output);
++    existing_stamp := "";
++    if (existing != "") {
++        existing_stamp = build.file_stamp(existing);
++    }
++    for (key in ["--assembly", "--compiler-host", "--build-host"]) {
++        role := ProjectValue(arguments, key);
++        if (role == "") {
++            continue;
++        }
++        role = build.resolve_path(role);
++        if (role == "" || output == role || existing == role) {
++            return "";
++        }
++        // A same-file check also protects existing case/link aliases when
++        // realpath preserves their spelling. Stamps never admit cache data
++        // or decide inventory uniqueness. Output hardlinks to tools are
++        // conservatively protected too.
++        if (existing_stamp != "" && existing_stamp == build.file_stamp(role)) {
++            return "";
++        }
++    }
++    return output;
++}
++
++ProjectCached :: (directory: string, identity: string) -> string {
++    if (build.file_kind(directory) != "directory" ||
++        build.file_kind(ProjectJoin([directory, "/compiler.chibip"])) != "file" ||
++        build.file_kind(ProjectJoin([directory, "/receipt.tsv"])) != "file" ||
++        length(build.list_directory(directory)) != 2) {
++        return "";
++    }
++    artifact := ProjectJoin([directory, "/compiler.chibip"]);
++    expected := ProjectJoin(["CHIBI-PROJECT-CACHE/1\nidentity\t", identity,
++                             "\nartifact-sha256\t", build.hash_file(artifact), "\n"]);
++    if (build.read_file(ProjectJoin([directory, "/receipt.tsv"])) != expected) {
++        return "";
++    }
++    return artifact;
++}
++
++// One fixed-ASCII frame. build.report adds its only LF. On a host-level IO
++// failure there may be no frame; the caller must reject that whole stream.
++ProjectInspection :: (route: string, availability: string, identity: string, diagnostic: string, code: int) -> int {
++    encoded := "null";
++    if (identity != "") {
++        encoded = ProjectJoin(["\"", identity, "\""]);
++    }
++    roles := "[\"build-host\",\"assembly\"]";
++    if (route == "selfhost") {
++        roles = "[\"build-host\",\"compiler-host\",\"assembly\"]";
++    }
++    frame := ProjectJoin(["CHIBI-INSPECT/1 {\"route\":\"", route, "\",\"availability\":\"", availability,
++                          "\",\"identity\":", encoded, ",\"diagnostic\":\"", diagnostic,
++                          "\",\"roles\":", roles, "}"]);
++    if (strings.ByteLength(frame) + 1 > 2048) {
++        return 2;
++    }
++    build.report(frame);
++    return code;
++}
++
++Inspect :: () -> int {
++    arguments := build.arguments();
++    route := ProjectValue(arguments, "--route");
++    if (!ProjectArguments(arguments, false)) {
++        return ProjectInspection("native", "unavailable", "", "invalid-arguments", 2);
++    }
++    if (ProjectValue(arguments, "--target") != "native") {
++        return ProjectInspection(route, "unavailable", "", "unsupported-target", 1);
++    }
++    if (route == "selfhost" && build.platform() != "Darwin" && build.platform() != "Linux") {
++        return ProjectInspection(route, "unavailable", "", "unsupported-platform", 1);
++    }
++    identity := ProjectIdentity(arguments);
++    if (identity == "") {
++        return ProjectInspection(route, "unavailable", "", "invalid-preparation", 1);
++    }
++    if (route == "native") {
++        return ProjectInspection(route, "ready", identity, "ready", 0);
++    }
++    cache := ProjectCacheRoot(arguments);
++    if (cache == "") {
++        return ProjectInspection(route, "unavailable", identity, "invalid-cache-root", 1);
++    }
++    directory := ProjectJoin([cache, "/", identity]);
++    if (ProjectCached(directory, identity) != "") {
++        return ProjectInspection(route, "ready", identity, "ready", 0);
++    }
++    if (build.file_kind(directory) != "") {
++        return ProjectInspection(route, "unavailable", identity, "invalid-published-cache", 1);
++    }
++    return ProjectInspection(route, "needs-recovery", identity, "recovery-required", 1);
++}
++
++ProjectRemove :: (path: string) -> bool {
++    if (build.file_kind(path) == "directory") {
++        for (name in build.list_directory(path)) {
++            if (!ProjectRemove(ProjectJoin([path, "/", name]))) {
++                return false;
++            }
++        }
++    }
++    return build.remove(path);
++}
++
++// Each contender owns only its successful reservation. A cancelled process
++// may leave scratch, but it never owns a shared fixed lock. The directory
++// service already caps a listing at 8192 names. Exhaustion fails closed.
++ProjectReserve :: (cache: string, prefix: string) -> string {
++    index := length(build.list_directory(cache));
++    while (index < 8192) {
++        path := format_text("{}/{}.{}", cache, prefix, index);
++        if (build.reserve_directory(path)) {
++            return path;
++        }
++        index += 1;
++    }
++    return "";
++}
++
++// The sibling artifact and reservation both occupy N. A previous invocation
++// may have removed its reservation just before its final artifact rename.
++ProjectOutputWork :: (destination: string) -> string {
++    index: int = 0;
++    while (index < 8192) {
++        work := format_text("{}.stage-one.{}", destination, index);
++        artifact := ProjectJoin([work, ".artifact"]);
++        if (build.file_kind(artifact) == "" && build.reserve_directory(work)) {
++            if (build.file_kind(artifact) == "") {
++                return work;
++            }
++            if (!build.remove(work)) {
++                return "";
++            }
++        }
++        index += 1;
++    }
++    return "";
++}
++
++ProjectRecover :: (arguments: string[], identity: string, cache: string) -> string {
++    if (!ProjectAbsolute(cache) || !ProjectHex(identity, 64) || ProjectIdentity(arguments) != identity) {
++        build.report("project: invalid compiler recovery identity or cache");
++        return "";
++    }
++    directory := ProjectJoin([cache, "/", identity]);
++    artifact := ProjectCached(directory, identity);
++    if (artifact != "") {
++        return artifact;
++    }
++    // There is no safe invalid-publication replacement contract yet. Never
++    // delete another reader's published directory or an abandoned scratch.
++    if (build.file_kind(directory) != "") {
++        build.report("project: invalid published compiler cache");
++        return "";
++    }
++    root := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++    receipt_path := ProjectValue(arguments, "--receipt");
++    if (root == "" || !ProjectAbsolute(root) || !ProjectRelative(receipt_path)) {
++        build.report("project: invalid compiler recovery resource path");
++        return "";
++    }
++    values := ProjectReceiptValues(ProjectReadReceipt(build.read_file(ProjectJoin([root, "/", receipt_path]))));
++    if (length(values) == 0) {
++        build.report("project: invalid compiler recovery receipt");
++        return "";
++    }
++    if (!build.make_directory(cache)) {
++        build.report("project: cannot create external compiler cache");
++        return "";
++    }
++    scratch := ProjectReserve(cache, ProjectJoin([identity, ".recover"]));
++    if (scratch == "") {
++        build.report("project: cannot reserve compiler recovery scratch");
++        return "";
++    }
++    recovered := ProjectJoin([scratch, "/compiler.chibip"]);
++    ok := build.run([ProjectValue(arguments, "--compiler-host"), "--bootstrap",
++                     ProjectJoin([root, "/", ProjectValue(values, "bootstrap")]), "--compiler",
++                     ProjectJoin([root, "/", ProjectValue(values, "compiler")]), "--core",
++                     ProjectJoin([root, "/", ProjectValue(values, "core")]), "--recover", recovered]) == 0;
++    ok = ok && build.file_kind(recovered) == "file" && ProjectIdentity(arguments) == identity;
++    if (ok) {
++        ok = build.write_file(ProjectJoin([scratch, "/receipt.tsv"]),
++                              ProjectJoin(["CHIBI-PROJECT-CACHE/1\nidentity\t", identity,
++                                           "\nartifact-sha256\t", build.hash_file(recovered), "\n"]));
++    }
++    if (ok) {
++        ok = build.publish_directory(scratch, directory);
++        if (ok) {
++            return ProjectCached(directory, identity);
++        }
++        // A concurrent contender may have published the same identity first.
++        artifact = ProjectCached(directory, identity);
++        ok = artifact != "";
++    }
++    cleaned := ProjectRemove(scratch);
++    if (!ok || !cleaned) {
++        build.report("project: compiler recovery or scratch cleanup failed");
++        return "";
++    }
++    return artifact;
++}
++
++ProjectStage :: (arguments: string[], values: string[], closure: string,
++                 entry: string, input: string, output: string) -> int {
++    command := [ProjectValue(arguments, "--compiler-host"), "--artifact", closure, "--entry", entry,
++                "--input", input, "--backend", ProjectValue(values, "compiler-backend"),
++                "--budget", ProjectValue(arguments, "--budget"), "--timeout-ms", ProjectValue(arguments, "--timeout-ms")];
++    if (output != "") {
++        command = build.concat(command, ["--output-bytes", output]);
++    }
++    return build.run(command);
++}
++
++ProjectAssemble :: (arguments: string[], identity: string, work: string, destination: string) -> int {
++    assembly := ProjectValue(arguments, "--assembly");
++    project := ProjectValue(arguments, "--project-root");
++    output := ProjectJoin([work, ".artifact"]);
++    command := [assembly, "--project-root", project, "--output", output];
++    if (ProjectValue(arguments, "--route") == "selfhost") {
++        input := ProjectJoin([work, "/input.json"]);
++        if (build.run([assembly, "--project-root", project, "--stage-one-input", input]) != 0) {
++            build.report("project: cannot export compiler input");
++            return 1;
++        }
++        count := build.trim(build.last_stdout());
++        if (count == "0") {
++            command = build.concat(command, ["--resources-only"]);
++        } else {
++            if (count == "" || strings.HasPrefix(count, "0")) {
++                build.report("project: invalid compiler input count");
++                return 1;
++            }
++            for (byte in strings.Bytes(count)) {
++                if (byte < 48 || byte > 57) {
++                    build.report("project: invalid compiler input count");
++                    return 1;
++                }
++            }
++            closure := ProjectRecover(arguments, identity, ProjectCacheRoot(arguments));
++            if (closure == "") {
++                return 1;
++            }
++            root := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++            receipt_path := ProjectValue(arguments, "--receipt");
++            if (root == "" || !ProjectAbsolute(root) || !ProjectRelative(receipt_path)) {
++                build.report("project: invalid compilation resource path");
++                return 1;
++            }
++            values := ProjectReceiptValues(ProjectReadReceipt(build.read_file(ProjectJoin([root, "/", receipt_path]))));
++            if (length(values) == 0 || ProjectIdentity(arguments) != identity) {
++                build.report("project: invalid compilation receipt or changed inputs");
++                return 1;
++            }
++            modules := ProjectJoin([work, "/modules.chibip"]);
++            if (ProjectStage(arguments, values, closure, "976ab7ba3a7fbb4d", input, modules) != 0) {
++                ProjectStage(arguments, values, closure, "90cd0d9866e51fd8", input, "");
++                build.report(ProjectJoin(["project: self-hosted compilation rejected: ", build.last_stdout()]));
++                return 1;
++            }
++            command = build.concat(command, ["--modules", modules]);
++        }
++    }
++    // --check with modules/resources-only needs a future native assembly
++    // contract. This entry builds output and never invents readonly flags.
++    if (ProjectIdentity(arguments) != identity || build.run(command) != 0 ||
++        ProjectIdentity(arguments) != identity || build.file_kind(output) != "file") {
++        build.report("project: assembly failed or installed inputs changed");
++        return 1;
++    }
++    if (!ProjectRemove(work)) {
++        build.report("project: cannot clean private assembly inputs");
++        return 1;
++    }
++    // Same-directory publication preserves an old output until commit and
++    // leaves no success scratch. It is the last authored capability on the
++    // successful path. Host cancellation retains its normal runtime rules.
++    if (!build.rename(output, destination)) {
++        build.report("project: atomic output publication failed");
++        return 1;
++    }
++    return 0;
++}
++
++Compile :: () -> int {
++    arguments := build.arguments();
++    if (!ProjectArguments(arguments, true)) {
++        build.report("project: invalid arguments");
++        return 2;
++    }
++    if (ProjectValue(arguments, "--target") != "native" ||
++        (ProjectValue(arguments, "--route") == "selfhost" && build.platform() != "Darwin" && build.platform() != "Linux")) {
++        build.report("project: unsupported target or platform");
++        return 1;
++    }
++    if (!ProjectAbsolute(ProjectValue(arguments, "--project-root")) ||
++        !ProjectAbsolute(ProjectValue(arguments, "--output"))) {
++        build.report("project: project and output paths must be absolute");
++        return 2;
++    }
++    identity := ProjectIdentity(arguments);
++    if (identity == "") {
++        build.report("project: invalid preparation");
++        return 1;
++    }
++    cache := "";
++    if (ProjectValue(arguments, "--route") == "selfhost") {
++        cache = ProjectCacheRoot(arguments);
++        if (cache == "") {
++            build.report("project: invalid compiler cache root");
++            return 1;
++        }
++        // Establish the protected directory identity before output checks.
++        // Only Compile may create this explicitly requested external path;
++        // an empty project may leave an empty cache but never recovers.
++        if (!build.make_directory(cache)) {
++            build.report("project: cannot create external compiler cache");
++            return 1;
++        }
++        cache = ProjectCacheRoot(arguments);
++        if (cache == "" || build.file_kind(cache) != "directory") {
++            build.report("project: compiler cache failed containment revalidation");
++            return 1;
++        }
++    }
++    destination := ProjectOutputPath(arguments, cache);
++    if (destination == "") {
++        build.report("project: output path is unavailable or protected");
++        return 2;
++    }
++    work := ProjectOutputWork(destination);
++    if (work == "") {
++        build.report("project: cannot reserve project scratch");
++        return 1;
++    }
++    result := ProjectAssemble(arguments, identity, work, destination);
++    if (result == 0) {
++        return 0;
++    }
++    if (!ProjectRemove(work)) {
++        build.report("project: cannot remove owned project scratch");
++        return 1;
++    }
++    if (!build.remove(ProjectJoin([work, ".artifact"]))) {
++        build.report("project: cannot remove owned project artifact");
++        return 1;
++    }
++    return result;
++}
+diff --git a/test/tools/CMakeLists.txt b/test/tools/CMakeLists.txt
+--- a/test/tools/CMakeLists.txt
++++ b/test/tools/CMakeLists.txt
+@@ -131,7 +131,7 @@
+ target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document
+     Chibi::asset_documents)
+ if(TARGET chibi_build_host)
+-    target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c)
++    target_sources(test_tools PRIVATE build_process.c file_pair.c build_toolchain.c build_graph.c build_sdk.c)
+     target_link_libraries(test_tools PRIVATE chibi_build_host)
+     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BUILD_PROCESS=1)
+     add_dependencies(test_tools chibi-build-host)
+diff --git a/test/tools/build_graph.c b/test/tools/build_graph.c
+--- a/test/tools/build_graph.c
++++ b/test/tools/build_graph.c
+@@ -8,6 +8,7 @@
+ 
+ #include <assert.h>
+ #include <dirent.h>
++#include <errno.h>
+ #include <libgen.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -30,7 +31,10 @@
+     debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH],
+     third_party[GRAPH_PATH];
+ static bool warnings;
+-static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
++static const char *const support_sources[] = { "binary_cache", "sha256",
++                                               "arena",        "file_io",
++                                               "file_pair",    "text_edit",
++                                               "xalloc",       "rcss_map" };
+ #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
+ 
+ static void join(char out[GRAPH_PATH], const char *base, const char *name)
+@@ -437,6 +441,17 @@
+     char build_dir[GRAPH_PATH], stale[GRAPH_PATH];
+     join(build_dir, suite, "incremental");
+     REQUIRE(graph(clone, build_dir, warnings, support_only) == SUPPORT_COUNT);
++    char private_header[GRAPH_PATH], cmake_header[GRAPH_PATH],
++        public_header[GRAPH_PATH];
++    join(private_header, build_dir, "sdk/private/file-pair/support/file_pair.h");
++    join(cmake_header, reference, "sdk/private/file-pair/support/file_pair.h");
++    char *ours = tool_read(private_header), *theirs = tool_read(cmake_header);
++    bool private_copy_matches = ours && theirs && !strcmp(ours, theirs);
++    free(ours);
++    free(theirs);
++    REQUIRE(private_copy_matches);
++    join(public_header, build_dir, "sdk/public/support/support/file_pair.h");
++    REQUIRE(access(public_header, F_OK) && errno == ENOENT);
+     REQUIRE(graph(clone, build_dir, warnings, support_only) == 0);
+     append(clone, "src/support/xalloc.c", "/* changed */\n");
+     REQUIRE(graph(clone, build_dir, warnings, support_only) == 1);
+diff --git a/test/tools/build_process.c b/test/tools/build_process.c
+--- a/test/tools/build_process.c
++++ b/test/tools/build_process.c
+@@ -22,6 +22,8 @@
+ #include <sys/time.h>
+ #include <time.h>
+ #include <unistd.h>
++
++void test_tool_file_pair(chibi_build_compiler *);
+ 
+ static char root[128];
+ static const char *worker_path;
+@@ -379,6 +381,7 @@
+         "build.make_directory",
+         "build.reserve_directory",
+         "build.publish_directory",
++        "build.publish_pair",
+         "build.resolve_path",
+         "build.write_file",
+         "build.last_stdout",
+@@ -2659,6 +2662,7 @@
+     saved_allowed = getenv("CHIBI_BUILD_ALLOWED")
+                       ? strdup(getenv("CHIBI_BUILD_ALLOWED"))
+                       : NULL;
++    test_tool_file_pair(build_compiler);
+     if (files_only) {
+         RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+         RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+diff --git a/test/tools/file_pair.c b/test/tools/file_pair.c
+new file mode 100644
+--- /dev/null
++++ b/test/tools/file_pair.c
+@@ -0,0 +1,784 @@
++#include "support/file_pair.h"
++
++#include "host/build_host_internal.h"
++#include "support/sha256.h"
++#include "test/tools/fixture.h"
++#include "third_party/pico_headers/pico_unit.h"
++
++#include <assert.h>
++#include <dirent.h>
++#include <errno.h>
++#include <limits.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++static char root[128], names[4][256];
++static chibi_build_compiler *compiler;
++
++static file_pair_plan start(int prior)
++{
++    tool_remove_tree(root);
++    assert(!mkdir(root, 0700));
++    static const char *leaves[] = { "stage0", "destination0", "stage1", "destination1" };
++    for (int i = 0; i < 4; i++) {
++        snprintf(names[i], sizeof names[i], "%s/%s", root, leaves[i]);
++    }
++    tool_write(names[0], "new binary");
++    tool_write(names[2], "new manifest");
++    if (prior & 1) {
++        tool_write(names[1], "old binary");
++    }
++    if (prior & 2) {
++        tool_write(names[3], "old manifest");
++    }
++    return (file_pair_plan){ .source = { names[0], names[2] },
++                             .destination = { names[1], names[3] },
++                             .mode = FILE_PAIR_EXCLUSIVE };
++}
++static bool bytes(const char *path, const char *expected)
++{
++    char *text = tool_read(path);
++    bool same = text && !strcmp(text, expected);
++    free(text);
++    return same;
++}
++static bool absent(const char *path)
++{
++    struct stat info;
++    return lstat(path, &info) && errno == ENOENT;
++}
++static int entries()
++{
++    DIR *directory = opendir(root);
++    assert(directory);
++    int count = 0;
++    struct dirent *entry;
++    while ((entry = readdir(directory))) {
++        count += strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..");
++    }
++    closedir(directory);
++    return count;
++}
++static bool prior_pair(int prior)
++{
++    return ((prior & 1) ? bytes(names[1], "old binary") : absent(names[1])) &&
++           ((prior & 2) ? bytes(names[3], "old manifest") : absent(names[3]));
++}
++
++TEST_CASE(pair_commits_every_prior_presence_combination)
++{
++    for (int prior = 0; prior < 4; prior++) {
++        file_pair_plan plan = start(prior);
++        file_pair pair;
++        REQUIRE(file_pair_prepare(&pair, &plan));
++        REQUIRE(pair.reserved[0] && pair.reserved[1]);
++        REQUIRE(!pair.old_moved[0] && !pair.old_moved[1] && prior_pair(prior));
++        REQUIRE(file_pair_execute(&pair) == 0);
++        REQUIRE(pair.committed && pair.consumed[0] && pair.consumed[1]);
++        REQUIRE(bytes(names[1], "new binary") && bytes(names[3], "new manifest"));
++        REQUIRE(absent(names[0]) && absent(names[2]) && entries() == 2);
++        REQUIRE(!pair.diagnostic_size);
++        file_pair_dispose(&pair);
++    }
++    return true;
++}
++TEST_CASE(pair_reservation_and_precommit_failures_preserve_prior_pair)
++{
++    const file_pair_operation operations[] = { FILE_PAIR_RESERVE,
++                                               FILE_PAIR_BACKUP,
++                                               FILE_PAIR_PUBLISH };
++    for (int phase = 0; phase < 3; phase++) {
++        for (int entry = 0; entry < 2; entry++) {
++            file_pair_plan plan = start(3);
++            plan.failures = FILE_PAIR_FAIL(operations[phase], entry);
++            file_pair pair;
++            bool prepared = file_pair_prepare(&pair, &plan);
++            REQUIRE(prepared == (phase != 0));
++            int status = prepared ? file_pair_execute(&pair) : pair.status;
++            REQUIRE(status == 1 && !pair.committed && prior_pair(3));
++            REQUIRE(pair.diagnostic_size && pair.diagnostic_size < pair.diagnostic_capacity);
++            REQUIRE(bytes(names[0], "new binary") == (phase == 0));
++            REQUIRE(bytes(names[2], "new manifest") == (phase == 0));
++            REQUIRE(entries() == (phase == 0 ? 4 : 2));
++            file_pair_dispose(&pair);
++        }
++    }
++    return true;
++}
++TEST_CASE(pair_incomplete_restore_retains_old_bytes_and_full_recovery_path)
++{
++    for (int entry = 0; entry < 2; entry++) {
++        file_pair_plan plan = start(3);
++        plan.failures = FILE_PAIR_FAIL(FILE_PAIR_PUBLISH, 1) |
++                        FILE_PAIR_FAIL(FILE_PAIR_RESTORE, entry);
++        file_pair pair;
++        REQUIRE(file_pair_prepare(&pair, &plan));
++        REQUIRE(file_pair_execute(&pair) == 2);
++        REQUIRE(!pair.committed && pair.old_moved[entry] && pair.retained_backup[entry]);
++        REQUIRE(bytes(pair.backup[entry], entry ? "old manifest" : "old binary"));
++        REQUIRE(absent(names[entry * 2 + 1]));
++        REQUIRE(bytes(names[(1 - entry) * 2 + 1], entry ? "old binary" : "old manifest"));
++        REQUIRE(absent(names[0]) && absent(names[2]));
++        REQUIRE(strstr(pair.diagnostic, pair.backup[entry]) && entries() == 2);
++        char *retained = strdup(pair.backup[entry]);
++        REQUIRE(retained);
++        file_pair_dispose(&pair);
++        REQUIRE(bytes(retained, entry ? "old manifest" : "old binary"));
++        free(retained);
++    }
++    return true;
++}
++TEST_CASE(pair_failed_removal_does_not_claim_prior_absence_restored)
++{
++    for (int prior = 0; prior < 2; prior++) {
++        file_pair_plan plan = start(prior);
++        plan.failures = FILE_PAIR_FAIL(FILE_PAIR_PUBLISH, 1) |
++                        FILE_PAIR_FAIL(FILE_PAIR_REMOVE_NEW, 0);
++        file_pair pair;
++        REQUIRE(file_pair_prepare(&pair, &plan));
++        REQUIRE(file_pair_execute(&pair) == 2);
++        REQUIRE(pair.existed[0] == !!prior && pair.old_moved[0] == !!prior);
++        REQUIRE(pair.published[0] && bytes(names[1], "new binary") && absent(names[3]));
++        REQUIRE(absent(names[0]) && absent(names[2]) && entries() == 1 + prior);
++        if (prior) {
++            REQUIRE(pair.retained_backup[0] && bytes(pair.backup[0], "old binary"));
++        }
++        file_pair_dispose(&pair);
++    }
++    return true;
++}
++TEST_CASE(pair_committed_cleanup_failure_keeps_new_pair)
++{
++    for (int prior = 0; prior < 4; prior++) {
++        for (int entry = 0; entry < 2; entry++) {
++            file_pair_plan plan = start(prior);
++            plan.failures = FILE_PAIR_FAIL(FILE_PAIR_REMOVE_BACKUP, entry);
++            file_pair pair;
++            REQUIRE(file_pair_prepare(&pair, &plan));
++            REQUIRE(file_pair_execute(&pair) == 3 && pair.committed);
++            REQUIRE(bytes(names[1], "new binary") && bytes(names[3], "new manifest"));
++            REQUIRE(pair.retained_backup[entry] && entries() == 3);
++            REQUIRE(pair.old_moved[entry] == !!(prior & (1 << entry)));
++            REQUIRE(strstr(pair.diagnostic, pair.backup[entry]));
++            file_pair_dispose(&pair);
++        }
++    }
++    return true;
++}
++TEST_CASE(pair_failed_staging_cleanup_is_diagnosed_without_undoing_restore)
++{
++    for (int entry = 0; entry < 2; entry++) {
++        file_pair_plan plan = start(3);
++        plan.failures = FILE_PAIR_FAIL(FILE_PAIR_PUBLISH, 0) |
++                        FILE_PAIR_FAIL(FILE_PAIR_REMOVE_SOURCE, entry);
++        file_pair pair;
++        REQUIRE(file_pair_prepare(&pair, &plan));
++        REQUIRE(file_pair_execute(&pair) == 1 && prior_pair(3));
++        REQUIRE(pair.retained_source[entry]);
++        REQUIRE(bytes(names[entry * 2], entry ? "new manifest" : "new binary"));
++        REQUIRE(strstr(pair.diagnostic, names[entry * 2]));
++        REQUIRE(absent(names[(1 - entry) * 2]) && entries() == 3);
++        file_pair_dispose(&pair);
++    }
++    return true;
++}
++TEST_CASE(native_pair_mode_preserves_relative_names)
++{
++    start(3);
++    char previous[PATH_MAX];
++    REQUIRE(getcwd(previous, sizeof previous));
++    REQUIRE(!chdir(root));
++    file_pair_plan plan = { .source = { "./stage0", "stage1" },
++                            .destination = { "destination0", "./destination1" },
++                            .mode = FILE_PAIR_NATIVE };
++    file_pair pair;
++    bool prepared = file_pair_prepare(&pair, &plan);
++    int status = prepared ? file_pair_execute(&pair) : pair.status;
++    file_pair_dispose(&pair);
++    bool restored_cwd = !chdir(previous);
++    REQUIRE(restored_cwd && prepared && status == 0);
++    REQUIRE(bytes(names[1], "new binary") && bytes(names[3], "new manifest"));
++    REQUIRE(entries() == 2);
++    return true;
++}
++
++static const char *raw_call_options(
++    const char *const input[4],
++    chibi_build_result *result,
++    size_t used,
++    const chibi_build_options *options
++)
++{
++    *result = (chibi_build_result){ .stderr_size = used };
++    memset(result->stderr_text, 'p', used);
++    build_host host = { .options = options,
++                        .result = result,
++                        .deadline = options->deadline };
++    pin_value arguments[4];
++    for (int i = 0; i < 4; i++) {
++        arguments[i] = (pin_value){
++            .type = PIN_STR,
++            .text = build_values_text(&host.values, input[i], strlen(input[i]))
++        };
++        assert(arguments[i].text);
++    }
++    pin_value value = { 0 };
++    const char *error = build_host_publish_pair(&host, arguments, &value);
++    result->value = value.i;
++    arena_free(&host.values.memory);
++    return error;
++}
++static const char *raw_call(const char *const input[4], chibi_build_result *result, size_t used)
++{
++    chibi_build_options options = { .deadline = chibi_build_now() + 10 };
++    return raw_call_options(input, result, used, &options);
++}
++TEST_CASE(raw_pair_cancellation_and_deadline_preserve_sources_and_prior_pair)
++{
++    for (int expired = 0; expired < 2; expired++) {
++        start(3);
++        const char *input[] = { names[0], names[1], names[2], names[3] };
++        volatile sig_atomic_t cancelled = !expired;
++        chibi_build_options options = { .cancelled = &cancelled,
++                                        .deadline = chibi_build_now() +
++                                                    (expired ? -1 : 10) };
++        chibi_build_result result;
++        const char *error = raw_call_options(input, &result, 0, &options);
++        REQUIRE(error && !strcmp(error, expired ? "build process timeout" : "build process cancelled"));
++        REQUIRE(prior_pair(3) && bytes(names[0], "new binary") && bytes(names[2], "new manifest"));
++        REQUIRE(entries() == 4 && !result.stderr_size);
++    }
++    return true;
++}
++TEST_CASE(raw_pair_rejects_aliases_links_and_capacity_before_mutation)
++{
++    const char *input[] = { names[0], names[1], names[2], names[3] };
++    chibi_build_result result;
++    for (int scenario = 0; scenario < 6; scenario++) {
++        start(3);
++        input[0] = names[0];
++        input[1] = names[1];
++        if (scenario == 0) {
++            input[0] = "stage0";
++        } else if (scenario == 1) {
++            input[0] = names[1];
++        } else if (scenario == 2) {
++            REQUIRE(!unlink(names[2]) && !link(names[0], names[2]));
++        } else if (scenario == 3) {
++            REQUIRE(!unlink(names[0]) && !symlink(names[2], names[0]));
++        }
++        size_t used = scenario == 4 ? CHIBI_BUILD_OUTPUT_CAPACITY - 16
++                    : scenario == 5 ? CHIBI_BUILD_OUTPUT_CAPACITY - 700
++                                    : 0;
++        const char *error = raw_call(input, &result, used);
++        REQUIRE(error && prior_pair(3) && entries() == 4);
++        REQUIRE(!result.stderr_truncated);
++        if (scenario == 4) {
++            REQUIRE(
++                result.stderr_size == used &&
++                strstr(error, "recovery paths exceed capture capacity")
++            );
++        } else {
++            REQUIRE(result.stderr_size > used);
++            REQUIRE(strstr(result.stderr_text + used, input[0]));
++            REQUIRE(strstr(result.stderr_text + used, input[2]));
++        }
++    }
++    return true;
++}
++TEST_CASE(raw_pair_missing_case_aliases_cannot_falsely_commit)
++{
++    start(0);
++    char upper[256], lower[256];
++    snprintf(upper, sizeof upper, "%s/CasePair", root);
++    snprintf(lower, sizeof lower, "%s/casepair", root);
++    tool_write(upper, "case witness");
++    bool folds = bytes(lower, "case witness");
++    REQUIRE(!unlink(upper));
++    const char *input[] = { names[0], upper, names[2], lower };
++    chibi_build_result result;
++    REQUIRE(!raw_call(input, &result, 0));
++    if (folds) {
++        REQUIRE(result.value == 1 && absent(upper) && absent(lower));
++        REQUIRE(absent(names[0]) && absent(names[2]) && entries() == 0);
++    } else {
++        REQUIRE(result.value == 0 && bytes(upper, "new binary") && bytes(lower, "new manifest"));
++        REQUIRE(entries() == 2);
++        fprintf(stderr, "case-insensitive missing-alias branch not covered on this filesystem\n");
++    }
++    return true;
++}
++
++/* Keep every historical function unchanged except the identity declaration's
++ * name. Supply one fixed identity to isolate ProjectAssemble's publication
++ * contract from unrelated SDK preparation. Both policies must compile/run;
++ * a missing function or source error cannot pass this regression. */
++static char *regression_source(const char *text)
++{
++    const char *marker = strstr(text, "ProjectIdentity ::");
++    assert(marker && !strstr(marker + 1, "ProjectIdentity ::"));
++    size_t prefix = (size_t)(marker - text);
++    size_t capacity = strlen(text) + strlen(root) * 4 + 2048;
++    char *source = malloc(capacity);
++    assert(source);
++    memcpy(source, text, prefix);
++    snprintf(
++        source + prefix,
++        capacity - prefix,
++        "Unused%s\n"
++        "ProjectIdentity :: (arguments: string[]) -> string { return "
++        "\"fixed\"; }\n"
++        "PairRegression :: () -> int { return "
++        "ProjectAssemble([\"--route\",\"native\","
++        "\"--assembly\",\"%s/assembly\",\"--project-root\",\"%s\"],\"fixed\","
++        "\"%s/work\",\"%s/destination0\"); }\n",
++        marker,
++        root,
++        root,
++        root,
++        root
++    );
++    return source;
++}
++static char *current_policy()
++{
++    char *text = tool_read(CHIBI_SOURCE_ROOT "/tools/toolchain/Project.chibi");
++    assert(text);
++    char *source = regression_source(text);
++    free(text);
++    return source;
++}
++static void assembly_script(const char *path, const char *body)
++{
++    static const char
++        prefix[] = "#!/bin/sh\noutput=\nwhile [ \"$#\" -gt 0 ]; do\n"
++                   "if [ \"$1\" = --output ]; then shift; output=$1; fi\n"
++                   "shift\ndone\n";
++    size_t size = strlen(prefix) + strlen(body) + 1;
++    char *script = malloc(size);
++    assert(script);
++    snprintf(script, size, "%s%s", prefix, body);
++    tool_write(path, script);
++    free(script);
++    assert(!chmod(path, 0700));
++}
++static bool invoke_compile(
++    const char *source,
++    const char *assembly,
++    const char *sdk,
++    const char *cache,
++    chibi_build_result *result
++)
++{
++    const char *arguments[28] = { "--route",
++                                  cache ? "selfhost" : "native",
++                                  "--target",
++                                  "native",
++                                  "--sdk-root",
++                                  sdk,
++                                  "--inventory",
++                                  "unused.tsv",
++                                  "--receipt",
++                                  "unused.tsv",
++                                  "--build-host",
++                                  assembly,
++                                  "--assembly",
++                                  assembly,
++                                  "--invocation-entry",
++                                  "Compile",
++                                  "--project-root",
++                                  root,
++                                  "--output",
++                                  names[1] };
++    int count = 20;
++    if (cache) {
++        const char *extra[] = { "--compiler-host", assembly,
++                                "--cache",         cache,
++                                "--budget",        "100000",
++                                "--timeout-ms",    "1000" };
++        for (int i = 0; i < 8; i++) {
++            arguments[count++] = extra[i];
++        }
++    }
++    chibi_build_options options = { .compiler = compiler,
++                                    .root = root,
++                                    .source_path = "ProjectCompilePair.chibi",
++                                    .source_text = source,
++                                    .entry = "Compile",
++                                    .backend = BEHAVIOR_BYTECODE,
++                                    .core = CHIBI_SOURCE_ROOT "/packages/core",
++                                    .arguments = arguments,
++                                    .argument_count = count,
++                                    .deadline = chibi_build_now() + 120 };
++    bool ran = chibi_build_invoke(&options, result);
++    if (!ran) {
++        fprintf(stderr, "policy Compile preparation/runtime error: %s\n", result->diagnostic);
++    }
++    return ran;
++}
++static bool no_project_staging()
++{
++    DIR *directory = opendir(root);
++    assert(directory);
++    bool clean = true;
++    struct dirent *entry;
++    while ((entry = readdir(directory))) {
++        clean &= strncmp(entry->d_name, "destination0.stage-one.", strlen("destination0.stage-one.")) !=
++                 0;
++        clean &= strncmp(entry->d_name, "destination0.tmp.", strlen("destination0.tmp.")) !=
++                 0;
++        clean &= strncmp(
++                     entry->d_name,
++                     "destination0.resources.json.tmp.",
++                     strlen("destination0.resources.json.tmp.")
++                 ) != 0;
++    }
++    closedir(directory);
++    return clean;
++}
++TEST_CASE(project_compile_publishes_both_new_files_and_leaves_no_staging)
++{
++    start(1);
++    char assembly[256], sdk[256], sidecar[256];
++    snprintf(assembly, sizeof assembly, "%s/assembly", root);
++    snprintf(sdk, sizeof sdk, "%s/sdk", root);
++    snprintf(sidecar, sizeof sidecar, "%s/destination0.resources.json", root);
++    REQUIRE(!mkdir(sdk, 0700));
++    tool_write(sidecar, "old manifest");
++    assembly_script(
++        assembly,
++        "printf 'assembled binary' > \"$output\"\n"
++        "printf 'assembled manifest' > \"$output.resources.json\"\n"
++    );
++    char *source = current_policy();
++    chibi_build_result result;
++    bool ran = invoke_compile(source, assembly, sdk, NULL, &result);
++    free(source);
++    REQUIRE(ran && result.value == 0);
++    REQUIRE(bytes(names[1], "assembled binary") && bytes(sidecar, "assembled manifest"));
++    REQUIRE(no_project_staging());
++    return true;
++}
++TEST_CASE(project_post_child_identity_drift_preserves_both_old_files)
++{
++    start(1);
++    char assembly[256], sdk[256], sidecar[256], marker[256];
++    snprintf(assembly, sizeof assembly, "%s/assembly", root);
++    snprintf(sdk, sizeof sdk, "%s/sdk", root);
++    snprintf(sidecar, sizeof sidecar, "%s/destination0.resources.json", root);
++    snprintf(marker, sizeof marker, "%s/drift", root);
++    REQUIRE(!mkdir(sdk, 0700));
++    tool_write(sidecar, "old manifest");
++    char body[1024];
++    snprintf(
++        body,
++        sizeof body,
++        "printf 'assembled binary' > \"$output\"\n"
++        "printf 'assembled manifest' > \"$output.resources.json\"\n"
++        "printf changed > '%s'\n",
++        marker
++    );
++    assembly_script(assembly, body);
++    char *base = current_policy();
++    const char *stub = strstr(base, "ProjectIdentity :: (arguments: string[]) -> string { return \"fixed\"; }");
++    REQUIRE(stub);
++    size_t prefix = (size_t)(stub - base);
++    size_t capacity = strlen(base) + strlen(marker) + 256;
++    char *source = malloc(capacity);
++    REQUIRE(source);
++    memcpy(source, base, prefix);
++    snprintf(
++        source + prefix,
++        capacity - prefix,
++        "ProjectIdentity :: (arguments: string[]) -> string { "
++        "if (build.file_exists(\"%s\")) { return \"changed\"; } return "
++        "\"fixed\"; }%s",
++        marker,
++        stub + strlen("ProjectIdentity :: (arguments: string[]) -> string { return \"fixed\"; }")
++    );
++    free(base);
++    chibi_build_result result;
++    bool ran = invoke_compile(source, assembly, sdk, NULL, &result);
++    free(source);
++    REQUIRE(ran && result.value == 1 && bytes(marker, "changed"));
++    REQUIRE(bytes(names[1], "old binary") && bytes(sidecar, "old manifest"));
++    REQUIRE(no_project_staging());
++    return true;
++}
++TEST_CASE(project_protected_sidecar_aliases_reject_before_assembly)
++{
++    for (int role = 0; role < 3; role++) {
++        start(1);
++        char assembly[256], sdk[256], cache[256], sidecar[256], protected[256],
++            marker[256];
++        snprintf(assembly, sizeof assembly, "%s/assembly", root);
++        snprintf(sdk, sizeof sdk, "%s/sdk", root);
++        snprintf(cache, sizeof cache, "%s/cache", root);
++        snprintf(sidecar, sizeof sidecar, "%s/destination0.resources.json", root);
++        snprintf(protected, sizeof protected, "%s/%s/protected", root, role ? "cache" : "sdk");
++        snprintf(marker, sizeof marker, "%s/assembled", root);
++        REQUIRE(!mkdir(sdk, 0700) && !mkdir(cache, 0700));
++        char body[512];
++        snprintf(body, sizeof body, "printf ran > '%s'\n", marker);
++        assembly_script(assembly, body);
++        char *expected = tool_read(assembly);
++        REQUIRE(expected);
++        if (role == 2) {
++            REQUIRE(!link(assembly, sidecar));
++        } else {
++            tool_write(protected, "protected bytes");
++            REQUIRE(!symlink(protected, sidecar));
++        }
++        struct stat before, after;
++        REQUIRE(!lstat(sidecar, &before));
++        char *source = current_policy();
++        chibi_build_result result;
++        bool ran = invoke_compile(source, assembly, sdk, role == 1 ? cache : NULL, &result);
++        free(source);
++        REQUIRE(ran && result.value == 2 && absent(marker));
++        REQUIRE(bytes(names[1], "old binary") && no_project_staging());
++        REQUIRE(
++            !lstat(sidecar, &after) && before.st_ino == after.st_ino &&
++            before.st_dev == after.st_dev
++        );
++        REQUIRE(bytes(assembly, expected));
++        REQUIRE(role == 2 ? bytes(sidecar, expected) : bytes(protected, "protected bytes"));
++        free(expected);
++        REQUIRE(strstr(result.stderr_text, "output path is unavailable or protected"));
++    }
++    return true;
++}
++TEST_CASE(project_missing_sidecar_rejects_actual_f798_publication_behavior)
++{
++    char *old = tool_read(CHIBI_SOURCE_ROOT "/test/fixtures/toolchain/Project-before-pair.chibi");
++    char *current = tool_read(CHIBI_SOURCE_ROOT "/tools/toolchain/Project.chibi");
++    REQUIRE(old && current);
++    char digest[65];
++    sha256_hex(old, strlen(old), digest);
++    REQUIRE(!strcmp(digest, "f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb"));
++    for (int version = 0; version < 2; version++) {
++        start(1);
++        char assembly[256], work[256], sidecar[256];
++        snprintf(assembly, sizeof assembly, "%s/assembly", root);
++        snprintf(work, sizeof work, "%s/work", root);
++        snprintf(sidecar, sizeof sidecar, "%s/destination0.resources.json", root);
++        tool_write(sidecar, "old manifest");
++        tool_write(
++            assembly,
++            "#!/bin/sh\noutput=\nwhile [ \"$#\" -gt 0 ]; do\n"
++            "if [ \"$1\" = --output ]; then shift; output=$1; fi\n"
++            "shift\ndone\nprintf 'assembled binary' > \"$output\"\n"
++        );
++        REQUIRE(!chmod(assembly, 0700) && !mkdir(work, 0700));
++        char *source = regression_source(version ? current : old);
++        chibi_build_options options = {
++            .compiler = compiler,
++            .root = root,
++            .source_path = "ProjectPairRegression.chibi",
++            .source_text = source,
++            .entry = "PairRegression",
++            .backend = BEHAVIOR_BYTECODE,
++            .core = CHIBI_SOURCE_ROOT "/packages/core",
++            .deadline = chibi_build_now() + 120
++        };
++        chibi_build_result result;
++        bool ran = chibi_build_invoke(&options, &result);
++        free(source);
++        if (!ran) {
++            fprintf(
++                stderr,
++                "policy regression preparation/runtime error: %s\n",
++                result.diagnostic
++            );
++        }
++        REQUIRE(ran && result.value == (version ? 1 : 0));
++        REQUIRE(bytes(names[1], version ? "old binary" : "assembled binary"));
++        /* The actual sidecar final must be paired with destination0. */
++        REQUIRE(bytes(sidecar, "old manifest"));
++    }
++    free(old);
++    free(current);
++    return true;
++}
++
++TEST_CASE(project_does_not_clean_a_reused_reservation_after_publish_attempt)
++{
++    start(1);
++    char assembly[256], sdk[256], sidecar[256], next[256], staged[256],
++        staged_sidecar[256];
++    snprintf(assembly, sizeof assembly, "%s/assembly", root);
++    snprintf(sdk, sizeof sdk, "%s/sdk", root);
++    snprintf(sidecar, sizeof sidecar, "%s/destination0.resources.json", root);
++    snprintf(next, sizeof next, "%s/destination0.stage-one.0/next-owner", root);
++    snprintf(staged, sizeof staged, "%s/destination0.stage-one.0.artifact", root);
++    snprintf(staged_sidecar, sizeof staged_sidecar, "%s/destination0.stage-one.0.artifact.resources.json", root);
++    REQUIRE(!mkdir(sdk, 0700));
++    tool_write(sidecar, "old manifest");
++    tool_write(
++        assembly,
++        "#!/bin/sh\noutput=\nwhile [ \"$#\" -gt 0 ]; do\n"
++        "if [ \"$1\" = --output ]; then shift; output=$1; fi\n"
++        "shift\ndone\nprintf 'assembled binary' > \"$output\"\n"
++        "printf 'assembled manifest' > \"$output.resources.json\"\n"
++    );
++    REQUIRE(!chmod(assembly, 0700));
++    char *text = tool_read(CHIBI_SOURCE_ROOT "/tools/toolchain/Project.chibi");
++    REQUIRE(text);
++    char *base = regression_source(text);
++    free(text);
++    const char *call = strstr(base, "build.publish_pair(");
++    REQUIRE(call && !strstr(call + 1, "build.publish_pair("));
++    size_t prefix = (size_t)(call - base);
++    size_t capacity = strlen(base) + 2048;
++    char *source = malloc(capacity);
++    REQUIRE(source);
++    memcpy(source, base, prefix);
++    snprintf(
++        source + prefix,
++        capacity - prefix,
++        "PairOwnershipPublish(%s\n"
++        "PairOwnershipPublish :: (s0: string, d0: string, s1: string, d1: "
++        "string) -> int {\n"
++        " if (!build.remove(s0) || !build.remove(s1)) { return 5; }\n"
++        " work := ProjectJoin([d0,\".stage-one.0\"]);\n"
++        " if (!build.reserve_directory(work) || "
++        "!build.write_file(ProjectJoin([work,\"/next-owner\"]),\"next\") || "
++        "!build.write_file(s0,\"next staged binary\") || "
++        "!build.write_file(s1,\"next staged manifest\")) { return 5; }\n"
++        " return 1;\n}\n",
++        call + strlen("build.publish_pair(")
++    );
++    free(base);
++    /* This authored stand-in models an admitted failure consuming staging,
++     * followed immediately by another invocation reserving the freed N.
++     * The private helper is replaced only here, not exposed by the host. */
++    const char *arguments[] = {
++        "--route",        "native",     "--target",           "native",
++        "--sdk-root",     sdk,          "--inventory",        "unused.tsv",
++        "--receipt",      "unused.tsv", "--build-host",       assembly,
++        "--assembly",     assembly,     "--invocation-entry", "Compile",
++        "--project-root", root,         "--output",           names[1]
++    };
++    chibi_build_options options = { .compiler = compiler,
++                                    .root = root,
++                                    .source_path = "ProjectPairOwnership.chibi",
++                                    .source_text = source,
++                                    .entry = "Compile",
++                                    .backend = BEHAVIOR_BYTECODE,
++                                    .core = CHIBI_SOURCE_ROOT "/packages/core",
++                                    .arguments = arguments,
++                                    .argument_count = sizeof arguments / sizeof *arguments,
++                                    .deadline = chibi_build_now() + 120 };
++    chibi_build_result result;
++    bool ran = chibi_build_invoke(&options, &result);
++    free(source);
++    if (!ran) {
++        fprintf(
++            stderr,
++            "policy ownership preparation/runtime error: %s\n",
++            result.diagnostic
++        );
++    }
++    REQUIRE(ran && result.value == 1);
++    REQUIRE(bytes(names[1], "old binary") && bytes(sidecar, "old manifest"));
++    REQUIRE(bytes(next, "next") && bytes(staged, "next staged binary"));
++    REQUIRE(bytes(staged_sidecar, "next staged manifest"));
++    return true;
++}
++
++TEST_CASE(project_staged_cleanup_failure_keeps_work_reservation)
++{
++    start(1);
++    char assembly[256], sdk[256], work[256], retained[256], sidecar[256];
++    snprintf(assembly, sizeof assembly, "%s/assembly", root);
++    snprintf(sdk, sizeof sdk, "%s/sdk", root);
++    snprintf(work, sizeof work, "%s/destination0.stage-one.0", root);
++    snprintf(retained, sizeof retained, "%s/destination0.stage-one.0.artifact.resources.json/payload", root);
++    snprintf(sidecar, sizeof sidecar, "%s/destination0.resources.json", root);
++    REQUIRE(!mkdir(sdk, 0700));
++    tool_write(sidecar, "old manifest");
++    tool_write(
++        assembly,
++        "#!/bin/sh\noutput=\nwhile [ \"$#\" -gt 0 ]; do\n"
++        "if [ \"$1\" = --output ]; then shift; output=$1; fi\n"
++        "shift\ndone\nprintf 'assembled binary' > \"$output\"\n"
++        "mkdir \"$output.resources.json\"\n"
++        "printf 'owned payload' > \"$output.resources.json/payload\"\n"
++    );
++    REQUIRE(!chmod(assembly, 0700));
++    char *text = tool_read(CHIBI_SOURCE_ROOT "/tools/toolchain/Project.chibi");
++    REQUIRE(text);
++    char *source = regression_source(text);
++    free(text);
++    const char *arguments[] = {
++        "--route",        "native",     "--target",           "native",
++        "--sdk-root",     sdk,          "--inventory",        "unused.tsv",
++        "--receipt",      "unused.tsv", "--build-host",       assembly,
++        "--assembly",     assembly,     "--invocation-entry", "Compile",
++        "--project-root", root,         "--output",           names[1]
++    };
++    chibi_build_options options = { .compiler = compiler,
++                                    .root = root,
++                                    .source_path = "ProjectPairCleanup.chibi",
++                                    .source_text = source,
++                                    .entry = "Compile",
++                                    .backend = BEHAVIOR_BYTECODE,
++                                    .core = CHIBI_SOURCE_ROOT "/packages/core",
++                                    .arguments = arguments,
++                                    .argument_count = sizeof arguments / sizeof *arguments,
++                                    .deadline = chibi_build_now() + 120 };
++    chibi_build_result result;
++    bool ran = chibi_build_invoke(&options, &result);
++    free(source);
++    if (!ran) {
++        fprintf(stderr, "policy cleanup preparation/runtime error: %s\n", result.diagnostic);
++    }
++    REQUIRE(ran && result.value == 1);
++    REQUIRE(bytes(names[1], "old binary") && bytes(sidecar, "old manifest"));
++    struct stat info;
++    REQUIRE(!lstat(work, &info) && S_ISDIR(info.st_mode));
++    REQUIRE(bytes(retained, "owned payload"));
++    char expected[1024];
++    snprintf(
++        expected,
++        sizeof expected,
++        "project: assembly failed or installed inputs changed\n"
++        "project: cannot remove owned project sidecar: "
++        "%s/destination0.stage-one.0.artifact.resources.json\n",
++        root
++    );
++    REQUIRE(!result.stderr_truncated && result.stderr_size == strlen(expected));
++    REQUIRE(!strcmp(result.stderr_text, expected));
++    return true;
++}
++
++void test_tool_file_pair(chibi_build_compiler *build_compiler)
++{
++    compiler = build_compiler;
++    strcpy(root, "/tmp/chibi-file-pair-XXXXXX");
++    assert(mkdtemp(root));
++    char *canonical = realpath(root, NULL);
++    assert(canonical && strlen(canonical) < sizeof root);
++    strcpy(root, canonical);
++    free(canonical);
++    RUN_TEST_CASE(pair_commits_every_prior_presence_combination);
++    RUN_TEST_CASE(pair_reservation_and_precommit_failures_preserve_prior_pair);
++    RUN_TEST_CASE(pair_incomplete_restore_retains_old_bytes_and_full_recovery_path);
++    RUN_TEST_CASE(pair_failed_removal_does_not_claim_prior_absence_restored);
++    RUN_TEST_CASE(pair_committed_cleanup_failure_keeps_new_pair);
++    RUN_TEST_CASE(pair_failed_staging_cleanup_is_diagnosed_without_undoing_restore);
++    RUN_TEST_CASE(native_pair_mode_preserves_relative_names);
++    RUN_TEST_CASE(raw_pair_rejects_aliases_links_and_capacity_before_mutation);
++    RUN_TEST_CASE(raw_pair_missing_case_aliases_cannot_falsely_commit);
++    RUN_TEST_CASE(raw_pair_cancellation_and_deadline_preserve_sources_and_prior_pair);
++    RUN_TEST_CASE(project_compile_publishes_both_new_files_and_leaves_no_staging);
++    RUN_TEST_CASE(project_post_child_identity_drift_preserves_both_old_files);
++    RUN_TEST_CASE(project_protected_sidecar_aliases_reject_before_assembly);
++    RUN_TEST_CASE(project_missing_sidecar_rejects_actual_f798_publication_behavior);
++    RUN_TEST_CASE(project_does_not_clean_a_reused_reservation_after_publish_attempt);
++    RUN_TEST_CASE(project_staged_cleanup_failure_keeps_work_reservation);
++    tool_remove_tree(root);
++}
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -96,7 +96,7 @@
+     if (target == "chibi_support") {
+         return [
+             "src/support/binary_cache.c", "src/support/sha256.c",
+-            "src/support/arena.c", "src/support/file_io.c", "src/support/text_edit.c", "src/support/xalloc.c",
++            "src/support/arena.c", "src/support/file_io.c", "src/support/file_pair.c", "src/support/text_edit.c", "src/support/xalloc.c",
+             "src/support/rcss_map.c"
+         ];
+     }
+@@ -619,7 +619,7 @@
+     if (target == "chibi_build_host") {
+         return [
+             "src/host/build_host.c", "src/host/build_catalog.c", "src/host/build_values.c",
+-            "src/host/build_io.c", "src/authoring/source_package_files.c"
++            "src/host/build_io.c", "src/host/build_pair.c", "src/authoring/source_package_files.c"
+         ];
+     }
+     if (target == "chibi-build-host") {
+@@ -857,7 +857,7 @@
+             "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
+             "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
+             "test/tools/wasm_browser.c", "test/tools/asset_cache_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
+-            "src/host/process.c", "third_party/yyjson/yyjson.c", "test/tools/build_process.c",
++            "src/host/process.c", "third_party/yyjson/yyjson.c", "test/tools/build_process.c", "test/tools/file_pair.c",
+             "test/tools/build_toolchain.c", "test/tools/build_graph.c", "test/tools/build_sdk.c",
+             "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
+             "test/tools/c_export.c", "test/tools/record_c_export.c", "test/tools/audio_analysis.c",
+@@ -1365,6 +1365,9 @@
+ // no target, such as chibi_physics, is a private/NAME directory several
+ // libraries share, which CMake stages for none of them alone.
+ pub PrivateHeaders :: (target: string) -> string[] {
++    if (target == "chibi_file-pair") {
++        return ["support/file_pair.h"];
++    }
+     if (target == "chibi_types") {
+         return ["types/array_internal.h", "types/copy_internal.h"];
+     }
+@@ -1461,7 +1464,7 @@
+         return [
+             "authoring/graph_sources.h", "authoring/native_graph_prepare.h",
+             "authoring/project_prepare_internal.h", "authoring/ui_prepare.h", "toolchain/compiler_json.h",
+-            "toolchain/compiler_syntax.h"
++            "toolchain/compiler_syntax.h", "support/file_pair.h"
+         ];
+     }
+     if (target == "chibi_project_preparation") {
+@@ -1481,7 +1484,7 @@
+         // executable share.
+         return [
+             "host/build_host.h", "host/build_host_internal.h", "host/build_io.h", "host/build_values.h",
+-            "host/process.h", "support/sha256.h", "authoring/source_package_io.h"
++            "host/process.h", "support/sha256.h", "support/file_pair.h", "authoring/source_package_io.h"
+         ];
+     }
+     if (target == "chibi_compiler-host") {
+@@ -1644,7 +1647,7 @@
+         return ["public/builtin_fonts", "public/ui_documents"];
+     }
+     if (target == "chibi_support") {
+-        return ["public/support"];
++        return ["private/file-pair", "public/support"];
+     }
+     if (target == "chibi_types") {
+         return ["public/types", "private/types", "public/support"];
+diff --git a/tools/toolchain/Project.chibi b/tools/toolchain/Project.chibi
+new file mode 100644
+--- /dev/null
++++ b/tools/toolchain/Project.chibi
+@@ -0,0 +1,925 @@
++package toolchain
++
++import strings "core:strings"
++
++// Internal source draft. Nothing invokes or installs this policy yet.
++//
++// The prepared caller supplies raw role paths and the actual invocation entry.
++// It must bind those paths to the executable/artifact it actually invokes.
++// build.* cannot inspect its own loaded artifact or attest a host self-check.
++// Packaging must execute the checks recorded by the witness before adoption.
++// Protocol 8 alone does not establish prepared input or bindings 939/940/941.
++//
++// Both entries accept paired --key VALUE arguments only. Common keys:
++// --route native|selfhost --target native|web --sdk-root ABSOLUTE
++// --inventory RELATIVE --receipt RELATIVE --build-host ABSOLUTE
++// --assembly ABSOLUTE --invocation-entry Inspect|Compile.
++// Selfhost also takes --compiler-host ABSOLUTE --cache ABSOLUTE.
++// Compile takes --project-root ABSOLUTE --output ABSOLUTE and, for selfhost,
++// --budget POSITIVE_DECIMAL --timeout-ms POSITIVE_DECIMAL.
++// Inspect rejects project/output/budget/timeout: it never reads a project.
++//
++// CHIBI-PROJECT-PREPARE/1 is a new producer contract, not existing SDK data.
++// It is LF-terminated TSV. Each scalar key occurs once:
++// policy-source, policy-artifact, host-witness, compiler, core, bootstrap,
++// source-sha256, artifact-sha256, build-host-sha256, compiler-host-sha256,
++// assembly-sha256, inputs-sha256, inspect-entry, compile-entry, platform,
++// compiler-backend. Repeated ownership rows are ownership<TAB>file|directory
++// <TAB>RELATIVE. They come from the actual SDK Entries destination and kind.
++// Repeated output<TAB>file<TAB>RELATIVE rows name generated policy outputs.
++// They must include source, artifact, witness and this receipt, exactly once.
++// inputs-sha256 hashes the final TSV's non-output rows, including their LF,
++// in TSV order. It excludes every declared output, so no self-hash is needed.
++// Source/artifact hashes and a pre-inventory witness bind preparation; the
++// final compiler-tools.tsv binds all outputs including receipt and witness.
++// The final TSV retains its existing 1<LF>relative<TAB>SHA256<LF> format.
++// It excludes itself. Ownership does not claim unrelated SDK files.
++//
++// Installed inputs must remain immutable for one invocation. Content is
++// checked again before publishing a recovery or project result. This is
++// not a filesystem snapshot or protection against concurrent hostile edits.
++// StageOne.chibi must become an adapter or be removed when this is adopted;
++// keeping two permanent recovery/compile policies is not the handoff.
++
++ProjectReceipt :: union {
++    Read(values: string[], owners: string[], kinds: string[], outputs: string[]) | Invalid
++}
++
++ProjectJoin :: (parts: string[]) -> string {
++    return build.join(parts, "");
++}
++
++ProjectHas :: (values: string[], value: string) -> bool {
++    for (item in values) {
++        if (item == value) {
++            return true;
++        }
++    }
++    return false;
++}
++
++ProjectValue :: (pairs: string[], key: string) -> string {
++    index: int = 0;
++    while (index + 1 < length(pairs)) {
++        if (pairs[index] == key) {
++            return pairs[index + 1];
++        }
++        index += 2;
++    }
++    return "";
++}
++
++ProjectHex :: (value: string, count: int) -> bool {
++    if (strings.ByteLength(value) != count) {
++        return false;
++    }
++    for (byte in strings.Bytes(value)) {
++        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) {
++            return false;
++        }
++    }
++    return true;
++}
++
++ProjectRelative :: (path: string) -> bool {
++    if (path == "" || strings.HasPrefix(path, "/") ||
++        strings.ContainsAny(path, "\\\t\r\n") || strings.IndexByte(path, 0) >= 0) {
++        return false;
++    }
++    for (part in strings.Split(path, "/")) {
++        if (part == "" || part == "." || part == "..") {
++            return false;
++        }
++    }
++    return true;
++}
++
++ProjectAbsolute :: (path: string) -> bool {
++    return strings.HasPrefix(path, "/") && ProjectRelative(strings.Slice(path, 1, strings.ByteLength(path)));
++}
++
++ProjectBelow :: (path: string, directory: string) -> bool {
++    return path == directory || strings.HasPrefix(path, ProjectJoin([directory, "/"]));
++}
++
++ProjectParent :: (path: string) -> string {
++    if (path == "/" || path == "") {
++        return "";
++    }
++    slash := strings.LastIndexByte(path, 47);
++    if (slash == 0) {
++        return "/";
++    }
++    return strings.Slice(path, 0, slash);
++}
++
++// The existing stamp contract starts with device:inode. Later metadata is
++// deliberately excluded: directory contents and times can change.
++ProjectFileIdentity :: (path: string) -> string {
++    stamp := build.file_stamp(path);
++    if (stamp == "") {
++        return "";
++    }
++    device := build.before(stamp, ":");
++    inode := build.before(build.after(stamp, ":"), ":");
++    if (device == "" || inode == "") {
++        return "";
++    }
++    return ProjectJoin([device, ":", inode]);
++}
++
++// The protected directory must exist. Missing source suffixes are safe to
++// walk upward; a case alias still reaches the same physical ancestor.
++ProjectInside :: (path: string, directory: string) -> bool {
++    identity := ProjectFileIdentity(directory);
++    if (path == "" || identity == "" || build.file_kind(directory) != "directory") {
++        return true;
++    }
++    current := path;
++    while (current != "") {
++        if (ProjectFileIdentity(current) == identity) {
++            return true;
++        }
++        current = ProjectParent(current);
++    }
++    return false;
++}
++
++// Canonicalize existing ancestors without creating missing directories.
++ProjectFuturePath :: (path: string) -> string {
++    if (!ProjectAbsolute(path)) {
++        return "";
++    }
++    result := "";
++    missing := false;
++    for (part in strings.Split(strings.Slice(path, 1, strings.ByteLength(path)), "/")) {
++        result = ProjectJoin([result, "/", part]);
++        if (!missing) {
++            kind := build.file_kind(result);
++            if (kind == "") {
++                missing = true;
++            } else {
++                result = build.resolve_path(result);
++                if (result == "" || build.file_kind(result) != "directory") {
++                    return "";
++                }
++            }
++        }
++    }
++    return result;
++}
++
++ProjectArguments :: (arguments: string[], compiling: bool) -> bool {
++    allowed := ["--route", "--target", "--sdk-root", "--inventory", "--receipt",
++                "--build-host", "--assembly", "--invocation-entry", "--compiler-host", "--cache"];
++    if (compiling) {
++        allowed = build.concat(allowed, ["--project-root", "--output", "--budget", "--timeout-ms"]);
++    }
++    seen: string[] = [];
++    index: int = 0;
++    while (index < length(arguments)) {
++        key := arguments[index];
++        if (index + 1 >= length(arguments) || !ProjectHas(allowed, key) ||
++            ProjectHas(seen, key) || arguments[index + 1] == "") {
++            return false;
++        }
++        seen = build.concat(seen, [key]);
++        index += 2;
++    }
++    for (key in ["--route", "--target", "--sdk-root", "--inventory", "--receipt",
++                 "--build-host", "--assembly", "--invocation-entry"]) {
++        if (!ProjectHas(seen, key)) {
++            return false;
++        }
++    }
++    route := ProjectValue(arguments, "--route");
++    target := ProjectValue(arguments, "--target");
++    if ((route != "native" && route != "selfhost") || (target != "native" && target != "web")) {
++        return false;
++    }
++    if (route == "selfhost" && (ProjectValue(arguments, "--compiler-host") == "" ||
++                                ProjectValue(arguments, "--cache") == "")) {
++        return false;
++    }
++    if (route == "native" && (ProjectValue(arguments, "--compiler-host") != "" ||
++                              ProjectValue(arguments, "--cache") != "")) {
++        return false;
++    }
++    if (!compiling) {
++        return ProjectValue(arguments, "--invocation-entry") == "Inspect";
++    }
++    if (ProjectValue(arguments, "--invocation-entry") != "Compile" ||
++        ProjectValue(arguments, "--project-root") == "" || ProjectValue(arguments, "--output") == "") {
++        return false;
++    }
++    if (route == "native") {
++        return ProjectValue(arguments, "--budget") == "" && ProjectValue(arguments, "--timeout-ms") == "";
++    }
++    for (key in ["--budget", "--timeout-ms"]) {
++        number := ProjectValue(arguments, key);
++        if (number == "" || strings.HasPrefix(number, "0")) {
++            return false;
++        }
++        for (byte in strings.Bytes(number)) {
++            if (byte < 48 || byte > 57) {
++                return false;
++            }
++        }
++    }
++    return true;
++}
++
++ProjectReadReceipt :: (text: string) -> ProjectReceipt {
++    values: string[] = [];
++    owners: string[] = [];
++    kinds: string[] = [];
++    outputs: string[] = [];
++    if (!strings.HasPrefix(text, "CHIBI-PROJECT-PREPARE/1\n") ||
++        !strings.HasSuffix(text, "\n") || strings.Contains(text, "\r") || strings.IndexByte(text, 0) >= 0) {
++        return ProjectReceipt.Invalid;
++    }
++    scalar := ["policy-source", "policy-artifact", "host-witness", "compiler", "core", "bootstrap",
++               "source-sha256", "artifact-sha256", "build-host-sha256", "compiler-host-sha256",
++               "assembly-sha256", "inputs-sha256", "inspect-entry", "compile-entry", "platform", "compiler-backend"];
++    body := strings.Slice(text, strings.ByteLength("CHIBI-PROJECT-PREPARE/1\n"),
++                          strings.ByteLength(text) - strings.ByteLength("CHIBI-PROJECT-PREPARE/1\n") - 1);
++    for (line in strings.Split(body, "\n")) {
++        fields := strings.Split(line, "\t");
++        if (length(fields) == 3 && (fields[0] == "ownership" || fields[0] == "output")) {
++            if (!ProjectRelative(fields[2]) || (fields[1] != "file" && fields[1] != "directory")) {
++                return ProjectReceipt.Invalid;
++            }
++            if (fields[0] == "output") {
++                if (fields[1] != "file" || ProjectHas(outputs, fields[2])) {
++                    return ProjectReceipt.Invalid;
++                }
++                outputs = build.concat(outputs, [fields[2]]);
++                continue;
++            }
++            for (owner in owners) {
++                if (ProjectBelow(owner, fields[2]) || ProjectBelow(fields[2], owner)) {
++                    return ProjectReceipt.Invalid;
++                }
++            }
++            owners = build.concat(owners, [fields[2]]);
++            kinds = build.concat(kinds, [fields[1]]);
++            continue;
++        }
++        if (length(fields) != 2 || !ProjectHas(scalar, fields[0]) || fields[1] == "" ||
++            ProjectValue(values, fields[0]) != "") {
++            return ProjectReceipt.Invalid;
++        }
++        values = build.concat(values, fields);
++    }
++    for (key in scalar) {
++        value := ProjectValue(values, key);
++        if (value == "" || (strings.HasSuffix(key, "-sha256") && !ProjectHex(value, 64))) {
++            return ProjectReceipt.Invalid;
++        }
++    }
++    for (key in ["policy-source", "policy-artifact", "host-witness", "compiler", "core", "bootstrap"]) {
++        if (!ProjectRelative(ProjectValue(values, key))) {
++            return ProjectReceipt.Invalid;
++        }
++    }
++    if (length(owners) == 0 || ProjectValue(values, "inspect-entry") != "Inspect" ||
++        ProjectValue(values, "compile-entry") != "Compile" ||
++        (ProjectValue(values, "compiler-backend") != "sljit" && ProjectValue(values, "compiler-backend") != "bytecode")) {
++        return ProjectReceipt.Invalid;
++    }
++    return ProjectReceipt.Read(values, owners, kinds, outputs);
++}
++
++ProjectReceiptValues :: (receipt: ProjectReceipt) -> string[] {
++    switch receipt {
++    case ProjectReceipt.Read(values, owners, kinds, outputs):
++        return values;
++    case ProjectReceipt.Invalid:
++        return [];
++    }
++}
++
++ProjectOwned :: (owners: string[], kinds: string[], relative: string) -> bool {
++    index: int = 0;
++    while (index < length(owners)) {
++        if (relative == owners[index] ||
++            (kinds[index] == "directory" && ProjectBelow(relative, owners[index]))) {
++            return true;
++        }
++        index += 1;
++    }
++    return false;
++}
++
++ProjectPlainPath :: (root: string, relative: string) -> bool {
++    path := root;
++    parts := strings.Split(relative, "/");
++    index: int = 0;
++    while (index < length(parts)) {
++        // A case-insensitive lookup can resolve an alias the producer did
++        // not copy. Match the actual entry spelling, without banning hardlinks.
++        if (!ProjectHas(build.list_directory(path), parts[index])) {
++            return false;
++        }
++        path = ProjectJoin([path, "/", parts[index]]);
++        kind := build.file_kind(path);
++        if (kind == "link" || kind == "other" || kind == "" ||
++            (index + 1 < length(parts) && kind != "directory")) {
++            return false;
++        }
++        index += 1;
++    }
++    return true;
++}
++
++// Returns an exact file count, or -1. Links and nonregular data are rejected.
++ProjectWalk :: (root: string, relative: string, paths: string[], manifest: string) -> int {
++    path := ProjectJoin([root, "/", relative]);
++    kind := build.file_kind(path);
++    if (relative == manifest) {
++        if (kind == "file") {
++            return 0;
++        }
++        return -1;
++    }
++    if (kind == "file") {
++        if (ProjectHas(paths, relative)) {
++            return 1;
++        }
++        return -1;
++    }
++    if (kind != "directory") {
++        return -1;
++    }
++    count: int = 0;
++    for (name in build.list_directory(path)) {
++        child := ProjectJoin([relative, "/", name]);
++        if (!ProjectRelative(child)) {
++            return -1;
++        }
++        below := ProjectWalk(root, child, paths, manifest);
++        if (below < 0) {
++            return -1;
++        }
++        count += below;
++    }
++    return count;
++}
++
++ProjectInventory :: (root: string, manifest: string, text: string,
++                     receipt_path: string, receipt: ProjectReceipt) -> bool {
++    switch receipt {
++    case ProjectReceipt.Read(values, owners, kinds, outputs):
++        return ProjectInventoryRows(root, manifest, text, receipt_path, values, owners, kinds, outputs);
++    case ProjectReceipt.Invalid:
++        return false;
++    }
++}
++
++ProjectInventoryRows :: (root: string, manifest: string, text: string, receipt_path: string,
++                         values: string[], owners: string[], kinds: string[], receipt_outputs: string[]) -> bool {
++    if (!ProjectRelative(manifest) || manifest == receipt_path ||
++        !strings.HasPrefix(text, "1\n") || !strings.HasSuffix(text, "\n") ||
++        strings.Contains(text, "\r") || strings.IndexByte(text, 0) >= 0) {
++        return false;
++    }
++    paths: string[] = [];
++    inputs := "";
++    body := strings.Slice(text, 2, strings.ByteLength(text) - 3);
++    for (line in strings.Split(body, "\n")) {
++        fields := strings.Split(line, "\t");
++        if (length(fields) != 2 || !ProjectRelative(fields[0]) || !ProjectHex(fields[1], 64) ||
++            fields[0] == manifest || ProjectHas(paths, fields[0]) || !ProjectOwned(owners, kinds, fields[0]) ||
++            !ProjectPlainPath(root, fields[0])) {
++            return false;
++        }
++        path := ProjectJoin([root, "/", fields[0]]);
++        if (build.file_kind(path) != "file" || build.hash_file(path) != fields[1]) {
++            return false;
++        }
++        paths = build.concat(paths, [fields[0]]);
++        if (!ProjectHas(receipt_outputs, fields[0])) {
++            inputs = ProjectJoin([inputs, line, "\n"]);
++        }
++    }
++    if (build.hash_text(inputs) != ProjectValue(values, "inputs-sha256")) {
++        return false;
++    }
++    outputs := [receipt_path, ProjectValue(values, "policy-source"),
++                ProjectValue(values, "policy-artifact"), ProjectValue(values, "host-witness")];
++    if (length(receipt_outputs) != length(outputs)) {
++        return false;
++    }
++    checked: string[] = [];
++    for (output in outputs) {
++        if (ProjectHas(checked, output) || !ProjectHas(receipt_outputs, output) || !ProjectHas(paths, output)) {
++            return false;
++        }
++        checked = build.concat(checked, [output]);
++    }
++    for (key in ["compiler", "core", "bootstrap"]) {
++        relative := ProjectValue(values, key);
++        if (!ProjectOwned(owners, kinds, relative) || !ProjectPlainPath(root, relative) ||
++            build.file_kind(ProjectJoin([root, "/", relative])) != "directory") {
++            return false;
++        }
++    }
++    count: int = 0;
++    index: int = 0;
++    while (index < length(owners)) {
++        relative := owners[index];
++        if (!ProjectPlainPath(root, relative) ||
++            build.file_kind(ProjectJoin([root, "/", relative])) != kinds[index]) {
++            return false;
++        }
++        below := ProjectWalk(root, relative, paths, manifest);
++        if (below < 0) {
++            return false;
++        }
++        count += below;
++        index += 1;
++    }
++    return count == length(paths) && count > 0;
++}
++
++// This is verification of producer-recorded evidence, not a runtime probe.
++ProjectWitness :: (values: string[]) -> string {
++    lines := ["CHIBI-PROJECT-HOST/2"];
++    for (key in ["inputs-sha256", "source-sha256", "artifact-sha256", "build-host-sha256", "compiler-host-sha256",
++                 "assembly-sha256", "inspect-entry", "compile-entry", "platform", "compiler-backend"]) {
++        lines = build.concat(lines, [ProjectJoin([key, "\t", ProjectValue(values, key)])]);
++    }
++    return ProjectJoin([build.join(lines, "\n"), "\nprepared-load\tpassed\nprepared-without-source\tpassed\n",
++                        "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\npublish-pair\tpassed\n"]);
++}
++
++// Empty means unavailable. No source compilation, process or project read.
++ProjectIdentity :: (arguments: string[]) -> string {
++    root := ProjectValue(arguments, "--sdk-root");
++    manifest := ProjectValue(arguments, "--inventory");
++    receipt_path := ProjectValue(arguments, "--receipt");
++    if (!ProjectAbsolute(root) || !ProjectRelative(manifest) || !ProjectRelative(receipt_path)) {
++        return "";
++    }
++    root = build.resolve_path(root);
++    if (root == "" || build.file_kind(root) != "directory" || !ProjectPlainPath(root, manifest) ||
++        !ProjectPlainPath(root, receipt_path) || build.file_kind(ProjectJoin([root, "/", manifest])) != "file" ||
++        build.file_kind(ProjectJoin([root, "/", receipt_path])) != "file") {
++        return "";
++    }
++    receipt_text := build.read_file(ProjectJoin([root, "/", receipt_path]));
++    receipt := ProjectReadReceipt(receipt_text);
++    values := ProjectReceiptValues(receipt);
++    inventory := build.read_file(ProjectJoin([root, "/", manifest]));
++    if (!ProjectInventory(root, manifest, inventory, receipt_path, receipt) ||
++        ProjectValue(values, "platform") != build.platform() ||
++        build.hash_file(ProjectJoin([root, "/", ProjectValue(values, "policy-source")])) != ProjectValue(values, "source-sha256") ||
++        build.hash_file(ProjectJoin([root, "/", ProjectValue(values, "policy-artifact")])) != ProjectValue(values, "artifact-sha256") ||
++        build.read_file(ProjectJoin([root, "/", ProjectValue(values, "host-witness")])) != ProjectWitness(values)) {
++        return "";
++    }
++    role_hashes: string[] = [];
++    keys := ["--build-host", "--assembly"];
++    if (ProjectValue(arguments, "--route") == "selfhost") {
++        keys = build.concat(keys, ["--compiler-host"]);
++    }
++    for (key in keys) {
++        path := ProjectValue(arguments, key);
++        if (!ProjectAbsolute(path)) {
++            return "";
++        }
++        path = build.resolve_path(path);
++        if (path == "" || build.file_kind(path) != "file" || build.find_executable(path) == "") {
++            return "";
++        }
++        hash := build.hash_file(path);
++        expected := "assembly-sha256";
++        if (key == "--build-host") {
++            expected = "build-host-sha256";
++        } else if (key == "--compiler-host") {
++            expected = "compiler-host-sha256";
++        }
++        if (hash != ProjectValue(values, expected)) {
++            return "";
++        }
++        role_hashes = build.concat(role_hashes, [ProjectJoin([key, "\t", hash])]);
++    }
++    return build.hash_text(build.join(["CHIBI-PROJECT-IDENTITY/1", ProjectValue(arguments, "--route"),
++                                      ProjectValue(arguments, "--target"), build.platform(),
++                                      build.hash_text(inventory), build.hash_text(receipt_text),
++                                      build.join(role_hashes, "\n")], "\n"));
++}
++
++ProjectCacheRoot :: (arguments: string[]) -> string {
++    cache := ProjectFuturePath(ProjectValue(arguments, "--cache"));
++    sdk := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++    if (cache == "" || sdk == "" || ProjectInside(cache, sdk)) {
++        return "";
++    }
++    // An absent cache cannot contain the existing SDK. Once it exists,
++    // reject that reverse containment using directory identity as well.
++    if (build.file_kind(cache) != "" && ProjectInside(sdk, cache)) {
++        return "";
++    }
++    return cache;
++}
++
++ProjectOutputFile :: (arguments: string[], cache: string, output: string) -> string {
++    slash := strings.LastIndexByte(output, 47);
++    if (!ProjectAbsolute(output) || slash <= 0) {
++        return "";
++    }
++    parent := ProjectFuturePath(strings.Slice(output, 0, slash));
++    sdk := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++    if (parent == "" || sdk == "") {
++        return "";
++    }
++    output = ProjectJoin([parent, "/", strings.Slice(output, slash + 1, strings.ByteLength(output))]);
++    if (build.file_kind(parent) != "directory" || ProjectInside(output, sdk) ||
++        (cache != "" && ProjectInside(output, cache))) {
++        return "";
++    }
++    kind := build.file_kind(output);
++    if (kind != "" && kind != "file") {
++        return "";
++    }
++    existing := build.resolve_path(output);
++    existing_stamp := "";
++    if (existing != "") {
++        existing_stamp = build.file_stamp(existing);
++    }
++    for (key in ["--assembly", "--compiler-host", "--build-host"]) {
++        role := ProjectValue(arguments, key);
++        if (role == "") {
++            continue;
++        }
++        role = build.resolve_path(role);
++        if (role == "" || output == role || existing == role) {
++            return "";
++        }
++        // A same-file check also protects existing case/link aliases when
++        // realpath preserves their spelling. Stamps never admit cache data
++        // or decide inventory uniqueness. Output hardlinks to tools are
++        // conservatively protected too.
++        if (existing_stamp != "" && existing_stamp == build.file_stamp(role)) {
++            return "";
++        }
++    }
++    return output;
++}
++
++ProjectOutputPath :: (arguments: string[], cache: string) -> string {
++    output := ProjectOutputFile(arguments, cache, ProjectValue(arguments, "--output"));
++    if (output == "") {
++        return "";
++    }
++    sidecar := ProjectJoin([output, ".resources.json"]);
++    if (ProjectOutputFile(arguments, cache, sidecar) != sidecar) {
++        return "";
++    }
++    return output;
++}
++
++ProjectCached :: (directory: string, identity: string) -> string {
++    if (build.file_kind(directory) != "directory" ||
++        build.file_kind(ProjectJoin([directory, "/compiler.chibip"])) != "file" ||
++        build.file_kind(ProjectJoin([directory, "/receipt.tsv"])) != "file" ||
++        length(build.list_directory(directory)) != 2) {
++        return "";
++    }
++    artifact := ProjectJoin([directory, "/compiler.chibip"]);
++    expected := ProjectJoin(["CHIBI-PROJECT-CACHE/1\nidentity\t", identity,
++                             "\nartifact-sha256\t", build.hash_file(artifact), "\n"]);
++    if (build.read_file(ProjectJoin([directory, "/receipt.tsv"])) != expected) {
++        return "";
++    }
++    return artifact;
++}
++
++// One fixed-ASCII frame. build.report adds its only LF. On a host-level IO
++// failure there may be no frame; the caller must reject that whole stream.
++ProjectInspection :: (route: string, availability: string, identity: string, diagnostic: string, code: int) -> int {
++    encoded := "null";
++    if (identity != "") {
++        encoded = ProjectJoin(["\"", identity, "\""]);
++    }
++    roles := "[\"build-host\",\"assembly\"]";
++    if (route == "selfhost") {
++        roles = "[\"build-host\",\"compiler-host\",\"assembly\"]";
++    }
++    frame := ProjectJoin(["CHIBI-INSPECT/1 {\"route\":\"", route, "\",\"availability\":\"", availability,
++                          "\",\"identity\":", encoded, ",\"diagnostic\":\"", diagnostic,
++                          "\",\"roles\":", roles, "}"]);
++    if (strings.ByteLength(frame) + 1 > 2048) {
++        return 2;
++    }
++    build.report(frame);
++    return code;
++}
++
++Inspect :: () -> int {
++    arguments := build.arguments();
++    route := ProjectValue(arguments, "--route");
++    if (!ProjectArguments(arguments, false)) {
++        return ProjectInspection("native", "unavailable", "", "invalid-arguments", 2);
++    }
++    if (ProjectValue(arguments, "--target") != "native") {
++        return ProjectInspection(route, "unavailable", "", "unsupported-target", 1);
++    }
++    if (route == "selfhost" && build.platform() != "Darwin" && build.platform() != "Linux") {
++        return ProjectInspection(route, "unavailable", "", "unsupported-platform", 1);
++    }
++    identity := ProjectIdentity(arguments);
++    if (identity == "") {
++        return ProjectInspection(route, "unavailable", "", "invalid-preparation", 1);
++    }
++    if (route == "native") {
++        return ProjectInspection(route, "ready", identity, "ready", 0);
++    }
++    cache := ProjectCacheRoot(arguments);
++    if (cache == "") {
++        return ProjectInspection(route, "unavailable", identity, "invalid-cache-root", 1);
++    }
++    directory := ProjectJoin([cache, "/", identity]);
++    if (ProjectCached(directory, identity) != "") {
++        return ProjectInspection(route, "ready", identity, "ready", 0);
++    }
++    if (build.file_kind(directory) != "") {
++        return ProjectInspection(route, "unavailable", identity, "invalid-published-cache", 1);
++    }
++    return ProjectInspection(route, "needs-recovery", identity, "recovery-required", 1);
++}
++
++ProjectRemove :: (path: string) -> bool {
++    if (build.file_kind(path) == "directory") {
++        for (name in build.list_directory(path)) {
++            if (!ProjectRemove(ProjectJoin([path, "/", name]))) {
++                return false;
++            }
++        }
++    }
++    return build.remove(path);
++}
++
++// Each contender owns only its successful reservation. A cancelled process
++// may leave scratch, but it never owns a shared fixed lock. The directory
++// service already caps a listing at 8192 names. Exhaustion fails closed.
++ProjectReserve :: (cache: string, prefix: string) -> string {
++    index := length(build.list_directory(cache));
++    while (index < 8192) {
++        path := format_text("{}/{}.{}", cache, prefix, index);
++        if (build.reserve_directory(path)) {
++            return path;
++        }
++        index += 1;
++    }
++    return "";
++}
++
++// The sibling artifact pair and reservation occupy N. A previous invocation
++// may have removed its reservation just before its final pair publication.
++ProjectOutputWork :: (destination: string) -> string {
++    index: int = 0;
++    while (index < 8192) {
++        work := format_text("{}.stage-one.{}", destination, index);
++        artifact := ProjectJoin([work, ".artifact"]);
++        sidecar := ProjectJoin([artifact, ".resources.json"]);
++        if (build.file_kind(artifact) == "" && build.file_kind(sidecar) == "" && build.reserve_directory(work)) {
++            if (build.file_kind(artifact) == "" && build.file_kind(sidecar) == "") {
++                return work;
++            }
++            if (!build.remove(work)) {
++                return "";
++            }
++        }
++        index += 1;
++    }
++    return "";
++}
++
++ProjectRecover :: (arguments: string[], identity: string, cache: string) -> string {
++    if (!ProjectAbsolute(cache) || !ProjectHex(identity, 64) || ProjectIdentity(arguments) != identity) {
++        build.report("project: invalid compiler recovery identity or cache");
++        return "";
++    }
++    directory := ProjectJoin([cache, "/", identity]);
++    artifact := ProjectCached(directory, identity);
++    if (artifact != "") {
++        return artifact;
++    }
++    // There is no safe invalid-publication replacement contract yet. Never
++    // delete another reader's published directory or an abandoned scratch.
++    if (build.file_kind(directory) != "") {
++        build.report("project: invalid published compiler cache");
++        return "";
++    }
++    root := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++    receipt_path := ProjectValue(arguments, "--receipt");
++    if (root == "" || !ProjectAbsolute(root) || !ProjectRelative(receipt_path)) {
++        build.report("project: invalid compiler recovery resource path");
++        return "";
++    }
++    values := ProjectReceiptValues(ProjectReadReceipt(build.read_file(ProjectJoin([root, "/", receipt_path]))));
++    if (length(values) == 0) {
++        build.report("project: invalid compiler recovery receipt");
++        return "";
++    }
++    if (!build.make_directory(cache)) {
++        build.report("project: cannot create external compiler cache");
++        return "";
++    }
++    scratch := ProjectReserve(cache, ProjectJoin([identity, ".recover"]));
++    if (scratch == "") {
++        build.report("project: cannot reserve compiler recovery scratch");
++        return "";
++    }
++    recovered := ProjectJoin([scratch, "/compiler.chibip"]);
++    ok := build.run([ProjectValue(arguments, "--compiler-host"), "--bootstrap",
++                     ProjectJoin([root, "/", ProjectValue(values, "bootstrap")]), "--compiler",
++                     ProjectJoin([root, "/", ProjectValue(values, "compiler")]), "--core",
++                     ProjectJoin([root, "/", ProjectValue(values, "core")]), "--recover", recovered]) == 0;
++    ok = ok && build.file_kind(recovered) == "file" && ProjectIdentity(arguments) == identity;
++    if (ok) {
++        ok = build.write_file(ProjectJoin([scratch, "/receipt.tsv"]),
++                              ProjectJoin(["CHIBI-PROJECT-CACHE/1\nidentity\t", identity,
++                                           "\nartifact-sha256\t", build.hash_file(recovered), "\n"]));
++    }
++    if (ok) {
++        ok = build.publish_directory(scratch, directory);
++        if (ok) {
++            return ProjectCached(directory, identity);
++        }
++        // A concurrent contender may have published the same identity first.
++        artifact = ProjectCached(directory, identity);
++        ok = artifact != "";
++    }
++    cleaned := ProjectRemove(scratch);
++    if (!ok || !cleaned) {
++        build.report("project: compiler recovery or scratch cleanup failed");
++        return "";
++    }
++    return artifact;
++}
++
++ProjectStage :: (arguments: string[], values: string[], closure: string,
++                 entry: string, input: string, output: string) -> int {
++    command := [ProjectValue(arguments, "--compiler-host"), "--artifact", closure, "--entry", entry,
++                "--input", input, "--backend", ProjectValue(values, "compiler-backend"),
++                "--budget", ProjectValue(arguments, "--budget"), "--timeout-ms", ProjectValue(arguments, "--timeout-ms")];
++    if (output != "") {
++        command = build.concat(command, ["--output-bytes", output]);
++    }
++    return build.run(command);
++}
++
++ProjectAssemble :: (arguments: string[], identity: string, work: string, destination: string) -> int {
++    assembly := ProjectValue(arguments, "--assembly");
++    project := ProjectValue(arguments, "--project-root");
++    output := ProjectJoin([work, ".artifact"]);
++    sidecar := ProjectJoin([output, ".resources.json"]);
++    destination_sidecar := ProjectJoin([destination, ".resources.json"]);
++    command := [assembly, "--project-root", project, "--output", output];
++    if (ProjectValue(arguments, "--route") == "selfhost") {
++        input := ProjectJoin([work, "/input.json"]);
++        if (build.run([assembly, "--project-root", project, "--stage-one-input", input]) != 0) {
++            build.report("project: cannot export compiler input");
++            return 1;
++        }
++        count := build.trim(build.last_stdout());
++        if (count == "0") {
++            command = build.concat(command, ["--resources-only"]);
++        } else {
++            if (count == "" || strings.HasPrefix(count, "0")) {
++                build.report("project: invalid compiler input count");
++                return 1;
++            }
++            for (byte in strings.Bytes(count)) {
++                if (byte < 48 || byte > 57) {
++                    build.report("project: invalid compiler input count");
++                    return 1;
++                }
++            }
++            closure := ProjectRecover(arguments, identity, ProjectCacheRoot(arguments));
++            if (closure == "") {
++                return 1;
++            }
++            root := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
++            receipt_path := ProjectValue(arguments, "--receipt");
++            if (root == "" || !ProjectAbsolute(root) || !ProjectRelative(receipt_path)) {
++                build.report("project: invalid compilation resource path");
++                return 1;
++            }
++            values := ProjectReceiptValues(ProjectReadReceipt(build.read_file(ProjectJoin([root, "/", receipt_path]))));
++            if (length(values) == 0 || ProjectIdentity(arguments) != identity) {
++                build.report("project: invalid compilation receipt or changed inputs");
++                return 1;
++            }
++            modules := ProjectJoin([work, "/modules.chibip"]);
++            if (ProjectStage(arguments, values, closure, "976ab7ba3a7fbb4d", input, modules) != 0) {
++                ProjectStage(arguments, values, closure, "90cd0d9866e51fd8", input, "");
++                build.report(ProjectJoin(["project: self-hosted compilation rejected: ", build.last_stdout()]));
++                return 1;
++            }
++            command = build.concat(command, ["--modules", modules]);
++        }
++    }
++    // --check with modules/resources-only needs a future native assembly
++    // contract. This entry builds output and never invents readonly flags.
++    if (ProjectIdentity(arguments) != identity || build.run(command) != 0 ||
++        ProjectIdentity(arguments) != identity || build.file_kind(output) != "file" ||
++        build.file_kind(sidecar) != "file") {
++        build.report("project: assembly failed or installed inputs changed");
++        return 1;
++    }
++    if (!ProjectRemove(work)) {
++        build.report(ProjectJoin(["project: cannot clean private assembly inputs; retained scratch: ", work]));
++        return 1;
++    }
++    // The admitted native transaction owns pair commit/rollback and reports
++    // retained staging/backups. Host pre-entry/cancellation or full captures
++    // can fail without complete recovery diagnostics. Both files and installed
++    // identity were checked before
++    // input cleanup. This is the last capability on the successful path.
++    status := build.publish_pair(output, destination, sidecar, destination_sidecar);
++    if (status == 0 || status == 3) {
++        return 0;
++    }
++    // Private result 2 means publication was attempted. The kernel may have
++    // consumed the staging pair and released N. Never touch those names again.
++    return 2;
++}
++
++Compile :: () -> int {
++    arguments := build.arguments();
++    if (!ProjectArguments(arguments, true)) {
++        build.report("project: invalid arguments");
++        return 2;
++    }
++    if (ProjectValue(arguments, "--target") != "native" ||
++        (ProjectValue(arguments, "--route") == "selfhost" && build.platform() != "Darwin" && build.platform() != "Linux")) {
++        build.report("project: unsupported target or platform");
++        return 1;
++    }
++    if (!ProjectAbsolute(ProjectValue(arguments, "--project-root")) ||
++        !ProjectAbsolute(ProjectValue(arguments, "--output"))) {
++        build.report("project: project and output paths must be absolute");
++        return 2;
++    }
++    identity := ProjectIdentity(arguments);
++    if (identity == "") {
++        build.report("project: invalid preparation");
++        return 1;
++    }
++    cache := "";
++    if (ProjectValue(arguments, "--route") == "selfhost") {
++        cache = ProjectCacheRoot(arguments);
++        if (cache == "") {
++            build.report("project: invalid compiler cache root");
++            return 1;
++        }
++        // Establish the protected directory identity before output checks.
++        // Only Compile may create this explicitly requested external path;
++        // an empty project may leave an empty cache but never recovers.
++        if (!build.make_directory(cache)) {
++            build.report("project: cannot create external compiler cache");
++            return 1;
++        }
++        cache = ProjectCacheRoot(arguments);
++        if (cache == "" || build.file_kind(cache) != "directory") {
++            build.report("project: compiler cache failed containment revalidation");
++            return 1;
++        }
++    }
++    destination := ProjectOutputPath(arguments, cache);
++    if (destination == "") {
++        build.report("project: output path is unavailable or protected");
++        return 2;
++    }
++    work := ProjectOutputWork(destination);
++    if (work == "") {
++        build.report("project: cannot reserve project scratch");
++        return 1;
++    }
++    result := ProjectAssemble(arguments, identity, work, destination);
++    if (result == 0) {
++        return 0;
++    }
++    if (result == 2) {
++        return 1;
++    }
++    // Prepublication failures retain caller ownership. Keep the reservation
++    // while deleting staged siblings, then release the owned work name last.
++    if (!build.remove(ProjectJoin([work, ".artifact"]))) {
++        build.report(ProjectJoin(["project: cannot remove owned project artifact: ", work, ".artifact"]));
++        return 1;
++    }
++    if (!build.remove(ProjectJoin([work, ".artifact.resources.json"]))) {
++        build.report(ProjectJoin(["project: cannot remove owned project sidecar: ", work, ".artifact.resources.json"]));
++        return 1;
++    }
++    if (!ProjectRemove(work)) {
++        build.report(ProjectJoin(["project: cannot remove owned project scratch: ", work]));
++        return 1;
++    }
++    return 1;
++}

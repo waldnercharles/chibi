@@ -1,0 +1,45 @@
+{
+  "status": "source-only ignored scratch; uncompiled/unexecuted",
+  "baselines": {
+    "source32": {
+      "repository": "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi",
+      "tree": "1a59410022d128108e7744cf2b5641047a44d713",
+      "files": {
+        "src/host/build_catalog.c": "f736f3c377f16d01791ca3953a9e668fdeb84d4e2aa4e365397cb96613c1a4e1",
+        "src/host/build_host_internal.h": "adaba55bfacf14827d437406d6576d0be248804f78270a7bf02e11a01a68c178",
+        "src/host/build_host.h": "a807397748e6c7c678899b036c4f6750585defc9e0b37aefbe88627c17380083",
+        "src/host/build_host.c": "4aff77146002466bcb69c83d920e8760830e346e01d13fb5e4e5fd74a5966a81",
+        "src/host/build_main.c": "e5c9178d21511693110367455ba47c589465ab6e94fb539bdbdc0462bb2c62af",
+        "src/host/build_io.c": "f9a44da766b3a20de6f7a3da30b74817a6e12e75a7f4fc6846b710bbc0e641b1",
+        "src/host/build_io.h": "6e8dfc7693f8bfc40a8993abb430a77854e17a8465927f589151adf58c29dc9d",
+        "test/tools/build_process.c": "c1f18ee4d830bad379d3c8a099e88b304cf77bfc0deaa76c6cb41cc28f3a9ae6",
+        "test/tools/main.c": "66f0514d4a6613fa90424d09142df08f5e793e7508bbb21840aded60c71c9fe9",
+        "test/tools/CMakeLists.txt": "52b578b0355c0735803b0c8887e7ce93b67bccd948937348bc47dc2cee1cfbd4",
+        "sdk/CMakeLists.txt": "198a18fbd34fbe3299e07f68f8df1d469c3ade1e91c09c54cc5c63e1a738ddc8",
+        "test/tools/build_graph.c": "4fbe66232f775dccbb281c16ad1706f70a64c8750791dbeecbdfc888b9044936"
+      }
+    },
+    "typed6ef": {
+      "repository": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "files": {
+        "src/authoring/project_compile.c": "31627bcb857fe64499db9a282629a8294da4fd1eda1570ee46eb92bff69c39ad",
+        "sdk/CMakeLists.txt": "198d0c945b60ca668da5f62db526f16dbdce314cae88f2ec2b4fed0cccd4763f",
+        "sdk/project_preparation.cmake": "a863e6eb9cb7dd1f61f1cf64fed6cb78a62d0e2931ca4bec98ce0c2ac700748e",
+        "test/tools/main.c": "c09e593457071d50d2295b566253ba18da08f525fe747bcd21e894ba91e66658",
+        "test/tools/CMakeLists.txt": "d1e90c261d57f30a2435137846dd35ae4a89c7cc2e7bca3181fd9b3c6f26c738",
+        "test/fixtures/feature-coverage/coverage-gaps.txt": "5bc32f81faa4c9c20cd7786d57cdf4e5b4191affbe1f39eadb3c80059afa23c0",
+        "tools/graph/engine/Targets.chibi": "39b21289d058c27c31ee8fc7d26aa468ffd40ce02d219e3d2df04560a2aebaf6",
+        "test/tools/build_graph.c": "c8cdcbe5816d28ec021bba38cd54d43ec79c3cfbe2e3f0d5d94e96a5aa4d3402"
+      }
+    },
+    "sdk-warm": {
+      "origin": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-warm/after/sdk/CMakeLists.txt",
+      "reviewed_source_sha256": "2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1",
+      "files": {
+        "sdk/CMakeLists.txt": "2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1"
+      }
+    }
+  },
+  "policy_sha256": "f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb"
+}

@@ -1,0 +1,32 @@
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -128,10 +128,14 @@
+     "${CHIBI_SDK_ROOT}/src/support/sha256.c"
+     "${CHIBI_SDK_ROOT}/src/support/arena.c"
+     "${CHIBI_SDK_ROOT}/src/support/file_io.c"
++    "${CHIBI_SDK_ROOT}/src/support/file_pair.c"
+     "${CHIBI_SDK_ROOT}/src/support/text_edit.c"
+     "${CHIBI_SDK_ROOT}/src/support/xalloc.c"
+     "${CHIBI_SDK_ROOT}/src/support/rcss_map.c")
+ add_library(Chibi::support ALIAS chibi_support)
++configure_file("${CHIBI_SDK_ROOT}/src/support/file_pair.h"
++    "${CMAKE_CURRENT_BINARY_DIR}/private/file-pair/support/file_pair.h" COPYONLY)
++target_include_directories(chibi_support PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/file-pair")
+ set_target_properties(chibi_support PROPERTIES EXPORT_NAME support)
+ target_compile_features(chibi_support PUBLIC c_std_23)
+ if(CHIBI_WEB_THREADS)
+@@ -609,11 +613,14 @@
+         "${CHIBI_SDK_ROOT}/src/host/build_catalog.c"
+         "${CHIBI_SDK_ROOT}/src/host/build_values.c"
+         "${CHIBI_SDK_ROOT}/src/host/build_io.c"
++        "${CHIBI_SDK_ROOT}/src/host/build_pair.c"
+         "${CHIBI_SDK_ROOT}/src/authoring/source_package_files.c")
+     foreach(header build_host build_host_internal build_values build_io process)
+         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+             "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
+     endforeach()
++    configure_file("${CHIBI_SDK_ROOT}/src/support/file_pair.h"
++        "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/file_pair.h" COPYONLY)
+     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
+         "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
+     configure_file("${CHIBI_SDK_ROOT}/src/authoring/source_package_io.h"

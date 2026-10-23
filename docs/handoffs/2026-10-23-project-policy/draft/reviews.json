@@ -1,0 +1,39 @@
+{
+  "status": "independent source reviews only; no runtime validation",
+  "reviews": [
+    {
+      "reviewer": "/root/project_policy/pair_kernel_review",
+      "scope": "kernel/diagnostic helper/private header/native adapter; formatting delta",
+      "status": "source-clear; native diagnostic truncation finding repaired",
+      "files": {
+        "src/support/file_pair.c": "2e53322bb3c49b61483acf2d4d6b95b367b4676fbb6e5706ddfa261dd96100a0",
+        "src/support/file_pair.h": "6cb7aa435acc0e5a4879f5b2d713e28a880c4c27dc565be4427d845228528eeb",
+        "src/authoring/project_compile.c": "ac569fcf2bf4f914c75a200619faddb62cd439470f18c2f59deb62e1f3e96f51"
+      }
+    },
+    {
+      "reviewer": "/root/project_policy/pair_host_review",
+      "scope": "strict wrapper/Project/16 C pair cases/build-process dispatcher; formatting delta",
+      "status": "source-clear; namespace cleanup race and exact diagnostic coverage repaired",
+      "files": {
+        "src/host/build_pair.c": "be46188c4302b01c83c33b8536a82d93ac64e3ac0ca85c21d8ff2c0789a2972e",
+        "tools/toolchain/Project.chibi": "522b76cadc40f8e2ccb9ca730f5c336f6cb98286cb2b18681ac101ae5b4129ce",
+        "test/tools/file_pair.c": "dff97516f2c5b7e7ca826a67ff7db2b0ed49d6c852316bc78642aec5bd6495f1",
+        "test/tools/build_process.c": "566bc64cfd3ff3c5c10333c039ff670faa16a9af8df60aca3bc71ce124aab66f",
+        "test/tools/CMakeLists.txt": "3afc36d8c618ab3323d91be793202acd3822c1aef50b5f133f9e91244169c97d"
+      }
+    },
+    {
+      "reviewer": "/root/project_policy/pair_graph_review",
+      "scope": "authored Targets/CMake warm composition/private header staging/build-graph tests",
+      "status": "source-clear; direct errno.h include finding repaired",
+      "files": {
+        "tools/graph/engine/Targets.chibi": "0acfafdfda8d93cb99cd9bd4a74f8b8f3d2548b0a07e4134b773f2e7e4203fb4",
+        "test/tools/build_graph.c": "1dcb3609af8597fc52f5504146e4cd38d006c069a11f2da8e011f2b77696812e",
+        "sdk/CMakeLists.txt": "3e6c0a03c742d2b9960899099863374c2988d214733af8426d2e141d3bfc6fff",
+        "sdk/project_preparation.cmake": "e65c6757857595536b95c96cb051eff9a865913963f96bdba9994dc9df6139d4",
+        "test/tools/CMakeLists.txt": "3afc36d8c618ab3323d91be793202acd3822c1aef50b5f133f9e91244169c97d"
+      }
+    }
+  ]
+}

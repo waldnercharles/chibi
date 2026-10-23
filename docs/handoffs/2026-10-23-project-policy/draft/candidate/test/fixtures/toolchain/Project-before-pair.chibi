@@ -1,0 +1,893 @@
+package toolchain
+
+import strings "core:strings"
+
+// Internal source draft. Nothing invokes or installs this policy yet.
+//
+// The prepared caller supplies raw role paths and the actual invocation entry.
+// It must bind those paths to the executable/artifact it actually invokes.
+// build.* cannot inspect its own loaded artifact or attest a host self-check.
+// Packaging must execute the checks recorded by the witness before adoption.
+// Protocol 8 alone does not establish prepared input or bindings 939/940.
+//
+// Both entries accept paired --key VALUE arguments only. Common keys:
+// --route native|selfhost --target native|web --sdk-root ABSOLUTE
+// --inventory RELATIVE --receipt RELATIVE --build-host ABSOLUTE
+// --assembly ABSOLUTE --invocation-entry Inspect|Compile.
+// Selfhost also takes --compiler-host ABSOLUTE --cache ABSOLUTE.
+// Compile takes --project-root ABSOLUTE --output ABSOLUTE and, for selfhost,
+// --budget POSITIVE_DECIMAL --timeout-ms POSITIVE_DECIMAL.
+// Inspect rejects project/output/budget/timeout: it never reads a project.
+//
+// CHIBI-PROJECT-PREPARE/1 is a new producer contract, not existing SDK data.
+// It is LF-terminated TSV. Each scalar key occurs once:
+// policy-source, policy-artifact, host-witness, compiler, core, bootstrap,
+// source-sha256, artifact-sha256, build-host-sha256, compiler-host-sha256,
+// assembly-sha256, inputs-sha256, inspect-entry, compile-entry, platform,
+// compiler-backend. Repeated ownership rows are ownership<TAB>file|directory
+// <TAB>RELATIVE. They come from the actual SDK Entries destination and kind.
+// Repeated output<TAB>file<TAB>RELATIVE rows name generated policy outputs.
+// They must include source, artifact, witness and this receipt, exactly once.
+// inputs-sha256 hashes the final TSV's non-output rows, including their LF,
+// in TSV order. It excludes every declared output, so no self-hash is needed.
+// Source/artifact hashes and a pre-inventory witness bind preparation; the
+// final compiler-tools.tsv binds all outputs including receipt and witness.
+// The final TSV retains its existing 1<LF>relative<TAB>SHA256<LF> format.
+// It excludes itself. Ownership does not claim unrelated SDK files.
+//
+// Installed inputs must remain immutable for one invocation. Content is
+// checked again before publishing a recovery or project result. This is
+// not a filesystem snapshot or protection against concurrent hostile edits.
+// StageOne.chibi must become an adapter or be removed when this is adopted;
+// keeping two permanent recovery/compile policies is not the handoff.
+
+ProjectReceipt :: union {
+    Read(values: string[], owners: string[], kinds: string[], outputs: string[]) | Invalid
+}
+
+ProjectJoin :: (parts: string[]) -> string {
+    return build.join(parts, "");
+}
+
+ProjectHas :: (values: string[], value: string) -> bool {
+    for (item in values) {
+        if (item == value) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ProjectValue :: (pairs: string[], key: string) -> string {
+    index: int = 0;
+    while (index + 1 < length(pairs)) {
+        if (pairs[index] == key) {
+            return pairs[index + 1];
+        }
+        index += 2;
+    }
+    return "";
+}
+
+ProjectHex :: (value: string, count: int) -> bool {
+    if (strings.ByteLength(value) != count) {
+        return false;
+    }
+    for (byte in strings.Bytes(value)) {
+        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+ProjectRelative :: (path: string) -> bool {
+    if (path == "" || strings.HasPrefix(path, "/") ||
+        strings.ContainsAny(path, "\\\t\r\n") || strings.IndexByte(path, 0) >= 0) {
+        return false;
+    }
+    for (part in strings.Split(path, "/")) {
+        if (part == "" || part == "." || part == "..") {
+            return false;
+        }
+    }
+    return true;
+}
+
+ProjectAbsolute :: (path: string) -> bool {
+    return strings.HasPrefix(path, "/") && ProjectRelative(strings.Slice(path, 1, strings.ByteLength(path)));
+}
+
+ProjectBelow :: (path: string, directory: string) -> bool {
+    return path == directory || strings.HasPrefix(path, ProjectJoin([directory, "/"]));
+}
+
+ProjectParent :: (path: string) -> string {
+    if (path == "/" || path == "") {
+        return "";
+    }
+    slash := strings.LastIndexByte(path, 47);
+    if (slash == 0) {
+        return "/";
+    }
+    return strings.Slice(path, 0, slash);
+}
+
+// The existing stamp contract starts with device:inode. Later metadata is
+// deliberately excluded: directory contents and times can change.
+ProjectFileIdentity :: (path: string) -> string {
+    stamp := build.file_stamp(path);
+    if (stamp == "") {
+        return "";
+    }
+    device := build.before(stamp, ":");
+    inode := build.before(build.after(stamp, ":"), ":");
+    if (device == "" || inode == "") {
+        return "";
+    }
+    return ProjectJoin([device, ":", inode]);
+}
+
+// The protected directory must exist. Missing source suffixes are safe to
+// walk upward; a case alias still reaches the same physical ancestor.
+ProjectInside :: (path: string, directory: string) -> bool {
+    identity := ProjectFileIdentity(directory);
+    if (path == "" || identity == "" || build.file_kind(directory) != "directory") {
+        return true;
+    }
+    current := path;
+    while (current != "") {
+        if (ProjectFileIdentity(current) == identity) {
+            return true;
+        }
+        current = ProjectParent(current);
+    }
+    return false;
+}
+
+// Canonicalize existing ancestors without creating missing directories.
+ProjectFuturePath :: (path: string) -> string {
+    if (!ProjectAbsolute(path)) {
+        return "";
+    }
+    result := "";
+    missing := false;
+    for (part in strings.Split(strings.Slice(path, 1, strings.ByteLength(path)), "/")) {
+        result = ProjectJoin([result, "/", part]);
+        if (!missing) {
+            kind := build.file_kind(result);
+            if (kind == "") {
+                missing = true;
+            } else {
+                result = build.resolve_path(result);
+                if (result == "" || build.file_kind(result) != "directory") {
+                    return "";
+                }
+            }
+        }
+    }
+    return result;
+}
+
+ProjectArguments :: (arguments: string[], compiling: bool) -> bool {
+    allowed := ["--route", "--target", "--sdk-root", "--inventory", "--receipt",
+                "--build-host", "--assembly", "--invocation-entry", "--compiler-host", "--cache"];
+    if (compiling) {
+        allowed = build.concat(allowed, ["--project-root", "--output", "--budget", "--timeout-ms"]);
+    }
+    seen: string[] = [];
+    index: int = 0;
+    while (index < length(arguments)) {
+        key := arguments[index];
+        if (index + 1 >= length(arguments) || !ProjectHas(allowed, key) ||
+            ProjectHas(seen, key) || arguments[index + 1] == "") {
+            return false;
+        }
+        seen = build.concat(seen, [key]);
+        index += 2;
+    }
+    for (key in ["--route", "--target", "--sdk-root", "--inventory", "--receipt",
+                 "--build-host", "--assembly", "--invocation-entry"]) {
+        if (!ProjectHas(seen, key)) {
+            return false;
+        }
+    }
+    route := ProjectValue(arguments, "--route");
+    target := ProjectValue(arguments, "--target");
+    if ((route != "native" && route != "selfhost") || (target != "native" && target != "web")) {
+        return false;
+    }
+    if (route == "selfhost" && (ProjectValue(arguments, "--compiler-host") == "" ||
+                                ProjectValue(arguments, "--cache") == "")) {
+        return false;
+    }
+    if (route == "native" && (ProjectValue(arguments, "--compiler-host") != "" ||
+                              ProjectValue(arguments, "--cache") != "")) {
+        return false;
+    }
+    if (!compiling) {
+        return ProjectValue(arguments, "--invocation-entry") == "Inspect";
+    }
+    if (ProjectValue(arguments, "--invocation-entry") != "Compile" ||
+        ProjectValue(arguments, "--project-root") == "" || ProjectValue(arguments, "--output") == "") {
+        return false;
+    }
+    if (route == "native") {
+        return ProjectValue(arguments, "--budget") == "" && ProjectValue(arguments, "--timeout-ms") == "";
+    }
+    for (key in ["--budget", "--timeout-ms"]) {
+        number := ProjectValue(arguments, key);
+        if (number == "" || strings.HasPrefix(number, "0")) {
+            return false;
+        }
+        for (byte in strings.Bytes(number)) {
+            if (byte < 48 || byte > 57) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+ProjectReadReceipt :: (text: string) -> ProjectReceipt {
+    values: string[] = [];
+    owners: string[] = [];
+    kinds: string[] = [];
+    outputs: string[] = [];
+    if (!strings.HasPrefix(text, "CHIBI-PROJECT-PREPARE/1\n") ||
+        !strings.HasSuffix(text, "\n") || strings.Contains(text, "\r") || strings.IndexByte(text, 0) >= 0) {
+        return ProjectReceipt.Invalid;
+    }
+    scalar := ["policy-source", "policy-artifact", "host-witness", "compiler", "core", "bootstrap",
+               "source-sha256", "artifact-sha256", "build-host-sha256", "compiler-host-sha256",
+               "assembly-sha256", "inputs-sha256", "inspect-entry", "compile-entry", "platform", "compiler-backend"];
+    body := strings.Slice(text, strings.ByteLength("CHIBI-PROJECT-PREPARE/1\n"),
+                          strings.ByteLength(text) - strings.ByteLength("CHIBI-PROJECT-PREPARE/1\n") - 1);
+    for (line in strings.Split(body, "\n")) {
+        fields := strings.Split(line, "\t");
+        if (length(fields) == 3 && (fields[0] == "ownership" || fields[0] == "output")) {
+            if (!ProjectRelative(fields[2]) || (fields[1] != "file" && fields[1] != "directory")) {
+                return ProjectReceipt.Invalid;
+            }
+            if (fields[0] == "output") {
+                if (fields[1] != "file" || ProjectHas(outputs, fields[2])) {
+                    return ProjectReceipt.Invalid;
+                }
+                outputs = build.concat(outputs, [fields[2]]);
+                continue;
+            }
+            for (owner in owners) {
+                if (ProjectBelow(owner, fields[2]) || ProjectBelow(fields[2], owner)) {
+                    return ProjectReceipt.Invalid;
+                }
+            }
+            owners = build.concat(owners, [fields[2]]);
+            kinds = build.concat(kinds, [fields[1]]);
+            continue;
+        }
+        if (length(fields) != 2 || !ProjectHas(scalar, fields[0]) || fields[1] == "" ||
+            ProjectValue(values, fields[0]) != "") {
+            return ProjectReceipt.Invalid;
+        }
+        values = build.concat(values, fields);
+    }
+    for (key in scalar) {
+        value := ProjectValue(values, key);
+        if (value == "" || (strings.HasSuffix(key, "-sha256") && !ProjectHex(value, 64))) {
+            return ProjectReceipt.Invalid;
+        }
+    }
+    for (key in ["policy-source", "policy-artifact", "host-witness", "compiler", "core", "bootstrap"]) {
+        if (!ProjectRelative(ProjectValue(values, key))) {
+            return ProjectReceipt.Invalid;
+        }
+    }
+    if (length(owners) == 0 || ProjectValue(values, "inspect-entry") != "Inspect" ||
+        ProjectValue(values, "compile-entry") != "Compile" ||
+        (ProjectValue(values, "compiler-backend") != "sljit" && ProjectValue(values, "compiler-backend") != "bytecode")) {
+        return ProjectReceipt.Invalid;
+    }
+    return ProjectReceipt.Read(values, owners, kinds, outputs);
+}
+
+ProjectReceiptValues :: (receipt: ProjectReceipt) -> string[] {
+    switch receipt {
+    case ProjectReceipt.Read(values, owners, kinds, outputs):
+        return values;
+    case ProjectReceipt.Invalid:
+        return [];
+    }
+}
+
+ProjectOwned :: (owners: string[], kinds: string[], relative: string) -> bool {
+    index: int = 0;
+    while (index < length(owners)) {
+        if (relative == owners[index] ||
+            (kinds[index] == "directory" && ProjectBelow(relative, owners[index]))) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}
+
+ProjectPlainPath :: (root: string, relative: string) -> bool {
+    path := root;
+    parts := strings.Split(relative, "/");
+    index: int = 0;
+    while (index < length(parts)) {
+        // A case-insensitive lookup can resolve an alias the producer did
+        // not copy. Match the actual entry spelling, without banning hardlinks.
+        if (!ProjectHas(build.list_directory(path), parts[index])) {
+            return false;
+        }
+        path = ProjectJoin([path, "/", parts[index]]);
+        kind := build.file_kind(path);
+        if (kind == "link" || kind == "other" || kind == "" ||
+            (index + 1 < length(parts) && kind != "directory")) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+
+// Returns an exact file count, or -1. Links and nonregular data are rejected.
+ProjectWalk :: (root: string, relative: string, paths: string[], manifest: string) -> int {
+    path := ProjectJoin([root, "/", relative]);
+    kind := build.file_kind(path);
+    if (relative == manifest) {
+        if (kind == "file") {
+            return 0;
+        }
+        return -1;
+    }
+    if (kind == "file") {
+        if (ProjectHas(paths, relative)) {
+            return 1;
+        }
+        return -1;
+    }
+    if (kind != "directory") {
+        return -1;
+    }
+    count: int = 0;
+    for (name in build.list_directory(path)) {
+        child := ProjectJoin([relative, "/", name]);
+        if (!ProjectRelative(child)) {
+            return -1;
+        }
+        below := ProjectWalk(root, child, paths, manifest);
+        if (below < 0) {
+            return -1;
+        }
+        count += below;
+    }
+    return count;
+}
+
+ProjectInventory :: (root: string, manifest: string, text: string,
+                     receipt_path: string, receipt: ProjectReceipt) -> bool {
+    switch receipt {
+    case ProjectReceipt.Read(values, owners, kinds, outputs):
+        return ProjectInventoryRows(root, manifest, text, receipt_path, values, owners, kinds, outputs);
+    case ProjectReceipt.Invalid:
+        return false;
+    }
+}
+
+ProjectInventoryRows :: (root: string, manifest: string, text: string, receipt_path: string,
+                         values: string[], owners: string[], kinds: string[], receipt_outputs: string[]) -> bool {
+    if (!ProjectRelative(manifest) || manifest == receipt_path ||
+        !strings.HasPrefix(text, "1\n") || !strings.HasSuffix(text, "\n") ||
+        strings.Contains(text, "\r") || strings.IndexByte(text, 0) >= 0) {
+        return false;
+    }
+    paths: string[] = [];
+    inputs := "";
+    body := strings.Slice(text, 2, strings.ByteLength(text) - 3);
+    for (line in strings.Split(body, "\n")) {
+        fields := strings.Split(line, "\t");
+        if (length(fields) != 2 || !ProjectRelative(fields[0]) || !ProjectHex(fields[1], 64) ||
+            fields[0] == manifest || ProjectHas(paths, fields[0]) || !ProjectOwned(owners, kinds, fields[0]) ||
+            !ProjectPlainPath(root, fields[0])) {
+            return false;
+        }
+        path := ProjectJoin([root, "/", fields[0]]);
+        if (build.file_kind(path) != "file" || build.hash_file(path) != fields[1]) {
+            return false;
+        }
+        paths = build.concat(paths, [fields[0]]);
+        if (!ProjectHas(receipt_outputs, fields[0])) {
+            inputs = ProjectJoin([inputs, line, "\n"]);
+        }
+    }
+    if (build.hash_text(inputs) != ProjectValue(values, "inputs-sha256")) {
+        return false;
+    }
+    outputs := [receipt_path, ProjectValue(values, "policy-source"),
+                ProjectValue(values, "policy-artifact"), ProjectValue(values, "host-witness")];
+    if (length(receipt_outputs) != length(outputs)) {
+        return false;
+    }
+    checked: string[] = [];
+    for (output in outputs) {
+        if (ProjectHas(checked, output) || !ProjectHas(receipt_outputs, output) || !ProjectHas(paths, output)) {
+            return false;
+        }
+        checked = build.concat(checked, [output]);
+    }
+    for (key in ["compiler", "core", "bootstrap"]) {
+        relative := ProjectValue(values, key);
+        if (!ProjectOwned(owners, kinds, relative) || !ProjectPlainPath(root, relative) ||
+            build.file_kind(ProjectJoin([root, "/", relative])) != "directory") {
+            return false;
+        }
+    }
+    count: int = 0;
+    index: int = 0;
+    while (index < length(owners)) {
+        relative := owners[index];
+        if (!ProjectPlainPath(root, relative) ||
+            build.file_kind(ProjectJoin([root, "/", relative])) != kinds[index]) {
+            return false;
+        }
+        below := ProjectWalk(root, relative, paths, manifest);
+        if (below < 0) {
+            return false;
+        }
+        count += below;
+        index += 1;
+    }
+    return count == length(paths) && count > 0;
+}
+
+// This is verification of producer-recorded evidence, not a runtime probe.
+ProjectWitness :: (values: string[]) -> string {
+    lines := ["CHIBI-PROJECT-HOST/1"];
+    for (key in ["inputs-sha256", "source-sha256", "artifact-sha256", "build-host-sha256", "compiler-host-sha256",
+                 "assembly-sha256", "inspect-entry", "compile-entry", "platform", "compiler-backend"]) {
+        lines = build.concat(lines, [ProjectJoin([key, "\t", ProjectValue(values, key)])]);
+    }
+    return ProjectJoin([build.join(lines, "\n"), "\nprepared-load\tpassed\nprepared-without-source\tpassed\n",
+                        "prepared-entry-selection\tpassed\nreserve-directory\tpassed\npublish-directory\tpassed\n"]);
+}
+
+// Empty means unavailable. No source compilation, process or project read.
+ProjectIdentity :: (arguments: string[]) -> string {
+    root := ProjectValue(arguments, "--sdk-root");
+    manifest := ProjectValue(arguments, "--inventory");
+    receipt_path := ProjectValue(arguments, "--receipt");
+    if (!ProjectAbsolute(root) || !ProjectRelative(manifest) || !ProjectRelative(receipt_path)) {
+        return "";
+    }
+    root = build.resolve_path(root);
+    if (root == "" || build.file_kind(root) != "directory" || !ProjectPlainPath(root, manifest) ||
+        !ProjectPlainPath(root, receipt_path) || build.file_kind(ProjectJoin([root, "/", manifest])) != "file" ||
+        build.file_kind(ProjectJoin([root, "/", receipt_path])) != "file") {
+        return "";
+    }
+    receipt_text := build.read_file(ProjectJoin([root, "/", receipt_path]));
+    receipt := ProjectReadReceipt(receipt_text);
+    values := ProjectReceiptValues(receipt);
+    inventory := build.read_file(ProjectJoin([root, "/", manifest]));
+    if (!ProjectInventory(root, manifest, inventory, receipt_path, receipt) ||
+        ProjectValue(values, "platform") != build.platform() ||
+        build.hash_file(ProjectJoin([root, "/", ProjectValue(values, "policy-source")])) != ProjectValue(values, "source-sha256") ||
+        build.hash_file(ProjectJoin([root, "/", ProjectValue(values, "policy-artifact")])) != ProjectValue(values, "artifact-sha256") ||
+        build.read_file(ProjectJoin([root, "/", ProjectValue(values, "host-witness")])) != ProjectWitness(values)) {
+        return "";
+    }
+    role_hashes: string[] = [];
+    keys := ["--build-host", "--assembly"];
+    if (ProjectValue(arguments, "--route") == "selfhost") {
+        keys = build.concat(keys, ["--compiler-host"]);
+    }
+    for (key in keys) {
+        path := ProjectValue(arguments, key);
+        if (!ProjectAbsolute(path)) {
+            return "";
+        }
+        path = build.resolve_path(path);
+        if (path == "" || build.file_kind(path) != "file" || build.find_executable(path) == "") {
+            return "";
+        }
+        hash := build.hash_file(path);
+        expected := "assembly-sha256";
+        if (key == "--build-host") {
+            expected = "build-host-sha256";
+        } else if (key == "--compiler-host") {
+            expected = "compiler-host-sha256";
+        }
+        if (hash != ProjectValue(values, expected)) {
+            return "";
+        }
+        role_hashes = build.concat(role_hashes, [ProjectJoin([key, "\t", hash])]);
+    }
+    return build.hash_text(build.join(["CHIBI-PROJECT-IDENTITY/1", ProjectValue(arguments, "--route"),
+                                      ProjectValue(arguments, "--target"), build.platform(),
+                                      build.hash_text(inventory), build.hash_text(receipt_text),
+                                      build.join(role_hashes, "\n")], "\n"));
+}
+
+ProjectCacheRoot :: (arguments: string[]) -> string {
+    cache := ProjectFuturePath(ProjectValue(arguments, "--cache"));
+    sdk := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
+    if (cache == "" || sdk == "" || ProjectInside(cache, sdk)) {
+        return "";
+    }
+    // An absent cache cannot contain the existing SDK. Once it exists,
+    // reject that reverse containment using directory identity as well.
+    if (build.file_kind(cache) != "" && ProjectInside(sdk, cache)) {
+        return "";
+    }
+    return cache;
+}
+
+ProjectOutputPath :: (arguments: string[], cache: string) -> string {
+    output := ProjectValue(arguments, "--output");
+    slash := strings.LastIndexByte(output, 47);
+    if (!ProjectAbsolute(output) || slash <= 0) {
+        return "";
+    }
+    parent := ProjectFuturePath(strings.Slice(output, 0, slash));
+    sdk := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
+    if (parent == "" || sdk == "") {
+        return "";
+    }
+    output = ProjectJoin([parent, "/", strings.Slice(output, slash + 1, strings.ByteLength(output))]);
+    if (build.file_kind(parent) != "directory" || ProjectInside(output, sdk) ||
+        (cache != "" && ProjectInside(output, cache))) {
+        return "";
+    }
+    existing := build.resolve_path(output);
+    existing_stamp := "";
+    if (existing != "") {
+        existing_stamp = build.file_stamp(existing);
+    }
+    for (key in ["--assembly", "--compiler-host", "--build-host"]) {
+        role := ProjectValue(arguments, key);
+        if (role == "") {
+            continue;
+        }
+        role = build.resolve_path(role);
+        if (role == "" || output == role || existing == role) {
+            return "";
+        }
+        // A same-file check also protects existing case/link aliases when
+        // realpath preserves their spelling. Stamps never admit cache data
+        // or decide inventory uniqueness. Output hardlinks to tools are
+        // conservatively protected too.
+        if (existing_stamp != "" && existing_stamp == build.file_stamp(role)) {
+            return "";
+        }
+    }
+    return output;
+}
+
+ProjectCached :: (directory: string, identity: string) -> string {
+    if (build.file_kind(directory) != "directory" ||
+        build.file_kind(ProjectJoin([directory, "/compiler.chibip"])) != "file" ||
+        build.file_kind(ProjectJoin([directory, "/receipt.tsv"])) != "file" ||
+        length(build.list_directory(directory)) != 2) {
+        return "";
+    }
+    artifact := ProjectJoin([directory, "/compiler.chibip"]);
+    expected := ProjectJoin(["CHIBI-PROJECT-CACHE/1\nidentity\t", identity,
+                             "\nartifact-sha256\t", build.hash_file(artifact), "\n"]);
+    if (build.read_file(ProjectJoin([directory, "/receipt.tsv"])) != expected) {
+        return "";
+    }
+    return artifact;
+}
+
+// One fixed-ASCII frame. build.report adds its only LF. On a host-level IO
+// failure there may be no frame; the caller must reject that whole stream.
+ProjectInspection :: (route: string, availability: string, identity: string, diagnostic: string, code: int) -> int {
+    encoded := "null";
+    if (identity != "") {
+        encoded = ProjectJoin(["\"", identity, "\""]);
+    }
+    roles := "[\"build-host\",\"assembly\"]";
+    if (route == "selfhost") {
+        roles = "[\"build-host\",\"compiler-host\",\"assembly\"]";
+    }
+    frame := ProjectJoin(["CHIBI-INSPECT/1 {\"route\":\"", route, "\",\"availability\":\"", availability,
+                          "\",\"identity\":", encoded, ",\"diagnostic\":\"", diagnostic,
+                          "\",\"roles\":", roles, "}"]);
+    if (strings.ByteLength(frame) + 1 > 2048) {
+        return 2;
+    }
+    build.report(frame);
+    return code;
+}
+
+Inspect :: () -> int {
+    arguments := build.arguments();
+    route := ProjectValue(arguments, "--route");
+    if (!ProjectArguments(arguments, false)) {
+        return ProjectInspection("native", "unavailable", "", "invalid-arguments", 2);
+    }
+    if (ProjectValue(arguments, "--target") != "native") {
+        return ProjectInspection(route, "unavailable", "", "unsupported-target", 1);
+    }
+    if (route == "selfhost" && build.platform() != "Darwin" && build.platform() != "Linux") {
+        return ProjectInspection(route, "unavailable", "", "unsupported-platform", 1);
+    }
+    identity := ProjectIdentity(arguments);
+    if (identity == "") {
+        return ProjectInspection(route, "unavailable", "", "invalid-preparation", 1);
+    }
+    if (route == "native") {
+        return ProjectInspection(route, "ready", identity, "ready", 0);
+    }
+    cache := ProjectCacheRoot(arguments);
+    if (cache == "") {
+        return ProjectInspection(route, "unavailable", identity, "invalid-cache-root", 1);
+    }
+    directory := ProjectJoin([cache, "/", identity]);
+    if (ProjectCached(directory, identity) != "") {
+        return ProjectInspection(route, "ready", identity, "ready", 0);
+    }
+    if (build.file_kind(directory) != "") {
+        return ProjectInspection(route, "unavailable", identity, "invalid-published-cache", 1);
+    }
+    return ProjectInspection(route, "needs-recovery", identity, "recovery-required", 1);
+}
+
+ProjectRemove :: (path: string) -> bool {
+    if (build.file_kind(path) == "directory") {
+        for (name in build.list_directory(path)) {
+            if (!ProjectRemove(ProjectJoin([path, "/", name]))) {
+                return false;
+            }
+        }
+    }
+    return build.remove(path);
+}
+
+// Each contender owns only its successful reservation. A cancelled process
+// may leave scratch, but it never owns a shared fixed lock. The directory
+// service already caps a listing at 8192 names. Exhaustion fails closed.
+ProjectReserve :: (cache: string, prefix: string) -> string {
+    index := length(build.list_directory(cache));
+    while (index < 8192) {
+        path := format_text("{}/{}.{}", cache, prefix, index);
+        if (build.reserve_directory(path)) {
+            return path;
+        }
+        index += 1;
+    }
+    return "";
+}
+
+// The sibling artifact and reservation both occupy N. A previous invocation
+// may have removed its reservation just before its final artifact rename.
+ProjectOutputWork :: (destination: string) -> string {
+    index: int = 0;
+    while (index < 8192) {
+        work := format_text("{}.stage-one.{}", destination, index);
+        artifact := ProjectJoin([work, ".artifact"]);
+        if (build.file_kind(artifact) == "" && build.reserve_directory(work)) {
+            if (build.file_kind(artifact) == "") {
+                return work;
+            }
+            if (!build.remove(work)) {
+                return "";
+            }
+        }
+        index += 1;
+    }
+    return "";
+}
+
+ProjectRecover :: (arguments: string[], identity: string, cache: string) -> string {
+    if (!ProjectAbsolute(cache) || !ProjectHex(identity, 64) || ProjectIdentity(arguments) != identity) {
+        build.report("project: invalid compiler recovery identity or cache");
+        return "";
+    }
+    directory := ProjectJoin([cache, "/", identity]);
+    artifact := ProjectCached(directory, identity);
+    if (artifact != "") {
+        return artifact;
+    }
+    // There is no safe invalid-publication replacement contract yet. Never
+    // delete another reader's published directory or an abandoned scratch.
+    if (build.file_kind(directory) != "") {
+        build.report("project: invalid published compiler cache");
+        return "";
+    }
+    root := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
+    receipt_path := ProjectValue(arguments, "--receipt");
+    if (root == "" || !ProjectAbsolute(root) || !ProjectRelative(receipt_path)) {
+        build.report("project: invalid compiler recovery resource path");
+        return "";
+    }
+    values := ProjectReceiptValues(ProjectReadReceipt(build.read_file(ProjectJoin([root, "/", receipt_path]))));
+    if (length(values) == 0) {
+        build.report("project: invalid compiler recovery receipt");
+        return "";
+    }
+    if (!build.make_directory(cache)) {
+        build.report("project: cannot create external compiler cache");
+        return "";
+    }
+    scratch := ProjectReserve(cache, ProjectJoin([identity, ".recover"]));
+    if (scratch == "") {
+        build.report("project: cannot reserve compiler recovery scratch");
+        return "";
+    }
+    recovered := ProjectJoin([scratch, "/compiler.chibip"]);
+    ok := build.run([ProjectValue(arguments, "--compiler-host"), "--bootstrap",
+                     ProjectJoin([root, "/", ProjectValue(values, "bootstrap")]), "--compiler",
+                     ProjectJoin([root, "/", ProjectValue(values, "compiler")]), "--core",
+                     ProjectJoin([root, "/", ProjectValue(values, "core")]), "--recover", recovered]) == 0;
+    ok = ok && build.file_kind(recovered) == "file" && ProjectIdentity(arguments) == identity;
+    if (ok) {
+        ok = build.write_file(ProjectJoin([scratch, "/receipt.tsv"]),
+                              ProjectJoin(["CHIBI-PROJECT-CACHE/1\nidentity\t", identity,
+                                           "\nartifact-sha256\t", build.hash_file(recovered), "\n"]));
+    }
+    if (ok) {
+        ok = build.publish_directory(scratch, directory);
+        if (ok) {
+            return ProjectCached(directory, identity);
+        }
+        // A concurrent contender may have published the same identity first.
+        artifact = ProjectCached(directory, identity);
+        ok = artifact != "";
+    }
+    cleaned := ProjectRemove(scratch);
+    if (!ok || !cleaned) {
+        build.report("project: compiler recovery or scratch cleanup failed");
+        return "";
+    }
+    return artifact;
+}
+
+ProjectStage :: (arguments: string[], values: string[], closure: string,
+                 entry: string, input: string, output: string) -> int {
+    command := [ProjectValue(arguments, "--compiler-host"), "--artifact", closure, "--entry", entry,
+                "--input", input, "--backend", ProjectValue(values, "compiler-backend"),
+                "--budget", ProjectValue(arguments, "--budget"), "--timeout-ms", ProjectValue(arguments, "--timeout-ms")];
+    if (output != "") {
+        command = build.concat(command, ["--output-bytes", output]);
+    }
+    return build.run(command);
+}
+
+ProjectAssemble :: (arguments: string[], identity: string, work: string, destination: string) -> int {
+    assembly := ProjectValue(arguments, "--assembly");
+    project := ProjectValue(arguments, "--project-root");
+    output := ProjectJoin([work, ".artifact"]);
+    command := [assembly, "--project-root", project, "--output", output];
+    if (ProjectValue(arguments, "--route") == "selfhost") {
+        input := ProjectJoin([work, "/input.json"]);
+        if (build.run([assembly, "--project-root", project, "--stage-one-input", input]) != 0) {
+            build.report("project: cannot export compiler input");
+            return 1;
+        }
+        count := build.trim(build.last_stdout());
+        if (count == "0") {
+            command = build.concat(command, ["--resources-only"]);
+        } else {
+            if (count == "" || strings.HasPrefix(count, "0")) {
+                build.report("project: invalid compiler input count");
+                return 1;
+            }
+            for (byte in strings.Bytes(count)) {
+                if (byte < 48 || byte > 57) {
+                    build.report("project: invalid compiler input count");
+                    return 1;
+                }
+            }
+            closure := ProjectRecover(arguments, identity, ProjectCacheRoot(arguments));
+            if (closure == "") {
+                return 1;
+            }
+            root := build.resolve_path(ProjectValue(arguments, "--sdk-root"));
+            receipt_path := ProjectValue(arguments, "--receipt");
+            if (root == "" || !ProjectAbsolute(root) || !ProjectRelative(receipt_path)) {
+                build.report("project: invalid compilation resource path");
+                return 1;
+            }
+            values := ProjectReceiptValues(ProjectReadReceipt(build.read_file(ProjectJoin([root, "/", receipt_path]))));
+            if (length(values) == 0 || ProjectIdentity(arguments) != identity) {
+                build.report("project: invalid compilation receipt or changed inputs");
+                return 1;
+            }
+            modules := ProjectJoin([work, "/modules.chibip"]);
+            if (ProjectStage(arguments, values, closure, "976ab7ba3a7fbb4d", input, modules) != 0) {
+                ProjectStage(arguments, values, closure, "90cd0d9866e51fd8", input, "");
+                build.report(ProjectJoin(["project: self-hosted compilation rejected: ", build.last_stdout()]));
+                return 1;
+            }
+            command = build.concat(command, ["--modules", modules]);
+        }
+    }
+    // --check with modules/resources-only needs a future native assembly
+    // contract. This entry builds output and never invents readonly flags.
+    if (ProjectIdentity(arguments) != identity || build.run(command) != 0 ||
+        ProjectIdentity(arguments) != identity || build.file_kind(output) != "file") {
+        build.report("project: assembly failed or installed inputs changed");
+        return 1;
+    }
+    if (!ProjectRemove(work)) {
+        build.report("project: cannot clean private assembly inputs");
+        return 1;
+    }
+    // Same-directory publication preserves an old output until commit and
+    // leaves no success scratch. It is the last authored capability on the
+    // successful path. Host cancellation retains its normal runtime rules.
+    if (!build.rename(output, destination)) {
+        build.report("project: atomic output publication failed");
+        return 1;
+    }
+    return 0;
+}
+
+Compile :: () -> int {
+    arguments := build.arguments();
+    if (!ProjectArguments(arguments, true)) {
+        build.report("project: invalid arguments");
+        return 2;
+    }
+    if (ProjectValue(arguments, "--target") != "native" ||
+        (ProjectValue(arguments, "--route") == "selfhost" && build.platform() != "Darwin" && build.platform() != "Linux")) {
+        build.report("project: unsupported target or platform");
+        return 1;
+    }
+    if (!ProjectAbsolute(ProjectValue(arguments, "--project-root")) ||
+        !ProjectAbsolute(ProjectValue(arguments, "--output"))) {
+        build.report("project: project and output paths must be absolute");
+        return 2;
+    }
+    identity := ProjectIdentity(arguments);
+    if (identity == "") {
+        build.report("project: invalid preparation");
+        return 1;
+    }
+    cache := "";
+    if (ProjectValue(arguments, "--route") == "selfhost") {
+        cache = ProjectCacheRoot(arguments);
+        if (cache == "") {
+            build.report("project: invalid compiler cache root");
+            return 1;
+        }
+        // Establish the protected directory identity before output checks.
+        // Only Compile may create this explicitly requested external path;
+        // an empty project may leave an empty cache but never recovers.
+        if (!build.make_directory(cache)) {
+            build.report("project: cannot create external compiler cache");
+            return 1;
+        }
+        cache = ProjectCacheRoot(arguments);
+        if (cache == "" || build.file_kind(cache) != "directory") {
+            build.report("project: compiler cache failed containment revalidation");
+            return 1;
+        }
+    }
+    destination := ProjectOutputPath(arguments, cache);
+    if (destination == "") {
+        build.report("project: output path is unavailable or protected");
+        return 2;
+    }
+    work := ProjectOutputWork(destination);
+    if (work == "") {
+        build.report("project: cannot reserve project scratch");
+        return 1;
+    }
+    result := ProjectAssemble(arguments, identity, work, destination);
+    if (result == 0) {
+        return 0;
+    }
+    if (!ProjectRemove(work)) {
+        build.report("project: cannot remove owned project scratch");
+        return 1;
+    }
+    if (!build.remove(ProjectJoin([work, ".artifact"]))) {
+        build.report("project: cannot remove owned project artifact");
+        return 1;
+    }
+    return result;
+}

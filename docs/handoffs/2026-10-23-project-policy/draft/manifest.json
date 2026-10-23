@@ -1,0 +1,190 @@
+{
+  "status": "frozen ignored source-only review candidate; independent source reviews clear; root final combined approval pending; uncompiled/unexecuted/unimported",
+  "binding": {
+    "id": 941,
+    "name": "build.publish_pair",
+    "parameters": [
+      "source0",
+      "destination0",
+      "source1",
+      "destination1"
+    ],
+    "parameter_type": "string",
+    "c_string": true,
+    "result": "int",
+    "effect": "HOST",
+    "statuses": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "receipt": {
+    "preparation": "CHIBI-PROJECT-PREPARE/1 unchanged",
+    "host": "CHIBI-PROJECT-HOST/2",
+    "metadata_rows": 10,
+    "passed_check_rows": 6,
+    "inspect": "CHIBI-INSPECT/1 unchanged"
+  },
+  "baseline_manifest_sha256": "93540c3081525c9f9552b97750244de5f9edb66f698276d89dae60f759183f57",
+  "files": {
+    "sdk/CMakeLists.txt": {
+      "baseline": "sdk-warm",
+      "before_sha256": "2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1",
+      "after_sha256": "3e6c0a03c742d2b9960899099863374c2988d214733af8426d2e141d3bfc6fff",
+      "bytes": 49675,
+      "lines": 791
+    },
+    "sdk/project_preparation.cmake": {
+      "baseline": "typed6ef",
+      "before_sha256": "a863e6eb9cb7dd1f61f1cf64fed6cb78a62d0e2931ca4bec98ce0c2ac700748e",
+      "after_sha256": "e65c6757857595536b95c96cb051eff9a865913963f96bdba9994dc9df6139d4",
+      "bytes": 6964,
+      "lines": 92
+    },
+    "src/authoring/project_compile.c": {
+      "baseline": "typed6ef",
+      "before_sha256": "31627bcb857fe64499db9a282629a8294da4fd1eda1570ee46eb92bff69c39ad",
+      "after_sha256": "ac569fcf2bf4f914c75a200619faddb62cd439470f18c2f59deb62e1f3e96f51",
+      "bytes": 48288,
+      "lines": 1316
+    },
+    "src/host/build_catalog.c": {
+      "baseline": "source32",
+      "before_sha256": "f736f3c377f16d01791ca3953a9e668fdeb84d4e2aa4e365397cb96613c1a4e1",
+      "after_sha256": "34275ae203f23e0c80d79cf2178fd8a10e173de1d1a0e713c6bfff6c14fa38c2",
+      "bytes": 22762,
+      "lines": 490
+    },
+    "src/host/build_host_internal.h": {
+      "baseline": "source32",
+      "before_sha256": "adaba55bfacf14827d437406d6576d0be248804f78270a7bf02e11a01a68c178",
+      "after_sha256": "b7f4c7b317e04221db2ed2910b0b110bf77cf10af575681737eacc73160dfa14",
+      "bytes": 2084,
+      "lines": 47
+    },
+    "src/host/build_pair.c": {
+      "baseline": "new",
+      "before_sha256": null,
+      "after_sha256": "be46188c4302b01c83c33b8536a82d93ac64e3ac0ca85c21d8ff2c0789a2972e",
+      "bytes": 6891,
+      "lines": 195
+    },
+    "src/support/file_pair.c": {
+      "baseline": "new",
+      "before_sha256": null,
+      "after_sha256": "2e53322bb3c49b61483acf2d4d6b95b367b4676fbb6e5706ddfa261dd96100a0",
+      "bytes": 10808,
+      "lines": 336
+    },
+    "src/support/file_pair.h": {
+      "baseline": "new",
+      "before_sha256": null,
+      "after_sha256": "6cb7aa435acc0e5a4879f5b2d713e28a880c4c27dc565be4427d845228528eeb",
+      "bytes": 2601,
+      "lines": 67
+    },
+    "test/fixtures/feature-coverage/coverage-gaps.txt": {
+      "baseline": "typed6ef",
+      "before_sha256": "5bc32f81faa4c9c20cd7786d57cdf4e5b4191affbe1f39eadb3c80059afa23c0",
+      "after_sha256": "e991a78bb0625247bfb96e9c8f21ddc73f12a1e35e174d26ee57942577b459fc",
+      "bytes": 3442,
+      "lines": 82
+    },
+    "test/fixtures/toolchain/Project-before-pair.chibi": {
+      "baseline": "new",
+      "before_sha256": null,
+      "after_sha256": "f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb",
+      "bytes": 36710,
+      "lines": 893
+    },
+    "test/tools/CMakeLists.txt": {
+      "baseline": "typed6ef",
+      "before_sha256": "d1e90c261d57f30a2435137846dd35ae4a89c7cc2e7bca3181fd9b3c6f26c738",
+      "after_sha256": "3afc36d8c618ab3323d91be793202acd3822c1aef50b5f133f9e91244169c97d",
+      "bytes": 38250,
+      "lines": 565
+    },
+    "test/tools/build_graph.c": {
+      "baseline": "typed6ef",
+      "before_sha256": "c8cdcbe5816d28ec021bba38cd54d43ec79c3cfbe2e3f0d5d94e96a5aa4d3402",
+      "after_sha256": "1dcb3609af8597fc52f5504146e4cd38d006c069a11f2da8e011f2b77696812e",
+      "bytes": 58410,
+      "lines": 1430
+    },
+    "test/tools/build_process.c": {
+      "baseline": "source32",
+      "before_sha256": "c1f18ee4d830bad379d3c8a099e88b304cf77bfc0deaa76c6cb41cc28f3a9ae6",
+      "after_sha256": "566bc64cfd3ff3c5c10333c039ff670faa16a9af8df60aca3bc71ce124aab66f",
+      "bytes": 112266,
+      "lines": 2756
+    },
+    "test/tools/file_pair.c": {
+      "baseline": "new",
+      "before_sha256": null,
+      "after_sha256": "dff97516f2c5b7e7ca826a67ff7db2b0ed49d6c852316bc78642aec5bd6495f1",
+      "bytes": 32887,
+      "lines": 784
+    },
+    "tools/graph/engine/Targets.chibi": {
+      "baseline": "typed6ef",
+      "before_sha256": "39b21289d058c27c31ee8fc7d26aa468ffd40ce02d219e3d2df04560a2aebaf6",
+      "after_sha256": "0acfafdfda8d93cb99cd9bd4a74f8b8f3d2548b0a07e4134b773f2e7e4203fb4",
+      "bytes": 226716,
+      "lines": 4133
+    },
+    "tools/toolchain/Project.chibi": {
+      "baseline": "f798",
+      "before_sha256": "f7987d0577e433844069b6d498b4cb200ac34bdd3aaefbf6d17eda34af7644fb",
+      "after_sha256": "522b76cadc40f8e2ccb9ca730f5c336f6cb98286cb2b18681ac101ae5b4129ce",
+      "bytes": 38291,
+      "lines": 925
+    }
+  },
+  "source_patch_sha256": "6f4d0366a30154aab6621ca25f11783cfc509d33d18de42b7bc8d8f53f85299b",
+  "import_patch_sha256": "d7dd840339ed8326fa3cf2cefaa79f336ec66eaa40ab18e48ee4ec230cbea385",
+  "patch_semantics": {
+    "source.patch": "minimal delta using per-file baselines including frozen f798 Project predecessor",
+    "import.patch": "same delta with complete Project addition from absent path; apply only to explicitly composed compatible basemap, not live tree"
+  },
+  "warm_cmake_minimal_patch_sha256": "99a0f883a4a2bab9c7eb06e5b2f396256b7692fa2b16eb47e215bfc7d868b0b3",
+  "preserved_typed_cmake_delta_sha256": "99a0f883a4a2bab9c7eb06e5b2f396256b7692fa2b16eb47e215bfc7d868b0b3",
+  "readme_sha256": "d6db4df13dc66e418a618b72cf54000ff106be20d4b00e31e60746d550f81a02",
+  "reviews_sha256": "b798675422f7a5faf91f2bcd9bb19f9e90ec4c1756a417e3beee5b8d9ef823b8",
+  "formatting_receipt_sha256": "e23edd280254d04a3bd4d08f254cfc7389fe4cbd81478b0387e955d89ff64fa7",
+  "required_composition": [
+    "source32 tree1a59410022d128108e7744cf2b5641047a44d713 prepared runtime/CLI/header protocol8, not typed6ef protocol9 substitution",
+    "typed6ef tree6ef6b76e5c7e83b328e2973cc15c42fc79804043 native/runtime/CMake/test baselines as mapped",
+    "SDK warm CMake2a563172deba768fc6dfb36497766f02861b936b889a05849259878e1e8ab0a1 and separate owner-reviewed Engine/NativeBuildFiles filter changes",
+    "separately reviewed SDK HOST/2 producer and generated prepared941 normal0 four-state proof; no proof is minted here"
+  ],
+  "performed": [
+    "source reads",
+    "immutable git-object extraction",
+    "independent source reviews and repairs",
+    "scratch-only clang-format22.1.8",
+    "metadata hashes and review patch construction"
+  ],
+  "not_performed": [
+    "compilation/type/syntax check",
+    "C test execution",
+    "builds",
+    "filesystem/process/policy probes",
+    "prepared probe/artifact generation",
+    "policy or native execution",
+    "graph command parity execution",
+    "SDK packaging/import",
+    "Windows/Web native adapter execution",
+    "actual Terrain artifact+sidecar/export parity",
+    "default/public route adoption",
+    "index/production edits",
+    "commits/pushes"
+  ],
+  "queued_cases": {
+    "new_file_pair_c_cases": 16,
+    "existing_build_graph_support_case": "extended source count/private byte parity/no public leak; unexecuted"
+  },
+  "capture_limits": "error-only complete raw-source argument evidence where remaining capture permits; initial READY/cstring/VM pre-entry and full/truncated captures can fail without full recovery paths; no universal evidence promise",
+  "publication_limits": "ordinary-error rollback only; no atomic-pair reader visibility, writer lock, crash journal or fsync guarantee; outer cancellation may report failure after commit"
+}

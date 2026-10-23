@@ -1,0 +1,28 @@
+{
+  "tool": "/opt/homebrew/opt/llvm@22/bin/clang-format",
+  "version": "Homebrew clang-format version 22.1.8",
+  "scope": "candidate C/header files only; no compiler/tests/build/policy execution",
+  "changed": [
+    "src/host/build_pair.c",
+    "src/authoring/project_compile.c",
+    "src/support/file_pair.h",
+    "src/support/file_pair.c",
+    "test/tools/file_pair.c"
+  ],
+  "patch_sha256": "1e943f1acdfa53c0fdc6927b6d8f5db23e6f6985b6b66da6df9b565321eb7f00",
+  "additional_formatted_files": [
+    "test/tools/build_graph.c"
+  ],
+  "additional_scope": "new graph test edits only; same clang-format22.1.8; no runtime execution",
+  "final_c_header_hashes": {
+    "src/authoring/project_compile.c": "ac569fcf2bf4f914c75a200619faddb62cd439470f18c2f59deb62e1f3e96f51",
+    "src/host/build_catalog.c": "34275ae203f23e0c80d79cf2178fd8a10e173de1d1a0e713c6bfff6c14fa38c2",
+    "src/host/build_host_internal.h": "b7f4c7b317e04221db2ed2910b0b110bf77cf10af575681737eacc73160dfa14",
+    "src/host/build_pair.c": "be46188c4302b01c83c33b8536a82d93ac64e3ac0ca85c21d8ff2c0789a2972e",
+    "src/support/file_pair.c": "2e53322bb3c49b61483acf2d4d6b95b367b4676fbb6e5706ddfa261dd96100a0",
+    "src/support/file_pair.h": "6cb7aa435acc0e5a4879f5b2d713e28a880c4c27dc565be4427d845228528eeb",
+    "test/tools/build_graph.c": "1dcb3609af8597fc52f5504146e4cd38d006c069a11f2da8e011f2b77696812e",
+    "test/tools/build_process.c": "566bc64cfd3ff3c5c10333c039ff670faa16a9af8df60aca3bc71ce124aab66f",
+    "test/tools/file_pair.c": "dff97516f2c5b7e7ca826a67ff7db2b0ed49d6c852316bc78642aec5bd6495f1"
+  }
+}

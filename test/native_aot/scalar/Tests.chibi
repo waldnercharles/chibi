@@ -1,0 +1,138 @@
+package scalar_llvm_tests
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import strings "core:strings"
+
+// Synthetic representation fixture, not a substitute for the real producer.
+pub Accepted :: () -> facts.NullaryPureInt32Return {
+    return {accepted: true, value: 42, name: "Main", path: "Scalar.chibi", key: "project:Scalar.chibi",
+            text: "package scalar\nMain :: () -> int { return 42; }",
+            declaration_start: 15, declaration_end: 47, declaration_line: 2, declaration_column: 1,
+            body_start: 33, body_end: 47, body_line: 2, body_column: 19,
+            return_start: 35, return_end: 45, return_line: 2, return_column: 21,
+            expression_start: 42, expression_end: 44, expression_line: 2, expression_column: 28,
+            diagnostic_start: 0, diagnostic_end: 0, diagnostic_line: 0, diagnostic_column: 0, diagnostic_message: ""};
+}
+pub Rejected :: () -> facts.NullaryPureInt32Return {
+    return {accepted: false, value: 0, name: "", path: "Bad.chibi", key: "", text: "bad",
+            declaration_start: 0, declaration_end: 0, declaration_line: 0, declaration_column: 0,
+            body_start: 0, body_end: 0, body_line: 0, body_column: 0,
+            return_start: 0, return_end: 0, return_line: 0, return_column: 0,
+            expression_start: 0, expression_end: 0, expression_line: 0, expression_column: 0,
+            diagnostic_start: 0, diagnostic_end: 3, diagnostic_line: 1, diagnostic_column: 1, diagnostic_message: "expected package"};
+}
+
+Invalid :: (value: facts.NullaryPureInt32Return) -> bool {
+    if (scalar.Validate(value) == "" || length(scalar.EmitBytes(value)) != 0) {
+        return false;
+    }
+    switch scalar.Emit(value) {
+        case .Invalid(message):
+            return message != "";
+        case .Rejected(projection):
+            return false;
+        case .Emitted(text):
+            return false;
+    }
+}
+pub Tests :: () -> int {
+    value := Accepted();
+    if (scalar.Validate(value) != "" || length(scalar.EmitBytes(value)) == 0) {
+        return 1;
+    }
+    switch scalar.Emit(value) {
+        case .Invalid(message):
+            return 2;
+        case .Rejected(projection):
+            return 3;
+        case .Emitted(text):
+            if (!strings.Contains(text, "define i32 @chibi_scalar()") ||
+                !strings.Contains(text, "store i32 1, ptr %budget0") ||
+                !strings.Contains(text, "icmp sgt i32 %remaining0, 0") ||
+                !strings.Contains(text, "store i32 42, ptr %s0")) {
+                return 4;
+            }
+    }
+    rejected := Rejected();
+    if (scalar.Validate(rejected) != "" || length(scalar.EmitBytes(rejected)) != 0) {
+        return 5;
+    }
+    switch scalar.Emit(rejected) {
+        case .Invalid(message):
+            return 6;
+        case .Emitted(text):
+            return 7;
+        case .Rejected(projection):
+            if (projection.path != rejected.path || projection.key != rejected.key || projection.text != rejected.text ||
+                projection.diagnostic_message != rejected.diagnostic_message || projection.diagnostic_start != 0 ||
+                projection.diagnostic_end != 3 || projection.diagnostic_line != 1 || projection.diagnostic_column != 1) {
+                return 8;
+            }
+    }
+    value = Accepted();
+    value.key = "";
+    if (!Invalid(value)) {
+        return 9;
+    }
+    value = Accepted();
+    value.diagnostic_message = "unexpected";
+    if (!Invalid(value)) {
+        return 10;
+    }
+    value = Accepted();
+    value.expression_end = 48;
+    if (!Invalid(value)) {
+        return 11;
+    }
+    value = Accepted();
+    value.expression_start = 34;
+    if (!Invalid(value)) {
+        return 12;
+    }
+    value = Accepted();
+    value.declaration_start = -1;
+    if (!Invalid(value)) {
+        return 13;
+    }
+    value = Accepted();
+    value.body_line = 1;
+    if (!Invalid(value)) {
+        return 14;
+    }
+    value = Rejected();
+    value.value = 42;
+    if (!Invalid(value)) {
+        return 15;
+    }
+    value = Rejected();
+    value.diagnostic_message = "";
+    if (!Invalid(value)) {
+        return 16;
+    }
+    value = Rejected();
+    value.diagnostic_end = 4;
+    if (!Invalid(value)) {
+        return 17;
+    }
+    value = Rejected();
+    value.diagnostic_column = 0;
+    if (!Invalid(value)) {
+        return 18;
+    }
+    // A coherent fabricated value is not authenticated by shape checks. Only
+    // producer/source/envelope binding establishes source semantics.
+    value = Accepted();
+    value.value = 7;
+    switch scalar.Emit(value) {
+        case .Invalid(message):
+            return 19;
+        case .Rejected(projection):
+            return 20;
+        case .Emitted(text):
+            if (!strings.Contains(text, "store i32 7, ptr %s0")) {
+                return 21;
+            }
+    }
+    return 0;
+}

@@ -133,36 +133,68 @@ const char *build_values_join(build_values *values, const pin_value *arguments, 
     results[0].text = joined;
     return NULL;
 }
+static const char *find_bytes(const char *text, size_t length, pin_string find)
+{
+    while (length >= find.length) {
+        const char *at = memchr(text, (unsigned char)find.bytes[0], length - find.length + 1);
+        if (!at) {
+            return NULL;
+        }
+        if (!memcmp(at, find.bytes, find.length)) {
+            return at;
+        }
+        size_t skipped = (size_t)(at - text) + 1;
+        text += skipped;
+        length -= skipped;
+    }
+    return NULL;
+}
 /* Every occurrence of a non-empty `find` in text, left to right, replaced by
- * `with`. */
+ * `with`. All three strings may contain arbitrary bytes. */
 const char *build_values_replace(build_values *values, const pin_value *arguments, pin_value *results)
 {
     if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1]) ||
-        !build_values_string(&arguments[2]) || !arguments[1].str[0]) {
+        !build_values_string(&arguments[2])) {
         return "invalid build string arguments";
     }
-    const char *text = arguments[0].str, *find = arguments[1].str,
-               *with = arguments[2].str;
-    size_t find_size = strlen(find), with_size = strlen(with), size = strlen(text);
-    for (const char *at = strstr(text, find); at; at = strstr(at + find_size, find)) {
-        if (with_size > find_size && with_size - find_size > BUILD_TEXT_LIMIT - size) {
+    pin_string text = pin_text(arguments[0]), find = pin_text(arguments[1]),
+               with = pin_text(arguments[2]);
+    if (!find.length) {
+        return "invalid build string arguments";
+    }
+    size_t size = text.length;
+    const char *at = text.bytes;
+    size_t remaining = text.length;
+    for (const char *match; (match = find_bytes(at, remaining, find));) {
+        if (with.length > find.length && with.length - find.length > BUILD_TEXT_LIMIT - size) {
             return "build text limit exceeded";
         }
-        size = size - find_size + with_size;
+        size = size - find.length + with.length;
+        size_t consumed = (size_t)(match - at) + find.length;
+        at += consumed;
+        remaining -= consumed;
     }
-    char *result = allocate(values, size + 1);
+    pin_string *result = allocate(values, sizeof(*result) + size + 1);
     if (!result) {
         return values->error;
     }
-    char *out = result;
-    for (const char *at; (at = strstr(text, find)); text = at + find_size) {
-        memcpy(out, text, (size_t)(at - text));
-        out += at - text;
-        memcpy(out, with, with_size);
-        out += with_size;
+    char *out = (char *)(result + 1);
+    *result = (pin_string){ .bytes = out, .length = (uint32_t)size };
+    at = text.bytes;
+    remaining = text.length;
+    for (const char *match; (match = find_bytes(at, remaining, find));) {
+        size_t prefix = (size_t)(match - at);
+        memcpy(out, at, prefix);
+        out += prefix;
+        memcpy(out, with.bytes, with.length);
+        out += with.length;
+        size_t consumed = prefix + find.length;
+        at += consumed;
+        remaining -= consumed;
     }
-    strcpy(out, text);
-    results[0].str = result;
+    memcpy(out, at, remaining);
+    out[remaining] = 0;
+    results[0].text = result;
     return NULL;
 }
 const char *build_values_starts_with(build_values *, const pin_value *arguments, pin_value *results)

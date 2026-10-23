@@ -153,7 +153,8 @@ static bool seed(ecs_entity owner, int kind, int id)
         } else if (kind == 3) {
             items[i].ptr = &records[i];
         } else if (kind == 1) {
-            descriptors[i] = (pin_string){ labels[i], (uint32_t)strlen(labels[i]) };
+            descriptors[i] = (pin_string){ .bytes = labels[i],
+                                           .length = (uint32_t)strlen(labels[i]) };
             items[i].text = &descriptors[i];
         } else {
             items[i].str = labels[i];

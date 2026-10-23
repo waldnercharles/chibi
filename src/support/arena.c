@@ -21,6 +21,8 @@ struct arena_allocation
     size_t size, capacity;
     arena_tracer trace;
     const void *shape;
+    void (*release)(void *);
+    void *resource;
     bool live, marked;
     _Alignas(max_align_t) unsigned char data[];
 };
@@ -28,6 +30,17 @@ struct arena_page
 {
     uintptr_t page;
     arena_allocation *value;
+};
+struct arena_cleanup
+{
+    arena_cleanup *next;
+    void (*release)(void *);
+    void *resource;
+};
+struct arena_resource
+{
+    void *resource;
+    size_t references, bytes;
 };
 static _Thread_local uint64_t block_allocations, collect_marks;
 /* Keep bounded reuse across safepoints even when payload sizes keep changing. */
@@ -182,8 +195,109 @@ static arena_allocation *indexed(const arena *a, uintptr_t address, bool start)
     }
     return NULL;
 }
+static size_t resource_slot(const arena *a, const void *resource)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)resource * UINT64_C(0x9E3779B97F4A7C15);
+    return (size_t)(hash >> 32) & (a->resource_capacity - 1);
+}
+static void resize_resources(arena *a, size_t capacity)
+{
+    arena_resource *old = a->resources;
+    size_t old_capacity = a->resource_capacity;
+    a->resources = xcalloc(capacity, sizeof *a->resources);
+    a->resource_capacity = capacity;
+    for (size_t i = 0; i < old_capacity; i++) {
+        if (!old[i].resource) {
+            continue;
+        }
+        size_t slot = resource_slot(a, old[i].resource);
+        while (a->resources[slot].resource) {
+            slot = (slot + 1) & (capacity - 1);
+        }
+        a->resources[slot] = old[i];
+    }
+    free(old);
+}
+static void retain_resource(arena *a, void *resource, size_t bytes)
+{
+    if (2 * (a->resource_count + 1) > a->resource_capacity) {
+        resize_resources(a, a->resource_capacity ? a->resource_capacity * 2 : 8);
+    }
+    size_t slot = resource_slot(a, resource);
+    while (a->resources[slot].resource && a->resources[slot].resource != resource) {
+        slot = (slot + 1) & (a->resource_capacity - 1);
+    }
+    arena_resource *entry = &a->resources[slot];
+    if (entry->resource) {
+        assert(entry->bytes == bytes);
+        entry->references++;
+        return;
+    }
+    assert(bytes <= SIZE_MAX - a->retained_bytes);
+    *entry = (arena_resource){ resource, 1, bytes };
+    a->resource_count++;
+    a->retained_bytes += bytes;
+    if (a->collectable) {
+        assert(bytes <= SIZE_MAX - a->allocated);
+        a->allocated += bytes;
+    }
+}
+static void release_resource(arena *a, void (*release)(void *), void *resource)
+{
+    size_t mask = a->resource_capacity - 1, slot = resource_slot(a, resource);
+    while (a->resources[slot].resource != resource) {
+        assert(a->resources[slot].resource);
+        slot = (slot + 1) & mask;
+    }
+    if (!--a->resources[slot].references) {
+        a->retained_bytes -= a->resources[slot].bytes;
+        a->resource_count--;
+        /* Remove the key without leaving tombstones across collections. */
+        for (size_t next = (slot + 1) & mask; a->resources[next].resource;
+             next = (next + 1) & mask) {
+            size_t home = resource_slot(a, a->resources[next].resource);
+            if (((next - home) & mask) >= ((next - slot) & mask)) {
+                a->resources[slot] = a->resources[next];
+                slot = next;
+            }
+        }
+        a->resources[slot] = (arena_resource){ 0 };
+    }
+    release(resource);
+}
+static void free_cleanups(arena *a)
+{
+    while (a->cleanups) {
+        arena_cleanup *cleanup = a->cleanups;
+        a->cleanups = cleanup->next;
+        release_resource(a, cleanup->release, cleanup->resource);
+        free(cleanup);
+    }
+    a->cleanup_count = 0;
+}
+static void fit_resources(arena *a)
+{
+    if (!a->resource_count) {
+        free(a->resources);
+        a->resources = NULL;
+        a->resource_capacity = 0;
+        return;
+    }
+    size_t capacity = 8;
+    while (capacity < 4 * a->resource_count) {
+        capacity *= 2;
+    }
+    if (capacity < a->resource_capacity) {
+        resize_resources(a, capacity);
+    }
+}
 static void retire(arena *a, arena_allocation *value)
 {
+    if (value->release) {
+        release_resource(a, value->release, value->resource);
+        value->release = NULL;
+        value->resource = NULL;
+    }
     value->live = false;
     value->size = 0;
     value->trace = NULL;
@@ -208,12 +322,14 @@ void arena_copy_remember(arena *a, const void *source, const void *copy)
 void arena_reset(arena *a)
 {
     forget_copy(a);
+    free_cleanups(a);
     clear_pages(a);
     while (a->allocations) {
         arena_allocation *value = a->allocations;
         a->allocations = value->next;
         retire(a, value);
     }
+    fit_resources(a);
     a->allocated = 0;
     a->kept = 0;
     for (arena_block *block = a->first; block; block = block->next) {
@@ -284,18 +400,23 @@ void *arena_alloc(arena *a, size_t size)
     }
 }
 
-static void free_values(arena_allocation *value)
+static void free_values(arena *a, arena_allocation *value)
 {
     while (value) {
         arena_allocation *next = value->next;
+        if (value->release) {
+            release_resource(a, value->release, value->resource);
+        }
         free(value);
         value = next;
     }
 }
 void arena_free(arena *a)
 {
-    free_values(a->allocations);
-    free_values(a->unused);
+    free_cleanups(a);
+    free_values(a, a->allocations);
+    free_values(a, a->unused);
+    free(a->resources);
     free(a->pages);
     arena_block *block = a->first;
     while (block) {
@@ -329,6 +450,23 @@ void arena_set_trace(arena *a, const void *data, arena_tracer trace, const void 
     assert(value);
     value->trace = trace;
     value->shape = shape;
+}
+void arena_set_cleanup(arena *a, const void *allocation, void (*release)(void *), void *resource, size_t retained_bytes)
+{
+    assert(release && resource);
+    if (a->collectable) {
+        arena_allocation *value = indexed(a, (uintptr_t)allocation, true);
+        assert(value && !value->release);
+        value->release = release;
+        value->resource = resource;
+    } else {
+        assert(arena_contains(a, allocation));
+        arena_cleanup *cleanup = xmalloc(sizeof *cleanup);
+        *cleanup = (arena_cleanup){ a->cleanups, release, resource };
+        a->cleanups = cleanup;
+        a->cleanup_count++;
+    }
+    retain_resource(a, resource, retained_bytes);
 }
 static int by_address(const void *a, const void *b)
 {
@@ -393,6 +531,7 @@ static void sweep(arena *a)
         unindex_value(a, value);
         retire(a, value);
     }
+    a->kept += a->retained_bytes;
     size_t cached = 0;
     for (arena_allocation *value = a->unused; value; value = value->next) {
         cached += value->capacity;
@@ -404,6 +543,7 @@ static void sweep(arena *a)
         free(value);
     }
     fit_pages(a);
+    fit_resources(a);
 }
 void arena_collect_end(arena_collection *c)
 {
@@ -422,8 +562,8 @@ void arena_collect_end(arena_collection *c)
 }
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
 {
-    *bytes = 0;
-    *capacity = 0;
+    *bytes = a->retained_bytes;
+    *capacity = a->retained_bytes;
     for (const arena_allocation *value = a->allocations; value; value = value->next) {
         *bytes += value->size;
         *capacity += value->capacity;
@@ -448,7 +588,9 @@ size_t arena_storage_bytes(const arena *a)
     for (const arena_block *block = a->first; block; block = block->next) {
         bytes += sizeof *block + block->cap;
     }
-    return bytes + a->page_capacity * sizeof *a->pages;
+    return bytes + a->page_capacity * sizeof *a->pages + a->retained_bytes +
+           a->resource_capacity * sizeof *a->resources +
+           a->cleanup_count * sizeof(arena_cleanup);
 }
 void *arena_alloc_bounded(arena *a, size_t size, size_t budget)
 {

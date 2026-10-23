@@ -40,10 +40,13 @@ typedef enum
 
 typedef struct pin_record pin_record;
 typedef struct arena arena;
+typedef struct pin_text_owner pin_text_owner;
 typedef struct pin_string
 {
     const char *bytes;
     uint32_t length;
+    /* NULL for borrowed bytes. Owned descriptors retain this immutable buffer. */
+    pin_text_owner *owner;
 } pin_string;
 
 typedef struct

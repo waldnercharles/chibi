@@ -23,6 +23,7 @@ bool record_prepared_guard(const pin_value *);
 static av_doc *document;
 static bool project_set;
 static pin_value borrowed;
+static pin_value heap_text[4];
 static const type_field fields[] = {
     { .name = "key", .type = PIN_STR },
     { .name = "label", .type = PIN_STR },
@@ -44,6 +45,9 @@ static void cleanup()
         project_set = false;
     }
     pin_value_destroy(&borrowed);
+    for (int i = 0; i < 4; i++) {
+        pin_value_destroy(&heap_text[i]);
+    }
     if (document) {
         av_doc_free(document);
     }
@@ -111,7 +115,7 @@ static void collect(arena *storage, const void *root)
     arena_collect_mark(&collection, root);
     arena_collect_end(&collection);
 }
-static size_t row_text_bytes(const pin_value *value)
+static size_t minimum_row_text_bytes(const pin_value *value)
 {
     size_t size = 0;
     for (int i = 0; i < 5; i++) {
@@ -180,14 +184,17 @@ TEST_CASE(record_array_ownership)
             REQUIRE(pin_array_get(copy, i).type_name == copy->type_name);
             pin_value item = pin_array_get(copy, i);
             REQUIRE(pin_value_equal(&rows[i], &item));
-            expected += record->type.size + row_text_bytes(&rows[i]);
+            expected += record->type.size + minimum_row_text_bytes(&rows[i]);
         }
         size_t bytes, capacity;
         arena_usage(&owned, &bytes, &capacity);
-        REQUIRE(bytes == expected); /* Exactly one metadata closure, no per-row copy. */
+        /* Empty arrays retain exactly one metadata closure. Nonempty rows also
+         * retain opaque text-owner metadata beyond descriptors and byte data. */
+        REQUIRE(count ? bytes >= expected : bytes == expected);
+        size_t before_collection = bytes;
         collect(&owned, copy);
         arena_usage(&owned, &bytes, &capacity);
-        REQUIRE(bytes == expected);
+        REQUIRE(bytes == before_collection);
         if (count) {
             pin_value again, item = pin_array_get(copy, 0);
             REQUIRE(!pin_value_snapshot_to_arena(&owned, &again, &item));
@@ -213,13 +220,16 @@ TEST_CASE(record_raw_trace_lifetime)
     const pin_record *record = row_layout(&source, 91);
     pin_value input = row(&source, record, 7), output;
     REQUIRE(!pin_value_snapshot_to_arena(&owned, &output, &input));
-    size_t expected = output.record->bytes + output.record->type.size +
-                      row_text_bytes(&output);
+    size_t minimum = output.record->bytes + output.record->type.size +
+                     minimum_row_text_bytes(&output);
+    size_t expected, capacity;
+    arena_usage(&owned, &expected, &capacity);
+    REQUIRE(expected >= minimum);
     arena_free(&source);
     collect(&owned, output.ptr); /* Only raw payload roots the metadata trace shape. */
     REQUIRE(pin_record_valid(output.record));
     REQUIRE(!strcmp(pin_text(member(&output, 1)).bytes, "row-7-field-1"));
-    size_t bytes, capacity;
+    size_t bytes;
     arena_usage(&owned, &bytes, &capacity);
     REQUIRE(bytes == expected);
     for (int i = 0; i < 16; i++) {
@@ -543,8 +553,11 @@ TEST_CASE(record_projection_and_codec_guard)
             const pin_string *stored = *(const pin_string *const
                                              *)((const char *)output.ptr +
                                                 output.record->type.fields[i].offset);
+            REQUIRE(arena_contains(&other, stored) && stored->owner);
+            REQUIRE(!arena_contains(&other, stored->bytes));
             REQUIRE(
-                arena_contains(&other, stored) && arena_contains(&other, stored->bytes)
+                stored->length == strlen(expected) &&
+                !memcmp(stored->bytes, expected, stored->length)
             );
         } else if (i < 7) {
             REQUIRE(field.i == 4 + i);
@@ -613,8 +626,8 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
     pin_value read;
     REQUIRE(!pin_read_field(&other, &field, &native, &read));
     native_bytes[0] = 'x';
-    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ "native", 6 }));
-    const pin_string slice = { "abc", 2 };
+    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ .bytes = "native", .length = 6 }));
+    const pin_string slice = { .bytes = "abc", .length = 2 };
     REQUIRE(
         !pin_text_cstring(&other, (pin_value){ .type = PIN_STR, .text = &slice }, &converted, &offset)
     );
@@ -633,6 +646,143 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
     REQUIRE(pin_text_equal(pin_text(alias_snapshot), pin_text(copy)));
     return true;
 }
+/* A slice and a snapshot own independent descriptors and retain the original
+ * bytes across source reset, address reuse, and destruction. */
+TEST_CASE(text_slices_retain_original_bytes_across_arena_lifetimes)
+{
+    static const char bytes[] = { 'a', 0, (char)0xff, 'b', (char)0xc0, 'z' };
+    pin_value input, slice, nested, snapshot;
+    REQUIRE(!pin_value_text(&source, &input, bytes, sizeof bytes));
+    pin_string original = pin_text(input);
+    REQUIRE(original.owner && !arena_contains(&source, original.bytes));
+    REQUIRE(!pin_value_text_slice(&owned, &slice, input, 1, 4));
+    REQUIRE(!pin_value_text_slice(&other, &nested, slice, 1, 2));
+    REQUIRE(!pin_value_snapshot_to_arena(&reads, &snapshot, &slice));
+    REQUIRE(pin_text(slice).owner == original.owner);
+    REQUIRE(pin_text(nested).owner == original.owner);
+    REQUIRE(pin_text(snapshot).owner == original.owner);
+    REQUIRE(pin_text(slice).bytes == original.bytes + 1);
+    REQUIRE(pin_text(nested).bytes == original.bytes + 2);
+    REQUIRE(snapshot.text != slice.text);
+    arena_reset(&source);
+    memset(arena_alloc(&source, 1024), 0xa5, 1024);
+    arena_free(&source);
+    REQUIRE(pin_text(slice).length == 4 && !memcmp(pin_text(slice).bytes, bytes + 1, 4));
+    arena_free(&owned);
+    REQUIRE(pin_text(nested).length == 2 && !memcmp(pin_text(nested).bytes, bytes + 2, 2));
+    REQUIRE(pin_text(snapshot).length == 4 && !memcmp(pin_text(snapshot).bytes, bytes + 1, 4));
+    arena_reset(&other);
+    REQUIRE(!memcmp(pin_text(snapshot).bytes, bytes + 1, 4));
+    return true;
+}
+
+/* Heap copies share retained bytes, while an explicit clone detaches. Each
+ * destruction order leaves the remaining values readable. */
+TEST_CASE(text_heap_shares_and_detached_clone_have_independent_lifetimes)
+{
+    static const char bytes[] = { 'a', 0, (char)0xff, 'z' };
+    REQUIRE(!pin_value_text(NULL, &heap_text[0], bytes, sizeof bytes));
+    REQUIRE(!pin_value_copy(&heap_text[1], &heap_text[0]));
+    REQUIRE(heap_text[0].text != heap_text[1].text);
+    REQUIRE(pin_text(heap_text[0]).owner == pin_text(heap_text[1]).owner);
+    REQUIRE(pin_text(heap_text[0]).bytes == pin_text(heap_text[1]).bytes);
+    REQUIRE(!pin_value_text_slice(NULL, &heap_text[2], heap_text[0], 1, 2));
+    REQUIRE(!pin_value_text_clone(NULL, &heap_text[3], heap_text[2]));
+    REQUIRE(pin_text(heap_text[3]).owner != pin_text(heap_text[2]).owner);
+    REQUIRE(pin_text(heap_text[3]).bytes != pin_text(heap_text[2]).bytes);
+    REQUIRE(pin_text_equal(pin_text(heap_text[3]), pin_text(heap_text[2])));
+    pin_value_destroy(&heap_text[0]);
+    REQUIRE(!memcmp(pin_text(heap_text[1]).bytes, bytes, sizeof bytes));
+    pin_value_destroy(&heap_text[2]);
+    REQUIRE(!memcmp(pin_text(heap_text[3]).bytes, bytes + 1, 2));
+    pin_value_destroy(&heap_text[3]);
+    REQUIRE(!memcmp(pin_text(heap_text[1]).bytes, bytes, sizeof bytes));
+    pin_value arena_copy;
+    REQUIRE(!pin_value_text_share(&owned, &arena_copy, heap_text[1]));
+    pin_value_destroy(&heap_text[1]);
+    REQUIRE(!memcmp(pin_text(arena_copy).bytes, bytes, sizeof bytes));
+    return true;
+}
+
+TEST_CASE(text_empty_values_retain_no_backing_and_invalid_windows_preserve_output)
+{
+    pin_value empty, input, slice;
+    REQUIRE(!pin_value_text(&source, &empty, NULL, 0));
+    REQUIRE(!pin_text(empty).owner && pin_text(empty).length == 0);
+    REQUIRE(!pin_value_text(&source, &input, "hello", 5));
+    REQUIRE(!pin_value_text_slice(&owned, &slice, input, 5, 0));
+    REQUIRE(!pin_text(slice).owner && pin_text(slice).length == 0);
+    REQUIRE(!pin_value_text_share(NULL, &heap_text[0], empty));
+    REQUIRE(!pin_value_text_clone(NULL, &heap_text[1], slice));
+    REQUIRE(!pin_text(heap_text[0]).owner && !pin_text(heap_text[1]).owner);
+    REQUIRE(!arena_storage_bytes(&owned));
+    const pin_value sentinel = { .type = PIN_I32, .i = 79 };
+    pin_value output = sentinel;
+    const size_t windows[][2] = { { 6, 0 }, { 4, 2 }, { SIZE_MAX, 0 }, { 0, SIZE_MAX } };
+    for (size_t i = 0; i < sizeof windows / sizeof *windows; i++) {
+        REQUIRE(pin_value_text_slice(&owned, &output, input, windows[i][0], windows[i][1]));
+        REQUIRE(!memcmp(&output, &sentinel, sizeof output));
+    }
+    REQUIRE(pin_value_text_slice(&owned, &output, sentinel, 0, 0));
+    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
+    pin_value array = input;
+    array.container = PIN_CONTAINER_ARRAY;
+    REQUIRE(pin_value_text_slice(&owned, &output, array, 0, 0));
+    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
+    arena_free(&source);
+    REQUIRE(!pin_text(slice).owner && pin_text(slice).length == 0);
+    REQUIRE(!arena_storage_bytes(&owned));
+    return true;
+}
+
+/* Many descriptors retain one large owner. Sweeping unmarked aliases drops
+ * descriptor bytes, keeps the full owner charge once, and eventually releases
+ * both when no descriptor remains rooted. */
+TEST_CASE(text_collectable_slices_account_one_owner_until_last_root)
+{
+    char bytes[8192];
+    memset(bytes, 'q', sizeof bytes);
+    bytes[17] = 0;
+    bytes[18] = (char)0xff;
+    arena_init_collectable(&owned);
+    pin_value input, survivor;
+    REQUIRE(!pin_value_text(&source, &input, bytes, sizeof bytes));
+    REQUIRE(!pin_value_text_slice(&owned, &survivor, input, 17, 2));
+    size_t first_bytes, first_capacity;
+    arena_usage(&owned, &first_bytes, &first_capacity);
+    REQUIRE(first_bytes > sizeof bytes && first_capacity == first_bytes);
+    REQUIRE(owned.allocated == first_bytes && owned.kept == 0);
+    size_t external = owned.retained_bytes;
+    REQUIRE(external > sizeof bytes);
+    for (int i = 0; i < 32; i++) {
+        pin_value alias;
+        REQUIRE(!pin_value_text_share(&owned, &alias, survivor));
+        REQUIRE(pin_text(alias).owner == pin_text(survivor).owner);
+    }
+    size_t total, capacity;
+    arena_usage(&owned, &total, &capacity);
+    REQUIRE(total == first_bytes + 32 * sizeof(pin_string));
+    REQUIRE(owned.retained_bytes == external && owned.resource_count == 1);
+    REQUIRE(owned.allocated == total);
+    arena_free(&source);
+    collect(&owned, survivor.text);
+    arena_usage(&owned, &total, &capacity);
+    REQUIRE(total == first_bytes && owned.retained_bytes == external);
+    REQUIRE(owned.allocated == 0 && owned.kept == first_bytes);
+    REQUIRE(
+        pin_text(survivor).length == 2 &&
+        !memcmp(pin_text(survivor).bytes, bytes + 17, 2)
+    );
+    REQUIRE(!pin_value_text_share(&other, &input, survivor));
+    collect(&owned, NULL);
+    arena_usage(&owned, &total, &capacity);
+    REQUIRE(total == 0 && !owned.retained_bytes && !owned.resource_count);
+    REQUIRE(owned.allocated == 0 && owned.kept == 0);
+    arena_free(&owned);
+    REQUIRE(pin_text(input).length == 2 && !memcmp(pin_text(input).bytes, bytes + 17, 2));
+    return true;
+}
+
 TEST_CASE(text_utf8_validation)
 {
     static const struct
@@ -652,7 +802,8 @@ TEST_CASE(text_utf8_validation)
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         REQUIRE(
-            pin_text_valid_utf8((pin_string){ cases[i].bytes, cases[i].length }) ==
+            pin_text_valid_utf8((pin_string){ .bytes = cases[i].bytes,
+                                              .length = cases[i].length }) ==
             cases[i].valid
         );
     }
@@ -799,6 +950,10 @@ void test_language_record_values()
     RUN_TEST_CASE(record_array_checked_changes);
     RUN_TEST_CASE(record_projection_and_codec_guard);
     RUN_TEST_CASE(text_bytes_ownership_and_c_boundary);
+    RUN_TEST_CASE(text_slices_retain_original_bytes_across_arena_lifetimes);
+    RUN_TEST_CASE(text_heap_shares_and_detached_clone_have_independent_lifetimes);
+    RUN_TEST_CASE(text_empty_values_retain_no_backing_and_invalid_windows_preserve_output);
+    RUN_TEST_CASE(text_collectable_slices_account_one_owner_until_last_root);
     RUN_TEST_CASE(text_utf8_validation);
     RUN_TEST_CASE(text_keys_preserve_suffix_after_nul);
     RUN_TEST_CASE(record_native_nested_resolution_is_call_owned);

@@ -431,7 +431,7 @@ ReadVariant :: (tree: reader.Tree, node: int, document: int, literal: bool) -> V
         decoded := compiler_json_value_string(reader.Text(tree, node));
         diagnostics: syntax.Diagnostic[] = [];
         if (!decoded.valid) {
-            diagnostics = array_add(diagnostics, reader.Diagnostic(tree, node, document, "Invalid string literal"));
+            diagnostics.append(reader.Diagnostic(tree, node, document, "Invalid string literal"));
             return VariantText.Read("", diagnostics);
         }
         return VariantText.Read(decoded.value, diagnostics);

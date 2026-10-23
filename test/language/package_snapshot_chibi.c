@@ -1,5 +1,6 @@
 #include "package_snapshot_chibi.h"
 
+#include "../owned_text.h"
 #include "authoring/source_package_routes.h"
 #include "authoring/source_package_syntax.h"
 #include "compiler_fixture.h"
@@ -257,9 +258,7 @@ static bool own(arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
@@ -972,7 +971,7 @@ static bool retained_results()
             const pin_value *check = &saved_check[b][kind];
             REQUIRE(
                 check->type == PIN_STR && pin_text(*check).bytes &&
-                arena_contains(&retained[b][kind], pin_text(*check).bytes) &&
+                test_text_owned(&retained[b][kind], *check) &&
                 !strcmp(pin_text(*check).bytes, saved_expected[kind])
             );
         }

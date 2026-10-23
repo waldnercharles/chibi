@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "authoring/native_bindings.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -194,8 +195,7 @@ static bool owned_row(const pin_value *value)
 {
     REQUIRE(arena_contains(&storage, value->ptr));
     for (int field = 0; field < 5; field++) {
-        const char *text = pin_text(member(value, field)).bytes;
-        REQUIRE(text && arena_contains(&storage, text));
+        REQUIRE(test_text_owned(&storage, member(value, field)));
     }
     return true;
 }

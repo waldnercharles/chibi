@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "authoring/native_bindings.h"
 #include "backend.h"
 #include "execution/definition.h"
@@ -493,13 +494,17 @@ static bool make_inputs(const request *r, bool changed)
             switch (a) {
                 case 0: v.u64 = IDS[n]; break;
                 case 1:
-                    descriptor = (pin_string){ producer_names[0][n],
-                                               (uint32_t)strlen(producer_names[0][n]) };
+                    descriptor = (pin_string){
+                        .bytes = producer_names[0][n],
+                        .length = (uint32_t)strlen(producer_names[0][n])
+                    };
                     v.text = &descriptor;
                     break;
                 case 2:
-                    descriptor = (pin_string){ producer_names[1][n],
-                                               (uint32_t)strlen(producer_names[1][n]) };
+                    descriptor = (pin_string){
+                        .bytes = producer_names[1][n],
+                        .length = (uint32_t)strlen(producer_names[1][n])
+                    };
                     v.text = &descriptor;
                     break;
                 case 3: v.i = PARENTS[n]; break;
@@ -513,7 +518,7 @@ static bool make_inputs(const request *r, bool changed)
             if (a == 1 || a == 2) {
                 REQUIRE(
                     pin_text(array->items[n]).bytes != pin_text(v).bytes &&
-                    arena_contains(&inputs, pin_text(array->items[n]).bytes)
+                    test_text_owned(&inputs, array->items[n])
                 );
             }
         }
@@ -561,10 +566,7 @@ static bool check_inputs(const request *r, bool changed)
                     break;
                 case 1:
                 case 2:
-                    REQUIRE(
-                        pin_text(*item).bytes &&
-                        arena_contains(&inputs, pin_text(*item).bytes)
-                    );
+                    REQUIRE(pin_text(*item).bytes && test_text_owned(&inputs, *item));
                     REQUIRE(!strcmp(
                         pin_text(*item).bytes,
                         a == 2 ? PROTOTYPES[n] : (changed ? CHANGED_NAMES[n] : NAMES[n])
@@ -587,7 +589,7 @@ static bool check_inputs(const request *r, bool changed)
     REQUIRE(arguments[12].type == PIN_BOOL && arguments[12].b == !r->readonly);
     REQUIRE(
         arguments[13].type == PIN_STR && pin_text(arguments[13]).bytes &&
-        arena_contains(&inputs, pin_text(arguments[13]).bytes) &&
+        test_text_owned(&inputs, arguments[13]) &&
         !strcmp(pin_text(arguments[13]).bytes, r->filter)
     );
     REQUIRE(arguments[14].type == PIN_I32 && arguments[14].i == r->first);
@@ -727,7 +729,7 @@ static bool check(call *c, const request *r, bool changed)
             REQUIRE(!pin_read_field(&inputs, row->ptr, f, &member));
             if (field < 5) {
                 REQUIRE(member.type == PIN_STR && pin_text(member).bytes);
-                REQUIRE(arena_contains(&c->storage, pin_text(member).bytes));
+                REQUIRE(test_text_owned(&c->storage, member));
                 REQUIRE(!strcmp(pin_text(member).bytes, text[field]));
             } else if (field < 7) {
                 REQUIRE(member.type == PIN_I32 && member.i == integers[field - 5]);
@@ -740,21 +742,14 @@ static bool check(call *c, const request *r, bool changed)
 }
 static void retire_inputs()
 {
-    /* Poison the actual owned invocation inputs, not only their earlier source. */
+    /* Replace immutable values before releasing their invocation storage. */
     for (int a = 1; a <= 2; a++) {
         pin_array *array = arguments[a].ptr;
         for (int n = 0; array && n < array->count; n++) {
-            char *text = (char *)pin_text(array->items[n]).bytes;
-            memset(text, 'z', strlen(text));
+            array->items[n] = (pin_value){ .type = PIN_STR };
         }
     }
-    if (pin_text(arguments[13]).bytes) {
-        memset(
-            (char *)pin_text(arguments[13]).bytes,
-            'z',
-            strlen(pin_text(arguments[13]).bytes)
-        );
-    }
+    arguments[13] = (pin_value){ .type = PIN_STR };
     for (int a = 0; a < 2; a++) {
         for (int n = 0; n < ACTORS; n++) {
             if (producer_names[a][n]) {
@@ -775,7 +770,7 @@ TEST_CASE(outliner_projection_matches_all_fields_and_selected_windows)
         pin_value zero = { .type = PIN_HANDLE, .type_name = "ecs.entity" }, text;
         REQUIRE(!entity_decimal(&inputs, &zero, 1, &text));
         REQUIRE(text.type == PIN_STR && !strcmp(pin_text(text).bytes, "0"));
-        REQUIRE(arena_contains(&inputs, pin_text(text).bytes));
+        REQUIRE(test_text_owned(&inputs, text));
         for (int i = 0; i < 12; i++) {
             REQUIRE(make_inputs(&REQUESTS[i], false));
             REQUIRE(execute(&calls[0], BACKENDS[b], &REQUESTS[i]));

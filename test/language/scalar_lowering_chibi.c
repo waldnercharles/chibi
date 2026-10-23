@@ -1,5 +1,6 @@
 #include "scalar_lowering_chibi.h"
 
+#include "../owned_text.h"
 #include "backend.h"
 #include "compiler_fixture.h"
 #include "execution/definition.h"
@@ -542,7 +543,7 @@ static bool owned(arena *owner, const pin_value *v, int depth)
         return true;
     }
     if (v->type == PIN_STR) {
-        REQUIRE(pin_text(*v).bytes && arena_contains(owner, pin_text(*v).bytes));
+        REQUIRE(pin_text(*v).bytes && test_text_owned(owner, *v));
         return true;
     }
     REQUIRE(v->type == PIN_I32 || v->type == PIN_BOOL || v->type == PIN_U64);

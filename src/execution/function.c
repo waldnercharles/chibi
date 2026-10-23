@@ -587,7 +587,11 @@ static const pin_string *copy_text(void *storage, const pin_string *text)
         return NULL;
     }
     pin_value value;
-    const char *error = pin_value_text(storage, &value, text->bytes, text->length);
+    const char *error = pin_value_text_share(
+        storage,
+        &value,
+        (pin_value){ .type = PIN_STR, .text = text }
+    );
     assert(!error);
     (void)error;
     return value.text;

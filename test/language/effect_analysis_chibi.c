@@ -1,5 +1,6 @@
 #include "effect_analysis_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "effect_analysis_chibi_source.h"
 #include "language/effect_analysis.h"
@@ -468,7 +469,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
+        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
         return true;
     }
     REQUIRE(value->type == PIN_I32);

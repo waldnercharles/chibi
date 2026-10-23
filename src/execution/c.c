@@ -326,11 +326,11 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             continue;
         }
         pin_string text = pin_text(value);
-        fprintf(out, "static const pin_string text%d={(const char*)\"", n);
+        fprintf(out, "static const pin_string text%d={.bytes=(const char*)\"", n);
         for (uint32_t byte = 0; byte < text.length; byte++) {
             fprintf(out, "\\%03o", (unsigned char)text.bytes[byte]);
         }
-        fprintf(out, "\",%u};\n", text.length);
+        fprintf(out, "\",.length=%u};\n", text.length);
     }
     for (int j = 0; j < acount(f->slots); j++) {
         fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);

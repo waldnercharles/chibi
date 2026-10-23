@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "execution/borrow.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -333,8 +334,8 @@ TEST_CASE(types_array_snapshot_owns_strings_and_names)
     REQUIRE(snapshot != NULL && snapshot->count == 1);
     REQUIRE(snapshot->items != source->items);
     REQUIRE(
-        pin_text(pin_array_get(snapshot, 0)).bytes !=
-        pin_text(pin_array_get(source, 0)).bytes
+        test_text_owned(&snapshots, pin_array_get(snapshot, 0)) &&
+        pin_array_get(snapshot, 0).text != pin_array_get(source, 0).text
     );
     nominal_name[0] = 'X';
     pin_array_free(source);
@@ -921,7 +922,7 @@ TEST_CASE(types_document_rejects_invalid_values_without_publication)
     REQUIRE(pin_text(text).bytes[sizeof embedded] == 0);
     REQUIRE(pin_text(text).bytes != av_get_str(encoded_text));
     REQUIRE(arena_contains(&snapshots, text.text));
-    REQUIRE(arena_contains(&snapshots, pin_text(text).bytes));
+    REQUIRE(test_text_owned(&snapshots, text));
     REQUIRE(
         pin_value_read_document(&snapshots, (pin_value){ .type = PIN_NAME }, encoded_text, &value, error, sizeof error) ==
         -1
@@ -1023,7 +1024,7 @@ TEST_CASE(types_document_array_collection_retains_split_payloads)
         REQUIRE(arena_contains(&snapshots, payload));
         pin_value item = pin_array_get(array, 0);
         if (strings) {
-            REQUIRE(arena_contains(&snapshots, pin_text(item).bytes));
+            REQUIRE(test_text_owned(&snapshots, item));
             REQUIRE(!strcmp(pin_text(item).bytes, "owned"));
         } else {
             REQUIRE(item.i == 17);

@@ -1,3 +1,4 @@
+#include "../owned_text.h"
 #include "authoring/native_bindings.h"
 #include "backend.h"
 #include "compiler_fixture.h"
@@ -173,7 +174,7 @@ static bool check_row(const pin_value *value, int number, const char *shared_tex
                 pin_text(v).bytes &&
                 !strcmp(pin_text(v).bytes, shared_text ? shared_text : buffer)
             );
-            REQUIRE(arena_contains(owner, pin_text(v).bytes));
+            REQUIRE(test_text_owned(owner, v));
         } else if (v.type == PIN_I32) {
             REQUIRE(v.i == number + f);
         } else {
@@ -290,7 +291,12 @@ TEST_CASE(row_array_direct_cost_and_aliases)
                 REQUIRE(check_array(&result, count, NULL));
                 for (int i = 0; i < count; i++) {
                     for (int f = 0; f < 5; f++) {
-                        ((char *)pin_text(member(&items[i], f)).bytes)[0] = 'X';
+                        REQUIRE(!pin_write_field(
+                            &producer,
+                            items[i].ptr,
+                            &record->type.fields[f],
+                            (pin_value){ .type = PIN_STR }
+                        ));
                     }
                 }
                 arena_free(&producer);
@@ -406,7 +412,9 @@ TEST_CASE(row_array_call_collectable_results)
         REQUIRE(check_array(&retained[i], counts[i], NULL));
     }
     for (int f = 0; f < 5; f++) {
-        ((char *)pin_text(member(&item, f)).bytes)[0] = 'X';
+        REQUIRE(
+            !pin_write_field(&producer, item.ptr, &record->type.fields[f], (pin_value){ .type = PIN_STR })
+        );
     }
     arena_free(&producer);
     arena_collection collection;

@@ -1,5 +1,6 @@
 #include "lexical_binding_chibi.h"
 
+#include "../owned_text.h"
 #include "compiler_fixture.h"
 #include "language/lexical_binding.h"
 #include "lexical_binding_chibi_source.h"
@@ -258,7 +259,7 @@ static bool diagnostics(const arena *storage, const pin_value *value, const scri
             pin_text(message).bytes
         );
         REQUIRE(
-            arena_contains(storage, pin_text(message).bytes) &&
+            test_text_owned(storage, message) &&
             !strcmp(pin_text(message).bytes, error->message)
         );
     }

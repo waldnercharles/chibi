@@ -2,6 +2,7 @@
 #define CHIBI_EXECUTION_FUNCTION_H
 #include "execution/diagnostic.h"
 #include "execution/host.h"
+#include "execution/managed.h"
 #include "execution/source_debug.h"
 #include "execution/state.h"
 #include "execution/value_kind.h"
@@ -325,6 +326,7 @@ typedef struct behavior_function_context
     /* Invocation-owned copies outlive locals, suspension and returned values.
      * The caller resets this storage only after those values are released. */
     void *value_storage;
+    behavior_managed_heap *managed_heap; /* Shared owner heap, borrowed. */
     /* Where a function builds the locals it returns: its caller's value
      * storage for a call, otherwise its own. */
     void *result_storage;
@@ -405,6 +407,9 @@ void behavior_function_rebind_services(
     behavior_function_context *context,
     const struct service_binding *services
 );
+/* Reject managed pointer payloads before an unregistered native owner can
+ * observe them. Canonical runtime intrinsics retain their explicit contract. */
+const char *behavior_function_host_arguments(behavior_function_context *, int target);
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);
@@ -524,6 +529,11 @@ void behavior_function_prepare_results(
     pin_value *results,
     arena *storage
 );
+/* Language arrays require an initialized caller-owned managed heap, shared by
+ * the complete invocation family. Managed objects keep identity across copies. */
+pin_array *behavior_function_copy_array(behavior_function_context *, const pin_array *);
+/* Shared value-call dispatch for interpreter, JIT and exported C entries. */
+const char *behavior_function_value_call(behavior_function_context *, int host_call);
 void behavior_function_bind_storage(behavior_function_context *context, arena *storage);
 /* True when emitted operations require invocation-owned temporary values. */
 bool behavior_function_uses_storage(const behavior_function *function);

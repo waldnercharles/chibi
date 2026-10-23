@@ -946,7 +946,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_types") {
         return [
             "types/annotate.h", "types/array.h", "types/catalog.h", "types/copy.h", "types/map.h",
-            "types/record.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
+            "types/record.h", "types/pointer.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
             "types/union.h", "types/value.h", "types/text.h", "types/value_format.h", "types/value_wire.h"
         ];
     }
@@ -974,7 +974,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_execution_contract") {
         return [
             "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/component.h",
-            "execution/diagnostic.h", "execution/function.h", "execution/host.h", "execution/instruction.h",
+            "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h", "execution/instruction.h",
             "execution/log.h", "execution/random.h", "execution/request.h", "execution/scalar.h",
             "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
             "execution/value_kind.h"
@@ -3645,7 +3645,10 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
             "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
             "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
+            "CHIBI_PACKAGE_COMPILER_OPTIONAL_BYTES=bytes:tools/compiler/package_compiler/Optional.chibi",
             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
+            "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
+            "CHIBI_PACKAGE_COMPILER_SEQUENCES_BYTES=bytes:tools/compiler/package_compiler/Sequences.chibi",
             "CHIBI_PACKAGE_COMPILER_STEPS_BYTES=bytes:tools/compiler/package_compiler/Steps.chibi",
             "CHIBI_PACKAGE_COMPILER_TREE_BYTES=bytes:tools/compiler/package_compiler/Tree.chibi",
             "CHIBI_PACKAGE_GRAPH_BYTES=bytes:tools/compiler/package_graph/Graph.chibi",

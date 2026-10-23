@@ -184,7 +184,16 @@ static script_type traits(reader *r, TSNode node, script_type out)
         } else if (!strcmp(token, "?")) {
             out.flags |= SCRIPT_TYPE_OPTIONAL;
         } else if (!strcmp(token, "[") || !strcmp(token, "[]")) {
-            if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
+            if (out.flags & SCRIPT_TYPE_OPTIONAL) {
+                (void)named(r);
+                const script_catalog_type
+                    *element = script_catalog_type_by_id(&r->catalog, out.nominal);
+                if (!element || !element->component) {
+                    out.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
+                }
+            }
+            if (out.collection || out.container != PIN_CONTAINER_SINGLE ||
+                (out.flags & SCRIPT_TYPE_OPTIONAL)) {
                 out = collection(r, PIN_CONTAINER_ARRAY, (script_type){ 0 }, out);
             }
             out.container = PIN_CONTAINER_ARRAY;
@@ -192,7 +201,9 @@ static script_type traits(reader *r, TSNode node, script_type out)
     }
     (void)named(r);
     const script_catalog_type *definition = script_catalog_type_by_id(&r->catalog, out.nominal);
-    if ((out.flags & SCRIPT_TYPE_OPTIONAL) && (!definition || !definition->component)) {
+    if ((out.flags & SCRIPT_TYPE_OPTIONAL) &&
+        (out.storage != PIN_POINTER || out.container != PIN_CONTAINER_SINGLE) &&
+        (!definition || !definition->component)) {
         out.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
     }
     return out;
@@ -233,6 +244,35 @@ static script_type type(reader *r, TSNode node)
     if (is(node, "type")) {
         for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
             TSNode child = ts_node_named_child(node, i);
+            if (is(child, "pointer_type")) {
+                script_type target = type(r, field(child, "target"));
+                script_catalog_type definition = script_constructor_pointer(
+                    r->storage,
+                    target,
+                    r->facts.pointer_size
+                );
+                (void)named(r);
+                if (!script_catalog_type_by_id(&r->catalog, definition.id)) {
+                    apush(r->types, definition);
+                    apush(r->own, definition);
+                    apush(
+                        r->publications,
+                        ((script_constructor_plan){
+                            .type = definition.type,
+                            .publish = true,
+                            .id = definition.id,
+                            .name = definition.name,
+                            .definition_type = definition.type,
+                            .element_type = definition.element_type,
+                            .size = definition.size,
+                            .internal = definition.internal })
+                    );
+                }
+                return traits(r, node, definition.type);
+            }
+            if (is(child, "parenthesized_type")) {
+                return traits(r, node, type(r, field(child, "type")));
+            }
             if (is(child, "union_type")) {
                 return type(r, child);
             }
@@ -281,7 +321,8 @@ static script_type type(reader *r, TSNode node)
                 if (!strcmp(value, "map")) {
                     diagnostic(r, node, "Use [K: V] for associative maps");
                 }
-                if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
+                if (out.collection || out.container != PIN_CONTAINER_SINGLE ||
+                    (out.flags & SCRIPT_TYPE_OPTIONAL)) {
                     out = collection(r, container, (script_type){ 0 }, out);
                 }
                 out.container = container;

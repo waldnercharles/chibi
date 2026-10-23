@@ -21,7 +21,7 @@ typedef struct
 
 static av_value *shape(av_doc *doc, const pin_value *value)
 {
-    if (value->type < PIN_BOOL || value->type > PIN_UNION ||
+    if (value->type < PIN_BOOL || value->type > PIN_POINTER ||
         value->container < PIN_CONTAINER_SINGLE || value->container > PIN_CONTAINER_MAP ||
         (value->record &&
          (!pin_record_valid(value->record) || value->type != PIN_STRUCT))) {
@@ -260,6 +260,7 @@ static av_value *project(
                 }
             }
             return value ? value : av_null(doc);
+        case PIN_POINTER: return v->ptr ? NULL : av_null(doc);
         case PIN_FLOW: return av_null(doc);
         case PIN_HANDLE:
         case PIN_TASK: return av_uint(doc, v->u64);

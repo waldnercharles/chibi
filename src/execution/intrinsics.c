@@ -5,12 +5,14 @@
 #include "execution/function.h"
 #include "execution/map_intrinsics.h"
 #include "execution/scalar.h"
+#include "runtime/arrays.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy_internal.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -181,6 +183,17 @@ static const char *value_equal(arena *storage, const pin_value *args, int count,
     if (count != 2) {
         return "Record equality requires two operands";
     }
+    if (args[0].type == PIN_POINTER || args[1].type == PIN_POINTER) {
+        if (args[0].type != PIN_POINTER || args[1].type != PIN_POINTER ||
+            args[0].container != PIN_CONTAINER_SINGLE ||
+            args[1].container != PIN_CONTAINER_SINGLE || !args[0].type_name ||
+            !args[1].type_name || strcmp(args[0].type_name, args[1].type_name)) {
+            return "Pointer equality requires matching pointer types";
+        }
+        *out = (pin_value){ .type = PIN_BOOL,
+                            .b = pin_value_equal(&args[0], &args[1]) };
+        return NULL;
+    }
     if (args[0].container == PIN_CONTAINER_MAP && args[1].container == PIN_CONTAINER_MAP) {
         *out = (pin_value){ .type = PIN_BOOL,
                             .b = pin_value_equal(&args[0], &args[1]) };
@@ -225,32 +238,27 @@ static bool box(arena *storage, pin_array *array)
     array->stride = 0;
     return true;
 }
-/* A local's array, owned by storage and ready to change in place; NULL when
- * it cannot be boxed. */
+/* Promote a borrowed local once; managed aliases keep the same object. */
 static pin_array *owned_array(arena *storage, pin_value *header)
 {
-    assert(header && header->container == PIN_CONTAINER_ARRAY);
-    if (!header->ptr) {
-        pin_array *array = arena_alloc(storage, sizeof *array);
-        *array = (pin_array){ .element_type = header->type,
-                              .type_name = header->type_name,
-                              .record = header->record
-                                          ? pin_record_snapshot(storage, header->record)
-                                          : NULL };
-        if (inline_scalar(header->type)) {
-            array->stride = pin_array_element_stride(
-                header->type,
-                header->type_name,
-                array->record
-            );
-        }
-        pin_arena_trace_array(storage, array);
-        header->ptr = array;
+    assert(
+        header && (header->container == PIN_CONTAINER_ARRAY ||
+                   header->container == PIN_CONTAINER_VIEW)
+    );
+    pin_value retained;
+    if (pin_value_array_promote(storage, &retained, header)) {
+        return NULL;
     }
+    *header = retained;
     pin_array *array = header->ptr;
-    /* A local's array and its layout live in this storage: every store into the
-     * local snapshots there. The optional lookup index is rebuilt on demand. */
-    if (array->stride && !inline_scalar(array->element_type) && !box(storage, array)) {
+    if (!array || !pin_array_view_valid(array)) {
+        return NULL;
+    }
+    if (array->owner) {
+        return array;
+    }
+    if (array->stride && !inline_scalar(array->element_type) &&
+        !box(array->storage, array)) {
         return NULL;
     }
     array->buckets = NULL;
@@ -289,11 +297,11 @@ static const char *array_push(arena *storage, const pin_value *args, int count, 
     assert(count == 2);
     (void)count;
     pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
-    if (!array || array->count == INT_MAX ||
+    if (!array || array->owner || array->count == INT_MAX ||
         pin_array_reserve_owned(storage, array, array->count + 1)) {
         return "Array exceeds its length limit";
     }
-    const char *error = append_item(storage, array, &args[1]);
+    const char *error = append_item(array->storage, array, &args[1]);
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
     return error;
 }
@@ -304,7 +312,8 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
     pin_value *header = (pin_value *)(uintptr_t)args[0].u64;
     const pin_array *current = header->ptr;
     int index = args[1].i;
-    if (!current || index < 0 || index >= current->count) {
+    if (!current || !pin_array_view_valid(current) || index < 0 ||
+        index >= current->count) {
         return "Array index out of range";
     }
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
@@ -312,18 +321,9 @@ static const char *array_store(arena *storage, const pin_value *args, int count,
     if (!array) {
         return "Array exceeds its length limit";
     }
-    if (array->stride && !pin_array_set(array, index, &args[2])) {
-        return NULL;
-    }
-    pin_value item;
-    if (pin_array_snapshot_owned_items(storage, array->record, &item, &args[2], 1)) {
-        return "Cannot retain array item";
-    }
-    if (array->stride && !box(storage, array)) {
-        return "Array exceeds its length limit";
-    }
-    array->items[index] = item;
-    return NULL;
+    return pin_array_snapshot_set(storage, array, index, &args[2])
+             ? "Cannot retain array item"
+             : NULL;
 }
 static const char *array_extend(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -332,7 +332,8 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
     pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
     const pin_array *items = args[1].ptr;
     int added = items ? items->count : 0;
-    if (!array || added > INT_MAX - array->count ||
+    if (!array || array->owner || (items && !pin_array_view_valid(items)) ||
+        added > INT_MAX - array->count ||
         pin_array_reserve_owned(storage, array, array->count + added)) {
         return "Array exceeds its length limit";
     }
@@ -352,7 +353,7 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
     int before = array->count;
     for (int i = 0; i < added; i++) {
         pin_value item = pin_array_get(items, i);
-        const char *error = append_item(storage, array, &item);
+        const char *error = append_item(array->storage, array, &item);
         if (error) {
             array->count = before;
             return error;
@@ -363,6 +364,267 @@ static const char *array_extend(arena *storage, const pin_value *args, int count
 const node_host_call EXECUTION_array_push_call = { .value = array_push };
 const node_host_call EXECUTION_array_extend_call = { .value = array_extend };
 const node_host_call EXECUTION_array_store_call = { .value = array_store };
+static bool sequence_array(pin_value value)
+{
+    return value.container == PIN_CONTAINER_ARRAY ||
+           value.container == PIN_CONTAINER_VIEW;
+}
+static pin_value array_header(const pin_array *array, pin_container container)
+{
+    return (pin_value){ .type = array->element_type,
+                        .type_name = array->type_name,
+                        .record = array->record,
+                        .container = container,
+                        .ptr = (void *)array };
+}
+static const char *sequence_range(arena *storage, const pin_value *args, int count, pin_value *out, bool view)
+{
+    assert(count == 4);
+    (void)count;
+    pin_value source = args[0], value;
+    int start = args[1].i, end = args[2].i;
+    *out = (pin_value){ .type = PIN_UNION };
+    if (source.type == PIN_STR && source.container == PIN_CONTAINER_SINGLE) {
+        pin_string text = pin_text(source);
+        if (start < 0 || end < start || (size_t)end > text.length) {
+            return NULL;
+        }
+        const char *
+            error = view
+                      ? pin_value_text_slice(storage, &value, source, (size_t)start, (size_t)(end - start))
+                      : pin_value_text(storage, &value, text.bytes + start, (size_t)(end - start));
+        if (error) {
+            return error;
+        }
+    } else if (sequence_array(source)) {
+        const pin_array *array = source.ptr;
+        int length = array ? array->count : 0;
+        if ((array && !pin_array_view_valid(array)) || start < 0 ||
+            end < start || end > length) {
+            return NULL;
+        }
+        pin_array empty = { .element_type = source.type,
+                            .type_name = source.type_name,
+                            .record = source.record };
+        pin_array *result = view
+                              ? pin_array_window_view(storage, array ? array : &empty, start, end - start)
+                              : pin_array_window_copy(storage, array ? array : &empty, start, end - start);
+        if (!result) {
+            return "Cannot retain sequence range";
+        }
+        value = array_header(result, view ? PIN_CONTAINER_VIEW : PIN_CONTAINER_ARRAY);
+    } else {
+        return "Range requires a string or array";
+    }
+    return pin_union_value(storage, args[3].u64, &value, 1, out)
+             ? "Cannot retain sequence range result"
+             : NULL;
+}
+static const char *sequence_slice(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return sequence_range(storage, args, count, out, false);
+}
+static const char *sequence_view(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return sequence_range(storage, args, count, out, true);
+}
+static const char *sequence_clone(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 1);
+    (void)count;
+    if (args[0].type == PIN_STR && args[0].container == PIN_CONTAINER_SINGLE) {
+        return pin_value_text_clone(storage, out, args[0]);
+    }
+    if (!sequence_array(args[0])) {
+        return "Clone requires a string or array";
+    }
+    const pin_array *source = args[0].ptr;
+    if (source && !pin_array_view_valid(source)) {
+        return "Array view is out of range";
+    }
+    pin_array empty = { .element_type = args[0].type,
+                        .type_name = args[0].type_name,
+                        .record = args[0].record };
+    pin_array *copy = pin_array_outer_clone(storage, source ? source : &empty);
+    if (!copy) {
+        return "Cannot clone array";
+    }
+    *out = array_header(copy, PIN_CONTAINER_ARRAY);
+    return NULL;
+}
+static const char *sequence_get(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    int index = args[1].i;
+    if (args[0].type == PIN_STR && args[0].container == PIN_CONTAINER_SINGLE) {
+        pin_string text = pin_text(args[0]);
+        if (index < 0 || (size_t)index >= text.length) {
+            return "String index out of range";
+        }
+        *out = (pin_value){ .type = PIN_I32,
+                            .type_name = "int",
+                            .i = (unsigned char)text.bytes[index] };
+        return NULL;
+    }
+    if (!sequence_array(args[0])) {
+        return "Index requires a string or array";
+    }
+    const pin_array *array = args[0].ptr;
+    if (!array || !pin_array_view_valid(array) || index < 0 || index >= array->count) {
+        return "Array index out of range";
+    }
+    pin_value item = pin_array_get(array, index);
+    return pin_value_snapshot_to_arena(storage, out, &item)
+             ? "Cannot retain array element"
+             : NULL;
+}
+static const char *sequence_length(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 1);
+    (void)count;
+    int length;
+    if (args[0].type == PIN_STR && args[0].container == PIN_CONTAINER_SINGLE) {
+        pin_string text = pin_text(args[0]);
+        if (text.length > INT_MAX) {
+            return "Text byte length exceeds int range";
+        }
+        length = (int)text.length;
+    } else if (sequence_array(args[0])) {
+        const pin_array *array = args[0].ptr;
+        if (array && !pin_array_view_valid(array)) {
+            return "Array view is out of range";
+        }
+        length = array ? array->count : 0;
+    } else {
+        return "Length requires a string or array";
+    }
+    *out = (pin_value){ .type = PIN_I32, .type_name = "int", .i = length };
+    return NULL;
+}
+const node_host_call EXECUTION_sequence_get_call = { .value = sequence_get };
+const node_host_call EXECUTION_sequence_length_call = { .value = sequence_length };
+static const char *array_mutate(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    if (count < 2 || !sequence_array(args[0]) || !args[0].ptr) {
+        return "Array mutation requires a managed array";
+    }
+    pin_array *array = args[0].ptr;
+    pin_array *root = (pin_array *)pin_array_owner(array);
+    if (!root->storage || !pin_array_view_valid(array)) {
+        return "Array mutation requires a live managed array";
+    }
+    execution_array_mutation operation = (execution_array_mutation)args[1].i;
+    if (array->owner && operation != EXECUTION_ARRAY_SET &&
+        operation != EXECUTION_ARRAY_REVERSE && operation != EXECUTION_ARRAY_SWAP) {
+        return "Array views cannot change length";
+    }
+    int expected = 0;
+    switch (operation) {
+        case EXECUTION_ARRAY_APPEND:
+        case EXECUTION_ARRAY_ADD_UNIQUE:
+        case EXECUTION_ARRAY_EXTEND:
+        case EXECUTION_ARRAY_REMOVE_INDEX:
+        case EXECUTION_ARRAY_REMOVE_ITEM:
+        case EXECUTION_ARRAY_RESIZE: expected = 3; break;
+        case EXECUTION_ARRAY_SET:
+        case EXECUTION_ARRAY_INSERT:
+        case EXECUTION_ARRAY_SWAP: expected = 4; break;
+        case EXECUTION_ARRAY_CLEAR:
+        case EXECUTION_ARRAY_REVERSE: expected = 2; break;
+        default: return "Unknown array mutation";
+    }
+    if (count != expected) {
+        return "Invalid array mutation arguments";
+    }
+    arena *owner = root->storage;
+    pin_value inputs[3] = { args[0] };
+    for (int i = 2; i < count; i++) {
+        inputs[i - 1] = args[i];
+    }
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    if (operation == EXECUTION_ARRAY_APPEND || operation == EXECUTION_ARRAY_ADD_UNIQUE) {
+        if (operation == EXECUTION_ARRAY_ADD_UNIQUE &&
+            pin_array_find(array, &inputs[1]) >= 0) {
+            return NULL;
+        }
+        if (array->count == INT_MAX ||
+            pin_array_reserve_owned(owner, array, array->count + 1)) {
+            return "Array exceeds its length limit";
+        }
+        return append_item(owner, array, &inputs[1]);
+    }
+    if (operation == EXECUTION_ARRAY_EXTEND) {
+        pin_value header = inputs[0];
+        pin_value extension[] = { { .u64 = (uintptr_t)&header }, inputs[1] };
+        return array_extend(owner, extension, 2, out);
+    }
+    if (operation == EXECUTION_ARRAY_SET) {
+        int index = inputs[1].i;
+        if (index < 0 || index >= array->count) {
+            return NULL;
+        }
+        return pin_array_snapshot_set(owner, array, index, &inputs[2])
+                 ? "Cannot retain array item"
+                 : NULL;
+    }
+    if (operation == EXECUTION_ARRAY_CLEAR) {
+        array->count = 0;
+        array->buckets = NULL;
+        array->bucket_mask = 0;
+        return NULL;
+    }
+    if (operation == EXECUTION_ARRAY_REVERSE) {
+        for (int i = 0; i < array->count / 2; i++) {
+            pin_array_swap(array, i, array->count - i - 1);
+        }
+        return NULL;
+    }
+    if (operation == EXECUTION_ARRAY_SWAP) {
+        int first = inputs[1].i, second = inputs[2].i;
+        if (first >= 0 && second >= 0 && first < array->count && second < array->count) {
+            pin_array_swap(array, first, second);
+        }
+        return NULL;
+    }
+    pin_value result;
+    switch (operation) {
+        case EXECUTION_ARRAY_INSERT:
+            if (array->count == INT_MAX) {
+                return "Array exceeds its length limit";
+            }
+            result = native_array_insert(inputs, count - 1, owner);
+            break;
+        case EXECUTION_ARRAY_REMOVE_INDEX:
+            result = native_array_remove_index(inputs, count - 1, owner);
+            break;
+        case EXECUTION_ARRAY_REMOVE_ITEM:
+            result = native_array_remove_item(inputs, count - 1, owner);
+            break;
+        case EXECUTION_ARRAY_RESIZE:
+            result = native_array_resize(inputs, count - 1, owner);
+            break;
+        default: return "Unknown array mutation";
+    }
+    if (result.type == PIN_FLOW || !result.ptr) {
+        return "Cannot apply array mutation";
+    }
+    *array = *(pin_array *)result.ptr;
+    array->storage = owner;
+    pin_arena_trace_array(owner, array);
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+const node_host_call EXECUTION_array_mutate_call = { .value = array_mutate,
+                                                     .variadic = true };
+const node_host_call EXECUTION_sequence_slice_call = { .value = sequence_slice };
+const node_host_call EXECUTION_sequence_view_call = { .value = sequence_view };
+const node_host_call EXECUTION_sequence_clone_call = { .value = sequence_clone };
+/* Reads mutable sequence storage and creates distinct array objects. No pure
+ * reuse or unproven parallel access is valid for this shared dispatch. */
+static const node_access sequence_read_access = { .flags = NODE_EFFECT_WORLD_READ };
 const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK };
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
@@ -460,6 +722,7 @@ typedef struct
     const language_reference_path *path;
     int variable;
     execution_box *box;
+    pin_pointer *managed;
 } language_reference;
 static void reference_trace(const void *value, const void *shape, arena_marker mark, void *user)
 {
@@ -468,6 +731,7 @@ static void reference_trace(const void *value, const void *shape, arena_marker m
     pin_value_trace(&reference->root, mark, user);
     pin_value_trace(&reference->type, mark, user);
     mark(user, reference->path);
+    mark(user, reference->managed);
     if (reference->kind == LANGUAGE_REFERENCE_STATE) {
         mark(user, reference->owner);
     }
@@ -651,6 +915,9 @@ static pin_value reference_root(language_reference *ref)
         }
         return root;
     }
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        return ref->managed->value;
+    }
     return ref->kind == LANGUAGE_REFERENCE_STATE
              ? ref->owner->variables[ref->variable]
              : *ref->value;
@@ -672,7 +939,7 @@ static bool field_at(const type_desc *layout, size_t offset, pin_value type)
 {
     for (int i = 0; i < layout->field_count; i++) {
         const type_field *field = &layout->fields[i];
-        bool named = type.type != PIN_STRUCT ||
+        bool named = (type.type != PIN_STRUCT && type.type != PIN_POINTER) ||
                      (field->type_name && type.type_name &&
                       !strcmp(field->type_name, type.type_name));
         if (field->offset == offset && field->type == type.type &&
@@ -717,12 +984,14 @@ static void *reference_path_data(
                  : &item->d;
     }
     if (path->element) {
-        if (type->container != PIN_CONTAINER_ARRAY) {
+        if (type->container != PIN_CONTAINER_ARRAY &&
+            type->container != PIN_CONTAINER_VIEW) {
             return NULL;
         }
         pin_array *array;
         memcpy(&array, data, sizeof array);
-        if (!array || path->index < 0 || path->index >= array->count) {
+        if (!array || !pin_array_view_valid(array) || path->index < 0 ||
+            path->index >= array->count) {
             return NULL;
         }
         *type = pin_array_get(array, path->index);
@@ -778,12 +1047,16 @@ static pin_array *reference_array(const language_reference *ref, pin_value *root
                    ? root->ptr
                    : &root->d;
     data = reference_path_data(path->parent, &type, data, reference_root_layout(ref));
-    if (!data || type.container != PIN_CONTAINER_ARRAY) {
+    if (!data || (type.container != PIN_CONTAINER_ARRAY &&
+                  type.container != PIN_CONTAINER_VIEW)) {
         return NULL;
     }
     pin_array *array;
     memcpy(&array, data, sizeof array);
-    return array && path->index >= 0 && path->index < array->count ? array : NULL;
+    return array && pin_array_view_valid(array) && path->index >= 0 &&
+                   path->index < array->count
+             ? array
+             : NULL;
 }
 size_t execution_value_size(pin_value type)
 {
@@ -828,7 +1101,7 @@ static bool same_storage(pin_value a, pin_value b)
     if (a.type != b.type || a.container != b.container) {
         return false;
     }
-    if (a.type != PIN_STRUCT && a.type != PIN_UNION) {
+    if (a.type != PIN_STRUCT && a.type != PIN_UNION && a.type != PIN_POINTER) {
         return true;
     }
     if (a.record || b.record) {
@@ -934,6 +1207,12 @@ static bool component_scalar_path(const language_reference *ref)
 }
 static const char *write_reference_value(arena *owner_storage, language_reference *ref, const pin_value *args)
 {
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        const char *error = behavior_managed_storage_value_error(ref->managed->storage, &args[1]);
+        if (error) {
+            return error;
+        }
+    }
     pin_value root;
     void *current = reference_data(ref, &root);
     /* The value is copied by the reference's type, and an unpathed or element
@@ -1061,6 +1340,8 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
             return "Referenced state owner has no persistent storage";
         }
         ref->owner->store_value(ref->owner->value_owner, ref->variable, &retained);
+    } else if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        ref->managed->value = retained;
     } else {
         *ref->value = retained;
     }
@@ -1098,6 +1379,8 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
             arena_free(&committed);
         }
         arena_free(&working);
+    } else if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        error = write_reference_value(ref->managed->storage, ref, args);
     } else if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
         error = write_reference_value(ref->owner->value_storage, ref, args);
     } else {
@@ -1109,6 +1392,155 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     *out = (pin_value){ .type = PIN_BOOL, .b = !error };
     return error;
 }
+
+/* Managed cells contain values, never invocation contexts or frame addresses. */
+static pin_pointer *pointer_root(pin_pointer *pointer)
+{
+    while (pointer->base) {
+        pointer = pointer->base;
+    }
+    return pointer;
+}
+static language_reference pointer_view(pin_pointer *pointer)
+{
+    pin_pointer *root = pointer_root(pointer);
+    return (language_reference){ .kind = LANGUAGE_REFERENCE_MANAGED,
+                                 .managed = root,
+                                 .root = root->value,
+                                 .type = pointer->value,
+                                 .path = pointer->path,
+                                 .variable = -1 };
+}
+static const char *pointer_make(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 3);
+    (void)count;
+    behavior_function_context *context = value_context(args[0]);
+    if (!context || !context->managed_heap ||
+        !context->managed_heap->storage.collectable) {
+        return "Managed pointer requires an initialized caller-owned managed "
+               "heap";
+    }
+    if (!same_storage(args[1], args[2])) {
+        return "Managed pointer initializer differs from its pointee type";
+    }
+    const char *error = behavior_managed_storage_value_error(
+        &context->managed_heap->storage,
+        &args[2]
+    );
+    if (error) {
+        return error;
+    }
+    arena *heap = &context->managed_heap->storage;
+    pin_pointer *pointer = arena_alloc(heap, sizeof *pointer);
+    *pointer = (pin_pointer){ .storage = heap };
+    if (pin_value_snapshot_to_arena(heap, &pointer->value, &args[2])) {
+        return "Cannot retain managed pointer initializer";
+    }
+    pin_arena_trace_pointer(heap, pointer);
+    out->type = PIN_POINTER;
+    out->container = PIN_CONTAINER_SINGLE;
+    out->ptr = pointer;
+    return NULL;
+}
+static const char *pointer_read(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot dereference an absent managed pointer";
+    }
+    language_reference view = pointer_view(args[0].ptr);
+    pin_value reference = { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&view };
+    return read_reference(storage, &reference, 1, out);
+}
+static const char *pointer_write(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot dereference an absent managed pointer";
+    }
+    language_reference view = pointer_view(args[0].ptr);
+    pin_value values[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&view },
+                           args[1] };
+    return write_reference(storage, values, 2, out);
+}
+static const char *pointer_field(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 5);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot project an absent managed pointer";
+    }
+    if (args[3].b) {
+        return "Managed pointers to array entries are not supported";
+    }
+    pin_pointer *base = args[0].ptr;
+    if (!same_storage(base->value, args[4])) {
+        return "Managed pointer base differs from its expected record layout";
+    }
+    language_reference view = pointer_view(base);
+    pin_value root;
+    void *data = reference_data(&view, &root);
+    const type_desc *layout = pin_value_type(&base->value);
+    if (!data || !layout || !field_at(layout, args[2].u64, args[1])) {
+        return "Managed pointer field differs from its record layout";
+    }
+    arena *heap = base->storage;
+    pin_value header = args[1], owned;
+    header.ptr = NULL;
+    if (pin_value_snapshot_to_arena(heap, &owned, &header)) {
+        return "Cannot retain managed pointer field type";
+    }
+    language_reference_path *path = arena_alloc(heap, sizeof *path);
+    *path = (language_reference_path){ .parent = base->path,
+                                       .type = owned,
+                                       .offset = args[2].u64 };
+    arena_set_trace(heap, path, reference_path_trace, NULL);
+    pin_pointer *pointer = arena_alloc(heap, sizeof *pointer);
+    *pointer = (pin_pointer){ .base = base,
+                              .value = owned,
+                              .path = path,
+                              .offset = args[2].u64,
+                              .storage = heap };
+    /* Projected values carry a header only; the root cell owns the payload. */
+    pointer->value.ptr = NULL;
+    pin_arena_trace_pointer(heap, pointer);
+    out->type = PIN_POINTER;
+    out->container = PIN_CONTAINER_SINGLE;
+    out->ptr = pointer;
+    return NULL;
+}
+bool execution_reference_managed_pointer(pin_value value, pin_value *out)
+{
+    const language_reference *reference = (const void *)(uintptr_t)value.u64;
+    if (!reference || reference->kind != LANGUAGE_REFERENCE_MANAGED) {
+        return false;
+    }
+    *out = (pin_value){ .type = PIN_POINTER, .ptr = reference->managed };
+    return true;
+}
+static const char *pointer_reference(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 1);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot reference an absent managed pointer";
+    }
+    language_reference *reference = arena_alloc(storage, sizeof *reference);
+    *reference = pointer_view(args[0].ptr);
+    arena_set_trace(storage, reference, reference_trace, NULL);
+    *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)reference };
+    return NULL;
+}
+const node_host_call EXECUTION_pointer_make_call = { .value = pointer_make };
+const node_host_call EXECUTION_pointer_read_call = { .value = pointer_read };
+const node_host_call EXECUTION_pointer_write_call = { .value = pointer_write };
+const node_host_call EXECUTION_pointer_field_call = { .value = pointer_field };
+const node_host_call EXECUTION_pointer_reference_call = { .value = pointer_reference };
 static const char *reduce_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -1150,7 +1582,9 @@ static const char *release_local(arena *storage, const pin_value *args, int coun
     (void)count;
     const language_reference *ref = (const language_reference *)(uintptr_t)args[0]
                                         .u64;
-    ref->owner->release_local(ref->owner, ref->value);
+    if (ref->owner->release_local) {
+        ref->owner->release_local(ref->owner, ref->value);
+    }
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
     return NULL;
 }
@@ -1436,6 +1870,16 @@ const node_host_call EXECUTION_string_cursor_call = { .value = string_cursor };
 const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 {
     switch (id) {
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+            return &EXECUTION_pointer_make_call;
+        case EXECUTION_INTRINSIC_POINTER_READ:
+            return &EXECUTION_pointer_read_call;
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+            return &EXECUTION_pointer_write_call;
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+            return &EXECUTION_pointer_field_call;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+            return &EXECUTION_pointer_reference_call;
         case EXECUTION_INTRINSIC_STRING_CURSOR:
             return &EXECUTION_string_cursor_call;
         case EXECUTION_INTRINSIC_STRING_BYTES:
@@ -1463,6 +1907,18 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_CONSTRUCT: return &EXECUTION_construct_call;
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
             return &EXECUTION_value_equal_call;
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+            return &EXECUTION_sequence_slice_call;
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+            return &EXECUTION_sequence_view_call;
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+            return &EXECUTION_sequence_clone_call;
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE:
+            return &EXECUTION_array_mutate_call;
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+            return &EXECUTION_sequence_get_call;
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+            return &EXECUTION_sequence_length_call;
         case EXECUTION_INTRINSIC_ARRAY_PUSH: return &EXECUTION_array_push_call;
         case EXECUTION_INTRINSIC_ARRAY_STORE:
             return &EXECUTION_array_store_call;
@@ -1504,6 +1960,14 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
+    for (int id = EXECUTION_INTRINSIC_POINTER_MAKE;
+         id <= EXECUTION_INTRINSIC_POINTER_REFERENCE;
+         id++) {
+        if (call == execution_intrinsic_call((execution_intrinsic)id)) {
+            return UINT64_C(0x4348494900000000) | (unsigned)id;
+        }
+    }
+
     for (int id = EXECUTION_INTRINSIC_STRING_BYTES;
          id <= EXECUTION_INTRINSIC_STRING_CURSOR;
          id++) {
@@ -1512,6 +1976,13 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
         }
     }
     for (int id = EXECUTION_INTRINSIC_MAP_MAKE; id <= EXECUTION_INTRINSIC_MAP_DELETE;
+         id++) {
+        if (call == execution_intrinsic_call((execution_intrinsic)id)) {
+            return UINT64_C(0x4348494900000000) | (unsigned)id;
+        }
+    }
+    for (int id = EXECUTION_INTRINSIC_SEQUENCE_SLICE;
+         id <= EXECUTION_INTRINSIC_SEQUENCE_LENGTH;
          id++) {
         if (call == execution_intrinsic_call((execution_intrinsic)id)) {
             return UINT64_C(0x4348494900000000) | (unsigned)id;
@@ -1633,6 +2104,11 @@ const node_access *execution_intrinsic_access(uint64_t id)
         return &EXECUTION_assignment_access;
     }
     switch (execution_intrinsic_kind(id)) {
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE: return &sequence_read_access;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
@@ -1646,6 +2122,9 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_CONSTRUCT:
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
             return &EXECUTION_value_access;

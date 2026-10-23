@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Sixteen raw requests plus four actual analyzed facts, forty authored calls
+/* Twenty raw requests plus four actual analyzed facts, forty-eight authored calls
  * capped at200,000 instructions. Five compiler sources per backend and four
  * tiny analyzed sources give fourteen parses. Compiler inputs are below32KiB;
  * analyzed fact sources are below256bytes. No IO/tasks execute. The JSON
@@ -40,7 +40,8 @@ typedef enum
 {
     UNION,
     TASK,
-    AWAIT
+    AWAIT,
+    POINTER
 } operation;
 typedef struct
 {
@@ -181,13 +182,16 @@ static bool pack(int b, const script_constructor_facts *facts, int symbol_count,
     );
     type_count = 0;
     id_count = 0;
-    int members[4], variant_types[MAX_VARIANTS], variant_count = 0, result_count = 0;
+    int members[4], element_types[MAX_DEFINITIONS], variant_types[MAX_VARIANTS],
+        variant_count = 0, result_count = 0;
     for (int i = 0; i < q.count; i++) {
         members[i] = add_type(q.members[i]);
         REQUIRE(members[i] >= 0);
     }
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *type = &catalog->types[i];
+        element_types[i] = add_type(type->element_type);
+        REQUIRE(element_types[i] >= 0);
         for (int j = 0; j < type->variant_count; j++) {
             REQUIRE(variant_count < MAX_VARIANTS);
             variant_types[variant_count++] = add_type(type->variants[j].type);
@@ -222,7 +226,8 @@ static bool pack(int b, const script_constructor_facts *facts, int symbol_count,
             put(&types->items[i], "container", integer(pool[i].container)) &&
             put(&types->items[i], "flags", integer((int)pool[i].flags)) &&
             put(&types->items[i], "nominal_slot", integer(nominal)) &&
-            put(&types->items[i], "parameter_slot", integer(parameter))
+            put(&types->items[i], "parameter_slot", integer(parameter)) &&
+            put(&types->items[i], "collection", number(pool[i].collection))
         );
     }
     int offset = 0;
@@ -233,7 +238,8 @@ static bool pack(int b, const script_constructor_facts *facts, int symbol_count,
         REQUIRE(
             put(&definitions->items[i], "id_slot", integer(id)) &&
             put(&definitions->items[i], "variant_start", integer(offset)) &&
-            put(&definitions->items[i], "variant_count", integer(type->variant_count))
+            put(&definitions->items[i], "variant_count", integer(type->variant_count)) &&
+            put(&definitions->items[i], "element_type", integer(element_types[i]))
         );
         for (int j = 0; j < type->variant_count; j++) {
             int tag = slot(type->variants[j].tag);
@@ -293,7 +299,9 @@ static bool pack(int b, const script_constructor_facts *facts, int symbol_count,
         values[2] = integer(sizeof(void *));
     } else {
         values[1] = integer(members[0]);
-        if (q.op == TASK) {
+        if (q.op == POINTER) {
+            values[2] = integer(sizeof(void *));
+        } else if (q.op == TASK) {
             values[2] = number(q.function);
         } else {
             REQUIRE(record(b, PACKAGE, "Request", &values[2]));
@@ -360,7 +368,7 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
 {
     REQUIRE(value->type == PIN_UNION && value->ptr);
     const pin_union *data = value->ptr;
-    REQUIRE(data->tag == tag && data->count == 11);
+    REQUIRE(data->tag == tag && data->count == 13);
     const pin_value *v = data->values;
     REQUIRE(
         type_value(&v[0], value_tag, expected->type) && v[1].type == PIN_BOOL &&
@@ -370,6 +378,8 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
     );
     REQUIRE(
         type_value(&v[4], value_tag, expected->definition_type) &&
+        type_value(&v[11], value_tag, expected->element_type) &&
+        v[12].type == PIN_U64 && v[12].u64 == expected->element_type.collection &&
         v[5].type == PIN_I32 && v[5].i == (int)expected->size &&
         v[6].type == PIN_BOOL && v[6].b == expected->internal
     );
@@ -390,6 +400,11 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
             same_int(row, "storage", s->type.storage) &&
             same_int(row, "container", s->type.container) &&
             same_int(row, "flags", (int)s->type.flags)
+        );
+        pin_value collection;
+        REQUIRE(
+            read(row, "collection", &collection) &&
+            collection.type == PIN_U64 && collection.u64 == s->type.collection
         );
         const char *keys[] = { "nominal_slot", "parameter_slot", "tag_slot" };
         const uint64_t wanted[] = { s->type.nominal, s->type.parameter, s->tag };
@@ -453,7 +468,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
     }
     if (value->type == PIN_UNION) {
         const pin_union *u = value->ptr;
-        REQUIRE(u && arena_contains(owner, u) && u->count >= 0 && u->count <= 11);
+        REQUIRE(u && arena_contains(owner, u) && u->count >= 0 && u->count <= 13);
         for (int i = 0; i < u->count; i++) {
             REQUIRE(owned(owner, &u->values[i], depth + 1));
         }
@@ -466,7 +481,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
         );
         const type_desc *type = pin_value_type(value);
         REQUIRE(
-            type && type->field_count <= 9 && type->name &&
+            type && type->field_count <= 10 && type->name &&
             arena_contains(owner, type->name)
         );
         REQUIRE(!type->field_count || (type->fields && arena_contains(owner, type->fields)));
@@ -494,11 +509,30 @@ static bool compare(
 {
     arena_free(&oracle);
     script_constructor_plan
-        expected = q.op == UNION
+        expected = q.op == POINTER ? (script_constructor_plan){ 0 }
+                 : q.op == UNION
                      ? script_constructor_union(&oracle, facts, q.members, q.count, sizeof(void *))
                  : q.op == TASK
                      ? script_constructor_task(&oracle, facts, q.members[0], q.function)
                      : script_constructor_await(&oracle, facts, q.members[0], q.range, sizeof(void *));
+    if (q.op == POINTER) {
+        script_catalog_type
+            pointer = script_constructor_pointer(&oracle, q.members[0], sizeof(void *));
+        expected = (script_constructor_plan){ .type = pointer.type,
+                                              .publish = true,
+                                              .id = pointer.id,
+                                              .name = pointer.name,
+                                              .definition_type = pointer.type,
+                                              .element_type = pointer.element_type,
+                                              .size = pointer.size,
+                                              .internal = true };
+        for (int i = 0; i < facts->catalog->type_count; i++) {
+            if (facts->catalog->types[i].id == pointer.id) {
+                expected = (script_constructor_plan){ .type = pointer.type };
+                break;
+            }
+        }
+    }
     REQUIRE(
         expected.variant_count >= 0 && expected.variant_count <= 4 &&
         expected.field_count >= 0 && expected.field_count <= 2 &&
@@ -512,7 +546,8 @@ static bool compare(
         REQUIRE(
             materialized.id == expected.id && materialized.internal &&
             materialized.variant_count == expected.variant_count &&
-            materialized.field_count == expected.field_count
+            materialized.field_count == expected.field_count &&
+            script_type_equal(materialized.element_type, expected.element_type)
         );
     }
     if (out) {
@@ -527,9 +562,10 @@ static bool compare(
             &fixture,
             b,
             PACKAGE,
-            q.op == UNION  ? "Union"
-            : q.op == TASK ? "Task"
-                           : "Await",
+            q.op == UNION     ? "Union"
+            : q.op == TASK    ? "Task"
+            : q.op == POINTER ? "Pointer"
+                              : "Await",
             values,
             3,
             200000,
@@ -726,6 +762,7 @@ TEST_CASE(type_constructor_raw_facts_match_plans_and_selected_metadata)
         if (i == 5) {
             q.members[0] = nested;
             q.members[0].container = PIN_CONTAINER_ARRAY;
+            q.members[0].collection = UINT64_MAX - 31;
             q.count = 1;
         }
         if (i == 6) {
@@ -852,8 +889,8 @@ TEST_CASE(type_constructor_raw_facts_match_plans_and_selected_metadata)
 static bool same_type(script_type a, script_type b)
 {
     REQUIRE(
-        a.storage == b.storage && a.container == b.container &&
-        a.flags == b.flags && a.nominal == b.nominal && a.parameter == b.parameter
+        a.storage == b.storage && a.container == b.container && a.flags == b.flags &&
+        a.nominal == b.nominal && a.parameter == b.parameter && a.collection == b.collection
     );
     return true;
 }
@@ -992,6 +1029,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
 {
     cleanup();
     compiler_fixture_free(&fixture);
+    prepared = false;
     for (int b = 0; b < 2; b++) {
         REQUIRE(
             kept[b].type == PIN_UNION && kept[b].ptr &&
@@ -1033,6 +1071,40 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
     );
     return true;
 }
+TEST_CASE(type_constructor_pointer_preserves_complete_pointees)
+{
+    REQUIRE(prepared);
+    int before = calls;
+    script_catalog catalog = { 0 };
+    script_constructor_facts facts = { .catalog = &catalog };
+    query q = { .op = POINTER, .members = { { .storage = PIN_I32 } }, .count = 1 };
+    script_constructor_plan first, composite;
+    REQUIRE(compare(&facts, 0, q, false, &first));
+    q.members[0] = (script_type){ .storage = PIN_STRUCT,
+                                  .container = PIN_CONTAINER_MAP,
+                                  .nominal = UINT64_MAX - 3,
+                                  .parameter = UINT64_MAX - 7,
+                                  .collection = UINT64_MAX - 11,
+                                  .flags = SCRIPT_TYPE_OPTIONAL |
+                                           SCRIPT_TYPE_BOXED_OPTIONAL };
+    REQUIRE(compare(&facts, 0, q, false, &composite));
+    REQUIRE(first.type.nominal != composite.type.nominal);
+    uint64_t composite_id = composite.type.nominal;
+    q.members[0].collection--;
+    script_constructor_plan different;
+    REQUIRE(compare(&facts, 0, q, false, &different));
+    REQUIRE(different.type.nominal != composite_id);
+    q.members[0].collection++;
+    script_catalog_type cached = { .id = composite_id,
+                                   .type = composite.type,
+                                   .element_type = q.members[0] };
+    catalog.types = &cached;
+    catalog.type_count = 1;
+    script_constructor_plan hit;
+    REQUIRE(compare(&facts, 0, q, false, &hit));
+    REQUIRE(!hit.publish && hit.type.nominal == composite_id && calls == before + 8);
+    return true;
+}
 void test_language_type_constructors_chibi()
 {
     calls = 0;
@@ -1041,6 +1113,7 @@ void test_language_type_constructors_chibi()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(type_constructor_raw_facts_match_plans_and_selected_metadata);
     RUN_TEST_CASE(type_constructor_actual_analyzer_facts_match);
+    RUN_TEST_CASE(type_constructor_pointer_preserves_complete_pointees);
     RUN_TEST_CASE(type_constructor_results_and_metadata_outlive_producers);
     pu_clear_setup();
     compiler_fixture_free(&fixture);

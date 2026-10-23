@@ -131,7 +131,8 @@ static int observe_target(
     if (!cache->value.type || changed) {
         arena next = { 0 };
         pin_value owned;
-        if (pin_value_snapshot_to_arena(&next, &owned, &value)) {
+        /* Comparison needs the previous content, not a live mutable alias. */
+        if (pin_value_capture_to_arena(&next, &owned, &value)) {
             arena_free(&next);
             arena_free(&temporary);
             return FLOW_ERR_ARGUMENT;
@@ -262,6 +263,9 @@ int execution_program_field_changed(
     unsigned budget
 )
 {
+    if (behavior_managed_storage_owner_error(&p->owner_program->managed->storage, &value)) {
+        return FLOW_ERR_ARGUMENT;
+    }
     observer_edge edge = { .entity = entity, .component = component, .offset = offset };
     if (pin_value_snapshot_to_arena(&edge.storage, &edge.value, &value)) {
         arena_free(&edge.storage);

@@ -1,8 +1,11 @@
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/service.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/trace.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -245,6 +248,27 @@ void behavior_function_rebind_host(
     }
 }
 
+const char *behavior_function_host_arguments(behavior_function_context *ctx, int target)
+{
+    const behavior_function *f = ctx->data->function;
+    assert(target >= 0 && target < acount(f->host_calls));
+    const behavior_function_host_call *spec = &f->host_calls[target];
+    const behavior_data_binding *binding = &ctx->data->calls[target];
+    const node_host_call *canonical = execution_intrinsic_resolve(spec->capability_id);
+    if (canonical &&
+        spec->capability_abi == execution_intrinsic_abi(spec->capability_id) &&
+        binding->invoke == canonical->invoke && binding->value == canonical->value &&
+        binding->context == canonical->context && binding->action == canonical->action) {
+        return NULL;
+    }
+    for (int i = spec->first; i < spec->result_first; i++) {
+        const char *error = pin_value_managed_boundary_error(&ctx->data->values[i]);
+        if (error) {
+            return error;
+        }
+    }
+    return NULL;
+}
 const char *behavior_function_host_action(behavior_function_context *ctx, int target, uint64_t node_id)
 {
     const behavior_function *f = ctx->data->function;
@@ -252,6 +276,10 @@ const char *behavior_function_host_action(behavior_function_context *ctx, int ta
     const behavior_function_host_call *spec = &f->host_calls[target];
     behavior_data_binding *binding = &ctx->data->calls[target];
     assert(binding->action && spec->outcome_count > 0);
+    const char *argument_error = behavior_function_host_arguments(ctx, target);
+    if (argument_error) {
+        return argument_error;
+    }
     int selected = -1;
     ctx->node_id = node_id;
     ctx->returned_outcome = 0;

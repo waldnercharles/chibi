@@ -8,7 +8,8 @@ typedef enum
 {
     LANGUAGE_REFERENCE_VALUE,
     LANGUAGE_REFERENCE_STATE,
-    LANGUAGE_REFERENCE_COMPONENT
+    LANGUAGE_REFERENCE_COMPONENT,
+    LANGUAGE_REFERENCE_MANAGED
 } language_reference_kind;
 typedef enum
 {
@@ -51,6 +52,17 @@ typedef enum
     EXECUTION_INTRINSIC_STRING_NEXT = 42,
     EXECUTION_INTRINSIC_STRING_CURSOR = 43,
     EXECUTION_INTRINSIC_UNION_KEEP = 45,
+    EXECUTION_INTRINSIC_POINTER_MAKE = 46,
+    EXECUTION_INTRINSIC_POINTER_READ = 47,
+    EXECUTION_INTRINSIC_POINTER_WRITE = 48,
+    EXECUTION_INTRINSIC_POINTER_FIELD = 49,
+    EXECUTION_INTRINSIC_POINTER_REFERENCE = 50,
+    EXECUTION_INTRINSIC_SEQUENCE_SLICE = 51,
+    EXECUTION_INTRINSIC_SEQUENCE_VIEW = 52,
+    EXECUTION_INTRINSIC_SEQUENCE_CLONE = 53,
+    EXECUTION_INTRINSIC_ARRAY_MUTATE = 54,
+    EXECUTION_INTRINSIC_SEQUENCE_GET = 55,
+    EXECUTION_INTRINSIC_SEQUENCE_LENGTH = 56,
 } execution_intrinsic;
 /* A host capability id with this bit runs its intrinsic in the caller's
  * storage, where a function builds the locals it returns: construct, array
@@ -74,10 +86,29 @@ extern const node_host_call EXECUTION_string_bytes_call, EXECUTION_string_item_c
     EXECUTION_string_next_call, EXECUTION_string_cursor_call;
 extern const node_host_call EXECUTION_construct_call;
 extern const node_host_call EXECUTION_value_equal_call;
-/* In-place append, element write and extension of a local's own array:
- * (header address, item), (header address, index, item) and (header address,
- * items). Every store into a local snapshots, so no other value shares the
- * array these update. */
+/* Older header-address forms of append, element write and extension. */
+/* Strict half-open ranges return a boxed optional: (receiver, start, end,
+ * success tag). Clone takes one receiver and returns a detached outer copy. */
+extern const node_host_call EXECUTION_sequence_slice_call,
+    EXECUTION_sequence_view_call, EXECUTION_sequence_clone_call,
+    EXECUTION_sequence_get_call, EXECUTION_sequence_length_call;
+typedef enum
+{
+    EXECUTION_ARRAY_APPEND = 1,
+    EXECUTION_ARRAY_ADD_UNIQUE,
+    EXECUTION_ARRAY_EXTEND,
+    EXECUTION_ARRAY_SET,
+    EXECUTION_ARRAY_INSERT,
+    EXECUTION_ARRAY_REMOVE_INDEX,
+    EXECUTION_ARRAY_REMOVE_ITEM,
+    EXECUTION_ARRAY_CLEAR,
+    EXECUTION_ARRAY_REVERSE,
+    EXECUTION_ARRAY_SWAP,
+    EXECUTION_ARRAY_RESIZE
+} execution_array_mutation;
+/* (typed receiver, mutation ordinal, remaining method arguments) -> bool.
+ * Mutation changes the shared object; views permit element writes only. */
+extern const node_host_call EXECUTION_array_mutate_call;
 extern const node_host_call EXECUTION_array_push_call,
     EXECUTION_array_store_call, EXECUTION_array_extend_call;
 extern const node_host_call EXECUTION_union_make_call,
@@ -87,6 +118,9 @@ extern const node_host_call EXECUTION_union_make_call,
  * names, the locals built there, and copies the others, so nothing else it
  * holds is the caller's or the function's own. */
 extern const node_host_call EXECUTION_union_keep_call;
+extern const node_host_call EXECUTION_pointer_make_call,
+    EXECUTION_pointer_read_call, EXECUTION_pointer_write_call,
+    EXECUTION_pointer_field_call, EXECUTION_pointer_reference_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_key_call;
@@ -125,6 +159,8 @@ typedef struct
 } execution_box;
 /* The frame and slot of a reference to a local, or false for state and
  * components. `box` is the box it already uses, if any. */
+/* Only pass a value whose verified kind is BEHAVIOR_REFERENCE. */
+bool execution_reference_managed_pointer(pin_value, pin_value *);
 bool execution_reference_local(
     pin_value,
     behavior_function_context **owner,

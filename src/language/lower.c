@@ -3,6 +3,7 @@
 #include "ecs/execution.h"
 #include "execution/delay.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/map_intrinsics.h"
 #include "execution/scalar.h"
 #include "execution/state.h"
@@ -14,6 +15,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 
@@ -304,6 +306,10 @@ static const script_symbol *action_symbol(lower *l, const script_expression *exp
 static int retain_bank(lower *, int, script_type, script_range);
 static int reference(lower *, int);
 static int reference_expression(lower *, const script_expression *, bool written);
+static int reference_read(lower *, int descriptor, script_type, script_range);
+static int local_address(lower *, int);
+static int managed_address(lower *, const script_expression *);
+
 static void statement(lower *, int);
 static void assign(lower *, const script_statement *);
 static void assign_value(lower *, const script_statement *, int);
@@ -636,6 +642,7 @@ static int binary(lower *l, script_operator op, int left, int right, script_type
         *nominal = script_catalog_type_by_id(l->catalog, operand.nominal);
     if ((op == SCRIPT_OP_EQ || op == SCRIPT_OP_NE) &&
         (operand.container == PIN_CONTAINER_MAP ||
+         (operand.storage == PIN_POINTER && operand.container == PIN_CONTAINER_SINGLE) ||
          (operand.container == PIN_CONTAINER_SINGLE && nominal &&
           nominal->authored_record))) {
         pin_value headers[] = { initial(l, operand), initial(l, operand) };
@@ -778,8 +785,9 @@ static int host_result(lower *l, int bank, script_type type, script_range range)
 static bool contains_handles(script_type type)
 {
     return !(type.flags & SCRIPT_TYPE_REFERENCE) &&
-           (type.storage == PIN_TASK || type.storage == PIN_UNION ||
-            type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE ||
+           (type.storage == PIN_POINTER || type.storage == PIN_TASK ||
+            type.storage == PIN_UNION || type.storage == PIN_STRUCT ||
+            type.container != PIN_CONTAINER_SINGLE ||
             (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL));
 }
 static void clear_value(lower *l, int bank, script_type type, script_range range)
@@ -838,6 +846,7 @@ static int linked_host(
                         kind = BEHAVIOR_REFERENCE;
                         break;
                     case EXECUTION_INTRINSIC_REFERENCE_MAKE:
+                    case EXECUTION_INTRINSIC_POINTER_MAKE:
                     case EXECUTION_INTRINSIC_ACTION_READ:
                     case EXECUTION_INTRINSIC_ACTION_COMPLETE:
                     case EXECUTION_INTRINSIC_COMPONENT_HAS:
@@ -877,6 +886,7 @@ static int linked_host(
             (void)set;
         }
         if (intrinsic == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+            intrinsic == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
             intrinsic == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
             intrinsic == EXECUTION_INTRINSIC_REFERENCE_KEY) {
             bool set = behavior_function_builder_kind(
@@ -1178,6 +1188,119 @@ static int bank_reference(lower *l, int bank, script_type type, script_range ran
         (script_type){ .storage = BF_POINTER_TYPE },
         range
     );
+}
+static script_type managed_type(lower *l, script_type pointee)
+{
+    for (int i = 0; i < l->catalog->type_count; i++) {
+        const script_catalog_type *type = &l->catalog->types[i];
+        if (type->type.storage == PIN_POINTER &&
+            type->type.container == PIN_CONTAINER_SINGLE &&
+            script_type_equal(type->element_type, pointee)) {
+            return type->type;
+        }
+    }
+    assert(!"Managed pointee type was not published");
+    return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+}
+static int managed_read(lower *l, int pointer, script_type pointee, script_range range)
+{
+    pin_value headers[] = { initial(l, managed_type(l, pointee)), initial(l, pointee) };
+    int slots[] = { pointer, -1 };
+    return primitive(
+        l,
+        &EXECUTION_pointer_read_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        pointee,
+        range
+    );
+}
+static void managed_write(lower *l, int pointer, int value, script_type pointee, script_range range)
+{
+    pin_value headers[] = { initial(l, managed_type(l, pointee)), initial(l, pointee) };
+    int slots[] = { pointer, value };
+    primitive(
+        l,
+        &EXECUTION_pointer_write_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        (script_type){ .storage = PIN_BOOL },
+        range
+    );
+}
+static int managed_local(lower *l, int symbol, script_range range)
+{
+    if (l->captured && l->captured[symbol] >= 0) {
+        int descriptor = value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = l->parameters[symbol],
+                                             .value = { .type = BF_POINTER_TYPE } },
+            range
+        );
+        return reference_read(
+            l,
+            descriptor,
+            managed_type(l, l->a->symbols[symbol].type),
+            range
+        );
+    }
+    return host_result(
+        l,
+        local_address(l, symbol),
+        managed_type(l, l->a->symbols[symbol].type),
+        range
+    );
+}
+static int managed_reference(lower *l, int pointer, script_type pointee, script_range range)
+{
+    pin_value header = initial(l, managed_type(l, pointee));
+    return primitive(
+        l,
+        &EXECUTION_pointer_reference_call,
+        &EXECUTION_value_access,
+        &header,
+        &pointer,
+        1,
+        (script_type){ .storage = BF_POINTER_TYPE },
+        range
+    );
+}
+static int managed_address(lower *l, const script_expression *e)
+{
+    if (e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        return expression(l, e->left);
+    }
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+        l->a->symbols[e->symbol].addressed) {
+        return managed_local(l, e->symbol, e->range);
+    }
+    if (e->kind == SCRIPT_EXPR_MEMBER) {
+        const script_expression *parent = &l->a->expressions[e->left];
+        pin_value headers[] = { initial(l, managed_type(l, parent->type)),
+                                initial(l, e->type),
+                                { .type = PIN_U64, .u64 = e->offset },
+                                { .type = PIN_BOOL },
+                                initial(l, parent->type) };
+        int slots[] = { managed_address(l, parent), -1, -1, -1, -1 };
+        return primitive(
+            l,
+            &EXECUTION_pointer_field_call,
+            &EXECUTION_value_access,
+            headers,
+            slots,
+            5,
+            managed_type(l, e->type),
+            e->range
+        );
+    }
+    error(l, e->range, "Managed pointer requires a writable local or record field");
+    return -1;
 }
 static int reference_read(lower *l, int descriptor, script_type type, script_range range)
 {
@@ -1535,8 +1658,8 @@ static bool literal_array(lower *l, const script_expression *e)
     }
     return true;
 }
-/* An array of literals is one data constant instead of one instruction and host
- * argument per element. Stores copy it, like catalog default arrays. */
+/* Keep literal bytes in one constant, then create a fresh array object on
+ * each evaluation. Ordinary retention shares that runtime object. */
 static int array_constant(lower *l, const script_expression *e)
 {
     pin_value value = initial(l, e->type);
@@ -1548,12 +1671,22 @@ static int array_constant(lower *l, const script_expression *e)
         (void)result;
     }
     value.ptr = items;
-    return value_op(
+    int literal = value_op(
         l,
         (behavior_function_instruction){ .op = BF_ARRAY,
                                          .type = BF_POINTER_TYPE,
                                          .target = BF_CONSTANT,
                                          .value = value },
+        e->range
+    );
+    return primitive(
+        l,
+        &EXECUTION_sequence_clone_call,
+        &EXECUTION_value_access,
+        &value,
+        &literal,
+        1,
+        e->type,
         e->range
     );
 }
@@ -2670,6 +2803,8 @@ static int flow_value(lower *l, const script_expression *e, int index)
 }
 static int array_count(lower *, int, script_range);
 static int array_item(lower *, int, int, script_type, script_range);
+static int sequence_count(lower *, int, script_type, script_range);
+static int sequence_item(lower *, int, int, script_type, script_type, script_range);
 static int flow_control(lower *l, const script_expression *e, bool request, uint64_t action)
 {
     if (!action && !request) {
@@ -2817,6 +2952,17 @@ static int flow_loop(lower *l, const script_expression *e, const script_catalog_
             return -1;
         }
         int array = retain_value(l, flow_value(l, e, input), collection, e->range);
+        pin_value header = initial(l, collection);
+        array = primitive(
+            l,
+            &EXECUTION_sequence_clone_call,
+            &EXECUTION_value_access,
+            &header,
+            &array,
+            1,
+            collection,
+            e->range
+        );
         array_local = save_slot(l, array, BF_POINTER_TYPE, e->range);
         end_local = save_slot(l, array_count(l, array, e->range), PIN_I32, e->range);
         current_local = save_slot(
@@ -2862,7 +3008,14 @@ static int flow_loop(lower *l, const script_expression *e, const script_catalog_
         script_type element = ordinal < e->result_count ? e->results[ordinal]
                                                         : cap->results[ordinal].type;
         int array = local_slot(l, array_local, BF_POINTER_TYPE, e->range);
-        flow_result(l, e, cap, first, ordinal, array_item(l, array, current, element, e->range));
+        flow_result(
+            l,
+            e,
+            cap,
+            first,
+            ordinal,
+            sequence_item(l, array, current, l->a->expressions[input].type, element, e->range)
+        );
     }
     flow_outcome(l, e, cap, cap->flow.outcomes[0], first);
     int stopped = -1;
@@ -3588,6 +3741,10 @@ static int component_value(lower *l, const script_expression *e, bool presence)
 /* Whether an optional value holds one: a nil optional is all zero. */
 static int present(lower *l, int value, script_type type, script_range range)
 {
+    if (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) {
+        int zero = constant(l, initial(l, type), range);
+        return binary(l, SCRIPT_OP_NE, value, zero, (script_type){ .storage = PIN_BOOL }, type, range);
+    }
     pin_type slot = slot_type(type);
     int zero = kind_op(
         l,
@@ -3684,6 +3841,10 @@ static int system_step(lower *l, const script_symbol *s, script_range range)
 static int symbol_value(lower *l, const script_expression *e)
 {
     const script_symbol *s = &l->a->symbols[e->symbol];
+    if (s->addressed && (l->parameters[e->symbol] < 0 ||
+                         (l->captured && l->captured[e->symbol] >= 0))) {
+        return managed_read(l, managed_local(l, e->symbol, e->range), s->type, e->range);
+    }
     if (s->kind == SCRIPT_CONSTANT) {
         pin_value value = l->constant_values[e->symbol];
         if (value.type != PIN_FLOW) {
@@ -4051,8 +4212,92 @@ static int array_item(lower *l, int array, int index, script_type type, script_r
         type
     );
 }
+static int sequence_count(lower *l, int array, script_type sequence, script_range range)
+{
+    if (sequence.container != PIN_CONTAINER_VIEW) {
+        return array_count(l, array, range);
+    }
+    pin_value header = initial(l, sequence);
+    return primitive(
+        l,
+        &EXECUTION_sequence_length_call,
+        &EXECUTION_value_access,
+        &header,
+        &array,
+        1,
+        (script_type){ .storage = PIN_I32 },
+        range
+    );
+}
+static int sequence_item(lower *l, int array, int index, script_type sequence, script_type item, script_range range)
+{
+    pin_value headers[] = { initial(l, sequence), { .type = PIN_I32 } };
+    int slots[] = { array, index };
+    if (sequence.container == PIN_CONTAINER_VIEW) {
+        return primitive(l, &EXECUTION_sequence_get_call, &EXECUTION_value_access, headers, slots, 2, item, range);
+    }
+    emit(l, (behavior_function_instruction){ .op = BF_ASSERT, .left = array, .target = BEHAVIOR_FUNCTION_ARGUMENT }, range);
+    int stride = value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = array,
+                                         .offset = offsetof(pin_array, stride) },
+        range
+    );
+    int packed = emit(
+        l,
+        (behavior_function_instruction){ .op = BF_BRANCH, .left = stride, .target = -1 },
+        range
+    );
+    int copied = primitive(
+        l,
+        &EXECUTION_sequence_get_call,
+        &EXECUTION_value_access,
+        headers,
+        slots,
+        2,
+        item,
+        range
+    );
+    int result = save_slot(l, copied, slot_type(item), range);
+    set_kind(l, BEHAVIOR_BANK_LOCAL, result, payload_kind(item));
+    value_root(l, BEHAVIOR_BANK_LOCAL, result, item);
+    int done = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, range);
+    behavior_function_builder_patch_target(l->builder, packed, l->pc);
+    int direct = array_item(l, array, index, item, range);
+    emit(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_SAVE, .type = slot_type(item), .left = direct, .target = result },
+        range
+    );
+    behavior_function_builder_patch_target(l->builder, done, l->pc);
+    return typed_op(
+        l,
+        (behavior_function_instruction){ .op = BF_LOCAL,
+                                         .type = slot_type(item),
+                                         .left = result },
+        range,
+        item
+    );
+}
 static int reference_expression(lower *l, const script_expression *e, bool written)
 {
+    if (e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        return managed_reference(l, expression(l, e->left), e->type, e->range);
+    }
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+        l->a->symbols[e->symbol].addressed &&
+        (l->parameters[e->symbol] < 0 || (l->captured && l->captured[e->symbol] >= 0))) {
+        return managed_reference(
+            l,
+            managed_local(l, e->symbol, e->range),
+            l->a->symbols[e->symbol].type,
+            e->range
+        );
+    }
     if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
         (l->a->symbols[e->symbol].type.flags & SCRIPT_TYPE_REFERENCE) &&
         l->locals[e->symbol] >= 0) {
@@ -4452,6 +4697,70 @@ static int expression_value(lower *l, int index)
         debug_point(l, SCRIPT_RECORD_SYMBOL, e->symbol, e->range);
     }
     switch (e->kind) {
+        case SCRIPT_EXPR_SEQUENCE: {
+            pin_value headers[] = { initial(l, l->a->expressions[e->left].type),
+                                    { .type = PIN_I32 },
+                                    { .type = PIN_I32 },
+                                    { .type = PIN_U64, .u64 = e->tag } };
+            int slots[] = { expression(l, e->left), -1, -1, -1 };
+            bool clone = e->member == SCRIPT_SEQUENCE_CLONE;
+            bool length = e->member == SCRIPT_SEQUENCE_LENGTH;
+            if (!clone && !length) {
+                slots[1] = int_slot(l, e->right, e->range);
+                slots[2] = int_slot(l, e->arguments[0].value, e->range);
+            }
+            return primitive(
+                l,
+                length  ? &EXECUTION_sequence_length_call
+                : clone ? &EXECUTION_sequence_clone_call
+                : e->member == SCRIPT_SEQUENCE_VIEW ? &EXECUTION_sequence_view_call
+                                                    : &EXECUTION_sequence_slice_call,
+                &EXECUTION_value_access,
+                headers,
+                slots,
+                clone || length ? 1 : 4,
+                e->type,
+                e->range
+            );
+        }
+        case SCRIPT_EXPR_ARRAY_MUTATE: {
+            pin_value *headers = NULL;
+            int *slots = NULL;
+            apush(headers, initial(l, l->a->expressions[e->left].type));
+            apush(headers, ((pin_value){ .type = PIN_I32, .i = (int)e->member }));
+            apush(slots, expression(l, e->left));
+            apush(slots, -1);
+            for (int i = 1; i < e->argument_count; i++) {
+                apush(headers, ((pin_value){ 0 }));
+                apush(slots, -1);
+            }
+            for (int i = 0; i < e->argument_count; i++) {
+                const script_argument *argument = &e->arguments[i];
+                if (argument->parameter <= 0) {
+                    continue;
+                }
+                int at = argument->parameter + 1;
+                if (at >= acount(slots)) {
+                    error(l, e->range, "Array mutation argument is outside its signature");
+                    continue;
+                }
+                headers[at] = initial(l, l->a->expressions[argument->value].type);
+                slots[at] = expression(l, argument->value);
+            }
+            int value = primitive(
+                l,
+                &EXECUTION_array_mutate_call,
+                &EXECUTION_assignment_access,
+                headers,
+                slots,
+                acount(headers),
+                e->type,
+                e->range
+            );
+            afree(headers);
+            afree(slots);
+            return value;
+        }
         case SCRIPT_EXPR_UNION: return union_construct(l, e);
         case SCRIPT_EXPR_IS:
         case SCRIPT_EXPR_AS: return union_pattern(l, e);
@@ -4510,10 +4819,14 @@ static int expression_value(lower *l, int index)
                     e->range
                 );
             }
-            return array_item(l, array, int_slot(l, e->right, e->range), e->type, e->range);
+            return sequence_item(l, array, int_slot(l, e->right, e->range), collection, e->type, e->range);
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:
+            if (e->type.storage == PIN_POINTER &&
+                e->type.container == PIN_CONTAINER_SINGLE) {
+                return constant(l, initial(l, e->type), e->range);
+            }
             if (e->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) {
                 return constant(l, (pin_value){ .type = PIN_UNION }, e->range);
             }
@@ -4539,6 +4852,10 @@ static int expression_value(lower *l, int index)
             }
             return constant(l, e->constant, e->range);
         case SCRIPT_EXPR_SYMBOL: return symbol_value(l, e);
+        case SCRIPT_EXPR_ADDRESS:
+            return managed_address(l, &l->a->expressions[e->left]);
+        case SCRIPT_EXPR_DEREFERENCE:
+            return managed_read(l, expression(l, e->left), e->type, e->range);
         case SCRIPT_EXPR_CALL: return call(l, e);
         case SCRIPT_EXPR_YIELD: return task_command(l, &EXECUTION_Yield, -1, e);
         case SCRIPT_EXPR_JOIN:
@@ -4975,7 +5292,11 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
 static int local_address(lower *l, int symbol)
 {
     if (l->addresses[symbol] < 0) {
-        pin_value header = initial(l, l->a->symbols[symbol].type);
+        script_type type = l->a->symbols[symbol].type;
+        if (l->a->symbols[symbol].addressed) {
+            type = managed_type(l, type);
+        }
+        pin_value header = initial(l, type);
         int host = linked_host(
             l->builder,
             &EXECUTION_snapshot_call,
@@ -5022,8 +5343,37 @@ static void release_tuple(lower *l, int symbol, script_range range)
 static void declare_symbol(lower *l, int symbol, int value, script_range range)
 {
     const script_symbol *s = &l->a->symbols[symbol];
-    if (s->boxed && s->writable && l->variables[symbol] < 0 &&
-        l->parameters[symbol] < 0) {
+    if (s->addressed && l->parameters[symbol] < 0) {
+        script_type pointer = managed_type(l, s->type);
+        release(l, bank_reference(l, local_address(l, symbol), pointer, range), range);
+        pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                                initial(l, s->type),
+                                initial(l, s->type) };
+        int slots[] = { value_op(
+                            l,
+                            (behavior_function_instruction){ .op = BF_CONTEXT,
+                                                             .type = BF_POINTER_TYPE,
+                                                             .target = 1 },
+                            range
+                        ),
+                        -1,
+                        value };
+        int cell = primitive(
+            l,
+            &EXECUTION_pointer_make_call,
+            &EXECUTION_value_access,
+            headers,
+            slots,
+            3,
+            pointer,
+            range
+        );
+        host_argument(l, local_address(l, symbol), cell, pointer, range);
+        debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, range);
+        return;
+    }
+    if ((s->boxed || s->type.storage == PIN_POINTER) && s->writable &&
+        l->variables[symbol] < 0 && l->parameters[symbol] < 0) {
         local_address(l, symbol);
         int descriptor = reference_expression(
             l,
@@ -5044,10 +5394,30 @@ static void declare_symbol(lower *l, int symbol, int value, script_range range)
  * their task-owned boxes. Saved immutable locals use suspension liveness. */
 static void leave_scope(lower *l, int scope, script_range range)
 {
+    bool continuation = false;
+    for (int i = 0; i < l->a->function_count; i++) {
+        const script_function *child = &l->a->functions[i];
+        if (child->parent == l->function && child->kind == SCRIPT_FUNCTION_CONTINUATION) {
+            continuation = true;
+            break;
+        }
+    }
     for (int symbol = 0; symbol < l->a->symbol_count; symbol++) {
         const script_symbol *s = &l->a->symbols[symbol];
         if (s->scope != scope || s->kind != SCRIPT_LOCAL ||
             (l->captured && l->captured[symbol] >= 0)) {
+            continue;
+        }
+        /* Continuations capture every parent local bank when the action
+         * completes, after this lexical scope may have exited. Their retained
+         * parent frame keeps those banks rooted until completion. */
+        if (continuation && l->addresses[symbol] >= 0) {
+            continue;
+        }
+        if (s->addressed && l->addresses[symbol] >= 0) {
+            script_type pointer = managed_type(l, s->type);
+            release(l, bank_reference(l, l->addresses[symbol], pointer, range), range);
+            clear_value(l, l->addresses[symbol], pointer, range);
             continue;
         }
         if (s->type.flags & SCRIPT_TYPE_RESULTS) {
@@ -5061,7 +5431,7 @@ static void leave_scope(lower *l, int scope, script_range range)
             }
         } else if (l->addresses[symbol] >= 0 && contains_handles(s->type)) {
             int bank = l->addresses[symbol];
-            if (s->boxed) {
+            if (s->boxed || s->type.storage == PIN_POINTER) {
                 release(l, bank_reference(l, bank, s->type, range), range);
             }
             clear_value(l, bank, s->type, range);
@@ -5083,6 +5453,11 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
     }
     const script_symbol *s = &l->a->symbols[symbol];
     debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, range);
+    if (s->addressed &&
+        (l->parameters[symbol] < 0 || (l->captured && l->captured[symbol] >= 0))) {
+        managed_write(l, managed_local(l, symbol, range), value, s->type, range);
+        return;
+    }
     if ((s->type.flags & SCRIPT_TYPE_REFERENCE) && l->locals[symbol] >= 0) {
         int descriptor = value_op(
             l,
@@ -5208,7 +5583,8 @@ static void assign_value(lower *l, const script_statement *s, int value)
         store_symbol(l, target->symbol, value, s->range);
         return;
     }
-    if (target->kind == SCRIPT_EXPR_COMPONENT || target->kind == SCRIPT_EXPR_INDEX ||
+    if (target->kind == SCRIPT_EXPR_DEREFERENCE ||
+        target->kind == SCRIPT_EXPR_COMPONENT || target->kind == SCRIPT_EXPR_INDEX ||
         (target->kind == SCRIPT_EXPR_MEMBER &&
          (!target->write || native_reference_member(l, target)))) {
         int parent = s->expression;
@@ -5242,7 +5618,8 @@ static bool direct_target(lower *l, const script_expression *e)
         return false;
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
-    if ((s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
+    if (s->addressed ||
+        (s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
         (l->captured && l->captured[e->symbol] >= 0)) {
         return false;
     }
@@ -5250,9 +5627,8 @@ static bool direct_target(lower *l, const script_expression *e)
            (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
-/* A writable local or result array or map kept in its own bank. Every store
- * into it snapshots, so the local exclusively owns its items and may grow in
- * place. */
+/* A writable local or result map kept in its own bank. Maps retain their
+ * existing value-copy contract. Arrays mutate their shared object instead. */
 static bool owned_local(lower *l, int expression, pin_container container)
 {
     const script_expression *e = &l->a->expressions[expression];
@@ -5261,7 +5637,7 @@ static bool owned_local(lower *l, int expression, pin_container container)
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
     return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
-           s->type.container == container && !s->boxed &&
+           s->type.container == container && !s->boxed && !s->addressed &&
            !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
                               SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
            l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
@@ -5290,74 +5666,102 @@ static bool self_call(lower *l, const script_expression *e, int symbol, const ch
            l->a->expressions[array].symbol == symbol &&
            !(l->a->expressions[value].effects & SCRIPT_EFFECT_WRITE);
 }
-/* `xs = append(xs, x)`, `xs = extend(xs, ys)` and `xs[i] = x` on an owned
- * local update its array in place, so building an array is linear rather
- * than quadratic. */
+/* Indexed writes change the shared object, including through a parameter or
+ * a projection. The receiver and index are evaluated exactly once. */
 static bool in_place_array(lower *l, const script_statement *s)
 {
-    if (s->op != SCRIPT_OP_NONE) {
+    const script_expression *target = &l->a->expressions[s->expression];
+    if (target->kind != SCRIPT_EXPR_INDEX) {
         return false;
     }
-    const script_expression *target = &l->a->expressions[s->expression],
-                            *rhs = &l->a->expressions[s->second];
-    bool owned = owned_local(l, s->expression, PIN_CONTAINER_ARRAY);
-    bool push = owned && self_call(l, rhs, target->symbol, "Append");
-    bool extend = owned && self_call(l, rhs, target->symbol, "Extend");
-    bool store = target->kind == SCRIPT_EXPR_INDEX &&
-                 owned_local(l, target->left, PIN_CONTAINER_ARRAY);
-    if (!push && !extend && !store) {
+    script_type sequence = l->a->expressions[target->left].type;
+    if (sequence.container != PIN_CONTAINER_ARRAY &&
+        sequence.container != PIN_CONTAINER_VIEW) {
         return false;
     }
-    int symbol = l->a->expressions[store ? target->left : s->expression].symbol;
-    script_type item = l->a->symbols[symbol].type;
-    if (!extend) {
-        item.container = PIN_CONTAINER_SINGLE;
-    }
-    pin_value headers[3] = { { .type = BF_POINTER_TYPE }, { .type = PIN_I32 } };
-    int slots[3], array = store ? -1 : argument_for(rhs, 0),
-                  value = store ? s->second : argument_for(rhs, 1),
-                  at = store ? 2 : 1;
-    /* The statement keeps the call's debugger points and watches, and the
-     * target's assignment point follows the value as store_symbol's does. */
-    debug_point(l, SCRIPT_RECORD_EXPRESSION, s->expression, target->range);
-    if (store) {
-        slots[1] = int_slot(l, target->right, s->range);
-    } else {
-        debug_point(l, SCRIPT_RECORD_EXPRESSION, s->second, rhs->range);
-        debug_input(l, rhs, 0, expression(l, array), l->a->symbols[symbol].type);
-    }
-    slots[at] = convert(l, expression(l, value), l->a->expressions[value].type, item, s->range);
-    headers[at] = initial(l, item);
-    if (!store) {
-        debug_input(l, rhs, 1, slots[at], item);
-    }
-    debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, s->range);
-    /* The address follows every branch the index and value take, so effect
-     * analysis traces it straight to the local. */
-    slots[0] = value_op(
+    int receiver = expression(l, target->left);
+    int index = int_slot(l, target->right, s->range);
+    int zero = constant(l, (pin_value){ .type = PIN_I32 }, s->range);
+    int valid = binary(
         l,
-        (behavior_function_instruction){ .op = BF_HOST_SLOT,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = local_address(l, symbol) },
+        SCRIPT_OP_GE,
+        index,
+        zero,
+        (script_type){ .storage = PIN_BOOL },
+        (script_type){ .storage = PIN_I32 },
         s->range
     );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = valid,
+                                         .target = BEHAVIOR_FUNCTION_ARGUMENT },
+        s->range
+    );
+    int count = sequence_count(l, receiver, sequence, s->range);
+    valid = binary(
+        l,
+        SCRIPT_OP_LT,
+        index,
+        count,
+        (script_type){ .storage = PIN_BOOL },
+        (script_type){ .storage = PIN_I32 },
+        s->range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = valid,
+                                         .target = BEHAVIOR_FUNCTION_ARGUMENT },
+        s->range
+    );
+    int before = s->op == SCRIPT_OP_NONE
+                   ? -1
+                   : sequence_item(l, receiver, index, sequence, target->type, s->range);
+    int value = convert(
+        l,
+        expression(l, s->second),
+        l->a->expressions[s->second].type,
+        target->type,
+        s->range
+    );
+    if (s->op != SCRIPT_OP_NONE) {
+        value = binary(l, s->op, before, value, target->type, target->type, s->range);
+    }
+    /* The RHS can shrink the same object through an alias. The permissive
+     * set_array_elem method cannot supply the indexed assignment guard. */
+    count = sequence_count(l, receiver, sequence, s->range);
+    valid = binary(
+        l,
+        SCRIPT_OP_LT,
+        index,
+        count,
+        (script_type){ .storage = PIN_BOOL },
+        (script_type){ .storage = PIN_I32 },
+        s->range
+    );
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = valid,
+                                         .target = BEHAVIOR_FUNCTION_ARGUMENT },
+        s->range
+    );
+    pin_value headers[] = { initial(l, sequence),
+                            { .type = PIN_I32, .i = 4 },
+                            { .type = PIN_I32 },
+                            initial(l, target->type) };
+    int slots[] = { receiver, -1, index, value };
     primitive(
         l,
-        push     ? &EXECUTION_array_push_call
-        : extend ? &EXECUTION_array_extend_call
-                 : &EXECUTION_array_store_call,
+        &EXECUTION_array_mutate_call,
         &EXECUTION_assignment_access,
         headers,
         slots,
-        at + 1,
+        4,
         (script_type){ .storage = PIN_BOOL },
         s->range
     );
-    if (!store) {
-        int result = expression_value(l, array);
-        value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
-        debug_watch(l, s->second, result, rhs->type, true, 0);
-    }
     return true;
 }
 /* `m[k] = v` and `delete m[k]` on an owned local map update it in place, so
@@ -6003,6 +6407,31 @@ static void statement(lower *l, int index)
             int array = streaming
                           ? expression(l, source->left)
                           : retain_value(l, expression(l, s->expression), collection, s->range);
+            int original = array;
+            bool sequence = collection.container == PIN_CONTAINER_ARRAY ||
+                            collection.container == PIN_CONTAINER_VIEW;
+            int fixed_count = -1;
+            if (sequence && borrowed) {
+                fixed_count = save_slot(
+                    l,
+                    sequence_count(l, original, collection, s->range),
+                    PIN_I32,
+                    s->range
+                );
+            } else if (sequence) {
+                pin_value header = initial(l, collection);
+                collection.container = PIN_CONTAINER_ARRAY;
+                array = primitive(
+                    l,
+                    &EXECUTION_sequence_clone_call,
+                    &EXECUTION_value_access,
+                    &header,
+                    &original,
+                    1,
+                    collection,
+                    s->range
+                );
+            }
             if (text) {
                 array = string_cursor(
                     l,
@@ -6031,7 +6460,10 @@ static void statement(lower *l, int index)
             int text_bytes = -1;
             int saved_reference = -1;
             if (borrowed) {
-                int descriptor = reference(l, s->expression);
+                /* Bind a logical reference to the original object, independent
+                 * of later variable rebinding or buffer relocation. */
+                int bank = retain_bank(l, original, source->type, s->range);
+                int descriptor = bank_reference(l, bank, source->type, s->range);
                 saved_reference = behavior_function_builder_local(
                     l->builder,
                     (pin_value){ .type = BF_POINTER_TYPE }
@@ -6076,7 +6508,9 @@ static void statement(lower *l, int index)
                     (behavior_function_instruction){
                         .op = BF_SUB,
                         .type = PIN_I32,
-                        .left = array_count(l, array, s->range),
+                        .left = fixed_count >= 0
+                                  ? local_slot(l, fixed_count, PIN_I32, s->range)
+                                  : sequence_count(l, array, collection, s->range),
                         .right = one },
                     s->range
                 );
@@ -6155,7 +6589,9 @@ static void statement(lower *l, int index)
                                            .offset = offsetof(pin_map, count) },
                                        s->range
                                    )
-                                 : array_count(l, array, s->range);
+                          : fixed_count >= 0
+                              ? local_slot(l, fixed_count, PIN_I32, s->range)
+                              : sequence_count(l, array, collection, s->range);
                 condition = value_op(
                     l,
                     (behavior_function_instruction){ .op = s->reverse ? BF_GE : BF_LT,
@@ -6224,7 +6660,7 @@ static void statement(lower *l, int index)
                     : text
                         ? string_cursor(l, &EXECUTION_string_item_call, array, index, element, s->range)
                     : map ? map_item(l, array, index, false, collection, element, s->range)
-                          : array_item(l, array, index, element, s->range),
+                          : sequence_item(l, array, index, collection, element, s->range),
                     s->range
                 );
             }
@@ -6820,7 +7256,7 @@ static void isolate_parameters(lower *l, script_range range)
         const script_symbol *symbol = &l->a->symbols[i];
         if (symbol->kind != SCRIPT_PARAMETER || l->parameters[i] < 0 ||
             l->captured[i] >= 0 || (symbol->type.flags & SCRIPT_TYPE_REFERENCE) ||
-            !parameter_needs_storage(l, i)) {
+            (!symbol->addressed && !parameter_needs_storage(l, i))) {
             continue;
         }
         script_expression input = { .kind = SCRIPT_EXPR_SYMBOL,
@@ -6828,8 +7264,12 @@ static void isolate_parameters(lower *l, script_range range)
                                     .type = symbol->type,
                                     .range = range };
         int value = symbol_value(l, &input);
-        host_argument(l, local_address(l, i), value, symbol->type, range);
         l->parameters[i] = -1;
+        if (symbol->addressed) {
+            declare_symbol(l, i, value, range);
+        } else {
+            host_argument(l, local_address(l, i), value, symbol->type, range);
+        }
     }
 }
 static void lower_function(lower *l, int index)
@@ -6893,7 +7333,10 @@ static void lower_function(lower *l, int index)
             for (int j = 0; j < count; j++) {
                 pin_value type = initial(
                     l,
-                    tuple ? tuple->results[j] : l->a->symbols[i].type
+                    tuple ? tuple->results[j]
+                    : l->a->symbols[i].addressed
+                        ? managed_type(l, l->a->symbols[i].type)
+                        : l->a->symbols[i].type
                 );
                 pin_value owned;
                 if (pin_value_snapshot_to_arena(&l->module->storage, &owned, &type)) {
@@ -7001,7 +7444,8 @@ static void lower_function(lower *l, int index)
         const script_symbol *result_symbol = &l->a->symbols[symbol];
         script_type type = result_symbol->type;
         if (result_symbol->initializer >= 0 &&
-            (type.storage == PIN_UNION || (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL))) {
+            (type.storage == PIN_UNION || type.storage == PIN_POINTER ||
+             (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL))) {
             int value = expression(l, result_symbol->initializer);
             value = convert(
                 l,
@@ -7155,7 +7599,11 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
             error(l, s->declaration, message);
         } else {
             arena storage = { 0 };
-            behavior_function_context context = { .results = &result, .budget = 100000 };
+            behavior_managed_heap managed;
+            behavior_managed_heap_init(&managed);
+            behavior_function_context context = { .results = &result,
+                                                  .budget = 100000,
+                                                  .managed_heap = &managed };
             behavior_function_bind_storage(&context, &storage);
             if (!behavior_function_bind(f, &context, NULL, 0) ||
                 behavior_function_run(f, &context, false)) {
@@ -7163,7 +7611,7 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
                 result = initial(l, s->type);
             } else {
                 pin_value retained;
-                if (pin_value_snapshot_to_arena(&l->module->storage, &retained, &result)) {
+                if (pin_value_capture_to_arena(&l->module->storage, &retained, &result)) {
                     error(l, s->declaration, "Cannot retain evaluated state default");
                     result = initial(l, s->type);
                 } else {
@@ -7172,6 +7620,7 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
             }
             behavior_function_release_host(&context);
             arena_free(&storage);
+            behavior_managed_heap_free(&managed);
             behavior_function_free(f);
         }
     }
@@ -7381,7 +7830,7 @@ static execution_module_plan *lower_analysis(
     m->id = script_catalog_id("module", a->identity);
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *type = &catalog->types[i];
-        if (type->internal ||
+        if ((type->internal && type->type.storage != PIN_POINTER) ||
             (type->type.flags & (SCRIPT_TYPE_NAMESPACE | SCRIPT_TYPE_UNION))) {
             continue;
         }

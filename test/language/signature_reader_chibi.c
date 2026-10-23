@@ -29,16 +29,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 24 fixed reads plus one65-array deep read,50 authored calls at500,000
+/* 29 fixed reads plus one65-array deep read,60 authored calls at500,000
  * instructions. Seven compiler
- * sources per backend plus25 external Tree-sitter parses give39 parses total.
+ * sources per backend plus30 external Tree-sitter parses give44 parses total.
  * The parser supplies complete raw nodes/fields/named/extra flags; no C reader
  * result is supplied as an authored input. Request3's owned environment feeds
- * request6 within the same48calls. Inputs stay below256bytes/256nodes/depth32;
+ * request6 within the same58calls. Inputs stay below256bytes/256nodes/depth32;
  * the separate deep case stays below640bytes/512nodes/depth256.
- * Compiler sources stay below32KiB. Inputs have2scopes/2symbols/1function/2documents,
+ * Compiler sources stay below48KiB. Inputs have2scopes/2symbols/1function/2documents,
  * 3catalog definitions/2variants/1import/export; one chained definition adds1.
- * Outputs:4publications/4newtypes/4uses/4diagnostics,64types/128IDs.
+ * Outputs:9publications/9newtypes/4uses/4diagnostics,64types/128IDs.
  * Four retained readings serialize before/after producer retirement: eight
  * bounded128KiB projections. No runtimeIO/services/processes or tasks execute. */
 enum
@@ -200,6 +200,11 @@ static bool type_row(const pin_array *types, const pin_array *numbers, int index
 {
     REQUIRE(types && index >= 0 && index < types->count);
     const pin_value *row = &types->items[index];
+    pin_value collection;
+    REQUIRE(
+        read(row, "collection", &collection) && collection.type == PIN_U64 &&
+        collection.u64 == expected.collection
+    );
     REQUIRE(
         same_int(row, "storage", expected.storage) &&
         same_int(row, "container", expected.container) &&
@@ -256,7 +261,7 @@ static bool use(const pin_value *row, const pin_array *ids, const script_use *ex
 static bool plan(int b, const pin_value *value, const script_constructor_plan *expected)
 {
     const pin_value *v;
-    REQUIRE(tagged(b, value, CONSTRUCTORS, "Plan", "Constructed", 11, &v));
+    REQUIRE(tagged(b, value, CONSTRUCTORS, "Plan", "Constructed", 13, &v));
     REQUIRE(
         value_type(b, &v[0], expected->type) && v[1].type == PIN_BOOL &&
         v[1].b == expected->publish && v[2].type == PIN_U64 &&
@@ -268,6 +273,8 @@ static bool plan(int b, const pin_value *value, const script_constructor_plan *e
         v[5].type == PIN_I32 && v[5].i == (int)expected->size &&
         v[6].type == PIN_BOOL && v[6].b == expected->internal
     );
+    REQUIRE(value_type(b, &v[11], expected->element_type));
+    REQUIRE(v[12].type == PIN_U64 && v[12].u64 == expected->element_type.collection);
     const pin_array *variants, *fields, *ids;
     REQUIRE(
         array(&v[7], PIN_STRUCT, expected->variant_count, &variants) &&
@@ -277,6 +284,11 @@ static bool plan(int b, const pin_value *value, const script_constructor_plan *e
     for (int i = 0; i < expected->variant_count; i++) {
         const script_constructor_variant *s = &expected->variants[i];
         const pin_value *row = &variants->items[i];
+        pin_value collection;
+        REQUIRE(
+            read(row, "collection", &collection) &&
+            collection.type == PIN_U64 && collection.u64 == s->type.collection
+        );
         REQUIRE(
             same_int(row, "catalog_type", s->catalog_type) &&
             same_int(row, "variant", s->variant) && same_int(row, "member", s->member) &&
@@ -398,16 +410,17 @@ static bool environment(
                                    : &expected->uses[i - facts->named.use_count];
         REQUIRE(use(&uses->items[i], ids, want));
     }
-    int added_variants = 0;
+    int added_variants = 0, added_elements = 0;
     for (int i = 0; i < expected->type_count; i++) {
         added_variants += expected->types[i].variant_count;
+        added_elements += expected->types[i].type.storage == PIN_POINTER;
     }
     REQUIRE(
-        prefix(&constructors[0], &old_constructors[0], added_variants, PIN_STRUCT, 64) &&
+        prefix(&constructors[0], &old_constructors[0], added_variants + added_elements, PIN_STRUCT, 64) &&
         prefix(
             &constructors[1],
             &old_constructors[1],
-            3 * added_variants + expected->type_count,
+            3 * added_variants + expected->type_count + 2 * added_elements,
             PIN_U64,
             128
         )
@@ -433,6 +446,11 @@ static bool environment(
             same_int(row, "variant_start", at) &&
             same_int(row, "variant_count", want->variant_count)
         );
+        if (want->type.storage == PIN_POINTER) {
+            pin_value element;
+            REQUIRE(read(row, "element_type", &element) && element.type == PIN_I32);
+            REQUIRE(type_row(ctypes, cids, element.i, want->element_type));
+        }
         for (int j = 0; j < want->variant_count; j++) {
             REQUIRE(variants && at < variants->count);
             const pin_value *v = &variants->items[at++];
@@ -540,9 +558,10 @@ static bool reading_value(
 {
     const pin_value *v;
     REQUIRE(
-        tagged(b, value, PACKAGE, "Reading", "Read", 7, &v) &&
+        tagged(b, value, PACKAGE, "Reading", "Read", 8, &v) &&
         value_type(b, &v[0], expected->type)
     );
+    REQUIRE(v[7].type == PIN_U64 && v[7].u64 == expected->type.collection);
     REQUIRE(
         v[1].type == PIN_BOOL && v[1].b == (expected->unit != NULL) &&
         v[2].type == PIN_STR && pin_text(v[2]).bytes &&
@@ -703,13 +722,23 @@ static const char *annotations[] = {
     "string int/s",
     "u",
     "u",
+    "^int",
+    "^int?",
+    "^int[]",
+    "^(int[])",
+    "^Row",
 };
 static int max_nodes, max_depth;
 static bool execute(int index)
 {
-    REQUIRE(index >= 0 && index < 24 && prepared && parser);
+    REQUIRE(index >= 0 && index < 29 && prepared && parser);
     cleanup();
     facts_reset(index == 22, index == 23);
+    if (index == 28) {
+        base_types[0].type.container = PIN_CONTAINER_MAP;
+        base_types[0].type.collection = UINT64_MAX - 31;
+        base_types[0].type.parameter = UINT64_MAX - 37;
+    }
     REQUIRE(index != 6 || (chain_catalog.types && chain_catalog.type_count == 1));
     script_signature_facts context = facts(index == 6);
     int document = index == 17 ? 0 : index % 2;
@@ -870,6 +899,24 @@ static bool execute(int index)
     if (index == 22 || index == 23) {
         REQUIRE(!reading.unit && !reading.diagnostic_count && reading.use_count == 1);
     }
+    if (index >= 24) {
+        REQUIRE(!reading.diagnostic_count && reading.type.storage == PIN_POINTER);
+        REQUIRE(reading.type_count == 1 && reading.publication_count == 1);
+        script_type expected_element = index == 28
+                                         ? base_types[0].type
+                                         : (script_type){
+                                               .storage = PIN_I32,
+                                               .container = index == 27 ? PIN_CONTAINER_ARRAY
+                                                                        : PIN_CONTAINER_SINGLE
+                                           };
+        REQUIRE(script_type_equal(reading.types[0].element_type, expected_element));
+        REQUIRE(
+            (reading.type.flags & SCRIPT_TYPE_OPTIONAL) ==
+            (index == 25 ? SCRIPT_TYPE_OPTIONAL : 0)
+        );
+        REQUIRE(!(reading.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL));
+        REQUIRE(reading.type.container == (index == 26 ? PIN_CONTAINER_ARRAY : PIN_CONTAINER_SINGLE));
+    }
     return true;
 }
 TEST_CASE(signature_reader_type_syntax_and_publication_state_match)
@@ -913,16 +960,16 @@ TEST_CASE(signature_reader_type_syntax_and_publication_state_match)
 TEST_CASE(signature_reader_units_names_diagnostics_and_uses_match)
 {
     REQUIRE(prepared);
-    for (int i = 16; i < 24; i++) {
+    for (int i = 16; i < 29; i++) {
         REQUIRE(execute(i));
     }
-    REQUIRE(calls == 48 && parses == 24 && publication_count == 4);
-    printf("Signature reader:24 raw trees,48 calls,4 publications, max%d nodes/depth%d\n", max_nodes, max_depth);
+    REQUIRE(calls == 58 && parses == 29 && publication_count == 9);
+    printf("Signature reader:29 raw trees,58 calls,9 publications, max%d nodes/depth%d\n", max_nodes, max_depth);
     return true;
 }
 TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
 {
-    REQUIRE(prepared && parser && calls == 48 && parses == 24);
+    REQUIRE(prepared && parser && calls == 58 && parses == 29);
     cleanup();
     facts_reset(false, false);
     char deep_source[640];
@@ -1004,7 +1051,7 @@ TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
             reading_value(b, &result, &before, &context, &reading, &updated)
         );
     }
-    REQUIRE(calls == 50 && parses == 25 && publication_count == 4);
+    REQUIRE(calls == 60 && parses == 30 && publication_count == 9);
     printf("Signature deep arrays:65 wrappers,%d bytes,%d nodes/depth%d,2 calls\n", length, count, deepest);
     return true;
 }

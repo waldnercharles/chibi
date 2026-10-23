@@ -15,7 +15,9 @@ static pin_value scalar(pin_type type, int value)
 
 static const pin_array *array_arg(const pin_value *inputs, int index)
 {
-    if (!inputs || inputs[index].container != PIN_CONTAINER_ARRAY ||
+    if (!inputs ||
+        (inputs[index].container != PIN_CONTAINER_ARRAY &&
+         inputs[index].container != PIN_CONTAINER_VIEW) ||
         !inputs[index].ptr) {
         return NULL;
     }
@@ -24,7 +26,7 @@ static const pin_array *array_arg(const pin_value *inputs, int index)
 
 static pin_value array_result(arena *a, const pin_array *src)
 {
-    pin_array *copy = pin_array_snapshot_to_arena(a, src);
+    pin_array *copy = pin_array_outer_clone(a, src);
     return (pin_value){
         .type = src ? src->element_type : PIN_FLOW,
         .container = PIN_CONTAINER_ARRAY,
@@ -395,19 +397,8 @@ pin_value native_array_slice(const pin_value *inputs, int count, arena *a)
                                             : inputs[1].i;
     int size = inputs[2].i < 0 ? 0 : inputs[2].i;
     size = size > source->count - start ? source->count - start : size;
-    /* The copied elements alone decide the copy's representation, so a small
-     * slice of a large array costs its own size. */
-    pin_array range = *source;
-    range.count = range.capacity = size;
-    range.buckets = NULL;
-    range.bucket_mask = 0;
-    if (range.stride) {
-        range.data = size ? (char *)range.data + (size_t)start * range.stride : NULL;
-    } else {
-        range.items = size ? range.items + start : NULL;
-    }
-    pin_array *array = pin_array_snapshot_like(a, &range, size);
-    if (!array || pin_array_snapshot_copy(a, array, 0, &range, 0, size)) {
+    pin_array *array = pin_array_window_copy(a, source, start, size);
+    if (!array) {
         return (pin_value){ .type = PIN_FLOW };
     }
     return owned_array(source, array);
@@ -461,4 +452,6 @@ static const char *resize_error(const pin_value *inputs)
 NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
 #undef ADD
 #undef CALL
-const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_PURE };
+/* Dynamic arrays are shared mutable objects. Even copied-result functions
+ * read their current contents and must create a distinct outer object. */
+const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

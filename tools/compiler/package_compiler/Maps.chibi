@@ -23,16 +23,12 @@ KeyCell :: (types: TypeDecl[], map: int) -> Cell {
     return {storage: types[map].key, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
 }
 ItemCell :: (types: TypeDecl[], map: int) -> Cell {
-    return {storage: types[map].value_storage, container: 0, record: types[map].value_record, constant: 0,
+    return {storage: types[map].value_storage, container: types[map].value_container, record: types[map].value_record, constant: 0,
             variant: -1, kind: ValueKind};
 }
 // A cell of a value's type that a map call writes.
 PartCell :: (value: Value) -> Cell {
-    record: int = -1;
-    if (value.storage == StructStorage) {
-        record = value.record;
-    }
-    return {storage: value.storage, container: 0, record: record, constant: 0, variant: -1, kind: ValueKind};
+    return {storage: value.storage, container: value.container, record: value.record, constant: 0, variant: -1, kind: ValueKind};
 }
 // Whether a value is a map.
 IsMap :: (value: Value) -> bool {
@@ -57,7 +53,7 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
         count: int = 0;
         for (pair in Members(forest, item.node)) {
             next.append(Expect(Field(forest, pair, "key"), types[map].key, 0, -1));
-            next.append(Expect(Field(forest, pair, "value"), types[map].value_storage, 0,
+            next.append(Expect(Field(forest, pair, "value"), types[map].value_storage, types[map].value_container,
                                types[map].value_record));
             count += 2;
         }
@@ -76,13 +72,13 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
         if (!SameType(types[map].key, 0, -1, key)) {
             return Fail(forest, Field(forest, pair, "key"), document, "Map key type does not match");
         }
-        if (!SameType(types[map].value_storage, 0, types[map].value_record, value)) {
+        if (!SameType(types[map].value_storage, types[map].value_container, types[map].value_record, value)) {
             return Fail(forest, Field(forest, pair, "value"), document, "map value differs from the map's type");
         }
         for (part in [key, value]) {
             cells.append(PartCell(part));
             slots.append(address);
-            code.extend(CellWrite(SlotStorage(part.storage, 0, target), part.slot, at.cell + length(cells) - 1,
+            code.extend(CellWrite(SlotStorage(part.storage, part.container, target), part.slot, at.cell + length(cells) - 1,
                                   ops, target, at.slot + length(slots) - 1, forest[pair]));
         }
         index += 2;
@@ -116,20 +112,21 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     if (!SameType(declared.key, 0, -1, key)) {
         return Fail(forest, Field(forest, index, "index"), document, "Map key type does not match");
     }
-    item: ValueType = {storage: declared.value_storage, container: 0, record: declared.value_record};
+    item: ValueType = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
     cells: Cell[] = [MapCell(map.record), KeyCell(types, map.record)];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     slots: Slot[] = [address, address];
     code := extend(CellWrite(target.pointer_storage, map.slot, at.cell, ops, target, at.slot, node),
                    CellWrite(SlotStorage(key.storage, 0, target), key.slot, at.cell + 1, ops, target, at.slot + 1, node));
-    if (HasZero(item.storage)) {
+    if (item.container != 0 || HasZero(item.storage)) {
         code.append(ExpressionCode(ops, node));
-        slots.append(ValueLocal(item.storage));
-        code.append(ConstantCode(ops, item.storage, 0, at.slot + 2, node));
-        code.append(WatchCode(ops, at.slot + 2, item.storage, 0, -1, 0, true, node, target));
+        zero: Slot = {storage: SlotStorage(item.storage, item.container, target), kind: SlotKind(item.storage, item.container)};
+        slots.append(zero);
+        code.append(ConstantCode(ops, zero.storage, 0, at.slot + 2, node));
+        code.append(WatchCode(ops, at.slot + 2, item.storage, item.container, item.record, 0, true, node, target));
         cells.append(ItemCell(types, map.record));
         slots.append(address);
-        code.extend(CellWrite(item.storage, at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
+        code.extend(CellWrite(SlotStorage(item.storage, item.container, target), at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
     }
     cells.append(ItemCell(types, map.record));
     host: Host = {intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
@@ -137,17 +134,17 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     read := length(slots);
     slots.append(address);
-    result: Slot = {storage: SlotStorage(item.storage, 0, target), kind: SlotKind(item.storage, 0)};
+    result: Slot = {storage: SlotStorage(item.storage, item.container, target), kind: SlotKind(item.storage, item.container)};
     slots.append(result);
-    code.extend(CellRead(SlotStorage(item.storage, 0, target), at.cell + length(cells) - 1, ops, target,
+    code.extend(CellRead(SlotStorage(item.storage, item.container, target), at.cell + length(cells) - 1, ops, target,
                          at.slot + read, node));
     roots: Root[] = [];
-    if (Pointer(item.storage, 0)) {
-        root: Root = {slot: at.slot + read + 1, storage: item.storage, container: 0, record: item.record};
+    if (Pointer(item.storage, item.container)) {
+        root: Root = {slot: at.slot + read + 1, storage: item.storage, container: item.container, record: item.record};
         roots.append(root);
     }
     return Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], 2,
-                        Typed(at.slot + read + 1, item.storage, 0, item.record), NoValue(), []);
+                        Typed(at.slot + read + 1, item.storage, item.container, item.record), NoValue(), []);
 }
 // Statement phases of a local map's in-place store and removal.
 MapStorePhase: int : 11;
@@ -209,7 +206,7 @@ MapStoreStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     }
     map := types[names[found].record];
     next: Work[] = [Expect(Field(forest, destination, "index"), map.key, 0, -1),
-                    Expect(Field(forest, item.node, "value"), map.value_storage, 0, map.value_record),
+                    Expect(Field(forest, item.node, "value"), map.value_storage, map.value_container, map.value_record),
                     Resume(item.node, MapStorePhase, found, 0)];
     code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops, forest[destination])];
     return Step.Emitted(code, [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
@@ -258,7 +255,7 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     arguments: Value[] = [values[top - 1]];
     if (store) {
         arguments = [values[top - 2], values[top - 1]];
-        if (!SameType(map.value_storage, 0, map.value_record, values[top - 1])) {
+        if (!SameType(map.value_storage, map.value_container, map.value_record, values[top - 1])) {
             return Fail(forest, item.node, document, "map value differs from the map's type");
         }
     }
@@ -275,7 +272,7 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     for (argument in arguments) {
         cells.append(PartCell(argument));
         slots.append(address);
-        code.extend(CellWrite(SlotStorage(argument.storage, 0, target), argument.slot,
+        code.extend(CellWrite(SlotStorage(argument.storage, argument.container, target), argument.slot,
                               at.cell + length(cells) - 1, ops, target, at.slot + length(slots) - 1, node));
     }
     done: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
@@ -377,7 +374,7 @@ MapItemCode :: (types: TypeDecl[], map: int, held: int, ordinal: int, key: bool,
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
     storage := types[map].key;
     if (!key) {
-        storage = SlotStorage(types[map].value_storage, 0, target);
+        storage = SlotStorage(types[map].value_storage, types[map].value_container, target);
     }
     return extend(code, CellRead(storage, cell + 3, ops, target, slot + 2, node));
 }
@@ -434,16 +431,16 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
                       result_count: 1, written: false}];
     value := at.slot + length(slots) + 3;
     slots.extend([address, address, address,
-                  {storage: SlotStorage(map.value_storage, 0, target), kind: SlotKind(map.value_storage, 0)}]);
+                  {storage: SlotStorage(map.value_storage, map.value_container, target), kind: SlotKind(map.value_storage, map.value_container)}]);
     code.extend(MapItemCode(types, held.record, b + 1, b + 3, false, at.cell, at.host, value - 3, ops, target,
                             node));
     value_node := Field(forest, item.node, "name");
     binding: Name = {name: Text(forest, text, value_node), place: LocalPlace, index: at.local + 1,
-                     storage: map.value_storage, container: 0, record: map.value_record, writable: false,
+                     storage: map.value_storage, container: map.value_container, record: map.value_record, writable: false,
                      node: value_node};
-    if (map.value_storage == StructStorage) {
+    if (Pointer(map.value_storage, map.value_container)) {
         // The record is copied into a cell of its own, as a record element is.
-        copy: Cell = {storage: StructStorage, container: 0, record: map.value_record, constant: 0, variant: -1,
+        copy: Cell = {storage: map.value_storage, container: map.value_container, record: map.value_record, constant: 0, variant: -1,
                       kind: ValueKind};
         cells.extend([copy, copy]);
         slots.append(address);

@@ -23,9 +23,34 @@ typedef struct pin_array
      * snapshot; owned runtime sets update it on append. */
     int *buckets;
     unsigned bucket_mask;
+    /* Managed dynamic objects are stable; views resolve their owner on access. */
+    arena *storage;
+    struct pin_array *owner;
+    int offset;
 } pin_array;
 
+/* A view has fixed count/offset. Its whole window becomes invalid on shrink,
+ * and valid again if the owner regrows far enough. Nested views use one owner. */
+const pin_array *pin_array_owner(const pin_array *);
+int pin_array_offset(const pin_array *);
+bool pin_array_view_valid(const pin_array *);
 bool pin_array_valid(const pin_array *);
+/* Tag a newly constructed, fully owned array graph in a managed heap. Every
+ * untagged nested array must already be owned by managed; existing managed
+ * children retain their identity. This is not an import of borrowed storage. */
+void pin_array_manage(arena *managed, pin_array *);
+/* Assignment preserves managed object/view identity; borrowed graphs are
+ * promoted once with cycles and repeated array identities preserved. */
+int pin_value_array_promote(arena *managed, pin_value *out, const pin_value *);
+/* Copy only the outer array. Nested arrays use ordinary shared assignment. */
+pin_array *pin_array_outer_clone(arena *managed, const pin_array *);
+pin_array *pin_array_window_copy(arena *managed, const pin_array *, int start, int count);
+pin_array *pin_array_window_view(arena *managed, const pin_array *, int start, int count);
+/* Independent historical graph, preserving aliases/cycles within this capture.
+ * Strings share immutable bytes; managed pointer targets retain their identity.
+ * A captured view refers to a captured owner, not the live mutable owner.
+ * A failed capture leaves out unchanged; abandon unpublished allocations. */
+int pin_value_capture_to_arena(arena *, pin_value *out, const pin_value *);
 size_t pin_array_element_stride(pin_type, const char *, const pin_record *);
 size_t pin_array_storage_bytes(const pin_array *);
 /* Borrowed element/payload. Indices must already be checked by the caller. */
@@ -70,7 +95,9 @@ int pin_array_snapshot_owned_items(
 );
 /* Fixed-size typed zero values, owned by the arena. */
 pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
-/* Deep snapshot, including registered struct fields and all nominal names. */
+/* Retain a value: managed dynamic objects/views preserve identity; other
+ * values snapshot registered struct fields and nominal names. Use capture for
+ * independent historical graphs, or outer_clone/window_copy for array copies. */
 pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src);
 int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 /* Retain managed fields in an already copied struct. Nested structs are inline;
@@ -88,8 +115,9 @@ int pin_array_reserve_owned(arena *a, pin_array *array, int count);
 int pin_array_push(pin_array *array, const pin_value *value);
 int pin_array_equal(const pin_array *a, const pin_array *b);
 
-/* Copy and destruction dispatch. `dst` owns copied array and string storage;
- * struct payloads/layouts and handles remain borrowed. */
+/* Copy and destruction dispatch. Managed dynamic objects/views share identity;
+ * their heap must outlive the retained slot. Other arrays and strings own their
+ * copies; struct payloads/layouts and handles remain borrowed. */
 int pin_value_copy(pin_value *dst, const pin_value *src);
 int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src);
 void pin_value_destroy(pin_value *value);

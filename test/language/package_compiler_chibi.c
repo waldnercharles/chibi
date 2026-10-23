@@ -50,7 +50,7 @@
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
-    CALLS = 10,
+    CALLS = 12,
     SAMPLE_INPUTS = 4,
     ARGUMENTS = 12,
     /* Compile's debug flag, then the six that describe the target. */
@@ -799,41 +799,158 @@ static const sample samples[] = {
                    .expected = "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Point :: struct { x: int; y: int; }\n"
-                "Bump :: (v: ref int) { v += 1; }\n"
-                "Set :: (v: ref int, to: int) { v = to; }\n"
-                "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
-                "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
-                "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-                "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
-                "Inc :: (k: int) -> int { Bump(k); return k; }\n"
-                "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
-                "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
-                "return c; }\n"
-                "Run :: () -> int {\n"
-                "    n: int = 1;\n    Bump(n);\n    Twice(n);\n    Set(n, n * "
-                "10);\n"
-                "    name: string = \"a\";\n    Rename(name);\n"
-                "    p: Point = {x: 1, y: 2};\n    Swap(p);\n    Bump(p.x);\n"
-                "    xs: int[] = [1];\n    Grow(xs);\n"
-                "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
-                "+ Inc(5) * 1000000;\n"
-                "    if (name == \"a!\") { total += 100000; }\n"
-                "    return total;\n}\n"
-                "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(p); "
-                "return p.x * 100 + p.y; }",
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Bump :: (v: ref int) { v += 1; }\n"
+          "Set :: (v: ref int, to: int) { v = to; }\n"
+          "Twice :: (v: ref int) { Bump(ref v); Bump(ref v); }\n"
+          "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
+          "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
+          "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
+          "Inc :: (k: int) -> int { Bump(ref k); return k; }\n"
+          "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(ref p.x); }\n"
+          "Count :: () -> int { c: int = 2; c += 3; Bump(ref c); c = c * 2; "
+          "return c; }\n"
+          "Run :: () -> int {\n"
+          "    n: int = 1;\n    Bump(ref n);\n    Twice(ref n);\n    Set(ref "
+          "n, n * "
+          "10);\n"
+          "    name: string = \"a\";\n    Rename(ref name);\n"
+          "    p: Point = {x: 1, y: 2};\n    Swap(ref p);\n    Bump(ref p.x);\n"
+          "    xs: int[] = [1];\n    Grow(ref xs);\n"
+          "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
+          "+ Inc(5) * 1000000;\n"
+          "    if (name == \"a!\") { total += 100000; }\n"
+          "    return total;\n}\n"
+          "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(ref p); "
+          "return p.x * 100 + p.y; }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[6121340]" },
                  { .function = "Inc", .arguments = "[1]", .expected = "[2]" },
                  { .function = "Count", .arguments = "[]", .expected = "[12]" },
                  { .function = "Moved", .arguments = "[]", .expected = "[1007]" } } },
+    /* Fixed scalar-result calls exercise aliases, escaping storage,
+     * grouped types, widening, aggregate replacement, and one two-node cycle. */
+    { .name = "managed pointers",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Holder :: struct { value: int; alias: ^int; }\n"
+          "Link :: struct { value: int; next: ^Link?; }\n"
+          "Bump :: (value: ref int) { value += 1; }\n"
+          "Make :: () -> ^Point { value: Point = {x: 3, y: 4}; return &value; "
+          "}\n"
+          "Scalar :: () -> ^int { value: int = 2; return &value; }\n"
+          "EscapeCopy :: (n: int) -> ^int { p := &n; p^ += 1; return p; }\n"
+          "Parameter :: () -> int { value: int = 3; p := EscapeCopy(value); "
+          "return value * 10 + p^; }\n"
+          "Alias :: () -> int { value: int = 1; p: ^int = &value; q := p; "
+          "q^ = 7; Bump(ref p^); return value * 100 + p^ * 10 + q^; }\n"
+          "Escaped :: () -> int { p := Make(); p.x = 9; return p^.x * 10 + "
+          "p.y; }\n"
+          "Field :: () -> int { value: Point = {x: 2, y: 4}; p := &value; "
+          "x := &value.x; x^ = 5; return p.x * 10 + p^.y; }\n"
+          "Copies :: () -> int { value: int = 2; original: Holder = "
+          "{value: 3, alias: &value}; copied := original; copied.value = 7; "
+          "copied.alias^ = 9; return original.value * 100 + copied.value * 10 "
+          "+ value; }\n"
+          "Distinct :: () -> int { a := Scalar(); b := Scalar(); a^ = 11; "
+          "return a^ * 100 + b^; }\n"
+          "Nullable :: () -> int { p: ^int? = nil; value: int = 3; p = &value; "
+          "if p != nil { return p^; } return 0; }\n"
+          "ArrayCopies :: () -> int { x: int = 1; y: int = 2; "
+          "original: ^int[] = [&x, &y]; copied := original; copied[0]^ = 5; "
+          "return original[0]^ * 100 + original[1]^ * 10 + "
+          "copied[1]^; }\n"
+          "ReadGrouped :: (values: (^int)[]) -> int { return values[0]^; }\n"
+          "Grouped :: () -> int { value: int = 4; return "
+          "ReadGrouped([&value]); }\n"
+          "Widened :: () -> int64 { small: int = 3; wide: int64 = small; "
+          "p := &wide; p^ += 2; return p^; }\n"
+          "WholeArray :: () -> int { values: int[] = [1, 2]; "
+          "p: ^(int[]) = &values; p^ = [8, 9, 10]; "
+          "return length(values) * 100 + values[0] * 10 + values[2]; }\n"
+          "Cycle :: () -> int { a: Link = {value: 1, next: nil}; "
+          "b: Link = {value: 2, next: nil}; p := &a; q := &b; "
+          "p.next = q; q.next = p; return p.value * 10 + q.value; }",
+      .calls = { { .function = "Alias", .arguments = "[]", .expected = "[888]" },
+                 { .function = "Escaped", .arguments = "[]", .expected = "[94]" },
+                 { .function = "Field", .arguments = "[]", .expected = "[54]" },
+                 { .function = "Copies", .arguments = "[]", .expected = "[379]" },
+                 { .function = "Distinct", .arguments = "[]", .expected = "[1102]" },
+                 { .function = "Nullable", .arguments = "[]", .expected = "[3]" },
+                 { .function = "ArrayCopies", .arguments = "[]", .expected = "[522]" },
+                 { .function = "Parameter", .arguments = "[]", .expected = "[34]" },
+                 { .function = "Cycle", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[4]" },
+                 { .function = "Widened", .arguments = "[]", .expected = "[5]" },
+                 { .function = "WholeArray", .arguments = "[]", .expected = "[390]" } } },
+    { .name = "imported references",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Forward :: (value: ref int) { lib.Bump(ref value); }\n"
+                "Run :: () -> int { value: int = 4; Forward(ref value); "
+                "lib.Bump(ref value); return value; }",
+      .library = "package lib\npub Bump :: (value: ref int) { value += 3; }",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[10]" } } },
+    { .name = "reference marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () "
+                "{\n    n: int = 1;\n    Bump(n);\n}",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 5,
+      .column = 10 },
+    { .name = "reference forwarded marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nForward :: "
+                "(v: ref int) {\n    Bump(v);\n}",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 4,
+      .column = 10 },
+    { .name = "reference marker on value parameter",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRead :: (v: int) -> int { return v; }\nRun :: "
+                "() -> int {\n    n: int = 1;\n    return Read(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 5,
+      .column = 17 },
+    { .name = "reference marker on conversion",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> int64 {\n    n: int = 1;\n    "
+                "return int64(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 4,
+      .column = 18 },
+    { .name = "reference marker on native",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> string {\n    n: int = 1;\n    "
+                "return format_text(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 4,
+      .column = 24 },
+    { .name = "reference marker on union constructor",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nU :: union { A(value: int) }\nRun :: () -> U "
+                "{\n    n: int = 1;\n    return U.A(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 5,
+      .column = 16 },
+    { .name = "reference imported marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\nRun :: () {\n    "
+                "n: int = 1;\n    lib.Bump(n);\n}",
+      .library = "package lib\npub Bump :: (v: ref int) { v += 1; }",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 5,
+      .column = 14 },
     { .name = "reference literal",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "Bump(3); }",
+                "Bump(ref 3); }",
       .message = "Reference argument requires a writable value",
       .line = 3,
-      .column = 18 },
+      .column = 22 },
     { .name = "reference default",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
@@ -843,10 +960,10 @@ static const sample samples[] = {
     { .name = "reference type",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "n: int64 = 1; Bump(n); }",
+                "n: int64 = 1; Bump(ref n); }",
       .message = "reference argument differs from the parameter's type",
       .line = 3,
-      .column = 32 },
+      .column = 36 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -2199,6 +2316,15 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         fprintf(stderr, "package compiler load: %s\n", error);
     }
     REQUIRE(host);
+    if (getenv("CHIBI_TRACE_PACKAGE_CALLS")) {
+        fprintf(
+            stderr,
+            "package compiler call: backend=%d function=%s arguments=%s\n",
+            backend,
+            call->function,
+            call->arguments
+        );
+    }
     bool valid = compiler_host_invoke(
         host,
         function_id(call->function),
@@ -2269,6 +2395,7 @@ static bool same_point(const behavior_source_point *x, const behavior_source_poi
 static bool same_points(const execution_module *expected, const execution_module *actual)
 {
     REQUIRE(expected->plan.function_count == actual->plan.function_count);
+    bool all_alike = true;
     for (int i = 0; i < expected->plan.function_count; i++) {
         const behavior_function *x = expected->plan.functions[i].body,
                                 *y = actual->plan.functions[i].body;
@@ -2318,10 +2445,10 @@ static bool same_points(const execution_module *expected, const execution_module
         if (!alike || placed_count != 0) {
             print_points("stage zero", x);
             print_points("stage one", y);
-            return false;
+            all_alike = false;
         }
     }
-    return true;
+    return all_alike;
 }
 static bool same_watch(const behavior_source_watch *x, const behavior_source_watch *y)
 {
@@ -3072,7 +3199,22 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        REQUIRE(compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out));
+        bool compiled = compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out);
+        if (!compiled) {
+            fprintf(
+                stderr,
+                "package compiler sample failed: name=%s index=%d group=%d "
+                "backend=%s inputs=%d source_bytes=%zu budget=%d\n",
+                s->name,
+                i,
+                group,
+                b ? "compiled" : "bytecode",
+                count,
+                strlen(s->source),
+                COMPILE_BUDGET
+            );
+        }
+        REQUIRE(compiled);
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
@@ -3447,6 +3589,9 @@ TEST_CASE(package_compiler_compiles_itself)
     arena_free(&detached);
     char error[256];
     host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
+    if (!host) {
+        fprintf(stderr, "package compiler stage two could not load: %s\n", error);
+    }
     REQUIRE(host);
     size_t target_length;
     char *target_json = compiler_host_target_json(host, &target_length);

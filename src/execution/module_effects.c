@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/record.h"
 #include "types/scalar.h"
 #include "types/union.h"
 
@@ -77,6 +78,11 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
             }
             break;
         }
+        case EXECUTION_INTRINSIC_POINTER_MAKE: expected = 3; break;
+        case EXECUTION_INTRINSIC_POINTER_READ:
+        case EXECUTION_INTRINSIC_POINTER_WRITE: expected = 2; break;
+        case EXECUTION_INTRINSIC_POINTER_FIELD: expected = 5; break;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE: expected = 1; break;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: expected = 9; break;
         case EXECUTION_INTRINSIC_REFERENCE_FIELD: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
@@ -91,6 +97,16 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_QUERY_SOURCE: expected = 5; break;
         case EXECUTION_INTRINSIC_QUERY_TARGET: expected = 4; break;
         case EXECUTION_INTRINSIC_COMPONENT_HAS: expected = 3; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW: expected = 4; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: expected = 1; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_GET: expected = 2; break;
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE:
+            if (count < 2 || host->result_count != 1) {
+                return 0;
+            }
+            break;
         default: break;
     }
     if (expected >= 0 && (count != expected || host->result_count != 1)) {
@@ -406,7 +422,8 @@ static bool context_uses(const behavior_function *f, int slot, int *steps)
     }
     return true;
 }
-static bool predicate_host(const behavior_function *f, int pc)
+static bool share_local(const behavior_function *, bool built, bool *returned);
+static bool predicate_host(const behavior_function *f, int pc, bool local_arrays)
 {
     const behavior_function_host_call *host = &f->host_calls[f->instructions[pc].target];
     uint64_t id = intrinsic(host);
@@ -420,13 +437,25 @@ static bool predicate_host(const behavior_function *f, int pc)
     }
     int steps = EFFECT_STEPS;
     switch (execution_intrinsic_kind(id)) {
+        /* Managed cells can be shared with persistent state or other calls.
+         * Query predicates cannot observe or mutate that heap. */
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+        case EXECUTION_INTRINSIC_POINTER_READ:
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE: return false;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
         }
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
         case EXECUTION_INTRINSIC_ARRAY_STORE:
-        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+            /* A private value header may still hold a caller's array object. */
+            origin target = bank_origin(f, pc, host->first, 0, &steps);
+            return local_arrays && target.private && target.bank;
+        }
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE: return local_arrays;
         case EXECUTION_INTRINSIC_MAP_STORE:
         case EXECUTION_INTRINSIC_MAP_DELETE: {
             /* In-place updates write only the function's own local collection. */
@@ -449,6 +478,11 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
         case EXECUTION_INTRINSIC_LOCAL_RELEASE: return true;
         default: return false;
     }
@@ -465,6 +499,7 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
             valid = false;
             break;
         }
+        bool local_arrays = share_local(f, false, NULL);
         for (int i = 0; i < f->argument_count; i++) {
             pin_value type = f->argument_defaults[i];
             if (behavior_function_kind(f, BEHAVIOR_BANK_ARGUMENT, i) == BEHAVIOR_ADDRESS &&
@@ -546,7 +581,9 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                     valid |= control_write(i, address);
                     break;
                 }
-                case BF_HOST_CALL: valid = predicate_host(f, pc); break;
+                case BF_HOST_CALL:
+                    valid = predicate_host(f, pc, local_arrays);
+                    break;
                 case BF_INVOKE: {
                     const behavior_function_invocation *call = &f->calls[i->left];
                     if (call->task) {
@@ -1042,6 +1079,27 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
+                if (execution_intrinsic_kind(id) >= EXECUTION_INTRINSIC_POINTER_MAKE &&
+                    execution_intrinsic_kind(id) <= EXECUTION_INTRINSIC_POINTER_REFERENCE) {
+                    /* The owner heap is mutable across invocations. Its access
+                     * cannot be attributed to one ECS column or worker. */
+                    unknown(e);
+                    break;
+                }
+                execution_intrinsic kind = execution_intrinsic_kind(id);
+                if (id && kind >= EXECUTION_INTRINSIC_SEQUENCE_SLICE &&
+                    kind <= EXECUTION_INTRINSIC_SEQUENCE_LENGTH) {
+                    for (int bank = call->first; bank < call->result_first; bank++) {
+                        payload_read(e, f, pc, bank);
+                    }
+                    pin_value source = f->data_values[call->first].initial;
+                    bool text = source.container == PIN_CONTAINER_SINGLE &&
+                                source.type == PIN_STR;
+                    if (!text || kind == EXECUTION_INTRINSIC_ARRAY_MUTATE) {
+                        add_access(e, call->access);
+                    }
+                    break;
+                }
                 if (id) {
                     unknown(e);
                     break;
@@ -1382,9 +1440,10 @@ static bool snapshot_storage(pin_value value)
 
 static bool managed_value(pin_value value)
 {
-    return value.container != PIN_CONTAINER_SINGLE || value.type == PIN_STRUCT ||
-           value.type == PIN_STR || value.type == PIN_NAME ||
-           value.type == PIN_UNION || value.type == PIN_TASK;
+    return value.container != PIN_CONTAINER_SINGLE ||
+           value.type == PIN_STRUCT || value.type == PIN_STR ||
+           value.type == PIN_NAME || value.type == PIN_UNION ||
+           value.type == PIN_TASK || value.type == PIN_POINTER;
 }
 
 static void cost_host(costs *c, const behavior_function *f, int pc)
@@ -1397,6 +1456,21 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         return;
     }
     switch (execution_intrinsic_kind(id)) {
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+            cost_add(c, f, pc, id, allocate_copy | EXECUTION_COST_ESCAPE, 0, "Managed cell construction retains an initializer in the owner heap");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+            cost_add(c, f, pc, id, allocate_copy, 0, "Managed field projection retains a location and its type metadata");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Managed pointee reference allocates an invocation descriptor");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_READ:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Managed pointee read snapshots its value and type metadata");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ESCAPE, allocate_copy, "Managed pointee write retains a snapshot in the owner heap");
+            return;
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
             cost_add(c, f, pc, id, allocate_copy, 0, "String iteration snapshots its cursor or one Unicode scalar");
@@ -1485,8 +1559,22 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
         case EXECUTION_INTRINSIC_ARRAY_STORE:
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE:
             cost_add(c, f, pc, id, 0, allocate_copy, "In-place array update can grow storage and copy the item");
             return;
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Sequence copy allocates an independent outer buffer and retains nested values");
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Sequence view retains its root and may allocate a descriptor or promote borrowed storage");
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+            if (snapshot_storage(f->data_values[call->result_first].initial)) {
+                cost_add(c, f, pc, id, 0, allocate_copy, "Element access may retain ownership metadata or copy a value payload");
+            }
+            return;
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: return;
         case EXECUTION_INTRINSIC_MAP_STORE:
         case EXECUTION_INTRINSIC_MAP_DELETE:
             cost_add(c, f, pc, id, 0, allocate_copy, "In-place map update can grow storage, copy the entry and rebuild the index");
@@ -1562,8 +1650,10 @@ static void cost_function(costs *c, const behavior_function *f)
                 break;
             }
             case BF_COPY_STRING:
+                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Text retention allocates a descriptor and copies borrowed bytes when needed");
+                break;
             case BF_COPY_ARRAY:
-                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Managed copy allocates and copies when its input is non-null");
+                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Array retention preserves identity and may allocate ownership metadata or promote borrowed storage");
                 break;
             case BF_INTERN_STRING:
                 cost_add(c, f, pc, 0, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "World string interning retains text and allocates/copies on a cache miss");
@@ -1664,8 +1754,9 @@ execution_cost_summary execution_module_costs(const execution_module *m)
  * update a tainted local in place, or write through a reference other than a
  * value reference to an own, untainted cell. Writes through addresses the
  * analysis cannot place forget what every cell holds. Values copied by
- * snapshots, constructors, reference reads and authored returns are fresh while
- * the copied headers keep their declared types: the verifier rejects direct
+ * snapshots, constructors, reference reads and authored returns can retain
+ * mutable array roots even when their outer value storage is fresh. Plain
+ * values and immutable text remain independent. The verifier rejects direct
  * writes to a cell's type and container, a return checks its results'
  * headers, a reference read checks its result's header and its root's type,
  * a reference write checks the written value's type, and `retyped` covers the
@@ -1706,8 +1797,8 @@ typedef struct
 static bool pointer_value(pin_value v, behavior_value_kind kind)
 {
     return kind != BEHAVIOR_VALUE || v.container != PIN_CONTAINER_SINGLE ||
-           v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT ||
-           v.type == PIN_STR || v.type == PIN_NAME || v.type == PIN_UNION;
+           v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT || v.type == PIN_STR ||
+           v.type == PIN_NAME || v.type == PIN_UNION || v.type == PIN_POINTER;
 }
 static bool text_type(pin_type type)
 {
@@ -1716,6 +1807,43 @@ static bool text_type(pin_type type)
 static bool pointer_slot(const behavior_function *f, int slot)
 {
     return pointer_value((pin_value){ .type = f->slots[slot] }, f->slot_kinds[slot]);
+}
+/* A retained value can carry arrays or managed pointers through a union or
+ * struct. Pointer identity survives; this analysis never follows targets. */
+static bool mutable_payload(pin_value value, int depth)
+{
+    if (value.container == PIN_CONTAINER_ARRAY || value.container == PIN_CONTAINER_VIEW ||
+        value.type == PIN_UNION || value.type == PIN_POINTER) {
+        return true;
+    }
+    if (value.container != PIN_CONTAINER_SINGLE || value.type != PIN_STRUCT) {
+        return false;
+    }
+    const type_desc *type = pin_value_type(&value);
+    if (!type || depth == TYPE_MAX_NESTING) {
+        return true;
+    }
+    if (type->alias_of) {
+        return mutable_payload(
+            (pin_value){ .type = PIN_STRUCT, .type_name = type->alias_of },
+            depth + 1
+        );
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (mutable_payload((pin_value){ .type = field->type, .type_name = field->type_name }, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool mutable_elements(pin_value array)
+{
+    if (array.container != PIN_CONTAINER_ARRAY && array.container != PIN_CONTAINER_VIEW) {
+        return false;
+    }
+    array.container = PIN_CONTAINER_SINGLE;
+    return mutable_payload(array, 0);
 }
 static int share_merge(int old, int value)
 {
@@ -1889,9 +2017,68 @@ static void share_host(share_flow *s, int pc)
              * bits of a pointer instead of copying what it points to. */
             case EXECUTION_INTRINSIC_SNAPSHOT:
             case EXECUTION_INTRINSIC_CONSTRUCT:
-            case EXECUTION_INTRINSIC_UNION_MAKE:
             case EXECUTION_INTRINSIC_REFERENCE_READ:
                 output = s->retyped && inputs;
+                for (int k = 0; k < host->result_count; k++) {
+                    output |= inputs &&
+                              mutable_payload(
+                                  f->data_values[host->result_first + k].initial,
+                                  0
+                              );
+                }
+                break;
+            case EXECUTION_INTRINSIC_UNION_MAKE:
+                /* The constructor exposes every payload header, unlike an
+                 * arbitrary union snapshot. Value copies can retain arrays
+                 * or managed pointer identity through their payloads. */
+                output = s->retyped && inputs;
+                for (int cell = host->first + 1; cell < host->result_first; cell++) {
+                    output |= share_cell(s, cell) &&
+                              mutable_payload(f->data_values[cell].initial, 0);
+                }
+                break;
+            case EXECUTION_INTRINSIC_POINTER_MAKE:
+            case EXECUTION_INTRINSIC_POINTER_READ:
+            case EXECUTION_INTRINSIC_POINTER_FIELD:
+            case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+                /* A pointer is an alias, including when nested in a copied
+                 * record. Its pointee never becomes private call storage. */
+                output = true;
+                break;
+            case EXECUTION_INTRINSIC_POINTER_WRITE:
+                s->unsafe = true;
+                output = false;
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+                output = share_cell(s, host->first) &&
+                         f->data_values[host->first].initial.container !=
+                             PIN_CONTAINER_SINGLE;
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+            case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+                /* Only the outer array is independent; nested arrays retain
+                 * their objects. Scalar and text element copies stay local. */
+                output = share_cell(s, host->first) &&
+                         (s->retyped ||
+                          mutable_elements(f->data_values[host->first].initial));
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_GET:
+                output = share_cell(s, host->first) &&
+                         (s->retyped ||
+                          mutable_payload(f->data_values[host->result_first].initial, 0));
+                break;
+            case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: output = false; break;
+            case EXECUTION_INTRINSIC_ARRAY_MUTATE:
+                s->unsafe |= share_cell(s, host->first);
+                /* Storing a caller's nested array in a local object also
+                 * affects any aliases of that object in this frame. */
+                for (int cell = host->first + 2; cell < host->result_first; cell++) {
+                    if (share_cell(s, cell) &&
+                        mutable_payload(f->data_values[cell].initial, 0)) {
+                        share_scatter(s, true);
+                    }
+                }
+                output = false;
                 break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
@@ -1904,7 +2091,9 @@ static void share_host(share_flow *s, int pc)
                 output = s->retyped && inputs;
                 for (int k = 0; k < host->result_first - host->first - 2; k++) {
                     bool kept = keep < 0 || (k < 31 && (keep >> k & 1));
-                    output |= kept && share_cell(s, host->first + 2 + k);
+                    pin_value payload = f->data_values[host->first + 2 + k].initial;
+                    output |= (kept || mutable_payload(payload, 0)) &&
+                              share_cell(s, host->first + 2 + k);
                 }
                 break;
             }
@@ -1937,7 +2126,22 @@ static void share_host(share_flow *s, int pc)
             }
             case EXECUTION_INTRINSIC_ARRAY_PUSH:
             case EXECUTION_INTRINSIC_ARRAY_STORE:
-            case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+                int target = share_target(s, host->first);
+                s->unsafe |= target < 0;
+                if (target >= 0) {
+                    share_set(s, &s->contents[target], SHARE_UNKNOWN);
+                    share_set(s, &s->cell_literals[target], SHARE_UNKNOWN);
+                }
+                for (int cell = host->first + 1; cell < host->result_first; cell++) {
+                    if (share_cell(s, cell) &&
+                        mutable_payload(f->data_values[cell].initial, 0)) {
+                        share_scatter(s, true);
+                    }
+                }
+                output = false;
+                break;
+            }
             case EXECUTION_INTRINSIC_MAP_STORE:
             case EXECUTION_INTRINSIC_MAP_DELETE: {
                 int target = share_target(s, host->first);
@@ -1980,8 +2184,11 @@ static void share_instruction(share_flow *s, int pc)
             share_define(s, out, false, SHARE_NONE, literal);
             break;
         }
-        case BF_COPY_STRING:
         case BF_COPY_ARRAY:
+            /* Retention keeps the source object, including through a view. */
+            share_define(s, out, s->slots[i->left], s->addresses[i->left], SHARE_UNKNOWN);
+            break;
+        case BF_COPY_STRING:
             share_define(s, out, false, SHARE_NONE, SHARE_UNKNOWN);
             break;
         case BF_ARGUMENT:
@@ -2109,13 +2316,16 @@ static void share_instruction(share_flow *s, int pc)
                               argument->initial.type == BF_POINTER_TYPE) &&
                              callee->argument_sharing != BEHAVIOR_SHARING_SAFE;
             }
-            /* Authored returns copy managed values; raw pointers keep their bits. */
+            /* A callee's retained mutable result may alias its arguments or
+             * state unless its result-building proof establishes independence. */
             for (int k = 0; k < call->result_count; k++) {
                 int cell = call->result_first + k;
                 bool raw = k >= callee->result_count ||
                            callee->result_kinds[k] != BEHAVIOR_VALUE ||
                            callee->result_defaults[k].type == BF_POINTER_TYPE;
-                share_taint(s, &s->cells[cell], raw);
+                bool retained = k < callee->result_count && !callee->builds_results &&
+                                mutable_payload(callee->result_defaults[k], 0);
+                share_taint(s, &s->cells[cell], raw || retained);
                 share_set(s, &s->contents[cell], SHARE_UNKNOWN);
                 share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);
             }

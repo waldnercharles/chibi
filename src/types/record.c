@@ -11,8 +11,8 @@ _Static_assert(sizeof(pin_record) % _Alignof(type_field) == 0, "record fields mu
 static size_t field_size(const type_field *field)
 {
     pin_type type = field->type;
-    if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR ||
-        type == PIN_NAME || type == PIN_ENUM || type == PIN_HANDLE) {
+    if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR || type == PIN_NAME ||
+        type == PIN_ENUM || type == PIN_HANDLE || type == PIN_POINTER) {
         return behavior_scalar_size(type);
     }
     const type_desc *nested = type == PIN_STRUCT ? type_catalog_find(field->type_name)

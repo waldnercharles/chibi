@@ -38,6 +38,15 @@ script_catalog_type script_constructor_collection(
     script_type type = container == PIN_CONTAINER_MAP
                          ? (script_type){ .storage = PIN_UNION }
                          : value;
+    /* The descriptor retains the element's full type. Its optional wrapper is
+     * an element value, not an optional collection; boxed elements physically
+     * occupy union slots. */
+    if (container != PIN_CONTAINER_MAP && (value.flags & SCRIPT_TYPE_BOXED_OPTIONAL)) {
+        type = (script_type){ .storage = PIN_UNION,
+                              .flags = value.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED |
+                                                      SCRIPT_TYPE_GENERIC) };
+    }
+    type.flags &= ~SCRIPT_TYPE_OPTIONAL;
     type.container = container;
     type.collection = id;
     char text[64];
@@ -53,6 +62,23 @@ script_catalog_type script_constructor_collection(
                                   .container = container,
                                   .key_type = key,
                                   .element_type = value };
+}
+script_catalog_type script_constructor_pointer(arena *storage, script_type pointee, size_t pointer_size)
+{
+    char identity[32];
+    snprintf(identity, sizeof identity, "%" PRIu64, script_type_tag(pointee));
+    uint64_t id = script_catalog_id("pointer-type", identity);
+    char text[64];
+    snprintf(text, sizeof text, "__pointer_%" PRIu64, id);
+    size_t bytes = strlen(text) + 1;
+    char *owned = arena_alloc(storage, bytes);
+    memcpy(owned, text, bytes);
+    return (script_catalog_type){ .id = id,
+                                  .name = owned,
+                                  .type = { .storage = PIN_POINTER, .nominal = id },
+                                  .size = pointer_size,
+                                  .internal = true,
+                                  .element_type = pointee };
 }
 script_constructor_plan script_constructor_union(
     arena *storage,
@@ -262,6 +288,7 @@ bool script_constructor_materialize(
     script_catalog_type type = { .id = plan->id,
                                  .name = plan->name,
                                  .type = plan->definition_type,
+                                 .element_type = plan->element_type,
                                  .size = plan->size,
                                  .internal = plan->internal,
                                  .variants = variants,

@@ -526,9 +526,11 @@ static bool eval_values(
         if (n->op == SHADER_SAMPLED_SDF) {
             shader_image_view image = { 0 };
             if (!sample->resolve_image ||
-                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image) ||
-                !shader_volume_eval(n, &image, a, &v[i][0])) {
+                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image)) {
                 return fail(error, n->source_id, "Sampled SDF image could not be resolved");
+            }
+            if (!shader_volume_eval(n, &image, a, &v[i][0], error)) {
+                return false;
             }
             continue;
         }

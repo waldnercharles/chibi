@@ -313,9 +313,10 @@ batches with different programs. Repeated opaque actors sharing a program and
 mesh remain instanced. Native 2D compute uses ordered passes; WebGL 2D and the
 3D renderer bind their own contiguous sampler sets.
 
-Sampling currently uses the base image level, with no mipmaps or anisotropic
-filtering. Small distant image detail can therefore alias; those filtering modes
-remain future work. Images are limited to 2048 pixels per side. The loader checks
+CPU inspection samples the base image level. GPU bilinear image variants have
+mipmaps and anisotropic filtering, and lit 3D materials use coordinate gradients
+to select their sampling footprint. A CPU base-level sample therefore does not
+reproduce a minified GPU pixel. Images are limited to 2048 pixels per side. The loader checks
 dimensions before full decoding and GPU upload, so oversized replacements report
 an error and preserve the previous image. The initial image format is RGBA8, so HDR and higher-bit-depth
 image data are not preserved. CPU/GPU checks allow 0.003 absolute channel error

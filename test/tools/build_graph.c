@@ -1229,6 +1229,7 @@ TEST_CASE(authored_dependency_files_list_prerequisites)
 
 /* The number of files below ours, each equal to the file of the same path
  * below theirs, or -1 when ours is missing or one differs. */
+#ifdef __APPLE__
 static int same_tree(const char *ours, const char *theirs)
 {
     struct stat status;
@@ -1262,6 +1263,7 @@ static int same_tree(const char *ours, const char *theirs)
     closedir(directory);
     return count;
 }
+#endif
 
 /* The launcher's share/chibi and chibi_ctl's resources equal what CMake
  * configures: the build identity, the core and documentation sources and the

@@ -733,6 +733,18 @@ separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
 
+Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
+installs graph-built private hosts and their complete compiler/core/bootstrap,
+authored build programs, graph packages and matching dependency notices into a
+fresh relocatable prefix. Private directory reservation and publication refuse
+existing paths. The graph's explicit profile emits commands without toolchain
+discovery. This working slice now includes main `5c28191b3e` and its ABI20
+compiler resources; it does not regenerate the bootstrap. The macOS packaging,
+host, graph parity and five required groups pass. The reviewed source trees,
+format-only refresh, binary identities, reserved files, Linux recipe and
+remaining full-SDK/platform gates are in
+[`docs/design/graph-sdk-packaging.md`](docs/design/graph-sdk-packaging.md).
+
 Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
 the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an
 open gate that can run later from the checked-in bootstrap artifact or any
@@ -1212,6 +1224,22 @@ tools during migration, not normal installed build dependencies. All Chibi
 project policy called by allowed dependencies belongs in `.chibi`.
 
 ## Current checkpoint
+
+Graph compiler-tools work is in progress on
+`codex/graph-sdk-packaging-20261022`, based on main `5c28191b3e`. The patch is
+validated on macOS: SDK 8 cases / 205 assertions, host 44 / 7,005,
+toolchain 11 / 165, graph 3 / 1,004, all five required groups and formatting.
+Three guard-removal controls each fail the intended case. Full execution used
+tree `77493ea3dbf675f3640b607b00cd16ed924ee9c1`; a diagnostic-only whitespace
+refresh used `84ca3290f833dafb4ad1bc3605700c4698c30791` and reran the affected
+host check plus formatting. Final ledger updates leave that tested product and
+test source unchanged.
+Next action: run the explicit Linux graph/relocation recipe on the eligible
+combined dependency candidate. Full SDK libraries/headers/exports, installed
+StageOne execution and Windows, browser and Studio acceptance remain open.
+See the M6 packaging slice above.
+
+### Prior compiler checkpoint
 
 Last verified checkpoint: 2026-10-19, the #420 integration of `main` at
 `07eb2abaa` into `codex/toolchain-cleanup-20261017` at `f6633ace1`, verified

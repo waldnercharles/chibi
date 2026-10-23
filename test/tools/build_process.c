@@ -374,6 +374,8 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
         "build.read_file",
         "build.file_exists",
         "build.make_directory",
+        "build.reserve_directory",
+        "build.publish_directory",
         "build.resolve_path",
         "build.write_file",
         "build.last_stdout",
@@ -971,6 +973,9 @@ TEST_CASE(private_host_cli_runtime_signals_still_clean_up_descendants)
 
 static chibi_build_options primitive_options(const char *text, behavior_backend backend)
 {
+    /* Functional invocations compile through the self-hosted compiler before
+     * execution. Allow for sanitizer preparation and execution; deadline and
+     * cancellation witnesses set their own limits. */
     return (chibi_build_options){
         .compiler = build_compiler,
         .root = root,
@@ -978,8 +983,15 @@ static chibi_build_options primitive_options(const char *text, behavior_backend 
         .source_text = text,
         .entry = "Build",
         .backend = backend,
-        .deadline = deadline_after(2),
+        .deadline = deadline_after(120),
     };
+}
+
+/* Measure authored operations independently of compiler preparation. */
+static double primitive_started;
+static void primitive_prepared()
+{
+    primitive_started = now();
 }
 
 static bool primitive_backend(const chibi_build_result *result, behavior_backend backend)
@@ -1100,7 +1112,11 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(source, backend);
         chibi_build_result result;
-        REQUIRE(chibi_build_invoke(&options, &result));
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked) {
+            fprintf(stderr, "build string utilities: backend=%d %s\n", b, result.diagnostic);
+        }
+        REQUIRE(invoked);
         REQUIRE(result.value == 0 && !result.steps && primitive_backend(&result, backend));
         REQUIRE(!strcmp(result.stderr_text, "authored diagnostic\n"));
     }
@@ -1168,11 +1184,17 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(source, backend);
         options.core = CHIBI_SOURCE_ROOT "/packages/core";
-        options.deadline = deadline_after(10);
         chibi_build_result result;
+        double started = chibi_build_now();
         bool invoked = chibi_build_invoke(&options, &result);
         if (!invoked) {
-            fprintf(stderr, "core package build: %s\n", result.diagnostic);
+            fprintf(
+                stderr,
+                "core package build: backend=%d elapsed=%.3f %s\n",
+                b,
+                chibi_build_now() - started,
+                result.diagnostic
+            );
         }
         REQUIRE(invoked);
         /* Each call into core:strings enters the backend again. */
@@ -1433,10 +1455,21 @@ TEST_CASE(private_started_steps_run_together)
                   "failed += 1; } } "
                   "return failed; }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    primitive_started = 0;
+    options.prepared = primitive_prepared;
     double started = now();
     chibi_build_result result;
-    REQUIRE(chibi_build_invoke(&options, &result));
-    double elapsed = now() - started;
+    bool invoked = chibi_build_invoke(&options, &result);
+    if (!invoked) {
+        fprintf(
+            stderr,
+            "concurrent build steps: elapsed=%.3f %s\n",
+            now() - started,
+            result.diagnostic
+        );
+    }
+    REQUIRE(invoked);
+    double elapsed = now() - primitive_started;
     /* One after another the four would take 1.6 s. */
     REQUIRE(result.value == 0 && result.steps == 4 && elapsed < 1.2);
     return true;
@@ -1498,17 +1531,18 @@ TEST_CASE(private_unwaited_and_late_steps_stop)
                     "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
                     "\"sleep\", \"30\"]); return 0; }";
     chibi_build_options options = primitive_options(unwaited, BEHAVIOR_BYTECODE);
-    double started = now();
+    primitive_started = 0;
+    options.prepared = primitive_prepared;
     chibi_build_result result;
     REQUIRE(chibi_build_invoke(&options, &result));
-    REQUIRE(result.value == 0 && now() - started < 2);
+    REQUIRE(result.value == 0 && now() - primitive_started < 2);
     static const char
         *late = "package jobs\nBuild :: () -> int { return build.wait("
                 "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
                 "\"sleep\", \"30\"])); }";
     options = primitive_options(late, BEHAVIOR_BYTECODE);
     options.deadline = now() + 0.5;
-    started = now();
+    double started = now();
     REQUIRE(!chibi_build_invoke(&options, &result));
     REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - started < 2);
     return true;
@@ -1671,6 +1705,15 @@ TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files)
             chibi_build_options options = primitive_options(sources[i], backend);
             chibi_build_result result;
             bool success = chibi_build_invoke(&options, &result);
+            if (!success && (i < 2 || i == 3)) {
+                fprintf(
+                    stderr,
+                    "build read: case=%d backend=%d %s\n",
+                    i,
+                    b,
+                    result.diagnostic
+                );
+            }
             REQUIRE(success == (i < 2 || i == 3));
             REQUIRE(!result.steps && primitive_backend(&result, backend));
             if (i < 2 || i == 3) {
@@ -1791,11 +1834,25 @@ TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
     for (int i = 0; i < 2; i++) {
         chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
         chibi_build_result result;
-        REQUIRE(chibi_build_invoke(&options, &result) == !i);
-        REQUIRE(
-            i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
-              : !result.value
-        );
+        double started = chibi_build_now();
+        bool invoked = chibi_build_invoke(&options, &result);
+        bool expected = i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
+                          : !result.value;
+        if (invoked != !i || !expected) {
+            fprintf(
+                stderr,
+                "build storage case=%d invoked=%d value=%d flow=%d "
+                "elapsed=%.3f diagnostic=[%s]\n",
+                i,
+                invoked,
+                result.value,
+                result.flow_status,
+                chibi_build_now() - started,
+                result.diagnostic
+            );
+        }
+        REQUIRE(invoked == !i);
+        REQUIRE(expected);
     }
     return true;
 }
@@ -2116,6 +2173,91 @@ TEST_CASE(private_copies_renames_and_removals_leave_whole_files)
     return true;
 }
 
+TEST_CASE(private_directory_publication_refuses_existing_paths)
+{
+    static const char *source =
+        "package publish\nBuild :: () -> int { "
+        "if(!build.reserve_directory(\"publish/stage\") || "
+        "build.reserve_directory(\"publish/stage\") || "
+        "build.reserve_directory(\"publish/file\") || "
+        "build.reserve_directory(\"publish/link\") || "
+        "build.reserve_directory(\"publish/dangling\") || "
+        "build.reserve_directory(\"publish/missing/child\")) { return 1; } "
+        "if(build.file_kind(\"publish/missing\")!=\"\" || "
+        "!build.write_file(\"publish/stage/payload\",\"source bytes\")) { "
+        "return 2; } "
+        "stamp:=build.file_stamp(\"publish/stage/payload\"); "
+        "if(build.publish_directory(\"publish/stage\",\"publish/file\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/empty\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/link\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/dangling\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/stage\") || "
+        "build.publish_directory(\"publish/stage\",\"publish/missing/child\")) "
+        "{ return 3; } "
+        "if(build.file_kind(\"publish/stage\")!=\"directory\" || "
+        "build.read_file(\"publish/stage/payload\")!=\"source bytes\" || "
+        "build.file_stamp(\"publish/stage/payload\")!=stamp) { return 4; } "
+        "if(build.publish_directory(\"publish/file\",\"publish/from-file\") || "
+        "build.publish_directory(\"publish/source-link\",\"publish/"
+        "from-link\") || "
+        "build.publish_directory(\"publish/absent\",\"publish/from-missing\")) "
+        "{ return 5; } "
+        "if(build.file_kind(\"publish/from-file\")!=\"\" || "
+        "build.file_kind(\"publish/from-link\")!=\"\" || "
+        "build.file_kind(\"publish/from-missing\")!=\"\" || "
+        "build.read_file(\"publish/file\")!=\"keep\" || "
+        "build.file_kind(\"publish/source-link\")!=\"link\") { return 6; } "
+        "if(!build.publish_directory(\"publish/stage\",\"publish/ready\") || "
+        "build.file_kind(\"publish/stage\")!=\"\" || "
+        "build.read_file(\"publish/ready/payload\")!=\"source bytes\" || "
+        "build.file_stamp(\"publish/ready/payload\")!=stamp) { return 7; } "
+        "return 0; }";
+    static const char *const existing[] = { "file", "empty", "link", "dangling", "source-link" };
+    for (int b = 0; b < 2; b++) {
+        primitive_directory("publish");
+        primitive_directory("publish/empty");
+        primitive_file("publish/file", "keep", 4);
+        primitive_link("file", "publish/link");
+        primitive_link("absent", "publish/dangling");
+        primitive_link("stage", "publish/source-link");
+        struct stat before[5], after;
+        char path[256];
+        for (int i = 0; i < 5; i++) {
+            snprintf(path, sizeof path, "%s/publish/%s", root, existing[i]);
+            REQUIRE(!lstat(path, &before[i]));
+        }
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(run_primitives(source, backend, 0));
+        for (int i = 0; i < 5; i++) {
+            snprintf(path, sizeof path, "%s/publish/%s", root, existing[i]);
+            REQUIRE(!lstat(path, &after));
+            REQUIRE(
+                after.st_ino == before[i].st_ino && after.st_mode == before[i].st_mode
+            );
+        }
+        snprintf(path, sizeof path, "%s/publish/ready/payload", root);
+        char *text = tool_read(path);
+        REQUIRE(text && !strcmp(text, "source bytes"));
+        free(text);
+        snprintf(path, sizeof path, "%s/publish/file", root);
+        text = tool_read(path);
+        REQUIRE(text && !strcmp(text, "keep"));
+        free(text);
+        snprintf(path, sizeof path, "%s/publish/empty", root);
+        DIR *empty = opendir(path);
+        REQUIRE(empty);
+        int entries = 0;
+        struct dirent *entry;
+        while ((entry = readdir(empty))) {
+            entries += strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..");
+        }
+        REQUIRE(!closedir(empty) && !entries);
+        snprintf(path, sizeof path, "%s/publish", root);
+        tool_remove_tree(path);
+    }
+    return true;
+}
+
 /* FIPS 180-4 example digests: "abc", the 448-bit two-block message and one
  * million 'a' bytes, which also spans many read chunks. */
 TEST_CASE(private_hashes_match_sha256_vectors)
@@ -2189,7 +2331,7 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     return true;
 }
 
-void test_tool_build_process(const char *worker, const char *host)
+static void build_process(const char *worker, const char *host, bool files_only)
 {
     worker_path = worker;
     host_path = host;
@@ -2222,6 +2364,12 @@ void test_tool_build_process(const char *worker, const char *host)
     saved_allowed = getenv("CHIBI_BUILD_ALLOWED")
                       ? strdup(getenv("CHIBI_BUILD_ALLOWED"))
                       : NULL;
+    if (files_only) {
+        RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
+        RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+        RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
+        goto teardown;
+    }
     RUN_TEST_CASE(argv_cwd_and_explicit_environment);
     RUN_TEST_CASE(separate_output_bounds);
     RUN_TEST_CASE(exits_and_spawn_errors);
@@ -2263,8 +2411,10 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);
     RUN_TEST_CASE(private_copies_renames_and_removals_leave_whole_files);
+    RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
     RUN_TEST_CASE(private_hashes_match_sha256_vectors);
     RUN_TEST_CASE(private_environment_names_list_the_allowed_snapshot);
+teardown:
     chibi_build_compiler_free(build_compiler);
     build_compiler = NULL;
     tool_remove_tree(root);
@@ -2287,4 +2437,13 @@ void test_tool_build_process(const char *worker, const char *host)
     }
     free(saved_secret);
     free(saved_allowed);
+}
+
+void test_tool_build_process(const char *worker, const char *host)
+{
+    build_process(worker, host, false);
+}
+void test_tool_build_process_files(const char *worker, const char *host)
+{
+    build_process(worker, host, true);
 }

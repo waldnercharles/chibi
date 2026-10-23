@@ -372,6 +372,66 @@ static const authoring_completion *completion(const char *name)
     return NULL;
 }
 
+TEST_CASE(intelligence_preserves_truncated_callable_details)
+{
+    char name[4098];
+    memset(name, 'x', sizeof name - 1);
+    name[sizeof name - 1] = 0;
+    for (int i = 0; i < 2; i++) {
+        base_catalog();
+        script_catalog_parameter parameter = { .name = name,
+                                               .type = { .storage = PIN_I32 } };
+        capabilities[1] = (script_catalog_capability){
+            .id = 700,
+            .name = "Native",
+            .qualified_name = i ? name : NULL,
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .parameters = i ? NULL : &parameter,
+            .parameter_count = i ? 0 : 1,
+            .completion_outcome = -1
+        };
+        catalog.capability_count = 2;
+        const char *sources[] = {
+            i ? "Use :: behavior { on Tick :: () { Native(); } }"
+              : "Use :: behavior { on Tick :: () { Native(1); } }"
+        };
+        REQUIRE(load(sources, 1));
+        const authoring_reference *call = at(0, "Native(");
+        REQUIRE(call && call->target.id == 700);
+        edited = authoring_source_hover(navigation, 0, call->location.range.start);
+        REQUIRE(edited && !strcmp(edited, i ? " [truncated]()" : "Native( [truncated]: int)"));
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(intelligence_owns_empty_callable_details)
+{
+    base_catalog();
+    capabilities[1] = (script_catalog_capability){ .id = 700,
+                                                   .name = "Native",
+                                                   .qualified_name = "",
+                                                   .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                                   .completion_outcome = -1 };
+    catalog.capability_count = 2;
+    const char *sources[] = {
+        "Use :: behavior { on Tick :: () { Native(); } }"
+    };
+    REQUIRE(load(sources, 1));
+    const authoring_reference *call = at(0, "Native()");
+    REQUIRE(call && call->target.id == 700);
+    edited = authoring_source_hover(navigation, 0, call->location.range.start);
+    REQUIRE(edited && !strcmp(edited, "()"));
+    authoring_source_complete(navigation, 0, call->location.range.start + 1, &completions);
+    REQUIRE(!completion(""));
+    char *owned = edited;
+    edited = NULL;
+    cleanup();
+    edited = owned;
+    REQUIRE(!strcmp(edited, "()"));
+    return true;
+}
+
 /* Completion offers the payload fields a handler lists, and nothing for the
  * fields it leaves out. */
 TEST_CASE(intelligence_completes_listed_payload_fields)
@@ -1783,6 +1843,8 @@ TEST_CASE(intelligence_templates_hide_specializations_and_preserve_owned_definit
 void test_language_navigation()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(intelligence_preserves_truncated_callable_details);
+    RUN_TEST_CASE(intelligence_owns_empty_callable_details);
     RUN_TEST_CASE(navigation_resolves_shadowed_identity);
     RUN_TEST_CASE(rename_rejects_capture_in_both_directions);
     RUN_TEST_CASE(rename_cross_file_callable_parameters_results_and_program);

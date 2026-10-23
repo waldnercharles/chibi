@@ -91,7 +91,7 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c package_ownership.c desktop_dependencies.c collab.c
+add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c package_ownership.c desktop_dependencies.c third_party_publish.c collab.c
     validate_project.c fixture_format.c controller.c render_fixture.c test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
@@ -107,7 +107,7 @@ target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
 if(TARGET chibi_build_host)
-    target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c)
+    target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c)
     target_link_libraries(test_tools PRIVATE chibi_build_host)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BUILD_PROCESS=1)
     add_dependencies(test_tools chibi-build-host)

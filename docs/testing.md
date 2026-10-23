@@ -1250,7 +1250,10 @@ The Chrome C driver also includes counted-row construction and Outliner
 projection among its ten selectors. It retains its internal 55-second timeout.
 
 Exceeding an explicit timeout fails the run. The runner verifies cleanup
-discovery before test work. Linux subreaping contains escaped sessions;
+discovery before test work. Portable process inspection allows five seconds for
+each `ps` snapshot, kills and reaps a stuck probe, and refuses to launch work if
+discovery fails. The C runner cases cover delayed inspection, stuck-probe refusal,
+descendant cleanup and sibling preservation. Linux subreaping contains escaped sessions;
 arbitrary already-detached descendants are not proven contained on macOS.
 Platform validation must report what actually ran.
 

@@ -59,10 +59,15 @@ import:
   `Target`'s `assert_failure` is that failure's kind. Stage zero compiles an
   assert without a condition to one that always fails; stage one refuses it;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
-  is a local, zero until the body sets it; `return (a, b)` gives each its
-  value, and `return` or the body's end returns them. A call's `.name` reads
-  one, directly or through a local, as for a native's several results. A
-  named result is a number or a bool;
+  is a writable binding initialized as its type requires. `return (a, b)`
+  assigns each value in order, then returns them; a bare `return` returns
+  their current values. A single named result also accepts `return value`
+  and its call yields that value directly. A call's `.name` reads a named
+  result, directly or through a local. The projection has the declared result
+  type, with checked numeric conversion when a local widened the value.
+  A named result may be a number, bool
+  or struct; structs use owned, typed storage and retain their field bytes
+  when returned to the caller;
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
@@ -206,7 +211,9 @@ A behavior may hold integer, floating, boolean, string and entity state,
 member procedures, and `on` handlers of the game's events with scalar
 payloads. State types may be inferred from boolean, string and numeric literals.
 An entity state may omit its default and starts empty; the other supported
-scalar states require a default. A typed `null` default gives the type's zero
+scalar states require a default. Entity values retain their nominal type through
+`self`, component fields and keyed scene globals; a different handle type cannot
+be assigned or compared as an entity. A typed `null` default gives the type's zero
 value. Strings preserve all bytes, including embedded NUL, and assignments keep
 an instance-owned copy after the handler returns. A
 member procedure is a function the behavior's handlers call; stage zero

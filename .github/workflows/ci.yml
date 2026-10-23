@@ -54,7 +54,6 @@ jobs:
         run: python3 test/tools/package_licenses.py
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
-      # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
       # validate-project runs chibi_ctl dozens of times, and published-docs and

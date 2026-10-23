@@ -1,0 +1,46 @@
+Running: synchronous_activation_benchmark ACTIVATION backend=BYTECODE workload=system owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=6 requested_bytes=1704 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000849000 ns_per_root_activation=265.313 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000848000 ns_per_root_activation=265.000 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000810000 ns_per_root_activation=253.125 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000810000 ns_per_root_activation=253.125 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000813000 ns_per_root_activation=254.062 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=BYTECODE workload=event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=5 requested_bytes=1576 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000852000 ns_per_root_activation=266.250 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000845000 ns_per_root_activation=264.063 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000835000 ns_per_root_activation=260.937 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000841000 ns_per_root_activation=262.813 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000911000 ns_per_root_activation=284.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=BYTECODE workload=helper-event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=21 requested_bytes=7632 arena_blocks=2
+ACTIVATION trial=0 seconds=0.002057000 ns_per_root_activation=642.813 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.002240000 ns_per_root_activation=700.000 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.002032000 ns_per_root_activation=635.000 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.002040000 ns_per_root_activation=637.500 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.002124000 ns_per_root_activation=663.750 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=SLJIT workload=system owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=4 requested_bytes=1528 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000568000 ns_per_root_activation=177.500 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000565000 ns_per_root_activation=176.562 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000566000 ns_per_root_activation=176.875 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000566000 ns_per_root_activation=176.875 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000562000 ns_per_root_activation=175.625 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=SLJIT workload=event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=3 requested_bytes=1400 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000671000 ns_per_root_activation=209.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000671000 ns_per_root_activation=209.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000655000 ns_per_root_activation=204.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000660000 ns_per_root_activation=206.250 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000655000 ns_per_root_activation=204.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=SLJIT workload=helper-event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=17 requested_bytes=6840 arena_blocks=2
+ACTIVATION trial=0 seconds=0.001359000 ns_per_root_activation=424.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.001309000 ns_per_root_activation=409.062 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.001317000 ns_per_root_activation=411.563 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.001205000 ns_per_root_activation=376.562 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.001149000 ns_per_root_activation=359.063 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.032377 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 78
+Test command wall time: 0.142s; includes in-test fixture setup; external configuration/build excluded.

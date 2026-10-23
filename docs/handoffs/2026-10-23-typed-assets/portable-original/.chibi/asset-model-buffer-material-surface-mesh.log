@@ -1,0 +1,21 @@
+Running: relief_and_cut_are_actual_geometry (OK) (0.002100 secs)
+Running: neighbor_has_matching_height_and_no_wall (OK) (0.001886 secs)
+Running: stable_frame_and_rejected_options (OK) (0.000250 secs)
+Running: authored_height_plane_uses_retained_frame_and_normals (OK) (0.001287 secs)
+Running: height_sampling_failures_preserve_previous_output (OK) (0.000141 secs)
+Running: authored_displacement_stays_inside_depth_envelope (OK) (0.001527 secs)
+Running: recess_recedes_into_cut_air_and_keeps_wide_openings (OK) (0.017118 secs)
+Running: recess_matches_across_chunk_seam_and_needs_halo (OK) (0.005338 secs)
+Running: recess_smoothing_lets_thin_spikes_hang_in_front (OK) (0.012102 secs)
+Running: sphere_cavity_meshes_closed_and_faces_into_air (OK) (0.001269 secs)
+Running: removed_plane_carves_a_cone_and_opens_gi (OK) (0.000825 secs)
+Running: open_field_closes_at_the_back_unless_open_and_rejects_oversize (OK) (0.000697 secs)
+Running: front_rock_casts_and_leaves_the_visible_mesh_alone (OK) (0.001438 secs)
+Running: dual_contouring_keeps_flat_faces_and_crisp_edges (OK) (0.000445 secs)
+Running: refined_volume_matches_the_dense_fine_bake (OK) (0.017485 secs)
+Running: slab_carve_is_local_and_meshes_in_depth_chunks (OK) (0.001454 secs)
+Running: changed_lattice_holds_every_flipped_point (OK) (0.000221 secs)
+Running: boxes_coarsen_within_the_limit_and_keep_far_bricks (OK) (0.000139 secs)
+===============================================================
+Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 25411
+Test command wall time: 0.175s; includes in-test fixture setup; external configuration/build excluded.

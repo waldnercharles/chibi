@@ -1,0 +1,24 @@
+{
+  "state": "typed source review clear; application and execution unrun",
+  "base_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "candidate_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "patch_sha256": "30112d927517beb11440e7527fd53813342b1b0fdc7d7adfda2778c215ca1a4c",
+  "reviewers": [
+    "typed parent: Make routing and five-host regression",
+    "typed compiler prerequisite reviewer: bootstrap load path and ABI/resource boundary"
+  ],
+  "checked": [
+    "Header, Make selection and actual-host C probe all require protocol9.",
+    "Existing Make fixture keeps missing/non-probing/protocol6 and adds protocol8; current host remains authored path.",
+    "Existing generic numbered worker supplies protocol8 without a new executable type.",
+    "Stage-zero child Make keeps its freshly built BUILD_HOST override.",
+    "Protocol9 supports compiled BootstrapContract validation; bootstrap.json remains metadata.",
+    "Earlier protocol8 binaries do not guarantee the contract; a matching earlier typed SDK can support it while reporting8.",
+    "SDK.Verify bootstrap/capability witness is unchanged; no SDK numerical gate.",
+    "Compiler-runtime .2 generic artifact CI, preparedABI20, native catalog and compiler19/asset37 source inventories remain separate and unchanged.",
+    "Protocol9 does not claim future prepared build artifact support."
+  ],
+  "requested_wording_fixes": "adopted; final822d-to6ef delta is comments and docs only",
+  "runtime_checks": "not run; require regression red/green, actual normal old8 upgrade to fresh9, affected checks and final required engine gates",
+  "active_state": "verified unchanged9fa with original HEAD30cd/MERGEfa1b; no source/index mutations by reviewer"
+}

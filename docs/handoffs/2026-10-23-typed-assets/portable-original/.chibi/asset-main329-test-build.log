@@ -1,0 +1,17 @@
+third-party: running (log: .chibi/logs/1792700799195207000-70867-third-party.log)
+third-party: ok (0.1s; log: .chibi/logs/1792700799195207000-70867-third-party.log)
+graph: running (log: .chibi/logs/1792700799385146000-70872-graph.log)
+graph: FAILED (5.2s; log: .chibi/logs/1792700799385146000-70872-graph.log)
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/execution_scope.c:2:10: fatal error: 'execution/definition.h' file not found
+    2 | #include "execution/definition.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+graph: the build failed
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/execution_scope.c:2:10: fatal error: 'execution/definition.h' file not found
+    2 | #include "execution/definition.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+graph: the build failed
+make[2]: *** [toolchain-build] Error 1
+make[1]: *** [build] Error 2
+make: *** [test-build] Error 2

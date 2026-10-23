@@ -1,0 +1,99 @@
+Running: row_array_direct_cost_and_aliases row-array path=add wrapper=0 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=0 value_buffer=0 all_arena_block_delta=0 arena_used_total=1380 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=add wrapper=0 rows=1 record_bytes=56 text_bytes=45 nominal_bytes=0 headers=1 value_buffer=0 all_arena_block_delta=0 arena_used_total=1701 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=add wrapper=0 rows=4 record_bytes=560 text_bytes=450 nominal_bytes=0 headers=10 value_buffer=0 all_arena_block_delta=1 arena_used_total=4214 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array path=add wrapper=0 rows=16 record_bytes=7616 text_bytes=6120 nominal_bytes=0 headers=136 value_buffer=0 all_arena_block_delta=3 arena_used_total=37320 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array path=append wrapper=0 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=0 value_buffer=0 all_arena_block_delta=0 arena_used_total=1380 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=append wrapper=0 rows=1 record_bytes=56 text_bytes=45 nominal_bytes=0 headers=1 value_buffer=0 all_arena_block_delta=0 arena_used_total=1701 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=append wrapper=0 rows=4 record_bytes=560 text_bytes=450 nominal_bytes=0 headers=10 value_buffer=0 all_arena_block_delta=1 arena_used_total=4214 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array path=append wrapper=0 rows=16 record_bytes=7616 text_bytes=6120 nominal_bytes=0 headers=136 value_buffer=0 all_arena_block_delta=3 arena_used_total=37320 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array path=add wrapper=1 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=0 value_buffer=0 all_arena_block_delta=0 arena_used_total=1380 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=add wrapper=1 rows=1 record_bytes=56 text_bytes=45 nominal_bytes=0 headers=1 value_buffer=0 all_arena_block_delta=0 arena_used_total=1701 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=add wrapper=1 rows=4 record_bytes=560 text_bytes=450 nominal_bytes=0 headers=10 value_buffer=0 all_arena_block_delta=1 arena_used_total=4214 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array path=add wrapper=1 rows=16 record_bytes=7616 text_bytes=6120 nominal_bytes=0 headers=136 value_buffer=0 all_arena_block_delta=3 arena_used_total=37320 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array path=append wrapper=1 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=0 value_buffer=0 all_arena_block_delta=0 arena_used_total=1380 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=append wrapper=1 rows=1 record_bytes=56 text_bytes=45 nominal_bytes=0 headers=1 value_buffer=0 all_arena_block_delta=0 arena_used_total=1701 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=append wrapper=1 rows=4 record_bytes=560 text_bytes=450 nominal_bytes=0 headers=10 value_buffer=0 all_arena_block_delta=1 arena_used_total=4214 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array path=append wrapper=1 rows=16 record_bytes=7616 text_bytes=6120 nominal_bytes=0 headers=136 value_buffer=0 all_arena_block_delta=3 arena_used_total=37320 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array path=one-pass-snapshot wrapper=0 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=1 value_buffer=0 all_arena_block_delta=2 arena_used_total=1380 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=one-pass-snapshot wrapper=0 rows=1 record_bytes=56 text_bytes=45 nominal_bytes=0 headers=2 value_buffer=0 all_arena_block_delta=2 arena_used_total=1629 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=one-pass-snapshot wrapper=0 rows=4 record_bytes=224 text_bytes=180 nominal_bytes=0 headers=5 value_buffer=0 all_arena_block_delta=2 arena_used_total=2397 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array path=one-pass-snapshot wrapper=0 rows=16 record_bytes=896 text_bytes=720 nominal_bytes=0 headers=17 value_buffer=0 all_arena_block_delta=3 arena_used_total=5462 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+(OK) (0.001295 secs)
+Running: row_array_rejection_atomicity (OK) (0.000029 secs)
+Running: row_array_call_collectable_results (OK) (0.000035 secs)
+Running: row_array_authored_construction row-array path=authored-add wrapper=2 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=4 value_buffer=0 all_arena_block_delta=2 arena_used_total=1740 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-add wrapper=2 rows=1 record_bytes=280 text_bytes=275 nominal_bytes=0 headers=21 value_buffer=0 all_arena_block_delta=2 arena_used_total=3493 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-add wrapper=2 rows=4 record_bytes=952 text_bytes=1085 nominal_bytes=0 headers=69 value_buffer=0 all_arena_block_delta=3 arena_used_total=7446 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-add wrapper=2 rows=16 record_bytes=3640 text_bytes=4325 nominal_bytes=0 headers=261 value_buffer=0 all_arena_block_delta=5 arena_used_total=23912 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-add wrapper=1 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=4 value_buffer=0 all_arena_block_delta=2 arena_used_total=1740 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-add wrapper=1 rows=1 record_bytes=280 text_bytes=275 nominal_bytes=0 headers=21 value_buffer=0 all_arena_block_delta=2 arena_used_total=3493 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-add wrapper=1 rows=4 record_bytes=952 text_bytes=1085 nominal_bytes=0 headers=69 value_buffer=0 all_arena_block_delta=3 arena_used_total=7446 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-add wrapper=1 rows=16 record_bytes=3640 text_bytes=4325 nominal_bytes=0 headers=261 value_buffer=0 all_arena_block_delta=5 arena_used_total=23912 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-append wrapper=2 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=4 value_buffer=0 all_arena_block_delta=2 arena_used_total=1740 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-append wrapper=2 rows=1 record_bytes=336 text_bytes=320 nominal_bytes=0 headers=22 value_buffer=0 all_arena_block_delta=2 arena_used_total=3821 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-append wrapper=2 rows=4 record_bytes=1176 text_bytes=1265 nominal_bytes=0 headers=73 value_buffer=0 all_arena_block_delta=3 arena_used_total=8765 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-append wrapper=2 rows=16 record_bytes=4536 text_bytes=5045 nominal_bytes=0 headers=277 value_buffer=0 all_arena_block_delta=5 arena_used_total=29174 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-append wrapper=1 rows=0 record_bytes=0 text_bytes=0 nominal_bytes=0 headers=4 value_buffer=0 all_arena_block_delta=2 arena_used_total=1740 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-append wrapper=1 rows=1 record_bytes=336 text_bytes=320 nominal_bytes=0 headers=22 value_buffer=0 all_arena_block_delta=2 arena_used_total=3821 arena_capacity_total=3924 arena_storage_total=3972 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-append wrapper=1 rows=4 record_bytes=1176 text_bytes=1265 nominal_bytes=0 headers=73 value_buffer=0 all_arena_block_delta=3 arena_used_total=8765 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-append wrapper=1 rows=16 record_bytes=4536 text_bytes=5045 nominal_bytes=0 headers=277 value_buffer=0 all_arena_block_delta=5 arena_used_total=29174 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+(OK) (0.005048 secs)
+Running: row_array_authored_retained_prefix row-array path=authored-retained-prefix wrapper=2 rows=2 record_bytes=560 text_bytes=598 nominal_bytes=0 headers=44 value_buffer=0 all_arena_block_delta=3 arena_used_total=6062 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-retained-prefix wrapper=2 rows=16 record_bytes=2912 text_bytes=3748 nominal_bytes=0 headers=254 value_buffer=0 all_arena_block_delta=5 arena_used_total=21584 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array backend=2 bytecode=1 sljit=0 wasm=0 fallback=0
+row-array path=authored-retained-prefix wrapper=1 rows=2 record_bytes=560 text_bytes=598 nominal_bytes=0 headers=44 value_buffer=0 all_arena_block_delta=3 arena_used_total=6062 arena_capacity_total=9156 arena_storage_total=9228 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+row-array path=authored-retained-prefix wrapper=1 rows=16 record_bytes=2912 text_bytes=3748 nominal_bytes=0 headers=254 value_buffer=0 all_arena_block_delta=5 arena_used_total=21584 arena_capacity_total=40548 arena_storage_total=40668 final_one_shape_bytes=1308
+row-array backend=1 bytecode=0 sljit=1 wasm=0 fallback=0
+(OK) (0.002288 secs)
+Running: row_array_owned_scalars_stay_packed (OK) (0.000004 secs)
+Running: row_array_local_arrays_update_in_place (OK) (0.604443 secs)
+Running: packed_record_updates_box_compatible_null_elements (OK) (0.000016 secs)
+Running: packed_scalars_preserve_values_widths_and_snapshot_ownership (OK) (0.000184 secs)
+Running: packed_slices_take_their_representation_from_their_range (OK) (0.000091 secs)
+Running: packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks (OK) (0.000050 secs)
+Running: packed_authored_loops_match_boxed_input_across_numeric_widths packed-loop backend=BYTECODE type=int8 elements=64 trials=16 boxed_bytes=2560 packed_bytes=64 boxed_seconds=0.001229 packed_seconds=0.001071
+packed-loop backend=BYTECODE type=byte elements=64 trials=16 boxed_bytes=2560 packed_bytes=64 boxed_seconds=0.000376 packed_seconds=0.000449
+packed-loop backend=BYTECODE type=int16 elements=64 trials=16 boxed_bytes=2560 packed_bytes=128 boxed_seconds=0.000370 packed_seconds=0.000370
+packed-loop backend=BYTECODE type=uint16 elements=64 trials=16 boxed_bytes=2560 packed_bytes=128 boxed_seconds=0.000373 packed_seconds=0.000369
+packed-loop backend=BYTECODE type=int elements=64 trials=16 boxed_bytes=2560 packed_bytes=256 boxed_seconds=0.000417 packed_seconds=0.000369
+packed-loop backend=BYTECODE type=uint elements=64 trials=16 boxed_bytes=2560 packed_bytes=256 boxed_seconds=0.000369 packed_seconds=0.000461
+packed-loop backend=BYTECODE type=int64 elements=64 trials=16 boxed_bytes=2560 packed_bytes=512 boxed_seconds=0.000494 packed_seconds=0.000379
+packed-loop backend=BYTECODE type=uint64 elements=64 trials=16 boxed_bytes=2560 packed_bytes=512 boxed_seconds=0.000380 packed_seconds=0.000377
+packed-loop backend=BYTECODE type=float elements=64 trials=16 boxed_bytes=2560 packed_bytes=256 boxed_seconds=0.000679 packed_seconds=0.000863
+packed-loop backend=BYTECODE type=double elements=64 trials=16 boxed_bytes=2560 packed_bytes=512 boxed_seconds=0.000367 packed_seconds=0.000367
+packed-loop backend=SLJIT type=int8 elements=64 trials=16 boxed_bytes=2560 packed_bytes=64 boxed_seconds=0.000011 packed_seconds=0.000006
+packed-loop backend=SLJIT type=byte elements=64 trials=16 boxed_bytes=2560 packed_bytes=64 boxed_seconds=0.000010 packed_seconds=0.000006
+packed-loop backend=SLJIT type=int16 elements=64 trials=16 boxed_bytes=2560 packed_bytes=128 boxed_seconds=0.000015 packed_seconds=0.000006
+packed-loop backend=SLJIT type=uint16 elements=64 trials=16 boxed_bytes=2560 packed_bytes=128 boxed_seconds=0.000028 packed_seconds=0.000007
+packed-loop backend=SLJIT type=int elements=64 trials=16 boxed_bytes=2560 packed_bytes=256 boxed_seconds=0.000026 packed_seconds=0.000014
+packed-loop backend=SLJIT type=uint elements=64 trials=16 boxed_bytes=2560 packed_bytes=256 boxed_seconds=0.000011 packed_seconds=0.000007
+packed-loop backend=SLJIT type=int64 elements=64 trials=16 boxed_bytes=2560 packed_bytes=512 boxed_seconds=0.000011 packed_seconds=0.000006
+packed-loop backend=SLJIT type=uint64 elements=64 trials=16 boxed_bytes=2560 packed_bytes=512 boxed_seconds=0.000011 packed_seconds=0.000006
+packed-loop backend=SLJIT type=float elements=64 trials=16 boxed_bytes=2560 packed_bytes=256 boxed_seconds=0.000014 packed_seconds=0.000006
+packed-loop backend=SLJIT type=double elements=64 trials=16 boxed_bytes=2560 packed_bytes=512 boxed_seconds=0.000013 packed_seconds=0.000007
+(OK) (0.011825 secs)
+Running: typed_integer_edges_match_vm_and_compiled_backends (OK) (0.014563 secs)
+Running: typed_integer_large_constant_folding_is_exact (OK) (0.000554 secs)
+Running: typed_compile_time_values_preserve_width_and_float_remainder (OK) (0.004224 secs)
+Running: float_math_stays_float_and_default_math_stays_double (OK) (0.001372 secs)
+===============================================================
+Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 18197
+Test command wall time: 7.215s; includes in-test fixture setup; external configuration/build excluded.

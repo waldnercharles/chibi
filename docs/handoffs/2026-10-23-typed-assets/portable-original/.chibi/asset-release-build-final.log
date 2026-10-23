@@ -1,0 +1,409 @@
+[1/195] Building C object CMakeFiles/policy_worker.dir/policy_worker.c.o
+[2/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/ecs_relationship.c.o
+[3/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/ecs.c.o
+[4/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/types.c.o
+[5/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/ecs_hierarchy.c.o
+[6/195] Linking C executable policy_worker
+[7/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/ecs_world.c.o
+[8/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/ecs_query_benchmark.c.o
+[9/195] Building C object CMakeFiles/chibi_sdk_contracts.dir/ecs_query.c.o
+[10/195] Building C object CMakeFiles/chibi_record_consumer.dir/record_runtime.c.o
+[11/195] Building C object CMakeFiles/chibi_scene_consumer.dir/scene.c.o
+[12/195] Building C object CMakeFiles/test_tools.dir/graph_dispatch.c.o
+[13/195] Building C object CMakeFiles/chibi_prepared_consumer.dir/prepared_runtime.c.o
+[14/195] Building C object CMakeFiles/chibi_scene_consumer.dir/scene_prepared.c.o
+[15/195] Building C object CMakeFiles/test_tools.dir/main.c.o
+[16/195] Building C object CMakeFiles/test_tools.dir/prepared.c.o
+[17/195] Building C object CMakeFiles/test_tools.dir/fixture.c.o
+[18/195] Building C object CMakeFiles/test_tools.dir/execution_policy.c.o
+[19/195] Building C object CMakeFiles/test_tools.dir/package.c.o
+[20/195] Building C object CMakeFiles/test_tools.dir/desktop_dependencies.c.o
+[21/195] Building C object CMakeFiles/test_tools.dir/collab.c.o
+[22/195] Building C object CMakeFiles/test_tools.dir/chibi_cli.c.o
+[23/195] Building C object CMakeFiles/test_tools.dir/package_ownership.c.o
+[24/195] Building C object CMakeFiles/test_tools.dir/fixture_format.c.o
+[25/195] Building C object CMakeFiles/test_tools.dir/render_fixture.c.o
+[26/195] Building C object CMakeFiles/test_tools.dir/test_policy.c.o
+[27/195] Building C object CMakeFiles/test_tools.dir/validation_plan.c.o
+[28/195] Building C object CMakeFiles/test_tools.dir/validate_project.c.o
+[29/195] Building C object CMakeFiles/test_tools.dir/controller.c.o
+[30/195] Building C object CMakeFiles/test_tools.dir/web_storage.c.o
+[31/195] Building C object CMakeFiles/test_tools.dir/player_url.c.o
+[32/195] Building C object CMakeFiles/test_tools.dir/webgpu_staging.c.o
+[33/195] Building C object CMakeFiles/test_tools.dir/browser.c.o
+[34/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/support/arena.c.o
+[35/195] Building C object CMakeFiles/test_tools.dir/wasm_browser.c.o
+[36/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/automation/execution_policy.c.o
+[37/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/host/process.c.o
+[38/195] Building C object CMakeFiles/test_tools.dir/tilemap.c.o
+[39/195] Building C object CMakeFiles/test_tools.dir/audio_analysis.c.o
+[40/195] Building C object CMakeFiles/test_tools.dir/published_docs.c.o
+[41/195] Building C object CMakeFiles/test_tools.dir/terrain_playable_render.c.o
+[42/195] Building C object CMakeFiles/test_tools.dir/particle_fields.c.o
+[43/195] Building C object CMakeFiles/test_tools.dir/player_clock.c.o
+[44/195] Building C object CMakeFiles/test_tools.dir/audio_output.c.o
+[45/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/appearance_geometry.c.o
+[46/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_surface.c.o
+[47/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/packs.c.o
+[48/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/scene3d_post.c.o
+[49/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/scene3d_shapes.c.o
+[50/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/modeling.c.o
+[51/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_constructive.c.o
+[52/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_profiles.c.o
+[53/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_reuse.c.o
+[54/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_inspection.c.o
+[55/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_sampled.c.o
+[56/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_material_scope.c.o
+[57/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_parameters.c.o
+[58/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_validation.c.o
+[59/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_preview.c.o
+[60/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_materials.c.o
+[61/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/model_surface.c.o
+[62/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/graph/shader_detail.c.o
+[63/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_effects.c.o
+[64/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_image.c.o
+[65/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_parity.c.o
+[66/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_program.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_program.c:233:96: warning: missing field 'crop_min_u' initializer [-Wmissing-field-initializers]
+  233 |         render_material_raster_draw(raster, entity, 1, (render_material_view){ -32, 32, 64, 64 })
+      |                                                                                                ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_program.c:309:98: warning: missing field 'crop_min_u' initializer [-Wmissing-field-initializers]
+  309 |         render_material_raster_draw(raster, entities, 2, (render_material_view){ -32, 32, 64, 64 })
+      |                                                                                                  ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_program.c:354:100: warning: missing field 'crop_min_u' initializer [-Wmissing-field-initializers]
+  354 |         !render_material_raster_draw(rejected, &entity, 1, (render_material_view){ -32, 32, 64, 64 })
+      |                                                                                                    ^
+3 warnings generated.
+[67/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_image_routes.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/shader_image_routes.c:164:51: warning: missing field 'crop_min_u' initializer [-Wmissing-field-initializers]
+  164 |         (render_material_view){ -64, 64, 128, 128 }
+      |                                                   ^
+1 warning generated.
+[68/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_orbit.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_orbit.c:326:78: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  326 |                     render_mesh_material_actor actors[] = { { mesh, { 6, 0 } },
+      |                                                                              ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_orbit.c:327:78: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  327 |                                                             { sdf, { -6, 0 } } };
+      |                                                                              ^
+2 warnings generated.
+[69/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_plane.c.o
+[70/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_centered_orbit.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_centered_orbit.c:191:61: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  191 |     render_mesh_material_actor fixed[] = { { blue, { 0, 0 } },
+      |                                                             ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_centered_orbit.c:192:62: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  192 |                                            { green, { 8, 0 } },
+      |                                                              ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_centered_orbit.c:193:60: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  193 |                                            { red, { 0, 0 } },
+      |                                                            ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_centered_orbit.c:194:64: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  194 |                                            { yellow, { -8, 0 } } };
+      |                                                                ^
+4 warnings generated.
+[71/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_emitter_orbit.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_emitter_orbit.c:198:67: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  198 |     render_mesh_material_actor actors[] = { { cyan, { -215, -45 } },
+      |                                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_emitter_orbit.c:199:66: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  199 |                                             { amber, { 215, 45 } },
+      |                                                                  ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/camera_emitter_orbit.c:200:83: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  200 |                                             { blocker, { 245, 45 * 455.0f / 485 } } };
+      |                                                                                   ^
+3 warnings generated.
+[72/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:38:67: warning: missing field 'crop_min_u' initializer [-Wmissing-field-initializers]
+   38 | static const render_material_view home = { -48, 40, WIDTH, HEIGHT };
+      |                                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:316:56: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  316 |     render_mesh_material_actor actor = { box, { 0, 0 } };
+      |                                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:423:61: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  423 |     render_mesh_material_actor actors[] = { { box, { 0, 0 } }, { other, { 0, 0 } } };
+      |                                                             ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:423:82: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  423 |     render_mesh_material_actor actors[] = { { box, { 0, 0 } }, { other, { 0, 0 } } };
+      |                                                                                  ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:465:68: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  465 |                                                 { other, { 30, 0 } },
+      |                                                                    ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:494:56: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  494 |     render_mesh_material_actor actor = { box, { 0, 0 } };
+      |                                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:516:56: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  516 |     render_mesh_material_actor actor = { box, { 0, 0 } };
+      |                                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:546:83: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  546 |         render_mesh_material_actor actor = { box, { phase / 8.0f, phase / 16.0f } };
+      |                                                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:563:61: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  563 |     render_mesh_material_actor actor = { box, { 200, -120 } };
+      |                                                             ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:646:56: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  646 |     render_mesh_material_actor actor = { box, { 0, 0 } };
+      |                                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:725:59: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  725 |     render_mesh_material_actor actor = { front, { 10, 7 } };
+      |                                                           ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/mesh_material.c:743:70: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  743 |     render_mesh_material_actor actors[] = { actor, { rear, { 10, 7 } } };
+      |                                                                      ^
+12 warnings generated.
+[73/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/sdf_quality.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/sdf_quality.c:202:54: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  202 |     render_mesh_material_actor actor = { e, { 0, 0 } };
+      |                                                      ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/sdf_quality.c:299:35: warning: missing field 'low_detail_shape' initializer [-Wmissing-field-initializers]
+  299 |     SdfSurface3D enabled = { true };
+      |                                   ^
+2 warnings generated.
+[74/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/materials.c.o
+[75/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/sdf_spatial.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/sdf_spatial.c:80:39: warning: missing field 'low_detail_shape' initializer [-Wmissing-field-initializers]
+   80 |     SdfSurface3D sdf_surface = { true };
+      |                                       ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/render/sdf_spatial.c:202:71: warning: missing field 'surface' initializer [-Wmissing-field-initializers]
+  202 |                                                   { i ? 35 : -35, 0 } };
+      |                                                                       ^
+2 warnings generated.
+[76/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fixture.c.o
+[77/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_mask_damage.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_mask_damage.c:580:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+  580 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_mask_damage.c:586:48: warning: missing field 'solver' initializer [-Wmissing-field-initializers]
+  586 |         &(MaterialFluidWorld){ 64, 32, 10, 100 }
+      |                                                ^
+2 warnings generated.
+[78/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/third_party/yyjson/yyjson.c.o
+[79/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_cave_terrain.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_cave_terrain.c:83:45: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+   83 |     field_grid grid = { width, height, cell };
+      |                                             ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_cave_terrain.c:213:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+  213 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_cave_terrain.c:762:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+  762 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+3 warnings generated.
+[80/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fluids.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fluids.c:194:70: warning: missing field 'gravity' initializer [-Wmissing-field-initializers]
+  194 |     material_fluid_set_flow(fluid, (fluid_flow_settings){ 10, 2, .1f });
+      |                                                                      ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fluids.c:350:75: warning: missing field 'gravity' initializer [-Wmissing-field-initializers]
+  350 |         material_fluid_set_flow(serial, (fluid_flow_settings){ 20, 2, .1f });
+      |                                                                           ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fluids.c:351:77: warning: missing field 'gravity' initializer [-Wmissing-field-initializers]
+  351 |         material_fluid_set_flow(parallel, (fluid_flow_settings){ 20, 2, .1f });
+      |                                                                             ^
+3 warnings generated.
+[81/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:34:44: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+   34 |             &(MaterialDestructionWorld){ 8 }
+      |                                            ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:40:52: warning: missing field 'solver' initializer [-Wmissing-field-initializers]
+   40 |             &(MaterialFluidWorld){ 64, 32, 10, 100 }
+      |                                                    ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:134:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+  134 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:140:48: warning: missing field 'solver' initializer [-Wmissing-field-initializers]
+  140 |         &(MaterialFluidWorld){ 64, 32, 10, 100 }
+      |                                                ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:231:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+  231 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:237:48: warning: missing field 'solver' initializer [-Wmissing-field-initializers]
+  237 |         &(MaterialFluidWorld){ 64, 32, 10, 100 }
+      |                                                ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_fragments.c:252:89: warning: missing field 'release_fraction' initializer [-Wmissing-field-initializers]
+  252 |     material_test_component(world, wall, &COMPONENT_Destructible, &(Destructible){ 1, 3 });
+      |                                                                                         ^
+7 warnings generated.
+[82/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_destruction.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_destruction.c:34:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+   34 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_destruction.c:273:40: warning: missing field 'debris_limit' initializer [-Wmissing-field-initializers]
+  273 |         &(MaterialDestructionWorld){ 8 }
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_destruction.c:279:48: warning: missing field 'solver' initializer [-Wmissing-field-initializers]
+  279 |         &(MaterialFluidWorld){ 64, 32, 10, 100 }
+      |                                                ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_destruction.c:288:89: warning: missing field 'release_fraction' initializer [-Wmissing-field-initializers]
+  288 |     material_test_component(world, slab, &COMPONENT_Destructible, &(Destructible){ 1, 3 });
+      |                                                                                         ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_destruction.c:423:48: warning: missing field 'solver' initializer [-Wmissing-field-initializers]
+  423 |         &(MaterialFluidWorld){ 64, 32, 10, 100 }
+      |                                                ^
+5 warnings generated.
+[83/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_debris.c.o
+[84/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/reference_cave.c.o
+[85/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_blast.c.o
+[86/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_constitutive.c.o
+[87/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_detail.c.o
+[88/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_impulse.c.o
+[89/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_mixed.c.o
+[90/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_obstacles.c.o
+[91/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_particle_index.c.o
+[92/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_mpm.c.o
+[93/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_reactions.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_reactions.c:33:70: warning: missing field 'gravity' initializer [-Wmissing-field-initializers]
+   33 |     material_fluid_set_flow(fluid, (fluid_flow_settings){ 20, 2, .1f });
+      |                                                                      ^
+1 warning generated.
+[94/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_simulation.c.o
+[95/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_benchmark.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_benchmark.c:283:70: warning: missing field 'gravity' initializer [-Wmissing-field-initializers]
+  283 |     material_fluid_set_flow(fluid, (fluid_flow_settings){ 10, 2, .1f });
+      |                                                                      ^
+1 warning generated.
+[96/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/material_thermal.c.o
+[97/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/contact_benchmark.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/contact_benchmark.c:29:57: warning: missing field 'shape' initializer [-Wmissing-field-initializers]
+   29 |     *Collider_get(ecs, entity) = (Collider){ 8.0f, 1, 1 };
+      |                                                         ^
+1 warning generated.
+[98/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/prototype_documents.c.o
+[99/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/ui_pages.c.o
+[100/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/asset_source.c.o
+[101/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/reference_index.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/reference_index.c:144:25: warning: missing field 'line' initializer [-Wmissing-field-initializers]
+  144 |         .range = { 0, 7 },
+      |                         ^
+1 warning generated.
+[102/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/support/graph_packs.c.o
+[103/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/behavior_loader.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/behavior_loader.c:49:80: warning: missing field 'include' initializer [-Wmissing-field-initializers]
+   49 |     return (prototype_registry){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
+      |                                                                                ^
+1 warning generated.
+[104/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/engine_clock.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/engine_clock.c:44:83: warning: missing field 'include' initializer [-Wmissing-field-initializers]
+   44 |     prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
+      |                                                                                   ^
+1 warning generated.
+[105/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/preview_layout.c.o
+[106/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c.o
+FAILED: [code=1] CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c.o 
+/opt/homebrew/opt/llvm/bin/clang -DCF_RUNTIME_SHADER_COMPILATION -DCF_STATIC -DCHIBI_POLICY_WORKER_PATH=\"/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-tools-release/policy_worker\" -DCHIBI_SOURCE_ROOT=\"/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi\" -DCHIBI_TEST_ASSET_VALUES=1 -DCHIBI_TEST_AUDIO_ANALYSIS=1 -DCHIBI_TEST_AUTHORING_DOCUMENTS=1 -DCHIBI_TEST_GRAPH_AUTHORING=1 -DCHIBI_TEST_IMAGE_PREPARATION=1 -DCHIBI_TEST_MATERIAL_GRAPHS=1 -DCHIBI_TEST_MATERIAL_RUNTIME=1 -DCHIBI_TEST_MESH_PREPARATION=1 -DCHIBI_TEST_MODEL_GRAPHS=1 -DCHIBI_TEST_MODEL_IMPORT=1 -DCHIBI_TEST_NATIVE_RUNTIME=1 -DCHIBI_TEST_PARTICLES=1 -DCHIBI_TEST_PNG_ENCODING=1 -DCHIBI_TEST_PREVIEW_GRAPHS=1 -DCHIBI_TEST_PROJECT_DOCUMENT=1 -DCHIBI_TEST_PROJECT_PREPARATION=1 -DCHIBI_TEST_PUBLISHED_DOCS=1 -DCHIBI_TEST_RENDER_GEOMETRY=1 -DCHIBI_TEST_RENDER_RUNTIME=1 -DCHIBI_TEST_SCENE_AUTHORING=1 -DCHIBI_TEST_SCENE_SNAPSHOT_READ=1 -DCHIBI_TEST_SHADER_BAKE=1 -DCHIBI_TEST_SOURCE_FEATURES=1 -DCHIBI_TEST_SOURCE_RUNTIME=1 -DCHIBI_TEST_TILEMAP=1 -DCHIBI_TEST_UI_DOCUMENT=1 -DIMGUI_USE_WCHAR32 -DImDrawIdx="unsigned int" -D_DARWIN_C_SOURCE -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/third_party/yyjson -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/behavior_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/execution -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/types -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/support -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/execution_contract -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/ecs -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/tasks -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/events -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/scene_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/value_document -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/asset_values -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/asset_documents -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/shader_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/audio_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/native_capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/scene_authoring -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/native_types -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/math -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/scene_document -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/source_catalog -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/authoring -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/compiler -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/language -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/language_syntax -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/syntax_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/reference_index -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/input_map -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/input_action -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/prototype_document -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/project_compilation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/project_document -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/player -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/engine -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/entity_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/scheduling -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/physics_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/material_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/field_catalog -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/fields -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/mesh_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/task_pool_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/physics3d_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/visibility_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/particle_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/url_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/ui_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/save_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/input_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/declared_components -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/native_prepared -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/shader_preparation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/visual_catalog -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/model_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/graph_model -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/image_preparation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/image_catalog -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/scenario_document -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/comparison_capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/conversion_capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/host_native_default -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/host_native_catalog -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/spatial_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/tilemap_runtime -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/asset_json -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/json -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/ui_document -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/text_source -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/text_search -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/ui_document_values -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/platform -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/cute/1 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/cute/2 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/cute/3 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/cute/4 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/cute/5 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/physfs_static/1 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/SDL3_Headers/1 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/desktop_vendor/SDL3_Headers/2 -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/render -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/ui -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/ui_documents -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/graph_compilation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/graph_authoring -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/project_preparation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/source_presentation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/model_authoring -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/model_bake -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/model_import -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/asset_authoring -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/arithmetic_capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/component_presentation -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/graph_catalog -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/math_capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/studio_capabilities -isystem /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/include/chibi/vector_capabilities -Wno-error=missing-field-initializers -O3 -DNDEBUG -std=gnu23 -arch arm64 -Wall -Wextra -Werror -UNDEBUG -MD -MT CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c.o -MF CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c.o.d -o CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c.o -c /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:131:49: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  131 |         field_grid grid = { 9, 7, 4, .25f, -.5f };
+      |                                                 ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:187:76: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  187 |         !field_program_bake(p, (field_context){ 0 }, (field_grid){ 0, 1, 1 }, &out, NULL, error, sizeof error)
+      |                                                                            ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:210:35: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  210 |             (field_grid){ 1, 1, 1 },
+      |                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:219:54: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  219 |         field_grid grid = { 7, 41, .25f, -1.5f, 2.5f };
+      |                                                      ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:254:31: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  254 |         (field_grid){ 1, 1, 1 },
+      |                               ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:296:39: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  296 |     field_grid grid = { 16, 16, .125f };
+      |                                       ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:314:40: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  314 |     field_grid wider = { 16, 32, .125f };
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:327:51: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  327 |         field_grid tiled = { 16, 41, .125f, -2, 3 };
+      |                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:416:61: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  416 |         field_grid grid = { widths[i], 5, .5f, -.125f, .25f };
+      |                                                             ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:423:52: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  423 |     field_grid resized = { 9, 5, .5f, -.125f, .25f };
+      |                                                    ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:450:47: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  450 |         field_grid grid = { width, 3, 1, 0, 0 };
+      |                                               ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:475:39: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  475 |     field_grid grid = { 5, 1, 1, 2, 0 };
+      |                                       ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:498:51: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+  498 |     field_grid grid = { 17, 9, .25f, .125f, -.25f };
+      |                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:616:37: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  616 |     field_grid grid = { 130, 129, 2 };
+      |                                     ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:632:66: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  632 |     material_terrain_connect(disconnected, (field_grid){ 6, 2, 1 }, MATERIAL_CONNECTIVITY_FIRST_AIR, 0);
+      |                                                                  ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:654:58: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  654 |     material_stream_desc desc = { .grid = { 4099, 513, 1 },
+      |                                                          ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:657:48: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  657 |     material_stream_view view = { -1500, 0, 80 };
+      |                                                ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:736:49: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  736 |     view = (material_stream_view){ 2049, 256, 0 };
+      |                                                 ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:747:49: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  747 |     view = (material_stream_view){ -1500, 0, 80 };
+      |                                                 ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:755:39: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  755 |     desc.grid = (field_grid){ 0, 0, 1 };
+      |                                       ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:757:48: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  757 |     view = (material_stream_view){ -64, -64, 0 };
+      |                                                ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:764:66: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  764 |     const material_stream_view distant[] = { { 100064, 100064, 0 },
+      |                                                                  ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:765:67: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  765 |                                              { -100064, 100064, 0 },
+      |                                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:766:67: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  766 |                                              { 100064, -100064, 0 },
+      |                                                                   ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:767:68: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  767 |                                              { -100064, -100064, 0 } };
+      |                                                                    ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:790:40: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  790 |         field_grid small = { 12, 12, 1 };
+      |                                        ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:840:27: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+  840 |         .grid = { 0, 0, 1 },
+      |                           ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:843:45: warning: missing field 'required' initializer [-Wmissing-field-initializers]
+  843 |     material_stream_view view = { 64, 64, 0 };
+      |                                             ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1050:9: error: suspicious concatenation of string literals in an array initialization; did you mean to separate the elements with a comma? [-Werror,-Wstring-concatenation]
+ 1049 |         "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+      |                                                                              
+      |                                                                              ,
+ 1050 |         "}Other :: () -> (Value: float) { return 111.0 } }",
+      |         ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1049:9: note: place parentheses around the string literal to silence warning
+ 1049 |         "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+      |         ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1131:28: warning: missing field 'operands' initializer [-Wmissing-field-initializers]
+ 1131 |     { FIELD_X, "field_x()" },
+      |                            ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1132:28: warning: missing field 'operands' initializer [-Wmissing-field-initializers]
+ 1132 |     { FIELD_Y, "field_y()" },
+      |                            ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1133:28: warning: missing field 'operands' initializer [-Wmissing-field-initializers]
+ 1133 |     { FIELD_Z, "field_z()" },
+      |                            ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1134:52: warning: missing field 'operands' initializer [-Wmissing-field-initializers]
+ 1134 |     { FIELD_PARAMETER, "field_parameter(\"Bias\")" },
+      |                                                    ^
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/fields.c:1385:50: warning: missing field 'depth' initializer [-Wmissing-field-initializers]
+ 1385 |                      (field_grid){ 1, 1, 1, x, 0 },
+      |                                                  ^
+33 warnings and 1 error generated.
+[107/195] Building C object CMakeFiles/test_tools.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/field_library.c.o
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/runtime/field_library.c:45:31: warning: missing field 'center_x' initializer [-Wmissing-field-initializers]
+   45 |         (field_grid){ 1, 1, 1 },
+      |                               ^
+1 warning generated.
+[108/195] Building C object CMakeFiles/chibi_shader_bake_consumer.dir/shader_bake.c.o
+[109/195] Building C object CMakeFiles/chibi_scene_authoring_consumer.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/scene_hierarchy.c.o
+ninja: build stopped: subcommand failed.

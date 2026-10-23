@@ -1,0 +1,2 @@
+Assertion failed: (tool_run(args, root, log_path) == 0), function setup, file controller.c, line 303.
+Test command wall time: 3.656s; includes in-test fixture setup; external configuration/build excluded.

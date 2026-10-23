@@ -1,0 +1,18 @@
+third-party: running (log: .chibi/logs/1792700846321915000-73656-third-party.log)
+third-party: ok (0.2s; log: .chibi/logs/1792700846321915000-73656-third-party.log)
+graph: running (log: .chibi/logs/1792700846588886000-73667-graph.log)
+graph: FAILED (10.9s; log: .chibi/logs/1792700846588886000-73667-graph.log)
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/sdk/public/asset_documents/support/asset_document.h:4:10: fatal error: 'support/asset_format.h' file not found
+    4 | #include "support/asset_format.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+graph: the build failed
+In file included from /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/project_document.c:2:
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/sdk/public/asset_documents/support/asset_document.h:4:10: fatal error: 'support/asset_format.h' file not found
+    4 | #include "support/asset_format.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+graph: the build failed
+make[2]: *** [toolchain-build] Error 1
+make[1]: *** [build] Error 2
+make: *** [test-build] Error 2

@@ -1,0 +1,74 @@
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Name cannot be represented at every reference
+rename: Rename would collide with or capture another declaration
+rename: Name cannot be represented at every reference
+rename: Target has no editable source declaration
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+navigation: Unknown callable 'missing'
+rename: Rename requires a complete valid project index
+rename: Rename would collide with or capture another declaration
+rename: Target has no editable source declaration
+rename: Target has no editable source declaration
+navigation: Unexpected syntax
+navigation: Unknown value 'sco'
+navigation: Unexpected syntax
+navigation: Unexpected syntax
+navigation: Unexpected syntax
+navigation: Unknown value 'sco'
+navigation: Unexpected syntax
+navigation: Unknown value 'Shared'
+navigation: Unknown reflected member 'Mul'
+navigation: Unknown reflected member 'Mul'
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Rename would collide with or capture another declaration
+rename: Target has no editable source declaration
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Name cannot be represented at every reference
+Running: navigation_resolves_shadowed_identity (OK) (0.001146 secs)
+Running: rename_rejects_capture_in_both_directions (OK) (0.000421 secs)
+Running: rename_cross_file_callable_parameters_results_and_program (OK) (0.000863 secs)
+Running: rename_preserves_quoted_names_and_escapes (OK) (0.000394 secs)
+Running: navigation_tracks_native_field_access_roles (OK) (0.000150 secs)
+Running: rename_rejects_collisions_and_invalid_project_drafts (OK) (0.000445 secs)
+Running: rename_rejects_capture_before_hoisted_declaration (OK) (0.000058 secs)
+Running: rename_groups_event_alias_handlers (OK) (0.000049 secs)
+Running: intelligence_completes_listed_payload_fields (OK) (0.000137 secs)
+Running: intelligence_scope_identity_and_owned_outputs (OK) (0.000146 secs)
+Running: intelligence_signatures_and_semantic_highlights (OK) (0.000164 secs)
+Running: intelligence_presents_character_literals_and_char (OK) (0.000155 secs)
+Running: intelligence_describes_retained_storage_and_owner (OK) (0.000211 secs)
+Running: library_signatures_infer_results_from_returns (OK) (0.000833 secs)
+Running: rename_implicit_results_cannot_edit_return_type_or_expression (OK) (0.000139 secs)
+Running: intelligence_recovers_reflected_members_and_rejects_comments (OK) (0.000333 secs)
+Running: intelligence_ranks_typed_visible_symbols_and_recovers_library_members (OK) (0.001205 secs)
+Running: intelligence_prototype_arguments_use_declared_reference_context (OK) (0.000648 secs)
+Running: navigation_resolves_external_definitions_and_selected_references (OK) (0.000178 secs)
+Running: navigation_follows_prototype_names_into_spawn (OK) (0.000438 secs)
+Running: prototype_reference_flow_reports_typed_alias_origins_without_duplicate_navigation (OK) (0.000228 secs)
+Running: prototype_rename_skips_omitted_defaults (OK) (0.000166 secs)
+Running: rename_external_declaration_uses_exact_source_and_catalog_identity (OK) (0.000261 secs)
+Running: rename_declared_events_preserves_exact_rml_tokens (OK) (0.000100 secs)
+Running: navigation_connects_input_actions_to_the_input_map (OK) (1.750180 secs)
+Running: rename_input_action_edits_the_input_map_and_scripts (OK) (0.030588 secs)
+Running: navigation_connects_scene_globals_and_completes_typed_bindings (OK) (0.000149 secs)
+Running: rename_scene_global_updates_all_binders_and_qualified_uses (OK) (0.000434 secs)
+Running: catalog_publishes_union_payloads_from_later_libraries (OK) (0.001943 secs)
+Running: catalog_preserves_signature_only_union_and_task_exports (OK) (0.002057 secs)
+Running: catalog_preserves_invalid_behavior_diagnostics (OK) (0.000773 secs)
+Running: catalog_owns_union_variant_names_fields_and_literals (OK) (0.000215 secs)
+Running: catalog_rejects_duplicate_exported_union_names (OK) (0.000484 secs)
+Running: intelligence_templates_hide_specializations_and_preserve_owned_definitions (OK) (0.001025 secs)
+===============================================================
+Summary: Passed: 34 Failed: 0 Total: 34 Suites: 0 Asserts: 381
+Test command wall time: 3.767s; includes in-test fixture setup; external configuration/build excluded.

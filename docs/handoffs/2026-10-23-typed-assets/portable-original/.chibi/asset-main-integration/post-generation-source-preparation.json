@@ -1,0 +1,12 @@
+{
+  "state": "source-only documentation refresh; runtime checks not run",
+  "generation_tree": "041c011c04da3393e77b742ab35e837cefdf86a0",
+  "generation_receipt_sha256": "f9f2a7926ffb5fd8a7d0c4a0bfbdfd9466ada623f078c86f35b9bec921276b67",
+  "engine_docs_tree": "2b63ff9322987a92b40e36c69ca251e0c1c08094",
+  "studio_docs_tree": "e3abb80930dbed185d915a8f289f24791f51a865",
+  "model_expected_assertions": 261,
+  "model_executed": false,
+  "lane": "CI owns heavy build/test lane",
+  "checks": "Both staged diffs pass whitespace check; four frozen Studio C/header hashes unchanged",
+  "supersedes_status_only": "combined-source-preparation.json is historical pre-generation/pre-codec snapshot, not current acceptance evidence"
+}

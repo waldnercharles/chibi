@@ -1,0 +1,20 @@
+{
+  "native64": {
+    "bytes": 14102307,
+    "artifact": "0be2c4ab0343d2ad0bf68f9de38e40065fd974e6505fad18af6b90c0eb659464",
+    "resource": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d",
+    "manifest": "348961cd018fc4403ae986b64ab64b555668194ba8a8ca533779ebc5e3095c6c",
+    "sources": 37,
+    "fingerprints": "3451c9c026c6d5d8d6807b3e6edacff14cced8265d8650b6679c94ccad77cb40",
+    "pointer_bytes": 8
+  },
+  "wasm32": {
+    "bytes": 14100193,
+    "artifact": "bcd5ea6d9377febb07eb2ac75c141fe488c306d60321413547d48758290ab14a",
+    "resource": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d",
+    "manifest": "93b98f7125e055a840dd84e17149119b9b7e458fe1b43084bd35aaf879ce5295",
+    "sources": 37,
+    "fingerprints": "3451c9c026c6d5d8d6807b3e6edacff14cced8265d8650b6679c94ccad77cb40",
+    "pointer_bytes": 4
+  }
+}

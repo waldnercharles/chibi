@@ -1,0 +1,7 @@
+third-party: running (log: .chibi/logs/1792700287381926000-50339-third-party.log)
+third-party: ok (0.2s; log: .chibi/logs/1792700287381926000-50339-third-party.log)
+graph: running (log: .chibi/logs/1792700287688231000-50354-graph.log)
+graph: FAILED (1.7s; log: .chibi/logs/1792700287688231000-50354-graph.log)
+graph: the build failed
+make[1]: *** [toolchain-build] Error 1
+make: *** [build] Error 2

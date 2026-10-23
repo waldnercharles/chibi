@@ -1,0 +1,556 @@
+{
+  "state": "PROSPECTIVE source-only protocol9 ancestry forecast; immutable tree analyzed, not assumed active/applied/executed",
+  "proposed_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "prior_frozen_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "declared_reviewed_protocol_patch_sha256": "30112d927517beb11440e7527fd53813342b1b0fdc7d7adfda2778c215ca1a4c",
+  "protocol_tree_delta_sha256": "25a68a44418b501bc033350f9676c47c79b141f6233fac18ddabeab451e16d1c",
+  "delta_files": [
+    "Makefile",
+    "docs/self-hosting-build.md",
+    "src/host/build_host.h",
+    "test/tools/build_process.c",
+    "test/tools/build_toolchain.c"
+  ],
+  "future_checkpoint": {
+    "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "parents": [
+      "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "fa1b7b2bb297eacbbed6aec6f03c4260355db97c"
+    ],
+    "commit_object_created": false
+  },
+  "future_ordinary_main": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "actual_future_merge_base": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "merge_base_proof": {
+    "30cd_d0_common": "b93472018544ae27e84a8277035bc3116e31ff47",
+    "fa1b_d0_common": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "first_ancestor_of_second": true,
+    "logic": "Future checkpoint ancestry is exactly parent union plus itself; fa1b subsumes b934 and is the unique maximal common ancestor."
+  },
+  "method": "Separate temporary index read-tree from immutable base/6ef/d0 trees, trivial per-path base comparisons, merge-file on20 nontrivial blob triples, inspect each conflict and compare every resolved result with6ef; write resolved tree. No actual git merge or synthetic commits. Actual ort rename reporting may differ.",
+  "trivial_paths": 309,
+  "nontrivial_file_merges": 20,
+  "clean_content_merges": 10,
+  "conflict_files": 10,
+  "conflict_regions": 13,
+  "file_results": [
+    {
+      "id": 0,
+      "file": ".github/workflows/ci.yml",
+      "stages": {
+        "1": [
+          "100644",
+          "71e3991af09f8d427c6d9dad1a9512ef750c1e72"
+        ],
+        "2": [
+          "100644",
+          "86be12daca12afc39b4deaa054286b6c0357d8e4"
+        ],
+        "3": [
+          "100644",
+          "c172b851db6e81bb0d69f0c70eeb03be4b900ad4"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep two project.chibi starter receipts; all other eligible CI/Linux harness changes are already present.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 1,
+      "file": ".github/workflows/paired-studio.yml",
+      "stages": {
+        "2": [
+          "100644",
+          "aa8c4ac0ff2edc4c792b2fd80186ca06e1d73a55"
+        ],
+        "3": [
+          "100644",
+          "843c21b02937f3b2992c3e54b540a089bda8cd77"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Add/add file: same paired workflow apart from two reviewed project.chibi receipts; keep those adapted literals.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 2,
+      "file": ".gitignore",
+      "stages": {
+        "1": [
+          "100644",
+          "c63d4d3996c556f87cb6b9986f0f896fe470ba34"
+        ],
+        "2": [
+          "100644",
+          "25262ff239daceea59e9d8813767ca3a4cf47692"
+        ],
+        "3": [
+          "100644",
+          "ab78f2ed72ef4d57ff48f939c2e469de1b565a63"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep reviewed build-sdk-release ignore and blank separator alongside incoming build-sdk-tests ignore already present.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 3,
+      "file": "PLAN.md",
+      "stages": {
+        "1": [
+          "100644",
+          "15557f0dd68aa7efa502390569095dff86e47623"
+        ],
+        "2": [
+          "100644",
+          "67f98c2adcc15b2c2626213b958e9e1e5583e874"
+        ],
+        "3": [
+          "100644",
+          "aa60aab60acf3cf80c5920aa7b2ac89bc74761b9"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 4,
+      "file": "docs/self-hosting-build.md",
+      "stages": {
+        "1": [
+          "100644",
+          "f3621627bdebcdd23c23a1b66636d269eeb8cd77"
+        ],
+        "2": [
+          "100644",
+          "4c7c37ffdab2c43ddd7c28ce8e9154d113ab463e"
+        ],
+        "3": [
+          "100644",
+          "006bee95759d5c7ddcfb86826b097b77b7fc9355"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep new reviewed protocol9 compiled-bootstrap SDK paragraph, replacing main old protocol8 claim. Remaining main SDK/install documentation already present.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 5,
+      "file": "docs/testing.md",
+      "stages": {
+        "1": [
+          "100644",
+          "41cceb5e1b597fa99053dfecff991ebf50126b2a"
+        ],
+        "2": [
+          "100644",
+          "a7271153f1541e8395c0d46cdf7e2526be3c750b"
+        ],
+        "3": [
+          "100644",
+          "b60a294e610511f1275bba89df582671f1e01bae"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep typed prototype workload section plus incoming third-party/paired SDK sections already present; deletion of typed section would lose reviewed coverage documentation.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 6,
+      "file": "docs/toolchain-inventory.md",
+      "stages": {
+        "1": [
+          "100644",
+          "c198b338d6f32c055c6c968ecb1c655e561d7e3c"
+        ],
+        "2": [
+          "100644",
+          "74591c5239e40b255c619639de18f74e20bf7333"
+        ],
+        "3": [
+          "100644",
+          "e65493c472a52d95c358c6299c8b2904eb73f049"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 7,
+      "file": "src/assets/project_migrate.c",
+      "stages": {
+        "1": [
+          "100644",
+          "0461a2019c036d3a6c08d54b4723b37e1de9b830"
+        ],
+        "3": [
+          "100644",
+          "f90671535d1b3f0291b92b08db9b14416c4d5b83"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep deleted: incoming empty-literal guard fixes only retired parser/migration implementation.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 8,
+      "file": "src/execution/definition.h",
+      "stages": {
+        "1": [
+          "100644",
+          "fed214dbbf9d5a6e43b40fa4a3081365d15d24e6"
+        ],
+        "2": [
+          "100644",
+          "1dd4564589ab52b9fad8b9fab05144b1f7daeee4"
+        ],
+        "3": [
+          "100644",
+          "023155e448f8e4ebf737aca0c697f4f39636886f"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 9,
+      "file": "test/language/navigation.c",
+      "stages": {
+        "1": [
+          "100644",
+          "38cc0d4a43157c8e84634043f527c2125f841278"
+        ],
+        "2": [
+          "100644",
+          "c148bd7db53ae42d21ba84921ed7f0d07cb069f0"
+        ],
+        "3": [
+          "100644",
+          "579ac92f5243348965332ee351c9c76617397f18"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 10,
+      "file": "test/language/program.c",
+      "stages": {
+        "1": [
+          "100644",
+          "ba22da0d2e68b3cbfe7ad3a2d483ee6b0c46db19"
+        ],
+        "2": [
+          "100644",
+          "fae7218d09bd6d84d60768ec4c635a9da748fdee"
+        ],
+        "3": [
+          "100644",
+          "a3bcbf9e7f06978bd941e5bead01f1eea8a2d94e"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep retired historical migration cases absent; incoming version28 migration fixture changes do not apply.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 11,
+      "file": "test/tools/CMakeLists.txt",
+      "stages": {
+        "1": [
+          "100644",
+          "be90d3f3b6b747ec491e9b0475323e3127db602e"
+        ],
+        "2": [
+          "100644",
+          "ad8c63664ecae1e0a55eb308373d2d39f32847c7"
+        ],
+        "3": [
+          "100644",
+          "c802087b9619af78b601f5ddca1d21ed325c40b5"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep asset_cache_browser.c in unioned test sources; incoming build_sdk/third_party_publish additions are already included.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 12,
+      "file": "test/tools/build_process.c",
+      "stages": {
+        "1": [
+          "100644",
+          "3c603d19971e20b34ae3184d8634377e2fc91803"
+        ],
+        "2": [
+          "100644",
+          "979450efca1124cabc7f9be16d3b3477e7d63291"
+        ],
+        "3": [
+          "100644",
+          "1ed9fe78974a99d7d901dcfc37f1ac7e3119d804"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing. Protocol probe must continue expecting9; this change merges cleanly.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 13,
+      "file": "test/tools/build_sdk.c",
+      "stages": {
+        "2": [
+          "100644",
+          "0031ce827d2d75aa4d8b18e4cc1bb341671fe7b9"
+        ],
+        "3": [
+          "100644",
+          "08de8ea8d82eb882c192ec4bd0fa54310ef5d9b2"
+        ]
+      },
+      "merge_exit": 4,
+      "conflict_regions": 4,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep reviewed four-line adapter effect (three fixture/notice removals here) and clang22 array formatting; no ckdl dependency. Keep fourth conflict region with reviewed semantic support command oracle: nonempty array, source prefix, root directory, compiler=/usr/bin/false and file_io.c witness rather than old exact-five count.",
+      "classification": "inspected conflict"
+    },
+    {
+      "id": 14,
+      "file": "test/tools/build_toolchain.c",
+      "stages": {
+        "1": [
+          "100644",
+          "a1d77808d822f8fea65a37bfa2d82f33836267e9"
+        ],
+        "2": [
+          "100644",
+          "8df7257ab26b54816c4350b286dc1eb5740b34a9"
+        ],
+        "3": [
+          "100644",
+          "cec9ab7a3a2bdc5872b00282022d52aff146f658"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces prospective6ef bytes exactly; all reviewed main changes and protocol9 selection cases preserved.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 15,
+      "file": "test/tools/main.c",
+      "stages": {
+        "1": [
+          "100644",
+          "4c71ab65843608638a7540289547e268f6dbcf51"
+        ],
+        "2": [
+          "100644",
+          "430647ca6363bc8ba8de94ebc781759e79c24e00"
+        ],
+        "3": [
+          "100644",
+          "483c027707e2d458945bb2e356dabbf25c0ed449"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 16,
+      "file": "test/tools/test_policy.c",
+      "stages": {
+        "1": [
+          "100644",
+          "5fc50cc6f100f9fc8d6e0a5e77bebf047b52d5b4"
+        ],
+        "2": [
+          "100644",
+          "e731f5508569100faffb616ff8938a1f6fa27b4a"
+        ],
+        "3": [
+          "100644",
+          "5ea5fd6d895abe6d64522f62c3c27453ac572032"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 17,
+      "file": "tools/graph/engine/Targets.chibi",
+      "stages": {
+        "1": [
+          "100644",
+          "73a2b6502c27fd43198302121b505c1a3651d911"
+        ],
+        "2": [
+          "100644",
+          "bc6368ae32729ae213ab7b496d5c2ae5485802bc"
+        ],
+        "3": [
+          "100644",
+          "29017657fba4af80bdd1d937743bc889faf9fa8b"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 18,
+      "file": "tools/test_policy.py",
+      "stages": {
+        "1": [
+          "100644",
+          "a2331df54e717fcfec171a5f96e1004daf078e67"
+        ],
+        "2": [
+          "100644",
+          "d41a71e866d10be137fdf628336a4a0d5c02019b"
+        ],
+        "3": [
+          "100644",
+          "a5ba66b85fa65cd9e5ef989cd4d2354d86483eb3"
+        ]
+      },
+      "merge_exit": 0,
+      "conflict_regions": 0,
+      "resolved_matches_proposed": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "classification": "clean content merge"
+    },
+    {
+      "id": 19,
+      "file": "tools/toolchain/SDK.chibi",
+      "stages": {
+        "2": [
+          "100644",
+          "cc10e63620ad9266431ff2440f59220f9cd80ac0"
+        ],
+        "3": [
+          "100644",
+          "98f8baaf668cb27af71da79e07eda3979da2e23a"
+        ]
+      },
+      "merge_exit": 1,
+      "conflict_regions": 1,
+      "resolved_matches_proposed": true,
+      "resolution": "Keep missing ckdl notice Entry per exact reviewed adapter; all other SDK source already matches main.",
+      "classification": "inspected conflict"
+    }
+  ],
+  "added_protocol_seams": [
+    {
+      "file": "docs/self-hosting-build.md",
+      "status": "new conflict region/file versus9fa forecast",
+      "resolution": "Retain protocol9 compiled-bootstrap paragraph, not main protocol8 SDK note."
+    },
+    {
+      "file": "test/tools/build_toolchain.c",
+      "status": "new nontrivial file, clean merge exact6ef",
+      "resolution": "Retain prior reviewed Git executable fixture repair plus new protocol8 stale-host recovery case and current protocol9 selection."
+    },
+    {
+      "file": "test/tools/build_process.c",
+      "status": "already nontrivial, protocol9 probe merges cleanly",
+      "resolution": "Probe and invalid-probe checks retain expected9; existing typed/source cases retained."
+    },
+    {
+      "file": "Makefile",
+      "status": "trivial typed-only modification; base equals main",
+      "resolution": "Keep version9 gate."
+    },
+    {
+      "file": "src/host/build_host.h",
+      "status": "trivial typed-only modification; base equals main",
+      "resolution": "Keep protocol9 compiled-bootstrap contract, no prepared artifact support claim."
+    }
+  ],
+  "resolved_forecast_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "exact_proposed_tree_equality": true,
+  "missing_d0_deltas": [],
+  "source_change_required": false,
+  "generation_required": false,
+  "resource_products": {
+    "native64": {
+      "products_unchanged": true,
+      "source_count": 37
+    },
+    "wasm32": {
+      "products_unchanged": true,
+      "source_count": 37
+    },
+    "compiler": {
+      "products_unchanged": true,
+      "source_count": 19,
+      "contract": [
+        5,
+        2
+      ]
+    }
+  },
+  "earlier_forecasts_preserved": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/baseline-candidate/ancestry-forecast.json",
+      "sha256": "21e9625ef87851be6f287ba53fdeb482d39dd97cfd9c3a9f57914540f901f85a"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/post-focus-ancestry-forecast/ancestry-forecast.json",
+      "sha256": "287272d2df7cfc4dc88830ef2d0995909e3f0c83f35fa95c4b5df93f540154a3"
+    }
+  ],
+  "execution": {
+    "active_source_index_merge_changes": false,
+    "commit_objects_created": false,
+    "actual_merge": false,
+    "builds": [],
+    "tests": [],
+    "generation": [],
+    "runtime_or_protocol_probes": [],
+    "other_thread_messages": false
+  },
+  "application_boundary": "Live checkout was not used as6ef and may be staged red/green by owner. Source analysis never applies this proposal. Parent/coordinator must review actual eventual applied and tested tree.",
+  "validation_boundary": "Earlier0b5 runtime/SDK and test-only966 evidence do not prove combined9fa or proposed6ef execution. This source forecast is not protocol9 red/green, native build, installed SDK or actual ancestry proof.",
+  "invalidation": "Any later source, formatting, CI/docs/test, generation/product change, different checkpoint parents or moved main invalidates exact6ef forecast. Refresh using final reviewed/tested tree.",
+  "eventual_rule": "Create genuine authorized pendingfa1b checkpoint with checked tree, then ordinary pinned d0 merge; resolve per-file reviewed adapters and retired deletions, require final merged tree exactly equals final tested prospective tree before actual ancestry commit. Never abort/reset, rewrite MERGE_HEAD or fabricate ancestry."
+}

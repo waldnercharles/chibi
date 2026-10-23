@@ -1,0 +1,14 @@
+{
+  "native64": {
+    "asset_compiler.chibip": "1dedea839e7d9d8e84c2ebe7f74f71e9b8a05b6d20ea7deaff02c55be2d0b02f",
+    "manifest.json": "89ad1647069cdec5f4bb7f1f2c4c1883cf874eafff5af74688a75315670c3442",
+    "sources.sha256": "209a4d636a6497e2eb352886b32a993eb6d62bd8fe15e3a26d08c7c3731151e6",
+    "target.json": "19311c9d539e70c84d8a851cae5f1747c29e4cbb567c4d87f86b3ae7fd01ad11"
+  },
+  "wasm32": {
+    "asset_compiler.chibip": "fd14178f100dec8736192ba54425ad7c5561b8234862a6a00332caa2daabfbe9",
+    "manifest.json": "dd514594017798e968829bb7134d39367172b97ded1432ac3d1f3358cb11cf2b",
+    "sources.sha256": "209a4d636a6497e2eb352886b32a993eb6d62bd8fe15e3a26d08c7c3731151e6",
+    "target.json": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654"
+  }
+}

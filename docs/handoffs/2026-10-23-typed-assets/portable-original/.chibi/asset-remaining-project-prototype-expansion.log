@@ -1,0 +1,3 @@
+stopped after 30 seconds: /bin/sh -c exec "$0" --project-root game < request.json /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/bin/chibi_ctl /tmp/chibi-validate-project-aooWIu/output
+Assertion failed: (reply), function run_within, file validate_project.c, line 75.
+Running: prototype_expansion_is_shared Test command wall time: 32.117s; includes in-test fixture setup; external configuration/build excluded.

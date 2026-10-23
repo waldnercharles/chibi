@@ -1,0 +1,111 @@
+[0/2] Re-checking globbed directories...
+[1/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_paths.c.o
+[2/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_packages.c.o
+[3/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_syntax.c.o
+[4/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_routes.c.o
+[5/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_snapshot.c.o
+[6/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_files.c.o
+[7/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_prototype_edit.c.o
+[8/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_exports.c.o
+[9/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_prepare.c.o
+[10/110] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/package_tests.c.o
+[11/110] Building C object sdk/CMakeFiles/chibi_compiler_syntax.dir/__/src/toolchain/compiler_syntax.c.o
+[12/110] Building C object sdk/CMakeFiles/chibi_compiler_json.dir/__/src/toolchain/compiler_json.c.o
+[13/110] Building C object sdk/CMakeFiles/chibi_shader_preparation.dir/__/src/authoring/mesh_prepare.c.o
+[14/110] Building C object sdk/CMakeFiles/chibi_shader_preparation.dir/__/src/authoring/parts_prepare.c.o
+[15/110] Building C object sdk/CMakeFiles/chibi_shader_preparation.dir/__/src/authoring/shader_prepare.c.o
+[16/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/call_hierarchy.c.o
+[17/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/authoring/native_prototype.c.o
+[18/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/prototype_instance.c.o
+[19/110] Building C object sdk/CMakeFiles/chibi_shader_preparation.dir/__/src/authoring/visual_prepare.c.o
+[20/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/field_parameters.c.o
+[21/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/new_asset.c.o
+[22/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/asset_source.c.o
+[23/110] Generating generated/authoring/engine_components.c
+[24/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/reference_adapters.c.o
+[25/110] Building C object sdk/CMakeFiles/chibi_asset_authoring.dir/__/src/assets/refactor.c.o
+[26/110] Linking C static library sdk/libchibi_image_preparation.a
+[27/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/shader_publish.c.o
+[28/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/scene_renderer.c.o
+[29/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/spot_lights.c.o
+[30/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/fog.c.o
+[31/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/radiance.c.o
+[32/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/viewport.c.o
+[33/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/scene3d.c.o
+[34/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/scene3d_influence.c.o
+[35/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/scene3d_trail.c.o
+[36/110] Linking C static library sdk/libchibi_studio_capabilities.a
+[37/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/runtime/camera.c.o
+[38/110] Building C object sdk/CMakeFiles/chibi_renderer.dir/__/src/render/scene3d_particles.c.o
+[39/110] Building C object sdk/CMakeFiles/chibi_component_presentation.dir/generated/authoring/engine_components.c.o
+[40/110] Building C object sdk/CMakeFiles/chibi_component_presentation.dir/__/src/authoring/component_presentation.c.o
+[41/110] Linking C static library sdk/libchibi_project_document.a
+[42/110] Linking C static library sdk/libchibi_source_catalog.a
+[43/110] Linking C static library sdk/libchibi_compiler_syntax.a
+[44/110] Linking C static library sdk/libchibi_compiler_json.a
+[45/110] Linking CXX static library sdk/libchibi_shader_preparation.a
+[46/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/component_declarations.c.o
+[47/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/project_open.c.o
+[48/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/project_prepare_assets.c.o
+[49/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/renderer_catalog.c.o
+[50/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/project_prepare.c.o
+[51/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/project_compile.c.o
+[52/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/prototype_prepare.c.o
+[53/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/graph_sources.c.o
+[54/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/material_prepare.c.o
+[55/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/native_graph_prepare.c.o
+[56/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/source_graph_library.c.o
+[57/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/scene_prepare.c.o
+[58/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/ui_prepare.c.o
+[59/110] Linking C static library sdk/libchibi_asset_authoring.a
+[60/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/sound_prepare.c.o
+[61/110] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/ui_prepare_assets.c.o
+[62/110] Linking C static library sdk/libchibi_component_presentation.a
+[63/110] Building C object sdk/CMakeFiles/chibi_scenario_document.dir/__/src/assets/scenario_document.c.o
+[64/110] Linking CXX static library sdk/libchibi_renderer.a
+[65/110] Linking CXX static library sdk/libchibi_project_compilation.a
+[66/110] Building C object sdk/CMakeFiles/chibi_model_authoring.dir/__/src/assets/model_validation.c.o
+[67/110] Building C object sdk/CMakeFiles/chibi_model_authoring.dir/__/src/assets/model_export.c.o
+[68/110] Building C object sdk/CMakeFiles/chibi_model_authoring.dir/__/src/assets/model_source.c.o
+[69/110] Building C object sdk/CMakeFiles/chibi_model_import.dir/__/src/assets/standard_material.c.o
+[70/110] Linking C static library sdk/libchibi_scenario_document.a
+[71/110] Building C object sdk/CMakeFiles/chibi_model_import.dir/__/src/assets/model_import.c.o
+[72/110] Building C object sdk/CMakeFiles/chibi_project_format.dir/__/src/authoring/project_format.c.o
+[73/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/preview.c.o
+[74/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/preview_runtime.c.o
+[75/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/preview_source.c.o
+[76/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/preview_source_lifecycle.c.o
+[77/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/preview_source_publish.c.o
+[78/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/prototype_preview.c.o
+[79/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/behavior_loader.c.o
+[80/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/graph_loader.c.o
+[81/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/render_preview.c.o
+[82/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/prototype_attach.c.o
+[83/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/material_attach.c.o
+[84/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/source_apply.c.o
+[85/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/studio_schema.c.o
+[86/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/ui_check.c.o
+[87/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/application_catalog.c.o
+[88/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/ui_loader.c.o
+[89/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/engine_preview.c.o
+[90/110] Building C object sdk/CMakeFiles/chibi_project_preparation.dir/__/src/authoring/ui_events_adapter.c.o
+[91/110] Linking CXX static library sdk/libchibi_model_authoring.a
+[92/110] Linking C static library sdk/libchibi_model_import.a
+[93/110] Linking CXX static library sdk/libchibi_project_format.a
+[94/110] Linking CXX static library sdk/libchibi_project_preparation.a
+[95/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/material_bake.c.o
+[96/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/navigation.c.o
+[97/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/content_hash.c.o
+[98/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/field_preview.c.o
+[99/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/ui_inspect.c.o
+[100/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/execution_policy.c.o
+[101/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/render_preview.c.o
+[102/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/scene_preview.c.o
+[103/110] Building OBJC object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/gpu_capture.m.o
+[104/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_ctl.dir/main.c.o
+[105/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_ctl.dir/prepare.c.o
+[106/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_ctl.dir/registry.c.o
+[107/110] Building C object tools/chibi_ctl/CMakeFiles/chibi_automation.dir/__/__/src/automation/controller.c.o
+[108/110] Linking CXX static library tools/chibi_ctl/libchibi_automation.a
+[109/110] Linking CXX executable bin/chibi_ctl
+ld: warning: ignoring duplicate libraries: '-lc++', 'sdk/libchibi_asset_authoring.a', 'sdk/libchibi_asset_documents.a', 'sdk/libchibi_asset_json.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_component_presentation.a', 'sdk/libchibi_ecs.a', 'sdk/libchibi_execution.a', 'sdk/libchibi_field_catalog.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_catalog.a', 'sdk/libchibi_graph_compilation.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_host_native_default.a', 'sdk/libchibi_image_preparation.a', 'sdk/libchibi_json.a', 'sdk/libchibi_model_runtime.a', 'sdk/libchibi_native_capabilities.a', 'sdk/libchibi_native_types.a', 'sdk/libchibi_platform.a', 'sdk/libchibi_project_compilation.a', 'sdk/libchibi_project_document.a', 'sdk/libchibi_prototype_document.a', 'sdk/libchibi_reference_index.a', 'sdk/libchibi_scene_document.a', 'sdk/libchibi_shader_preparation.a', 'sdk/libchibi_source_catalog.a', 'sdk/libchibi_source_presentation.a', 'sdk/libchibi_studio_capabilities.a', 'sdk/libchibi_support.a', 'sdk/libchibi_text_search.a', 'sdk/libchibi_text_source.a', 'sdk/libchibi_types.a', 'sdk/libchibi_ui_authoring.a', 'sdk/libchibi_ui_document.a', 'sdk/libchibi_ui_runtime.a', 'sdk/libchibi_visual_catalog.a'

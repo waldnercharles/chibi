@@ -1,0 +1,12 @@
+{
+  "version": 0,
+  "case-sensitive": true,
+  "use-external-names": false,
+  "roots": [
+    {
+      "type": "file",
+      "name": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/src/editor/documents/scene_history.c",
+      "external-contents": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/studio-controls/history-byte-decoder/scene_history.c"
+    }
+  ]
+}

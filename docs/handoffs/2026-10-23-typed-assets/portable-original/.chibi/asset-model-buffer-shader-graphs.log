@@ -1,0 +1,19 @@
+Running: mapping_landmarks (OK) (0.000027 secs)
+Running: bump_planes (OK) (0.000013 secs)
+Running: normal_frames (OK) (0.000066 secs)
+Running: scaled_cylindrical_seam (OK) (0.000005 secs)
+Running: sampled_height_and_linear_data (OK) (0.000009 secs)
+Running: triplanar_height (OK) (0.000060 secs)
+Running: triplanar_axes (OK) (0.000004 secs)
+Running: decal_volume (OK) (0.000023 secs)
+Running: nested_derivative_rejection (OK) (0.000001 secs)
+Running: authored_roundtrip (OK) (0.978947 secs)
+Running: authored_ramps_own_their_stops (OK) (1.833508 secs)
+Running: fresnel_reads_the_sample_context (OK) (0.000011 secs)
+Running: effects_evaluate_transforms_remaps_cells_and_ramps (OK) (0.000041 secs)
+Running: star_field_draws_sparse_points_by_direction (OK) (0.008098 secs)
+Running: images_sample_by_color_space_filter_and_wrap (OK) (0.000006 secs)
+Running: authored_images_own_their_keys_and_settings (OK) (1.233891 secs)
+===============================================================
+Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 184
+Test command wall time: 4.181s; includes in-test fixture setup; external configuration/build excluded.

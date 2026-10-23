@@ -1,0 +1,1547 @@
+[
+  {
+    "file": "docs/evidence/capture-retention/native-build.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-fix-build-01.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-fix-build-02.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-fix-build-03.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-negative-build.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-rebuild-02.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-rebuild-03.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-rebuild.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/native-restored-build.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/tools-build.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-build.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-fix-build-01.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-fix-build-02.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-fix-build-03.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-rebuild-02.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-rebuild-03.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/evidence/capture-retention/wasm-rebuild.log",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/research/material-showcase-frames/explosion/material-explosion.json",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/research/material-showcase-frames/scenes/material-showcase.json",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/research/material-thermal-results.json",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/research/performance-next-wave-20261001.json",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/site.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/studio-migration-roadmap/baseline/selectors.csv",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/studio-migration-roadmap/build_ledger.py",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/studio-migration-roadmap/source/studio-file-inventory.csv",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "docs/studio-migration-roadmap/studio-path-coverage.csv",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "sdk/asset_text.cmake",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate26.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate26.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate29.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate29.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate30.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate30.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate31.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_migrate31.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser23.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser24.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser25.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser26.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser27.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser28.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser29.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser30.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/assets/project_parser31.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/authoring/engine_components.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/support/asset_text.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "src/support/asset_text.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/events/CollectExperience.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/events/Damage.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/events/Damaged.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/events/Died.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/events/RefreshEncounter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/content/shader-libraries/ShaderMath.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/behavior-catalog/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/component-presentation/content/editor/Components.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/component-presentation/content/prototypes/InspectorSubject.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/component-presentation/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/component-presentation/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/events/CollectExperience.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/events/Damage.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/events/Damaged.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/events/Died.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/events/RefreshEncounter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/materials/EnergyCells.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/materials/OutlineGradient.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/materials/PulseRing.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/Editor2DPreview.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/Encounter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/Enemy.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/Player.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/Projectile.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/ShaderGradient.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/ShaderRing.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/prototypes/ShaderUnion.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/scenes/Editor2D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/scenes/NeonSwarm.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/scenes/ShaderDemo.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/scenes/ShaderImageDemo.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/shader-libraries/ShaderMath.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/content/shapes/SmoothUnion.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Camera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Crate.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Floor.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Glow.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Lantern.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Lighting.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/prototypes/Walls.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/courtyard/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/declared-components/content/prototypes/Battery.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/declared-components/content/prototypes/Camera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/declared-components/content/prototypes/RechargeSystem.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/declared-components/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/declared-components/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/editor_scene.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/fields/MaterialIslands.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/fields/SeamSlab.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/prototypes/MaterialSpecimen.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/prototypes/MaterialStudyCamera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/prototypes/MaterialStudyWorld.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/prototypes/SeamProbe.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/prototypes/SeamTerrain.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/scenes/MaterialStudy.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/content/scenes/SeamStudy.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/environment-authoring/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/events/Probe Signal.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/materials/RenderWedge_Green.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/materials/SurfaceActivity.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/materials/SurfaceBands.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/materials/SurfaceRelief.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Antenna.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Ball.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Conductor.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/CoolSystem.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Crate.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Crate3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Debris.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/DriftSystem.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Drone.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Gravity.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Gravity3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Ground3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/MovingPlatform3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/MovingPlatformsView.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/NativeRain.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/OrthographicView.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Panel.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Pilot.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/PlatformRider3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Profile.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RainCamera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RainEnvironment.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RainOccluder.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RenderFrame.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RenderPart.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RenderPedestal.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RenderSolid.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RenderView.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/RenderWedge.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Sparks.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Spawner.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Speaker.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Spinner.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Spinner3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Stage.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/SurfaceActivitySource.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/SurfaceDestructible.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/SurfaceMesh.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/SurfaceMirror.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/SurfaceSdf.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/SurfaceView.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Tiles.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Walker3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/prototypes/Wall.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Audio.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Entities.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Flow.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Materials.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/MovingPlatforms3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/NativeRainField.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/OrthographicSurfaces.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Particles.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Physics2D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Physics3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/PlanarSurfaces.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Relationships.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Reload.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Rendering3D.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/RenderingVisibility.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Rhythm.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Save.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Tilemap.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/scenes/Ui.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/shader-libraries/RainParticles.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/content/shapes/SurfaceRing.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/feature-coverage/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/content/events/Damage.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/content/events/Material Impact.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/content/prototypes/BoostEmitter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/content/prototypes/MovementEmitter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/graph-routing/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/language/content/events/Damage.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/language/content/prototypes/BoostEmitter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/language/content/prototypes/MovementEmitter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/language/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/language/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/material-contracts/content/events/Material Impact.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/material-contracts/content/fields/CaveField.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/material-contracts/content/fields/MaterialIslands.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/material-contracts/content/materials/ArenaFloor.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/material-contracts/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/material-contracts/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/prototypes/InputEntity.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/prototypes/StaticEntity.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/events/CollectExperience.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/events/Damage.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/fields/BasaltCave.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/materials/Basalt.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/prototypes/Cave.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/prototypes/FreeMotionSystem.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/prototypes/Player.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/prototypes/Projectile.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/prototypes/Swarmer.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/prototypes/TrailEmitter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/references/scenes/Sandbox.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/values/materials/ArenaExperience.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/refactor/values/prototypes/ArenaExperience.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/content/prototypes/Camera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/content/prototypes/Environment.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/content/prototypes/Solid.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/content/prototypes/Sun.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/content/scenes/Room.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/content/scenes/Shapes.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/scene3d/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/Camera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/Lantern.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/Lighting.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/Prop.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/Sheet.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/TileMosaic.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/prototypes/Yard.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/content/scenes/Start.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/sprites/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-declarations/OutlinerRows.chibi",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-declarations/VirtualList.chibi",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/editor/Components.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/prototypes/Camera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/prototypes/Player.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/prototypes/Projectile.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/scenarios/Firefight.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/content/scenes/Sandbox.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio-workspace/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/content/prototypes/Binding.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/content/prototypes/Vault.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/content/scenes/Binding.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/content/scenes/Main.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/content/scenes/Vault.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/studio/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/fields/QuarryField.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Backdrop.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Camera.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Explorer.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Flag.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Marker.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Scenery.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Target.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Terrain.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/Visor.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/prototypes/World.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/content/scenes/Quarry.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/fixtures/terrain-lab/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Controls/content/input.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Controls/content/prototypes/Pilot.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Controls/content/scenarios/Story.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Controls/content/scenes/Main.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Controls/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Counter/content/prototypes/Counter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Counter/content/scenarios/Story.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Counter/content/scenes/Main.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Counter/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Follow/content/prototypes/Follower.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Follow/content/prototypes/Leader.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Follow/content/scenarios/Story.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Follow/content/scenes/Main.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Follow/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Motion/content/prototypes/Drifter.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Motion/content/scenarios/Story.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Motion/content/scenes/Main.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Motion/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Results/content/prototypes/Folder.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Results/content/scenarios/Story.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Results/content/scenes/Main.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/stories/Results/project.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/support/asset_text.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "test/tools/project_declarations.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/COPYING",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/UPSTREAM",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/common-macros.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/common.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/emitter.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/kdl.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/parser.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/tokenizer.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/include/kdl/value.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/bigint.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/bigint.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/compat.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/compat.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/emitter.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/grammar.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/parser.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/str.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/str.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/tokenizer.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/utf8.c",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "third_party/ckdl/src/utf8.h",
+    "kind": "typed-only",
+    "chosen": null
+  },
+  {
+    "file": "tools/compiler/bootstrap.kdl",
+    "kind": "typed-only",
+    "chosen": null
+  }
+]

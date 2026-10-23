@@ -1,0 +1,7 @@
+231925a54c2732310a55f5ecc772f8e14faf845d548c6e09494dda1de8a22107  test/tools/asset_cache_browser.c
+cb28973e04a1fdaf709345ab8b68a0a4ac728343e72c0e9840c904adc125b6dd  build-web-cache-browser/test_tools.js
+5c8910404e70821c3081256ec786d3b0690600eea041c79304f97ec5715f195d  build-web-cache-browser/test_tools.wasm
+18fc3b173c77a7294e1cfdb22e8cd4793038665f78d89fc0dd178778059363ac  ../chibi-studio/web/asset_cache.js
+d7e87c10425cc54199a0a22f0303305cd9f980692f594f9a476d69fae3d01c08  dist/web-sdk/lib/libchibi_support.a
+Google Chrome 155.0.8059.85 
+35e25381de3772777e99d7a701bddb1354ad657cae5f9cfc5b1204110c0a1de0  /Applications/Google Chrome.app/Contents/MacOS/Google Chrome

@@ -1,0 +1,111 @@
+{
+  "state": "static final-source manifest preflight passed; no host or script execution",
+  "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "manifest_sha256": "1328526b992a05385292a7d54b98908e91cf6871cee4a3da5725a99fb0938ad8",
+  "seed_sha256": "03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c",
+  "seed_bytes": 12099901,
+  "source_count": 19,
+  "sources": [
+    {
+      "path": "package_compiler/Compile.chibi",
+      "bytes": 95609,
+      "sha256": "bbe976a6fff052e34b1fecc1eea3c4cd4c72b2c9201cd19c19de1a813eced5f7"
+    },
+    {
+      "path": "package_compiler/Body.chibi",
+      "bytes": 122010,
+      "sha256": "bb20941fc15eed2e235320f0c25816f984250b78227f1367a29050df42a9e061"
+    },
+    {
+      "path": "package_compiler/Steps.chibi",
+      "bytes": 198758,
+      "sha256": "cd699311d2eaa1d35a14276052f1b6519ede487b581be38359c69ee9c2778306"
+    },
+    {
+      "path": "package_compiler/Maps.chibi",
+      "bytes": 26455,
+      "sha256": "2d9728c9f814557a7d0b3938918e82954b7346cca5fcfcecd8426b9f7a105864"
+    },
+    {
+      "path": "package_compiler/References.chibi",
+      "bytes": 25045,
+      "sha256": "eb8f4548f5675a05f7335a758c11f4e2fda76462b7cdad2f0eaeae9cc41a7cde"
+    },
+    {
+      "path": "package_compiler/Tree.chibi",
+      "bytes": 2578,
+      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+    },
+    {
+      "path": "package_compiler/Number.chibi",
+      "bytes": 15715,
+      "sha256": "3624ec837dfb7c0442600bfe2a8945a8079d39c7cc8c6ef213cb23f5d7f3f7f3"
+    },
+    {
+      "path": "package_compiler/Behavior.chibi",
+      "bytes": 28183,
+      "sha256": "03b4e04831528254d7f0deb31cbb6e8dfd7d2e07e79a1c31796266e7a2196e76"
+    },
+    {
+      "path": "syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 2282,
+      "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "bytes": 15843,
+      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
+    },
+    {
+      "path": "source_snapshot/Snapshot.chibi",
+      "bytes": 15884,
+      "sha256": "64ddb8a19fedc78b0920db46e8ad6415d9de85700adb04388186014c934ec41f"
+    },
+    {
+      "path": "compiler_syntax/Syntax.chibi",
+      "bytes": 1529,
+      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+    },
+    {
+      "path": "package_routes/Routes.chibi",
+      "bytes": 7736,
+      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+    },
+    {
+      "path": "package_syntax/Extract.chibi",
+      "bytes": 4276,
+      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+    },
+    {
+      "path": "package_graph/Graph.chibi",
+      "bytes": 13271,
+      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+    },
+    {
+      "path": "package_paths/Paths.chibi",
+      "bytes": 2274,
+      "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+    },
+    {
+      "path": "lexical_binding/Binding.chibi",
+      "bytes": 8697,
+      "sha256": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450"
+    },
+    {
+      "path": "prepared_writer/Writer.chibi",
+      "bytes": 26338,
+      "sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
+    },
+    {
+      "path": "package_compiler/Bootstrap.chibi",
+      "bytes": 393,
+      "sha256": "19f9c1a2a4f690bba38fafc536c2770c38d7a0eb82d281d16c320e2a16fef8da"
+    }
+  ],
+  "package_folders": 11,
+  "package_completeness": "passed",
+  "runtime_pin_sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+  "initial_isolated_input_count": 23,
+  "future_execution": "Prepare/Prove on eligible clean checkpoint, generic pinned .2 mode, no NativeRecovery/QueryTarget consumer flags",
+  "created_utc": "2026-10-23T06:15:43.551206+00:00"
+}

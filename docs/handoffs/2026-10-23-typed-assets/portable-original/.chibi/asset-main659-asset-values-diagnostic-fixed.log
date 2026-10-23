@@ -1,0 +1,85 @@
+Canonical source mismatch:
+first:
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("object", data.Object([
+                data.Field.Named("label", data.Value.Text("hello")),
+                data.Field.Named("empty", data.List([])),
+                data.Field.Named("children", data.List([
+                    data.Object([
+                        data.Field.Named("id", data.Value.Int(1))
+                    ]),
+                    data.Object([
+                        data.Field.Named("id", data.Value.Int(2))
+                    ])
+                ]))
+            ])),
+            data.Field.Named("maximum", data.Value.UInt(18446744073709551615)),
+            data.Field.Named("minimum", data.Value.Int(-9223372036854775808)),
+            data.Field.Named("precise", data.Value.Real(0.12345678901234568)),
+            data.Field.Named("flag", data.Value.Bool(true)),
+            data.Field.Named("missing", data.Value.Null)
+        ])
+    )
+}
+
+second:
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("object", data.Object([
+                data.Field.Named("label", data.Value.Text("hello")),
+                data.Field.Named("empty", data.List([])),
+                data.Field.Named("children", data.List([
+                    data.Object([
+                        data.Field.Named("id", data.Value.UInt(1))
+                    ]),
+                    data.Object([
+                        data.Field.Named("id", data.Value.UInt(2))
+                    ])
+                ]))
+            ])),
+            data.Field.Named("maximum", data.Value.UInt(18446744073709551615)),
+            data.Field.Named("minimum", data.Value.Int(-9223372036854775808)),
+            data.Field.Named("precise", data.Value.Real(0.12345678901234568)),
+            data.Field.Named("flag", data.Value.Bool(true)),
+            data.Field.Named("missing", data.Value.Null)
+        ])
+    )
+}
+
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/support/asset_document.c (102): again && !strcmp(text, again))
+Asset round trip: input kind=4 value=0x1p-1074; output kind=-1 value=0x0p+0; error=line 7, column 25: Numeric literal is outside the range of its type
+source:
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Value.Real(4.9406564584124654e-324)
+    )
+}
+
+Real round trip failed: index=7 value=0x1p-1074
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/support/asset_document.c (130): same)
+Running: asset_document_owns_each_property_name (OK) (1.011670 secs)
+Running: asset_document_reads_typed_values_and_writes_them_canonically 
+Running: asset_document_reals_round_trip_exactly 
+Running: asset_document_floats_keep_their_bits_through_copies (OK) (2.471780 secs)
+Running: asset_document_strings_escape_separators_and_decode_scalars (OK) (0.999956 secs)
+Running: asset_value_snapshots_own_their_values (OK) (0.000009 secs)
+Running: asset_value_collections_keep_order_and_exact_numbers (OK) (0.000003 secs)
+Running: asset_value_json_owns_its_strings (OK) (0.000001 secs)
+===============================================================
+Summary: Passed: 6 Failed: 2 Total: 8 Suites: 0 Asserts: 109
+Test command wall time: 9.912s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,14 @@
+Running: source_project_version_refusal_preserves_manifest (OK) (1.202774 secs)
+Running: source_prototype_composition_normalizes_fields_and_overrides_defaults (OK) (3.975929 secs)
+Running: source_relationships_survive_preparation_encoding_and_target_cleanup (OK) (1.808599 secs)
+Running: source_relationship_declarations_and_initial_pairs_reject_invalid_contracts (OK) (6.159417 secs)
+Running: source_catalog_analyzes_libraries_without_specialization_requests (OK) (0.001172 secs)
+Running: source_asset_catalog_tracks_prototype_bases_and_relationship_symbols (OK) (2.024861 secs)
+Running: source_authored_relationship_rows_retire_and_restart_on_membership_change (OK) (0.476663 secs)
+Running: source_authored_relationship_compiled_rows_retire_and_restart (OK) (0.008062 secs)
+Running: source_scene_release_preserves_external_panic_and_cleans_internal_links (OK) (0.478375 secs)
+Running: source_prototype_failed_attachment_rolls_back_internal_panic_links (OK) (0.971407 secs)
+Running: source_relationship_native_commands_are_deferred (OK) (0.008523 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 214
+Test command wall time: 21.249s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,4 @@
+configure-studio: running (log: .chibi/logs/1792701253928760000-97279-configure-studio.log)
+configure-studio: ok (0.8s; log: .chibi/logs/1792701253928760000-97279-configure-studio.log)
+build-studio: running (log: .chibi/logs/1792701254866030000-97383-build-studio.log)
+build-studio: ok (0.1s; log: .chibi/logs/1792701254866030000-97383-build-studio.log)

@@ -1,0 +1,61 @@
+{
+  "recorded_utc": "2026-10-23T04:41:46.611365+00:00",
+  "status": "prepared-only; pin unavailable remotely; do not apply before publication",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "head_tree": "753410c60cdd9f426934c7372b433f288de624fe",
+    "staged_tree_at_review": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "workflow_staged_blob": "86be12daca12afc39b4deaa054286b6c0357d8e4",
+    "workflow_sha256": "708a280956f48f32edb21aba70a81b19dc68fbbb74a51d9f6c2c35371d67e0df"
+  },
+  "studio": {
+    "chosen_existing_commit": "521b666a62406fabae8e1d23bad00765717b3635",
+    "chosen_commit_tree": "19c1bbfb599f7c8a6a0ba92e063b37e60c078524",
+    "local_commit_provenance": "commit 521b666a62406fabae8e1d23bad00765717b3635\nAuthor:     Charles Waldner <cwaldner@bamboohr.com>\nAuthorDate: Thu Oct 22 21:08:50 2026 -0600\nCommit:     Charles Waldner <cwaldner@bamboohr.com>\nCommitDate: Thu Oct 22 21:08:50 2026 -0600\n\n    Preserve compiled asset bytes and reject invalid history batches\n",
+    "incoming_eligible_main": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+    "pending_merge_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+    "pending_tree_is_not_commit": true,
+    "pending_delta_paths": [
+      "tests/acceptance/README.md",
+      "tests/acceptance/main.c",
+      "tests/acceptance/sdk_values.h"
+    ],
+    "production_asset_build_deltas": [],
+    "projects_version": 33,
+    "acceptance_default": "OFF"
+  },
+  "publication": {
+    "command": [
+      "gh",
+      "api",
+      "repos/waldnercharles/chibi-studio/commits/521b666a62406fabae8e1d23bad00765717b3635",
+      "--jq",
+      "{sha: .sha, tree: .commit.tree.sha, html_url: .html_url}"
+    ],
+    "returncode": 1,
+    "stdout": "{\"message\":\"No commit found for SHA: 521b666a62406fabae8e1d23bad00765717b3635\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"422\"}",
+    "stderr": "gh: No commit found for SHA: 521b666a62406fabae8e1d23bad00765717b3635 (HTTP 422)\n",
+    "remote_main": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+    "published_now": false
+  },
+  "patch": {
+    "path": "ci-pin-tested-studio-after-publication.patch",
+    "target": ".github/workflows/ci.yml",
+    "job": "studio",
+    "scope": "one exact Studio checkout ref; no selectors, paused Windows job or optional paired workflow changed"
+  },
+  "dependencies": [
+    "Review and publish existing Studio commit521b666 to its public origin; verify GitHub resolves the exact SHA and tree before applying the pin.",
+    "Publish a reviewed clean engine source candidate with current compiled-asset SDK/compiler resources; normal CI packages the SDK from that engine github.sha.",
+    "Normal job builds Studio default target with acceptanceOFF and opens a private copy of version33 projects/starter;521 production/build/project contents equal pending merge.",
+    "Pending Studio merge may be validated/landed separately; it is not needed for this normal production/startup binding and its tree must not be used as a commit ref.",
+    "No test pass is inferred for Linux normal CI or final cold/Web from the parent model receipt."
+  ],
+  "non_actions": [
+    "no active source or index mutation",
+    "no build/test/generation",
+    "no push/publish",
+    "no application launch",
+    "no merge metadata mutation"
+  ]
+}

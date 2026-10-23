@@ -1,0 +1,12 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: rebase_keeps_local_values_over_evolving_defaults (OK) (7.384182 secs)
+Running: retained_strings_survive_clones_and_renames (OK) (0.976641 secs)
+Running: detached_components_spawn_absent_and_reattach (OK) (1.566785 secs)
+Running: prototype_includes_override_and_save_deterministically (OK) (3.496200 secs)
+Running: prototype_spawns_edits_and_captures_overrides (OK) (0.513980 secs)
+Running: scene_documents_save_reflected_values_readably (OK) (1.229006 secs)
+Running: scene_documents_round_trip_entities_and_physics (OK) (2.981997 secs)
+Running: scene_documents_refuse_invalid_physics_names_and_versions (OK) (3.370566 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 200
+Test command wall time: 22.223s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

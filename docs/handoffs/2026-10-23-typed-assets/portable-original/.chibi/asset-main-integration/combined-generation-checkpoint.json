@@ -1,0 +1,100 @@
+{
+  "source_base_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+  "build_wiring_patch": "ff6cb295466f246a1db5a8c9ec042e0cb4e2d211e35610a3e0326853929e59e2",
+  "compiler": {
+    "candidate_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+    "self_parity": true,
+    "bytes": 12099901,
+    "sha256": "03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c",
+    "manifest_sha256": "1328526b992a05385292a7d54b98908e91cf6871cee4a3da5725a99fb0938ad8",
+    "source_count": 19,
+    "version": 5,
+    "minimum": 2,
+    "logs": [
+      "combined-compile.log",
+      "combined-export.log"
+    ],
+    "new_rich_source_imported": false
+  },
+  "resources": [
+    {
+      "variant": "native64",
+      "artifact_bytes": 14460893,
+      "artifact_sha256": "a0db49cc71069f47fba735939ce051bfa767e7c31e0fd9d5afaf497abdfe1588",
+      "packaged_c_sha256": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d",
+      "source_count": 37,
+      "target": {
+        "pointer_storage": 9,
+        "pointer_size": 8,
+        "value_size": 40,
+        "payload_offset": 8,
+        "results_offset": 184,
+        "type_offset": 0,
+        "container_offset": 16,
+        "name_offset": 24,
+        "record_offset": 32,
+        "count_offset": 24,
+        "items_offset": 32,
+        "data_offset": 40,
+        "stride_offset": 48,
+        "map_count_offset": 80,
+        "data_failure": 4,
+        "argument_failure": 7,
+        "assert_failure": 3
+      },
+      "files": {
+        "manifest.json": "62c90f725d3f21e56c236db8b39ef4e8ec5c8735013a38f825d347d75df91fb3",
+        "sources.sha256": "c7071188c1abeeac72cd7a18b5f703fa6ee8604d8e5f94444b2862e6a30ff279",
+        "target.json": "19311c9d539e70c84d8a851cae5f1747c29e4cbb567c4d87f86b3ae7fd01ad11",
+        "asset_compiler.chibip": "a0db49cc71069f47fba735939ce051bfa767e7c31e0fd9d5afaf497abdfe1588",
+        "asset_compiler_packaged.c": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d"
+      },
+      "catalog_abi": 10889542988480948384
+    },
+    {
+      "variant": "wasm32",
+      "artifact_bytes": 14458702,
+      "artifact_sha256": "d6fae3796fac76e955c15a92a9902e05285296876868e45c72074efcb9b3c422",
+      "packaged_c_sha256": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d",
+      "source_count": 37,
+      "target": {
+        "pointer_storage": 7,
+        "pointer_size": 4,
+        "value_size": 32,
+        "payload_offset": 8,
+        "results_offset": 104,
+        "type_offset": 0,
+        "container_offset": 16,
+        "name_offset": 20,
+        "record_offset": 24,
+        "count_offset": 12,
+        "items_offset": 20,
+        "data_offset": 24,
+        "stride_offset": 28,
+        "map_count_offset": 64,
+        "data_failure": 4,
+        "argument_failure": 7,
+        "assert_failure": 3
+      },
+      "files": {
+        "manifest.json": "3f12ccd5861fc4d12f5e35287ff249f9e32a8b06bbd2d9dc89c002ffa39d2ca9",
+        "sources.sha256": "c7071188c1abeeac72cd7a18b5f703fa6ee8604d8e5f94444b2862e6a30ff279",
+        "target.json": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654",
+        "asset_compiler.chibip": "d6fae3796fac76e955c15a92a9902e05285296876868e45c72074efcb9b3c422",
+        "asset_compiler_packaged.c": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d"
+      },
+      "catalog_abi": 16635082799475467933
+    }
+  ],
+  "source_records_identical": true,
+  "strict_snapshot_verifiers": "both passed",
+  "protocol": 8,
+  "sdk_builds": "pending",
+  "runtime_tests": "pending",
+  "rich_source_imported": false,
+  "held_sdk_ci_imported": false,
+  "staged_tree_after_generation": "041c011c04da3393e77b742ab35e837cefdf86a0",
+  "recovery_mode": "OFF; strict configure and chibi-build-host target passed",
+  "lane": "released to CI; no generation/build/test process active",
+  "source_diff_check": "passed"
+}

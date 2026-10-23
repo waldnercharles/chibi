@@ -1,0 +1,50 @@
+{
+  "active_source_authority": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "drafts": [
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/compiler32-review",
+      "status": "UNAPPLIED incoming compiler comparison/review; compiler owner checkpoint is separate"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/studio-ci-binding",
+      "status": "UNAPPLIED immutable Studio workflow pin proposal; historical521 separate from466 proposal"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/studio92-candidate",
+      "status": "HISTORICAL merge-resolution partial base/current/initial/result source; complete active Studio is Git commit466"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/studio-controls",
+      "status": "DELIBERATELY BROKEN negative controls; evidence only; never active source"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/protocol9-ancestry-forecast",
+      "status": "SOURCE-ONLY d0 ancestry forecast, no actual merge"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/post-focus-ancestry-forecast",
+      "status": "SUPERSEDED pre-protocol9 source-only forecast"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/ci-protocol9",
+      "status": "APPLIED source delta and historical red/green, then current failed required groups; base/candidate source are evidence"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/baseline-candidate",
+      "status": "HISTORICAL applied source preparation and baseline receipts"
+    },
+    {
+      "base_and_source_identity": "Read preserved state.json/review.json/receipt.json and per-file inventories in that directory. These remain separate; no draft is applied by this checkpoint.",
+      "directory": "portable-original/.chibi/asset-main-integration/separation",
+      "status": "HISTORICAL cache separation source patch and provenance"
+    }
+  ]
+}

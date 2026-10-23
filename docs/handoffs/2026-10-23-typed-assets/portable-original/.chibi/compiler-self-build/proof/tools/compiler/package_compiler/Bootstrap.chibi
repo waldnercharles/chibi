@@ -1,0 +1,9 @@
+package package_compiler
+
+// version is the bootstrap version of a compiler built from these sources.
+// Raise minimum only when the sources require a newer bootstrap compiler.
+// Artifact export evaluates this compiled contract into bootstrap.json; recovery
+// reads that metadata before loading, then checks the recovered contract.
+pub BootstrapContract :: () -> int[] {
+    return [5, 2]
+}

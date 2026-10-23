@@ -1,0 +1,22 @@
+{
+  "name": "required-test-projects",
+  "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "argv": [
+    "make",
+    "test-projects",
+    "JOBS=4"
+  ],
+  "status": "failed",
+  "started_utc": "2026-10-23T06:05:24.347606+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/required-test-projects.log",
+  "python": "Python 3.13.16",
+  "jobs": "4 only via Make argument; no global -j",
+  "pid": 24057,
+  "exit_code": 2,
+  "elapsed_seconds": 9910.833,
+  "completed_utc": "2026-10-23T08:50:35.167813+00:00",
+  "log_sha256": "88e66e3227f4a5c0b0f86005abe8d209c794493fd3bbbcd885ca51df0cc35695",
+  "source_currency": "unchanged"
+}

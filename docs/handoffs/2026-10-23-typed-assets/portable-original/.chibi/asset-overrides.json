@@ -1,0 +1,1 @@
+{"name":"Enemy","parameters":{"level":3,"enabled":true},"components":{"Sample":{"position":{"x":1.0},"label":"Guard"},"Health":{"current":90,"maximum":200}},"overrides":{"Sample":{"position":{"x":1.0}},"Health":{"current":90}}}

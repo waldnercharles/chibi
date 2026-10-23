@@ -1,0 +1,3649 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5213,
+      "sha256": "19ee0d85f0411044f1245f1714a1c29b3f14a06149621cd787364d22d715b1f7"
+    },
+    "active-changed-paths.txt": {
+      "bytes": 7655,
+      "sha256": "40bf3da870f07f0416dfdba094684968c6332de1c0183e608776619428bb43fb"
+    },
+    "active-changes.name-status.nul": {
+      "bytes": 7991,
+      "sha256": "5a96ba93ff522d8cf4b41dd0b027c9e01deaca3fe410c00031cb67c1b29d5e22"
+    },
+    "active-source-manifest.json": {
+      "bytes": 876814,
+      "sha256": "79e1e5509843640a9ae2fb96b40d8bb8a4d5e42279ce9c06089834e6afac6057"
+    },
+    "checkpoint-state.json": {
+      "bytes": 2371,
+      "sha256": "d0e585b1e55e95bbe4a618b9ff18f848ee51f8beebb56b14e1afad31ab67103b"
+    },
+    "draft-catalog.json": {
+      "bytes": 3621,
+      "sha256": "776b4ea7cd37de50c98ad2e251531045ce6815e38c81ef3db47aff6f98bbe985"
+    },
+    "excluded-local-products.json": {
+      "bytes": 962013,
+      "sha256": "c4c4958986918dd68b7f02ed976240722844f476e852b84c7215aea10d343633"
+    },
+    "portable-original-manifest.json": {
+      "bytes": 357384,
+      "sha256": "97d084707045aef15534f6468f9175611fa46a26111607eac04d0a8e189401d6"
+    },
+    "portable-original/.chibi/asset-bootstrap-build.log": {
+      "bytes": 186,
+      "sha256": "e8c3312cbc28cd34c62549d2fe652d67feb7ef73b334b0423cb8190a1dad5b04"
+    },
+    "portable-original/.chibi/asset-bootstrap-export.log": {
+      "bytes": 232,
+      "sha256": "df8ccd74764c8560b8422f283168a789a3200f04264a489d897a4808215fdd51"
+    },
+    "portable-original/.chibi/asset-bootstrap-input.json": {
+      "bytes": 601478,
+      "sha256": "b7a4001f929830f3566d0c1516d064060bde6a1340daee318f6ee814daaaa2ca"
+    },
+    "portable-original/.chibi/asset-bootstrap-premerge.json": {
+      "bytes": 20760,
+      "sha256": "1fd58bf2f4ff932f3eae964865e89e31804619aa1154a7247e8ad0ef0de20ed7"
+    },
+    "portable-original/.chibi/asset-bootstrap-seed/compile.json": {
+      "bytes": 601478,
+      "sha256": "b7a4001f929830f3566d0c1516d064060bde6a1340daee318f6ee814daaaa2ca"
+    },
+    "portable-original/.chibi/asset-bootstrap-stabilization-pre-444.json": {
+      "bytes": 20757,
+      "sha256": "d7c4de7633854a886b1c6e175c3f148c98e93bb17de9ac67b4f534ca1e3d246c"
+    },
+    "portable-original/.chibi/asset-build-guards.log": {
+      "bytes": 403,
+      "sha256": "83ea1a2415b7c6f1c963487e0083dc00daffb99a4173132852b9e6ee5a7d42cb"
+    },
+    "portable-original/.chibi/asset-build-host-recovery.log": {
+      "bytes": 3115,
+      "sha256": "47ba146e4a8e781c39e50461b3a1bb23af9d5d98257864804ffbfa84da11a88a"
+    },
+    "portable-original/.chibi/asset-cache-browser-build.log": {
+      "bytes": 208,
+      "sha256": "c283b26f9550220bf694a0b77a234917054617fae3c902bc33693dd674fcbd72"
+    },
+    "portable-original/.chibi/asset-cache-browser-configure.log": {
+      "bytes": 727,
+      "sha256": "22c2e3915f1fd3f05803d60521f722e537f976691ebe63c7238e8dc00ea55247"
+    },
+    "portable-original/.chibi/asset-cache-browser-first.log": {
+      "bytes": 1008,
+      "sha256": "d148af77594592a9455a72c66975420778ccab16799a71152ac8442bc6a699d6"
+    },
+    "portable-original/.chibi/asset-cache-browser-four-build.log": {
+      "bytes": 148,
+      "sha256": "e513eeb9ef0aaceaab99433b6aedb8127cdafe9f7d8119a38089497337eaef33"
+    },
+    "portable-original/.chibi/asset-cache-browser-four-first.log": {
+      "bytes": 1237,
+      "sha256": "180d504bc165a3d2f9852bea762bf10c1412244f6aaa039371279663d65edfbe"
+    },
+    "portable-original/.chibi/asset-cache-browser-four-hashes.log": {
+      "bytes": 668,
+      "sha256": "e8389ec2017487b4d88894137ff217ca92475e7f06f2a6677b5e68541c4331df"
+    },
+    "portable-original/.chibi/asset-cache-browser-four-native-build.log": {
+      "bytes": 185,
+      "sha256": "7daf7f144948d7ce30ac1d425a6cacd9af1f610b3816a82b569892b1c4a0d22b"
+    },
+    "portable-original/.chibi/asset-cache-browser-hashes.log": {
+      "bytes": 769,
+      "sha256": "c77b2c22a9c30644340f758756ded81e2e8f0f08f357b94a00d7f3e08d5235ed"
+    },
+    "portable-original/.chibi/asset-cache-browser-native-build.log": {
+      "bytes": 186,
+      "sha256": "eb01621fe72b4c9d808b18d91925155dfb305d430d53a541484382e1f4f680a3"
+    },
+    "portable-original/.chibi/asset-cache-browser-native-compile-diagnostic.log": {
+      "bytes": 15805,
+      "sha256": "ea8f9db942932970933c3d04d198b7c8c5798a20efaa7ab06f5d2e0a511eb0ee"
+    },
+    "portable-original/.chibi/asset-cache-first.log": {
+      "bytes": 841,
+      "sha256": "6518643ba853375cf97c3f5e2e86e8de66240d8972bffa249d1954e9617f49f4"
+    },
+    "portable-original/.chibi/asset-cache-second.log": {
+      "bytes": 1118,
+      "sha256": "d555105683b6aaf77a5ceb53eac41ba58ec03a474f7e0e965f8b7c711ca44db6"
+    },
+    "portable-original/.chibi/asset-compiler-authored-generation.log": {
+      "bytes": 201,
+      "sha256": "a8b8a6f04b8ce57e529c80709f6d2d34bbadcff850e5d07a47663f6a4656b945"
+    },
+    "portable-original/.chibi/asset-compiler-bundle-build.log": {
+      "bytes": 183,
+      "sha256": "926d169b56e58a2d7ce3d485d3e967da450702cfd786b9acc5d689f000eb31fe"
+    },
+    "portable-original/.chibi/asset-compiler-generated/sources.sha256": {
+      "bytes": 3679,
+      "sha256": "787668ece3f19c8c77694c9d4e0a016d4a4effd561b5f4fd72bb0844e6558591"
+    },
+    "portable-original/.chibi/asset-compiler-generated/target.json": {
+      "bytes": 9475,
+      "sha256": "93ddf9b4cd7bb78c3e8ce04c654b1931de3656d7811201158ec3038b4803509e"
+    },
+    "portable-original/.chibi/asset-compiler-host-build.log": {
+      "bytes": 185,
+      "sha256": "39f2f8fb94aa0f0333ec537e9a2d747b41f6137c97eacdfe67658809c7a3f161"
+    },
+    "portable-original/.chibi/asset-compiler-native-final.log": {
+      "bytes": 201,
+      "sha256": "992098a739a97629635973b5900b0bc75f7a136649265cfc26c40e3e14ba730d"
+    },
+    "portable-original/.chibi/asset-compiler-native-final/sources.sha256": {
+      "bytes": 3679,
+      "sha256": "7c9250188a958b84a7cd425f7827fdf90bbdf413c9eb1232b8690831a5f1afda"
+    },
+    "portable-original/.chibi/asset-compiler-native-final/target.json": {
+      "bytes": 9475,
+      "sha256": "93ddf9b4cd7bb78c3e8ce04c654b1931de3656d7811201158ec3038b4803509e"
+    },
+    "portable-original/.chibi/asset-compiler-target-build.log": {
+      "bytes": 185,
+      "sha256": "d28f2ff52fea7af5af631e6a679d00497f4768af3dc37f8ca4fe7d658c6e6329"
+    },
+    "portable-original/.chibi/asset-compiler-wasm-final.log": {
+      "bytes": 270,
+      "sha256": "597be4c3525a5beeb8216f7874e96a5eeade488761522a8ade9403104c5c244f"
+    },
+    "portable-original/.chibi/asset-compiler-wasm-final/sources.sha256": {
+      "bytes": 3679,
+      "sha256": "7c9250188a958b84a7cd425f7827fdf90bbdf413c9eb1232b8690831a5f1afda"
+    },
+    "portable-original/.chibi/asset-compiler-wasm-final/target.json": {
+      "bytes": 9476,
+      "sha256": "b66d5c3dbe52565f09d18927bfcb042904464a006ebf770d3b6a072f9bce57f1"
+    },
+    "portable-original/.chibi/asset-compiler-web-configure.log": {
+      "bytes": 165,
+      "sha256": "98756e6c3b01219afc0f9b02ddc9333048af6dd1a9aea4312067feda0590a4bd"
+    },
+    "portable-original/.chibi/asset-compiler-web-host-build.log": {
+      "bytes": 11325,
+      "sha256": "e0f15839cb2e8b391e76361db48fb6a9b1c3be067f8e0c2540797982e3514e60"
+    },
+    "portable-original/.chibi/asset-decoded-asset-cache-local-copy.log": {
+      "bytes": 366,
+      "sha256": "df6db90c65c25b720680b9d87d3784c830a36126646560d58cdb1d7838502e98"
+    },
+    "portable-original/.chibi/asset-decoded-asset-cache-retry.log": {
+      "bytes": 523,
+      "sha256": "83ec13c20b72efb65c7d799250bb45a4893a1eec7780d2c1dab0153b491fa716"
+    },
+    "portable-original/.chibi/asset-decoded-asset-cache-union.log": {
+      "bytes": 497,
+      "sha256": "b94d021793afb00c5f0bdf0374d2573a37f5c904aee133a2f4520b17347e8a64"
+    },
+    "portable-original/.chibi/asset-decoded-asset-cache.log": {
+      "bytes": 189,
+      "sha256": "76f3d04d050eb7a8fbf1bbb4cd4d398fe5ec574c19866e4c96dfb01f6137481b"
+    },
+    "portable-original/.chibi/asset-decoded-asset-source.log": {
+      "bytes": 698,
+      "sha256": "dd7872b3f6e59ab1dfbe24495e145294db6c88354354574c728d25a09a732c2d"
+    },
+    "portable-original/.chibi/asset-decoded-execution-scope.log": {
+      "bytes": 369,
+      "sha256": "e1899ddd327b9232768c0043402b775f90f370e8f7adee5b513db84e88f3833e"
+    },
+    "portable-original/.chibi/asset-decoded-followup-status.log": {
+      "bytes": 66,
+      "sha256": "8580774c6f7102f3c14a37328cd5adf643004014f80e66d303540e7a968e1e77"
+    },
+    "portable-original/.chibi/asset-decoded-local-copy-test-build.log": {
+      "bytes": 306,
+      "sha256": "c2ce6da2d156c096429c17d85f93e99152946698dc2755c5eca0491eead7a4cc"
+    },
+    "portable-original/.chibi/asset-decoded-native-sdk.log": {
+      "bytes": 212809,
+      "sha256": "9117874bb34d4e6e134e2a75b66791d6b070d2f9b767eec7b2acadaa7b76bda4"
+    },
+    "portable-original/.chibi/asset-decoded-test-build.log": {
+      "bytes": 308,
+      "sha256": "7e5e5487872709536388bf0d895a7581b2a0db8e42442b48413fd6509d3ef4d8"
+    },
+    "portable-original/.chibi/asset-decoded-test-tools-relink.log": {
+      "bytes": 2635,
+      "sha256": "2096cb7e6c25952ad4f760ec4da1cc4105547eadd485a9d0ac4563df3377cfc9"
+    },
+    "portable-original/.chibi/asset-decoded-test-tools.log": {
+      "bytes": 1199390,
+      "sha256": "159a485f77059cdce8d956614064e8cbd515e36f75d48b6ee4b304d200d5dcbe"
+    },
+    "portable-original/.chibi/asset-decoded-typed-prototype.log": {
+      "bytes": 823,
+      "sha256": "6a9f1e2dc0eefe2a298949394f5c98d6b017fef0e66d92828de704c745e28d64"
+    },
+    "portable-original/.chibi/asset-decoded-union-test-build.log": {
+      "bytes": 306,
+      "sha256": "ba366181897f9a22c89c2033c45612a7a76d9cdc037277e361b0d3fa6f3663fb"
+    },
+    "portable-original/.chibi/asset-documents-build.log": {
+      "bytes": 5000,
+      "sha256": "002de01ebb4f71b72369b4258fb4ef4d0bf74f5f5859875da5b5c12033fcb7bf"
+    },
+    "portable-original/.chibi/asset-empty.json": {
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "portable-original/.chibi/asset-engine-diagnostics.log": {
+      "bytes": 11984,
+      "sha256": "2c93daa9f373de33253a64e572c2b21a3ed92f08569e15c37a00713746895243"
+    },
+    "portable-original/.chibi/asset-facade-build.log": {
+      "bytes": 154,
+      "sha256": "1116b82d08d8c65ae263ad6e7ef028ef495b5df51030a85815a957539ef243fe"
+    },
+    "portable-original/.chibi/asset-facade-diagnostic.log": {
+      "bytes": 346,
+      "sha256": "da9254e8040df010e03c998e90bfd63db04c8a59dbef13cedfba28327c70ba5d"
+    },
+    "portable-original/.chibi/asset-facade-input.json": {
+      "bytes": 665719,
+      "sha256": "f4fd4f63d858231f5cce363c76c119585d567b9e9d60790ef2d69b6d43513d55"
+    },
+    "portable-original/.chibi/asset-feature-coverage-format-before.json": {
+      "bytes": 14127,
+      "sha256": "4b3baf9b1608a0239cd0c86bfd717c01ae5a3d498d130d12e72a2caf18b51f3b"
+    },
+    "portable-original/.chibi/asset-feature-coverage-format-check.log": {
+      "bytes": 104,
+      "sha256": "fa0e420ce959dc88570c6b3e569d6144fae41cb1ffafafb9771afca5ebb18b39"
+    },
+    "portable-original/.chibi/asset-feature-coverage-format.log": {
+      "bytes": 195,
+      "sha256": "50215a8eee82f4a669677de2cf836c77fe5e365528263007261bc77e25c8f345"
+    },
+    "portable-original/.chibi/asset-final-build-evidence.json": {
+      "bytes": 2399,
+      "sha256": "09dff5d0d2fbcb17c73f9f6348edc35a45e00aa1f2a208fa51fa24a05a374766"
+    },
+    "portable-original/.chibi/asset-final-debug-sdk-package.log": {
+      "bytes": 190585,
+      "sha256": "dcd2a5bb7df0815abe5a6d2d9c7f9203829fc9ebb50c39c3e54f0b5bbd93b4af"
+    },
+    "portable-original/.chibi/asset-final-debug-studio-build.log": {
+      "bytes": 5238,
+      "sha256": "80f86c166dbc9cfec4e3cf087813a35d4b1a7a57cd1d7a47838b25c1e4cba609"
+    },
+    "portable-original/.chibi/asset-final-flow-studio-build.log": {
+      "bytes": 6267,
+      "sha256": "59b91a43d0692d196f16d3b7a837ea47dfbd1069dae1f0336e422d522ecc420b"
+    },
+    "portable-original/.chibi/asset-final-flow-studio-cold.log": {
+      "bytes": 1489,
+      "sha256": "1b5ba8af0b388b5aa53c6c48a8d479f8333625b1edff812132c4e722c82b8c2a"
+    },
+    "portable-original/.chibi/asset-final-flow-studio-evidence.json": {
+      "bytes": 2139,
+      "sha256": "8c1cbff612dd40369c3cb0bd77886174bd402467fecc1efb78bc19ba590a1853"
+    },
+    "portable-original/.chibi/asset-final-flow-studio-model.log": {
+      "bytes": 1553,
+      "sha256": "4bcc0fecd8870753200c3afc49733494b1e5333122e3e1ad728448240472a752"
+    },
+    "portable-original/.chibi/asset-final-flow-studio-project-path.txt": {
+      "bytes": 109,
+      "sha256": "a6cd9477c7ed029b4f77efedcac930150c6051e17b143c4ea879d231aaf3f33b"
+    },
+    "portable-original/.chibi/asset-final-model-tool-evidence.json": {
+      "bytes": 771,
+      "sha256": "c14286093addc0c39de0bf691ec682ca6a80254f339e85a16f1c95c0765218e5"
+    },
+    "portable-original/.chibi/asset-final-model-tool.log": {
+      "bytes": 1660,
+      "sha256": "5b46c5e20a68f2e849e2ed6f42160b85492cbfc220cd907a823be27f88417ebf"
+    },
+    "portable-original/.chibi/asset-final-release-sdk-package.log": {
+      "bytes": 210645,
+      "sha256": "a29d897a91b23516933882e28569f5ecc81f82c385069f9851057186246a230e"
+    },
+    "portable-original/.chibi/asset-final-release-studio-build.log": {
+      "bytes": 5523,
+      "sha256": "a9a72f47104bfe2599efee652eee3d0ace8373cb1581c59c2c777e6219c7cf9d"
+    },
+    "portable-original/.chibi/asset-final-sdk-consumer-installed.log": {
+      "bytes": 677,
+      "sha256": "90148e365cfdc00be6b6fc2c4f37721ae8969c1d7ee9e5257fed8a6515bf0c05"
+    },
+    "portable-original/.chibi/asset-final-sdk-consumer-relocated.log": {
+      "bytes": 677,
+      "sha256": "57046f6b3c45ddc8ec7736355b4362613ff478760e6be0c82e736f0208c3b64b"
+    },
+    "portable-original/.chibi/asset-final-studio-c-format.diff": {
+      "bytes": 38,
+      "sha256": "abc07078597158b78506ec468bafc9ea7fe7ec1c82e2559e5766f823634bf85e"
+    },
+    "portable-original/.chibi/asset-final-studio-format.diff": {
+      "bytes": 389457,
+      "sha256": "edc862301b16be8ef6ac0d88a6eec930130898945547950fc1529597dc504459"
+    },
+    "portable-original/.chibi/asset-final-studio-model-build.log": {
+      "bytes": 5252,
+      "sha256": "feb47cbfcabb7ba8a5333465eb5004c88d3b697a7c52c242ee7d2c908d5640f4"
+    },
+    "portable-original/.chibi/asset-final-web-build.log": {
+      "bytes": 182150,
+      "sha256": "660e2dceb5f6bbea938651ff9c19061d5d7aad030898b2106b90f96b2bd9c021"
+    },
+    "portable-original/.chibi/asset-fixture-rebuild.log": {
+      "bytes": 14564,
+      "sha256": "970193b76b0427e9f9494db97c64ab7bd3598daa2bb80fabab125b3a3ab79846"
+    },
+    "portable-original/.chibi/asset-flow-check-format.log": {
+      "bytes": 180,
+      "sha256": "e73bbd2dd2b0a4a55d374821045eef45c6c0b25463b49667fae43e5503cfc200"
+    },
+    "portable-original/.chibi/asset-flow-native-sdk.log": {
+      "bytes": 212810,
+      "sha256": "151deea951d8994151ea51f4e6a03b5bb16d87282e28e40587dc735a5ee906cd"
+    },
+    "portable-original/.chibi/asset-flow-project-interrupted-pids.json": {
+      "bytes": 1232,
+      "sha256": "e6b90a8ebab16db88d08935ba722be51688e51818f819364c02be86c06c9065d"
+    },
+    "portable-original/.chibi/asset-flow-project-prototype-expansion.log": {
+      "bytes": 302,
+      "sha256": "ec0e9e7139cee0354e14339351cb6e6cdc57e0d9799d9adc6ceee1697c2085cc"
+    },
+    "portable-original/.chibi/asset-flow-project-status.log": {
+      "bytes": 29,
+      "sha256": "ee20a685dbfb4fea7e44146cdd52a17b3d28ed1a2378f57af9e30eacb7c08bd7"
+    },
+    "portable-original/.chibi/asset-flow-prototype-expansion-sample-command.log": {
+      "bytes": 223,
+      "sha256": "dd5733602b41fb730194950e6681439702acac06ec96f774bc4cccec7c4a3b47"
+    },
+    "portable-original/.chibi/asset-flow-prototype-expansion-sample.txt": {
+      "bytes": 349188,
+      "sha256": "94de5314e35b7b58bd480fe948668ef4994b2ee77cf976d1ec5399b32bf1adf5"
+    },
+    "portable-original/.chibi/asset-flow-web-build.log": {
+      "bytes": 182994,
+      "sha256": "bcbcb2312ea00674c8e678712d55576384c4078bc35f4d90b87a6ea6b017302a"
+    },
+    "portable-original/.chibi/asset-full-sample.txt": {
+      "bytes": 24147,
+      "sha256": "aaa09c496c81c90765fe1f69493fdc519bf53420365f8a36f9cc92110556c50d"
+    },
+    "portable-original/.chibi/asset-generator-diagnostic.log": {
+      "bytes": 202,
+      "sha256": "bc153d32f128e9ed8cff1b71b80e65e67d375891f35734139be52727fd7bedba"
+    },
+    "portable-original/.chibi/asset-graph-build.log": {
+      "bytes": 26,
+      "sha256": "b9bcf93408ceef728f0a0367d35ab4303f36461dd10374ed3fcf92c60c75437e"
+    },
+    "portable-original/.chibi/asset-guard-configure.log": {
+      "bytes": 161,
+      "sha256": "e0c135b937762d76727ca909d3f7e6b26424e39904ca4802fe835fc13d2b2980"
+    },
+    "portable-original/.chibi/asset-guard-restore.log": {
+      "bytes": 161,
+      "sha256": "e0c135b937762d76727ca909d3f7e6b26424e39904ca4802fe835fc13d2b2980"
+    },
+    "portable-original/.chibi/asset-installed-docs-build.log": {
+      "bytes": 396,
+      "sha256": "e11fcf3a62bf348588726908254735d07325a58be11f498d1bdc5a041dd276a7"
+    },
+    "portable-original/.chibi/asset-largest-build.log": {
+      "bytes": 367,
+      "sha256": "62251f00cb37dabb389ad332ad1e0904baaca77e7710f83b66911a80ae80dc0c"
+    },
+    "portable-original/.chibi/asset-largest-input.json": {
+      "bytes": 155204,
+      "sha256": "1a74fe53e60fd2df6e6504e5214e0c55e00d098089afc196d45715c73cfb8ab5"
+    },
+    "portable-original/.chibi/asset-largest.json": {
+      "bytes": 16616,
+      "sha256": "9f21e40b3c41f62ed0e89a3f7c966e608e64ef6f733e821b2cfc91224b915866"
+    },
+    "portable-original/.chibi/asset-main-asset-refactor.log": {
+      "bytes": 434,
+      "sha256": "cd0000d9429c0ee50f2298f50d17ab12895630610c65d7c93037a44526ccb30d"
+    },
+    "portable-original/.chibi/asset-main-asset-source.log": {
+      "bytes": 333,
+      "sha256": "0896f0cf0228d9edde3aa2d28c85887913c79ebfd697c99ffc4a3f0bb5015a74"
+    },
+    "portable-original/.chibi/asset-main-build-host-build.log": {
+      "bytes": 29857,
+      "sha256": "ed1a126e47ca03cffb4cf354bb1cad246c3133984400943f59f41d892dc8246c"
+    },
+    "portable-original/.chibi/asset-main-build-host-configure.log": {
+      "bytes": 580,
+      "sha256": "d06ea5dbe4ca6bc483a9315307ef229ae0b2ba90c8d9a0305036ff9afc1060ae"
+    },
+    "portable-original/.chibi/asset-main-cache-first.log": {
+      "bytes": 516,
+      "sha256": "c77b67993a3594bc021d897cbc9f61f7659bac2f9780f5e8d21cec5c837ffa93"
+    },
+    "portable-original/.chibi/asset-main-cold-studio-first.log": {
+      "bytes": 1530,
+      "sha256": "fea16436b951958743dd4c8200e200a05504f3e976882c14bfcc0b90be954de8"
+    },
+    "portable-original/.chibi/asset-main-cold-studio-fixed.log": {
+      "bytes": 1712,
+      "sha256": "efa4511135ae56e6ad23e4d166e8291dca8390d207fb8b7ba93c33317b38410e"
+    },
+    "portable-original/.chibi/asset-main-cold-studio-staged.log": {
+      "bytes": 1502,
+      "sha256": "54f528102adcd3de1e6695801be519b063bd95f4ba12724822eb7197bf147856"
+    },
+    "portable-original/.chibi/asset-main-execution-scope-first.log": {
+      "bytes": 520,
+      "sha256": "ca218e902893266801edbbdbe96d2a16973e43cafb6968da848a193882ca9100"
+    },
+    "portable-original/.chibi/asset-main-graph-document-first.log": {
+      "bytes": 1311,
+      "sha256": "8219b64aac2527a4f57c160c48e366adca3d7f8e541476dbd99580a1e29865db"
+    },
+    "portable-original/.chibi/asset-main-graph-functions-first.log": {
+      "bytes": 1650,
+      "sha256": "9ba4c3e4e377718ae0e34f78e42e21f03ecffedf86aac8cb089aefba5a3f6b99"
+    },
+    "portable-original/.chibi/asset-main-graph-presentation-first.log": {
+      "bytes": 1390,
+      "sha256": "87d2f18c93eabd6940fdfd50a88c007cb3e410cbe5ec8239cb8df84cdee66a1a"
+    },
+    "portable-original/.chibi/asset-main-host-build.log": {
+      "bytes": 18804,
+      "sha256": "628893a719a3b760cde525b4300394866b1d5acbf4bd6deff12fb2ef3fda29d2"
+    },
+    "portable-original/.chibi/asset-main-host-configure.log": {
+      "bytes": 455,
+      "sha256": "6cb999b4c992b13a86dd78576e66fa6fa601d2003a6dccba0d9d45419823a13f"
+    },
+    "portable-original/.chibi/asset-main-integration/b934-bootstrap-compile.log": {
+      "bytes": 69,
+      "sha256": "36b0011e6d1e9687e19a56e72a6cbcaf64a44ecc3ec34d68778a6cde4b555126"
+    },
+    "portable-original/.chibi/asset-main-integration/b934-bootstrap-parity-export.log": {
+      "bytes": 115,
+      "sha256": "db2f4ff6291c8cd0bc00a30c5cdc7d69948347ab39324169932b6639c2a94405"
+    },
+    "portable-original/.chibi/asset-main-integration/b934-native-resource-generation.log": {
+      "bytes": 201,
+      "sha256": "b1b8be7add7dc8ee0426201ce11ef81ff1302351c44f07bda6bfecd8ff38e831"
+    },
+    "portable-original/.chibi/asset-main-integration/b934-resource-audit.json": {
+      "bytes": 852,
+      "sha256": "12cbc20d3041c3f6760e27ef25471af9bff069d109d0ec366623715a51c0b37f"
+    },
+    "portable-original/.chibi/asset-main-integration/b934-wasm-resource-generation.log": {
+      "bytes": 270,
+      "sha256": "3b3e921f164a9dca7f3281c3f139bb77055034bc44349f3b2443102fde6b11b2"
+    },
+    "portable-original/.chibi/asset-main-integration/b934-wasm-target.json": {
+      "bytes": 11573,
+      "sha256": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/adapter-apply.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/ancestry-forecast-nontrivial.json": {
+      "bytes": 6394,
+      "sha256": "d05b9cbba2afb39735999bb8edcf3fb1c4052038c7d49f286a279b117994fb06"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/ancestry-forecast-trivial.json": {
+      "bytes": 37321,
+      "sha256": "703404aabe9cef243ff7192839b18fb6f8a2bdaa9e2c84cb092ae7f8c8d24962"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/ancestry-forecast-unmerged.txt": {
+      "bytes": 66801,
+      "sha256": "9a9969a8027bf9733849a6af54b1915f60cb4bc90c7f941f986a0e947446102a"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/ancestry-forecast.json": {
+      "bytes": 14128,
+      "sha256": "21e9625ef87851be6f287ba53fdeb482d39dd97cfd9c3a9f57914540f901f85a"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/applicable-incoming.patch": {
+      "bytes": 249534,
+      "sha256": "c8b8a2d74be81f10316553768538811b3e51d8e87d0c3c83ab4ccc2ff0e67354"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/application-receipt.json": {
+      "bytes": 2344,
+      "sha256": "658b00b6dac3c88f0d8da71f23e0f24cd5b82f612718b5016b770075057ca552"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/applied-format.patch": {
+      "bytes": 2307,
+      "sha256": "e0773ca2d138b0b9beaa6497b05aac2fb09873282acb13b2fab4db9cc13ea285"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/apply-filtered.log": {
+      "bytes": 2305,
+      "sha256": "90da37feff6ed3216add73106dd8b7f2df37e6b3ae33166d81481f1102d52dc8"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/apply.log": {
+      "bytes": 2261,
+      "sha256": "a3ed046340df09549ce085ab54b431f678ac60f9d3b207366f26903ce2ec8775"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/candidate.patch": {
+      "bytes": 247335,
+      "sha256": "5d96ae8238c518279b510bc23e2b6bb4e0bab88cb8a9bee2d032f3609f4abfa3"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/check-format.log": {
+      "bytes": 181,
+      "sha256": "d0803b97d0ae944e413f252cf0f78241aa365a25a19aee0e4fe6d11e792c83d8"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/conflicts.json": {
+      "bytes": 123,
+      "sha256": "65d783dbec707932055f1e2e3b6a56e3caf1d848599553f24cdbbdefc90f6cd2"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/diff-check.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/format-diff.txt": {
+      "bytes": 2307,
+      "sha256": "e0773ca2d138b0b9beaa6497b05aac2fb09873282acb13b2fab4db9cc13ea285"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/incoming.patch": {
+      "bytes": 250036,
+      "sha256": "16675af2b9fee94e6c04a66e49aae6d9a31f1ec4c9708f41f88b5ab1e11130bc"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/inputs.json": {
+      "bytes": 462,
+      "sha256": "617590e1362996debcef5f5bf035d865a9b3afa3b95d158b1802bf559d60189f"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/invariants.json": {
+      "bytes": 4186,
+      "sha256": "8c0a5027fa5151aa817f9fede0d02383213fa7698a87e726dd65bf6b21c147fe"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/native-snapshot-verify.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/receipt.json": {
+      "bytes": 1939,
+      "sha256": "474f8c265695d7d27be6531cde040429a767da51751f97c635836c0aa9dfa868"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolutions.json": {
+      "bytes": 1295,
+      "sha256": "9059ddb32b60484872f98ea4d41839e7a00de0d559e907513c9893f293f4d1ae"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolved/.github/workflows/ci.yml": {
+      "bytes": 18965,
+      "sha256": "708a280956f48f32edb21aba70a81b19dc68fbbb74a51d9f6c2c35371d67e0df"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolved/.github/workflows/paired-studio.yml": {
+      "bytes": 12670,
+      "sha256": "3f6379d52f9d543917ebe4d095600204f8a3429dfad1f1ca408aa9d6d4b043fa"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolved/docs/testing.md": {
+      "bytes": 219919,
+      "sha256": "225deb1c279f3458328797f9fbd85cd8cf51bf034e91e814d5ef8263a95f57ed"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolved/test/language/program.c": {
+      "bytes": 339023,
+      "sha256": "4a390f532ea7ea4b09895f59926be9bd503e5f5b7a13d0716ca298c69b2ebcd1"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolved/test/tools/CMakeLists.txt": {
+      "bytes": 38238,
+      "sha256": "d1e90c261d57f30a2435137846dd35ae4a89c7cc2e7bca3181fd9b3c6f26c738"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/resolved/test/tools/main.c": {
+      "bytes": 61133,
+      "sha256": "f20bf6d1124c076751883232f0a9aa1c775e9da3f93f8cb89575d107db9124e8"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/source-hashes.json": {
+      "bytes": 8390,
+      "sha256": "b514ab65200d239b2d475c11327ed850236607e1e33d3fd9d459a2ffced78be2"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/typed-no-ckdl.patch": {
+      "bytes": 1554,
+      "sha256": "a78d8d0e86c9c51501b666343ae0da50e67e11348a1c9d864704feeb33b6cbd0"
+    },
+    "portable-original/.chibi/asset-main-integration/baseline-candidate/wasm-snapshot-verify.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/bootstrap-regeneration.log": {
+      "bytes": 300,
+      "sha256": "b1006ed527479285606e85f3cc9b1e2ce5e92fc2b05f37c0f8e460b10044976f"
+    },
+    "portable-original/.chibi/asset-main-integration/build-wiring.json": {
+      "bytes": 714,
+      "sha256": "01631569cd99750c96b7c55367d85f3543ce826b699263f42cd7a48beb1613eb"
+    },
+    "portable-original/.chibi/asset-main-integration/build-wiring.patch": {
+      "bytes": 2858,
+      "sha256": "ff6cb295466f246a1db5a8c9ec042e0cb4e2d211e35610a3e0326853929e59e2"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-compatibility-applied/receipt.json": {
+      "bytes": 2148,
+      "sha256": "b03f4c3e51bea85717ef3b364a96e3617caf85df937dc8003c46b82aed0b84ba"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-compatibility-applied/typed-receipt-before.json": {
+      "bytes": 11006,
+      "sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-compatibility-review/review.json": {
+      "bytes": 6208,
+      "sha256": "ccf9e45b14deff0f87314e3f76a1cf44e23ea4b617aca1261144dd20d7d31bcf"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-compatibility-review/review.md": {
+      "bytes": 907,
+      "sha256": "77c359c28fba22065ac892fef8229d6661111a6fbd024cbd83846c0c3e4ce742"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/base/docs/self-hosting-build.md": {
+      "bytes": 63644,
+      "sha256": "4dded3c950db380db2c187d67920ae31d62f22b777d8e52edb83f18106133d4c"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/base/src/host/build_host.h": {
+      "bytes": 2619,
+      "sha256": "9369fc6f39ac8d345214ac89581a203f350470819634104a48baf2c18e3620af"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/base/test/tools/build_process.c": {
+      "bytes": 100749,
+      "sha256": "0f34670b7f18397047ff30713329397839d228249f213acf123525f6c1a2096f"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/base/test/tools/build_toolchain.c": {
+      "bytes": 31137,
+      "sha256": "25d922d94a725160590f707b2200fb9ba855c2fbf170965b30f45ce26f71a3d1"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/candidate/docs/self-hosting-build.md": {
+      "bytes": 63926,
+      "sha256": "d9137eee4a76ed7d13952a2a1edad20a344ec0ca969136f598baa633dd533d9b"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/candidate/src/host/build_host.h": {
+      "bytes": 2753,
+      "sha256": "d3778bd316a110b5298ceb34b088693010e37d6e0c5e6c776bd99e6d0b754b48"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/candidate/test/tools/build_process.c": {
+      "bytes": 100749,
+      "sha256": "9063e811eb05172d801ee73b5d8826e47bdfa9e334d0dea6614d9cbd52aa7578"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/candidate/test/tools/build_toolchain.c": {
+      "bytes": 31347,
+      "sha256": "57df4670fde288517b5c18a6ab623a3a98003ddc3dcb332f9f506d83629f3f07"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/capacity-phase-history.json": {
+      "bytes": 1200,
+      "sha256": "45540e39562c81ad6cad524c743e710932de87a5a5946ef7023b52730d301d11"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/capacity-phase-observation.json": {
+      "bytes": 276,
+      "sha256": "18467c6b3381ec556ff5e1113347b874d87455bdf26f9cfe6984f34a6191caec"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/execution.json": {
+      "bytes": 6956,
+      "sha256": "bae27ced8f539281365409bc4a7ac9a394138032e106bdb4856305668d2e30f7"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/final-manifest-preflight.json": {
+      "bytes": 3897,
+      "sha256": "0a18bd220c4c0e5468d596e811e405f17ddc716f632db783bec12b1a6534db49"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/green-build-process.json": {
+      "bytes": 1014,
+      "sha256": "921182cb51df8a0da48c235ef5c5e11befad2f0674f4bf9dfe52b774faf8ba87"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/green-build-process.log": {
+      "bytes": 4421,
+      "sha256": "3d11fb1998e9ecd1ac517e07dc77d926a6fe7e17deb50dca116a3df321ad36b1"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/green-build-toolchain.json": {
+      "bytes": 1020,
+      "sha256": "0112a46ee38d35b65d5990b22b380023ea86697eb122deda74c65c904d29dcc0"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/green-build-toolchain.log": {
+      "bytes": 1163,
+      "sha256": "e5270be0bee0be30283eb63233d9318ccd84e03087cf33d6849d4984c7275cfc"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/independent-source-review-wording.json": {
+      "bytes": 1483,
+      "sha256": "dd400afeb0e31581727cb782e211e52d8a42c07e29b85b4f7b216a26d89828d1"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/independent-source-review.json": {
+      "bytes": 1442,
+      "sha256": "6a73d5908c26ac9435213a1a37fdd8df70cadce096d483978e04c408db4b5111"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/native-products.json": {
+      "bytes": 27554,
+      "sha256": "db25dcf038cfe36051a929f46fada61741ee606f9886fbdd21e5409f2179e6b8"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/ordinary-release-upgrade.json": {
+      "bytes": 858,
+      "sha256": "ab7436b4bede2a8b44faabb13398f85943a4fe352a4e071e49a3ecabb6ed85cf"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/ordinary-release-upgrade.log": {
+      "bytes": 632,
+      "sha256": "8c3f8efa13bd81675c8618ca3f52f83ca97a98c04a83a1dd4d4e72a3edbc8e01"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/protocol9.patch": {
+      "bytes": 6000,
+      "sha256": "30112d927517beb11440e7527fd53813342b1b0fdc7d7adfda2778c215ca1a4c"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/receipt.json": {
+      "bytes": 2806,
+      "sha256": "6a591bc7eb1d8799e3ddc641503126df79091a9efd65d2861fbda09388cfe14f"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/red-build-toolchain.json": {
+      "bytes": 1029,
+      "sha256": "175458c9cec8af3311afe59ea16781db1d9ca2393bd6daace3711d594bf64dcd"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/red-build-toolchain.log": {
+      "bytes": 1197,
+      "sha256": "3cbcd82d33f0b6f130b150690264c3b81e8f1cd21e085663a71274531b1c6b81"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/red-driver-build.json": {
+      "bytes": 950,
+      "sha256": "dfb7f409328059d1c444f052b7435c1858b494cef46e0eb9ca509fbf45e2c0a9"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/red-driver-build.log": {
+      "bytes": 306,
+      "sha256": "0bea87efa86f70c3d23f80b7196c577e0caf70add8cc7b4a904a223e699fae73"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/red-products.json": {
+      "bytes": 18991,
+      "sha256": "2bb2ac5a2b7284141a2177f7fcb4f72a6894670cd2b109ce74fb29ff60baff4a"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/reference-sanitizer-command.json": {
+      "bytes": 1914,
+      "sha256": "c7633d04daba9434ff0ccf40d73a39bdcb9dc63145bfb39baa895d667e63229d"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/required-test-materials.json": {
+      "bytes": 1122,
+      "sha256": "e9559f23b7ef0b55993ca12deb248d10daa694bccc09314b6eda4f4c4a701e65"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/required-test-materials.log": {
+      "bytes": 9771,
+      "sha256": "3858541052e265483221ae8e20ab2f77089f8e7ecaac196b2e6910d1d2c43281"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/required-test-native.json": {
+      "bytes": 1286,
+      "sha256": "a4b1fbb340edcace99318c109cc05dd46e6457a33a550c3d7f9dcc3a38479540"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/required-test-native.log": {
+      "bytes": 89473,
+      "sha256": "4a333f20d7790863855a438cbc193fca41dd066fb355f33491d4c398f12222c9"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/required-test-projects.json": {
+      "bytes": 808,
+      "sha256": "22b306d370abe1b80124e4dc4fcb9fc3fcb0d43e24886b7bc24e598c2f533e09"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/required-test-projects.log": {
+      "bytes": 53099,
+      "sha256": "88e66e3227f4a5c0b0f86005abe8d209c794493fd3bbbcd885ca51df0cc35695"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/run-step.py": {
+      "bytes": 2052,
+      "sha256": "59e51db603e31290a4e77a845bb08b44c3c2f9447d09b0f52cb7af6de9320dc7"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/summarize-step.py": {
+      "bytes": 918,
+      "sha256": "ac087693ad64787e4b458aabe47a69ac087606a7b3b6e87c7cf8eabefac712d8"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/typed-applied-source-check.json": {
+      "bytes": 800,
+      "sha256": "0ce173422ff55edfd111ef0ce46bd5b341276bd7a4a1c8cdefb638a16a866a9c"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/typed-source-review.json": {
+      "bytes": 1721,
+      "sha256": "40855875de735443f5cf93697ed0d3adf293ad73c588694ae031e788591a0c27"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-protocol9/upgrade-products.json": {
+      "bytes": 19053,
+      "sha256": "8d352f35279857ff8eb5cf37a38e6d3723c0a25045dfeb12d8a8b4c463d52060"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-required-gates/plan-before-protocol9.json": {
+      "bytes": 5040,
+      "sha256": "7013ebdc5ca9a486e360135ac45d33064fc8ae6a3f7f39d7f48a57698f5c855f"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-required-gates/plan.json": {
+      "bytes": 5577,
+      "sha256": "0f91ce09397952a4a4a67cdd1b057029d75d1b696bc082b3451176d0642c7316"
+    },
+    "portable-original/.chibi/asset-main-integration/ci-required-gates/run.py": {
+      "bytes": 2327,
+      "sha256": "04073c70090873571ef032ec36baf97b1ae1683c3b6941635d32d2ad12d52ed9"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-bootstrap-result.json": {
+      "bytes": 442,
+      "sha256": "aaa4e193d584a20ecca129bfa9f9522e8b570e9895898e4de01e184645901976"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-build-host-build.log": {
+      "bytes": 12520,
+      "sha256": "9d6b93d7282ebe380dd3d74346834dc710d4d970f549b6772b18537883f7d16d"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-build-host-configure-fixed.log": {
+      "bytes": 192,
+      "sha256": "af5e63e794c20b63d8f29d7eb299bf7be02824fbd5a2e5f9f6886a0b24b8e10d"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-build-host-configure.log": {
+      "bytes": 406,
+      "sha256": "1255c53686d8036cab0d9e83880d76b12a998d29e9aec2330f9b95e27f8915ea"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-build-host-recovery-off-build.log": {
+      "bytes": 63,
+      "sha256": "c2ed93ffd93c840755c0e91392ae593b1b52de9b7aaf6c208123feaceb1dde2e"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-build-host-recovery-off.log": {
+      "bytes": 192,
+      "sha256": "0bdecf54d98f50f38e51c224745d8eeea74f2c28f7dcdd215194f6dc147ab11b"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-check-format.log": {
+      "bytes": 182,
+      "sha256": "0f4a9c2967fafac4bfbaeadbecd1650009966788a5f18edb5d51fccdc9db8b4c"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-compile.log": {
+      "bytes": 69,
+      "sha256": "770fed39e2153d69c760b9d6fa842fac6b06d7e64538f3c38f8d86518dcdeb07"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-export.log": {
+      "bytes": 115,
+      "sha256": "db2f4ff6291c8cd0bc00a30c5cdc7d69948347ab39324169932b6639c2a94405"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-generation-checkpoint.json": {
+      "bytes": 3856,
+      "sha256": "f9f2a7926ffb5fd8a7d0c4a0bfbdfd9466ada623f078c86f35b9bec921276b67"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-host-build-wiring-fixed.log": {
+      "bytes": 480,
+      "sha256": "8a8ab6ba55686ee416edbc28b13d384da4d3ae2d31a73cfb0a907b74a8afb7e8"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-host-build.log": {
+      "bytes": 11830,
+      "sha256": "fb5b5178d20f6503ae305b7b9a871c78006dfda344c232ba1c13538ccfd96697"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-host-configure.log": {
+      "bytes": 186,
+      "sha256": "278d55539b993c5458f2f246860f0fd446da1a4019bdebe4eefb3a1255022f17"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-input-preflight.json": {
+      "bytes": 921,
+      "sha256": "67cfb9ffa291ea30229a50833de4dac321a1221e8065adae332610602ae03443"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-native-resource-generation.log": {
+      "bytes": 201,
+      "sha256": "93e45b08a40c631397d0c3c63fd7bd304a51e603c636db167b6e9ea213c036b7"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-native-resource-verify-final.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-native-resource-verify.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-native-target-wiring-fixed.json": {
+      "bytes": 11573,
+      "sha256": "19311c9d539e70c84d8a851cae5f1747c29e4cbb567c4d87f86b3ae7fd01ad11"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-native-target.json": {
+      "bytes": 11573,
+      "sha256": "19311c9d539e70c84d8a851cae5f1747c29e4cbb567c4d87f86b3ae7fd01ad11"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-source-audit.json": {
+      "bytes": 62886,
+      "sha256": "c735f2291baadd6b5a40601b4b760f022ed12bf1ab91b2acdf130fb7882b7f25"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-source-preparation.json": {
+      "bytes": 2011,
+      "sha256": "ef72396a3cb3cecc21bd7a5f5313af69bbcbb716086c10a5453040b358107e61"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-wasm-resource-generation.log": {
+      "bytes": 270,
+      "sha256": "f7aef97e90b6fc677cac8679c6fa9d105ebfc3290891ae46fe3467d75bc00499"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-wasm-resource-verify.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-wasm-target.json": {
+      "bytes": 11573,
+      "sha256": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-web-host-build.log": {
+      "bytes": 9672,
+      "sha256": "8ab53ea7846d6034152c4abcc97f73b43b1208696e7d16d0ad10e5702f0a0785"
+    },
+    "portable-original/.chibi/asset-main-integration/combined-web-host-configure.log": {
+      "bytes": 637,
+      "sha256": "b5e4bc40a2874c4104ed0a0546786068c6da8b89c70c4d369a4d145636eb8aaf"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler-host-compatibility/receipt.md": {
+      "bytes": 7852,
+      "sha256": "b317a920d1e79ab367d0ea2b0de5480302b3cc560d056d84c8b1bfc4a34e9266"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler32-review/README.md": {
+      "bytes": 951,
+      "sha256": "b71c06b0059e0fc4ae594c8a81473b58954dddc1583ae052dae332dde829a63f"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler32-review/fixture-vs-typed.diff": {
+      "bytes": 231629,
+      "sha256": "6cc17312c2114137489268faa7d9607565217330ed9c02f1769075f0e7c45fd7"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler32-review/native-catalog/review.md": {
+      "bytes": 8123,
+      "sha256": "3156f50f2666f244000c37389023b512cc522cde50af8ea111055418967616c5"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler32-review/package-delta-prior.diff": {
+      "bytes": 62774,
+      "sha256": "e70b0cb649f074417af1befcf7705224b44fc660e2cc08253a82ff5155e337a9"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler32-review/package-vs-typed.diff": {
+      "bytes": 202293,
+      "sha256": "e79a4e5cf53e1e21c58bfc79651c0092ccaaa9b12b18739c60cecee41fecad61"
+    },
+    "portable-original/.chibi/asset-main-integration/compiler32-review/review.json": {
+      "bytes": 6749,
+      "sha256": "2fd359d6077d25f6b73bbef4f59ec118531567ade67f351fd9db34d12fea7d64"
+    },
+    "portable-original/.chibi/asset-main-integration/external-source-reviews.json": {
+      "bytes": 3940,
+      "sha256": "3c5259c39af04a51e8afaa7d5fb72d7bce68881abccb0bd71094c9fd8c912a3e"
+    },
+    "portable-original/.chibi/asset-main-integration/fa1b-source-audit.json": {
+      "bytes": 881,
+      "sha256": "f1c8fea75c95ee4fcfefdca26c9444eae7f1da944672f0ebfb27c840eeb65a28"
+    },
+    "portable-original/.chibi/asset-main-integration/flow-language-wasm-build.log": {
+      "bytes": 418,
+      "sha256": "5510de3e1ddf711ebb849a411550c537a28c624221d204362fb2d1ad071454be"
+    },
+    "portable-original/.chibi/asset-main-integration/flow-language-wasm-typed-prototype.log": {
+      "bytes": 829,
+      "sha256": "58d18453530cd284929139fe68114a0095f7c6682cad9319c88223b7a4e81914"
+    },
+    "portable-original/.chibi/asset-main-integration/flow-native-resource-generation.log": {
+      "bytes": 201,
+      "sha256": "c41210f5ca2bc34691b37ba1fda3959db93d0e4848b9852e629f946be6d5cdda"
+    },
+    "portable-original/.chibi/asset-main-integration/flow-resource-audit.json": {
+      "bytes": 852,
+      "sha256": "8aa91d689ce2bc0064c76e9e338a9a1b497dc9d158a4eda39a19fa3a5a4b0688"
+    },
+    "portable-original/.chibi/asset-main-integration/flow-wasm-resource-generation.log": {
+      "bytes": 270,
+      "sha256": "4a390697628dc5fbe51ea96e2af7aa0b6d82a4221e076008a7c253275b1a532a"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-model-final-result.json": {
+      "bytes": 4237,
+      "sha256": "f58281adf7190eb5f273a75cb18a9ef7927d787b0615c055567d78df76284633"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-model-preflight.json": {
+      "bytes": 2012,
+      "sha256": "dbecba1f13be9a38023f1689f83484b922a48678d6b0bf2c64043a0f4d25269a"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-model-result.json": {
+      "bytes": 3128,
+      "sha256": "6dac3a201c5fc66f5faa135189e4ca674fc4dd2f055e21b34d87fabc9fd7c323"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-native-sdk-package.log": {
+      "bytes": 230989,
+      "sha256": "77a5b00d9a15b04b8ed7cc51db346f3e622d9c1b7bb796b36d23d1d212a01215"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-studio-acceptance-build.log": {
+      "bytes": 5551,
+      "sha256": "3dcf6e09b299dadef318bf5d6444fffee7de151c560c49774c639c1567239096"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-studio-build.log": {
+      "bytes": 354,
+      "sha256": "3683996afe46319d6918491eb6998f9d521cfb904ae4cfc3a4371e840c1697dd"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-studio-final-build.log": {
+      "bytes": 6622,
+      "sha256": "ba4a91945f990079c980797a5c3e7151e1b090aee83fb5fa236d65c20d48fe82"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-studio-model-final.log": {
+      "bytes": 1743,
+      "sha256": "db02bf48b891fbf93a7538aef5e93d59ce5e1e4a1819863a758f61031bd975cf"
+    },
+    "portable-original/.chibi/asset-main-integration/focused-studio-model.log": {
+      "bytes": 1743,
+      "sha256": "f3bc817ddb8dc20600aac811f1f9edfb12c1898ad2c0126f084fcf225109b2d6"
+    },
+    "portable-original/.chibi/asset-main-integration/generation-holds.json": {
+      "bytes": 1957,
+      "sha256": "9d13a8e0ba7079e1adb4d3718c5ebf033ae69c68910e4663902efd7b23ebec49"
+    },
+    "portable-original/.chibi/asset-main-integration/integration-map.json": {
+      "bytes": 53051,
+      "sha256": "caca48311e1640cb57148ba8645e27d5063f102b722374c1456b046ace048ded"
+    },
+    "portable-original/.chibi/asset-main-integration/local-project-migration/README.md": {
+      "bytes": 3121,
+      "sha256": "3c11172a520dc81e7ff0119bb07d0460faa75cab068f9738f9c32c3b25c49ee1"
+    },
+    "portable-original/.chibi/asset-main-integration/local-project-migration/source-map.json": {
+      "bytes": 13806,
+      "sha256": "11ae2f66c24f23480c279ec31cf17d836e2c6734be0d9fc571e023760746212f"
+    },
+    "portable-original/.chibi/asset-main-integration/main-seed.json": {
+      "bytes": 23986,
+      "sha256": "60bde4bcc86829589f6e755c51fb020ae01e7d8bb7b28af5718f897df63a4d70"
+    },
+    "portable-original/.chibi/asset-main-integration/model-import-capacity-review/review.json": {
+      "bytes": 2556,
+      "sha256": "789973a4c623cbfd78087e686ca9aa84f94045a2d6e85941efc30d3033b6ca0b"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/graph-products-after.json": {
+      "bytes": 944,
+      "sha256": "67557c08fa15e311f1ab4d5f45ca2245aab1437db4ab3ef3959ebd35c507a47e"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/graph-products-before.json": {
+      "bytes": 944,
+      "sha256": "9a63e13a4220cae3b08b316723f576b11d29dca475426381f1caea82a5f26c06"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/graph-sdk-oracle-build.log": {
+      "bytes": 306,
+      "sha256": "632d304fef70684354fbc26a76310368d4a4175ebb9be4f649dc96110eb6923c"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/graph-sdk-oracle-rerun.log": {
+      "bytes": 2953,
+      "sha256": "39767cf0527841cd1808294b800c10ec6a2e43b64e6656b0d307bdac6df54aae"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/graph-sdk-products.log": {
+      "bytes": 307,
+      "sha256": "683c128d94d9798027e92da0429c3c895fe453f7e19536f23ee564c6f594a7d5"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/graph-sdk.log": {
+      "bytes": 2825,
+      "sha256": "a7b29334bd3a1bac4510a338ae1bb9ca7372d5af07b1ef8117227c3957cd9807"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/native-package.json": {
+      "bytes": 2391999,
+      "sha256": "ae3533450bd954297b10bf69fd95febf4f1b820fa6c8c83ad2c69ad19e2e1004"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/native-sdk-package.log": {
+      "bytes": 230989,
+      "sha256": "2e08261f728720fe6a43d0243b7d440fd999ce39f6ad8f85f13a8cadf416eb9e"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/otool-load-commands-chibi-player.txt": {
+      "bytes": 16530,
+      "sha256": "48ef1bc18fb77653076674999aa9206ebc33b8b9408760aecbdf6c23386cd0f2"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/previous-native-package.json": {
+      "bytes": 2391999,
+      "sha256": "126aba47d13c1901c0364fbd6ee47605f3b3f1cfda7d872a3a9d9cb2a0cfe2f5"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/receipt.json": {
+      "bytes": 11006,
+      "sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/run_check.py": {
+      "bytes": 2281,
+      "sha256": "5b12006ea8ba33a1ff590337585324c9d3217889dbbe66e2ef277be8d27eb100"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-oracle/build_sdk.before.c": {
+      "bytes": 38166,
+      "sha256": "e8e9297b6311d81c68f6e19064b28768c74598bfb8478cb404496f59319916e3"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-oracle/build_sdk.proposed.c": {
+      "bytes": 39120,
+      "sha256": "c53d7e2ee317fbb459aacd44b680ff4cb422c4cb30c2c75f13d33f161600c11f"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-oracle/oracle.applied.patch": {
+      "bytes": 1809,
+      "sha256": "acb833370191ab062584e04d3dc04b4ced8ef4e150fd5186586d2f8c72e462ae"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-oracle/oracle.patch": {
+      "bytes": 1618,
+      "sha256": "813e7980a607a2a3386cd45fb74e7c4e4ed61403b53748d160beb014aedb194a"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-oracle/receipt.json": {
+      "bytes": 967,
+      "sha256": "a46e2b999921a3531675b58cc4c26c9a999c423d18c72c02df29949c3bf655a4"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-products-unchanged-after-oracle.json": {
+      "bytes": 710,
+      "sha256": "603505dabe8596650cc26fe1708657f5c4e654e126dc8bab77a00cf83a5e923a"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/sdk-static-dependency-audit.json": {
+      "bytes": 39945,
+      "sha256": "83b9aa0adabf774eeb741cd92a2c690440702690c135a403b8222012b45ad148"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/studio-build.log": {
+      "bytes": 19835,
+      "sha256": "78890b7d01d0811d1d2f94edb90fbbb2e88a0139f13eb5d1b9c6436f96703ef0"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/studio-configure.log": {
+      "bytes": 172,
+      "sha256": "f1a09517fb801e083c44fbdcc95f446258fd9baa06e427d6afef61b51eeeafad"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/studio-local-merge-checkpoint.json": {
+      "bytes": 657,
+      "sha256": "cb53d4d7c5c9eeaecf3a4e705fb9c939c81d5384cc4040e5640eba4f0cfaf2e5"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/studio-model.log": {
+      "bytes": 1640,
+      "sha256": "e62fa8ef335a82a6e66f0e779f7efd62332c01f13a7b0580569804d274ab8a15"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/studio-native-binding.json": {
+      "bytes": 2006,
+      "sha256": "f1d8ba6afbf0f391dd68340aee0f515900d4e523b62344aed3b5b4a60f3e5b9c"
+    },
+    "portable-original/.chibi/asset-main-integration/narrow-d0-focus/studio-sdk-values.log": {
+      "bytes": 902,
+      "sha256": "5190095bc0c4c27dcd504f2afd88349b638a25ad0f1c926a87786c18f30480b4"
+    },
+    "portable-original/.chibi/asset-main-integration/native-resource-generation.log": {
+      "bytes": 201,
+      "sha256": "d4fe43d6cef81575e2419e0f7f192a90edc658865eda70b5bebb1eb063ea4e75"
+    },
+    "portable-original/.chibi/asset-main-integration/native64-embed-fix-generation.log": {
+      "bytes": 201,
+      "sha256": "d4fe43d6cef81575e2419e0f7f192a90edc658865eda70b5bebb1eb063ea4e75"
+    },
+    "portable-original/.chibi/asset-main-integration/numeric-native-generation-type-failed.log": {
+      "bytes": 632,
+      "sha256": "3995aeabc2c6caa2a5085694f9d493d6ea35c8c5e4da251b2d5f27477a3456e2"
+    },
+    "portable-original/.chibi/asset-main-integration/numeric-native-generation-unary-failed.log": {
+      "bytes": 562,
+      "sha256": "8909bd04f57e5729c0f55f300ddfd78b8c5e7e5f32c6330841a0331ad59cde2e"
+    },
+    "portable-original/.chibi/asset-main-integration/numeric-native-resource-generation.log": {
+      "bytes": 201,
+      "sha256": "5d81898e2d4a21b31192ca8a6c0667b94a7ae2f3bf364e6589111f9db81d324b"
+    },
+    "portable-original/.chibi/asset-main-integration/numeric-resource-audit.json": {
+      "bytes": 852,
+      "sha256": "c2c25636feb2d8e0c548219803c65bd166269e747bad1710c53720d2ddb6dbca"
+    },
+    "portable-original/.chibi/asset-main-integration/numeric-wasm-resource-generation.log": {
+      "bytes": 270,
+      "sha256": "c7eab87aba277572f1a910e7bf52da51527d76ca7617315f25bbc7dafa01802a"
+    },
+    "portable-original/.chibi/asset-main-integration/numeric-wasm-target.json": {
+      "bytes": 11573,
+      "sha256": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654"
+    },
+    "portable-original/.chibi/asset-main-integration/post-checkpoint-source-audit.json": {
+      "bytes": 8576,
+      "sha256": "a93b7325b0360af08e3a05502d132fdf057e6d3e5168b74d041e8b526bcfbc1b"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-ancestry-forecast/ancestry-forecast.json": {
+      "bytes": 11598,
+      "sha256": "287272d2df7cfc4dc88830ef2d0995909e3f0c83f35fa95c4b5df93f540154a3"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-ancestry-forecast/nontrivial-paths.json": {
+      "bytes": 7306,
+      "sha256": "fc6d1689635d24cfda713a09d06d4f7d25151cb92a620e97b16df0d4f0e4db3a"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-ancestry-forecast/summary.md": {
+      "bytes": 610,
+      "sha256": "2c23dcc226274426b5d994f98a88ac2a761a6762f229cc8776e67ece0ec872cb"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-ancestry-forecast/trivial-paths.json": {
+      "bytes": 37321,
+      "sha256": "703404aabe9cef243ff7192839b18fb6f8a2bdaa9e2c84cb092ae7f8c8d24962"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-docs/PLAN.before.md": {
+      "bytes": 32783,
+      "sha256": "b92723f7a432ffee4bad1f45abe3175a7c41204414d410fdc113b1bf2760d0e1"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-docs/PLAN.proposed.md": {
+      "bytes": 35353,
+      "sha256": "849ede42375354db930c3787f41124d15c397b16cac04e7a81ee659ea1afc657"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-docs/docs.patch": {
+      "bytes": 6748,
+      "sha256": "c43cb9813e4d69449fb3d2f60054fa771e69c3982e15614484770bfca085b428"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-docs/receipt.json": {
+      "bytes": 678,
+      "sha256": "6c5989bd5ffdb5803f23b245138d1245c2ce4a75e5592d8e6cb87719f6826dc6"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-handoff-map.json": {
+      "bytes": 3726,
+      "sha256": "df0b98607e4b80d7fb9b8eace15ecd37d6abb962200cd2821880295bcc1ca894"
+    },
+    "portable-original/.chibi/asset-main-integration/post-focus-source-audit.json": {
+      "bytes": 1045,
+      "sha256": "87bd34616b5b302f9034ce86299dd1965cc9fe46ca31b9cb0f9a150c3c975ec7"
+    },
+    "portable-original/.chibi/asset-main-integration/post-generation-source-preparation.json": {
+      "bytes": 723,
+      "sha256": "44595af6580e52a3a92b19b7449e2eb76bb0481ef712096d4267c9e8e0ed3e81"
+    },
+    "portable-original/.chibi/asset-main-integration/pr665-source-integration.json": {
+      "bytes": 994,
+      "sha256": "3d85f64a7d4c1f6b540fd377b03d2687c32cf5139002591108ec5ab30588649d"
+    },
+    "portable-original/.chibi/asset-main-integration/pr665.patch": {
+      "bytes": 38298,
+      "sha256": "8a121052bfd688aaf6775cc7ba24f213529392e7cda94fc14059a78b11f124e3"
+    },
+    "portable-original/.chibi/asset-main-integration/protocol9-ancestry-forecast/ancestry-forecast.json": {
+      "bytes": 18528,
+      "sha256": "f46f81ac2cf4c2b9f7c0c2f3c4b658558ec9941c74b5f65ed98db8ce721a9ee2"
+    },
+    "portable-original/.chibi/asset-main-integration/protocol9-ancestry-forecast/nontrivial-paths.json": {
+      "bytes": 8495,
+      "sha256": "3c339c066f30640c3c08f7f1c051296d0e44006c6660a5fb5a5f08fd19b2a25e"
+    },
+    "portable-original/.chibi/asset-main-integration/protocol9-ancestry-forecast/summary.md": {
+      "bytes": 755,
+      "sha256": "712bd0a7f80a5a70de1d85996e68ad0c05eafd668ebf81c341a1e0ecdeb2b8fd"
+    },
+    "portable-original/.chibi/asset-main-integration/protocol9-ancestry-forecast/trivial-paths.json": {
+      "bytes": 37321,
+      "sha256": "703404aabe9cef243ff7192839b18fb6f8a2bdaa9e2c84cb092ae7f8c8d24962"
+    },
+    "portable-original/.chibi/asset-main-integration/protocol9-applied-handoff-map.json": {
+      "bytes": 5196,
+      "sha256": "6d534692c00d8657666189ead44f5c7442c44932d1d840513b719481c5032043"
+    },
+    "portable-original/.chibi/asset-main-integration/resource-after-embed-fix.json": {
+      "bytes": 969,
+      "sha256": "9b4ae20e004352312df0261f7e6157a6149acc1e01c4995ec7d2822c6d18f4d0"
+    },
+    "portable-original/.chibi/asset-main-integration/resource-before-embed-fix.json": {
+      "bytes": 767,
+      "sha256": "c93acdebcde48647ae4dcc200688732d5c87e585e1b95d537a81271231d5a19c"
+    },
+    "portable-original/.chibi/asset-main-integration/sdk-static-dependency-audit.json": {
+      "bytes": 31713,
+      "sha256": "d5a0fef203be9f160f6dcf6e1f970aec9d077fcc5d64c02925d284c47925eb2f"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/cache-only.patch": {
+      "bytes": 21087,
+      "sha256": "a259cf4ba6abe78ecbb558f5a3410b2461e151692ee00776060ffcbfbcc4a9f3"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/checkpoint/src/authoring/asset_compiler_host.c": {
+      "bytes": 43014,
+      "sha256": "66aacea27ed7d07799ad511ebb91bfb802437debbffbb0f16777ec4708c2c20b"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/checkpoint/src/authoring/asset_compiler_host.h": {
+      "bytes": 3960,
+      "sha256": "8d9426ddb69a93dbe145b6a70ea8b47c79d5281e5b57cf4b423a588e0e0d242d"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/checkpoint/test/authoring/asset_source.c": {
+      "bytes": 35185,
+      "sha256": "657679beb4b878cd532afa30223af49b149d7e422cea2994e3aa36cebe8771ad"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/replay/src/authoring/asset_compiler_host.c": {
+      "bytes": 45560,
+      "sha256": "bc1ae2394d5c4b12c484e02731325e2b8ae55d47372ecd4e16344940793424fe"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/replay/src/authoring/asset_compiler_host.h": {
+      "bytes": 4419,
+      "sha256": "ffec05aed097d8b974d8e8c126f5d0d1ec2e74bafc492c3a97884be40ad8f143"
+    },
+    "portable-original/.chibi/asset-main-integration/separation/replay/test/authoring/asset_source.c": {
+      "bytes": 39959,
+      "sha256": "ad0cd74d913c1d67fc53a20055f6a0ae2a0d786a66d7e12acd3a6735e0f5f63c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/README.md": {
+      "bytes": 3303,
+      "sha256": "87b8f11f1508bb95791f0ae4128d7a96263c234c35fe9ddcaec46d2d0e8c91bb"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/ci-pin-tested-studio-after-publication.patch": {
+      "bytes": 356,
+      "sha256": "7c35ce8bbfb9b31e59f474e6804dbd99bedf4a71b27404d1d6510f7e51c80d9f"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/ci.before.yml": {
+      "bytes": 18965,
+      "sha256": "708a280956f48f32edb21aba70a81b19dc68fbbb74a51d9f6c2c35371d67e0df"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/ci.proposed.yml": {
+      "bytes": 19021,
+      "sha256": "5ceb23ddd2498a0fb8c4855c27eec622ab8dbe13cbbe390ac1d70b8291cb92e0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/historical-521/README.md": {
+      "bytes": 3086,
+      "sha256": "01439e64672ee0a88438b57736793bcfb7047a747dee3b01607ab995884320b6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/historical-521/ci-pin-tested-studio-after-publication.patch": {
+      "bytes": 356,
+      "sha256": "70febc0715bc769cc6917268be9a7d387a5f3f6b4af7cab5b0c0640666c85d3a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/historical-521/ci.before.yml": {
+      "bytes": 18965,
+      "sha256": "708a280956f48f32edb21aba70a81b19dc68fbbb74a51d9f6c2c35371d67e0df"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/historical-521/ci.proposed.yml": {
+      "bytes": 19021,
+      "sha256": "614ca28aa2038ef3d1713ab2c1117974a4614c296b9f6569d172e7c6a98dfa28"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/historical-521/receipt.json": {
+      "bytes": 3344,
+      "sha256": "39e7a99cf6b62b13fa35ea7f2be32acc7c717c9aa7e64dac10faba7d68ae8b63"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/historical-521/studio-remote-heads.txt": {
+      "bytes": 3113,
+      "sha256": "c9b16291db47cda6d9d068fb176756b9beebb5485073192d7c641e4c46e257fe"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/receipt.json": {
+      "bytes": 5604,
+      "sha256": "c8ca9ade3b9565614e070e337dd90c46b7e32ba123ad7b47709c3d27cbc6efa9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-ci-binding/studio-remote-heads.txt": {
+      "bytes": 3113,
+      "sha256": "c9b16291db47cda6d9d068fb176756b9beebb5485073192d7c641e4c46e257fe"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/README.md": {
+      "bytes": 3793,
+      "sha256": "331dc9813036135a51e8555ea2fa4c974dcc478a95be53360fe95193e59fb8b4"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-after/compile.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-after/link.log": {
+      "bytes": 5118,
+      "sha256": "ee26c16408c7061b1f3ef3ab02caa0382dbb678c0abadf9d96c2ba109207b55a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-after/model.log": {
+      "bytes": 2044,
+      "sha256": "7912c8133a7663b99e984f04efce6d59f25108a91c1b1ce05120c60df9983f58"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-after/overlay.json": {
+      "bytes": 419,
+      "sha256": "a9b4dcc44b8a8e8d1d21060cce09848f98cc3c7fcbe446c5a914cf0cf75a1777"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-after/receipt.json": {
+      "bytes": 33860,
+      "sha256": "5da6a74316b2680d58c5ba8b7b194c1b198a91fcc3ef66b02aacc39858d183d1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-after/scene_history.c": {
+      "bytes": 47988,
+      "sha256": "b7d6b66d1063520a3b9547318e769edb3406e5ccef84c118f2451a22440bb722"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-before/compile.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-before/link.log": {
+      "bytes": 5118,
+      "sha256": "ee26c16408c7061b1f3ef3ab02caa0382dbb678c0abadf9d96c2ba109207b55a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-before/model.log": {
+      "bytes": 2046,
+      "sha256": "46968051a98969ece4beabba5c1eaee52a96a124c7ca807779c257ff57a211ec"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-before/overlay.json": {
+      "bytes": 420,
+      "sha256": "30bbb8059974f66f7a3d329fd4829391967075ba2233a2dd1f2f80cccf161ca7"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-before/receipt.json": {
+      "bytes": 33866,
+      "sha256": "58683e405da7e2a2984024284fd9686858f5f7db6fd19aee953444cf60470f8e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/checkpoint-before/scene_history.c": {
+      "bytes": 47988,
+      "sha256": "7102f9ac5b4876dbb97b519b48f3278bc6bcc0abe614b656a8784da643bdbfcb"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/cleanup.json": {
+      "bytes": 570,
+      "sha256": "188e21d341af7553979a4ab33c5fdcbdb4a63b6918c9d0905669e50b04d48429"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/execution-summary.json": {
+      "bytes": 2968,
+      "sha256": "ff9062bbe60bb70cc3db804822cc5b308aa9e6288f7d327ca95740b56a86a3ba"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/execution.log": {
+      "bytes": 638,
+      "sha256": "d418cfa3ca1f92ef2bfa38b6494db34edaf6cc21230ab1fc7c5ba37c06a969e6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/field-batch-preflight/compile.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/field-batch-preflight/link.log": {
+      "bytes": 5118,
+      "sha256": "ee26c16408c7061b1f3ef3ab02caa0382dbb678c0abadf9d96c2ba109207b55a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/field-batch-preflight/model.log": {
+      "bytes": 1824,
+      "sha256": "122a0c19d81c1c4eca1927cf7f01c783c0f8fe0818bbdc6889c94f86d965c5e6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/field-batch-preflight/overlay.json": {
+      "bytes": 424,
+      "sha256": "0c86dd75e55bee24a9fffe84405f50922d14bafa535ffb9f0792390b90701b1c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/field-batch-preflight/receipt.json": {
+      "bytes": 33890,
+      "sha256": "674a28b1c7d300de2ec902b8638f3e84bedb9ae19d95526c35652377d4bef303"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/field-batch-preflight/scene_history.c": {
+      "bytes": 47968,
+      "sha256": "752e131492e8a6c0df5ed52d2e1772628753d504cf8cac85725b1cd0baca988b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-codec-failure/actions_graph.c": {
+      "bytes": 61232,
+      "sha256": "bc58907ecd4c78ca60e6cfda2b843d2f0c18978b961127dc07dbe268028ba430"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-codec-failure/compile.log": {
+      "bytes": 550,
+      "sha256": "ba0c64ee0c3ea77cb5e9b7c9b08714acc15e786c757a9b3fc171fd0663599eb5"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-codec-failure/link.log": {
+      "bytes": 5118,
+      "sha256": "ee26c16408c7061b1f3ef3ab02caa0382dbb678c0abadf9d96c2ba109207b55a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-codec-failure/model.log": {
+      "bytes": 1607,
+      "sha256": "bc49241c83f98da75e6aa13cc518843fb9482e3c5c923b4e7ddb27a708d941f4"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-codec-failure/overlay.json": {
+      "bytes": 419,
+      "sha256": "269e10cacec090a702b0ce168766dfc3a1e698e6f691643b02afa31ebe931f65"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-codec-failure/receipt.json": {
+      "bytes": 33875,
+      "sha256": "711f99a702ba76f578441abfd33676bd53159ca0cea1c7b1971bea8b3fc7f9ed"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-type-name/actions_graph.c": {
+      "bytes": 61257,
+      "sha256": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-type-name/compile.log": {
+      "bytes": 550,
+      "sha256": "c4d0fb114ff314948f9470369bb882380beb0f1959bc318dbe0fd102017725f0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-type-name/link.log": {
+      "bytes": 5118,
+      "sha256": "ee26c16408c7061b1f3ef3ab02caa0382dbb678c0abadf9d96c2ba109207b55a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-type-name/model.log": {
+      "bytes": 1743,
+      "sha256": "438cd79eedebfbbbebba149bd9c8dc73bcaec067b57107670b5d671d13e67878"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-type-name/overlay.json": {
+      "bytes": 415,
+      "sha256": "2dbfb315141531a5da490d85d0eeed468270337bfc57d5bf2c767c06fc648913"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/graph-type-name/receipt.json": {
+      "bytes": 33852,
+      "sha256": "123cf7a085bac53f2da7debd8558b532150cca0d8303a8cd788d2af13f440da5"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-byte-decoder/compile.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-byte-decoder/link.log": {
+      "bytes": 5118,
+      "sha256": "ee26c16408c7061b1f3ef3ab02caa0382dbb678c0abadf9d96c2ba109207b55a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-byte-decoder/model.log": {
+      "bytes": 2039,
+      "sha256": "af20105be9aa01755042e347f19301ba85161bc5465253359a6fcade59e55c3b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-byte-decoder/overlay.json": {
+      "bytes": 423,
+      "sha256": "b620226e1336a8384f9fef31937c0fa8a757fb1641afdb39de5114bd1b42c693"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-byte-decoder/receipt.json": {
+      "bytes": 33884,
+      "sha256": "22ac755e5ecfcd1624abbfb53693419df3791bf167002b421adbfa18bf169b36"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-byte-decoder/scene_history.c": {
+      "bytes": 48069,
+      "sha256": "58bd865adf25bbee0fd6fe719f093af20e8a7c9276395b01be5a8199957b629a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/history-execution.log": {
+      "bytes": 37,
+      "sha256": "359c9aea329f92e4094d0f73c3df82d6617687214c04b7c84d326002c63c755f"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/plan.json": {
+      "bytes": 7813,
+      "sha256": "57e092acfd53233f898980de1f76ae68a9b7888caab95f98a24b1adbaac8c2b0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/results.json": {
+      "bytes": 139187,
+      "sha256": "814bae60dc88f608175d04b18b94f010e0e9cb4ed2b35f4b722fef29828b922e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/run.py": {
+      "bytes": 6199,
+      "sha256": "0ecc19cada0b9ff5a98fe6f70f2fbbe4209ae512d5002107a95113c1f79dfaf9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/scratch-artifacts.json": {
+      "bytes": 716,
+      "sha256": "dc63ecb8a24716c2314137279a5a7b6b6e44ea6b6cf6f41c0d8a2eb8f77f8c98"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-controls/type-name-neutral-review.md": {
+      "bytes": 2756,
+      "sha256": "d6b83b3bf02f0a010bfe5c191393136de713826b8d96f649209bc7d00b6d0658"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-owned-descriptor.patch": {
+      "bytes": 26469,
+      "sha256": "dcc90539034639430997e5a8d60e7fcb666c9888bd5c6bc22f99dc232b00b40e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-remaining-abi-hashes.json": {
+      "bytes": 1341,
+      "sha256": "18a33a6a3d31a71d8abe8173a2339fc2b0b6a34303770dfaa223047dcb128681"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-staged-inventory.json": {
+      "bytes": 25904,
+      "sha256": "5661f0c8023c5b7bfb34f77eea0ed52b97391b008af5c66a188a60bfb9ddbe4d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-syntax-corpus.txt": {
+      "bytes": 8547,
+      "sha256": "814b94b2ff4dc8ea0b7c5b1fdbd27c0eebfd59ee6e423661e747eaf1870ec379"
+    },
+    "portable-original/.chibi/asset-main-integration/studio-syntax-minimized.txt": {
+      "bytes": 121,
+      "sha256": "522644e608685a5f69e3e1b03be13639d9a8b2e0c925ea2d54a2ceb44b0e299e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/REVIEW.md": {
+      "bytes": 2178,
+      "sha256": "7806b1c52aea4d6d9306e9dcb0c431249ba04c2fd6c66b6073af50b6233d73bd"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/actual-merge-receipt.json": {
+      "bytes": 873,
+      "sha256": "640736a6b83a0727d8ea1e4c14d469e4a17d8cb2f3c7be569a988937550ffef8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/EXTRACTION.json": {
+      "bytes": 165962,
+      "sha256": "0edd924d7c899c4b3494d1091f249e37975963d462897bd33fd379bc739ab6b0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/collab/actions_graph.c": {
+      "bytes": 60900,
+      "sha256": "810b530d99efffae37ac51e5faa00b6ba2f9fd2c7bbf6b36115e531ca73ba64d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/collab/actions_scene.c": {
+      "bytes": 23997,
+      "sha256": "ccd7e001355c6b1e00641b3190e995f951ded077c77d6569743d91f312ca6d6e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/documents/scene_document.c": {
+      "bytes": 31260,
+      "sha256": "84507598ad222e94eb699c974080b7061930342629781217b1dbc2040d62228c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/documents/scene_history.c": {
+      "bytes": 48072,
+      "sha256": "c85f0c20e977bb1e679a6904b0812eee01e148b2f1390469f6a509355bccc7ab"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/documents/scene_prototype_actions.c": {
+      "bytes": 17843,
+      "sha256": "02184147bc3e50eecf4703520ca13435f1128b1f95f9a4c498fbf1a908cabba3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/documents/scene_prototypes.c": {
+      "bytes": 49249,
+      "sha256": "1207d742b108ed245272481b29ed3e2a06757e8234f8eec098f4b8300b92f92e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_graph_literals.c": {
+      "bytes": 51549,
+      "sha256": "da36a845d7ae7b599fd629980d60f5a4b0c9dfd92f2d21f9c80f5e0a0272b065"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_graph_live.c": {
+      "bytes": 4579,
+      "sha256": "960098ffd026e0250c3c06f67de1f2f7f3fc4ebfa18edd5769fdbcc285a186df"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_graph_properties.c": {
+      "bytes": 63585,
+      "sha256": "802bb1bd3aeaf3330509b701b61ca62aca077d4b90901ef72d3d5683ef4cc51e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_graph_values.c": {
+      "bytes": 66083,
+      "sha256": "42ecf94901bc01ba542f7915bb9f6442f2d709511bfd00c2441ae1650dcf1988"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_member_properties.c": {
+      "bytes": 33869,
+      "sha256": "808e4d2d0080885bd0787152eac0e45a65bdc70a3caa105dcd32b932f443e4b3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_node_calls.c": {
+      "bytes": 12961,
+      "sha256": "ecb18ceb7f3056f6c0abaaee58c1aca4908c82c2d5849ea7067a0db30d8c4676"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_properties.c": {
+      "bytes": 64898,
+      "sha256": "d20368e746e6070e7fdc8942c5e73d5504f89ffafd62e107998a4bf4e45e34a4"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_properties_view.c": {
+      "bytes": 66134,
+      "sha256": "728ddaa0c20b1806bf0a8e375cd2c39b8bf6a2f3f63bb5c9cede856ac40374cb"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/studio/studio_prototype_actions.c": {
+      "bytes": 11341,
+      "sha256": "61f768872d015bb3d9ea9e140a077434b86cb5e29e88607cd408fd730fb5373f"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/workspace/scene_asset_drop.c": {
+      "bytes": 3184,
+      "sha256": "068cafc2d0558fcccba9dc115eae52ef648c9f72aa134636f949b8ef9319df13"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/workspace/scene_authoring.c": {
+      "bytes": 88472,
+      "sha256": "0378261b805a2853c78070b06d0812cdb46e2a9026ab8c18fb7968fb9bdd6701"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/workspace/scene_authoring.h": {
+      "bytes": 16923,
+      "sha256": "73d7890233f253eca58066ce9aa1b44b4ac2c47f9a30a4ec42ff457dd89e3c47"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/workspace/scene_gizmo.c": {
+      "bytes": 37919,
+      "sha256": "64c885f9eb589521e248c894baaca6436930de7cc828782c37e4678e67f19498"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/src/editor/workspace/scene_runtime.c": {
+      "bytes": 31088,
+      "sha256": "4272c413643a5bad0d4ce6967cbf60d6a1d15ea174fc5d8c646ba68b1ef4c2b2"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/tests/acceptance/README.md": {
+      "bytes": 49434,
+      "sha256": "e3fde1275eb6c5281a8388bdb15444913f7d00a0dff008272c88a2f26234705f"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/tests/acceptance/main.c": {
+      "bytes": 201234,
+      "sha256": "cd1242b82aec3e61dd675700296a233b631ccefc7e65bc3cb22e67b9eeaee4d7"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/tests/acceptance/outliner_row_policies.h": {
+      "bytes": 19443,
+      "sha256": "36069d8bf317479caacbc2ac24ac7b12de40ff6283859762d3f57f290bceb028"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/tests/acceptance/prototype_source.h": {
+      "bytes": 32878,
+      "sha256": "c9959a244bcb6dac73b1575442fb7152f3f17f00872d556c51678f27d7b7630b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/tests/acceptance/prototype_source_authority.h": {
+      "bytes": 36240,
+      "sha256": "1237b5136cca8237149f244911b232d5bc1ce104bf7d43c5519eb72c05b50626"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/base/tests/acceptance/scene_move.h": {
+      "bytes": 52870,
+      "sha256": "15f2683149c0aa6fc40fd5bab53b343433d35cec16b274bd5c645d213c9bfd16"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/candidate-stat.txt": {
+      "bytes": 211,
+      "sha256": "92693abefff4f013c24b8d266c399ddc3faad994c70b269929e3a3fb78aae232"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/candidate.patch": {
+      "bytes": 19785,
+      "sha256": "495bd8df650fea3043ef9e729df64a4766421db08e10fa2082d422fbbbfd86cc"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/conflict-resolutions.patch": {
+      "bytes": 75301,
+      "sha256": "a094c7e50d07dded023698e79775cbac9d55d5f99aa8e834eb45e70bbb384a14"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/EXTRACTION.json": {
+      "bytes": 183444,
+      "sha256": "86be7f393daa744ebb15684be7465e6b69181b139571071db93e821c3b8e9d63"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/collab/actions_graph.c": {
+      "bytes": 61257,
+      "sha256": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/collab/actions_scene.c": {
+      "bytes": 23829,
+      "sha256": "84b707ed8fcd2f8bfee268f7abfcaefa4901b623dd18145bbd8056eb7d15fc62"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/documents/scene_document.c": {
+      "bytes": 30819,
+      "sha256": "a18990e6ce3b1d21938b87c313727ced8a27783a052dfda075b22ef63a0a4c93"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/documents/scene_history.c": {
+      "bytes": 47905,
+      "sha256": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/documents/scene_prototype_actions.c": {
+      "bytes": 18712,
+      "sha256": "c17e6b67d5caa72a1f9c478760603f1af9c7cf4cdb0b3323e9c207b09d8931a1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/documents/scene_prototypes.c": {
+      "bytes": 49968,
+      "sha256": "63398a562fab1c2a03aaee3c293b23d63d40e9db80a100e4732d7cbdd0fb90f9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_graph_literals.c": {
+      "bytes": 53075,
+      "sha256": "7883cd6a2ce721789ea692160dff472819febc07df7513503d2e32d3c520a06a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_graph_live.c": {
+      "bytes": 4706,
+      "sha256": "d502d2a8a7a9a19a103ae76e0fe41311ed78a7252f5a168b4da14b5f93bc3cee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_graph_properties.c": {
+      "bytes": 65004,
+      "sha256": "125b7e9370e4901bd7eeb55b79be4072e98a4dd77d98354aca59bc60e539e731"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_graph_values.c": {
+      "bytes": 65805,
+      "sha256": "aed1e130ec496cc67081afdcf96bd32377b0263b7d6d63d44c7e9018b12296db"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_member_properties.c": {
+      "bytes": 34149,
+      "sha256": "c50a653a9d0edd5104de6b7caf5b79e28778a45d83fe950c92e1f176cef8da9d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_node_calls.c": {
+      "bytes": 13677,
+      "sha256": "f331c2da6f087ce1bcfdad479e7cf66efe1a82fee47edc6e6f5214a472d78082"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_properties.c": {
+      "bytes": 76626,
+      "sha256": "6ce2e7e5516c15f0ea663d063875bbde6647b294450330e85e86e02ccadf53b8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_properties_view.c": {
+      "bytes": 70616,
+      "sha256": "dc2db3a40cec99b97397cd2bc2c5611ef1c1c610d0cad62309c2101e0ba8a2d6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/studio/studio_prototype_actions.c": {
+      "bytes": 11482,
+      "sha256": "9d89e3f6a3ef79b3eb86736955ba72121c68a72aa66cae9a3de9bf2b154bcbee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/workspace/scene_asset_drop.c": {
+      "bytes": 3770,
+      "sha256": "cf0c060b37ea4f3090532cc827d2ef58c328fa4fdf2b66caad3fbb92a9fd1dbd"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/workspace/scene_authoring.c": {
+      "bytes": 87849,
+      "sha256": "5fdab9447ba5e29881b1602c82ddd9d29a0c92670cbff75cd1f992b0476dabe8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/workspace/scene_authoring.h": {
+      "bytes": 17002,
+      "sha256": "804e77a297fb2e41778064a29791088396e07b589deccff94311851bf01eae35"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/workspace/scene_gizmo.c": {
+      "bytes": 37813,
+      "sha256": "128367824fe5d58942de1202669503f142eb44038fbc67bf1e04ba30d3441357"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/src/editor/workspace/scene_runtime.c": {
+      "bytes": 31308,
+      "sha256": "55bc025c77fe8cd2687281150eba8968260fd279157cac2617e35752fcb88a23"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/README.md": {
+      "bytes": 59600,
+      "sha256": "027707285cf4f31ee85418ea08073fc96c296f92babd47df3a776a1253b0bc0d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/compiled_asset_edit.h": {
+      "bytes": 24115,
+      "sha256": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/compiled_asset_history.h": {
+      "bytes": 12346,
+      "sha256": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/main.c": {
+      "bytes": 233999,
+      "sha256": "5f4feffa068633e2b2e81ea9bc54d484074b141e173e91c703c63865f4328f84"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/outliner_row_policies.h": {
+      "bytes": 19963,
+      "sha256": "25c7c7704315fb242a10ad12922435a082aa534e9238a15e8f54f24e0a8159e0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/prototype_source.h": {
+      "bytes": 52271,
+      "sha256": "d914900e87dd7f5a401e1e43d1398ba693b02885c3cf85164b63e43fc260031f"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/prototype_source_authority.h": {
+      "bytes": 38564,
+      "sha256": "5bdf63f6d0630825edd5245e69a786c1b6bbc3cd62d6d3e052fdf2bc4600464d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/current/tests/acceptance/scene_move.h": {
+      "bytes": 78892,
+      "sha256": "a6c9630561b72170c453af9f4bd2fd904b961742779b2eeb7f27295607c9bc0a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/REVIEW.md": {
+      "bytes": 4170,
+      "sha256": "0023e693e248da304db8304f3e0499ee5351cc1c87abfae14e0aa40f94f41e1a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/candidate-stat.txt": {
+      "bytes": 211,
+      "sha256": "92693abefff4f013c24b8d266c399ddc3faad994c70b269929e3a3fb78aae232"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/candidate.patch": {
+      "bytes": 19785,
+      "sha256": "a839dff5c47882f74e06c52011bd4ef49c3931f33930f32a48218f59110b44d6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/conflict-resolutions.patch": {
+      "bytes": 74890,
+      "sha256": "705e4fd58e3efb71df434a4f541ae97bbd24bc26de1d420841f7d845642d4d2b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/current/README.md": {
+      "bytes": 58836,
+      "sha256": "d5e81553979daf21575c453d756a4d983dd1b986a2458f502730fe4289f44941"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/merge-tree.txt": {
+      "bytes": 8360,
+      "sha256": "ec8b64323688d290b23ec3728ca0a1e1bd86d1928dfb7c167c06cddb78add033"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/result/README.md": {
+      "bytes": 59886,
+      "sha256": "d55991c77f3347426ff0eb0a16f967058899f19073244c131c42670fa3d47944"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-536ea9/state.json": {
+      "bytes": 11917,
+      "sha256": "5c8a109b96f2634edeb375fb6874193f70edbb03ee37456f91388f9931c3f5a3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/REVIEW.md": {
+      "bytes": 4792,
+      "sha256": "0b5d41482a02e757eaecfc34b343c257eb2e01283ea1d124f05686a36967f5f3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/candidate-stat.txt": {
+      "bytes": 211,
+      "sha256": "92693abefff4f013c24b8d266c399ddc3faad994c70b269929e3a3fb78aae232"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/candidate.patch": {
+      "bytes": 19785,
+      "sha256": "daa8b411df8aaa597eea93438b7e788d22e59506dabdb02417a313b121fb9bb3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/conflict-resolutions.patch": {
+      "bytes": 74890,
+      "sha256": "6fd5233221f82d2be4d8af638c53fbaeaa6218e5938547880d2274c663d5503e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/current/README.md": {
+      "bytes": 59333,
+      "sha256": "30ad9de8682ac9dd3139dc4cbea187b790cbf9c1eebcbc8ef50acfca7d0556ed"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/merge-tree.txt": {
+      "bytes": 8360,
+      "sha256": "1096e39cdad080355700a598533542216c5ec919cea7297f862e420abdfbd03b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/result/README.md": {
+      "bytes": 60383,
+      "sha256": "14f34cf78c4097a810e21df34f267e89c4212dcb153bdd8ae443fa1f1846632c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/historical-fcc7ed/state.json": {
+      "bytes": 12330,
+      "sha256": "5751f1c5b4b930d06888f5dc183e690e121841003c3062fdc3fec03b86802c99"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/EXTRACTION.json.diff": {
+      "bytes": 11665,
+      "sha256": "b69df64b7990e9c4c23c5fba8bd322f41e6aca09ebbc1240a8ebb50537b32c63"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/collab/actions_graph.c.diff": {
+      "bytes": 4453,
+      "sha256": "cecd8d96acaf1b348d88a420ac292d582a8139bb71341d9a745a81ed78264ef8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/collab/actions_scene.c.diff": {
+      "bytes": 1189,
+      "sha256": "af3bb83045a00391af77c2466126798bf492c9e6b0161f5671c1e5850854eb4a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/documents/scene_document.c.diff": {
+      "bytes": 638,
+      "sha256": "9c554c67e3cbe4200f64625689dde9160c199d15d207e636778b0fcc6f204be3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/documents/scene_history.c.diff": {
+      "bytes": 6279,
+      "sha256": "b38fee553f7231dc910a71289f8613599527323dc2e437200cd6600cc3571b0c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/documents/scene_prototype_actions.c.diff": {
+      "bytes": 4242,
+      "sha256": "72d7d708ea7787aa02025f269724641c0ef7800b54fe554d504a931b0103f4b4"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/documents/scene_prototypes.c.diff": {
+      "bytes": 3852,
+      "sha256": "53c184d06bf14225c04879e84f9755367b650826444b1796f88d7c39d7c0e01e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_graph_literals.c.diff": {
+      "bytes": 12059,
+      "sha256": "8037f28e35ad13ce07b17612cd337d01224671787d9415d624a788ff1492b3ed"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_graph_live.c.diff": {
+      "bytes": 753,
+      "sha256": "a309a53411bb573eb4c82c964bcbbe637c24cee1bd82de6d1ad5c862ab067ee6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_graph_properties.c.diff": {
+      "bytes": 11086,
+      "sha256": "69bdeb92e55d33a5570b7ac674d5b8f2db2577a6214a47bf4b423e8b605814d4"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_graph_values.c.diff": {
+      "bytes": 3405,
+      "sha256": "ea1da190ff538680f0812ae14e2daee4e54f0c2390e6fca3a074e7e9922625b0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_member_properties.c.diff": {
+      "bytes": 1709,
+      "sha256": "c2c0f6e6b57666cbda0d29c30505138868099faefd80fb4c99b98f53dcee64d9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_node_calls.c.diff": {
+      "bytes": 7579,
+      "sha256": "2a94690c8caab4806f35bc3b5a5b5aebe8f6fbc44c2bef9c550e271872821adc"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_properties.c.diff": {
+      "bytes": 18488,
+      "sha256": "d6495b02213a2fcd9fdd8c262e8bc3b2db3e41f8832cfc9307f69ff84d3d82d1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_properties_view.c.diff": {
+      "bytes": 4759,
+      "sha256": "6a51ef48d942d417be426f7b18ccbfe1cef53d3ca9554401dd2f041985d9ce1b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/studio/studio_prototype_actions.c.diff": {
+      "bytes": 2178,
+      "sha256": "d8d2540e8f083203e356a3387c9cd819ddf53ad643bfd82dc51a5ba04d69c6a7"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/workspace/scene_asset_drop.c.diff": {
+      "bytes": 2178,
+      "sha256": "300282a45972f66b18c70ced3385a8fb2423b4085025fdee30e7c32141406d3a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/workspace/scene_authoring.c.diff": {
+      "bytes": 2588,
+      "sha256": "f77af461b12100a34b307c467099c2056f80580094e46979d1fb40fedf3514ee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/workspace/scene_authoring.h.diff": {
+      "bytes": 733,
+      "sha256": "f38f3e3779a4362f2ffe45e174b6d03bd83c72213a1c421d6887908e6bf32625"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/workspace/scene_gizmo.c.diff": {
+      "bytes": 915,
+      "sha256": "002db416aa3af50934478121734b1e5aca694719017d080f6e8084ba02986444"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/src/editor/workspace/scene_runtime.c.diff": {
+      "bytes": 2887,
+      "sha256": "69df756f4c842f3b9d795cc966b90391a73bb005ad4c94d0fcc2a3af15b49c4c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/README.md.diff": {
+      "bytes": 1811,
+      "sha256": "a87f5965b0f246565a8d4407ea973df92607773f7cd85c44ee2c9b52114ea814"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/main.c.diff": {
+      "bytes": 1641,
+      "sha256": "e7af2e05e0fca89b5a57e83d78c8d335991bf0669df0e5f6525c2db1f656e135"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/outliner_row_policies.h.diff": {
+      "bytes": 2625,
+      "sha256": "644a65b95e125255f2760754580abee70339424c50baf6da07aaefd3f180018d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/prototype_source.h.diff": {
+      "bytes": 3140,
+      "sha256": "a270e9861ac1d45eea7fed5012ef6f5a7bf42826799b160c4dc2def662310629"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/prototype_source_authority.h.diff": {
+      "bytes": 7372,
+      "sha256": "71b01fae12a744e27a4db28b5ab4f408925470188a422b0f952a89122995bdbe"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/scene_move.h.diff": {
+      "bytes": 4019,
+      "sha256": "33b47e7066f77cfe7596ae1829de3665d80fa9667e3df1a5656e0170c3fbbb78"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming-diffs/tests/acceptance/sdk_values.h.diff": {
+      "bytes": 16550,
+      "sha256": "18eefacc4802e8762c084e73ecc291816763aba32a56a4bc899c22ae21c1f92b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/EXTRACTION.json": {
+      "bytes": 166148,
+      "sha256": "39d4f2608f801caa263f4960119744afbf8af3cdda06f5657063798964bce3f9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/collab/actions_graph.c": {
+      "bytes": 61177,
+      "sha256": "656383d01234cd6b9c2d397bf3bc7d147ccae750cddccd2a66197af2b0c2de69"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/collab/actions_scene.c": {
+      "bytes": 24073,
+      "sha256": "4c62d63bfa6222e4dfe693ef21884b9af887ad7b8f2ec75fa6c10f47691c53d8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/documents/scene_document.c": {
+      "bytes": 31266,
+      "sha256": "015041a0cac925e12f7fd374c2c78272597d838dd0a7befd6ba50e20d2fd5a01"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/documents/scene_history.c": {
+      "bytes": 48753,
+      "sha256": "408302f1f495e496d4056f35fa4b80d2b11c6e8885ab2b72d46adaec1103d12d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/documents/scene_prototype_actions.c": {
+      "bytes": 18583,
+      "sha256": "7563bab5603c80ff0306bf15a095f0982176be62b96e0bac701a1a27033e3cd1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/documents/scene_prototypes.c": {
+      "bytes": 50053,
+      "sha256": "cac29af62f2a0a26799fabc115997e650093c3dc91e60176b433f9266944c540"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_graph_literals.c": {
+      "bytes": 53075,
+      "sha256": "7883cd6a2ce721789ea692160dff472819febc07df7513503d2e32d3c520a06a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_graph_live.c": {
+      "bytes": 4706,
+      "sha256": "d502d2a8a7a9a19a103ae76e0fe41311ed78a7252f5a168b4da14b5f93bc3cee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_graph_properties.c": {
+      "bytes": 64925,
+      "sha256": "f1d9297a5145b2db743b0e225ce91d414c30656d2920bac3d67cc73f6c1b89fb"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_graph_values.c": {
+      "bytes": 66745,
+      "sha256": "90459878d610113ab40cdc034e3296fabf8c81db5f1e5d48092863be7ce63afb"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_member_properties.c": {
+      "bytes": 34429,
+      "sha256": "c86763348875435dc6da2e055fc2b637e69dce515ae120ccc90cea5d9d35cacf"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_node_calls.c": {
+      "bytes": 13849,
+      "sha256": "e42522967f4be179c430cc0e541ff8dea004bd41e9746833b0ac1512bf870672"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_properties.c": {
+      "bytes": 67769,
+      "sha256": "618c02992d580dda4e270790cd44d0ca3f93c8a6177f8dfabd2b9c3a6738e777"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_properties_view.c": {
+      "bytes": 66925,
+      "sha256": "e13cc7ed2c314bbda4b6f595aa194e1175b01f41894b074a0be85b14abf60a2a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/studio/studio_prototype_actions.c": {
+      "bytes": 11550,
+      "sha256": "9e47db02661bd031417dab9a34dc6242b72eb8243a32a3cc63d990647dad51af"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/workspace/scene_asset_drop.c": {
+      "bytes": 3810,
+      "sha256": "dc1f5c366b75eb47e75fd24921c6ffc1727848d1ee33fafc144cda90f30f857b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/workspace/scene_authoring.c": {
+      "bytes": 88990,
+      "sha256": "2978a60d61c5346a8af7afff9851bc64aad8d6bd31218d99a1d0fbeb7db1a504"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/workspace/scene_authoring.h": {
+      "bytes": 17016,
+      "sha256": "340b350a79c656732f1d45bcbcf95887b563673459f0c0f35c6c7de5a4676583"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/workspace/scene_gizmo.c": {
+      "bytes": 37993,
+      "sha256": "4b696845fa720c2b1835dd5cd2e59dfdf068df6d053dd1e66c0058c7243c8c34"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/src/editor/workspace/scene_runtime.c": {
+      "bytes": 31332,
+      "sha256": "5c89330124eea67e5c9d54f2179ca6fef49a36687532b09653511c2bbbc593e1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/README.md": {
+      "bytes": 50484,
+      "sha256": "5f9508c5e052fd21659f0a4a7d614520b370d7dca65acdbe0e7f99b63d8a1df6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/main.c": {
+      "bytes": 201460,
+      "sha256": "45259b2230de268d39a786408c4e758319b55aa12269d97aba13c35963dfacf8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/outliner_row_policies.h": {
+      "bytes": 19775,
+      "sha256": "1ba2bab1bd6ebb93df8c001137227a558812a2e9cf1a0ff0768712a173123f5d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/prototype_source.h": {
+      "bytes": 33049,
+      "sha256": "be135b8d9955d4d974feb6152fed134595582f535a84100d42fff43069a6b04b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/prototype_source_authority.h": {
+      "bytes": 36611,
+      "sha256": "39e1d23c999a2407b4c615609a7678860b651aacc3a20be6a544a33d5c831467"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/scene_move.h": {
+      "bytes": 52934,
+      "sha256": "1f155baea5c9d3f2c1e555da34843c6ea859619091bf0c6cd13d27b194e63b9d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/incoming/tests/acceptance/sdk_values.h": {
+      "bytes": 15980,
+      "sha256": "86742a4b8c1243c6bfd77507eff33f110d1c7dad40a32254d0a5246f67df3566"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial-result.patch": {
+      "bytes": 18361,
+      "sha256": "9f0053e7b0db5010f297929dfbcd334a575de8b05e1d338ae82d75909b59c091"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/EXTRACTION.json": {
+      "bytes": 188353,
+      "sha256": "2db322ee47ed759908fea04c068f2ee0f123cd5d1d8726ae87ed4433800d608e"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/collab/actions_graph.c": {
+      "bytes": 61446,
+      "sha256": "7e7e8caa14c89cc7cd9ea41081bb86986a178263b3a37a0d091526455aa2f0b7"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/collab/actions_scene.c": {
+      "bytes": 24004,
+      "sha256": "c8eb5e425c7be32d609401631f690fc46e6684824e52f1a3e1d65f9ce7fc6e60"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/documents/scene_document.c": {
+      "bytes": 30819,
+      "sha256": "a18990e6ce3b1d21938b87c313727ced8a27783a052dfda075b22ef63a0a4c93"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/documents/scene_history.c": {
+      "bytes": 48143,
+      "sha256": "f45c85f95925810d79df3220d3057c1cb6f34cc24a429d9d18a2e8eea9e24ff9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/documents/scene_prototype_actions.c": {
+      "bytes": 19459,
+      "sha256": "70527cdb49dae13a0eb57f7e520d3407618354f5f4af593a5519cc856fe3a3b6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/documents/scene_prototypes.c": {
+      "bytes": 51387,
+      "sha256": "0207ba576e1919283d2ac80b6809a6c23cb6eb7e70a180069dd6e9e53bdb1627"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_graph_literals.c": {
+      "bytes": 53075,
+      "sha256": "7883cd6a2ce721789ea692160dff472819febc07df7513503d2e32d3c520a06a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_graph_live.c": {
+      "bytes": 4706,
+      "sha256": "d502d2a8a7a9a19a103ae76e0fe41311ed78a7252f5a168b4da14b5f93bc3cee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_graph_properties.c": {
+      "bytes": 65188,
+      "sha256": "5489e2ff84c8dfb06c64f1dc1390f9b76c9b32bae9237db92b83799049de203c"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_graph_values.c": {
+      "bytes": 66417,
+      "sha256": "98e242c0aa892fa6cf9632f7313c7e2a84bffd286a38ad0f584303684880ec9d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_member_properties.c": {
+      "bytes": 34149,
+      "sha256": "c50a653a9d0edd5104de6b7caf5b79e28778a45d83fe950c92e1f176cef8da9d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_node_calls.c": {
+      "bytes": 15270,
+      "sha256": "009a4a3a580c9b0586d7a985e74374e829b47b745493c0c4a2b0ce52e5f55186"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_properties.c": {
+      "bytes": 80457,
+      "sha256": "e85e0090bf1f8e9c25dafa5ed4c450ea5f091d25d3ea005625819f45d1318ee0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_properties_view.c": {
+      "bytes": 70953,
+      "sha256": "52affdbebb12656ca3ff6d4a9e31f4b57ceb244e353f902bec8812ecaaf2d7a1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/studio/studio_prototype_actions.c": {
+      "bytes": 11482,
+      "sha256": "9d89e3f6a3ef79b3eb86736955ba72121c68a72aa66cae9a3de9bf2b154bcbee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/workspace/scene_asset_drop.c": {
+      "bytes": 3962,
+      "sha256": "ba31c94a9824824669a198b4d5885fa32e45d7028ec4b6a2e3a4d41c489f50a0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/workspace/scene_authoring.c": {
+      "bytes": 88174,
+      "sha256": "4559200ab189969d5aa80267e6cfcca855defdc7ece41b4484119c2c1efe905a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/workspace/scene_authoring.h": {
+      "bytes": 17262,
+      "sha256": "43d3e57633b96665e3f3b4d2fb9e7a5c48ad90615062ffa0b66d9b11d7ce4826"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/workspace/scene_gizmo.c": {
+      "bytes": 37933,
+      "sha256": "55996c757fdfd1dff949d8c755dc0357cec19743ce5c04db0f1ec146a4cef0cd"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/src/editor/workspace/scene_runtime.c": {
+      "bytes": 31698,
+      "sha256": "441491f6b2d8d5b9ad0db6c70fd549bd8b4885d4a3f3360702c44ca52c0e3354"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/README.md": {
+      "bytes": 60650,
+      "sha256": "7ff64b9059d1c915134af6043c3af9a8f84b4f38da9e7c3dbf93d978ce66e5e2"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/compiled_asset_edit.h": {
+      "bytes": 24115,
+      "sha256": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/compiled_asset_history.h": {
+      "bytes": 12346,
+      "sha256": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/main.c": {
+      "bytes": 234848,
+      "sha256": "5ce106258758c644fc34cc27f5450bd159c1281877b6a02b14c7f262a2bcd65b"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/outliner_row_policies.h": {
+      "bytes": 20861,
+      "sha256": "4d6384c231f13874b6a0f9b6037d1da91e1ee1a500a92d4a99262d28ade615df"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/prototype_source.h": {
+      "bytes": 53539,
+      "sha256": "4804400b1183719a025fc0f27e27996ae6f429395fee4c3028f739c602fd4c89"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/prototype_source_authority.h": {
+      "bytes": 41508,
+      "sha256": "1897ded86605148e90961915ba4804a8e214a962d0011159813019d308c23ce2"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/scene_move.h": {
+      "bytes": 80592,
+      "sha256": "506ead026de7892a1c50454c585e1b35631635d8677bc5f30d795e8f10171d01"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/initial/tests/acceptance/sdk_values.h": {
+      "bytes": 15980,
+      "sha256": "86742a4b8c1243c6bfd77507eff33f110d1c7dad40a32254d0a5246f67df3566"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/merge-tree.txt": {
+      "bytes": 8360,
+      "sha256": "60b41ac1db5da1c649920bc4a609b99e705c3fa75cb801dd8baca00b3a38dbe3"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/EXTRACTION.json": {
+      "bytes": 183444,
+      "sha256": "86be7f393daa744ebb15684be7465e6b69181b139571071db93e821c3b8e9d63"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/collab/actions_graph.c": {
+      "bytes": 61257,
+      "sha256": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/collab/actions_scene.c": {
+      "bytes": 23829,
+      "sha256": "84b707ed8fcd2f8bfee268f7abfcaefa4901b623dd18145bbd8056eb7d15fc62"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/documents/scene_document.c": {
+      "bytes": 30819,
+      "sha256": "a18990e6ce3b1d21938b87c313727ced8a27783a052dfda075b22ef63a0a4c93"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/documents/scene_history.c": {
+      "bytes": 47905,
+      "sha256": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/documents/scene_prototype_actions.c": {
+      "bytes": 18712,
+      "sha256": "c17e6b67d5caa72a1f9c478760603f1af9c7cf4cdb0b3323e9c207b09d8931a1"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/documents/scene_prototypes.c": {
+      "bytes": 49968,
+      "sha256": "63398a562fab1c2a03aaee3c293b23d63d40e9db80a100e4732d7cbdd0fb90f9"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_graph_literals.c": {
+      "bytes": 53075,
+      "sha256": "7883cd6a2ce721789ea692160dff472819febc07df7513503d2e32d3c520a06a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_graph_live.c": {
+      "bytes": 4706,
+      "sha256": "d502d2a8a7a9a19a103ae76e0fe41311ed78a7252f5a168b4da14b5f93bc3cee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_graph_properties.c": {
+      "bytes": 65004,
+      "sha256": "125b7e9370e4901bd7eeb55b79be4072e98a4dd77d98354aca59bc60e539e731"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_graph_values.c": {
+      "bytes": 65805,
+      "sha256": "aed1e130ec496cc67081afdcf96bd32377b0263b7d6d63d44c7e9018b12296db"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_member_properties.c": {
+      "bytes": 34149,
+      "sha256": "c50a653a9d0edd5104de6b7caf5b79e28778a45d83fe950c92e1f176cef8da9d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_node_calls.c": {
+      "bytes": 13677,
+      "sha256": "f331c2da6f087ce1bcfdad479e7cf66efe1a82fee47edc6e6f5214a472d78082"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_properties.c": {
+      "bytes": 76626,
+      "sha256": "6ce2e7e5516c15f0ea663d063875bbde6647b294450330e85e86e02ccadf53b8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_properties_view.c": {
+      "bytes": 70616,
+      "sha256": "dc2db3a40cec99b97397cd2bc2c5611ef1c1c610d0cad62309c2101e0ba8a2d6"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/studio/studio_prototype_actions.c": {
+      "bytes": 11482,
+      "sha256": "9d89e3f6a3ef79b3eb86736955ba72121c68a72aa66cae9a3de9bf2b154bcbee"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/workspace/scene_asset_drop.c": {
+      "bytes": 3770,
+      "sha256": "cf0c060b37ea4f3090532cc827d2ef58c328fa4fdf2b66caad3fbb92a9fd1dbd"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/workspace/scene_authoring.c": {
+      "bytes": 87849,
+      "sha256": "5fdab9447ba5e29881b1602c82ddd9d29a0c92670cbff75cd1f992b0476dabe8"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/workspace/scene_authoring.h": {
+      "bytes": 17002,
+      "sha256": "804e77a297fb2e41778064a29791088396e07b589deccff94311851bf01eae35"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/workspace/scene_gizmo.c": {
+      "bytes": 37813,
+      "sha256": "128367824fe5d58942de1202669503f142eb44038fbc67bf1e04ba30d3441357"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/src/editor/workspace/scene_runtime.c": {
+      "bytes": 31308,
+      "sha256": "55bc025c77fe8cd2687281150eba8968260fd279157cac2617e35752fcb88a23"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/README.md": {
+      "bytes": 60650,
+      "sha256": "7ff64b9059d1c915134af6043c3af9a8f84b4f38da9e7c3dbf93d978ce66e5e2"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/compiled_asset_edit.h": {
+      "bytes": 24115,
+      "sha256": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/compiled_asset_history.h": {
+      "bytes": 12346,
+      "sha256": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/main.c": {
+      "bytes": 234135,
+      "sha256": "c80fbaca38e1260a4c11eeb5d91a7d4b271b3dd2e9a015541bd9f3d07f714f72"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/outliner_row_policies.h": {
+      "bytes": 19963,
+      "sha256": "25c7c7704315fb242a10ad12922435a082aa534e9238a15e8f54f24e0a8159e0"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/prototype_source.h": {
+      "bytes": 52271,
+      "sha256": "d914900e87dd7f5a401e1e43d1398ba693b02885c3cf85164b63e43fc260031f"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/prototype_source_authority.h": {
+      "bytes": 38564,
+      "sha256": "5bdf63f6d0630825edd5245e69a786c1b6bbc3cd62d6d3e052fdf2bc4600464d"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/scene_move.h": {
+      "bytes": 78892,
+      "sha256": "a6c9630561b72170c453af9f4bd2fd904b961742779b2eeb7f27295607c9bc0a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/result/tests/acceptance/sdk_values.h": {
+      "bytes": 15980,
+      "sha256": "86742a4b8c1243c6bfd77507eff33f110d1c7dad40a32254d0a5246f67df3566"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/semantic-differences.json": {
+      "bytes": 40980,
+      "sha256": "f34d70ea9ef5ccc384e2cad1f9da6fc1b4c3933ba95d0021e81d3fcd3f18378a"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-candidate/state.json": {
+      "bytes": 12580,
+      "sha256": "ca14dfd205af87dbceea498440d1188f7d7cff11f33c73eb630c51e49d503ae2"
+    },
+    "portable-original/.chibi/asset-main-integration/studio92-integration-map.json": {
+      "bytes": 11156,
+      "sha256": "9928155fd0b26b1bd6b036b81db9619874cf450c3f1051b97b693db32c1bfb60"
+    },
+    "portable-original/.chibi/asset-main-integration/unsigned-language-wasm-build.log": {
+      "bytes": 8606,
+      "sha256": "1a0ec85d476451ce009b65144d2426d25d5a71240ed6a5d6a1830a6fa0e74041"
+    },
+    "portable-original/.chibi/asset-main-integration/unsigned-language-wasm-configure.log": {
+      "bytes": 1074,
+      "sha256": "557531e59391c59ced60960f638c5950da2186aa006460a496565dde17e60a3c"
+    },
+    "portable-original/.chibi/asset-main-integration/unsigned-language-wasm-typed-prototype.log": {
+      "bytes": 1242,
+      "sha256": "8b6afd0601e69434cbae320d2a3549acbbaaa123040bfd920ec6626dfadfc8e2"
+    },
+    "portable-original/.chibi/asset-main-integration/unsigned-native-resource-generation.log": {
+      "bytes": 201,
+      "sha256": "c9f359de43f93558bf8b4e5d1ef52515dc62e419f9bdb8fbbaed860b70ce0eb8"
+    },
+    "portable-original/.chibi/asset-main-integration/unsigned-resource-audit.json": {
+      "bytes": 684,
+      "sha256": "eb392cfe14ff8801f3eec06233e2f64fa8cf2c2979cb8cae941cc966df32f2d5"
+    },
+    "portable-original/.chibi/asset-main-integration/unsigned-wasm-resource-generation.log": {
+      "bytes": 270,
+      "sha256": "a0905118d2bb53b895b84dbdcad7f6a015572b86e842ae5a51d4c64db742f239"
+    },
+    "portable-original/.chibi/asset-main-integration/wasm-resource-generation.log": {
+      "bytes": 270,
+      "sha256": "34944cd96f508e408b0c5269e57cac13aaabbedce833b4aa0c12bee824ab9cb8"
+    },
+    "portable-original/.chibi/asset-main-integration/wasm-target-export.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-main-integration/wasm-target.json": {
+      "bytes": 11573,
+      "sha256": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654"
+    },
+    "portable-original/.chibi/asset-main-integration/wasm32-embed-fix-generation.log": {
+      "bytes": 270,
+      "sha256": "34944cd96f508e408b0c5269e57cac13aaabbedce833b4aa0c12bee824ab9cb8"
+    },
+    "portable-original/.chibi/asset-main-integration/web-host-build.log": {
+      "bytes": 18522,
+      "sha256": "64949f57824230215fba981d5247d0e07306476eec6310578fdc8d01dd2b9371"
+    },
+    "portable-original/.chibi/asset-main-integration/web-host-configure.log": {
+      "bytes": 724,
+      "sha256": "d17fd7e91d9882c70bd99342dac5080f5d6bd3a66506ed622f0e4c60d4346cec"
+    },
+    "portable-original/.chibi/asset-main-language-build.log": {
+      "bytes": 11656,
+      "sha256": "c74c1c1466680afab6abb25ef866a3ffe3a7c716048ebc03487091c360f52f9e"
+    },
+    "portable-original/.chibi/asset-main-language-configure.log": {
+      "bytes": 578,
+      "sha256": "4408b8fa6a889a6ca0aa31980aa10f052d2040d376e415ec795c1a0d35cfcac4"
+    },
+    "portable-original/.chibi/asset-main-model-first.log": {
+      "bytes": 1659,
+      "sha256": "e465f16db9781264d3b24347415f4cd474736642141560d66c470688e2f7886c"
+    },
+    "portable-original/.chibi/asset-main-native-graph-build-embed-fixed.log": {
+      "bytes": 307,
+      "sha256": "c4e1241a09bd3ffe0f334bdd45ee55e0c2990e018edc4d5185eff2b3ffeea43b"
+    },
+    "portable-original/.chibi/asset-main-native-graph-build-fixed.log": {
+      "bytes": 399,
+      "sha256": "5bdf9535b03cc4e7e259408ef5a655250b676a2bd2707b0d6efee2b938e11e36"
+    },
+    "portable-original/.chibi/asset-main-native-graph-build-stage-fixed.log": {
+      "bytes": 882,
+      "sha256": "2256caa1170a04b2a2fd48e03f75eaea79cfa9c71a0ea8f9df79d7b920dda868"
+    },
+    "portable-original/.chibi/asset-main-native-graph-build.log": {
+      "bytes": 1570,
+      "sha256": "b1d2f17e1981854cc66e7e162778d29e908904f49bff0c8ea2c47c4709502bfe"
+    },
+    "portable-original/.chibi/asset-main-new-asset-fixed.log": {
+      "bytes": 307,
+      "sha256": "5ffd47278936736f4c839914677ed228aa0e17ea45353832a85d83e96dbe8699"
+    },
+    "portable-original/.chibi/asset-main-new-asset.log": {
+      "bytes": 424,
+      "sha256": "d56f2867cada67c7789a5da6b242b51e4a6c1e7dfd1a15eea27c392605048098"
+    },
+    "portable-original/.chibi/asset-main-project-document-first.log": {
+      "bytes": 603,
+      "sha256": "b53236dd9112ea828584e0f02d9c1779054fcee59ba96fcbf0d762914f76f445"
+    },
+    "portable-original/.chibi/asset-main-project-format-first.log": {
+      "bytes": 446,
+      "sha256": "4ae9d8486f8346189f3eeb7aa538f973bdc58acec8dc207a10d95dcca46af6f1"
+    },
+    "portable-original/.chibi/asset-main-prototype-documents-first.log": {
+      "bytes": 1013,
+      "sha256": "a962b28d6093880b973007da0426cdf5002da8895ae6c5678eea300e2ec3535e"
+    },
+    "portable-original/.chibi/asset-main-reference-index.log": {
+      "bytes": 611,
+      "sha256": "e2370082a8c551a2f07c646f0058b37e2fba599a8170ad1a8edb7327fc62c16f"
+    },
+    "portable-original/.chibi/asset-main-release-sdk-package-final.log": {
+      "bytes": 212808,
+      "sha256": "7366c8569dabb8883420cd77e9cfbc14ea4db6c8d915f356244e949ed6c5d6bf"
+    },
+    "portable-original/.chibi/asset-main-release-sdk-package.log": {
+      "bytes": 852,
+      "sha256": "34e36b669ee20c99e2adc1767f3babab86e69fc0466bd16015975a47b749da1f"
+    },
+    "portable-original/.chibi/asset-main-studio-acceptance-build.log": {
+      "bytes": 5755,
+      "sha256": "6826fb14ee6154f8c867117f66133a4402aa2ea1058cb2510b929cf5ddc590d3"
+    },
+    "portable-original/.chibi/asset-main-studio-build.log": {
+      "bytes": 354,
+      "sha256": "f51a8639d2069e7b0ec84528b0289b5af75fc9125340b39e4ebe8f4bb06d5787"
+    },
+    "portable-original/.chibi/asset-main-studio-staging-build.log": {
+      "bytes": 354,
+      "sha256": "b29ccd178fb143c7b6488b9d772e532b518bda2afeae594472455a8975a7a58b"
+    },
+    "portable-original/.chibi/asset-main-studio-syntax-first.log": {
+      "bytes": 5265,
+      "sha256": "400b8bccce50c25105c3d2c777013afda902efd2cc243108bd8deb1a23d2303c"
+    },
+    "portable-original/.chibi/asset-main-studio-syntax-fixed.log": {
+      "bytes": 3210,
+      "sha256": "965e603824723378f1046e62e64364232c50d773a8b96c855e24dcc121bb6ae4"
+    },
+    "portable-original/.chibi/asset-main-studio-syntax-minimized.log": {
+      "bytes": 3650,
+      "sha256": "19c8f5823b471630c5ba81a220cb5d64e66b4be6d96292e7f040a1d3db2c93cb"
+    },
+    "portable-original/.chibi/asset-main-studio-ui-regression-build.log": {
+      "bytes": 5252,
+      "sha256": "feb47cbfcabb7ba8a5333465eb5004c88d3b697a7c52c242ee7d2c908d5640f4"
+    },
+    "portable-original/.chibi/asset-main-tools-build.log": {
+      "bytes": 88127,
+      "sha256": "62906357bfc9fd868a93fe213d2c9294edff9a9384ebe447857bb42d71ce20ab"
+    },
+    "portable-original/.chibi/asset-main-tools-configure.log": {
+      "bytes": 171,
+      "sha256": "1fcd51002ce02cff19b225fa30012d314c8cf458bfb855c4c2294ebe8515231a"
+    },
+    "portable-original/.chibi/asset-main-tools-fixture-build.log": {
+      "bytes": 6490,
+      "sha256": "a677228b95ff6f88e539c257536376ccf723c6b6b39488e765af0239280d35a9"
+    },
+    "portable-original/.chibi/asset-main-tools-new-asset-build.log": {
+      "bytes": 5502,
+      "sha256": "d64cde867f0310bd55998dc06a76324b569c60a1b4757761e5122ac105a1cdea"
+    },
+    "portable-original/.chibi/asset-main-transport-current.log": {
+      "bytes": 133,
+      "sha256": "a421bead179231074dc68a26e32650b2194107b56d3de97079c22e49d4cd735c"
+    },
+    "portable-original/.chibi/asset-main-web-build.log": {
+      "bytes": 182994,
+      "sha256": "7573b9e890c795661f4162867cf084018f51b251353bbfd66a2839a8265b54e7"
+    },
+    "portable-original/.chibi/asset-main329-acceptance-build.log": {
+      "bytes": 5210,
+      "sha256": "be088253e731d83fdac2b4ba4aa704c8fe5735bd3ba64e41c2f2962fb97a9fd9"
+    },
+    "portable-original/.chibi/asset-main329-build-process.log": {
+      "bytes": 3688,
+      "sha256": "c739b490434c1345dc93828cabb8257316abe31fd7946ceff2ed709ab32f0024"
+    },
+    "portable-original/.chibi/asset-main329-check-format.log": {
+      "bytes": 181,
+      "sha256": "4f97c054f92c697f768cc890110606bc6a2625f3ce816214fe27b13ea276e377"
+    },
+    "portable-original/.chibi/asset-main329-cold-studio.log": {
+      "bytes": 1489,
+      "sha256": "096cd5b307519683f32c457c8feb2c076c00d8fa0b5f65ba628d62e765d46df2"
+    },
+    "portable-original/.chibi/asset-main329-final-web-build.log": {
+      "bytes": 182980,
+      "sha256": "0b49b7b95ddf586cc65be8c6f1a0cc34ba598044a001c21e9e2bb572fe0af798"
+    },
+    "portable-original/.chibi/asset-main329-group-language-final.log": {
+      "bytes": 135010,
+      "sha256": "c14d6b8436b0126469a5980da63ad50588e33e523ed54dec942809b9147fa97d"
+    },
+    "portable-original/.chibi/asset-main329-group-language-fixed.log": {
+      "bytes": 54347,
+      "sha256": "1e9eb971f13fbe30a182af9ff7e95245f8adefaa3539ead7d30e35d5b323fb9e"
+    },
+    "portable-original/.chibi/asset-main329-group-language-navigation-fixed.log": {
+      "bytes": 161303,
+      "sha256": "f7bb261442546b6d91431df6406910df38ae75adda4541415c6505a389d24826"
+    },
+    "portable-original/.chibi/asset-main329-group-language.log": {
+      "bytes": 3454,
+      "sha256": "683aa5ffa19fad0207e81fbbd13de5f3d60e8f454c756ed8c1b951de4e31eee7"
+    },
+    "portable-original/.chibi/asset-main329-group-materials.log": {
+      "bytes": 9443,
+      "sha256": "b8f04af463a782e813ad6eb847f15040f82beffa5127a1bd4eb1f03d9111c5a9"
+    },
+    "portable-original/.chibi/asset-main329-group-native-fixed.log": {
+      "bytes": 20311,
+      "sha256": "4a53d7ebf97f2fbf2973cb58fd6ed2ed37973c337e45aeb685f2c5544dad3aec"
+    },
+    "portable-original/.chibi/asset-main329-group-native-url-fixed.log": {
+      "bytes": 66711,
+      "sha256": "e59e1fd4b1dbbbd497df1f9e212f963b6a0236bee1a88f15f34e215465909df3"
+    },
+    "portable-original/.chibi/asset-main329-group-native.log": {
+      "bytes": 5474,
+      "sha256": "c52e59c14e9e27894dc08787f9e15b6f93ea90b472963bbd1a5d37032492e26f"
+    },
+    "portable-original/.chibi/asset-main329-group-projects-fixed.log": {
+      "bytes": 48193,
+      "sha256": "d5848c8bcefc0c9a638ed3b3a552b5a999c613b523b533b16d28bca6ca9df262"
+    },
+    "portable-original/.chibi/asset-main329-group-projects.log": {
+      "bytes": 1409,
+      "sha256": "efb49315fa3e744687ca65a43e6b4115ee702cd16f996aef388633362ab73ec3"
+    },
+    "portable-original/.chibi/asset-main329-group-tools-fixed.log": {
+      "bytes": 33877,
+      "sha256": "62325c75388b3647e1326b6c3d79e926ed42352ea5f255e143a0cd5a1cb4a1ce"
+    },
+    "portable-original/.chibi/asset-main329-group-tools.log": {
+      "bytes": 34117,
+      "sha256": "44a2d501fddf1ccdcb1745f69d0721482458beaa84253f9ca0fd042d42d9f5be"
+    },
+    "portable-original/.chibi/asset-main329-language-installed-build.log": {
+      "bytes": 4018,
+      "sha256": "8cc679f8967dc22b3296f9992bf7a2ee21fa0d6a07ae0b491a63c1dbc841fe4b"
+    },
+    "portable-original/.chibi/asset-main329-model-import-sample-command.log": {
+      "bytes": 219,
+      "sha256": "82f6379c02c9cfeaca93617c4ddefbc43b89c451581726a18a571dea7450234f"
+    },
+    "portable-original/.chibi/asset-main329-model-import-sample.txt": {
+      "bytes": 246586,
+      "sha256": "768036fb01225a669a6ae5f40b14bdfafaeee7ddf3d1a234a38db26f02f0e3f7"
+    },
+    "portable-original/.chibi/asset-main329-model-sdk.log": {
+      "bytes": 212800,
+      "sha256": "5c429f88509ae22b90ea5419e56089e5dcff6161c7984d6f998e021a67578c1e"
+    },
+    "portable-original/.chibi/asset-main329-model-test-build.log": {
+      "bytes": 302,
+      "sha256": "2e6902b5abbb811c8e3b20566b63f9bffda1d72499eaa6e5c0afc3763d26bf45"
+    },
+    "portable-original/.chibi/asset-main329-physics-lldb.log": {
+      "bytes": 1580,
+      "sha256": "6bbe14127c3ac6e4c5548197968a37c8344d72183d7eba08427c6841630b0d99"
+    },
+    "portable-original/.chibi/asset-main329-release-sdk.log": {
+      "bytes": 212809,
+      "sha256": "8ea5e7513659e25c3e2533c5ab538efe4ce6489ab596c9fc71d82bef0fe6f7fc"
+    },
+    "portable-original/.chibi/asset-main329-studio-build.log": {
+      "bytes": 354,
+      "sha256": "7faba925efe2f9075b662700ea27d0e6411519c02b4f850edf7a233b11c88dd1"
+    },
+    "portable-original/.chibi/asset-main329-studio-format.log": {
+      "bytes": 252,
+      "sha256": "e37d185103b33b0fe57e4087cac5d4ba38a554e799679958024b7312d0292671"
+    },
+    "portable-original/.chibi/asset-main329-studio-formatted-build.log": {
+      "bytes": 354,
+      "sha256": "5f68db43e991ebf6df398dd2568c474644bb9b1f85cb8ca0ac9a0bdedff93ef7"
+    },
+    "portable-original/.chibi/asset-main329-test-build-contracts-fixed.log": {
+      "bytes": 307,
+      "sha256": "accea41ddf9e44beb97a1d033fb018978f6c6337b68d7d853e63fc9348a4ddea"
+    },
+    "portable-original/.chibi/asset-main329-test-build-fixtures.log": {
+      "bytes": 306,
+      "sha256": "e0e005ee7748d773c702323bdf7c4d61e0a1bd9b9955ed6837d2c7d06389f389"
+    },
+    "portable-original/.chibi/asset-main329-test-build-includes-fixed.log": {
+      "bytes": 1156,
+      "sha256": "bb6b1c2c20766ed4498a01bf5af27de7e966c79e215d9303a46496042893d1b3"
+    },
+    "portable-original/.chibi/asset-main329-test-build-navigation.log": {
+      "bytes": 306,
+      "sha256": "d6467fa7c582eeac90828468d7b231a814de67404ae67f643ae284295b800f95"
+    },
+    "portable-original/.chibi/asset-main329-test-build-physics.log": {
+      "bytes": 302,
+      "sha256": "30303511cd1b60c2906ff1e43f0969468ab9f9a43ee90972b61c2cfb88da087e"
+    },
+    "portable-original/.chibi/asset-main329-test-build.log": {
+      "bytes": 967,
+      "sha256": "0133a04bed2f3add82ceafd2903de0520f38c681d9825a8214b2b6197db05208"
+    },
+    "portable-original/.chibi/asset-main329-tools-fixtures-build.log": {
+      "bytes": 5483,
+      "sha256": "94f4af268a5e3f7e99414c4b51c79d936891e726a829b8d39d1063b81984a699"
+    },
+    "portable-original/.chibi/asset-main329-tools-installed-build.log": {
+      "bytes": 27937,
+      "sha256": "7caba830a1f249558cfc1439e6d9936c7ca7e15075cc578050c602744c4bba9e"
+    },
+    "portable-original/.chibi/asset-main329-transport.log": {
+      "bytes": 521,
+      "sha256": "b5ff297b4ec9f7640f0c013009c5b1665661c79f39853d95d78d2cdc846231e4"
+    },
+    "portable-original/.chibi/asset-main329-web-build.log": {
+      "bytes": 182994,
+      "sha256": "0b9d49f9fd8199e1953fe99363f7956a45eed40ebb89e08a9f7134ad37a9f516"
+    },
+    "portable-original/.chibi/asset-main659-asset-values-diagnostic-build.log": {
+      "bytes": 15101,
+      "sha256": "c0aaadbd5b38fcbf5a4953f4707caf2d86ab804e57c571e73c68777af4bb2d3a"
+    },
+    "portable-original/.chibi/asset-main659-asset-values-diagnostic-fixed.log": {
+      "bytes": 3488,
+      "sha256": "d6263c4e054d5be6f2219c017e3d1d0d15db7e691c533f55d08f77b50beb87cf"
+    },
+    "portable-original/.chibi/asset-main659-asset-values-diagnostic.log": {
+      "bytes": 2311,
+      "sha256": "37ffed4bb0ab4460266cfa64dfaa8b0662e99814de72bb1febb64eaafab244bc"
+    },
+    "portable-original/.chibi/asset-main659-controller-lldb.log": {
+      "bytes": 873,
+      "sha256": "3639b7a07100cbb1a3054aa9df772545dd36ad47cf371d70d517a4d6723f997e"
+    },
+    "portable-original/.chibi/asset-main659-controller.log": {
+      "bytes": 205,
+      "sha256": "7b2ddef00f06499776d71a4309c4c788ca448dd327b0af403ae5be2dd1c8bae9"
+    },
+    "portable-original/.chibi/asset-main659-final-native-sdk.log": {
+      "bytes": 212809,
+      "sha256": "670ab5e9f96358b4cb5e5961f39ec33d7817dd0c76b0de7470fb3b191f8b6c0b"
+    },
+    "portable-original/.chibi/asset-main659-final-studio-build.log": {
+      "bytes": 350,
+      "sha256": "2f5b4a6d034740db8bc6871a3552c249b816b7bac3b53a61e4bd432c331be8fb"
+    },
+    "portable-original/.chibi/asset-main659-final-test-build.log": {
+      "bytes": 306,
+      "sha256": "15534f7b2530f845e1f3b85aed05ea862fce8e4dda94e7a1937cff97ec7ee6ba"
+    },
+    "portable-original/.chibi/asset-main659-final-web-build.log": {
+      "bytes": 182984,
+      "sha256": "f6d7f0419a0a3de7b3c640546f415c5bc6dc460c5eac4b6906b118fb4ef53692"
+    },
+    "portable-original/.chibi/asset-main659-group-native.log": {
+      "bytes": 71079,
+      "sha256": "4dd40b8dafeac7ddab9c1f01cdaf0c80668fcd023a2d28175ff3a979cefbf924"
+    },
+    "portable-original/.chibi/asset-main659-model-import-sources.log": {
+      "bytes": 383,
+      "sha256": "32f1cdb411a124dac8f98976eb1d65f2cc9e7d720d841803b25c3d4fab24342a"
+    },
+    "portable-original/.chibi/asset-main659-prototype-diagnostic-build.log": {
+      "bytes": 3743,
+      "sha256": "471a75762cfc7a21deef79b03bd2e448daf70ac94117f8e2fd9896fe325d8862"
+    },
+    "portable-original/.chibi/asset-main659-prototype-diagnostic.log": {
+      "bytes": 803,
+      "sha256": "b94a50af99503392289aeee91688f617f9175ce57696e316bd1e9d2739536aae"
+    },
+    "portable-original/.chibi/asset-main659-prototype-document.log": {
+      "bytes": 105,
+      "sha256": "5ff5c941abf3269667d17abeedc1b7fcacd908e1759a797f086ee3da3f7ecf4a"
+    },
+    "portable-original/.chibi/asset-main659-prototype-source-build.log": {
+      "bytes": 3521,
+      "sha256": "b85b0ce5d1863e66553dd46348cd4f928a6a47562b449d6e41574a179fc64d5f"
+    },
+    "portable-original/.chibi/asset-main659-prototype-source-lldb.log": {
+      "bytes": 4750,
+      "sha256": "219dc11830770a4a445ab13a34326c53b04814c695effa507a0150db1666a31a"
+    },
+    "portable-original/.chibi/asset-main659-studio-acceptance-build.log": {
+      "bytes": 5293,
+      "sha256": "72024a4cdd134e75fcf0dd319fb1d5325d2e9095b39fe082160359583826900e"
+    },
+    "portable-original/.chibi/asset-main659-studio-model.log": {
+      "bytes": 1552,
+      "sha256": "865d0d12a2a9894961ea6cf6e3042a53b4c0dc4ab8de2afbbc69b40e7a342b5f"
+    },
+    "portable-original/.chibi/asset-main659-transport.log": {
+      "bytes": 518,
+      "sha256": "c1eaf3378d239a6225de81a507370825a0a04954635f6a268c5130dffc153b45"
+    },
+    "portable-original/.chibi/asset-main659-validate-project-fixture-build.log": {
+      "bytes": 5415,
+      "sha256": "f96d2bfff0442fb6a96dade8f872191cfe9df397e8f42aafaeb7843acf2079ea"
+    },
+    "portable-original/.chibi/asset-main659-validate-project-fixtures-fixed.log": {
+      "bytes": 29388,
+      "sha256": "05cfea0701f3a597ee14224c29034e6572ceca02c988b9f90ec9ceb7c814d845"
+    },
+    "portable-original/.chibi/asset-main659-validate-project.log": {
+      "bytes": 46471,
+      "sha256": "37b75d17f31c2892030bfb139060286295316e4ae81dd39a15f52c3a0cee0fa7"
+    },
+    "portable-original/.chibi/asset-minimal-compile.log": {
+      "bytes": 24217,
+      "sha256": "ad75b661502d297b944d0288f9ba82caa127561ee31e332cd338f389fc15d7fa"
+    },
+    "portable-original/.chibi/asset-minimal-input.json": {
+      "bytes": 10942,
+      "sha256": "264ddfae2b8e8b4f53bd210c3dad27022150f6850283fa2600aa49f81852f453"
+    },
+    "portable-original/.chibi/asset-minimal-proof.log": {
+      "bytes": 214,
+      "sha256": "13ab93eaf78e6e4512664a8758abb419c7a2d3e3d082f909ba24a029782b217c"
+    },
+    "portable-original/.chibi/asset-minimal.json": {
+      "bytes": 1,
+      "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"
+    },
+    "portable-original/.chibi/asset-model-buffer-arena.log": {
+      "bytes": 531,
+      "sha256": "0e7d667fed5be6f191be2cc6b450a626d75273013cc910984618ba717863f46e"
+    },
+    "portable-original/.chibi/asset-model-buffer-material-surface-mesh.log": {
+      "bytes": 1618,
+      "sha256": "919cd17b32ac78cb70fa236d1fdba93a6b4343c0d7122e0425350178fca96d12"
+    },
+    "portable-original/.chibi/asset-model-buffer-model-catalog.log": {
+      "bytes": 1808,
+      "sha256": "6c1849c728ec8f9720ec3f6a208740b7c7964c6c6b9d6adec3a38785d5b475a0"
+    },
+    "portable-original/.chibi/asset-model-buffer-native-tail-status.log": {
+      "bytes": 237,
+      "sha256": "c6c5f4efb2ee4342505ea963543a390460817789e94f3c4fa4ee72f28e7d3540"
+    },
+    "portable-original/.chibi/asset-model-buffer-render-geometry.log": {
+      "bytes": 662,
+      "sha256": "67df597142853c222cc60347351a44ae6202a42756c3e245e495b9d08076616d"
+    },
+    "portable-original/.chibi/asset-model-buffer-scene3d-camera.log": {
+      "bytes": 453,
+      "sha256": "3271901acb1cfe3b77ffcdfa8f9eda07ffc7e14d7cc6af4b88855ff5c6870e7a"
+    },
+    "portable-original/.chibi/asset-model-buffer-scene3d-terrain.log": {
+      "bytes": 753,
+      "sha256": "f05eb983145db1365ce028461540fb70b0886d8bb8e259600463206339035a18"
+    },
+    "portable-original/.chibi/asset-model-buffer-scene3d-volume.log": {
+      "bytes": 440,
+      "sha256": "9c3dda323f64e3a5d1beaf48fbd6fc23c1d78e636534dda81951a0733def7f61"
+    },
+    "portable-original/.chibi/asset-model-buffer-shader-bake.log": {
+      "bytes": 805,
+      "sha256": "1ac23fe4d963adda698f353d54ee74407b6c38ac7066d32e02d8474b22e948c3"
+    },
+    "portable-original/.chibi/asset-model-buffer-shader-graphs.log": {
+      "bytes": 1149,
+      "sha256": "79c1c0c683fd30a7b86f55f1529d5a550cb52e5a85d98eb0ecde9c2082c47332"
+    },
+    "portable-original/.chibi/asset-model-buffer-terrain-seams.log": {
+      "bytes": 459,
+      "sha256": "d10abe148834b60c3b32220bcc2c491eb49a78d05fd8305508af8dbe0ab77be1"
+    },
+    "portable-original/.chibi/asset-model-buffer-terrain-storage.log": {
+      "bytes": 640,
+      "sha256": "c6033e087837175c3b1f36f91dec8e4a5ebb42d0d1992484098dcaaf6d59fe12"
+    },
+    "portable-original/.chibi/asset-model-buffer-test-build.log": {
+      "bytes": 307,
+      "sha256": "1c025683f617c12485746865345efc3df0dab4b2cc8def847fe02f6ab024c670"
+    },
+    "portable-original/.chibi/asset-native-facade-final.log": {
+      "bytes": 201,
+      "sha256": "14ef25ae59637316918253881ec40ec152612a0b561b7beeafb18fdca8b06e37"
+    },
+    "portable-original/.chibi/asset-native-resource-freshness.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-native-sdk-package.log": {
+      "bytes": 190586,
+      "sha256": "e2c7d27decd70a184b59980941d704a5fcaa6437b743d58f867e6dfa5a729ceb"
+    },
+    "portable-original/.chibi/asset-native-studio-build.log": {
+      "bytes": 354,
+      "sha256": "0e0d4a8bf3ef639152a04f5437e1828887646962c17b0a44ea59cff41ed1f8d2"
+    },
+    "portable-original/.chibi/asset-negative-compile.log": {
+      "bytes": 183,
+      "sha256": "8e4c8eb1964168e652e84eac38899e8d1ebcd459fc460c75239bd112c6a30219"
+    },
+    "portable-original/.chibi/asset-negative-input.json": {
+      "bytes": 58929,
+      "sha256": "6ff23e265e4217a4ca892b62ed450e371a2e3e9677f94772629cc660a1705db5"
+    },
+    "portable-original/.chibi/asset-negative-proof.log": {
+      "bytes": 83,
+      "sha256": "db4f502396a4305d669650fa99a1414be8206fe561c3c835b222eb2821292d1d"
+    },
+    "portable-original/.chibi/asset-numeric-asset-source.log": {
+      "bytes": 600,
+      "sha256": "8443eb383c9fb20bfc8888caf4adcf27eed89397457308d24e7641a95a39433b"
+    },
+    "portable-original/.chibi/asset-numeric-asset-transport.log": {
+      "bytes": 589,
+      "sha256": "ee6f787f9aa0632e6b9a20651b2ad15bc8f9a357f61bf0764e87771d58c35faa"
+    },
+    "portable-original/.chibi/asset-numeric-asset-values.log": {
+      "bytes": 849,
+      "sha256": "1607d6633c2552ee084199032bb0fce64f29a0d0e57b5437e491a356023039bc"
+    },
+    "portable-original/.chibi/asset-numeric-check-format.log": {
+      "bytes": 182,
+      "sha256": "e814bc428562fb87f448af9de4b7cb6f03366bd5f049ef3a44fc1d78f853a009"
+    },
+    "portable-original/.chibi/asset-numeric-controller.log": {
+      "bytes": 22333,
+      "sha256": "5600af3158a99712b2b160cc9d2196136b3f9492af95fe4bb83d6e560e336215"
+    },
+    "portable-original/.chibi/asset-numeric-group-native.log": {
+      "bytes": 1899,
+      "sha256": "f734f6b2e89226492b0433c48465c7a0679f38e58d2d02d331c260ed75407f52"
+    },
+    "portable-original/.chibi/asset-numeric-native-sdk.log": {
+      "bytes": 212809,
+      "sha256": "fb7bb5da5b98cd04fc009859b07038433bd1066253f96059d724143dc4e97877"
+    },
+    "portable-original/.chibi/asset-numeric-prototype-document.log": {
+      "bytes": 399,
+      "sha256": "bff4b443333919efe1a764992a39ef9b92d4925a53f01bedddee5964cb5ad001"
+    },
+    "portable-original/.chibi/asset-numeric-prototype-source.log": {
+      "bytes": 1285,
+      "sha256": "02dbf43ef8897e1aa61d1e7ceb76e3e43b9ed7135ca6aabd45fc8264629015d5"
+    },
+    "portable-original/.chibi/asset-numeric-scenario-replay.log": {
+      "bytes": 1870,
+      "sha256": "ca38cd4d56e6c226272256218881bb45a5b14e6e92913d2da21db66983402907"
+    },
+    "portable-original/.chibi/asset-numeric-studio-format-diff.log": {
+      "bytes": 38,
+      "sha256": "abc07078597158b78506ec468bafc9ea7fe7ec1c82e2559e5766f823634bf85e"
+    },
+    "portable-original/.chibi/asset-numeric-test-build.log": {
+      "bytes": 307,
+      "sha256": "9458422ec9ef0d369efb923fa743fcb0dcb0e6d8d01cdadb6ca670bdb178b427"
+    },
+    "portable-original/.chibi/asset-numeric-validate-project.log": {
+      "bytes": 17167,
+      "sha256": "08959696585c67ddd28b2cd899ed714edd0ea69d6e4219627dba4264ae97f641"
+    },
+    "portable-original/.chibi/asset-numeric-web-build.log": {
+      "bytes": 182994,
+      "sha256": "f39b323b08259696c8c2fd8aa65edeb7ddafc2f9f75229522bf1dbd25d64f20f"
+    },
+    "portable-original/.chibi/asset-overrides-compile.log": {
+      "bytes": 184,
+      "sha256": "c0e7f4e61ccb7ea97cc908e7131370d1e06714ee7ac719d793d09f4a979b1244"
+    },
+    "portable-original/.chibi/asset-overrides-input.json": {
+      "bytes": 60529,
+      "sha256": "7e6ef66a3381a5747c7b15fc4b4aa16ccc82516b4f615ab064d3a8e98b093518"
+    },
+    "portable-original/.chibi/asset-overrides-proof.log": {
+      "bytes": 443,
+      "sha256": "257cf0fb74853f019fcee50fff2a1b06df9da887ca86549bd1b123c8cf52a834"
+    },
+    "portable-original/.chibi/asset-overrides.json": {
+      "bytes": 227,
+      "sha256": "c7a4aa52f27eb239870b295d9aea8dd4addd7d9e695b1c2a53521d4ad6cc0452"
+    },
+    "portable-original/.chibi/asset-recovery-off.log": {
+      "bytes": 157,
+      "sha256": "bdc42a62ab4a3d084dc126391d8ee34e71b641b19f1478dad0457cfe975fcabd"
+    },
+    "portable-original/.chibi/asset-release-build-aligned.log": {
+      "bytes": 89534,
+      "sha256": "645fc95e7b70ee410e7e4c13de9e1ae48d1ba6c8a1299dfeb63a541aa65c521b"
+    },
+    "portable-original/.chibi/asset-release-build-evidence.json": {
+      "bytes": 1307,
+      "sha256": "d9264eb9fd17f9d60aaf50e51af447408bf94415b33cd867480a4a0806678b77"
+    },
+    "portable-original/.chibi/asset-release-build-final.log": {
+      "bytes": 54645,
+      "sha256": "64026778e5c3e0d9e142b2a3bbe593ddb34104e8f3acea4f472881930a84406e"
+    },
+    "portable-original/.chibi/asset-release-build-second.log": {
+      "bytes": 49007,
+      "sha256": "e277d77cda297088172b047113feb1fa5a684b722b7082bd3668df976ee11223"
+    },
+    "portable-original/.chibi/asset-release-build.log": {
+      "bytes": 48848,
+      "sha256": "5920787a44b4ca0cebcdd5c6e7bb15d50e47ba51affbb497f58a200f7e10ccaa"
+    },
+    "portable-original/.chibi/asset-release-configure-aligned.log": {
+      "bytes": 171,
+      "sha256": "1fcd51002ce02cff19b225fa30012d314c8cf458bfb855c4c2294ebe8515231a"
+    },
+    "portable-original/.chibi/asset-release-configure-final.log": {
+      "bytes": 573,
+      "sha256": "d0b18fa5e369813ae10afd41969ed650e1dcc176a51497768812e11b15fae3fd"
+    },
+    "portable-original/.chibi/asset-release-configure-second.log": {
+      "bytes": 745,
+      "sha256": "0b9adca2e7d0d8aefccc7d532029062b0764c6fc8df72bf78c0fbc9387a2885b"
+    },
+    "portable-original/.chibi/asset-release-configure-warning.log": {
+      "bytes": 171,
+      "sha256": "1fcd51002ce02cff19b225fa30012d314c8cf458bfb855c4c2294ebe8515231a"
+    },
+    "portable-original/.chibi/asset-release-configure.log": {
+      "bytes": 827,
+      "sha256": "174a5946d434713efe8b36026725532a475e8d8eea7b3bd5300f0cf057222a21"
+    },
+    "portable-original/.chibi/asset-release-relink-current.log": {
+      "bytes": 5806,
+      "sha256": "c5c897f0d0148039faa0feaa6fdc0cdab0a88e2cbd19de8f22cbc0fe2e093b70"
+    },
+    "portable-original/.chibi/asset-release-sdk-package.log": {
+      "bytes": 210646,
+      "sha256": "1692656a556ec42185f59bb9f610c2856cc9ae484a22c9941ad9a5de30458a35"
+    },
+    "portable-original/.chibi/asset-release-studio-build.log": {
+      "bytes": 354,
+      "sha256": "daa1ed18c67f45e29385188bd49ae46c75eac9ee632ce4b31c3df7492e7feec7"
+    },
+    "portable-original/.chibi/asset-remaining-project-prototype-expansion.log": {
+      "bytes": 438,
+      "sha256": "4181d9fbaa3d864cc4196e887dbfac17fa25802f5acb5b325ef32c443371cc25"
+    },
+    "portable-original/.chibi/asset-rework-engine-build.log": {
+      "bytes": 2438,
+      "sha256": "6965812de7afb255499f70bb5037bd0f45acef77e4104835eff7ce9cacc9de86"
+    },
+    "portable-original/.chibi/asset-rework-final-native-build.log": {
+      "bytes": 185,
+      "sha256": "cc232ad33fd39a44cb9942325de3d00a675375f69152509a5d2b40b87bf3262e"
+    },
+    "portable-original/.chibi/asset-rework-final-native-diagnostics.log": {
+      "bytes": 8211,
+      "sha256": "452906334f42f15455ed531b8cfd648fa7d36a0620f2561f5290c4fef8d40ffb"
+    },
+    "portable-original/.chibi/asset-rework-web-build.log": {
+      "bytes": 177061,
+      "sha256": "34d418dbfe3e8aaf66cbc2ce85a631d959782b40ea658427fac8f005c491116c"
+    },
+    "portable-original/.chibi/asset-schema-proof.log": {
+      "bytes": 365,
+      "sha256": "13b04aa216053ac99fd958b27452198b73108624238684dfbadbeaaddc1376d8"
+    },
+    "portable-original/.chibi/asset-sdk-consumer-installed.log": {
+      "bytes": 671,
+      "sha256": "6c96197c20bc805803412aa7a5923aaa748d9f3392ee1296b0220ad1f0de8055"
+    },
+    "portable-original/.chibi/asset-sdk-consumer-relocated.log": {
+      "bytes": 671,
+      "sha256": "23c3dc3616eac7007ded782489efef1c6bce0ecaf5f6907b522626363173a84d"
+    },
+    "portable-original/.chibi/asset-sljit-baseline.log": {
+      "bytes": 184,
+      "sha256": "7d13071fadcd65caff4249be1a82ac6e57b7a7859e9af90d0935b41e9a15abd3"
+    },
+    "portable-original/.chibi/asset-source-policy-asset-source.log": {
+      "bytes": 699,
+      "sha256": "df731a256a96e8b57f43cc669998730fc98f4b274840568866bde455aaa722a4"
+    },
+    "portable-original/.chibi/asset-source-policy-asset-transport.log": {
+      "bytes": 590,
+      "sha256": "341b0fb89de24078b1f992eca5b598db28d9ea0d9a6cce621e877171c22691f4"
+    },
+    "portable-original/.chibi/asset-source-policy-asset-values.log": {
+      "bytes": 850,
+      "sha256": "3eeed322cc00aa9aaf70a5bf0a65f5ca3902871c6ad25081bee12a9ad87d1907"
+    },
+    "portable-original/.chibi/asset-source-policy-focused-status.log": {
+      "bytes": 117,
+      "sha256": "a666f0c4505b506bd40bb56227a956379a92a4f7c0462b56a86b55ff2e95c1ae"
+    },
+    "portable-original/.chibi/asset-source-policy-language-graph-authoring.log": {
+      "bytes": 332,
+      "sha256": "cbe2cb20fb46a37028b04c1357ad4ed678f5389558ce032fb6dae85ed3056af8"
+    },
+    "portable-original/.chibi/asset-source-policy-language-graph-model.log": {
+      "bytes": 396,
+      "sha256": "076d8185059547cae7c7668d1baa92527c53f8c8557915ffdd7fc82ade59987c"
+    },
+    "portable-original/.chibi/asset-source-policy-language-language-outliner-projection.log": {
+      "bytes": 8147,
+      "sha256": "f5acf596c119a7355a1e960777f27ba1d22b8cf36273495b2eb110acdfac54da"
+    },
+    "portable-original/.chibi/asset-source-policy-language-language-row-array.log": {
+      "bytes": 15132,
+      "sha256": "e8aa6ca8cea06fc84139fd157ecc58017078cd62e425b222ef897e7e3182aed0"
+    },
+    "portable-original/.chibi/asset-source-policy-language-model-runtime.log": {
+      "bytes": 655,
+      "sha256": "7d3876382d1060133906cf677d77b59e2216c9cfd2ef9d2264750e5c0fc06588"
+    },
+    "portable-original/.chibi/asset-source-policy-language-tail-status.log": {
+      "bytes": 164,
+      "sha256": "88c8e1503d3c1b09201827c4285a7753ee032afd424e1d33867f7b101e09c0bf"
+    },
+    "portable-original/.chibi/asset-source-policy-language-text-format.log": {
+      "bytes": 487,
+      "sha256": "57d321a9a63ba638bd47881dc89227ed69e47f3eb083f289d5cbb081bfdfbf9e"
+    },
+    "portable-original/.chibi/asset-source-policy-language-ui-authoring.log": {
+      "bytes": 553,
+      "sha256": "4fee436b4664419285ff3628ce77430bca43381f14de04f194e9803988951065"
+    },
+    "portable-original/.chibi/asset-source-policy-prototype-source.log": {
+      "bytes": 1286,
+      "sha256": "07ce2efcef322785abe9316305259825422b3faa3704148390e95cb928051994"
+    },
+    "portable-original/.chibi/asset-source-policy-source-prototype-edits.log": {
+      "bytes": 1364,
+      "sha256": "8e4d6565cb0bba7a36ae455a4994b7484b1505c72de2d3f38d58ba43555dbfe3"
+    },
+    "portable-original/.chibi/asset-source-policy-test-build.log": {
+      "bytes": 307,
+      "sha256": "2deb599384de3fb387b9c5c8de88d5098a387fa60d18978efc6ad0fa14b8e0b7"
+    },
+    "portable-original/.chibi/asset-source-policy-typed-prototype.log": {
+      "bytes": 823,
+      "sha256": "8ef685df604b65885b1fc2903ad2e2e24b8dbaab5aff2dc2abf34a2bb6ca0574"
+    },
+    "portable-original/.chibi/asset-specimen-compile.log": {
+      "bytes": 184,
+      "sha256": "5a38e810a299909f234119e4347f35b3df4b0a1db3d5079795f201603129e941"
+    },
+    "portable-original/.chibi/asset-specimen-input.json": {
+      "bytes": 55544,
+      "sha256": "4e3d04b4da9643b6b44905d62e37c14b15281e369ee3d617efdcbc7ff8cfb289"
+    },
+    "portable-original/.chibi/asset-specimen-proof.log": {
+      "bytes": 366,
+      "sha256": "00cd7eda616314a60a3e87bfb4ac0f4a589ca1d29b4211279863fc2f7008e2ce"
+    },
+    "portable-original/.chibi/asset-specimen.json": {
+      "bytes": 149,
+      "sha256": "6a4854859fb9618e207cf2dd642de513ccc8fc58166f6fc05a8fd29065c2921b"
+    },
+    "portable-original/.chibi/asset-stabilization-bootstrap-compile.log": {
+      "bytes": 186,
+      "sha256": "215063d253769b84a32f4fa84229346988ec2321d832263980f4ebf63ea1d23a"
+    },
+    "portable-original/.chibi/asset-stabilization-bootstrap-export.log": {
+      "bytes": 117,
+      "sha256": "7edc862ceb0a9660b74cb2abb04e72c87fe7363ce4cc28e5a4ffcc36b50fcb71"
+    },
+    "portable-original/.chibi/asset-stabilization-commit.txt": {
+      "bytes": 1097,
+      "sha256": "a8e00603ac83f3e11959a3296f206430b58c24dd949a7d0af60502c169efb7e1"
+    },
+    "portable-original/.chibi/asset-stabilization-compiler-host-build.log": {
+      "bytes": 8088,
+      "sha256": "fe3cb950d301f00e168ae7584cc3d09a508b5e26f5120d56bdbf0c9b321241c9"
+    },
+    "portable-original/.chibi/asset-stabilization-final-native-build.log": {
+      "bytes": 185,
+      "sha256": "0a47e480de4668b2329f8529600c29f770646dd45be5e3e7d042785cba99714e"
+    },
+    "portable-original/.chibi/asset-stabilization-language-semantic.log": {
+      "bytes": 17910,
+      "sha256": "eb2d2ed873982359512f79d19d63b9587c879eeff6ba24f565b8d4f40b6c84fd"
+    },
+    "portable-original/.chibi/asset-stabilization-merge.log": {
+      "bytes": 1692,
+      "sha256": "274e3d28fc721d8c5f2c31ad238ce0c7962d1c4d5b975d0c3841371fe94d9f10"
+    },
+    "portable-original/.chibi/asset-stabilization-native-build.log": {
+      "bytes": 186,
+      "sha256": "93bd8c7363d9bb49a8656d3d5308ae5479bfb9214d4d29f35f4b41c125019b00"
+    },
+    "portable-original/.chibi/asset-stabilization-test-short-second.log": {
+      "bytes": 948567,
+      "sha256": "dce449732f52777e374daea3336ce7f911666f53c695715cd7f4704b6a691f71"
+    },
+    "portable-original/.chibi/asset-stabilization-test-short.log": {
+      "bytes": 370301,
+      "sha256": "b74ebfaaff725936f0571a5137bb97edf74d943d92e3c4a7303570dc4ddef10b"
+    },
+    "portable-original/.chibi/asset-stabilization-test-tools-second.log": {
+      "bytes": 37143,
+      "sha256": "f05024e84db49f613a67c66e7e7f359211f1e4670bf72fd6cdd07701904ca2cd"
+    },
+    "portable-original/.chibi/asset-stabilization-test-tools.log": {
+      "bytes": 37262,
+      "sha256": "4fbb75140899c6679f2cf5ad802a873dbe576be3424f08e76ae88cb7e3c6a790"
+    },
+    "portable-original/.chibi/asset-stabilization-tools-final-rebuild.log": {
+      "bytes": 245480,
+      "sha256": "d12f05fc28fd7b7a403adba0ccffa9fb91b43fed6d7730ee391ca9321c675f5d"
+    },
+    "portable-original/.chibi/asset-stabilization-tools-rebuild.log": {
+      "bytes": 250114,
+      "sha256": "fb2b384cd043f7fda5a539db09c6445afc9210d6e28160720418795e36f146fc"
+    },
+    "portable-original/.chibi/asset-stabilization-web-build.log": {
+      "bytes": 182151,
+      "sha256": "5428512d91c182aa8fc877be611f920854602367fef8cd1847aae8d62b83f1c3"
+    },
+    "portable-original/.chibi/asset-stabilization-web-storage-second.log": {
+      "bytes": 1806,
+      "sha256": "880bb05963d99ab6ca03ee5716af56d23c42db988c7a6b6e51474e062a68d8db"
+    },
+    "portable-original/.chibi/asset-stabilization-web-storage.log": {
+      "bytes": 1928,
+      "sha256": "4c0b9da62e3c1fa472fe18d0ec04569cb610b88327fb42ef03050e10192edb64"
+    },
+    "portable-original/.chibi/asset-starter-project-compile.log": {
+      "bytes": 218,
+      "sha256": "d661a69e8897e8bb2e3216656f3d09477f35a0d7eb2597148a8b75e25fa1b592"
+    },
+    "portable-original/.chibi/asset-studio-stabilization-commit.txt": {
+      "bytes": 760,
+      "sha256": "1972fee1a1119f433f42b7e95e5a6fa120b12844fb7654649268859f3bf7077b"
+    },
+    "portable-original/.chibi/asset-transport-first.log": {
+      "bytes": 1054,
+      "sha256": "cb3d7afe9298a09d85ad8cbab33fc9488e0efa6e262e951facc3c7c28c772104"
+    },
+    "portable-original/.chibi/asset-transport-release-current.log": {
+      "bytes": 1637,
+      "sha256": "5920c74fc8d05453f7417a8477c5e652e6ca1734d45206c64aae5b9b2b9298a9"
+    },
+    "portable-original/.chibi/asset-transport-release.log": {
+      "bytes": 1527,
+      "sha256": "ece48658bb2e15d74622bc9e395edaa020c6a9b35dca4a3bc54618d572d4448c"
+    },
+    "portable-original/.chibi/asset-transport-second.log": {
+      "bytes": 1347,
+      "sha256": "7fa351589393421533b3470d579a27023c3b7fe76bb14bff6f1cf4e3c0a87779"
+    },
+    "portable-original/.chibi/asset-transport-third.log": {
+      "bytes": 998,
+      "sha256": "c9983ae093ceb9f344353c48240ae201c86ac07563fe8461cd101115764b5e0f"
+    },
+    "portable-original/.chibi/asset-unsigned-group-native.log": {
+      "bytes": 81876,
+      "sha256": "adf6c79457bf308ba451e3441c400304fb8daec62ffcdae818a36b5d44ea833c"
+    },
+    "portable-original/.chibi/asset-unsigned-language-execution-scope.log": {
+      "bytes": 369,
+      "sha256": "121b898aa66621c022ad2307f8d5f88be29f6277a2cbae98393bf0eda684a734"
+    },
+    "portable-original/.chibi/asset-unsigned-language-field-runtime.log": {
+      "bytes": 1091,
+      "sha256": "5a44567bafaaafa1ec3ee4868811205a12daf5ab409804b676d8fa2ab2989c39"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-activation-benchmark.log": {
+      "bytes": 4715,
+      "sha256": "154386c978a362ef17e9cb897368fe7c4e64b0548e6f804bba188f75517ea216"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-activation-cache.log": {
+      "bytes": 971,
+      "sha256": "3397ebbbcddd01abe46b9b8bb252f16e10837d1da8111003ff037cf3db72be2d"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-binding-benchmark.log": {
+      "bytes": 3187,
+      "sha256": "8158714d6f5fbc5fcd4ec5e8e54a67a91caca7b93cf65ae68be46152398a1687"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-binding-schedule.log": {
+      "bytes": 665,
+      "sha256": "0339289fd5f4863d6ef29b02dd12258074d9dab3401fed53b13ecdc5061312c5"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-borrow-benchmark.log": {
+      "bytes": 8802,
+      "sha256": "148a0b341998dc5610bb0d255c43d1a77b200c76a4b0deb667e03bf0f7b42d90"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-borrow.log": {
+      "bytes": 2428,
+      "sha256": "b91c0f25373a306ecac6b8987acc7bb9ca0fa4aa6b34c27b93bfba0aaf536da2"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-component-write.log": {
+      "bytes": 1619,
+      "sha256": "6e8156314e036ff576315debb6e9f1b736b908dd377cfe0a84b47f33c967783c"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-execution.log": {
+      "bytes": 2729,
+      "sha256": "0c4aaccd9ce70ca91ff497a39b0fcc6fb8ffad5625c46b516d8b8f78bbc22831"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-format.log": {
+      "bytes": 4631,
+      "sha256": "fc49d712d4838030d2f337742f09b25a8f39142539b8fc337c448a8d6a173123"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-headless.log": {
+      "bytes": 394,
+      "sha256": "965d1c95462de1fb93a0d628e40fa042937233204c26b03573fd4668c629526e"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-incremental-benchmark.log": {
+      "bytes": 2277,
+      "sha256": "c40df27fd5d202a145f61f37af16886f62ee91ebba3cbc6e9c4ed951c525a0ad"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-incremental.log": {
+      "bytes": 1406,
+      "sha256": "31eb78621f0744d0dd81b85d1dbb0827f775a7f05010d4b2ab65b2ec9ef5104b"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-modules.log": {
+      "bytes": 1871,
+      "sha256": "bceb92731e6520c581086123e687982cf72c78e39841fef9f91531a24577f308"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-navigation.log": {
+      "bytes": 4945,
+      "sha256": "1341b91815066fbaf8963ea8f0514a1bcbfdd35e63445807ae6e8fdc0d7f3a69"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-program.log": {
+      "bytes": 30464,
+      "sha256": "7f965d1f190cf0e44d9b93be4240be3b0271507f6590d3bcd531f1d4504d4778"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-publication.log": {
+      "bytes": 683,
+      "sha256": "0e1c82175db22db14001c0a4f7ab8edbad09a7746ef111722b85ec2bfa1b8040"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-ranges.log": {
+      "bytes": 789,
+      "sha256": "2c7ac95b1a9fdd54328a11b7acc7db4abe953adacafa7a501854be67f532a7b8"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-reductions.log": {
+      "bytes": 846,
+      "sha256": "641343a45280b8cb18af0bda48e5dc963c53f596817b9e72250f0d8f8ec2ef77"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-runtime-attribution.log": {
+      "bytes": 23346,
+      "sha256": "62904833cb05724c3f443d5eed7f17d0ec7a75e80237032ec592493411661b66"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-scalarize.log": {
+      "bytes": 39553,
+      "sha256": "7a70337d8309556f95f35151f7909aaffc10031f5f9db4a16d8e8a2f032e53ef"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-semantic.log": {
+      "bytes": 17759,
+      "sha256": "b1dc5aca70e9d89f9ee392845c2a7e780130e54e0ea484eddb1f0ff93986fa17"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language-wasm.log": {
+      "bytes": 294,
+      "sha256": "909258acaf47ac835fe2b2c0228e6fc363317c38256113e9ff68709af781f6ca"
+    },
+    "portable-original/.chibi/asset-unsigned-language-language.log": {
+      "bytes": 3200,
+      "sha256": "7118d48eb2be6d85c3a320ba40abb684358d54a96c042b50081b5092ac49fcac"
+    },
+    "portable-original/.chibi/asset-unsigned-language-prefix-status.log": {
+      "bytes": 710,
+      "sha256": "101a3a41fb180de6c18f2347b21e2b6d5ceff6d36694b0950a8aa29fb5054866"
+    },
+    "portable-original/.chibi/asset-unsigned-language-script-benchmark.log": {
+      "bytes": 4633,
+      "sha256": "a9ac43bc93f239925a97a22b96b1ba68a7e144f22bed0d319df6f96254269829"
+    },
+    "portable-original/.chibi/asset-unsigned-native-sdk.log": {
+      "bytes": 212809,
+      "sha256": "f9b38b1301cacb1fd3c02fa5e5c2b618b77b6c8beffce79dd87b4a2e87a4b40f"
+    },
+    "portable-original/.chibi/asset-unsigned-native-typed-prototype.log": {
+      "bytes": 1058,
+      "sha256": "2a8b352ca23c45a38de41fdbe844d30cba6fa7411aa70416c3cb5043b2e649aa"
+    },
+    "portable-original/.chibi/asset-unsigned-prototype-document.log": {
+      "bytes": 2189,
+      "sha256": "94f8df972816ad27b8793f21169756feb15e3fbdcdc347662e109248b33be257"
+    },
+    "portable-original/.chibi/asset-unsigned-source-prototype-edits.log": {
+      "bytes": 3404,
+      "sha256": "e670f571b0e197fec2e821e4a0ac1ee680564336f0c97a132b881c0336ceff5c"
+    },
+    "portable-original/.chibi/asset-unsigned-test-build.log": {
+      "bytes": 306,
+      "sha256": "e3ebe6a3ed0f7f2d239672791bf9855506a3216ea25705aea52b9d0d00e60b3a"
+    },
+    "portable-original/.chibi/asset-unsigned-validate-project.log": {
+      "bytes": 49429,
+      "sha256": "39e1ac94c5c8b0b6ff4a5e3d7027021ff3c458aa05142810ed2d2cd4637c1109"
+    },
+    "portable-original/.chibi/asset-unsigned-web-build.log": {
+      "bytes": 182994,
+      "sha256": "e0580e0e13a2d36784d2ebbf6e84008d5d2d63b901d045fb782a9584f21b4f9a"
+    },
+    "portable-original/.chibi/asset-wasm-empty.json": {
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "portable-original/.chibi/asset-wasm-facade-final.log": {
+      "bytes": 270,
+      "sha256": "399fbe06ac6c34e990c01dd5f3f89b0789ecbd636ad43428f11bd17822a6e2ac"
+    },
+    "portable-original/.chibi/asset-wasm-host-refresh.log": {
+      "bytes": 13145,
+      "sha256": "7fbfc3ddbe22e3a69f5d63fc01367e5ea4b0b27ab07fc7ba2b47ba5089f133d3"
+    },
+    "portable-original/.chibi/asset-wasm-input.json": {
+      "bytes": 55544,
+      "sha256": "a2d11dc33e813229ede58952ff6244018b39f917fcfa7dd39181f3f953c85a35"
+    },
+    "portable-original/.chibi/asset-wasm-proof.log": {
+      "bytes": 364,
+      "sha256": "53a0c7c7f60dfaadf48e3eea6a377056f106e49951034a175b31ff4bcc11dbe4"
+    },
+    "portable-original/.chibi/asset-wasm-proof.py": {
+      "bytes": 2026,
+      "sha256": "02a3e0c4550996fb049893f1ffd9861b91071987b438f971ba735749fb7fb16c"
+    },
+    "portable-original/.chibi/asset-wasm-resource-freshness.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-wasm-specimen.json": {
+      "bytes": 149,
+      "sha256": "6a4854859fb9618e207cf2dd642de513ccc8fc58166f6fc05a8fd29065c2921b"
+    },
+    "portable-original/.chibi/asset-wasm-stderr.log": {
+      "bytes": 347,
+      "sha256": "ca50bf462742fa5512d979d95156ca650719a3bb83c672a7f6b3828d6f56347c"
+    },
+    "portable-original/.chibi/asset-wasm-stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-wasm-target-refresh.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/asset-wasm-target.json": {
+      "bytes": 9476,
+      "sha256": "a00a99d4286d56e3857d9832549edb1b6fa1becf732b05e69962bebe85beafa1"
+    },
+    "portable-original/.chibi/build_asset_facade.py": {
+      "bytes": 2171,
+      "sha256": "ef667150627de88a91287dba3775992a27b039e012964fc244cf40fea200add7"
+    },
+    "portable-original/.chibi/build_asset_specimen.py": {
+      "bytes": 6102,
+      "sha256": "f488c17599974a0a4f8441c7463e8dbdced3f8ab96a00e30c26b227916605a4a"
+    },
+    "portable-original/.chibi/compiler-self-build/download/hashes.sha256": {
+      "bytes": 2862,
+      "sha256": "a0589775f0911f061946b00e7c0a6c386f4d1f30aabb1aad2d3cda49d21f9d95"
+    },
+    "portable-original/.chibi/compiler-self-build/prepare.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/compiler-self-build/proof-first.log": {
+      "bytes": 1024,
+      "sha256": "4648ebd23f3d61f8ccab04476fa5e38abee63a3ee4ea57c04a9a48259e56ef60"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/compile.json": {
+      "bytes": 644358,
+      "sha256": "56613039c3abc681c8946da1b4230e891a98d9c2dfbb0a89f6ee4cd8c2d4051b"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/compiler.chibip.sha256": {
+      "bytes": 82,
+      "sha256": "02f5eb0a851692e475ebfdfd0f9e9da6f6cc3f44ccbfc04080e36e47efb4e370"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/compiler.sha256": {
+      "bytes": 178,
+      "sha256": "553b616904278d1a38b29003fb111986e8ef1d7a67f32013f80eb63e610a10e5"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/contract.json": {
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/evidence.json": {
+      "bytes": 12601,
+      "sha256": "49d766ac74ec66c8775ac4aa0ec39fa9c3492bad2d7181e0ad742436296e898f"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/packages/core/strings/Strings.chibi": {
+      "bytes": 15843,
+      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage1-contract.stderr.txt": {
+      "bytes": 62,
+      "sha256": "34bd39f7b92e864d392a8ec9f9b9c9a9c48b88abdfb93ef410b9fb62b9864c09"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage1-contract.stdout.txt": {
+      "bytes": 8,
+      "sha256": "d0359f9df27b9fe27e578953328a8d78b048b6b4437e2b27cf84ca9f469643b8"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage1.stderr.txt": {
+      "bytes": 69,
+      "sha256": "4aa5edf20611dff29165874ca798d293ebbb5fa61999fcd6eed20205c28d2d5e"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage1.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage1/bootstrap.json": {
+      "bytes": 14367,
+      "sha256": "98808699f666e107ce3c4e3cb571eab3565b475c865a0d72afa05d5fa899f1ea"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage2-contract.stderr.txt": {
+      "bytes": 62,
+      "sha256": "34bd39f7b92e864d392a8ec9f9b9c9a9c48b88abdfb93ef410b9fb62b9864c09"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage2-contract.stdout.txt": {
+      "bytes": 8,
+      "sha256": "d0359f9df27b9fe27e578953328a8d78b048b6b4437e2b27cf84ca9f469643b8"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage2.stderr.txt": {
+      "bytes": 69,
+      "sha256": "4aa5edf20611dff29165874ca798d293ebbb5fa61999fcd6eed20205c28d2d5e"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage2.stdout.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/stage2/bootstrap.json": {
+      "bytes": 14367,
+      "sha256": "98808699f666e107ce3c4e3cb571eab3565b475c865a0d72afa05d5fa899f1ea"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/bootstrap/bootstrap.json": {
+      "bytes": 24148,
+      "sha256": "a6b9f220afa81ca34b9e27ba7ceac0314eb94b0df658791d0dc270eb815ea57e"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/compiler_syntax/Syntax.chibi": {
+      "bytes": 1529,
+      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/lexical_binding/Binding.chibi": {
+      "bytes": 8697,
+      "sha256": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Behavior.chibi": {
+      "bytes": 21806,
+      "sha256": "6e814a9a7797a9b5307595550d693a77d54126ed704e9a863a9661475fade3d1"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Body.chibi": {
+      "bytes": 118852,
+      "sha256": "a58205f873d220bee74385e3418a87ef4f960df9eb451905deb396a8baec0556"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Bootstrap.chibi": {
+      "bytes": 393,
+      "sha256": "19f9c1a2a4f690bba38fafc536c2770c38d7a0eb82d281d16c320e2a16fef8da"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Compile.chibi": {
+      "bytes": 91644,
+      "sha256": "dc44001e5ab79307148b17350b8478c192c4f5fee02c9e6889af8a7f59b90ba3"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Maps.chibi": {
+      "bytes": 26455,
+      "sha256": "2d9728c9f814557a7d0b3938918e82954b7346cca5fcfcecd8426b9f7a105864"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Number.chibi": {
+      "bytes": 15715,
+      "sha256": "3624ec837dfb7c0442600bfe2a8945a8079d39c7cc8c6ef213cb23f5d7f3f7f3"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/References.chibi": {
+      "bytes": 25045,
+      "sha256": "eb8f4548f5675a05f7335a758c11f4e2fda76462b7cdad2f0eaeae9cc41a7cde"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Steps.chibi": {
+      "bytes": 184836,
+      "sha256": "60499d8b125436be7943b2ba257cac8214babf06f98620084d7354eb1d90a2cf"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_compiler/Tree.chibi": {
+      "bytes": 2578,
+      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_graph/Graph.chibi": {
+      "bytes": 13271,
+      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_paths/Paths.chibi": {
+      "bytes": 2274,
+      "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_routes/Routes.chibi": {
+      "bytes": 7736,
+      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/package_syntax/Extract.chibi": {
+      "bytes": 4276,
+      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/prepared_writer/Writer.chibi": {
+      "bytes": 26338,
+      "sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/runtime.json": {
+      "bytes": 881,
+      "sha256": "3761da9528fad5fd616f691542a4b13fc114262e0f8be459d21877d6f92aa5b3"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/source_snapshot/Snapshot.chibi": {
+      "bytes": 15884,
+      "sha256": "64ddb8a19fedc78b0920db46e8ad6415d9de85700adb04388186014c934ec41f"
+    },
+    "portable-original/.chibi/compiler-self-build/proof/tools/compiler/syntax_diagnostics/Diagnostics.chibi": {
+      "bytes": 2282,
+      "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+    },
+    "portable-original/.chibi/compiler-self-build/static-parse.log": {
+      "bytes": 24,
+      "sha256": "5e7d2c62e0f74fe18e2005940a56eec742f25ba6bcc5200f38853ebdcfd58301"
+    },
+    "portable-original/.chibi/compiler-self-build/workflow-static-parse.log": {
+      "bytes": 40,
+      "sha256": "ff8b20c5a82eba2719bfe34728404757aa4de8a77dd769f70c4de0d8a16d3707"
+    },
+    "portable-original/.chibi/logs/1792730842931233000-33847-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792730843775285000-33914-graph.log": {
+      "bytes": 4118,
+      "sha256": "881eadc11b87f8fc659190f66bba6f986b3ec77e0d23c8aa1c56041544f4a02a"
+    },
+    "portable-original/.chibi/logs/1792731326926354000-43723-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792731327813932000-43729-graph.log": {
+      "bytes": 4118,
+      "sha256": "5c7f46e590fdc92b427d62722173f53ac2501ca453b8fcc9c0faee1f16e87934"
+    },
+    "portable-original/.chibi/logs/1792733344347610000-76655-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792733345343121000-76661-graph.log": {
+      "bytes": 4118,
+      "sha256": "5c7f46e590fdc92b427d62722173f53ac2501ca453b8fcc9c0faee1f16e87934"
+    },
+    "portable-original/.chibi/logs/1792733435374696000-79704-configure-native.log": {
+      "bytes": 1091,
+      "sha256": "59ee616fbee8b21ffae6157e44fb7d86c92c76bd89ec5e3feddfe9674cac53c1"
+    },
+    "portable-original/.chibi/logs/1792733440829750000-80070-build.log": {
+      "bytes": 218923,
+      "sha256": "558bfbee8b9422c725d6aea5ca0f0820e58dd7fd2af3e4e190dc648cd10cb2bb"
+    },
+    "portable-original/.chibi/logs/1792733445894335000-80661-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792733446960272000-80667-graph.log": {
+      "bytes": 4118,
+      "sha256": "61d2f70e28ae611e57d4c0fe9ba989c029fc86ce79c558c130fca09815e6b7e9"
+    },
+    "portable-original/.chibi/logs/1792733580470549000-92655-configure-native.log": {
+      "bytes": 1083,
+      "sha256": "995dd6f638ad0c765477d342a56a80df6496d289dc8059b3eb61c6a2ebd410f0"
+    },
+    "portable-original/.chibi/logs/1792733585421805000-92933-build.log": {
+      "bytes": 220831,
+      "sha256": "afd14fe5b78602c2e4e389de9cb54949e187265291d066b5da7c9fe20850768d"
+    },
+    "portable-original/.chibi/logs/1792733590770575000-93592-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792733599997367000-93714-graph.log": {
+      "bytes": 8236,
+      "sha256": "9b8bab434071dd5b278a6b0e6e0d67b603e197accecf918a3b236ab024f09168"
+    },
+    "portable-original/.chibi/logs/1792735332885306000-21422-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792735341201717000-21690-graph.log": {
+      "bytes": 4118,
+      "sha256": "820c8867a1d90eabbfdacc3b92e12b24232f7253ff04770a22811be2872b4614"
+    },
+    "portable-original/.chibi/logs/1792735524936252000-24067-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792735532927006000-24172-graph.log": {
+      "bytes": 4118,
+      "sha256": "820c8867a1d90eabbfdacc3b92e12b24232f7253ff04770a22811be2872b4614"
+    },
+    "portable-original/.chibi/logs/1792735624203764000-24831-third-party.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "portable-original/.chibi/logs/1792735625054266000-24836-graph.log": {
+      "bytes": 4118,
+      "sha256": "ebeff81a06acc9c29cf24c150be0672df0f3f4504f12047e6948186e0d0d6de6"
+    },
+    "portable-original/.chibi/signed-producer-inventory.txt": {
+      "bytes": 3599,
+      "sha256": "27b945a5142f9007b46acf1cefb2acce0b650e33cccc4735e2007eee80b9f122"
+    },
+    "portable-original/.chibi/typed-assets-acceptance-build.log": {
+      "bytes": 4780,
+      "sha256": "1199c138b50b3d6777f456fe0785921b0d73cb3e92d142c4c998e986f3bf7ba6"
+    },
+    "portable-original/.chibi/typed-assets-engine-build.log": {
+      "bytes": 183,
+      "sha256": "f335c0c99cd8a2d9ef4eb26ac6fabddcbd7853e1185e5c7c8d352bdfd02cbd83"
+    },
+    "portable-original/.chibi/typed-assets-parser-format.log": {
+      "bytes": 10187313,
+      "sha256": "c225452391721672f578b112c2759cc0c3e09276e1cd891fa3b0c41a849881d0"
+    },
+    "portable-original/.chibi/typed-assets-preview-tests.log": {
+      "bytes": 1703,
+      "sha256": "4459758de346d852b6ea64f2ca7cb71457d7d2c7c15b5cff639d81ff0478ac90"
+    },
+    "portable-original/.chibi/typed-assets-sanitizer-build.log": {
+      "bytes": 327,
+      "sha256": "7b7f16b41886debb3a2c16b2b8b5435174af9f2bcb4adf3663f2dbb3040d2b82"
+    },
+    "portable-original/.chibi/typed-assets-sanitizer-tests.log": {
+      "bytes": 972,
+      "sha256": "672d937730e91e99d5b8e40b3d43be627c0a404dcc370f766e809b20e56d0456"
+    },
+    "portable-original/.chibi/typed-assets-sdk-build.log": {
+      "bytes": 184837,
+      "sha256": "1e9589a7fb88f0dba0d2b745c4839b950400512832533e845175a6fd939e967f"
+    },
+    "portable-original/.chibi/typed-assets-studio-build.log": {
+      "bytes": 5217,
+      "sha256": "75c3ff9f53d090d60af303cff87503ba96ee394e7c17361c74073be1bae97a99"
+    },
+    "portable-original/.chibi/typed-assets-studio-format.diff": {
+      "bytes": 38,
+      "sha256": "abc07078597158b78506ec468bafc9ea7fe7ec1c82e2559e5766f823634bf85e"
+    },
+    "portable-original/.chibi/typed-assets-studio-tests.log": {
+      "bytes": 1649,
+      "sha256": "24c5182922626a442c3610a68dce3c26cb746212dfbe52b48525a5d5973efc8a"
+    },
+    "portable-original/.chibi/typed-assets-tests.log": {
+      "bytes": 972,
+      "sha256": "32bdd645f7d26e0d0710c7461fb3756d88fc717cfabea6e1f15db8f390a0919a"
+    },
+    "portable-original/.chibi/typed-assets-web-build.log": {
+      "bytes": 176114,
+      "sha256": "47a4193a5fe4dc950110d69d27b52e0123dd9f3fc8ebc2a8a189771af9b156bb"
+    },
+    "portable-original/.chibi/unsigned-schema-inventory.txt": {
+      "bytes": 10884,
+      "sha256": "7ba79ead7f658dbba4bacd6805cf7c9dc8dddf560d37f22561da43fd57e8f1f7"
+    }
+  },
+  "status": "WIP preservation only; source and tests/status distinct"
+}

@@ -1,0 +1,53 @@
+[
+  {
+    "state": "read-only filesystem phase observation; not a test verdict",
+    "observed_utc": "2026-10-23T06:33:20.620613+00:00",
+    "capacity_fixtures": [
+      {
+        "graph_source_files": 1022,
+        "graph0_exists": true,
+        "imported_prototype_exists": false
+      }
+    ]
+  },
+  {
+    "observed_utc": "2026-10-23T06:47:41.731399+00:00",
+    "capacity_fixtures": [
+      {
+        "graph_source_files": 1022,
+        "graph0_exists": true,
+        "imported_prototype_exists": false
+      }
+    ]
+  },
+  {
+    "observed_utc": "2026-10-23T07:01:13.616996+00:00",
+    "capacity_fixtures": [
+      {
+        "graph_source_files": 1022,
+        "graph0_exists": true,
+        "imported_prototype_exists": false
+      }
+    ]
+  },
+  {
+    "observed_utc": "2026-10-23T07:30:34.169425+00:00",
+    "capacity_fixtures": [
+      {
+        "graph_source_files": 1021,
+        "graph0_exists": false,
+        "imported_prototype_exists": false
+      }
+    ]
+  },
+  {
+    "observed_utc": "2026-10-23T07:35:05.083443+00:00",
+    "capacity_fixtures": [
+      {
+        "graph_source_files": 1021,
+        "graph0_exists": false,
+        "imported_prototype_exists": false
+      }
+    ]
+  }
+]

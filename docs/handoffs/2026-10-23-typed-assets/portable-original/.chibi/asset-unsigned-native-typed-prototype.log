@@ -1,0 +1,13 @@
+(FAILED: test/language/source_assets.c (2468): located && located + strlen(call) <= typed_enemy + info.expression.end)
+(FAILED: test/language/source_assets.c (2763): !info.computed && !info.overridden)
+(FAILED: test/language/source_assets.c (2821): strstr(error, "entire native record position"))
+Running: typed_prototype_helpers_and_parameter_recomputation 
+Running: typed_prototype_override_reset_preserves_formula (OK) (1.549729 secs)
+Running: typed_prototype_parameter_type_refusal_is_atomic (OK) (0.523420 secs)
+Running: typed_prototype_rejects_unavailable_capabilities_and_maps_errors (OK) (1.723099 secs)
+Running: typed_prototype_budget_and_cancellation_bound_runtime (OK) (1.596810 secs)
+Running: typed_prototype_metadata_never_executes_helpers 
+Running: typed_prototype_native_record_override_preserves_resolved_siblings 
+===============================================================
+Summary: Passed: 4 Failed: 3 Total: 7 Suites: 0 Asserts: 63
+Test command wall time: 8.111s; includes in-test fixture setup; external configuration/build excluded.

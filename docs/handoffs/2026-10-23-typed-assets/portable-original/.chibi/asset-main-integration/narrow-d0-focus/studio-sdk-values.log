@@ -1,0 +1,16 @@
+Running: sdk_property_copy_keeps_string_bytes (OK)
+Running: sdk_history_keeps_utf8_text (OK)
+Running: sdk_history_keeps_non_utf8_bytes (OK)
+Running: sdk_history_keeps_descriptor_nul_bytes (OK)
+Running: sdk_checkpoint_rejects_native_nul_before (OK)
+Running: sdk_checkpoint_rejects_native_nul_after (OK)
+Running: sdk_history_preflights_the_complete_field_batch (OK)
+Running: sdk_graph_action_keeps_utf8_text (OK)
+Running: sdk_graph_action_keeps_nul_bytes (OK)
+Running: sdk_graph_action_keeps_non_utf8_bytes (OK)
+Running: sdk_graph_action_refuses_codec_rejection (OK)
+Running: sdk_application_catalog_has_optional_studio_actions SDK application catalog: studio=0 capabilities=1565 prototype_choices=0
+SDK application catalog: studio=1 capabilities=1585 prototype_choices=1
+(OK)
+===============================================================
+Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 163

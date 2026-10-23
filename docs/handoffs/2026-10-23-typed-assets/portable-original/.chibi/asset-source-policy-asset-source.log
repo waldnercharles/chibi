@@ -1,0 +1,9 @@
+Running: asset_source_navigates_event_payloads (OK) (0.001048 secs)
+Running: asset_source_reconcile_keeps_authored_text (OK) (3.417109 secs)
+Running: asset_source_parses_incomplete_drafts (OK) (0.001912 secs)
+Running: asset_source_reconciles_generated_subnormal_literals (OK) (1.642526 secs)
+Running: asset_source_reads_and_sets_scaled_real_parameters (OK) (0.854141 secs)
+Running: asset_source_native_reconcile_preserves_only_exact_integer_spelling (OK) (2.599862 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 84
+Test command wall time: 11.334s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,24 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+Running: typed_prototype_preview screenshot saved: /Users/cwaldner/.codex/visualizations/2026/10/21/01a160a6-7daa-74e1-b595-8af541a773eb/typed-prototype-final.png (3840x2160)
+
+Typed prototype rendered review: frames=2 files=1 actors=0 checkpoints=0 screenshots=1
+(OK) (1.084243 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 40
+Test command wall time: 1.805s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

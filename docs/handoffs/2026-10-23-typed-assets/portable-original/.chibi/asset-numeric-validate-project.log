@@ -1,0 +1,114 @@
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"scene document requires version 1, name, and entities"}]}],"valid":false,"assets":1,"errors":1,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+(FAILED: test/tools/validate_project.c (205): validate() == 0)
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+RmlUi warning: Syntax error parsing property declaration 'colr: red;' in style: 1.
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"scene document requires version 1, name, and entities"}]},{"kind":"ui","name":"Hud","path":"content/ui/Hud.rml","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"RMLUI","message":"Syntax error parsing property declaration 'colr: red;' in style: 1.","path":"content/ui/Hud.rcss","line":1,"column":1}]}],"valid":false,"assets":2,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+(FAILED: test/tools/validate_project.c (252): validate() != 0 && !yyjson_get_bool(result("valid")) && errors() == 1)
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"start scene ../../broken.chibi: line 2, column 28: Expected }"}],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"scene document requires version 1, name, and entities"}]}],"valid":false,"assets":1,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+(FAILED: test/tools/validate_project.c (269): validate() != 0 && errors() == 1 && !yyjson_arr_size(result("problems")))
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":2,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"JSON","message":"asset source is invalid"},{"severity":"error","rule_name":"CATALOG","message":"line 2, column 28: Expected }"}]}],"valid":false,"assets":1,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document 'Hud'"}],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document 'Pause'"}]}],"valid":false,"assets":1,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document 'Hud'"},{"severity":"error","rule_name":"LOAD","message":"UI document 'Hud' is not a regular file"}],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document 'Pause'"}]}],"valid":false,"assets":1,"errors":3,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document 'Hud'"},{"severity":"error","rule_name":"LOAD","message":"UI document 'Hud' is not a regular file"}],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document 'Pause'"}]}],"valid":false,"assets":1,"errors":3,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"UI document 'Extra' is not a regular file"}],"problems":[],"valid":false,"assets":3,"errors":1,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"prototype","name":"Menu","path":"content/prototypes/Menu.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document '../ui/Hud'"}]},{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"Unknown UI document '../ui/Hud'"}]}],"valid":false,"assets":4,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"CATALOG","message":"Unknown prototype 'Hero'","line":13,"column":67}]}],"valid":false,"assets":1,"errors":1,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"CATALOG","message":"Unknown behavior or system 'Ghost'","line":15,"column":41}]}],"valid":false,"assets":2,"errors":1,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"CATALOG","message":"Unknown behavior or system 'Ghost'","line":15,"column":41}]}],"valid":false,"assets":3,"errors":1,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"behavior","name":"Broken","path":"content/behaviors/Broken.chibi","errors":2,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"CATALOG","message":"Unexpected syntax","line":3,"column":1},{"severity":"error","rule_name":"CATALOG","message":"Expected }","line":3,"column":14}]}],"valid":false,"assets":4,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"behavior","name":"Broken","path":"content/behaviors/Broken.chibi","errors":2,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"SOURCE","message":"Unknown callable 'Foo'","line":4,"column":13},{"severity":"error","rule_name":"CATALOG","message":"Unknown type 'Foo'","line":2,"column":15}]}],"valid":false,"assets":4,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"Project version 32 needs an older build; this build opens version 33: /private/tmp/chibi-validate-project-1OZs6m/game/project.chibi"}],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"scene document requires version 1, name, and entities"}]}],"valid":false,"assets":1,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+(FAILED: test/tools/validate_project.c (596): validate() != 0 && errors() == 1)
+{"contract":1,"operation":"validate_project","result":{"project":[{"severity":"error","rule_name":"LOAD","message":"Application icon is not a readable PNG: icon.png: Cannot read bounded image file"}],"problems":[{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"scene document requires version 1, name, and entities"}]}],"valid":false,"assets":1,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+(FAILED: test/tools/validate_project.c (637): validate() != 0 && errors() == 1)
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"prototype","name":"Drone","path":"content/prototypes/Drone.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"prototype include Hull is unavailable"}]},{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"prototype include Hull is unavailable"}]}],"valid":false,"assets":3,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"new_asset","result":{"kind":"prototype","name":"Hull","path":"content/prototypes/Hull.chibi"},"ok":true}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[],"valid":true,"assets":4,"errors":0,"warnings":0},"ok":true}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"prototype","name":"Drone","path":"content/prototypes/Drone.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"prototype include Nope is unavailable"}]},{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"prototype include Nope is unavailable"}]}],"valid":false,"assets":4,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_project","result":{"project":[],"problems":[{"kind":"prototype","name":"Drone","path":"content/prototypes/Drone.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule":0,"rule_name":"LOAD","message":"prototype include Hull.chibi is unavailable"}]},{"kind":"scene","name":"Start","path":"content/scenes/Start.chibi","errors":1,"warnings":0,"diagnostics":[{"severity":"error","rule_name":"LOAD","message":"prototype include Hull.chibi is unavailable"}]}],"valid":false,"assets":4,"errors":2,"warnings":0},"error":{"code":"validation_failed","message":"project validation failed"},"ok":false}
+{"contract":1,"operation":"validate_asset","error":{"code":"validation_failed","message":"content/prototypes/huge.chibi declares a name longer than 1024 bytes"},"ok":false}
+{"contract":1,"operation":"new_asset","error":{"code":"validation_failed","message":"content/prototypes/huge.chibi declares a name longer than 1024 bytes"},"ok":false}
+{"contract":1,"operation":"new_asset","error":{"code":"asset_conflict","message":"content/prototypes/hull_base.chibi already declares the prototype 'Hull'"},"ok":false}
+{"contract":1,"operation":"validate_asset","error":{"code":"asset_conflict","message":"content/prototypes/hull_base.chibi and content/prototypes/hull_copy.chibi both declare the prototype 'Hull'"},"ok":false}
+Test command wall time: 109.194s; includes in-test fixture setup; external configuration/build excluded.
+
+INTERRUPTED by owner after known scaffold numeric-contract failures; exit130, incomplete; not a passing selector.

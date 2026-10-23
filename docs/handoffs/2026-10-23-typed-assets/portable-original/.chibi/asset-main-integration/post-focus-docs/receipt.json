@@ -1,0 +1,12 @@
+{
+  "state": "docs-only progress/limits refresh; no new runtime proof",
+  "before_tree": "f854194089e27e3ebbc987aaf213aa74dd1793bb",
+  "after_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "path": "docs/typed-assets/PLAN.md",
+  "patch_sha256": "c43cb9813e4d69449fb3d2f60054fa771e69c3982e15614484770bfca085b428",
+  "source_sha256": "849ede42375354db930c3787f41124d15c397b16cac04e7a81ee659ea1afc657",
+  "sdk_and_production_inputs": "unchanged; SDK proof belongs production0b5, fixture proof966, CI adaptationf854 source-only",
+  "engine_head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "publication": "none"
+}

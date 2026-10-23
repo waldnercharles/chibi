@@ -1,0 +1,75 @@
+(lldb) target create ".chibi/asset-main-integration/language/test_language"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/language/test_language' (arm64).
+(lldb) run --prototype-source
+Running: source_project_version_refusal_preserves_manifest (OK) (0.970192 secs)
+Running: source_prototype_composition_normalizes_fields_and_overrides_defaults (OK) (3.596923 secs)
+Running: source_relationships_survive_preparation_encoding_and_target_cleanup (OK) (2.357225 secs)
+Running: source_relationship_declarations_and_initial_pairs_reject_invalid_contracts (OK) (6.301264 secs)
+Running: source_catalog_analyzes_libraries_without_specialization_requests (OK) (0.001271 secs)
+Process 14958 launched: '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/language/test_language' (arm64)
+Process 14958 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x8)
+       frame #0: 0x000000010033f0ec test_language`ts_node_child_by_field_name + 40
+test_language`ts_node_child_by_field_name:
+->  0x10033f0ec <+40>: ldr    x8, [x8, #0x8]
+    0x10033f0f0 <+44>: ldrh   w25, [x8, #0x20]
+    0x10033f0f4 <+48>: cbz    w25, 0x10033f144          ; <+128>
+    0x10033f0f8 <+52>: mov    x21, x1
+Target 0: (test_language) stopped.
+(lldb) thread backtrace all
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x8)
+   * frame #0: 0x000000010033f0ec test_language`ts_node_child_by_field_name + 40
+     frame #1: 0x000000010022ac6c test_language`load_file + 3884
+     frame #2: 0x000000010022690c test_language`build + 3340
+     frame #3: 0x00000001001de09c test_language`source_asset_catalog_tracks_prototype_bases_and_relationship_symbols + 116
+     frame #4: 0x0000000100001a70 test_language`pu_run_test + 96
+     frame #5: 0x00000001001dbffc test_language`test_language_source_assets + 144
+     frame #6: 0x0000000100003340 test_language`main + 5568
+     frame #7: 0x000000018377c4e4 dyld`start + 6992
+(lldb) frame select 1
+frame #1: 0x000000010022ac6c test_language`load_file + 3884
+test_language`load_file:
+->  0x10022ac6c <+3884>: ldr    x0, [x21, #0xe0]
+    0x10022ac70 <+3888>: cbz    x0, 0x10022ac80           ; <+3904>
+    0x10022ac74 <+3892>: ldp    w8, w9, [x0, #-0x10]
+    0x10022ac78 <+3896>: cmp    w8, w9
+(lldb) frame variable
+(lldb) image lookup --address 0x000000010022ac6c --verbose
+      Address: test_language[0x000000010022ac6c] (test_language.__TEXT.__text + 2268460)
+      Summary: test_language`load_file + 3884
+       Module: file = "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/language/test_language", arch = "arm64"
+       Symbol: id = {0x00000749}, range = [0x0000000100229d40-0x000000010022b140), name="load_file"
+
+(lldb) disassemble --start-address 0x000000010022ac20 --count 28
+test_language`load_file:
+    0x10022ac20 <+3808>: cbz    w0, 0x10022ac44           ; <+3844>
+    0x10022ac24 <+3812>: add    w24, w24, #0x1
+    0x10022ac28 <+3816>: ldp    q0, q1, [x19, #0xe0]
+    0x10022ac2c <+3820>: stp    q0, q1, [sp, #0xd0]
+    0x10022ac30 <+3824>: add    x0, sp, #0xd0
+    0x10022ac34 <+3828>: bl     0x10033f17c               ; ts_node_named_child_count
+    0x10022ac38 <+3832>: cmp    w24, w0
+    0x10022ac3c <+3836>: b.lo   0x10022abf0               ; <+3760>
+    0x10022ac40 <+3840>: b      0x10022ac4c               ; <+3852>
+    0x10022ac44 <+3844>: ldp    q0, q1, [sp, #0xd0]
+    0x10022ac48 <+3848>: stp    q0, q1, [sp, #0xf0]
+    0x10022ac4c <+3852>: ldp    q0, q1, [sp, #0xf0]
+    0x10022ac50 <+3856>: stp    q0, q1, [sp, #0xb0]
+    0x10022ac54 <+3860>: adrp   x1, 456
+    0x10022ac58 <+3864>: add    x1, x1, #0xb7c            ; "name"
+    0x10022ac5c <+3868>: add    x8, sp, #0xd0
+    0x10022ac60 <+3872>: add    x0, sp, #0xb0
+    0x10022ac64 <+3876>: mov    w2, #0x4                  ; =4 
+    0x10022ac68 <+3880>: bl     0x10033f0c4               ; ts_node_child_by_field_name
+->  0x10022ac6c <+3884>: ldr    x0, [x21, #0xe0]
+    0x10022ac70 <+3888>: cbz    x0, 0x10022ac80           ; <+3904>
+    0x10022ac74 <+3892>: ldp    w8, w9, [x0, #-0x10]
+    0x10022ac78 <+3896>: cmp    w8, w9
+    0x10022ac7c <+3900>: b.lt   0x10022ac98               ; <+3928>
+    0x10022ac80 <+3904>: mov    w1, #0x50                 ; =80 
+    0x10022ac84 <+3908>: mov    w2, #0x1                  ; =1 
+    0x10022ac88 <+3912>: mov    w3, #0x0                  ; =0 
+    0x10022ac8c <+3916>: bl     0x100229980               ; dyna_grow_n
+(lldb) process kill
+Process 14958 exited with status = 9 (0x00000009) killed
+(lldb) quit

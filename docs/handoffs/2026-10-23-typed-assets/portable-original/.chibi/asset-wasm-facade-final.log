@@ -1,0 +1,4 @@
+compiler-host bytecode=0 sljit=18096153 wasm=0 fallback=0 overflow=0
+compiler-host bytecode=0 sljit=21139895 wasm=0 fallback=0 overflow=0
+compiler-host bytecode=0 sljit=21139895 wasm=0 fallback=0 overflow=0
+compiler-host bytecode=0 sljit=89 wasm=0 fallback=0 overflow=0

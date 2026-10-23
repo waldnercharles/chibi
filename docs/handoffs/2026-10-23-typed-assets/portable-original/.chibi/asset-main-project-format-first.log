@@ -1,0 +1,8 @@
+not canonical: content/behaviors/Tiny.chibi
+not canonical: content/prototypes/Box.chibi
+not canonical: content/scenes/Start.chibi
+Running: compiled_project_format_preserves_computation 
+Compiled format lifecycle: files=4 commands=3 child_processes<=4 parent_compiles=4 memory_hits=0 persistent_hits=0
+(OK) (2.253166 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 49

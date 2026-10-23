@@ -1,0 +1,6 @@
+Running: diagonal_and_cross_seam_cut_match_continuous_mask (OK) (0.000395 secs)
+Running: reduced_halos_preserve_partial_chunk_contours (OK) (0.000182 secs)
+Running: known_empty_neighbor_is_not_missing_or_solid (OK) (0.000149 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 235
+Test command wall time: 0.107s; includes in-test fixture setup; external configuration/build excluded.

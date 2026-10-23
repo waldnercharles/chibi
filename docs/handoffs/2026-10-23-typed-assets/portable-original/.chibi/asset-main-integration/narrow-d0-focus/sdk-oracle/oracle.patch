@@ -1,0 +1,30 @@
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -935,9 +935,25 @@
+     join(program, graph_build, "compile_commands.json");
+     yyjson_doc *doc = yyjson_read_file(program, 0, NULL, NULL);
+     REQUIRE(doc);
+-    bool listed = yyjson_arr_size(yyjson_doc_get_root(doc)) == 5;
++    yyjson_val *commands_root = yyjson_doc_get_root(doc);
++    bool listed = yyjson_arr_size(commands_root) > 0, file_io = false;
++    size_t index, count;
++    yyjson_val *command;
++    yyjson_arr_foreach(commands_root, index, count, command) {
++        const char *directory = yyjson_get_str(yyjson_obj_get(command, "directory"));
++        const char *file = yyjson_get_str(yyjson_obj_get(command, "file"));
++        const char *compiler = yyjson_get_str(
++            yyjson_arr_get(yyjson_obj_get(command, "arguments"), 0)
++        );
++        static const char prefix[] = CHIBI_SOURCE_ROOT "/src/support/";
++        listed = listed && directory && !strcmp(directory, CHIBI_SOURCE_ROOT) &&
++                 file && !strncmp(file, prefix, sizeof prefix - 1) &&
++                 compiler && !strcmp(compiler, "/usr/bin/false");
++        file_io |= file && !strcmp(file, CHIBI_SOURCE_ROOT "/src/support/file_io.c");
++    }
++    printf("SDK relocated graph: %zu support source commands\n", yyjson_arr_size(commands_root));
+     yyjson_doc_free(doc);
+-    REQUIRE(listed);
++    REQUIRE(listed && file_io);
+     /* An explicit profile must reject an omitted archiver even when PATH
+      * contains a usable ar. No machine default may enter this profile. */
+     char tools[SDK_PATH], fake_ar[SDK_PATH], missing_build[SDK_PATH];

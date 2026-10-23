@@ -1,0 +1,39 @@
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output or staging lies inside a distribution input
+sdk: output has an invalid directory ancestor
+sdk: output has an invalid directory ancestor
+sdk: graph compiler/core resources are missing or stale; rebuild the private hosts
+sdk: graph compiler/core resources are missing or stale; rebuild the private hosts
+sdk: output already exists
+sdk: output already exists
+sdk: cannot reserve staging directory; existing staging is preserved
+usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]
+sdk: staged compiler resources failed recovery
+sdk: compiler-tools publication failed
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+sdk: staged build host failed capability verification
+sdk: compiler-tools publication failed
+recovered the compiler of revision typed source tree e96f395b2a62f29c3a79858fc02f8ba594b2d866 (30cd287d1 + fa1b7b2bb + 3dd03160d): 12099901 bytes, sha256 03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c
+sdk: dependency archive differs from the graph executable link record
+(FAILED: test/tools/build_sdk.c (940): listed)
+Running: distribution_inputs_cannot_contain_output_or_staging (OK) (0.071653 secs)
+Running: missing_graph_outputs_fail_before_creating_staging (OK) (0.004656 secs)
+Running: existing_prefix_is_never_overwritten (OK) (0.010031 secs)
+Running: existing_staging_directory_is_never_claimed (OK) (0.017672 secs)
+Running: failed_staged_compiler_validation_removes_owned_staging (OK) (0.029508 secs)
+Running: failed_staged_build_host_verification_removes_owned_staging (OK) (0.057250 secs)
+Running: dependency_link_records_require_whole_archive_paths (OK) (0.020806 secs)
+Running: compiler_tools_package_and_run_after_relocation 
+===============================================================
+Summary: Passed: 7 Failed: 1 Total: 8 Suites: 0 Asserts: 199
+Test command wall time: 42.450s; includes in-test fixture setup; external configuration/build excluded.

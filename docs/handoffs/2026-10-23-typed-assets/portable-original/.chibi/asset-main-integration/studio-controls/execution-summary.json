@@ -1,0 +1,56 @@
+{
+  "state": "executed",
+  "source_tree": "a7ebaed0a999bd97a38b9f9676f02f824beac9ed",
+  "baseline_model": "261 passed; binary71d45f066d17fcf686906a71fde7e625bfaa3f2eb854a1d78c33139267903344",
+  "sdk": "c676e3cc48e8a3fb2110d57477d5d83875a0ac8b337d4e549129eeb3caf274d9",
+  "plan_sha256": "57e092acfd53233f898980de1f76ae68a9b7888caab95f98a24b1adbaac8c2b0",
+  "runner_sha256": "0ecc19cada0b9ff5a98fe6f70f2fbbe4209ae512d5002107a95113c1f79dfaf9",
+  "controls": [
+    {
+      "control": "checkpoint-after",
+      "exit_status": 1,
+      "caught_expected_defect": true,
+      "binary_sha256": "4ee5be6472780de6b94c4db7f0698eaef56345b1739af4aacfd02fa0e74ec305",
+      "mutated_source_sha256": "b7d6b66d1063520a3b9547318e769edb3406e5ccef84c118f2451a22440bb722"
+    },
+    {
+      "control": "checkpoint-before",
+      "exit_status": 1,
+      "caught_expected_defect": true,
+      "binary_sha256": "0747d54d92cbfb69036eeb617059cd8220d8db8116169a69a6724468f08af955",
+      "mutated_source_sha256": "7102f9ac5b4876dbb97b519b48f3278bc6bcc0abe614b656a8784da643bdbfcb"
+    },
+    {
+      "control": "field-batch-preflight",
+      "exit_status": 1,
+      "caught_expected_defect": true,
+      "binary_sha256": "c499ffd3da286b1bbba10065ba8a312621a9abcaad48ff73f8f4b99e4d0ca9ac",
+      "mutated_source_sha256": "752e131492e8a6c0df5ed52d2e1772628753d504cf8cac85725b1cd0baca988b"
+    },
+    {
+      "control": "graph-codec-failure",
+      "exit_status": 1,
+      "caught_expected_defect": true,
+      "binary_sha256": "3e9a74721cb314794dc8e4b4c5634c5cd4eb6cb93ee360a6af5c89e48a6b211a",
+      "mutated_source_sha256": "bc58907ecd4c78ca60e6cfda2b843d2f0c18978b961127dc07dbe268028ba430"
+    },
+    {
+      "control": "graph-type-name",
+      "exit_status": 0,
+      "caught_expected_defect": false,
+      "binary_sha256": "725eaa53b99d4fdfa97e463e44d8269fff6f07d90307d9fdc3216400b112cc48",
+      "mutated_source_sha256": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8"
+    },
+    {
+      "control": "history-byte-decoder",
+      "exit_status": 1,
+      "caught_expected_defect": true,
+      "binary_sha256": "36a91f1aca8f8d36420c709ff82809a2589e4020485dc01810fe225b1e5cda1c",
+      "mutated_source_sha256": "58bd865adf25bbee0fd6fe719f093af20e8a7c9276395b01be5a8199957b629a"
+    }
+  ],
+  "outcome": "Five expected assertion failures; type-name assignment deletion passed261, indicating redundant local hunk, not a demonstrated decoder defect. Shared decoder preserves declared metadata; line removed, extraction hash updated; final model pending. Original failed aggregate attempt retained in execution.log; remaining four completed in history-execution.log.",
+  "source_unchanged_during_controls": true,
+  "current_source_tree_after_reviewed_noop_removal": "a4afa345f15bbde8f972694d4caa16b91072a8c0",
+  "scope": "Existing C model assertions exercised via VFS source overlays and same dispatcher; no active source/index edits during controls; no broad/cold/Web coverage."
+}

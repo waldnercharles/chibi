@@ -1,0 +1,10 @@
+Running: hollow_mesh_bounds_do_not_suppress_cave_shadows (OK) (0.000020 secs)
+Running: opening_revision_and_retirement (OK) (0.003270 secs)
+Running: recess_options_rebuild_and_keep_proxy_openings (OK) (0.001484 secs)
+Running: complex_occupancy_is_rejected_without_closing_openings (OK) (0.001142 secs)
+Running: empty_volume_keeps_no_meshes_or_boxes (OK) (0.000023 secs)
+Running: volume_rebuild_after_a_cut_matches_a_fresh_build (OK) (0.017459 secs)
+Running: volume_boxes_fit_the_budget_with_many_columns (OK) (0.040685 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 195
+Test command wall time: 0.163s; includes in-test fixture setup; external configuration/build excluded.

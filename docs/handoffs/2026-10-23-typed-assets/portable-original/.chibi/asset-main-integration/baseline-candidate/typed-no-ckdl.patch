@@ -1,0 +1,36 @@
+--- a/tools/toolchain/SDK.chibi
++++ b/tools/toolchain/SDK.chibi
+@@ -178,7 +178,6 @@
+         Join(["share/chibi/licenses/fmt/LICENSE=", root, "/third_party/fmt/LICENSE"]),
+         Join(["share/chibi/licenses/fmt/README.md=", root, "/third_party/fmt/README.md"]),
+         Join(["share/chibi/licenses/yyjson/LICENSE=", root, "/third_party/yyjson/LICENSE"]),
+-        Join(["share/chibi/licenses/ckdl/COPYING=", root, "/third_party/ckdl/COPYING"]),
+         Join(["share/chibi/licenses/vendor/tree_sitter/LICENSE=", third_party, "/share/chibi/licenses/vendor/tree_sitter/LICENSE"]),
+         Join(["share/chibi/licenses/vendor/sljit/LICENSE=", third_party, "/share/chibi/licenses/vendor/sljit/LICENSE"])
+     ];
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -305,7 +305,6 @@
+         "third_party",
+         "third_party/fmt",
+         "third_party/yyjson",
+-        "third_party/ckdl",
+         "docs",
+     };
+     for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
+@@ -338,7 +337,6 @@
+         "third_party/fmt/LICENSE",
+         "third_party/fmt/README.md",
+         "third_party/yyjson/LICENSE",
+-        "third_party/ckdl/COPYING",
+     };
+     for (size_t i = 0; i < sizeof inputs / sizeof *inputs; i++) {
+         char from[SDK_PATH], to[SDK_PATH];
+@@ -818,7 +816,6 @@
+         "fmt/LICENSE",
+         "fmt/README.md",
+         "yyjson/LICENSE",
+-        "ckdl/COPYING",
+     };
+     for (size_t i = 0; i < sizeof dependencies / sizeof *dependencies; i++) {
+         char installed[SDK_PATH], source[SDK_PATH];

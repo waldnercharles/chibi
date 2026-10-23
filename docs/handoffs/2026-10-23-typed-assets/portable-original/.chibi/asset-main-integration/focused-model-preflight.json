@@ -1,0 +1,39 @@
+{
+  "scope": "Focused current typed SDK/model preparation; held baseline unimported; no broad/cold/Web acceptance",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "index_tree": "2b63ff9322987a92b40e36c69ca251e0c1c08094",
+    "runtime_patch": "3dd03160d89510e8a7f579affb8e51a77fe075a7"
+  },
+  "sdk": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release",
+    "build_id": "c676e3cc48e8a3fb2110d57477d5d83875a0ac8b337d4e549129eeb3caf274d9",
+    "source": {
+      "dirty": true,
+      "revision": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "snapshot_sha256": "48c80da1d7e1d605965c0f14a4e8e08458b3d7f2fa658c83ae025775a8057931"
+    },
+    "package_sha256": "126aba47d13c1901c0364fbd6ee47605f3b3f1cfda7d872a3a9d9cb2a0cfe2f5",
+    "recovery": "OFF",
+    "configuration": "Release / sanitizers OFF / native desktop compiler ON",
+    "log": "focused-native-sdk-package.log"
+  },
+  "studio": {
+    "head": "03269586af3c333b92a83fb6ea55a04373ed190f",
+    "index_tree": "e3abb80930dbed185d915a8f289f24791f51a865",
+    "files": {
+      "src/editor/documents/scene_history.c": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+      "src/editor/collab/actions_graph.c": "bb8114d3599024adeed36865ab166d9cc5fabcfabebac3ac63fbba0f41367d9c",
+      "tests/acceptance/compiled_asset_edit.h": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835",
+      "tests/acceptance/compiled_asset_history.h": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526",
+      "EXTRACTION.json": "8fa8d6697c329631850041be506636ddb6dae63f0f50223bb8f289a995ecdfce",
+      "tests/acceptance/README.md": "d5e81553979daf21575c453d756a4d983dd1b986a2458f502730fe4289f44941"
+    }
+  },
+  "generation_receipt_sha256": "f9f2a7926ffb5fd8a7d0c4a0bfbdfd9466ada623f078c86f35b9bec921276b67",
+  "model": {
+    "expected_assertions": 261,
+    "state": "build pending; not executed"
+  }
+}

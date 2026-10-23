@@ -1,0 +1,27 @@
+{
+  "sdk_package_id": "14f933b490c3b9ce128738417780fc822eb509ddc442cacf7ffccab698ac635f",
+  "engine_build_id": "0f9c89d076b1c60104de618627906797315cdfd71ec0892ab493f26db37b15b3",
+  "sdk": {
+    "CHIBI_ASSET_COMPILER_RECOVERY": "OFF",
+    "CHIBI_ENABLE_SANITIZERS": "OFF",
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
+    "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG"
+  },
+  "studio": {
+    "CHIBI_ENABLE_SANITIZERS": "OFF",
+    "CHIBI_STUDIO_BUILD_ACCEPTANCE": "ON",
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+    "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
+    "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG",
+    "Chibi_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/lib/cmake/Chibi"
+  },
+  "binary_sha256": {
+    "build-studio-release/bin/chibi": "22be1473db513c53b2e783ee8c5da008ca1bdbaaf49092f292869dff3527920e",
+    "build-studio-release/bin/chibi-compile": "f0d5303971ab73ec9e4efa81115c875d32f3b92b144f5953914e4269108811de",
+    "build-studio-release/bin/chibi-player": "2509062e5c360c1a662fb70b964fa8f23b02bf1121b78a9aa49238accc68b0b7",
+    "build-studio-release/bin/chibi-dev": "10b50fafc63b3ac24a534cc9d54dc5cbe04f6a9bf8af2e363bfe8279cdd7b40c"
+  },
+  "tests_run": false
+}

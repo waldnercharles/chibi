@@ -1,0 +1,35 @@
+Auto-merging PLAN.md
+Auto-merging README.md
+Auto-merging docs/chibi-refactor.md
+Auto-merging docs/code-language.md
+CONFLICT (content): Merge conflict in docs/code-language.md
+Auto-merging docs/code-source-roadmap.md
+CONFLICT (content): Merge conflict in docs/code-source-roadmap.md
+Auto-merging docs/declarative-sdf-modeling-plan.md
+Auto-merging docs/editor-design.md
+Auto-merging docs/evidence/package-syntax-graph.md
+CONFLICT (content): Merge conflict in docs/evidence/package-syntax-graph.md
+Auto-merging docs/language-friction.md
+Auto-merging docs/research/gas-activation-20261001.md
+Auto-merging docs/self-hosting-build.md
+Auto-merging docs/studio-rml-migration.md
+Auto-merging docs/testing.md
+Auto-merging sdk/CMakeLists.txt
+Auto-merging src/execution/call.c
+Auto-merging src/execution/function.h
+Auto-merging test/tools/build_graph.c
+CONFLICT (content): Merge conflict in test/tools/build_graph.c
+Auto-merging test/tools/build_process.c
+Auto-merging test/tools/main.c
+Auto-merging tools/compiler/bootstrap/bootstrap.json
+CONFLICT (content): Merge conflict in tools/compiler/bootstrap/bootstrap.json
+warning: Cannot merge binary files: tools/compiler/bootstrap/compiler.chibip (HEAD vs. origin/main)
+Auto-merging tools/compiler/bootstrap/compiler.chibip
+CONFLICT (content): Merge conflict in tools/compiler/bootstrap/compiler.chibip
+Auto-merging tools/compiler/package_compiler/Steps.chibi
+Auto-merging tools/graph/engine/Engine.chibi
+Auto-merging tools/graph/engine/Targets.chibi
+CONFLICT (content): Merge conflict in tools/graph/engine/Targets.chibi
+Auto-merging tools/package_sdk.py
+Auto-merging tools/test_policy.py
+Automatic merge failed; fix conflicts and then commit the result.

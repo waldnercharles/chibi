@@ -1,0 +1,56 @@
+{
+  "state": "prepared; waiting explicit coordinator compiler-diagnostic release",
+  "prepared_utc": "2026-10-23T05:07:43.107028+00:00",
+  "repository": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "build_host": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host",
+    "bytes": 1731344,
+    "sha256": "c1c1d7e4b09e3f67f8085514adc0fe95f00ee86bd08150ea1a259590d846da75",
+    "origin": "narrow native SDK68e625a9, typed production0b5; production/source inputs unchanged through9fa"
+  },
+  "groups": [
+    "test-native",
+    "test-materials",
+    "test-projects",
+    "test-language-all",
+    "test-tools"
+  ],
+  "argv_template": [
+    "make",
+    "<group>",
+    "JOBS=4",
+    "BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host"
+  ],
+  "source_files_sha256": {
+    ".github/scripts/compiler-self-build.ps1": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4",
+    ".github/workflows/compiler-runtime-seed.yml": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b",
+    ".github/workflows/compiler-recovery.yml": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1",
+    "tools/compiler/runtime.json": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+    "tools/compiler/bootstrap/bootstrap.json": "1328526b992a05385292a7d54b98908e91cf6871cee4a3da5725a99fb0938ad8",
+    "tools/compiler/bootstrap/compiler.chibip": "03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c",
+    "tools/compiler/asset_compiler/bootstrap/native64/asset_compiler.chibip": "a0db49cc71069f47fba735939ce051bfa767e7c31e0fd9d5afaf497abdfe1588",
+    "tools/compiler/asset_compiler/bootstrap/native64/manifest.json": "62c90f725d3f21e56c236db8b39ef4e8ec5c8735013a38f825d347d75df91fb3",
+    "tools/compiler/asset_compiler/bootstrap/native64/sources.sha256": "c7071188c1abeeac72cd7a18b5f703fa6ee8604d8e5f94444b2862e6a30ff279",
+    "tools/compiler/asset_compiler/bootstrap/wasm32/asset_compiler.chibip": "d6fae3796fac76e955c15a92a9902e05285296876868e45c72074efcb9b3c422",
+    "tools/compiler/asset_compiler/bootstrap/wasm32/manifest.json": "3f12ccd5861fc4d12f5e35287ff249f9e32a8b06bbd2d9dc89c002ffa39d2ca9",
+    "tools/compiler/asset_compiler/bootstrap/wasm32/sources.sha256": "c7071188c1abeeac72cd7a18b5f703fa6ee8604d8e5f94444b2862e6a30ff279"
+  },
+  "check_environment": {
+    "MallocNanoZone": "0",
+    "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0Qjgp7N:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin"
+  },
+  "execution": "one group per invocation, sequential, exact-source guards before/after; preserve failures; no automatic source edits/retries/commit/dispatch",
+  "powershell": "not run; no local executable; hosted proof follows eligible clean revision",
+  "parent_ancestry_policy": "HEAD/MERGE preserved; checkpoint commit after exact required-gate pass and coordinated review",
+  "python_version": "Python 3.13.16",
+  "configuration_evidence": "Actual current Graph compile commands; historical build/CMakeCache.txt is not Graph sanitizer-profile evidence",
+  "bootstrap_scope": "Required5 on staged9fa; HEAD-export bootstrap-recovery cannot prove staged changed-source recovery. Exact changed-source proof follows eligible clean checkpoint.",
+  "ancestry_forecast": {
+    "path": ".chibi/asset-main-integration/post-focus-ancestry-forecast/ancestry-forecast.json",
+    "sha256": "287272d2df7cfc4dc88830ef2d0995909e3f0c83f35fa95c4b5df93f540154a3",
+    "status": "owner-reported source-only; no merge"
+  }
+}

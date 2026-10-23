@@ -1,0 +1,30 @@
+third-party: running (log: .chibi/logs/1792699937817384000-33183-third-party.log)
+third-party: ok (0.2s; log: .chibi/logs/1792699937817384000-33183-third-party.log)
+graph: running (log: .chibi/logs/1792699938084098000-33189-graph.log)
+graph: FAILED (51.8s; log: .chibi/logs/1792699938084098000-33189-graph.log)
+reflect:   struct Ui (3 fields)
+reflect:   struct Fog (7 fields)
+reflect:   struct Vision (6 fields)
+reflect:   struct SensorContact (3 fields)
+reflect:   struct RenderState (2 fields)
+reflect:   struct Starfield2D (8 fields)
+reflect:   struct HRC2D (32 fields)
+reflect:   struct EntityCondition (4 fields)
+reflect:   struct Transform3D (3 fields)
+reflect:   struct GlobalTransform3D (4 fields)
+reflect:   struct GlobalTransform2D (2 fields)
+reflect:   struct Collider3D (10 fields)
+reflect:   struct Body3D (4 fields)
+reflect:   struct Gravity3D (1 fields)
+reflect:   struct Character3D (2 fields)
+reflect:   struct Joint3D (12 fields)
+reflect:   struct CF_V2 (2 fields)
+reflect:   struct CF_V3 (3 fields)
+reflect:   struct CF_V4 (4 fields)
+reflect:   struct CF_Quat (4 fields)
+reflect:   fn move_transform(Transform transform, float x, float y) -> Transform
+reflect:   fn transform_to_cf(Transform transform) -> CF_V2
+reflect:   fn transform_from_cf(CF_V2 value) -> Transform
+reflect:   fn transform_visual_offset(CF_V2 offset, float elevation, float heading, VisualTransform visual, CF_V2 * result_offset, float * result_elevation) -> const char *
+reflect:   fn visual_primitive_part(Geometrmake[1]: *** [toolchain-build] Error 1
+make: *** [build] Error 2

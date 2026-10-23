@@ -1,0 +1,6 @@
+Running: default_density_allocates_no_graphics_work (OK) (0.000007 secs)
+Running: enabled_medium_validates_physical_interval (OK) (0.000004 secs)
+Running: volume_quality_and_phase_are_bounded (OK) (0.000000 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 15
+Test command wall time: 0.098s; includes in-test fixture setup; external configuration/build excluded.

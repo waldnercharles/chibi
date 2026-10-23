@@ -1,0 +1,273 @@
+Running: native_save_rejects_invalid_text_without_mutating_store (OK) (0.000195 secs)
+Running: native_prepared_spawn_generations (OK) (0.000674 secs)
+Running: native_prepared_spawn_whole_tree (OK) (0.000047 secs)
+Running: native_prepared_world_runs_source_and_real_physics (OK) (0.001102 secs)
+Running: native_player_loads_package_and_retires_producers (OK) (0.002018 secs)
+Running: native_player_loads_named_scenes (OK) (0.000332 secs)
+Running: native_player_refused_scene_release_preserves_current_state (OK) (0.000220 secs)
+Running: native_player_shutdown_releases_external_panic_sources_including_disabled (OK) (0.000419 secs)
+Running: native_player_plays_sounds (OK) (0.000418 secs)
+Running: native_player_reads_declared_components (OK) (0.000395 secs)
+Running: native_ranges_distinguish_contracts_from_valid_wider_domains (OK) (0.000003 secs)
+Running: native_action_state_combines_sources_per_step (OK) (0.000441 secs)
+Running: native_recorded_taps_replay_per_step (OK) (0.000754 secs)
+Running: native_controller_bindings_replay_per_step (OK) (0.001112 secs)
+Running: native_controller_bindings_reject_invalid_values (OK) (0.000001 secs)
+Running: native_controller_device_handoff_keeps_action_held (OK) (0.000215 secs)
+Running: native_pointer_ray_records_replays_and_clears_focus (OK) (0.000868 secs)
+Running: native_controller_scenario_roundtrip (OK) (2.404764 secs)
+Running: native_pointer_scenario_roundtrip (OK) (2.651002 secs)
+Running: native_pause_keeps_held_actions (OK) (0.000435 secs)
+Running: native_world_binds_physics_for_pushes (OK) (0.000586 secs)
+===============================================================
+Summary: Passed: 21 Failed: 0 Total: 21 Suites: 0 Asserts: 1405
+Running: native_application_catalog_links_generated_kernels_and_input_reads (OK) (0.002081 secs)
+Running: native_catalog_ranges_come_from_validated_target_layouts (OK) (0.000003 secs)
+Running: native_catalog_preserves_builtin_relationship_identity_and_traits (OK) (0.000002 secs)
+Running: native_catalog_identity_lookup_preserves_order_and_duplicate_errors (OK) (0.000070 secs)
+Running: language_catalog_identity_lookup_keeps_namespaces_zero_and_order (OK) (0.000077 secs)
+Running: language_catalog_retains_and_validates_merged_relationships (OK) (0.000016 secs)
+Running: language_catalog_preserves_owned_template_and_specialization_metadata (OK) (0.000002 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 359
+Running: native_values_preserve_numeric_contracts_and_owned_results (OK) (0.000135 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 46
+Running: audio_bands_follow_tone_frequencies (OK) (0.000942 secs)
+Running: audio_levels_follow_amplitude_and_stay_normalized (OK) (0.000897 secs)
+Running: audio_silence_and_reset_clear_signal_history (OK) (0.001259 secs)
+Running: audio_onset_requires_rising_pcm_energy (OK) (0.000953 secs)
+Running: audio_chunk_boundaries_do_not_change_results_or_allocate (OK) (0.000128 secs)
+Running: audio_format_changes_discard_old_filter_and_window_state (OK) (0.001562 secs)
+Running: audio_antiphase_channels_keep_their_energy (OK) (0.001299 secs)
+Running: audio_source_changes_clear_published_levels (OK) (0.000011 secs)
+Running: audio_snapshot_binding_returns_host_measurements (OK) (0.000003 secs)
+Running: audio_invalid_and_duplicate_sources_preserve_state (OK) (0.000000 secs)
+Running: audio_queue_reset_clears_capture_request_and_snapshot (OK) (0.000000 secs)
+Running: audio_output_measures_the_real_mixer_and_resets_across_sources (OK) (0.000815 secs)
+===============================================================
+Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 298
+Running: noise_shader_transpiles_without_ambiguous_wgsl_comparison (OK) (0.000788 secs)
+Running: particle_vertex_program_transpiles_instanced_geometry_to_wgsl (OK) (0.000342 secs)
+Running: particle_vertex_keeps_instance_buffer_when_program_ignores_index (OK) (0.000209 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 32
+Running: quick_keyboard_release_can_launch_from_the_authored_frame_once (OK) (0.001071 secs)
+Running: quick_pointer_release_can_launch_from_the_authored_frame (OK) (0.000962 secs)
+Running: touch_request_waits_for_its_matching_release_and_owns_the_url (OK) (0.001107 secs)
+Running: a_new_gesture_cancels_the_previous_request (OK) (0.001194 secs)
+Running: pause_escape_and_pointer_cancel_discard_waiting_requests (OK) (0.001136 secs)
+Running: expired_gestures_cannot_launch_before_or_after_timer_delivery (OK) (0.001141 secs)
+Running: released_gestures_without_activation_cannot_wait_for_later_activation (OK) (0.001097 secs)
+Running: hidden_pages_discard_requests_and_reject_launches (OK) (0.001111 secs)
+Running: stop_removes_listeners_and_timers_and_restart_has_no_stale_request (OK) (0.001216 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 67
+Running: browser_frames_leave_the_framework_limiter_disabled (OK) (0.000002 secs)
+Running: native_frames_keep_the_sixty_fps_limit (OK) (0.000000 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 4
+Running: physics_task_pool_runs_every_range (OK) (0.002881 secs)
+Running: physics_rotated_terrain_is_refused (OK) (0.000124 secs)
+Running: physics_authored_motion (OK) (0.000308 secs)
+Running: physics_pushes_divide_by_mass (OK) (0.000032 secs)
+Running: physics_gravity_pulls_bodies_and_fluids (OK) (0.000240 secs)
+Running: physics_hinges_and_sliders_keep_to_their_axis (OK) (0.000244 secs)
+Running: physics_welds_and_distances_hold_bodies (OK) (0.000289 secs)
+Running: physics_joints_follow_their_components (OK) (0.000172 secs)
+Running: physics_joined_bodies_touch_only_with_collide (OK) (0.000034 secs)
+Running: physics_joints_need_two_bodies_and_sound_values (OK) (0.000036 secs)
+Running: physics_joints_name_their_other_by_path (OK) (4.277853 secs)
+Running: physics_contacts_and_queries_at_each_substep_count (OK) (0.005975 secs)
+Running: physics_parallel_collection_matches_serial (OK) (0.213634 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 68
+Running: physics3d_box_falls_rests_and_reports_contact (OK) (0.000378 secs)
+Running: physics3d_shapes_rest_on_their_scaled_extents (OK) (0.000258 secs)
+Running: physics3d_gravity_comes_from_the_scene (OK) (0.000077 secs)
+Running: physics3d_bodies_take_and_return_velocities (OK) (0.000215 secs)
+Running: physics3d_moved_transforms_teleport (OK) (0.000420 secs)
+Running: physics3d_teleports_wake_what_they_land_in (OK) (0.000296 secs)
+Running: physics3d_children_follow_their_parent (OK) (0.000258 secs)
+Running: physics3d_followers_use_the_parent_rotation (OK) (0.000031 secs)
+Running: physics3d_followers_move_with_their_body (OK) (0.000040 secs)
+Running: physics3d_followers_are_part_of_their_body (OK) (0.000499 secs)
+Running: physics3d_followers_move_as_their_body_is_solved (OK) (0.000064 secs)
+Running: physics3d_moving_followers_wake_what_they_meet (OK) (0.000478 secs)
+Running: physics3d_followers_never_touch_their_body (OK) (0.000031 secs)
+Running: physics3d_followers_stop_touching_the_body_they_join (OK) (0.000036 secs)
+Running: physics3d_raycasts_find_the_nearest_collider (OK) (0.000031 secs)
+Running: physics3d_shape_casts_sweep_a_collider (OK) (0.000051 secs)
+Running: physics3d_contact_queries_match_what_touches (OK) (0.000337 secs)
+Running: physics3d_hulls_wrap_mesh_vertices (OK) (0.000600 secs)
+Running: physics3d_meshes_hold_up_convex_bodies (OK) (0.000333 secs)
+Running: physics3d_sensors_overlap_meshes (OK) (0.000367 secs)
+Running: physics3d_hulls_and_meshes_need_prepared_meshes (OK) (0.000031 secs)
+Running: physics3d_hinges_and_sliders_keep_to_their_axis (OK) (0.000314 secs)
+Running: physics3d_balls_welds_and_distances_hold_bodies (OK) (0.000321 secs)
+Running: physics3d_joints_follow_their_components (OK) (0.000412 secs)
+Running: physics3d_joints_ignore_unused_limits_and_start_anywhere (OK) (0.000203 secs)
+Running: physics3d_joints_need_two_bodies_and_sound_values (OK) (0.000058 secs)
+Running: physics3d_characters_slide_along_what_they_meet (OK) (0.001007 secs)
+Running: physics3d_characters_ride_translating_platforms (OK) (0.000324 secs)
+Running: physics3d_characters_ride_rotating_and_dynamic_platforms (OK) (0.000533 secs)
+Running: physics3d_dynamic_platform_forces_do_not_stop_at_the_rider (OK) (0.000032 secs)
+Running: physics3d_platform_carry_stops_at_thin_obstacles (OK) (0.000033 secs)
+Running: physics3d_characters_leave_platforms (OK) (0.000485 secs)
+Running: physics3d_platform_support_drops_replaced_shapes_and_characters (OK) (0.000032 secs)
+Running: physics3d_platform_support_drops_destroyed_bodies (OK) (0.000037 secs)
+Running: physics3d_platform_support_obeys_filters_and_sensors (OK) (0.000040 secs)
+Running: physics3d_platform_support_follows_gravity (OK) (0.000126 secs)
+Running: physics3d_platform_carry_refreshes_sensor_contacts (OK) (0.000036 secs)
+Running: physics3d_platform_carry_stops_at_ceilings (OK) (0.000029 secs)
+Running: physics3d_platform_cannot_push_a_rider_through_a_ceiling (OK) (0.000029 secs)
+Running: physics3d_platform_support_uses_a_followers_body (OK) (0.000042 secs)
+Running: physics3d_platform_tilt_keeps_the_capsule_upright (OK) (0.000031 secs)
+Running: physics3d_characters_meet_only_solid_others (OK) (0.002779 secs)
+Running: physics3d_characters_land_within_a_short_pass (OK) (0.000027 secs)
+Running: physics3d_characters_meet_each_other (OK) (0.000140 secs)
+Running: physics3d_characters_need_a_kinematic_capsule (OK) (0.000034 secs)
+Running: physics3d_pushes_divide_by_mass (OK) (0.000022 secs)
+Running: physics3d_pushes_need_a_dynamic_body (OK) (0.000036 secs)
+Running: physics3d_contacts_end_when_bodies_part_or_go (OK) (0.000095 secs)
+Running: physics3d_masks_and_sensors_filter_contacts (OK) (0.000288 secs)
+Running: physics3d_interpolates_moving_roots_only (OK) (0.000023 secs)
+Running: physics3d_rejects_invalid_colliders (OK) (0.000014 secs)
+Running: physics3d_parallel_steps_match_serial (OK) (0.041502 secs)
+Running: physics3d_runs_as_a_world_module (OK) (0.000288 secs)
+===============================================================
+Summary: Passed: 53 Failed: 0 Total: 53 Suites: 0 Asserts: 1786
+Running: transforms_compose_parents_first (OK) (0.000024 secs)
+Running: transforms_follow_moves_and_reparenting (OK) (0.000013 secs)
+Running: transforms_settle_between_phases_without_physics (OK) (0.000028 secs)
+Running: transforms_compose_3d_matrices (OK) (0.000008 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 39
+Running: box3d_box_falls_rests_and_answers_raycasts (OK) (0.000222 secs)
+Running: box3d_contact_manifold_storage_can_be_reused (OK) (0.000213 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 30
+Running: radiance_files_decode_flat_and_run_length_rows (OK) (0.000057 secs)
+Running: radiance_files_reject_malformed_skies (OK) (0.000030 secs)
+Running: skies_prepare_once_from_mounted_content (OK) (0.000809 secs)
+Running: sky_imports_copy_valid_files_without_replacing_any (OK) (0.001056 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 665
+Running: parse_and_cache (OK) (0.000006 secs)
+Running: invalid_input (OK) (0.000011 secs)
+Running: point_half_open (OK) (0.000000 secs)
+Running: rectangle_overlap (OK) (0.000003 secs)
+Running: transformed_bounds (OK) (0.000002 secs)
+Running: native_queries_and_cache_lifecycle (OK) (0.000057 secs)
+Running: decorative_fixture_prepares_atlas_and_owns_cells (OK) (0.896302 secs)
+Running: mismatched_maps_fail_preparation (OK) (0.637495 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 140
+Running: scene_snapshot_and_complete_deferred_begin (OK) (0.000200 secs)
+Running: scene_failure_preflight_and_pending_begin_cancellation (OK) (0.000021 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 59
+Running: prepared_integers_roundtrip_in_shortest_form (OK) (0.000027 secs)
+Running: prepared_wire_bounds_use_encoded_width (OK) (0.000010 secs)
+Running: prepared_scene_survives_input_retirement_and_instantiation (OK) (0.000051 secs)
+Running: prepared_scene_roundtrips_repeated_component_rows (OK) (0.016891 secs)
+Running: prepared_scene_rejects_component_identity_conflicts (OK) (0.000015 secs)
+Running: prepared_scene_rechecks_shared_layouts_after_nested_catalog_replacement (OK) (0.000005 secs)
+Running: prepared_scene_rejects_incompatible_and_malformed_records (OK) (0.000032 secs)
+Running: prepared_scene_rejects_misplaced_parents_and_sibling_names (OK) (0.000002 secs)
+Running: prepared_scene_rejects_links_to_no_handle (OK) (0.000003 secs)
+Running: prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs (OK) (0.000039 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 13460
+Running: move_groups_topmost_selection_in_scene_order (OK) (0.000028 secs)
+Running: move_rejects_invalid_destinations_without_mutation (OK) (0.000012 secs)
+Running: snapshot_validation_bounds_depth_names_and_identity (OK) (0.000250 secs)
+Running: keep_world_compensates_transformless_2d_groups (OK) (0.000005 secs)
+Running: keep_world_preserves_mirrored_3d_placement (OK) (0.000005 secs)
+Running: keep_world_rejects_singular_and_sheared_3d_atomically (OK) (0.000003 secs)
+Running: keep_world_rejects_finite_compensation_that_loses_position (OK) (0.000003 secs)
+Running: reorder_keeps_local_components_exactly_even_when_singular (OK) (0.000001 secs)
+Running: moved_order_and_paths_round_trip_through_scene_document (OK) (0.901572 secs)
+Running: owned_snapshot_preserves_order_identity_and_local_data (OK) (0.000001 secs)
+Running: owned_snapshot_survives_mutation_and_rejects_stale_generation (OK) (0.000001 secs)
+Running: owned_snapshot_outlives_producer_and_releases_in_either_order (OK) (0.000001 secs)
+Running: owned_snapshot_rejects_other_and_replacement_owners (OK) (0.000001 secs)
+Running: owned_snapshot_rejects_invalid_capture_without_invalidating_prior_data (OK) (0.000001 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 212
+Running: prepared_renderer_resources_publish_atomically_and_retain_retired_tokens (OK) (0.000172 secs)
+Running: sprite_images_join_the_program_set_and_sample_by_variant (OK) (0.000009 secs)
+Running: sky_faces_follow_the_gpu_cube_map_layout (OK) (0.000053 secs)
+Running: sky_faces_hold_texels_as_halves (OK) (0.000002 secs)
+Running: sky_irradiance_integrates_the_cosine_lobe (OK) (0.000052 secs)
+Running: sky_irradiance_saturates_with_the_faces (OK) (0.000012 secs)
+Running: split_sum_table_integrates_the_specular_lobe (OK) (0.007064 secs)
+Running: prepared_skies_publish_with_their_generation (OK) (0.000086 secs)
+Running: discarded_gpu_spans_leave_nothing_to_take (OK) (0.000014 secs)
+Running: world_margins_follow_the_camera_on_whole_cells (OK) (0.000024 secs)
+Running: world_margins_stay_within_the_raster_limit (OK) (0.000000 secs)
+Running: axes_snap_to_whole_work_cells (OK) (0.000000 secs)
+Running: lighting_outside_hrc_ranges_is_fitted_and_noted (OK) (0.000029 secs)
+Running: borders_cover_exactly_the_cells_near_empty_space (OK) (0.000145 secs)
+Running: border_scratch_allocates_nothing_once_warm (OK) (0.000109 secs)
+Running: cached_borders_hit_without_allocating (OK) (0.000018 secs)
+Running: replaced_masks_never_reuse_old_borders (OK) (0.000020 secs)
+Running: border_cache_evicts_the_least_recent (OK) (0.000023 secs)
+Running: border_cache_keeps_its_first_entries_under_pressure (OK) (0.000046 secs)
+Running: oversized_and_unowned_borders_skip_the_cache (OK) (0.000078 secs)
+Running: new_masks_get_their_own_identity (OK) (0.000005 secs)
+Running: border_cache_holds_a_crowd (OK) (0.072942 secs)
+Running: desktop_keys_map_to_their_game_controls (OK) (0.000011 secs)
+Running: stick_dead_zone_rescales_to_full_length (OK) (0.000001 secs)
+===============================================================
+Summary: Passed: 24 Failed: 0 Total: 24 Suites: 0 Asserts: 1692
+Running: persistent_states_own_payloads_and_survive_reordered_generations (OK) (0.000161 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 48
+Running: source_aliases_preserve_nominal_headers_owned_bits_and_nested_calls (OK) (0.003467 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 144
+Running: public_integer_wrapping_division_and_comparisons (OK) (0.002114 secs)
+Running: public_integer_saturating_casts_and_exact_identity (OK) (0.000218 secs)
+Running: public_integer_flags_and_live_math_registers (OK) (0.000085 secs)
+Running: public_integer_loop_budget_preserves_completed_writes (OK) (0.000019 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 111636
+Running: public_numeric_conversions_preserve_edges_and_real_widths (OK) (0.000418 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 2820
+Running: public_select_preserves_each_scalar_width (OK) (0.000163 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 164
+Running: public_math_edge_values_match_native_semantics (OK) (0.000661 secs)
+Running: public_math_calls_preserve_live_registers_and_state (OK) (0.000037 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 32241
+Running: source_owned_tick_values_survive_dispatch_and_publication (OK) (0.003813 secs)
+Running: source_owned_tick_failures_survive_sibling_bank_reuse (OK) (0.003780 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 2916
+Running: source_tick_rebinds_service_after_current_host_call (OK) (0.000554 secs)
+Running: source_tick_preserves_incremental_attachment_state_and_order (OK) (0.000202 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 104
+(FAILED: test/runtime/source_features.c (936): !url_requests_open(test_urls, invalid[i]))
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+Running: source_native_reaction_preserves_delay_snapshot_and_target (OK) (0.008774 secs)
+Running: source_native_rhythm_samples_live_clock_after_nested_wait (OK) (0.004387 secs)
+Running: source_native_particles_preserve_nested_wait_and_exact_emission (OK) (0.004207 secs)
+Running: url_requests_validate_copy_replace_and_cancel 
+Running: source_native_url_action_reports_acceptance_and_cancellation (OK) (0.003565 secs)
+Running: source_controller_connected_reads_live_slots (OK) (0.002993 secs)
+Running: source_native_saved_numbers_preserve_values_and_defaults (OK) (0.004215 secs)
+Running: saved_numbers_reject_malformed_text_without_mutation (OK) (0.000006 secs)
+Running: project_saves_reopen_isolate_names_and_respect_override (OK) (0.000797 secs)
+Running: preview_loads_declared_components_before_sources_and_keeps_them_alive (OK) (2.928589 secs)
+===============================================================
+Summary: Passed: 9 Failed: 1 Total: 10 Suites: 0 Asserts: 455
+Test command wall time: 18.173s; includes in-test fixture setup; external configuration/build excluded.

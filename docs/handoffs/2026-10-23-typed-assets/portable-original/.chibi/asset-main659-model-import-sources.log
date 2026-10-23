@@ -1,0 +1,5 @@
+Running: model_imports_replace_nothing_and_undo_failures (OK) (0.324318 secs)
+Running: model_imports_refuse_names_the_project_declares (OK) (3.311642 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 36
+Test command wall time: 4.959s; includes in-test fixture setup; external configuration/build excluded.

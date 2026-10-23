@@ -1,0 +1,98 @@
+{
+  "state": "applied protocol9 source handoff; actual upgrade/green and required gates running or pending",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "frozen_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "production_sdk_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "sdk_fixture_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+    "ci_application_tree": "f854194089e27e3ebbc987aaf213aa74dd1793bb",
+    "actual_main_ancestry_merge": "not performed; exact6ef source forecast only",
+    "pre_protocol9_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+    "protocol9_delta_paths": [
+      "Makefile",
+      "docs/self-hosting-build.md",
+      "src/host/build_host.h",
+      "test/tools/build_process.c",
+      "test/tools/build_toolchain.c"
+    ],
+    "production_sdk_currency": "previous68e625 production0b5 is historical protocol8; fresh9 host and final SDK metadata required"
+  },
+  "studio": {
+    "commit": "466e2cc3545927261cf68f88d54caed0093f7cc4",
+    "tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+    "working_tree": "clean",
+    "publication": "not pushed; remote lookup422",
+    "postcommit_build_metadata_currency": "unexecuted; earlier tested tree equals commit tree"
+  },
+  "sdk": {
+    "build_id": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+    "configuration": "native compiler/desktop Release, sanitizersOFF/recoveryOFF",
+    "proof_scope": "Studio12/163 +model1/261, GraphSDK8/202; selected separate invocations, not broad or hosted finalpair"
+  },
+  "receipts": {
+    "native_focus": {
+      "path": ".chibi/asset-main-integration/narrow-d0-focus/receipt.json",
+      "sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461"
+    },
+    "studio_native_binding": {
+      "path": ".chibi/asset-main-integration/narrow-d0-focus/studio-native-binding.json",
+      "sha256": "f1d8ba6afbf0f391dd68340aee0f515900d4e523b62344aed3b5b4a60f3e5b9c"
+    },
+    "studio_local_checkpoint": {
+      "path": ".chibi/asset-main-integration/narrow-d0-focus/studio-local-merge-checkpoint.json",
+      "sha256": "cb53d4d7c5c9eeaecf3a4e705fb9c939c81d5384cc4040e5640eba4f0cfaf2e5"
+    },
+    "ci_source_application": {
+      "path": ".chibi/asset-main-integration/ci-compatibility-applied/receipt.json",
+      "sha256": "b03f4c3e51bea85717ef3b364a96e3617caf85df937dc8003c46b82aed0b84ba"
+    },
+    "ci_independent_review": {
+      "path": ".chibi/asset-main-integration/ci-compatibility-review/review.json",
+      "sha256": "ccf9e45b14deff0f87314e3f76a1cf44e23ea4b617aca1261144dd20d7d31bcf"
+    },
+    "docs_refresh": {
+      "path": ".chibi/asset-main-integration/post-focus-docs/receipt.json",
+      "sha256": "6c5989bd5ffdb5803f23b245138d1245c2ce4a75e5592d8e6cb87719f6826dc6"
+    },
+    "final_source_audit": {
+      "path": ".chibi/asset-main-integration/post-focus-source-audit.json",
+      "sha256": "87bd34616b5b302f9034ce86299dd1965cc9fe46ca31b9cb0f9a150c3c975ec7"
+    },
+    "ancestry_forecast": {
+      "path": ".chibi/asset-main-integration/post-focus-ancestry-forecast/ancestry-forecast.json",
+      "sha256": "287272d2df7cfc4dc88830ef2d0995909e3f0c83f35fa95c4b5df93f540154a3"
+    },
+    "normal_studio_pin_proposal": {
+      "path": ".chibi/asset-main-integration/studio-ci-binding/receipt.json",
+      "sha256": "c8ca9ade3b9565614e070e337dd90c46b7e32ba123ad7b47709c3d27cbc6efa9"
+    },
+    "protocol9_review": {
+      "path": ".chibi/asset-main-integration/ci-protocol9/typed-source-review.json",
+      "sha256": "40855875de735443f5cf93697ed0d3adf293ad73c588694ae031e788591a0c27"
+    },
+    "protocol9_applied_source": {
+      "path": ".chibi/asset-main-integration/ci-protocol9/typed-applied-source-check.json",
+      "sha256": "0ce173422ff55edfd111ef0ce46bd5b341276bd7a4a1c8cdefb638a16a866a9c"
+    },
+    "protocol9_ancestry": {
+      "path": ".chibi/asset-main-integration/protocol9-ancestry-forecast/ancestry-forecast.json",
+      "sha256": "f46f81ac2cf4c2b9f7c0c2f3c4b658558ec9941c74b5f65ed98db8ce721a9ee2"
+    }
+  },
+  "execution": "CI owns reviewed red/green and ordinary Make upgrade plus affected selectors and required5; no local heavy execution or source edits here",
+  "next_gates": [
+    "actual old8 regression red and final6ef green with ordinary Make automatic recovery to fresh9",
+    "affected selectors and five required engine groups on frozen6ef, with addressed failures",
+    "final source and ancestry clearance then eligible local engine checkpoint and ordinary main merge",
+    "actual postcommit source/SDK/build metadata currency and required hosted proof",
+    "matching published runtime and immutable Studio binding; remaining paired native/Web/cold/platform acceptance"
+  ],
+  "rich32": "not imported; separate runtime/storage hold",
+  "publication": "none from this chat",
+  "source_audit": {
+    "retired_format_text_refs_excluding_previously_audited_embeddedPNG": [],
+    "compiler19_and_asset37_source_inputs": "unchanged by exact five-path protocol delta; no regeneration inferred or performed",
+    "runtime_abi": "prepared20 unchanged; host compatibility9 is a separate marker"
+  }
+}

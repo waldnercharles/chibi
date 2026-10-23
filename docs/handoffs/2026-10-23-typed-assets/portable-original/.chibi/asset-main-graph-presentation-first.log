@@ -1,0 +1,18 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: single_use_constants_fold_unless_kept (OK) (0.000038 secs)
+Running: auto_folds_small_trees_and_explicit_inline_folds_larger (OK) (0.000005 secs)
+Running: settings_and_reroutes_keep_boxes_and_locals_fold (OK) (0.000022 secs)
+Running: removing_a_tree_removes_its_inline_sources (OK) (0.000005 secs)
+Running: function_entries_keep_their_boxes (OK) (0.000033 secs)
+Running: presentations_and_placement_round_trip (OK) (1.645175 secs)
+Running: arrangement_ignores_inline_nodes (OK) (0.000080 secs)
+Running: expressions_format_with_precedence (OK) (0.000110 secs)
+Running: component_reads_format_like_their_bindings (OK) (0.000228 secs)
+Running: shader_and_field_operations_format_as_expressions (OK) (0.000016 secs)
+Running: find_matches_titles_values_and_comments (OK) (0.000007 secs)
+Running: find_matches_expression_pins_source_and_bindings (OK) (0.000002 secs)
+Running: nodes_read_their_types_and_components_sentences (OK) (0.000049 secs)
+Running: events_read_their_own_sentences (OK) (0.000006 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 128
+Test command wall time: 2.238s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

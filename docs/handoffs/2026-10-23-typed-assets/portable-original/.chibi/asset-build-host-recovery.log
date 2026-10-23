@@ -1,0 +1,37 @@
+-- Configuring done (1.4s)
+-- Generating done (0.3s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build
+[0/2] Re-checking globbed directories...
+[1/33] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/binary_cache.c.o
+[2/33] Building C object sdk/CMakeFiles/chibi_scene_runtime.dir/__/src/runtime/scenes/scene.c.o
+[3/33] Building C object sdk/CMakeFiles/chibi_scene_runtime.dir/__/src/runtime/scenes/prototypes.c.o
+[4/33] Building C object sdk/CMakeFiles/chibi_scene_runtime.dir/__/src/runtime/scenes/prepared.c.o
+[5/33] Building C object sdk/language/CMakeFiles/chibi_language.dir/type_constructors.c.o
+[6/33] Building C object sdk/CMakeFiles/chibi_compiler.dir/__/src/language/lower.c.o
+[7/33] Linking C static library sdk/libchibi_support.a
+[8/33] Building C object sdk/CMakeFiles/chibi_asset_documents.dir/__/src/support/asset_document.c.o
+[9/33] Linking C static library sdk/libchibi_scene_runtime.a
+[10/33] Building C object sdk/CMakeFiles/chibi_authoring.dir/__/src/authoring/source_link.c.o
+[11/33] Linking C static library sdk/language/libchibi_language.a
+[12/33] Building C object sdk/CMakeFiles/chibi_authoring.dir/__/src/authoring/native_bindings.c.o
+[13/33] Building C object sdk/CMakeFiles/chibi_authoring.dir/__/src/authoring/source_prepare.c.o
+[14/33] Building C object sdk/CMakeFiles/chibi_asset_documents.dir/__/src/authoring/asset_compiler_host.c.o
+[15/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/language_catalog.c.o
+[16/33] Linking C static library sdk/libchibi_compiler.a
+[17/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_asset.c.o
+[18/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_asset_metadata.c.o
+[19/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_collection.c.o
+[20/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_prototype_edit.c.o
+[21/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_exports.c.o
+[22/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/package_tests.c.o
+[23/33] Building C object sdk/CMakeFiles/chibi_source_catalog.dir/__/src/authoring/source_package_prepare.c.o
+[24/33] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_catalog.c.o
+[25/33] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_host.c.o
+[26/33] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_io.c.o
+[27/33] Building C object sdk/CMakeFiles/chibi-build-host.dir/__/src/host/build_main.c.o
+[28/33] Building C object sdk/CMakeFiles/chibi_asset_documents.dir/generated/assets/asset_compiler_packaged.c.o
+[29/33] Linking C static library sdk/libchibi_asset_documents.a
+[30/33] Linking C static library sdk/libchibi_authoring.a
+[31/33] Linking C static library sdk/libchibi_source_catalog.a
+[32/33] Linking C executable sdk/chibi-build-host
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_support.a'

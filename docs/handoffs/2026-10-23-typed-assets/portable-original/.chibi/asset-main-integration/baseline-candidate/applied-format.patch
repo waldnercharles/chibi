@@ -1,0 +1,42 @@
+diff --git a/test/tools/build_sdk.c b/test/tools/build_sdk.c
+index 8d997480e..0e92e8959 100644
+--- a/test/tools/build_sdk.c
++++ b/test/tools/build_sdk.c
+@@ -299,12 +299,8 @@ static bool distribution_source(char root[SDK_PATH])
+     join(root, suite, "containment source");
+     REQUIRE(!mkdir(root, 0700));
+     static const char *directories[] = {
+-        "tools",
+-        "packages",
+-        "tools/toolchain",
+-        "third_party",
+-        "third_party/fmt",
+-        "third_party/yyjson",
++        "tools",       "packages",        "tools/toolchain",
++        "third_party", "third_party/fmt", "third_party/yyjson",
+         "docs",
+     };
+     for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
+diff --git a/test/tools/main.c b/test/tools/main.c
+index 4e5c10147..430647ca6 100644
+--- a/test/tools/main.c
++++ b/test/tools/main.c
+@@ -1207,12 +1207,12 @@ int main(int argc, char **argv)
+ #endif
+     if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
+         !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+-        !tilemap && !package && !desktop_dependencies && !third_party_publish && !package_ownership &&
+-        !unit && !test_runner && !validation_plan && !web_storage &&
+-        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared && !read &&
+-        !scene && !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
+-        !native && !native_values && !native_catalog && !physics &&
+-        !physics3d && !transforms && !render_resources && !interior_border &&
++        !tilemap && !package && !desktop_dependencies && !third_party_publish &&
++        !package_ownership && !unit && !test_runner && !validation_plan &&
++        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
++        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
++        !scene_snapshot_read && !native && !native_values && !native_catalog &&
++        !physics && !physics3d && !transforms && !render_resources && !interior_border &&
+         !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
+         !material_sampling && !scene2d && !terrain_seams && !scene3d &&
+         !material_ramps && !texture_transform && !arena && !render_geometry &&

@@ -1,0 +1,7 @@
+Running: terrain_requests_copy_identity_and_wait_for_the_engine_boundary (OK) (0.001426 secs)
+Running: terrain_storage_reports_unbound_and_invalid_source_failures (OK) (0.000192 secs)
+Running: terrain_storage_applies_queued_edits_and_restores_exact_state_without_physics (OK) (0.000775 secs)
+Running: terrain_storage_failed_loads_preserve_live_terrain_and_failed_writes_preserve_saved_bytes (OK) (0.001099 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 174
+Test command wall time: 0.111s; includes in-test fixture setup; external configuration/build excluded.

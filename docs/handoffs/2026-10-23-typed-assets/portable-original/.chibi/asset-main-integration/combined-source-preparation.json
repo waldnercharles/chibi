@@ -1,0 +1,37 @@
+{
+  "state": "source reviewed; new history/collaboration assertions not executed; combined compiler generation queued",
+  "engine": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi",
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "index_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+    "runtime_patch": "3dd03160d89510e8a7f579affb8e51a77fe075a7",
+    "runtime_main_merge": "5c28191b3ea53afa232c34e37b14fd9b01024aef"
+  },
+  "studio": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio",
+    "head": "03269586af3c333b92a83fb6ea55a04373ed190f",
+    "index_tree": "916de36ba6213702f404fe6de8749ff2bcfcc972",
+    "history_source": "7dbe3aac784caa9cdb5f119c4c89db26b79ee797",
+    "files": {
+      "src/editor/documents/scene_history.c": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+      "EXTRACTION.json": "002b0a818c19fc22d60601a3f57608dae9b77bb8a4cf7e3a7223842383218932",
+      "tests/acceptance/compiled_asset_edit.h": "29539fffff3b904fc37bb2e23d4157192f6c74e7a5f0426f96ae0abcfe6843a1",
+      "tests/acceptance/compiled_asset_history.h": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526",
+      "tests/acceptance/README.md": "8e4acbcdce33da5b38fe7025302f23e747610ecd6c89fe4827c1e4b2a4ac1eba"
+    }
+  },
+  "reviews": {
+    "history_production_and_regressions": "source_editing clear; no builds/tests",
+    "original_graph_protocol_helper": "studio_asset_flow clear; unchanged through history addition"
+  },
+  "checks": {
+    "engine_make_check_format": "passed .chibi/asset-main-integration/combined-check-format.log",
+    "new_model_assertions_expected": 252,
+    "new_model_assertions_run": false,
+    "history_checkpoint_writes": 10,
+    "history_restore_attempts": 4
+  },
+  "resource_state": "four compiler source inputs stale in each facade; preserved as recovery seeds",
+  "publication": "local only; no push or main landing"
+}

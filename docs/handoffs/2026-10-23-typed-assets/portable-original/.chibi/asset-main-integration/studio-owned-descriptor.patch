@@ -1,0 +1,678 @@
+diff --git a/src/editor/collab/actions_scene.c b/src/editor/collab/actions_scene.c
+index 10097c4..151737e 100644
+--- a/src/editor/collab/actions_scene.c
++++ b/src/editor/collab/actions_scene.c
+@@ -8,6 +8,7 @@
+ #include "support/array.h"
+ #include "support/asset_json.h"
+ #include "support/xalloc.h"
++#include "types/array.h"
+ #include "types/type.h"
+ #include "types/value_document.h"
+ 
+@@ -238,7 +239,8 @@ static bool read_plain_value(pin_type type, const char *type_name, yyjson_val *j
+         *out = value;
+         out->type_name = type_name;
+         if (type == PIN_STR || type == PIN_NAME) {
+-            out->str = xstrdup(value.str);
++            valid = pin_value_copy(out, &value) == 0;
++            out->type_name = type_name;
+         }
+         if (type == PIN_STRUCT) {
+             out->ptr = xmalloc(shape->size);
+@@ -253,7 +255,7 @@ static bool read_plain_value(pin_type type, const char *type_name, yyjson_val *j
+ static void free_action_value(pin_value *value)
+ {
+     if (value->type == PIN_STR || value->type == PIN_NAME) {
+-        free((void *)value->str);
++        pin_value_destroy(value);
+     }
+     if (value->type == PIN_STRUCT) {
+         free(value->ptr);
+diff --git a/src/editor/documents/scene_document.c b/src/editor/documents/scene_document.c
+index 977f93a..936d700 100644
+--- a/src/editor/documents/scene_document.c
++++ b/src/editor/documents/scene_document.c
+@@ -693,7 +693,7 @@ static void link_path(app_scene_authoring *scene, const scene_actor *actor, cons
+ {
+     const ecs_component_desc *desc = link->component;
+     pin_value held = { 0 };
+-    if (ecs_component_read_field(scene->world, actor->entity, desc->id, link->field, &held) !=
++    if (ecs_component_read_field(NULL, scene->world, actor->entity, desc->id, link->field, &held) !=
+         ECS_OK) {
+         return;
+     }
+diff --git a/src/editor/documents/scene_history.c b/src/editor/documents/scene_history.c
+index 4cd4978..000b20c 100644
+--- a/src/editor/documents/scene_history.c
++++ b/src/editor/documents/scene_history.c
+@@ -8,6 +8,7 @@
+ #include "support/asset_json.h"
+ #include "support/xalloc.h"
+ #include "types/array.h"
++#include "types/text.h"
+ #include "types/type.h"
+ #include "types/value_document.h"
+ 
+@@ -62,8 +63,8 @@ static void clear_edits(scene_edit **edits)
+             free((void *)fields[j].before.type_name);
+             free((void *)fields[j].after.type_name);
+             if (fields[j].before.type == PIN_STR || fields[j].before.type == PIN_NAME) {
+-                free((void *)fields[j].before.str);
+-                free((void *)fields[j].after.str);
++                pin_value_destroy(&fields[j].before);
++                pin_value_destroy(&fields[j].after);
+             }
+             if (fields[j].before.type == PIN_STRUCT) {
+                 free(fields[j].before.ptr);
+@@ -239,7 +240,7 @@ static bool same_value(pin_value a, pin_value b)
+         case PIN_F64: return a.d == b.d;
+         case PIN_ENUM: return a.e == b.e;
+         case PIN_STR:
+-        case PIN_NAME: return !strcmp(a.str ? a.str : "", b.str ? b.str : "");
++        case PIN_NAME: return pin_value_equal(&a, &b);
+         case PIN_STRUCT: return pin_value_equal(&a, &b);
+         default: return false;
+     }
+@@ -275,8 +276,11 @@ bool scene_history_push_fields(
+     for (int i = 0; i < count; i++) {
+         scene_field_edit field = fields[i];
+         if (field.before.type == PIN_STR || field.before.type == PIN_NAME) {
+-            field.before.str = xstrdup(field.before.str ? field.before.str : "");
+-            field.after.str = xstrdup(field.after.str ? field.after.str : "");
++            int before_error = pin_value_copy(&field.before, &fields[i].before);
++            int after_error = pin_value_copy(&field.after, &fields[i].after);
++            assert(!before_error && !after_error);
++            (void)before_error;
++            (void)after_error;
+         }
+         if (field.before.type == PIN_STRUCT) {
+             const type_desc *type = type_catalog_find(field.before.type_name);
+@@ -869,7 +873,6 @@ static av_value *history_value(av_doc *doc, pin_value value)
+     history_text(doc, object, "name", value.type_name);
+     switch (value.type) {
+         case PIN_BOOL: av_obj_add_bool(doc, object, "value", value.b); break;
+-        case PIN_STR:
+         case PIN_NAME:
+             history_text(doc, object, "value", value.str ? value.str : "");
+             break;
+@@ -891,6 +894,7 @@ static av_value *history_value(av_doc *doc, pin_value value)
+         case PIN_F64:
+             av_obj_add_val(doc, object, "value", av_real(doc, value.d));
+             break;
++        case PIN_STR:
+         case PIN_STRUCT: {
+             pin_value_write_document(doc, object, "value", value.type, value.type_name, &value);
+             break;
+@@ -922,7 +926,8 @@ static bool history_read_typed_value(pin_type type, const char *type_name, av_va
+         *out = value;
+         out->type_name = type_name;
+         if (type == PIN_STR || type == PIN_NAME) {
+-            out->str = xstrdup(value.str);
++            valid = pin_value_copy(out, &value) == 0;
++            out->type_name = type_name;
+         }
+         if (type == PIN_STRUCT) {
+             out->ptr = xmalloc(shape->size);
+@@ -954,7 +959,18 @@ static bool history_read_value(av_value *object, pin_value *out)
+         if (!av_is_str(value)) {
+             return false;
+         }
+-        out->str = xstrdup(av_get_str(value));
++        if (out->type == PIN_STR) {
++            pin_value text;
++            if (pin_value_text(NULL, &text, av_get_str(value), av_get_len(value))) {
++                return false;
++            }
++            out->text = text.text;
++        } else {
++            if (memchr(av_get_str(value), 0, av_get_len(value))) {
++                return false;
++            }
++            out->str = xstrdup(av_get_str(value));
++        }
+         return true;
+     }
+     if (out->type == PIN_BOOL) {
+diff --git a/src/editor/studio/studio_graph_values.c b/src/editor/studio/studio_graph_values.c
+index fbc92ec..9390d63 100644
+--- a/src/editor/studio/studio_graph_values.c
++++ b/src/editor/studio/studio_graph_values.c
+@@ -12,6 +12,7 @@
+ #include "graph/model/local.h"
+ #include "graph/model/pin_conv.h"
+ #include "graph/model/registry.h"
++#include "graph/model/value_copy.h"
+ #include "graph/nodes/behavior_expression.h"
+ #include "graph/nodes/conv_nodes.h"
+ #include "runtime/declared_components.h"
+@@ -62,6 +63,7 @@ typedef struct studio_graph_source
+     char meta[80];
+     char description[80];
+     char literal_text[256];
++    uint32_t literal_length;
+ } source_choice;
+ 
+ static bool compatible(const pin_spec *source, const pin_spec *target)
+@@ -158,10 +160,13 @@ static pin_binding choice_binding(const source_choice *choice)
+     return binding;
+ }
+ 
+-static pin_value choice_literal(const source_choice *choice)
++static pin_value choice_literal(graph *g, const source_choice *choice)
+ {
+     pin_value value = choice->literal;
+-    if (value.type == PIN_STR || value.type == PIN_NAME) {
++    if (value.type == PIN_STR) {
++        value = graph_text_value(g, choice->literal_text, choice->literal_length);
++        value.type_name = choice->literal.type_name;
++    } else if (value.type == PIN_NAME) {
+         value.str = choice->literal_text;
+     }
+     return value;
+@@ -179,6 +184,13 @@ static void add_literal_choice(
+     const pin_value *value
+ )
+ {
++    pin_string text = { 0 };
++    if (value->type == PIN_STR || value->type == PIN_NAME) {
++        text = pin_text(*value);
++        if (text.length >= sizeof((source_choice *)0)->literal_text) {
++            return;
++        }
++    }
+     add_choice(
+         choices,
+         SOURCE_TYPED_LITERAL,
+@@ -198,13 +210,10 @@ static void add_literal_choice(
+     choice->typed_literal = true;
+     choice->literal = *value;
+     if (value->type == PIN_STR || value->type == PIN_NAME) {
+-        snprintf(
+-            choice->literal_text,
+-            sizeof choice->literal_text,
+-            "%s",
+-            value->str ? value->str : ""
+-        );
+-        choice->literal.str = NULL;
++        memcpy(choice->literal_text, text.bytes, text.length);
++        choice->literal_text[text.length] = 0;
++        choice->literal_length = text.length;
++        choice->literal.ptr = NULL;
+     }
+ }
+ 
+@@ -430,10 +439,16 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
+     }
+     if (spec->type == PIN_STR || spec->type == PIN_NAME) {
+         static char decoded[256];
++        static pin_string string;
+         if (!quoted_text(text, decoded, sizeof decoded)) {
+             return false;
+         }
+-        value.str = decoded;
++        if (spec->type == PIN_STR) {
++            string = (pin_string){ decoded, (uint32_t)strlen(decoded) };
++            value.text = &string;
++        } else {
++            value.str = decoded;
++        }
+         *out = value;
+         return true;
+     }
+@@ -1257,7 +1272,7 @@ static bool apply_choice(studio *s, kit *k, node *target, int pin, const source_
+     }
+     studio_graph *state = &s->graph;
+     if (choice->typed_literal) {
+-        pin_value value = choice_literal(choice);
++        pin_value value = choice_literal(gr, choice);
+         return apply_input_constant(s, target, pin, &value);
+     }
+     if (choice->kind == SOURCE_EDIT_EXPRESSION) {
+diff --git a/src/editor/studio/studio_member_properties.c b/src/editor/studio/studio_member_properties.c
+index 5b513d7..cc7a9ef 100644
+--- a/src/editor/studio/studio_member_properties.c
++++ b/src/editor/studio/studio_member_properties.c
+@@ -18,6 +18,7 @@
+ #include "support/arena.h"
+ #include "support/array.h"
+ #include "support/xalloc.h"
++#include "types/text.h"
+ 
+ #include <assert.h>
+ #include <inttypes.h>
+@@ -178,8 +179,16 @@ static void put_default(gd_rows *r, yyjson_mut_val *row, const pin_spec *pin, co
+         return;
+     }
+     if (pin->type == PIN_STR || pin->type == PIN_NAME) {
+-        gd_put_text(r, row, "text", value->str ? value->str : "");
+-        gd_put_text(r, row, "placeholder", "");
++        arena scratch = { 0 };
++        const char *text = NULL;
++        const char *error = pin_text_cstring(&scratch, *value, &text, NULL);
++        gd_put_text(r, row, "text", error ? "" : text);
++        gd_put_text(r, row, "placeholder", error ? error : "");
++        if (error) {
++            gd_put_flag(r, row, "readonly", true);
++            gd_put_flag(r, row, "invalid", true);
++        }
++        arena_free(&scratch);
+         return;
+     }
+     bool integer = pin->type < PIN_F32;
+@@ -755,6 +764,13 @@ static bool sent_value(
+         return true;
+     }
+     if (pin->type == PIN_STR || pin->type == PIN_NAME) {
++        if (pin->type == PIN_STR) {
++            if (pin_value_text(scratch, out, text, strlen(text))) {
++                return false;
++            }
++            out->type_name = was->type_name;
++            return true;
++        }
+         size_t length = strlen(text) + 1;
+         char *copy = arena_alloc(scratch, length);
+         memcpy(copy, text, length);
+diff --git a/src/editor/studio/studio_node_calls.c b/src/editor/studio/studio_node_calls.c
+index e2808e0..b1c5e2b 100644
+--- a/src/editor/studio/studio_node_calls.c
++++ b/src/editor/studio/studio_node_calls.c
+@@ -4,9 +4,11 @@
+  * click on a row removed meanwhile does nothing. */
+ #include "editor/studio/studio_internal.h"
+ #include "editor/studio/studio_nodes.h"
+-#include "types/array.h"
+ #include "support/array.h"
++#include "types/array.h"
++#include "types/text.h"
+ 
++#include <assert.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -23,9 +25,12 @@ static const char *copy_text(arena *storage, const char *text)
+ 
+ static pin_value text_value(arena *storage, const char *text)
+ {
+-    return (pin_value){ .type = PIN_STR,
+-                        .type_name = "const char *",
+-                        .str = copy_text(storage, text) };
++    pin_value value;
++    const char *error = pin_value_text(storage, &value, text, strlen(text));
++    assert(!error);
++    (void)error;
++    value.type_name = "const char *";
++    return value;
+ }
+ 
+ static pin_value int_value(int i)
+@@ -246,9 +251,9 @@ uint64_t studio_nodes_stamp(const studio *s)
+ /* Selects the object as a click on its row does: alone, Toggle in or out
+    of the selection, or with Extend every object the object filter shows
+    from the anchor through it. */
+-static void select_object(studio *s, const pin_value *a)
++static void select_object(studio *s, const pin_value *a, const char *object)
+ {
+-    int index = studio_object_index(s, a[0].str);
++    int index = studio_object_index(s, object);
+     int *rows = studio_outliner_rows(s), row = row_in(rows, index);
+     if (row >= 0) {
+         finish_transform_edit(s->scene, false);
+@@ -265,29 +270,53 @@ static void select_object(studio *s, const pin_value *a)
+     afree(rows);
+ }
+ 
+-static void set_view(studio *s, const pin_value *a, unsigned flag)
++static void set_view(studio *s, const pin_value *a, const char *object, unsigned flag)
+ {
+-    int index = studio_object_index(s, a[0].str);
++    int index = studio_object_index(s, object);
+     if (index >= 0) {
+         studio_set_object_view(s, index, flag, a[1].b);
+     }
+ }
+ 
+-static void drop_on_object(studio *s, const pin_value *a)
++static void drop_on_object(studio *s, const char *const *text)
+ {
+-    int index = studio_object_index(s, a[0].str);
+-    if (index >= 0 && studio_editable(s) && a[1].str && a[2].str) {
+-        studio_drop_on(s, index, a[1].str, a[2].str);
++    int index = studio_object_index(s, text[0]);
++    if (index >= 0 && studio_editable(s)) {
++        studio_drop_on(s, index, text[1], text[2]);
+     }
+ }
+ 
+-static const char *text_of(const pin_value *v)
++static int text_input_count(studio_node_op op)
+ {
+-    return v->str ? v->str : "";
++    switch (op) {
++        case STUDIO_NODE_DROP_ON_OBJECT:
++        case STUDIO_NODE_MOVE_OBJECTS: return 3;
++        case STUDIO_NODE_RENAME_OBJECT: return 2;
++        case STUDIO_NODE_OBJECT_SELECTED:
++        case STUDIO_NODE_OBJECT_ROW:
++        case STUDIO_NODE_SPAWN_BREAK:
++        case STUDIO_NODE_SELECT_OBJECT:
++        case STUDIO_NODE_SET_HIDDEN:
++        case STUDIO_NODE_SET_LOCKED:
++        case STUDIO_NODE_ISOLATE:
++        case STUDIO_NODE_ADD_OBJECT:
++        case STUDIO_NODE_SET_FILTER:
++        case STUDIO_NODE_TOGGLE_SPAWN_BREAK: return 1;
++        default: return 0;
++    }
+ }
+ 
+ const char *studio_node_run(studio *s, studio_node_op op, const pin_value *in, arena *storage, pin_value *out)
+ {
++    arena scratch = { 0 };
++    const char *text[3];
++    for (int i = 0; i < text_input_count(op); i++) {
++        const char *error = pin_text_cstring(&scratch, in[i], &text[i], NULL);
++        if (error) {
++            arena_free(&scratch);
++            return error;
++        }
++    }
+     int index;
+     switch (op) {
+         case STUDIO_NODE_COUNT: return "Invalid Studio operation";
+@@ -297,12 +326,12 @@ const char *studio_node_run(studio *s, studio_node_op op, const pin_value *in, a
+         case STUDIO_NODE_SCENE_INFO: scene_info(s, storage, out); break;
+         case STUDIO_NODE_SELECTION: selection(s, storage, out); break;
+         case STUDIO_NODE_OBJECT_SELECTED:
+-            index = studio_object_index(s, in[0].str);
++            index = studio_object_index(s, text[0]);
+             out[0] = bool_value(index >= 0 && scene_instance_selected(s->scene, index));
+             break;
+         case STUDIO_NODE_OBJECT_ROW: {
+             int *rows = studio_outliner_rows(s);
+-            out[0] = int_value(row_in(rows, studio_object_index(s, in[0].str)));
++            out[0] = int_value(row_in(rows, studio_object_index(s, text[0])));
+             afree(rows);
+             break;
+         }
+@@ -314,49 +343,49 @@ const char *studio_node_run(studio *s, studio_node_op op, const pin_value *in, a
+             break;
+         case STUDIO_NODE_SPAWN_BREAK:
+             out[0] = bool_value(
+-                text_of(&in[0])[0] &&
+-                app_scene_authoring_spawn_break(s->scene, in[0].str)
++                text[0][0] && app_scene_authoring_spawn_break(s->scene, text[0])
+             );
+             break;
+         case STUDIO_NODE_PROTOTYPE_CHOICES:
+             prototype_choices(s, storage, out);
+             break;
+-        case STUDIO_NODE_SELECT_OBJECT: select_object(s, in); break;
++        case STUDIO_NODE_SELECT_OBJECT: select_object(s, in, text[0]); break;
+         case STUDIO_NODE_RENAME_OBJECT:
+-            if (studio_object_index(s, in[0].str) >= 0) {
+-                studio_rename_commit(s, strtoull(in[0].str, NULL, 10), text_of(&in[1]));
++            if (studio_object_index(s, text[0]) >= 0) {
++                studio_rename_commit(s, strtoull(text[0], NULL, 10), text[1]);
+             }
+             break;
+         case STUDIO_NODE_END_RENAME: s->rename.entity = 0; break;
+         case STUDIO_NODE_SET_HIDDEN:
+-            set_view(s, in, APP_SCENE_VIEW_HIDDEN);
++            set_view(s, in, text[0], APP_SCENE_VIEW_HIDDEN);
+             break;
+         case STUDIO_NODE_SET_LOCKED:
+-            set_view(s, in, APP_SCENE_VIEW_LOCKED);
++            set_view(s, in, text[0], APP_SCENE_VIEW_LOCKED);
+             break;
+         case STUDIO_NODE_ISOLATE:
+-            index = studio_object_index(s, in[0].str);
++            index = studio_object_index(s, text[0]);
+             if (index >= 0) {
+                 studio_isolate(s, index);
+             }
+             break;
+         case STUDIO_NODE_ADD_OBJECT:
+-            if (text_of(&in[0])[0]) {
+-                studio_add_object(s, in[0].str);
++            if (text[0][0]) {
++                studio_add_object(s, text[0]);
+             }
+             break;
+-        case STUDIO_NODE_DROP_ON_OBJECT: drop_on_object(s, in); break;
++        case STUDIO_NODE_DROP_ON_OBJECT: drop_on_object(s, text); break;
+         case STUDIO_NODE_MOVE_OBJECTS:
+-            studio_outliner_drop(s, text_of(&in[0]), text_of(&in[1]), text_of(&in[2]));
++            studio_outliner_drop(s, text[0], text[1], text[2]);
+             break;
+         case STUDIO_NODE_SET_FILTER:
+-            snprintf(s->outliner_filter, sizeof s->outliner_filter, "%s", text_of(&in[0]));
++            snprintf(s->outliner_filter, sizeof s->outliner_filter, "%s", text[0]);
+             break;
+         case STUDIO_NODE_TOGGLE_SPAWN_BREAK:
+-            if (text_of(&in[0])[0]) {
+-                studio_toggle_spawn_break(s, in[0].str);
++            if (text[0][0]) {
++                studio_toggle_spawn_break(s, text[0]);
+             }
+             break;
+     }
++    arena_free(&scratch);
+     return NULL;
+ }
+diff --git a/src/editor/studio/studio_prototype_actions.c b/src/editor/studio/studio_prototype_actions.c
+index b9aeefe..732cadc 100644
+--- a/src/editor/studio/studio_prototype_actions.c
++++ b/src/editor/studio/studio_prototype_actions.c
+@@ -9,8 +9,9 @@
+ #include "editor/documents/component_properties.h"
+ #include "editor/studio/studio_internal.h"
+ #include "editor/ui/labels.h"
+-#include "types/value_format.h"
++#include "support/arena.h"
+ #include "support/array.h"
++#include "types/value_format.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -147,7 +148,9 @@ static prototype_field *field_rows(studio *s, scene_actor *actor, const prototyp
+     kit *k = s->kit;
+     struct studio_prototype_action *a = &s->prototype_action;
+     prototype_field *checked = NULL;
++    arena storage = { 0 };
+     for (int i = 0; i < acount(fields); i++) {
++        arena_reset(&storage);
+         const ecs_component_desc *desc = fields[i].component;
+         const type_field *field = &desc->type->fields[fields[i].field];
+         prototype_component component = { .desc = desc };
+@@ -157,13 +160,16 @@ static prototype_field *field_rows(studio *s, scene_actor *actor, const prototyp
+         snprintf(label, sizeof label, "%s \xc2\xb7 %s", component_label, field_label);
+         snprintf(key, sizeof key, "f%d", i);
+         pin_value value = { 0 };
+-        ecs_component_read_field(
+-            s->scene->world,
+-            actor->entity,
+-            desc->id,
+-            fields[i].field,
+-            &value
+-        );
++        if (ecs_component_read_field(
++                &storage,
++                s->scene->world,
++                actor->entity,
++                desc->id,
++                fields[i].field,
++                &value
++            ) != ECS_OK) {
++            continue;
++        }
+         bool on = !skipped(a->skipped, fields[i]);
+         kit_push(k, key, NULL, "prototype-field");
+         if (kit_checkbox(k, "check", &on, label, 0) && on) {
+@@ -183,6 +189,7 @@ static prototype_field *field_rows(studio *s, scene_actor *actor, const prototyp
+             apush(checked, fields[i]);
+         }
+     }
++    arena_free(&storage);
+     return checked;
+ }
+ 
+diff --git a/src/editor/workspace/scene_asset_drop.c b/src/editor/workspace/scene_asset_drop.c
+index ad6119a..22d8090 100644
+--- a/src/editor/workspace/scene_asset_drop.c
++++ b/src/editor/workspace/scene_asset_drop.c
+@@ -5,10 +5,13 @@
+  * save, history or runtime ever reads it. */
+ #include "authoring/reference_index.h"
+ #include "editor/workspace/scene_internal.h"
++#include "support/arena.h"
+ #include "support/array.h"
+ #include "support/xalloc.h"
++#include "types/text.h"
+ 
+ #include <stdlib.h>
++#include <string.h>
+ 
+ int scene_asset_field(
+     const app_scene_authoring *scene,
+@@ -60,19 +63,35 @@ void scene_preview_field(
+ 
+ void scene_field_previews_apply(app_scene_authoring *scene)
+ {
++    arena storage = { 0 };
+     for (int i = 0; i < acount(scene->field_previews); i++) {
++        arena_reset(&storage);
+         scene_field_preview *p = &scene->field_previews[i];
+         pin_value value = { 0 };
+         if (!ecs_entity_is_alive(scene->world, p->entity) ||
+-            ecs_component_read_field(scene->world, p->entity, p->component, p->field, &value) !=
++            ecs_component_read_field(&storage, scene->world, p->entity, p->component, p->field, &value) !=
+                 ECS_OK ||
+             !scene_property_value_copy(&p->before, value)) {
+             continue;
+         }
+-        value.str = p->text;
+-        ecs_component_write_field(scene->world, p->entity, p->component, p->field, value);
+-        p->shown = true;
++        if (value.type == PIN_STR) {
++            pin_value preview = { 0 };
++            if (pin_value_text(&storage, &preview, p->text, strlen(p->text))) {
++                scene_property_value_free(&p->before);
++                continue;
++            }
++            preview.type_name = value.type_name;
++            value = preview;
++        } else {
++            value.str = p->text;
++        }
++        p->shown = ecs_component_write_field(scene->world, p->entity, p->component, p->field, value) ==
++                   ECS_OK;
++        if (!p->shown) {
++            scene_property_value_free(&p->before);
++        }
+     }
++    arena_free(&storage);
+ }
+ 
+ void scene_field_previews_clear(app_scene_authoring *scene)
+diff --git a/src/editor/workspace/scene_authoring.c b/src/editor/workspace/scene_authoring.c
+index 21f2a13..d6e3296 100644
+--- a/src/editor/workspace/scene_authoring.c
++++ b/src/editor/workspace/scene_authoring.c
+@@ -29,12 +29,14 @@
+ #include "runtime/behaviors/entities.h"
+ #include "runtime/component_catalog.h"
+ #include "runtime/declared_components.h"
++#include "support/arena.h"
+ #include "support/array.h"
+ #include "support/asset_json.h"
+ #include "support/asset_text.h"
+ #include "support/text_file.h"
+ #include "support/xalloc.h"
+ #include "types/array.h"
++#include "types/text.h"
+ #include "types/type.h"
+ #include "types/value_document.h"
+ #include "types/value_format.h"
+@@ -1123,7 +1125,18 @@ bool scene_property_value_copy(pin_value *out, pin_value value)
+     }
+     *out = value;
+     out->type_name = value.type_name ? xstrdup(value.type_name) : NULL;
+-    if (value.type == PIN_STR || value.type == PIN_NAME) {
++    if (value.type == PIN_STR) {
++        pin_string text = pin_text(value);
++        pin_value copy = { 0 };
++        if (pin_value_text(NULL, &copy, text.bytes, text.length)) {
++            free((void *)out->type_name);
++            *out = (pin_value){ 0 };
++            return false;
++        }
++        out->text = copy.text;
++        return true;
++    }
++    if (value.type == PIN_NAME) {
+         out->str = xstrdup(value.str ? value.str : "");
+         return true;
+     }
+@@ -1144,7 +1157,10 @@ void scene_property_value_free(pin_value *value)
+ {
+     assert(value);
+     free((void *)value->type_name);
+-    if (value->type == PIN_STR || value->type == PIN_NAME) {
++    if (value->type == PIN_STR) {
++        free((void *)value->text);
++    }
++    if (value->type == PIN_NAME) {
+         free((void *)value->str);
+     }
+     if (value->type == PIN_STRUCT) {
+@@ -1240,9 +1256,11 @@ static void commit_property_others(
+     int field
+ )
+ {
++    arena storage = { 0 };
+     for (int i = 0; i < acount(others); i++) {
++        arena_reset(&storage);
+         pin_value after = { 0 };
+-        if (ecs_component_read_field(scene->world, others[i].entity, component, field, &after) ==
++        if (ecs_component_read_field(&storage, scene->world, others[i].entity, component, field, &after) ==
+                 ECS_OK &&
+             !pin_value_equal(&others[i].before, &after)) {
+             scene->property_actor = others[i].entity;
+@@ -1260,6 +1278,7 @@ static void commit_property_others(
+         }
+         scene_property_value_free(&others[i].before);
+     }
++    arena_free(&storage);
+ }
+ 
+ void finish_property_edit(app_scene_authoring *scene)
+diff --git a/src/editor/workspace/scene_gizmo.c b/src/editor/workspace/scene_gizmo.c
+index aec2bc4..a9d9af2 100644
+--- a/src/editor/workspace/scene_gizmo.c
++++ b/src/editor/workspace/scene_gizmo.c
+@@ -131,7 +131,14 @@ static pin_value read_field(
+ )
+ {
+     pin_value value = { 0 };
+-    int read = ecs_component_read_field(world, entity, component->id, field_named(component, name), &value);
++    int read = ecs_component_read_field(
++        NULL,
++        world,
++        entity,
++        component->id,
++        field_named(component, name),
++        &value
++    );
+     assert(read == ECS_OK && value.type == PIN_F32);
+     return value;
+ }
+@@ -366,6 +373,7 @@ int scene_gizmo_record(
+                                 .field = field_named(component, name) };
+     pin_value value = { 0 };
+     int read = ecs_component_read_field(
++        NULL,
+         scene->world,
+         entity,
+         component->id,

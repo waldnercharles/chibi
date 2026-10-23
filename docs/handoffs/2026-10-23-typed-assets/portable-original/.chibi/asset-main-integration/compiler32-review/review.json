@@ -1,0 +1,116 @@
+{
+  "scope": "Independent source reconciliation only. No source/index import, edits, builds, tests or generation. Execution lane held; owner gates failed before tests. No eligibility or runtime proof.",
+  "owner_tree": "2acb927a94319b4bfff42fa56d5af613e4b664da",
+  "owner_base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "prior_rich_tree": "b029a6f59d1ff2f8185541538c90c1930a0e3cce",
+  "typed_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "owner_patch_sha256": "772b6c308f9c20254ebb899884ace034424f9d9006ff394b59d0e470e44c1e4a",
+  "manifest_hash_mismatches": [],
+  "changed_since_prior_rich": [
+    "PLAN.md",
+    "docs/package-compiler.md",
+    "docs/self-hosting-build.md",
+    "docs/testing.md",
+    "test/language/package_compiler_chibi.c",
+    "test/tools/main.c",
+    "tools/compiler/package_compiler/Behavior.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/test_policy.py",
+    "src/host/build_host.c",
+    "src/host/build_host.h",
+    "src/host/build_main.c",
+    "test/tools/build_process.c"
+  ],
+  "unchanged_previously_reviewed_bridge_files": [
+    "src/authoring/native_graph_prepare.c",
+    "src/authoring/native_graph_prepare.h",
+    "src/authoring/project_prepare.c",
+    "src/authoring/project_prepare.h",
+    "src/authoring/source_graph_library.c",
+    "src/authoring/source_graph_library.h",
+    "src/host/compile_main.c",
+    "src/toolchain/compiler_target.c",
+    "src/toolchain/compiler_target.h"
+  ],
+  "findings": [
+    {
+      "priority": "required integration adaptation",
+      "file": "tools/compiler/package_compiler/Steps.chibi",
+      "line": 2056,
+      "issue": "Pure package assert still requires an exported native row. Typed asset/compiler native profiles intentionally have no assert row; typed migration implemented unshadowed assert as a language intrinsic. New BodyContext.package_assert is passed but not consulted by call resolution. Importing current owner sources without adaptation would break game:assets and asset-source helpers. Rich exact linked intrinsic identity must remain for rich catalogs.",
+      "evidence": "BodyContext contains package_assert only in declaration and ignored NativeWrite case bindings; CallStep is called without context."
+    }
+  ],
+  "integration_map": [
+    {
+      "files": [
+        "tools/compiler/package_compiler/Compile.chibi",
+        "tools/compiler/package_compiler/Body.chibi",
+        "tools/compiler/package_compiler/Steps.chibi",
+        "tools/compiler/package_compiler/Behavior.chibi",
+        "tools/compiler/package_compiler/Maps.chibi",
+        "tools/compiler/package_compiler/References.chibi"
+      ],
+      "action": "Integrate cohesive rich catalog + body effect preparation changes together. Compile/Body/Steps/Behavior now share expanded Body.Emitted/BodyContext/facts and two-pass preparation. Maps/References unchanged from prior rich freeze but still required versus typed base."
+    },
+    {
+      "files": [
+        "tools/compiler/package_compiler/Bootstrap.chibi"
+      ],
+      "action": "Retain typed pub BootstrapContract()->int[]{return[5,2]}. File absent from owner tree; do not propagate deletion."
+    },
+    {
+      "files": [
+        "test/tools/game_equivalence.c"
+      ],
+      "action": "Union new INPUT_PORTS/effects assertions and test_tool_game_input route with typed Story.chibi/Counter.chibi ordinary Build data.Prototype(Transform.Real3/Real4, empty behaviors) fixture and tool_run wrappers. Do not restore old DSL or outer55sec timeouts."
+    },
+    {
+      "files": [
+        "test/language/main.c",
+        "test/tools/main.c",
+        "tools/test_policy.py"
+      ],
+      "action": "Union incoming source/compiler selectors with typed prototype-source/typed-prototype/asset-document/transport/cache/browser dispatchers and current publication/build-sdk selectors. Owner whole files would drop typed coverage and restore asset_text/KDL diagnostics."
+    },
+    {
+      "files": [
+        "test/language/package_compiler_chibi.c",
+        "test/language/package_compiler_chibi.h"
+      ],
+      "action": "Retain cohesive new library native-alias runtime oracles, both backend runtime counters, pure-provider WRITE facts and Append receiver/reversed-item/debug oracles. Preserve typed test source/error migrations and owner fixture corrections; source review is not proof these oracles execute successfully."
+    },
+    {
+      "files": [
+        "src/authoring/project_prepare.c",
+        "test/runtime/fields.c",
+        "test/tools/environment_authoring.c"
+      ],
+      "action": "Previously reviewed bridge unchanged. Preserve typed .chibi scene discovery, ordinary Build field fixture paths and seam_ray fallback during narrow hunk integration; no repeat bridge review."
+    },
+    {
+      "files": [
+        "src/host/build_host.c",
+        "src/host/build_host.h",
+        "src/host/build_main.c",
+        "test/tools/build_process.c"
+      ],
+      "action": "New combined host effect-metadata transport should remain paired with compiler exports; not re-reviewed here beyond entry/context dependencies. Separate host reviewer owns it."
+    }
+  ],
+  "semantic_delta_summary": [
+    "Compared with prior rich: actual write facts on native/retained/reference/component/state stores; global write-summary fixed point over authored invocation edges; two-pass preparation disables unsafe in-place append item lowering and checks stable resolved semantics.",
+    "Body debug update watches/owner argument rewrite changed; new C fixtures exercise actual native aliases and Append runtime/debug parity instead of only artifact shape.",
+    "Maps/References, native target rich9/10 metadata, StageOne18 entry transport and reviewed C bridge hashes unchanged from prior rich freeze."
+  ],
+  "generation_implications": [
+    "Six existing compiler source contents change; no new native capability or prepared ABI implied by these source changes.",
+    "Keep Bootstrap.chibi inventory and compiled contract [5,2]; owner base lacks this additional typed input.",
+    "Compiler19-source bootstrap and native64/wasm32 asset37-source closure fingerprints/resources must be rebuilt/reproduced for any future integrated compiler. Current finished generation041c explicitly excludes rich and remains untouched.",
+    "Assert adaptation and source/fixture/selector reconciliation must precede freezing new source hashes. Runtime/format/generation and required native groups remain pending; no matching existing resource may be relabelled as current."
+  ],
+  "owner_patch_sha256_actual": "772b6c308f9c20254ebb899884ace034424f9d9006ff394b59d0e470e44c1e4a",
+  "owner_patch_hash_matches": true
+}

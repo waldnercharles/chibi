@@ -1,0 +1,2 @@
+compiler-host bytecode=0 sljit=2245123 wasm=0 fallback=0 overflow=0
+[{"tag":11863471359730548737,"values":[{"start":1638,"end":1648,"line":33,"column":25,"document":48,"message":"Unexpected syntax"}]}]

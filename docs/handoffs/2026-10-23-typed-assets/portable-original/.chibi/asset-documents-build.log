@@ -1,0 +1,40 @@
+native-toolchain: running (log: .chibi/logs/1792630084111248000-88019-native-toolchain.log)
+native-toolchain: FAILED (3.0s; log: .chibi/logs/1792630084111248000-88019-native-toolchain.log)
+FAILED: [code=1] sdk/CMakeFiles/chibi_asset_documents.dir/__/src/support/asset_document.c.o 
+/opt/homebrew/bin/cmake -E env CCACHE_BASEDIR=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi /opt/homebrew/bin/ccache /opt/homebrew/opt/llvm/bin/clang  -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/asset_documents -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/third_party/yyjson -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/asset_values -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/../src/support/asset_document.c:26:12: error: use of undeclared identifier 'asset_source_write'; did you mean 'asset_source_read'?
+   26 |     return asset_source_write(root, NULL, &diagnostic);
+      |            ^~~~~~~~~~~~~~~~~~
+      |            asset_source_read
+sdk/public/asset_documents/authoring/asset_compiler_host.h:40:9: note: 'asset_source_read' declared here
+../src/support/asset_document.c:26:54: error: too few arguments to function call, expected 4, have 3
+   26 |     return asset_source_write(root, NULL, &diagnostic);
+      |            ~~~~~~~~~~~~~~~~~~                        ^
+sdk/public/asset_documents/authoring/asset_compiler_host.h:40:9: note: 'asset_source_read' declared here
+   40 | av_doc *asset_source_read(
+/opt/homebrew/bin/cmake -E env CCACHE_BASEDIR=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi /opt/homebrew/bin/ccache /opt/homebrew/opt/llvm/bin/clang  -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/asset_documents -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/third_party/yyjson -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/asset_values -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/support -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/asset_json -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/json -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/compiler_host -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/behavior_runtime -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/execution -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/types -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/execution_contract -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/ecs -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/tasks -I/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk/public/events -fdebug-compilation-dir=build -g -std=gnu23 -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -Wall -Wextra -Wpedantic -Werror -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -Wno-zero-length-array -Wno-string-concatenation -Wno-gnu-zero-variadic-macro-arguments -MD -MT sdk/CMakeFiles/chibi_asset_documents.dir/__/src/support/asset_document.c.o -MF sdk/CMakeFiles/chibi_asset_documents.dir/__/src/support/asset_document.c.o.d -o sdk/CMakeFiles/chibi_asset_documents.dir/__/src/support/asset_document.c.o -c /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/support/asset_document.c
+../src/support/asset_document.c:26:12: error: use of undeclared identifier 'asset_source_write'; did you mean 'asset_source_read'?
+   26 |     return asset_source_write(root, NULL, &diagnostic);
+      |            ^~~~~~~~~~~~~~~~~~
+      |            asset_source_read
+sdk/public/asset_documents/authoring/asset_compiler_host.h:40:9: note: 'asset_source_read' declared here
+   40 | av_doc *asset_source_read(
+      |         ^
+../src/support/asset_document.c:26:54: error: too few arguments to function call, expected 4, have 3
+   26 |     return asset_source_write(root, NULL, &diagnostic);
+      |            ~~~~~~~~~~~~~~~~~~                        ^
+sdk/public/asset_documents/authoring/asset_compiler_host.h:40:9: note: 'asset_source_read' declared here
+   40 | av_doc *asset_source_read(
+      |         ^
+   41 |     const char *source,
+      |     ~~~~~~~~~~~~~~~~~~~
+   42 |     const char *path,
+      |     ~~~~~~~~~~~~~~~~~
+   43 |     const asset_compiler_options *,
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   44 |     asset_compiler_diagnostic *
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2 errors generated.
+[2/4] Building C object sdk/CMakeFiles/chibi_asset_documents.dir/__/src/authoring/asset_compiler_host.c.o
+ninja: build stopped: subcommand failed.
+make[1]: *** [toolchain-build] Error 1
+make: *** [build] Error 2

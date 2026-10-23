@@ -1,0 +1,23 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: published_source_opens_instead_of_starter (OK) (0.001652 secs)
+Running: reopening_a_revision_preserves_edits_without_redownloading (OK) (0.000707 secs)
+Running: new_revision_retains_the_previous_workspace (OK) (0.000753 secs)
+Running: explicit_workspace_overrides_published_default (OK) (0.000820 secs)
+Running: explicit_sample_overrides_published_default (OK) (0.000813 secs)
+Running: new_project_overrides_published_default (OK) (0.000762 secs)
+Running: invalid_manifest_stops_startup (OK) (0.000942 secs)
+Running: workspace_without_marker_is_preserved (OK) (0.001154 secs)
+Running: failed_import_is_removed (OK) (0.001222 secs)
+Running: checksum_failure_stops_startup (OK) (0.001006 secs)
+Running: download_failure_stops_startup (OK) (0.000829 secs)
+Running: archive_cannot_escape_its_workspace (OK) (0.000880 secs)
+Running: saved_document_warns_before_unload_until_persistence_completes (OK) (0.000801 secs)
+Running: save_during_persistence_waits_for_the_newer_contents (OK) (0.000753 secs)
+Running: save_after_flush_completion_starts_a_new_flush_before_opening (OK) (0.001065 secs)
+Running: failed_persistence_warns_until_a_successful_retry (OK) (0.000746 secs)
+Running: created_project_failure_keeps_storage_retry_after_inline_error (OK) (0.000749 secs)
+Running: imported_project_failure_keeps_storage_retry (OK) (0.000832 secs)
+Running: browser_export_does_not_require_native_process_apis (OK) (0.004017 secs)
+===============================================================
+Summary: Passed: 19 Failed: 0 Total: 19 Suites: 0 Asserts: 97
+Test command wall time: 1.934s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

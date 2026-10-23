@@ -1,0 +1,46 @@
+{
+  "state": "fresh-SDK native build and two focused selectors passed",
+  "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+  "sdk": {
+    "Chibi_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/lib/cmake/Chibi",
+    "CHIBI_STUDIO_SDK_BUILD_ID": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+    "CHIBI_STUDIO_SDK_MANIFEST_SHA256": "ae3533450bd954297b10bf69fd95febf4f1b820fa6c8c83ad2c69ad19e2e1004"
+  },
+  "binaries": {
+    "chibi-dev": {
+      "bytes": 43369000,
+      "sha256": "ceb98eca7cce4ad0dcb5b7269b93a6da09ba5a618a1f629e4d0f6e2438984078"
+    },
+    "studio-acceptance": {
+      "bytes": 44030864,
+      "sha256": "97e1c669ea1ade03869e81652b0127f7fd49e0d0291b9b8c35ad627f7bf988ad"
+    }
+  },
+  "studio_files": {
+    "src/editor/documents/scene_history.c": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+    "src/editor/collab/actions_graph.c": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8",
+    "tests/acceptance/compiled_asset_edit.h": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835",
+    "tests/acceptance/compiled_asset_history.h": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526",
+    "tests/acceptance/sdk_values.h": "86742a4b8c1243c6bfd77507eff33f110d1c7dad40a32254d0a5246f67df3566",
+    "tests/acceptance/main.c": "c80fbaca38e1260a4c11eeb5d91a7d4b271b3dd2e9a015541bd9f3d07f714f72",
+    "EXTRACTION.json": "86be7f393daa744ebb15684be7465e6b69181b139571071db93e821c3b8e9d63"
+  },
+  "sdk_values": {
+    "cases": 12,
+    "assertions": 163,
+    "log": "studio-sdk-values.log"
+  },
+  "model": {
+    "cases": 1,
+    "assertions": 261,
+    "seconds": 5.189,
+    "frames": 0,
+    "renders": 0,
+    "compile_attempts": 9,
+    "memory_hits": 39,
+    "persistent_hits": 0,
+    "log": "studio-model.log"
+  },
+  "scope": "No startup, renders, browser or pointer interaction; no hosted pair proof"
+}

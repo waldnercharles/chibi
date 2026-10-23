@@ -1,0 +1,12 @@
+third-party: running (log: .chibi/logs/1792700379676609000-53088-third-party.log)
+third-party: ok (0.2s; log: .chibi/logs/1792700379676609000-53088-third-party.log)
+graph: running (log: .chibi/logs/1792700379913213000-53093-graph.log)
+graph: FAILED (29.9s; log: .chibi/logs/1792700379913213000-53093-graph.log)
+ld: warning: ignoring duplicate libraries: '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/lib/libchibi_asset_values.a', '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/lib/libchibi_json.a'
+compiler-host bytecode=0 sljit=18666705 wasm=0 fallback=0 overflow=0
+compiler-host bytecode=0 sljit=21769481 wasm=0 fallback=0 overflow=0
+compiler-host bytecode=0 sljit=89 wasm=0 fallback=0 overflow=0
+asset compiler regeneration failed
+graph: the build failed
+make[1]: *** [toolchain-build] Error 1
+make: *** [build] Error 2

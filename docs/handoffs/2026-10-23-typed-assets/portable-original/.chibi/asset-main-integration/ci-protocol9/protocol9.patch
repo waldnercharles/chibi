@@ -1,0 +1,119 @@
+--- a/src/host/build_host.h
++++ b/src/host/build_host.h
+@@ -6,9 +6,11 @@
+ 
+ #include <signal.h>
+ 
+-/* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
+- * needs a capability or syntax that an older host lacks. */
+-#define CHIBI_BUILD_HOST_PROTOCOL 8
++/* Raise with the Makefile's `build` gate whenever the compiler bootstrap
++ * contract or build programs need a capability or syntax an older host lacks.
++ * Version 9 supports the compiled bootstrap contract; it does not establish
++ * support for prepared build artifacts. */
++#define CHIBI_BUILD_HOST_PROTOCOL 9
+ #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
+ 
+ /* A collection a program imports as name:path, as Odin's -collection names. */
+--- a/Makefile
++++ b/Makefile
+@@ -110,7 +110,7 @@
+ 		'make clean          Remove default engine build outputs'
+ 
+ build:
+-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 8 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
++	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 9 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+ 
+ .PHONY: toolchain-build stage-zero-build graph-reference
+ ifneq ($(GRAPH_BUILD),)
+--- a/test/tools/build_process.c
++++ b/test/tools/build_process.c
+@@ -442,15 +442,15 @@
+     const char *probe[] = { host_path, "--protocol-version", NULL };
+     REQUIRE(!tool_run(probe, root, log));
+     char *text = tool_read(log);
+-    bool current = text && !strcmp(text, "8\n");
++    bool current = text && !strcmp(text, "9\n");
+     free(text);
+     REQUIRE(current);
+     /* A nonzero probe result, as produced by the M1 CLI, must be distinguishable
+-     * from an invocation error after a successful version-8 selection. */
++     * from an invocation error after a successful version-9 selection. */
+     const char *invalid[] = { host_path, "--protocol-version", "extra", NULL };
+     REQUIRE(tool_run(invalid, root, log) != 0);
+     text = tool_read(log);
+-    bool rejected = text && strstr(text, "usage:") && strcmp(text, "8\n");
++    bool rejected = text && strstr(text, "usage:") && strcmp(text, "9\n");
+     free(text);
+     REQUIRE(rejected);
+     return true;
+--- a/test/tools/build_toolchain.c
++++ b/test/tools/build_toolchain.c
+@@ -663,19 +663,22 @@
+         selected
+     );
+     tool_write(overrides, recipes);
+-    char old[1024], previous[1024], current[1024], missing[1024];
++    char old[1024], previous[1024], bootstrap[1024], current[1024], missing[1024];
+     path(old, root, "old host");
+     path(previous, root, "protocol-6 host");
++    path(bootstrap, root, "protocol-8 host");
+     path(current, root, "current host");
+     path(missing, root, "missing host");
+     assert(!symlink(worker_path, old));
+     assert(!symlink(worker_path, previous));
++    assert(!symlink(worker_path, bootstrap));
+     assert(!symlink(host_path, current));
+     char recursive_make[4096];
+     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
+-    /* A protocol-6 host answers the query but lacks the natives the graph uses. */
+-    const char *hosts[] = { missing, old, previous, current };
+-    for (int i = 0; i < 4; i++) {
++    /* Protocol 6 lacks graph natives; protocol 8 does not guarantee the compiled
++     * bootstrap contract. Both answer the probe but must recover before authored loads. */
++    const char *hosts[] = { missing, old, previous, bootstrap, current };
++    for (int i = 0; i < 5; i++) {
+         char host_option[1200];
+         snprintf(host_option, sizeof host_option, "BUILD_HOST=%s", hosts[i]);
+         const char *arguments[] = {
+@@ -686,7 +689,7 @@
+         };
+         REQUIRE(!tool_run(arguments, source, log));
+         char *choice = tool_read(selected);
+-        bool correct = choice && !strcmp(choice, i == 3 ? "authored\n" : "recovery\n");
++        bool correct = choice && !strcmp(choice, i == 4 ? "authored\n" : "recovery\n");
+         free(choice);
+         REQUIRE(correct);
+         REQUIRE(!unlink(selected));
+--- a/docs/self-hosting-build.md
++++ b/docs/self-hosting-build.md
+@@ -245,7 +245,7 @@
+ joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
+ Unknown or missing `--target` names fail before toolchain discovery or writes.
+ 
+-Elsewhere `make build` uses this program when its private host reports protocol version 8
++Elsewhere `make build` uses this program when its private host reports protocol version 9
+ through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
+ `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
+ file primitives and probes and the redesigned syntax, version 4 names the
+@@ -255,6 +255,9 @@
+ needs: `build.replace`, `build.byte_list` and steps of up to 1,023
+ arguments. Version 8 uses the validated Chibi compiler generation to compile
+ build programs and adds the separate compiler source/core options above.
++Version 9 uses `bootstrap.json` metadata and validates the compiler's compiled
++bootstrap contract. Older hosts recover before loading authored programs. This
++version does not establish support for prepared build artifacts.
+ `--protocol-version` reports the version without loading compiler inputs or
+ starting a build. A cold build or an older host
+ uses `make stage-zero-build`, which retains the existing shell/CMake recovery
+@@ -996,6 +999,7 @@
+ 
+ The standalone SDK program adds `build.reserve_directory` and
+ `build.publish_directory`. These private bindings reserve one fresh directory
+-and publish without replacement on macOS and Linux. Normal `Build.chibi` is
+-unchanged, so its protocol gate remains version 8. Use the matching newly built
+-host to run `SDK.chibi`.
++and publish without replacement on macOS and Linux. The build-host protocol
++is version 9 for the compiled-bootstrap contract above; the SDK program also
++requires these private bindings. Use the matching newly built host to run
++`SDK.chibi`.

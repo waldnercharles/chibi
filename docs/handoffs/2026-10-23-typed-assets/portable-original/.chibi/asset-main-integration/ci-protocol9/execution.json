@@ -1,0 +1,118 @@
+{
+  "state": "required groups executing; final reviewed source frozen; no commit or dispatch",
+  "red_tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+  "base_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "final_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "original_index_sha256": "5d8cf12615fd3b42a50e787abcd30d54109b41c4a66d8e99cbbb2cc549aaa9b3",
+  "patch_sha256": "30112d927517beb11440e7527fd53813342b1b0fdc7d7adfda2778c215ca1a4c",
+  "release_source_thread": "01a16428-9213-7ec1-b984-a2af4ceced41",
+  "compatible_protocol8_host": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host",
+    "sha256": "c1c1d7e4b09e3f67f8085514adc0fe95f00ee86bd08150ea1a259590d846da75"
+  },
+  "created_utc": "2026-10-23T05:28:39.379540+00:00",
+  "applied_utc": "2026-10-23T05:30:34.851273+00:00",
+  "current_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head_preserved": true,
+  "merge_preserved": true,
+  "steps": {
+    "red-driver-build": {
+      "status": "passed",
+      "tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/red-driver-build.json",
+      "receipt_sha256": "dfb7f409328059d1c444f052b7435c1858b494cef46e0eb9ca509fbf45e2c0a9",
+      "log_sha256": "0bea87efa86f70c3d23f80b7196c577e0caf70add8cc7b4a904a223e699fae73",
+      "elapsed_seconds": 9.89
+    },
+    "red-build-toolchain": {
+      "status": "failed",
+      "tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/red-build-toolchain.json",
+      "receipt_sha256": "175458c9cec8af3311afe59ea16781db1d9ca2393bd6daace3711d594bf64dcd",
+      "log_sha256": "3cbcd82d33f0b6f130b150690264c3b81e8f1cd21e085663a71274531b1c6b81",
+      "elapsed_seconds": 33.178
+    },
+    "ordinary-release-upgrade": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/ordinary-release-upgrade.json",
+      "receipt_sha256": "ab7436b4bede2a8b44faabb13398f85943a4fe352a4e071e49a3ecabb6ed85cf",
+      "log_sha256": "8c3f8efa13bd81675c8618ca3f52f83ca97a98c04a83a1dd4d4e72a3edbc8e01",
+      "elapsed_seconds": 19.637
+    },
+    "green-build-toolchain": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/green-build-toolchain.json",
+      "receipt_sha256": "0112a46ee38d35b65d5990b22b380023ea86697eb122deda74c65c904d29dcc0",
+      "log_sha256": "e5270be0bee0be30283eb63233d9318ccd84e03087cf33d6849d4984c7275cfc",
+      "elapsed_seconds": 34.028
+    },
+    "green-build-process": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/green-build-process.json",
+      "receipt_sha256": "921182cb51df8a0da48c235ef5c5e11befad2f0674f4bf9dfe52b774faf8ba87",
+      "log_sha256": "3d11fb1998e9ecd1ac517e07dc77d926a6fe7e17deb50dca116a3df321ad36b1",
+      "elapsed_seconds": 23.655
+    },
+    "required-test-native": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/required-test-native.json",
+      "receipt_sha256": "a4b1fbb340edcace99318c109cc05dd46e6457a33a550c3d7f9dcc3a38479540",
+      "log_sha256": "4a333f20d7790863855a438cbc193fca41dd066fb355f33491d4c398f12222c9",
+      "elapsed_seconds": 1733.444
+    },
+    "required-test-materials": {
+      "status": "passed",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/required-test-materials.json",
+      "receipt_sha256": "e9559f23b7ef0b55993ca12deb248d10daa694bccc09314b6eda4f4c4a701e65",
+      "log_sha256": "3858541052e265483221ae8e20ab2f77089f8e7ecaac196b2e6910d1d2c43281",
+      "elapsed_seconds": 165.991
+    },
+    "required-test-projects": {
+      "status": "running",
+      "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+      "receipt": ".chibi/asset-main-integration/ci-protocol9/required-test-projects.json",
+      "receipt_sha256": "34aa316a7820b413825f3bc28272160af4ab6ae64f6c27a9e05ab26d85e7cd77",
+      "log_sha256": null,
+      "elapsed_seconds": null
+    },
+    "required-test-language-all": {
+      "status": "not_started"
+    },
+    "required-test-tools": {
+      "status": "not_started"
+    }
+  },
+  "expected_negative_control": "red-build-toolchain exit1 at old-Make protocol8 route; not a final-source failure",
+  "running_unified_exec_session": 52169,
+  "persistent_cache_configuration": "enabled/default; no explicit CHIBI_ASSET_CACHE_DIR override",
+  "source_currency_observed_utc": "2026-10-23T07:26:52.513825+00:00",
+  "continuation": {
+    "repository": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi",
+    "coordinator_thread": "01a16428-9213-7ec1-b984-a2af4ceced41",
+    "typed_owner_thread": "01a160a6-7daa-74e1-b595-8af541a773eb",
+    "compiler_next_queue_thread": "01a16507-c399-7792-9ec9-1acebd031b34",
+    "running_step": "required-test-projects",
+    "unified_exec_session": 52169,
+    "model_import_driver_pid": 25206,
+    "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+    "root_instruction": "Continue exact current run. No duration ceiling, fixture, cache, profile or limit changes. Capacity case intentional and finite; no correctness/nontermination defect established. Notify coordinator for completed group, substantive failure/resource concern, and final sealed execution release.",
+    "capacity_review": ".chibi/asset-main-integration/model-import-capacity-review/review.json",
+    "capacity_workload": "1022 +1021 native documents plus prototype reads:2045. Default persistent cache enabled; full second-pass recompilation unproven. Read-only phase observations show Graph0 deleted/1021 sources (acceptance pass). No test result yet.",
+    "next_groups": [
+      "test-language-all",
+      "test-tools"
+    ],
+    "next_command_template": "python3 .chibi/asset-main-integration/ci-protocol9/run-step.py required-<group> 6ef6b76e5c7e83b328e2973cc15c42fc79804043 make <group> JOBS=4",
+    "summarize_completed_step": "python3 .chibi/asset-main-integration/ci-protocol9/summarize-step.py <step>",
+    "required_environment": "run-step.py supplies Python3.13 PATH and MallocNanoZone0; normalMake/JOBS4 without BUILD_HOST override",
+    "after_required_groups": "Capture final source/product currency and appropriate format checks, seal final receipt, explicitly release to coordinator; no commit/dispatch/native provisioning/publication before coordinator eligible clean checkpoint. Actual PS Prepare/Prove execution still pending clean revision; local pwsh absent.",
+    "updated_utc": "2026-10-23T08:05:57.012623+00:00"
+  }
+}

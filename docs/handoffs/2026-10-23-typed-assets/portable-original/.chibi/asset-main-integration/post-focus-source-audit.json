@@ -1,0 +1,19 @@
+{
+  "current_engine_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "production_sdk_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "delta_paths": [
+    ".github/scripts/compiler-self-build.ps1",
+    ".github/workflows/compiler-recovery.yml",
+    ".github/workflows/compiler-runtime-seed.yml",
+    "docs/typed-assets/PLAN.md",
+    "test/tools/build_sdk.c"
+  ],
+  "production_c_compiler_resource_inputs_unchanged": true,
+  "ci_candidate_hashes_and_runtime_pin_verified": true,
+  "path_format_references": [],
+  "text_format_references_excluding_previously_audited_embedded_PNG_payload": [],
+  "previous_full_source_gzip_audit": ".chibi/asset-main-integration/post-checkpoint-source-audit.json",
+  "compiler_generation_receipt_sha256": "f9f2a7926ffb5fd8a7d0c4a0bfbdfd9466ada623f078c86f35b9bec921276b67",
+  "sdk_native_focus_receipt_sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461",
+  "scope": "source/static evidence only for CI/docs additions; no combined9fa runtime or required-gate proof; no publication"
+}

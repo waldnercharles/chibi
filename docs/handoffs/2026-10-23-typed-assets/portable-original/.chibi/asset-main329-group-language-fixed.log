@@ -1,0 +1,643 @@
+Running: scoped_native_matches_canonical_vm (OK) (0.000379 secs)
+Running: scoped_native_shared_budget_and_pure_fallback (OK) (0.000021 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 120
+syntax 1:34: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:58: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:33: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Expected identifier
+syntax 1:40: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:67: Unexpected syntax
+Running: language_declarations_actions_and_bindings (OK) (0.000416 secs)
+Running: language_handlers_name_payload_fields (OK) (0.000226 secs)
+Running: language_systems_name_their_step (OK) (0.000017 secs)
+Running: language_retained_binding_syntax (OK) (0.000036 secs)
+Running: language_unified_declarations_and_generic_map_shapes (OK) (0.000098 secs)
+Running: language_authored_asset_declarations (OK) (0.000026 secs)
+Running: language_obsolete_symbol_spellings_rejected (OK) (0.000627 secs)
+Running: language_retained_bindings_reject_prefixes_and_value_types (OK) (0.000297 secs)
+Running: language_keywords_are_contextual_data_member_names (OK) (0.000081 secs)
+Running: language_not_callable_and_unary_spellings_disambiguate (OK) (0.000053 secs)
+Running: language_callable_types_entries_and_results (OK) (0.000085 secs)
+Running: language_system_queries_and_control_flow (OK) (0.000079 secs)
+Running: language_nested_typed_records_and_explicit_labels (OK) (0.000064 secs)
+Running: language_definitions_unions_and_type_patterns (OK) (0.000063 secs)
+Running: language_query_header_and_cancel_deadline (OK) (0.000026 secs)
+Running: language_query_generators_preserve_authored_order (OK) (0.000022 secs)
+Running: language_obsolete_declaration_tokens_rejected (OK) (0.000094 secs)
+Running: language_expressions_precedence_and_continuation (OK) (0.000150 secs)
+Running: language_invalid_source_has_positioned_diagnostics (OK) (0.000178 secs)
+Running: language_incremental_snapshot_matches_fresh (OK) (0.000066 secs)
+Running: language_incremental_errors_match_fresh (OK) (0.000036 secs)
+Running: language_retained_corpus Retained syntax corpus: 312 files, 706379 bytes, 0 failures
+(OK) (0.076817 secs)
+===============================================================
+Summary: Passed: 22 Failed: 0 Total: 22 Suites: 0 Asserts: 1487
+semantic 1:90: Non-exhaustive switch: a union alternative is missing
+semantic 1:132: Unreachable duplicate union pattern
+semantic 1:1: 'value' requires a default value
+semantic 1:1: Expected a value expression
+semantic 1:70: Missing return
+semantic 1:68: Union result 'Result' requires a value on every return path
+semantic 1:72: A nonoptional union requires one of its alternatives
+semantic 1:74: Optional union requires a presence guard before switching
+semantic 1:107: Optional union requires a presence guard before switching
+semantic 1:109: Missing return
+semantic 1:21: Recursive owned union payloads are not supported
+semantic 1:21: Recursive owned union payloads are not supported
+semantic 1:35: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:24: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:23: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:31: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:37: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:57: Missing return
+semantic 1:23: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:23: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:79: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:98: Non-exhaustive switch: a union alternative is missing
+semantic 1:122: Non-exhaustive switch: a union alternative is missing
+semantic 1:118: Operation has no compatible typed operands
+semantic 1:130: Unknown value 'num_result'
+semantic 1:108: Operation has no compatible typed operands
+semantic 1:89: Pattern bindings require a matching if or while condition
+semantic 1:79: Nested functions require enclosing locals to be passed as parameters
+semantic 1:62: Incompatible types: expected double?, got int?
+semantic 1:61: Incompatible types: expected double?, got int
+semantic 1:76: Await requires a capability call
+semantic 1:71: Incompatible types: expected bool, got task
+semantic 1:47: Constant initializer requires compile-time values and operators
+semantic 1:52: Constant initializer requires compile-time values and operators
+semantic 1:49: Assignment requires a writable value
+semantic 1:29: Cyclic value dependency involving 'A'
+semantic 1:37: Constant initializer requires compile-time values and operators
+semantic 1:29: Constant initializer requires compile-time values and operators
+semantic 1:47: Incompatible types: expected int, got double; convert with int(value)
+semantic 1:56: Numeric literal has a fraction, which int cannot hold
+semantic 1:32: Expected identifier
+semantic 1:32: Unexpected syntax
+semantic 1:32: Unknown type ''
+semantic 1:43: Expected identifier
+semantic 1:44: Unexpected syntax
+semantic 1:43: Compile-time evaluation: requires a terminating authored procedure and constant arguments
+semantic 1:43: Type expression must construct a compile-time type
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:87: Pass system invocation locals as parameters across callable boundaries
+semantic 1:49: Pass system invocation locals as parameters across callable boundaries
+semantic 1:50: Optional component requires a presence guard before member access
+semantic 1:101: Optional component requires a presence guard before member access
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:52: Incompatible types: expected int, got string
+semantic 1:56: Incompatible types: expected int, got int?
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:41: Reduction requires a writable scalar numeric component field
+semantic 1:51: Reduction requires a writable scalar numeric component field
+semantic 1:47: Reduction requires a writable scalar numeric component field
+semantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:48: Reduction requires a writable scalar numeric component field
+semantic 1:57: Optional component requires a presence guard before member access
+semantic 1:38: Reduction requires a synchronous system body
+semantic 1:55: Reduction requires a synchronous system body
+semantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:56: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:60: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:64: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:72: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:83: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:122: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:95: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:50: Reduction producer cannot call an opaque component accessor
+semantic 1:55: Reduction producer cannot call an opaque component accessor
+semantic 1:40: Reduction requires a synchronous system body without tasks
+semantic 1:70: Reduction requires a synchronous system body without tasks
+semantic 1:74: A component cannot mix ordered and unordered reductions in one system
+semantic 1:67: A component cannot mix ordered and unordered reductions in one system
+semantic: Units differ: u = s
+semantic: Units differ: u = s
+semantic 1:37: A component cannot be both a parameter and excluded
+semantic 1:35: Unknown query relationship 'target'
+semantic 1:52: Optional component requires a presence guard before member access
+semantic 1:42: Assignment requires a writable value
+semantic 1:49: Assignment requires a writable value
+semantic 1:37: Numeric literal is outside the range of int8
+semantic 1:26: Range bounds descend; count down with for <
+semantic 1:37: Range bounds descend; for < takes the low bound first, as in for < i in 0..10
+semantic 1:37: for < reverses only ranges and arrays
+semantic 1:56: for < reverses only ranges and arrays
+semantic 1:62: Missing return
+semantic 1:55: Missing return
+semantic 1:83: Missing return
+semantic 1:88: Missing return
+semantic 1:67: Missing return
+semantic 1:67: Missing return
+semantic 1:100: Missing return
+semantic 1:55: Missing return
+semantic 1:39: Unknown event 'Begin'
+semantic 1:55: Missing return
+semantic 1:70: Union result 'value' requires a value on every return path
+semantic 1:62: Missing return
+semantic 1:35: Numeric literal is outside the range of int8
+semantic 1:36: Numeric literal is outside the range of int64
+semantic 1:37: Numeric literal is outside the range of int64
+semantic 1:37: Numeric literal is outside the range of uint64
+semantic 1:38: Numeric literal is outside the range of uint64
+semantic 1:29: Character literal is outside the range of byte
+semantic 1:41: A character literal holds exactly one character
+semantic 1:41: A character literal holds exactly one character
+semantic 1:41: Invalid character literal
+semantic 1:41: Invalid character literal
+semantic 1:43: Incompatible types: expected string, got char
+semantic 1:43: A character literal needs an integer or char type
+semantic 1:48: Incompatible types: expected byte, got char; convert with byte(value)
+semantic 1:47: Incompatible types: expected char, got int; convert with char(value)
+semantic 1:47: char converts only with char(value)
+semantic 1:41: Constant does not fit in char
+semantic 1:56: Incompatible types: expected char, got int; convert with char(value)
+semantic 1:50: char converts from an integer
+semantic 1:128: Incompatible types: expected struct, got struct
+semantic 1:55: Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)
+semantic 1:52: A conversion argument may only be named wrap or clamp
+semantic 1:48: wrap and clamp convert between integer types
+semantic 1:40: wrap and clamp convert between integer types
+semantic 1:47: Conversion takes one value
+semantic 1:46: cast<T>(value) was removed; write T(value)
+semantic 1:47: Incompatible types: expected byte, got int; convert with byte(value)
+semantic 1:61: int64 and uint64 operands need an explicit conversion, such as int64(value)
+semantic 1:30: Numeric literal is outside the range of byte
+semantic 1:40: VectorAdd returns a new value and changes nothing; assign its result
+semantic 1:84: sum returns a new value and changes nothing; assign its result
+semantic 1:24: Binding dependency cycle
+semantic 1:95: This call has several results; return the ones you need by name, as in return(Hit: r.Hit, Distance: r.Distance)
+semantic 1:38: Unexpected syntax
+semantic 1:51: Expected }
+semantic 1:35: Unexpected syntax
+semantic 1:29: Type 'struct' requires a type argument
+semantic 1:29: Type 'struct' requires a type argument
+semantic 1:1: 'value' requires a default value
+semantic 1:1: Expected a value expression
+semantic 1:1: Expected behavior, library or system
+semantic 1:1: Source has no executable declaration
+semantic: Units differ: u += u/s
+semantic: Units differ: u = rad
+semantic: Units differ: u/s < u
+semantic: Units differ: u + s
+semantic: Units differ: *= would turn u into u·s
+semantic: Units differ: u = u/s²
+semantic: Units differ: u = 1
+semantic: Units differ: u = rad
+semantic: Units differ: u/s + u
+semantic: Units differ: m³ = kg
+semantic: Units differ: u = u/s^4
+semantic: Units differ: u/s = 1/s
+semantic: Units differ: u % u/s
+semantic: Units differ: u %= u/s
+semantic: Units differ: u = u/s
+semantic: Units differ: u = u/s
+semantic: Units differ: u = s
+semantic 1:112: Incompatible result tuple shape
+semantic: Units differ: u fallback u/s
+Running: language_unions_share_patterns_and_require_exhaustive_switches (OK) (0.001137 secs)
+Running: language_cancelled_builtin_cannot_be_shadowed (OK) (0.000213 secs)
+Running: language_switch_exhaustiveness_respects_narrowed_tags (OK) (0.000216 secs)
+Running: language_type_patterns_narrow_and_invalidate (OK) (0.000816 secs)
+Running: language_constants_reject_runtime_dependencies_and_writes (OK) (0.000128 secs)
+Running: language_shadowing_resolves_nearest_declaration (OK) (0.000032 secs)
+Running: language_pub_marks_only_package_declarations (OK) (0.000096 secs)
+Running: language_literals_are_typed_by_spelling (OK) (0.000148 secs)
+Running: language_authored_map_method_names_preserve_callable_identity (OK) (0.000047 secs)
+Running: language_retained_bindings_preserve_owner_and_value_type (OK) (0.000069 secs)
+Running: language_system_retention_rejects_non_system_owners_and_tasks (OK) (0.000194 secs)
+Running: language_system_invocation_locals_cross_calls_only_as_arguments (OK) (0.000098 secs)
+Running: language_optional_component_requires_presence_guard (OK) (0.000069 secs)
+Running: language_coalesce_types_its_operands (OK) (0.000197 secs)
+Running: language_reductions_resolve_stored_fields_and_membership (OK) (0.000161 secs)
+Running: language_reductions_require_system_component_fields (OK) (0.000160 secs)
+Running: language_reduction_producers_reject_conflicting_component_values (OK) (0.000394 secs)
+Running: language_reduction_producers_cannot_suspend_or_start_tasks (OK) (0.000048 secs)
+Running: language_unordered_reductions_require_unbounded_isolated_components (OK) (0.000117 secs)
+Running: language_reductions_check_contribution_units (OK) (0.000058 secs)
+Running: language_query_header_resolves_boolean_filters_and_sources (OK) (0.000224 secs)
+Running: language_query_joins_and_filters_share_source_rules (OK) (0.000238 secs)
+Running: language_query_generators_bind_rows_and_pure_value_filters (OK) (0.000093 secs)
+Running: language_query_filters_reject_effects_and_unbound_variables (OK) (0.000445 secs)
+Running: language_derived_component_is_read_only (OK) (0.000065 secs)
+Running: language_numeric_literal_storage_limits (OK) (0.000022 secs)
+Running: language_loops_reverse_explicitly (OK) (0.000136 secs)
+Running: language_functions_with_results_must_return (OK) (0.000509 secs)
+Running: language_hex_literal_fills_integer_storage (OK) (0.000109 secs)
+Running: language_character_literals_take_their_type_from_context (OK) (0.000290 secs)
+Running: language_char_widens_to_int_and_narrows_explicitly (OK) (0.000573 secs)
+Running: language_numeric_conversions_check_modes_and_constants (OK) (0.000301 secs)
+Running: language_integers_widen_implicitly_and_narrow_explicitly (OK) (0.000236 secs)
+Running: language_vector_operator_resolves_catalog_identity (OK) (0.000020 secs)
+Running: language_call_chains_infer_effects_and_purity (OK) (0.000053 secs)
+Running: language_owned_record_and_index_writes_stay_pure (OK) (0.000109 secs)
+Running: language_external_record_and_index_writes_are_effects (OK) (0.000181 secs)
+Running: language_discarded_pure_result_rejected (OK) (0.000110 secs)
+Running: language_binding_cycle_rejected (OK) (0.000052 secs)
+Running: language_inferred_return_of_several_results_is_rejected (OK) (0.000083 secs)
+Running: language_invalid_source_retains_bounded_diagnostics (OK) (0.000134 secs)
+Running: language_component_declares_measured_fields (OK) (0.000111 secs)
+Running: language_component_rejects_invalid_fields (OK) (0.000047 secs)
+Running: language_units_combine_through_arithmetic (OK) (0.000212 secs)
+Running: language_units_reject_mismatch (OK) (0.000180 secs)
+Running: language_units_check_struct_field_initializers (OK) (0.000096 secs)
+Running: language_units_check_empty_struct_defaults (OK) (0.000067 secs)
+Running: language_units_check_bindings (OK) (0.000041 secs)
+Running: language_units_skip_invalid_sources (OK) (0.000073 secs)
+Running: language_units_check_all_fallback_values (OK) (0.000059 secs)
+Running: language_units_follow_constant_and_state_initializers (OK) (0.000144 secs)
+Running: language_units_check_callable_contracsignature units: Units differ: u = s
+signature units: Units differ: u argument s
+signature units: Units differ: u = s
+signature units: Units differ: u argument u/s
+signature units: Units differ: u = s
+signature units: Units differ: u default s
+signature units: Units differ: u default s
+signature units: Units differ: u = s
+signature units: Invalid unit 'u^0'
+signature units: A measured signature requires a numeric storage type
+signature units: Unknown type 'flaot'
+signature units: Incompatible types: expected struct, got struct
+signature units: Units differ: u = s
+signature units: Units differ: s = u
+package 2:1: Unknown attribute '@bench'
+package 2:7: Duplicate attribute '@test'
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:15: @test needs a package-level function
+semantic 1:21: @test needs a package-level function
+package 4:1: Duplicate declaration 'Same'
+package 2:1: Previous declaration 'Same' is here
+package 4:1: Duplicate declaration 'Same'
+package 2:1: Previous declaration 'Same' is here
+symbol reference: Symbol references use identifiers, not string names
+symbol reference: Incompatible types: expected name, got string
+symbol reference: Unknown component reference 'Enemy'
+symbol reference: Unknown prototype reference 'Health'
+symbol reference: Incompatible types: expected uint64, got int
+symbol reference: Symbol references use identifiers, not string names
+symbol reference: A relationship argument must name a relationship symbol
+symbol reference: Unknown relationship reference 'Targets'
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: Incompatible types: expected name, got string
+ts (OK) (0.000237 secs)
+Running: language_units_reject_callable_mismatches (OK) (0.000454 secs)
+Running: language_units_follow_native_signatures_and_task_results (OK) (0.000201 secs)
+Running: language_units_reject_malformed_metadata_and_overflow (OK) (0.000221 secs)
+Running: language_test_attribute_marks_package_functions (OK) (0.000208 secs)
+Running: effects_infer_recursive_and_transitive_callables (OK) (0.000176 secs)
+Running: effects_indexed_writes_follow_retained_and_reference_roots (OK) (0.000081 secs)
+Running: effects_query_checks_inferred_helpers_and_retained_reads (OK) (0.000105 secs)
+Running: effects_component_await_is_synchronous_but_host_await_is_not (OK) (0.000063 secs)
+Running: effects_imports_publish_transitive_effects_before_query_analysis (OK) (0.269956 secs)
+Running: symbol_references_infer_and_pass_through_typed_parameters (OK) (0.000082 secs)
+Running: symbol_references_reject_strings_numbers_and_wrong_categories (OK) (0.000348 secs)
+===============================================================
+Summary: Passed: 63 Failed: 0 Total: 63 Suites: 0 Asserts: 824
+Running: wasm_backend_is_unavailable_on_native (OK) (0.000003 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 1
+Running: execution_prepared_identity_includes_instruction_schema (OK) (0.000093 secs)
+Running: execution_union_extraction_checks_dynamic_payload_type (OK) (0.000035 secs)
+Running: execution_intrinsics_build_in_result_storage (OK) (0.000013 secs)
+Running: execution_branches_state_and_host_calls (OK) (0.000031 secs)
+Running: execution_source_inspection_is_lazy_and_preserves_resume (OK) (0.000036 secs)
+Running: execution_costs_verify_intrinsics_and_follow_recursive_calls (OK) (0.000015 secs)
+Running: execution_costs_include_managed_scalar_result_and_state_escape (OK) (0.000018 secs)
+Running: execution_finished_definition_owns_producer_strings (OK) (0.000042 secs)
+Running: execution_string_equality_and_iteration_use_full_bytes (OK) (0.000013 secs)
+Running: execution_native_string_fields_validate_before_publication (OK) (0.000005 secs)
+Running: execution_verifier_rejects_invalid_lowering (OK) (0.000005 secs)
+Running: execution_budget_limits_checked_back_edges (OK) (0.000011 secs)
+Running: execution_verifier_rejects_invalid_banks_and_metadata (OK) (0.000005 secs)
+Running: execution_verifier_rejects_invalid_saved_aggregate_roots (OK) (0.000003 secs)
+Running: execution_saved_aggregate_roots_keep_only_live_shapes (OK) (0.000037 secs)
+Running: execution_verifier_rejects_signature_and_local_type_mismatches (OK) (0.000005 secs)
+Running: execution_linked_function_returns_checked_value (OK) (0.000025 secs)
+Running: execution_reused_helper_resets_host_bank_and_rebinds_service (OK) (0.000022 secs)
+Running: execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers (OK) (0.000010 secs)
+Running: execution_integer_bitwise_preserves_width_and_valid_shifts (OK) (0.000113 secs)
+Running: execution_integer_shift_rejects_out_of_range_counts (OK) (0.000153 secs)
+Running: execution_fast_shift_preserves_failure_and_prior_store (OK) (0.000103 secs)
+Running: execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands (OK) (0.000002 secs)
+Running: execution_print_string_is_synchronous_and_preserves_context (OK) (0.000013 secs)
+Running: execution_numeric_address_bits_do_not_retain_saved_storage (OK) (0.000021 secs)
+Running: execution_unary_numeric_operands_ignore_unrelated_address_slot (OK) (0.000013 secs)
+Running: execution_synchronous_action_owns_outcomes_and_validates_selection (OK) (0.000012 secs)
+Running: execution_decoded_suspensions_charge_exact_live_sets (OK) (0.001707 secs)
+Running: execution_numeric_casts_apply_exact_wrap_and_clamp (OK) (0.000417 secs)
+===============================================================
+Summary: Passed: 29 Failed: 0 Total: 29 Suites: 0 Asserts: 3757
+program semantic: append changes the array; call it as a statement on a name
+program semantic: Incompatible types: expected double, got int
+program semantic: append changes the array; call it as a statement on a name
+program semantic: Incompatible types: expected double, got int
+program semantic: Incompatible types: expected double, got int
+program semantic: Unknown callable 'xs.array_add'
+program semantic: Unknown callable 'xs.ArrayAdd'
+Running: program_descriptor_field_observers_compare_all_bytes (OK) (0.000159 secs)
+Running: program_reduction_updates_preserve_clock_and_event_order (OK) (0.002083 secs)
+Running: program_reduction_query_rows_count_filtered_candidates (OK) (0.000169 secs)
+Running: program_pattern_bindings_share_and_spellings (OK) (0.001301 secs)
+Running: program_switches_use_narrowed_union_tags (OK) (0.000486 secs)
+Running: program_general_unions_construct_match_and_extract (OK) (0.001451 secs)
+Running: program_union_arrays_keep_owned_writable_values (OK) (0.001151 secs)
+Running: program_failed_call_stacks_unwind_at_once (OK) (0.000251 secs)
+Running: program_module_finish_preserves_failure_and_consumes_success (OK) (0.000001 secs)
+Running: program_typed_event_changes_state_on_vm_and_sljit (OK) (0.000127 secs)
+Running: program_handlers_name_payload_fields (OK) (0.000352 secs)
+Running: program_occurrences_survive_whitespace_and_follow_the_source (OK) (0.000141 secs)
+Running: program_nested_typed_records_preserve_explicit_labels (OK) (0.000329 secs)
+Running: program_int_to_float_compare_and_cast_run_on_vm_and_sljit (OK) (0.000257 secs)
+Running: program_systems_name_their_step (OK) (0.000470 secs)
+Running: program_query_owner_snapshots_preserve_parallel_effects (OK) (0.000203 secs)
+Running: program_system_membership_exit_cancels_pending_work (OK) (0.000187 secs)
+Running: program_query_sources_resolve_current_targets_and_nearest_ancestors (OK) (0.000542 secs)
+Running: program_query_required_path_keeps_one_instance_per_root (OK) (0.000170 secs)
+Running: program_query_joins_filter_targets_and_refresh_across_suspension (OK) (0.000444 secs)
+Running: program_query_optional_joins_preserve_missing_target_exclusions (OK) (0.000174 secs)
+Running: program_relationship_loops_stream_targets_explicitly (OK) (0.000420 secs)
+Running: program_query_chained_variables_filter_values_and_keep_event_tuples (OK) (0.001017 secs)
+Running: program_query_rows_keep_locals_and_cancel_removed_tuple (OK) (0.000202 secs)
+Running: program_query_changed_preserves_busy_published_writes (OK) (0.000407 secs)
+Running: program_query_admission_is_frozen_before_row_writes (OK) (0.000124 secs)
+Running: program_query_value_filters_preserve_short_circuit_failure_order (OK) (0.000444 secs)
+Running: program_query_predicates_reuse_bounded_scratch_and_fresh_values (OK) (0.000809 secs)
+Running: program_component_binding_runs_and_source_cycle_is_rejected (OK) (0.000355 secs)
+Running: program_imported_library_preserves_owner_namespace_and_reader_after_replace (OK) (0.000535 secs)
+Running: program_system_shared_state_survives_membership_and_is_registration_owned (OK) (0.000143 secs)
+Running: program_managed_state_survives_overwrite_and_multiple_resumes (OK) (0.000280 secs)
+Running: program_result_tuple_copies_survive_mutation_loop_and_resume (OK) (0.000607 secs)
+Running: program_array_literals_are_fresh_copies (OK) (0.000973 secs)
+Running: program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes (OK) (0.002357 secs)
+Running: program_completed_payloads_are_released_without_marking (OK) (0.001463 secs)
+Running: program_temporary_payloads_preserve_roots_across_collection (OK) (0.003581 secs)
+Running: program_sibling_timer_actions_complete_independently_and_cancel_on_detach (OK) (0.000286 secs)
+Running: program_failure_snapshot_owns_outlined_source_diagnostics (OK) (0.000145 secs)
+Running: program_assert_fails_with_its_message_or_condition (OK) (0.000795 secs)
+Running: program_assert_binds_names_and_keeps_helpers_pure (OK) (0.000293 secs)
+Running: program_integer_conversions_check_wrap_and_clamp (OK) (0.000522 secs)
+Running: program_loops_count_half_open_and_in_reverse (OK) (0.001094 secs)
+Running: program_char_conversions_and_arithmetic_stay_unicode_scalars (OK) (0.001108 secs)
+Running: program_char_compares_with_ints_and_steps_below_surrogates (OK) (0.000718 secs)
+Running: program_local_array_survives_collection_mid_build (OK) (0.000656 secs)
+Running: program_local_array_store_checks_its_range (OK) (0.000347 secs)
+Running: program_array_methods_change_their_array (OK) (0.000713(FAILED: test/language/program.c (4988): !strcmp(text, cooperative))
+program semantic: Await this task to read 'a'
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+ secs)
+Running: program_integer_and_nominal_enum_literals_preserve_exact_bits (OK) (0.000289 secs)
+Running: program_concrete_assignments_preserve_name_byte_and_handle_storage (OK) (0.000314 secs)
+Running: program_source_float_width_conversion_preserves_native_input (OK) (0.000147 secs)
+Running: program_state_actions_demand_inputs_route_and_preserve_per_owner_state (OK) (0.001784 secs)
+Running: program_retrigger_evaluates_each_duration_once (OK) (0.000263 secs)
+Running: program_debugger_steps_without_replaying_and_retains_owned_watches (OK) (0.000386 secs)
+Running: program_task_runs_to_first_suspension_then_beside_caller (OK) (0.000504 secs)
+Running: program_task_cancel_cascades_and_wakes_awaiters (OK) (0.000709 secs)
+Running: program_task_cancelling_itself_stops_at_once (OK) (0.000887 secs)
+Running: program_task_owns_tasks_started_by_its_continuations (OK) (0.000462 secs)
+Running: program_task_continuation_cancels_but_cannot_await_its_task (OK) (0.001187 secs)
+Running: program_task_slots_are_reused_without_reviving_old_handles (OK) (0.000804 secs)
+Running: program_task_deadlines_use_start_time_and_do_not_cancel_waiters (OK) (0.000546 secs)
+Running: program_task_copies_retain_results_and_unobserved_results_are_reclaimed (OK) (0.000811 secs)
+Running: program_task_handle_survives_in_a_detached_capture (OK) (0.000569 secs)
+Running: program_task_handles_survive_in_suspended_array_values (OK) (0.001983 secs)
+Running: program_task_scope_exits_drop_only_unobserved_handles (OK) (0.000804 secs)
+Running: program_native_nested_collections_retain_task_handles (OK) (0.000441 secs)
+Running: program_task_cancellation_is_distinct_from_zero_false_and_empty_text (OK) (0.001430 secs)
+Running: program_task_waiters_receive_independent_success_snapshots (OK) (0.000493 secs)
+Running: program_task_result_snapshot_outlives_the_last_handle (OK) (0.000288 secs)
+Running: program_task_await_copies_large_payload_once (OK) (0.000668 secs)
+Running: program_task_collection_indexes_handles_across_many_owners (OK) (0.005236 secs)
+Running: program_task_results_keep_nested_task_handles_alive (OK) (0.000444 secs)
+Running: program_prepared_tasks_preserve_cancellation_union_and_deadlines (OK) (0.000717 secs)
+Running: program_task_stops_with_owner_and_does_not_block_events (OK) (0.000173 secs)
+Running: program_many_tasks_collect_in_linear_mark_work (OK) (0.002195 secs)
+Running: program_task_semantics_reject_invalid_uses (OK) (0.000216 secs)
+Running: program_handler_payloads_do_not_hide_parameters (OK) (0.000248 secs)
+Running: program_nested_functions_wait_for_themselves (OK) (0.000195 secs)
+Running: program_input_map_validates_actions 
+Running: program_scene_children_are_referenced (OK) (1.072102 secs)
+Running: program_input_actions_read_through_typed_names (OK) (2.090577 secs)
+Running: program_scene_bindings_are_typed_names_before_play (OK) (1.119216 secs)
+Running: program_constant_definitions_execute (OK) (0.000878 secs)
+Running: program_single_result_call_fields_read_the_result (OK) (0.000423 secs)
+Running: program_results_are_inferred_from_returns (OK) (0.001063 secs)
+Running: program_task_with_several_results_awaits_a_tuple (OK) (0.000711 secs)
+Running: program_library_call_starts_a_task (OK) (0.000544 secs)
+Running: program_library_task_writes_the_callers_state (OK) (0.000368 secs)
+Running: program_task_keeps_state_and_component_references (OK) (0.000295 secs)
+Running: program_nested_calls_number_indexes_and_mixed_clamp (OK) (0.000986 secs)
+Running: program_returns_convert_to_their_result_type (OK) (0.000513 secs)
+Running: program_yield_resumes_on_the_next_update_without_time (OK) (0.000133 secs)
+Running: program_task_state_awaits_its_function_results (OK) (0.003330 secs)
+Running: program_task_handles_belong_to_their_instance (OK) (0.000124 secs)
+Running: program_component_paths_test_presence (OK) (0.000644 secs)
+Running: program_branch_completes_inside_action_continuation (OK) (0.001042 secs)
+Running: program_parameters_defaults_and_contextual_words (OK) (0.000787 secs)
+Running: program_task_shares_boxed_locals (OK) (0.001302 secs)
+Running: program_detached_string_capture_retention_audit capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=32 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=2 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=32 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=1 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=writer-cancelled writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=2 shape=string phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=2 shape=string phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=writer-cancelled writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=1 shape=string phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=1 shape=string phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=owner-detach instances=0 activations=0 payload=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=owner-detach instances=0 activations=0 payload=0
+(OK) (0.003220 secs)
+Running: program_detached_array_capture_retention_audit capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=2 shape=array-element phase=overwrite writes=32 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=writer-complete writes=32 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=2 shape=array-element phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=1 shape=array-element phase=overwrite writes=32 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=writer-complete writes=32 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=1 shape=array-element phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=2 shape=array-element phase=writer-cancelled writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=2 shape=array-element phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=2 shape=array-element phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=1 shape=array-element phase=writer-cancelled writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=1 shape=array-element phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=1 shape=array-element phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=2 shape=array-element phase=owner-detach instances=0 activations=0 payload=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=1 shape=array-element phase=owner-detach instances=0 activations=0 payload=0
+(OK) (0.004777 secs)
+Running: program_attached_string_capture_retention_control capture backend=2 shape=string phase=start writes=0 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=2707 activation_capacity=2707
+capture backend=2 shape=string phase=overwrite writes=8 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=13287
+capture backend=2 shape=string phase=overwrite writes=16 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=2 shape=string phase=overwrite writes=32 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=2 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=4392 activation_capacity=4392
+capture backend=2 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=2707 activation_capacity=2707
+capture backend=1 shape=string phase=overwrite writes=8 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=13287
+capture backend=1 shape=string phase=overwrite writes=16 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=1 shape=string phase=overwrite writes=32 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=1 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=4392 activation_capacity=4392
+capture backend=1 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+(OK) (0.001439 secs)
+Running: program_descendant_capture_keeps_inspector_snapshots_across_shrink (OK) (0.000593 secs)
+Running: program_detached_capture_preserves_task_handles_until_replaced (OK) (0.000630 secs)
+Running: program_assignments_and_reference_writes_do_not_allocate (OK) (0.000836 secs)
+Running: program_component_scalar_reference_writes_do_not_copy_rows (OK) (0.001333 secs)
+Running: program_repeated_helpers_have_bounded_allocations (OK) (0.000395 secs)
+Running: program_reused_helpers_reset_locals_and_preserve_nested_calls (OK) (0.000870 secs)
+Running: program_reused_helpers_keep_managed_results_and_resume_fresh_locals (OK) (0.000877 secs)
+Running: retention_helpers_keep_owner_state_and_copy_plain_values (OK) (0.000367 secs)
+Running: retention_system_owner_survives_row_exit_and_registration_isolation (OK) (0.000202 secs)
+Running: retention_helper_identity_preserves_values_until_restart (OK) (0.000306 secs)
+Running: capture_whole_value_shrink_preserves_escaped_and_self_values capture-write success=1 previous_backing=8513 final_backing=8513 xalloc_calls=5 xalloc_requested=33468
+capture-write success=1 previous_backing=8513 final_backing=280 xalloc_calls=3 xalloc_requested=8793
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000022 secs)
+Running: capture_paths_survive_root_replacement_and_fail_atomically capture-write success=1 previous_backing=24955 final_backing=280 xalloc_calls=4 xalloc_requested=25235
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=1 previous_backing=280 final_backing=8513 xalloc_calls=5 xalloc_requested=33468
+capture-write success=1 previous_backing=8513 final_backing=280 xalloc_calls=3 xalloc_requested=8793
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=280 final_backing=24955 xalloc_calls=6 xalloc_requested=49910
+capture-write success=0 previous_backing=24955 final_backing=24955 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000008 secs)
+Running: capture_nested_scalar_writes_retain_only_current_managed_root capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+(OK) (0.000042 secs)
+Running: capture_references_refuse_another_type capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000002 secs)
+Running: capture_element_writes_keep_the_item_type capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+(OK) (0.000002 secs)
+Running: capture_unnamed_union_references_read_and_write capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000001 secs)
+Running: query_binding_direct_matches_host_values_and_failures (OK) (0.000336 secs)
+Running: query_binding_rejects_invalid_immediates_and_types (OK) (0.000004 secs)
+Running: query_binding_unused_load_preserves_branches_and_budget (OK) (0.000017 secs)
+Running: query_binding_preserves_live_integer_slots (OK) (0.000027 secs)
+Running: query_binding_prepared_roundtrip_preserves_errors_and_values (OK) (0.000085 secs)
+Running: query_binding_predicate_requires_bound_variables_transitively (OK) (0.000008 secs)
+Running: query_binding_dispatch_has_bounded_measurements QUERY_BINDING path=direct_query_variable backend=vm trial=0 reads=512 us_per_read=0.060547 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=1 reads=512 us_per_read=0.060547 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=2 reads=512 us_per_read=0.062500 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=3 reads=512 us_per_read=0.060547 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=4 reads=512 us_per_read=0.060547 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=0 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=1 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=2 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=3 reads=512 us_per_read=0.015625 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=4 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.000206 secs)
+Running: query_change_versions_saturate (OK) (0.000004 secs)
+Running: query_predicates_roundtrip_with_services_effects_and_preflight (OK) (0.000083 secs)
+Running: query_binding_publication_and_prepared_reader_reject_forged_bound_masks (OK) (0.000049 secs)
+Running: query_binding_authored_join_lowers_without_host_banks (OK) (0.000062 secs)
+Running: query_binding_order_is_checked_before_publication (OK) (0.000032 secs)
+Running: query_predicate_purity_is_rechecked_after_native_linking (OK) (0.000022 secs)
+Running: query_predicate_purity_follows_each_outlined_callee (OK) (0.000020 secs)
+Running: query_predicate_context_cannot_be_recovered_through_bank_aliases (OK) (0.000008 secs)
+===============================================================
+Summary: Passed: 131 Failed: 1 Total: 132 Suites: 0 Asserts: 11262
+Test command wall time: 9.707s; includes in-test fixture setup; external configuration/build excluded.

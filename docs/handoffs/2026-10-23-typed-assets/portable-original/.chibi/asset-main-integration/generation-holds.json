@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-22",
+  "state": "Generation completed and independently verified; SDK/runtime validation waits for CI lane release and eligible baseline",
+  "gates": [
+    {
+      "owner": "CI/coordinator",
+      "requirement": "Explicit local build-lane release after combined CI checks and package proof"
+    }
+  ],
+  "candidate": {
+    "current_engine_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+    "current_studio_tree": "916de36ba6213702f404fe6de8749ff2bcfcc972",
+    "resource_state": "Current native64/wasm32 resources verified against all 37 inputs each; compiler parity verified against 19 inputs",
+    "generated_tree": "041c011c04da3393e77b742ab35e837cefdf86a0"
+  },
+  "seed_request": {
+    "path": ".chibi/asset-main-integration/fa1b-seed/compile.json",
+    "status": "matches frozen fa1b+665 source only; rebuild request after any eligible compiler import; do not execute as final rich compiler request"
+  },
+  "additional_source_work": {
+    "build_host_three_file_seam": "Separate frozen four-file prepared-host source patch reviewed; no import or runtime eligibility",
+    "SDK_PR666": "held for Linux graph proof; do not import before eligibility clearance",
+    "source_material": "design only; separate from migration snapshot"
+  },
+  "published": false,
+  "compiler_candidate_decision": {
+    "rule": "At post-CI lane release proceed with current frozen candidate unless final rich source is already immutable, eligible, interaction-reviewed and coordinator clears the proposed combined delta before generation. Unresolved rich/task/facts work must not indefinitely hold migration.",
+    "owner": "coordinator clarified; compiler owner notified",
+    "status": "Decision taken: frozen e96 candidate generated without rich import; no new generation required unless source inputs change"
+  },
+  "historical_state": "generation not started; typed source frozen",
+  "generation_receipt": "combined-generation-checkpoint.json"
+}

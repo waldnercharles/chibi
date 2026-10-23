@@ -1,0 +1,3 @@
+Test command wall time: 1583.439s; includes in-test fixture setup; external configuration/build excluded.
+
+INTERRUPTED by owner because reviewed decoded-cache changes supersede this binary; exit130, incomplete; no pass claim and not a wall-time stop. Remaining owned PID/process groups verified empty.

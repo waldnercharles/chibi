@@ -1,0 +1,18 @@
+{"revision": "54e38eb7f2ff39c6d30cec802e069076834a4b76", "working_tree_dirty": true, "script_sha256": "3c9a194d2513ad87519cf9f6c133d3eb5a6ee85099875fc92b2847988a7f9e05", "seed_sha256": "88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178", "runtime_sha256": "24ba34921691b5542714c426b943b4e0dd642a337b487ebce70fe957f699e811", "powershell": "7.4.6 portable official release checksum verified", "proof_deadline_seconds": 59, "supervisor_deadline_seconds": 60}
+
+compiler-host bytecode=0 sljit=18666367 wasm=0 fallback=0 overflow=0
+
+[[5,2]]
+
+compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0
+
+
+compiler-host bytecode=0 sljit=18666367 wasm=0 fallback=0 overflow=0
+
+[[5,2]]
+
+compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0
+
+Both compiler stages reproduced 11539354 bytes, SHA-256 88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178, in 9.0121715 seconds
+Test command wall time: 9.930s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+exit: 0

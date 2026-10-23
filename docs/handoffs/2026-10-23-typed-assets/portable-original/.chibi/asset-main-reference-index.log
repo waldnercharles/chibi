@@ -1,0 +1,8 @@
+Running: reference_assets_keep_identity_by_path_and_key (OK) (0.000154 secs)
+Running: reference_relationship_sources_resolve_their_declared_asset_identity (OK) (0.000449 secs)
+Running: reference_graphs_index_every_kind_of_symbol (OK) (0.004139 secs)
+Running: reference_documents_index_prototypes_objects_and_ui (OK) (1.383616 secs)
+Running: reference_calls_climb_handlers_and_detect_cycles (OK) (0.003729 secs)
+Running: scene_pages_bind_and_rename_with_their_scenes (OK) (1.879971 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 77

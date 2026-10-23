@@ -1,0 +1,130 @@
+ninja: Entering directory `build'
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Configuring done (3.0s)
+-- Generating done (0.5s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build
+[0/4] Re-checking globbed directories...
+[1/123] cd /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build/sdk && /opt/homebrew/bin/cmake -DROOT=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi -DRESOURCE=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/tools/compiler/asset_compiler/bootstrap/native64 -P /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/cmake/verify_source_snapshot.cmake
+[2/123] Building C object sdk/CMakeFiles/chibi_image_preparation.dir/__/src/authoring/image_prepare.c.o
+[3/123] Linking C static library sdk/libchibi_image_preparation.a
+[4/123] Building C object sdk/CMakeFiles/chibi_project_compilation.dir/__/src/authoring/sound_prepare.c.o
+[5/123] Linking CXX static library sdk/libchibi_project_compilation.a
+[6/123] Linking CXX executable sdk/chibi-compile
+ld: warning: ignoring duplicate libraries: '-lc++', 'sdk/libchibi_asset_json.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_project_compilation.a', 'sdk/libchibi_project_document.a'
+[7/123] Linking CXX executable bin/chibi_ctl
+ld: warning: ignoring duplicate libraries: '-lc++', 'sdk/libchibi_asset_authoring.a', 'sdk/libchibi_asset_documents.a', 'sdk/libchibi_asset_json.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_component_presentation.a', 'sdk/libchibi_ecs.a', 'sdk/libchibi_execution.a', 'sdk/libchibi_field_catalog.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_catalog.a', 'sdk/libchibi_graph_compilation.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_host_native_default.a', 'sdk/libchibi_image_preparation.a', 'sdk/libchibi_json.a', 'sdk/libchibi_model_runtime.a', 'sdk/libchibi_native_capabilities.a', 'sdk/libchibi_native_types.a', 'sdk/libchibi_platform.a', 'sdk/libchibi_project_compilation.a', 'sdk/libchibi_project_document.a', 'sdk/libchibi_prototype_document.a', 'sdk/libchibi_reference_index.a', 'sdk/libchibi_scene_document.a', 'sdk/libchibi_shader_preparation.a', 'sdk/libchibi_source_catalog.a', 'sdk/libchibi_source_presentation.a', 'sdk/libchibi_studio_capabilities.a', 'sdk/libchibi_support.a', 'sdk/libchibi_text_search.a', 'sdk/libchibi_text_source.a', 'sdk/libchibi_types.a', 'sdk/libchibi_ui_authoring.a', 'sdk/libchibi_ui_document.a', 'sdk/libchibi_ui_runtime.a', 'sdk/libchibi_visual_catalog.a'
+[8/123] Building C object test/tools/CMakeFiles/test_tools.dir/graph_dispatch.c.o
+[9/123] Building C object test/tools/CMakeFiles/test_tools.dir/desktop_dependencies.c.o
+[10/123] Building C object test/tools/CMakeFiles/test_tools.dir/validation_plan.c.o
+[11/123] Building C object test/tools/CMakeFiles/test_tools.dir/render_fixture.c.o
+[12/123] Building C object test/tools/CMakeFiles/test_tools.dir/prepared.c.o
+[13/123] Building C object test/tools/CMakeFiles/test_tools.dir/controller.c.o
+[14/123] Building C object test/tools/CMakeFiles/test_tools.dir/main.c.o
+[15/123] Building C object test/tools/CMakeFiles/test_tools.dir/test_policy.c.o
+[16/123] Building C object test/tools/CMakeFiles/test_tools.dir/fixture_format.c.o
+[17/123] Building C object test/tools/CMakeFiles/test_tools.dir/fixture.c.o
+[18/123] Building C object test/tools/CMakeFiles/test_tools.dir/package_ownership.c.o
+[19/123] Building C object test/tools/CMakeFiles/test_tools.dir/execution_policy.c.o
+[20/123] Building C object test/tools/CMakeFiles/test_tools.dir/collab.c.o
+[21/123] Building C object test/tools/CMakeFiles/test_tools.dir/chibi_cli.c.o
+[22/123] Building C object test/tools/CMakeFiles/test_tools.dir/package.c.o
+[23/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/support/arena.c.o
+[24/123] Building C object test/tools/CMakeFiles/test_tools.dir/web_storage.c.o
+[25/123] Building C object test/tools/CMakeFiles/test_tools.dir/browser.c.o
+[26/123] Building C object test/tools/CMakeFiles/test_tools.dir/validate_project.c.o
+[27/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/__/src/host/process.c.o
+[28/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/__/src/automation/execution_policy.c.o
+[29/123] Building C object test/tools/CMakeFiles/test_tools.dir/player_url.c.o
+[30/123] Building C object test/tools/CMakeFiles/test_tools.dir/wasm_browser.c.o
+[31/123] Building C object test/tools/CMakeFiles/test_tools.dir/webgpu_staging.c.o
+[32/123] Building C object test/tools/CMakeFiles/test_tools.dir/compiler_bootstrap.c.o
+[33/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/__/third_party/yyjson/yyjson.c.o
+[34/123] Building C object test/tools/CMakeFiles/test_tools.dir/audio_analysis.c.o
+[35/123] Building C object test/tools/CMakeFiles/test_tools.dir/tilemap.c.o
+[36/123] Building C object test/tools/CMakeFiles/test_tools.dir/published_docs.c.o
+[37/123] Building C object test/tools/CMakeFiles/test_tools.dir/shader_webgpu.c.o
+[38/123] Building C object test/tools/CMakeFiles/test_tools.dir/build_toolchain.c.o
+[39/123] Building C object test/tools/CMakeFiles/test_tools.dir/box3d.c.o
+[40/123] Building C object test/tools/CMakeFiles/test_tools.dir/compiler_artifact.c.o
+[41/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/appearance_geometry.c.o
+[42/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/support/fmt.c.o
+[43/123] Building C object test/tools/CMakeFiles/test_tools.dir/player_clock.c.o
+[44/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/mesh_surface.c.o
+[45/123] Building C object test/tools/CMakeFiles/test_tools.dir/build_process.c.o
+[46/123] Building C object test/tools/CMakeFiles/test_tools.dir/build_graph.c.o
+[47/123] Building C object test/tools/CMakeFiles/test_tools.dir/particle_fields.c.o
+[48/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/scene3d_post.c.o
+[49/123] Building C object test/tools/CMakeFiles/test_tools.dir/c_export.c.o
+[50/123] Building C object test/tools/CMakeFiles/test_tools.dir/audio_output.c.o
+[51/123] Building C object test/tools/CMakeFiles/test_tools.dir/terrain_playable_render.c.o
+[52/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/scene3d_shapes.c.o
+[53/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/modeling.c.o
+[54/123] Building C object test/tools/CMakeFiles/test_tools.dir/record_c_export.c.o
+[55/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_inspection.c.o
+[56/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_profiles.c.o
+[57/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_reuse.c.o
+[58/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_materials.c.o
+[59/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_constructive.c.o
+[60/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/packs.c.o
+[61/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_material_scope.c.o
+[62/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_sampled.c.o
+[63/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_parameters.c.o
+[64/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_validation.c.o
+[65/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/shader_detail.c.o
+[66/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_surface.c.o
+[67/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/shader_effects.c.o
+[68/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/shader_image.c.o
+[69/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/shader_parity.c.o
+[70/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/graph/model_preview.c.o
+[71/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/camera_orbit.c.o
+[72/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/shader_program.c.o
+[73/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/camera_plane.c.o
+[74/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/shader_image_routes.c.o
+[75/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/camera_centered_orbit.c.o
+[76/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/camera_emitter_orbit.c.o
+[77/123] Building C object test/tools/CMakeFiles/test_tools.dir/terrain_storage_commands.c.o
+[78/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/sdf_spatial.c.o
+[79/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/sdf_quality.c.o
+[80/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/render/mesh_material.c.o
+[81/123] Building C object test/tools/CMakeFiles/test_tools.dir/material_bake.c.o
+[82/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/materials.c.o
+[83/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_fixture.c.o
+[84/123] Building C object test/tools/CMakeFiles/test_tools.dir/environment_authoring.c.o
+[85/123] Building C object test/tools/CMakeFiles/test_tools.dir/terrain_playable.c.o
+[86/123] Building C object test/tools/CMakeFiles/test_tools.dir/feature_coverage.c.o
+[87/123] Building C object test/tools/CMakeFiles/test_tools.dir/preview_components.c.o
+[88/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_fluids.c.o
+[89/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/reference_cave.c.o
+[90/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_debris.c.o
+[91/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_mpm.c.o
+[92/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_mixed.c.o
+[93/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_obstacles.c.o
+[94/123] Building C object test/tools/CMakeFiles/test_tools.dir/preview.c.o
+[95/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_particle_index.c.o
+[96/123] Building C object test/tools/CMakeFiles/test_tools.dir/game_equivalence.c.o
+[97/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_cave_terrain.c.o
+[98/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_fragments.c.o
+[99/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_mask_damage.c.o
+[100/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_blast.c.o
+[101/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_constitutive.c.o
+[102/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_simulation.c.o
+[103/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_impulse.c.o
+[104/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_destruction.c.o
+[105/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_benchmark.c.o
+[106/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_detail.c.o
+[107/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_reactions.c.o
+[108/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/authoring/prototype_documents.c.o
+[109/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/authoring/reference_index.c.o
+[110/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/authoring/ui_pages.c.o
+[111/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/support/graph_packs.c.o
+[112/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/field_library.c.o
+[113/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/material_thermal.c.o
+[114/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/contact_benchmark.c.o
+[115/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/authoring/asset_source.c.o
+[116/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/engine_clock.c.o
+[117/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/authoring/behavior_loader.c.o
+[118/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/authoring/preview_layout.c.o
+[119/123] Building C object test/tools/CMakeFiles/test_tools.dir/__/runtime/fields.c.o
+[120/123] Linking CXX executable test/tools/test_tools
+ld: warning: ignoring duplicate libraries: '-lc++', 'sdk/libchibi_arithmetic_capabilities.a', 'sdk/libchibi_array_capabilities.a', 'sdk/libchibi_asset_authoring.a', 'sdk/libchibi_asset_documents.a', 'sdk/libchibi_asset_json.a', 'sdk/libchibi_audio_runtime.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_box3d.a', 'sdk/libchibi_comparison_capabilities.a', 'sdk/libchibi_compiler_host.a', 'sdk/libchibi_component_presentation.a', 'sdk/libchibi_conversion_capabilities.a', 'sdk/libchibi_engine.a', 'sdk/libchibi_entity_runtime.a', 'sdk/libchibi_execution.a', 'sdk/libchibi_fmt.a', 'sdk/libchibi_graph_authoring.a', 'sdk/libchibi_graph_catalog.a', 'sdk/libchibi_graph_compilation.a', 'sdk/libchibi_graph_model.a', 'sdk/libchibi_host_native_default.a', 'sdk/libchibi_image_preparation.a', 'sdk/libchibi_material_runtime.a', 'sdk/libchibi_math_capabilities.a', 'sdk/libchibi_mesh_runtime.a', 'sdk/libchibi_model_authoring.a', 'sdk/libchibi_model_import.a', 'sdk/libchibi_native_types.a', 'sdk/libchibi_particle_runtime.a', 'sdk/libchibi_physics3d_runtime.a', 'sdk/libchibi_physics_runtime.a', 'sdk/libchibi_platform.a', 'sdk/libchibi_player.a', 'sdk/libchibi_project_compilation.a', 'sdk/libchibi_project_document.a', 'sdk/libchibi_project_preparation.a', 'sdk/libchibi_prototype_document.a', 'sdk/libchibi_reference_index.a', 'sdk/libchibi_renderer.a', 'sdk/libchibi_save_runtime.a', 'sdk/libchibi_scenario_document.a', 'sdk/libchibi_scene_authoring.a', 'sdk/libchibi_scene_document.a', 'sdk/libchibi_scene_runtime.a', 'sdk/libchibi_shader_preparation.a', 'sdk/libchibi_shader_runtime.a', 'sdk/libchibi_source_catalog.a', 'sdk/libchibi_spatial_runtime.a', 'sdk/libchibi_studio_capabilities.a', 'sdk/libchibi_task_pool_runtime.a', 'sdk/libchibi_text_source.a', 'sdk/libchibi_tilemap_runtime.a', 'sdk/libchibi_ui_document.a', 'sdk/libchibi_value_document.a', 'sdk/libchibi_vector_capabilities.a'

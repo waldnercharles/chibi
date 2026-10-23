@@ -1,0 +1,92 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Configuring done (1.4s)
+-- Generating done (0.3s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build
+[0/4] Re-checking globbed directories...
+[1/88] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/index.c.o
+[2/88] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/binary_cache.c.o
+[3/88] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/union.c.o
+[4/88] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/trace.c.o
+[5/88] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/value_format.c.o
+[6/88] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/value_wire.c.o
+[7/88] Building C object sdk/CMakeFiles/chibi_capabilities.dir/__/src/capabilities/catalog.c.o
+[8/88] Building C object sdk/CMakeFiles/chibi_capabilities.dir/__/src/capabilities/catalog_values.c.o
+[9/88] Linking C static library sdk/libchibi_support.a
+[10/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/artifact.c.o
+[11/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/borrow.c.o
+[12/88] Linking C static library sdk/libchibi_types.a
+[13/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/c.c.o
+[14/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/call.c.o
+[15/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/component.c.o
+[16/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/function.c.o
+[17/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/function_builder.c.o
+[18/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/fusion.c.o
+[19/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/host.c.o
+[20/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/inputs.c.o
+[21/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/intrinsics.c.o
+[22/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_component.c.o
+[23/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit.c.o
+[24/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_host_call.c.o
+[25/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_integer.c.o
+[26/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_memory.c.o
+[27/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_suspend.c.o
+[28/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_registers.c.o
+[29/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/log.c.o
+[30/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_system.c.o
+[31/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_watch.c.o
+[32/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/machine.c.o
+[33/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/parallel.c.o
+[34/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/module.c.o
+[35/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/module_effects.c.o
+[36/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/opt.c.o
+[37/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/preparation_budget.c.o
+[38/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared_function.c.o
+[39/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared_record.c.o
+[40/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared.c.o
+[41/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_observers.c.o
+[42/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_activation.c.o
+[43/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_inspection.c.o
+[44/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program.c.o
+[45/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_locals.c.o
+[46/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_storage.c.o
+[47/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_commands.c.o
+[48/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_bindings.c.o
+[49/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_preflight.c.o
+[50/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_tasks.c.o
+[51/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/reads.c.o
+[52/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/range_opt.c.o
+[53/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/runner.c.o
+[54/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/source_debug.c.o
+[55/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/scalar_lowering_plan.c.o
+[56/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/scalarize.c.o
+[57/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/storage.c.o
+[58/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/suspend.c.o
+[59/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/vm.c.o
+[60/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/update_jit.c.o
+[61/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/wasm_emit.c.o
+[62/88] Linking C static library sdk/libchibi_capabilities.a
+[63/88] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/wasm_jit.c.o
+[64/88] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/event_catalog.c.o
+[65/88] Linking C static library sdk/libchibi_execution.a
+[66/88] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/source_profile.c.o
+[67/88] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/source.c.o
+[68/88] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/source_publication.c.o
+[69/88] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/package.c.o
+[70/88] Building C object sdk/CMakeFiles/chibi_value_document.dir/__/src/types/value_document.c.o
+[71/88] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/module_set.c.o
+[72/88] Building C object sdk/CMakeFiles/chibi_value_document.dir/__/src/types/value_document_read.c.o
+[73/88] Linking C static library sdk/libchibi_behavior_runtime.a
+[74/88] Linking C static library sdk/libchibi_value_document.a
+[75/88] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_host.c.o
+[76/88] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_artifact.c.o
+[77/88] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_json.c.o
+[78/88] Building C object sdk/CMakeFiles/chibi_native_prepared.dir/__/src/runtime/native_prepared.c.o
+[79/88] Linking C static library sdk/libchibi_native_prepared.a
+[80/88] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_syntax.c.o
+[81/88] Building C object sdk/CMakeFiles/chibi-compiler-host.dir/__/src/toolchain/compiler_main.c.o
+[82/88] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_target.c.o
+[83/88] Linking C static library sdk/libchibi_compiler_host.a
+[84/88] Building C object sdk/CMakeFiles/chibi-compiler-host.dir/__/src/toolchain/compiler_bootstrap.c.o
+[85/88] Linking C executable sdk/chibi-compiler-host
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_json.a', 'sdk/libchibi_support.a'

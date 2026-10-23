@@ -1,0 +1,4 @@
+Running: new_asset_create_writes_the_template_once_into_its_folder (OK) (0.292530 secs)
+Running: new_asset_source_templates_use_canonical_identifiers_and_headers (OK) (0.000978 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 65

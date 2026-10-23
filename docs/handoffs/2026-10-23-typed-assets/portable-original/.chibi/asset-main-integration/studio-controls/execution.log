@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/studio-controls/run.py", line 111, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/studio-controls/run.py", line 101, in main
+    if not caught: raise RuntimeError('Control did not fail at expected assertion: '+control['id'])
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Control did not fail at expected assertion: graph-type-name

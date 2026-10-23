@@ -1,0 +1,232 @@
+{
+  "state": "source-only post-focus ordinary ancestry forecast",
+  "frozen_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "future_first_commit": {
+    "tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+    "parents": [
+      "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "fa1b7b2bb297eacbbed6aec6f03c4260355db97c"
+    ],
+    "commit_created": false
+  },
+  "future_main": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "main_tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+  "actual_future_merge_base": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "base_proof": {
+    "merge_base30cd_d0": "b93472018544ae27e84a8277035bc3116e31ff47",
+    "merge_base_fa1b_d0": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "first_subsumed_by_second": true,
+    "deduction": "Future commit ancestry is the union of its two actual parents; fa1b remains the unique maximal common ancestor with pinned d0."
+  },
+  "method": "Separate GIT_INDEX_FILE read-tree; classify equal/base-equal paths; merge-file on19 nontrivial blobs; inspect every conflicting region and retain precise reviewed typed adaptations. No commit object or actual merge; ort rename heuristics may change displayed conflicts, so actual final tree equality remains mandatory.",
+  "trivial_paths": 309,
+  "nontrivial_files": 19,
+  "clean_content_merges": 10,
+  "conflict_files": 9,
+  "conflict_regions": 12,
+  "file_results": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "conflict_regions": 1,
+      "resolution": "Keep two project.chibi starter receipts; all other eligible CI/Linux harness changes are already present.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "86be12daca12afc39b4deaa054286b6c0357d8e4"
+    },
+    {
+      "file": ".github/workflows/paired-studio.yml",
+      "conflict_regions": 1,
+      "resolution": "Add/add file: same paired workflow apart from two reviewed project.chibi receipts; keep those adapted literals.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "aa8c4ac0ff2edc4c792b2fd80186ca06e1d73a55"
+    },
+    {
+      "file": ".gitignore",
+      "conflict_regions": 1,
+      "resolution": "Keep reviewed build-sdk-release ignore and blank separator alongside incoming build-sdk-tests ignore already present.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "25262ff239daceea59e9d8813767ca3a4cf47692"
+    },
+    {
+      "file": "PLAN.md",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "67f98c2adcc15b2c2626213b958e9e1e5583e874"
+    },
+    {
+      "file": "docs/self-hosting-build.md",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "1b0dff6468a50f58dba6f9792b8de6e616a83417"
+    },
+    {
+      "file": "docs/testing.md",
+      "conflict_regions": 1,
+      "resolution": "Keep typed prototype workload section plus incoming third-party/paired SDK sections already present; deletion of typed section would lose reviewed coverage documentation.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "a7271153f1541e8395c0d46cdf7e2526be3c750b"
+    },
+    {
+      "file": "docs/toolchain-inventory.md",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "74591c5239e40b255c619639de18f74e20bf7333"
+    },
+    {
+      "file": "src/assets/project_migrate.c",
+      "conflict_regions": 1,
+      "resolution": "Keep deleted: incoming empty-literal guard fixes only retired parser/migration implementation.",
+      "result_exactly_matches9fa": true,
+      "result_blob": null
+    },
+    {
+      "file": "src/execution/definition.h",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "1dd4564589ab52b9fad8b9fab05144b1f7daeee4"
+    },
+    {
+      "file": "test/language/navigation.c",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "c148bd7db53ae42d21ba84921ed7f0d07cb069f0"
+    },
+    {
+      "file": "test/language/program.c",
+      "conflict_regions": 1,
+      "resolution": "Keep retired historical migration cases absent; incoming version28 migration fixture changes do not apply.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "fae7218d09bd6d84d60768ec4c635a9da748fdee"
+    },
+    {
+      "file": "test/tools/CMakeLists.txt",
+      "conflict_regions": 1,
+      "resolution": "Keep asset_cache_browser.c in unioned test sources; incoming build_sdk/third_party_publish additions are already included.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "ad8c63664ecae1e0a55eb308373d2d39f32847c7"
+    },
+    {
+      "file": "test/tools/build_process.c",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "c69499e37b5e5c22e9a269cebd6011e4554fbf0e"
+    },
+    {
+      "file": "test/tools/build_sdk.c",
+      "conflict_regions": 4,
+      "resolution": "Keep reviewed four-line adapter effect (three fixture/notice removals here) and clang22 array formatting; no ckdl dependency. Keep fourth conflict region with reviewed semantic support command oracle: nonempty array, source prefix, root directory, compiler=/usr/bin/false and file_io.c witness rather than old exact-five count.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "0031ce827d2d75aa4d8b18e4cc1bb341671fe7b9"
+    },
+    {
+      "file": "test/tools/main.c",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "430647ca6363bc8ba8de94ebc781759e79c24e00"
+    },
+    {
+      "file": "test/tools/test_policy.c",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "e731f5508569100faffb616ff8938a1f6fa27b4a"
+    },
+    {
+      "file": "tools/graph/engine/Targets.chibi",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "bc6368ae32729ae213ab7b496d5c2ae5485802bc"
+    },
+    {
+      "file": "tools/test_policy.py",
+      "conflict_regions": 0,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "d41a71e866d10be137fdf628336a4a0d5c02019b"
+    },
+    {
+      "file": "tools/toolchain/SDK.chibi",
+      "conflict_regions": 1,
+      "resolution": "Keep missing ckdl notice Entry per exact reviewed adapter; all other SDK source already matches main.",
+      "result_exactly_matches9fa": true,
+      "result_blob": "cc10e63620ad9266431ff2440f59220f9cd80ac0"
+    }
+  ],
+  "new_CI_paths": [
+    {
+      "file": ".github/scripts/compiler-self-build.ps1",
+      "base_blob": null,
+      "main_blob": null,
+      "typed_blob": "0810c7bc21d57531e5e6639ac113dd5178b31bc1",
+      "classification": "trivial typed-only add",
+      "new_conflict": false,
+      "resolution": "Preserve reviewed CI compatibility source exactly; pinned d0 does not change this path from fa1b (both absent for new shared helper).",
+      "sha256": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4"
+    },
+    {
+      "file": ".github/workflows/compiler-recovery.yml",
+      "base_blob": "c18d3cab8ee6f3312815dbed6b3a05f9f2686072",
+      "main_blob": "c18d3cab8ee6f3312815dbed6b3a05f9f2686072",
+      "typed_blob": "7b1810dbf401851cf77811c12e721e6f9de2da2c",
+      "classification": "trivial typed-only modification",
+      "new_conflict": false,
+      "resolution": "Preserve reviewed CI compatibility source exactly; pinned d0 does not change this path from fa1b (both absent for new shared helper).",
+      "sha256": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1"
+    },
+    {
+      "file": ".github/workflows/compiler-runtime-seed.yml",
+      "base_blob": "7e5dfe674567ee0287ffcfadfc5ba9d535c4a289",
+      "main_blob": "7e5dfe674567ee0287ffcfadfc5ba9d535c4a289",
+      "typed_blob": "05dcec1a4f6df5d2162d10096b2fb87474531211",
+      "classification": "trivial typed-only modification",
+      "new_conflict": false,
+      "resolution": "Preserve reviewed CI compatibility source exactly; pinned d0 does not change this path from fa1b (both absent for new shared helper).",
+      "sha256": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b"
+    }
+  ],
+  "delta_from0b5": [
+    ".github/scripts/compiler-self-build.ps1",
+    ".github/workflows/compiler-recovery.yml",
+    ".github/workflows/compiler-runtime-seed.yml",
+    "docs/typed-assets/PLAN.md",
+    "test/tools/build_sdk.c"
+  ],
+  "new_conflicts_vs0b5": "One new region in build_sdk.c semantic fixture oracle; file set unchanged. No new CI conflicts: helper is a typed-only add, workflows typed-only modifications. docs/typed-assets/PLAN remains typed-only.",
+  "forecast_resolved_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "equals_frozen_tree": true,
+  "missing_d0_deltas": [],
+  "source_change_needed": false,
+  "generation_needed": false,
+  "earlier_forecast_preserved": {
+    "file": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/baseline-candidate/ancestry-forecast.json",
+    "sha256": "21e9625ef87851be6f287ba53fdeb482d39dd97cfd9c3a9f57914540f901f85a",
+    "tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "receipt_sha256": "474f8c265695d7d27be6531cde040429a767da51751f97c635836c0aa9dfa868"
+  },
+  "active_state": {
+    "HEAD": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "MERGE_HEAD": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "index_delta_vs9fa": [],
+    "unstaged": [],
+    "unmerged": []
+  },
+  "evidence_boundary": "Production0b5 runtime/SDK evidence plus test-only966 evidence do NOT establish combined9fa runtime, actual ancestry merge, or final clean committed-candidate proof. This is source integration analysis only.",
+  "invalidation": "Any later source, fixture, CI, docs, formatting or resource change invalidates exact9fa identities. Different first-commit parents or a moved main target also require refresh.",
+  "eventual_rule": "Create genuine authorized pendingfa1b checkpoint with checked tree; ordinary merge pinnedd0; resolve file-by-file without globalours, keep migrations deleted and adapters intact, require final merged tree exactly matches final tested frozen tree before actual ancestry commit. No abort/reset or fabricated ancestry.",
+  "execution": {
+    "builds": [],
+    "tests": [],
+    "generation": [],
+    "commit_objects": [],
+    "actual_merge": false,
+    "active_index_source_or_metadata_changes": false,
+    "external_thread_messages": false
+  }
+}

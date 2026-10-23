@@ -1,0 +1,14 @@
+{
+  "state": "applied6ef source independently verified; ordinary upgrade and green checks running elsewhere",
+  "active_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "all5_candidate_hashes_match": true,
+  "no_unstaged_source": true,
+  "ancestry_forecast_sha256": "f46f81ac2cf4c2b9f7c0c2f3c4b658558ec9941c74b5f65ed98db8ce721a9ee2",
+  "forecast_resolved_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "missing_d0_deltas": [],
+  "actual_main_ancestry": "not performed",
+  "runtime_validation": "CI owns execution; no green or full-group result inferred",
+  "production_sdk_currency": "previous68e625 SDK belongs protocol8 production0b5; fresh9 product/SDK metadata pending"
+}

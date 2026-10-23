@@ -1,0 +1,19 @@
+Running: incremental_preparation_benchmark INCREMENTAL mode=unchanged trial=0 sources=4 reused=4 prepare_ms=0.774000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=1 sources=4 reused=4 prepare_ms=0.688000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=2 sources=4 reused=4 prepare_ms=1.049000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=3 sources=4 reused=4 prepare_ms=0.796000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=4 sources=4 reused=4 prepare_ms=0.681000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=body trial=0 sources=4 reused=1 prepare_ms=0.808000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=1 sources=4 reused=1 prepare_ms=0.772000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=2 sources=4 reused=1 prepare_ms=1.187000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=3 sources=4 reused=1 prepare_ms=1.072000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=4 sources=4 reused=1 prepare_ms=0.835000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=presentation trial=0 sources=4 reused=4 prepare_ms=0.683000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=1 sources=4 reused=4 prepare_ms=0.679000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=2 sources=4 reused=4 prepare_ms=0.665000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=3 sources=4 reused=4 prepare_ms=0.701000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=4 sources=4 reused=4 prepare_ms=0.857000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+(OK) (0.492032 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 159
+Test command wall time: 0.620s; includes in-test fixture setup; external configuration/build excluded.

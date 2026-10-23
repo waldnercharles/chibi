@@ -1,0 +1,49 @@
+diff --git a/sdk/CMakeLists.txt b/sdk/CMakeLists.txt
+index c5692d457..fe042c3ba 100644
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -658,8 +658,7 @@ if(TARGET chibi_language_syntax)
+         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
+         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c"
+         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c"
+-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c"
+-        "${CHIBI_SDK_ROOT}/src/support/sha256.c")
++        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c")
+     foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax
+             compiler_target)
+         configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
+@@ -672,7 +671,7 @@ if(TARGET chibi_language_syntax)
+     target_include_directories(chibi_compiler_host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
+     target_link_libraries(chibi_compiler_host PUBLIC chibi_behavior_runtime
+         PRIVATE chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
+-        chibi_value_document chibi_asset_json chibi_language_syntax chibi_json)
++        chibi_value_document chibi_asset_json chibi_language_syntax chibi_json chibi_support)
+     target_compile_options(chibi_compiler_host PRIVATE -Wall -Wextra -Werror)
+     add_library(Chibi::compiler_host ALIAS chibi_compiler_host)
+     set_target_properties(chibi_compiler_host PROPERTIES EXPORT_NAME compiler_host)
+diff --git a/sdk/contracts.cmake b/sdk/contracts.cmake
+index 24a7462a7..2b642bc10 100644
+--- a/sdk/contracts.cmake
++++ b/sdk/contracts.cmake
+@@ -216,7 +216,7 @@ endif()
+ if(CHIBI_SDK_BUILD_COMPILER)
+     chibi_sdk_contract(chibi_compiler_host "${CHIBI_SDK_ROOT}/src/toolchain"
+         chibi_behavior_runtime chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
+-        chibi_value_document chibi_asset_json chibi_language_syntax)
++        chibi_value_document chibi_asset_json chibi_language_syntax chibi_json chibi_support)
+ endif()
+ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
+     chibi_sdk_contract(chibi_compiler_syntax "${CHIBI_SDK_ROOT}/src/toolchain"
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index f935fe1fd..f02d936f3 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -629,7 +629,7 @@ Files :: (target: string) -> string[] {
+         return [
+             "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
+             "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
+-            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c"
++            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c"
+         ];
+     }
+     if (target == "chibi-compiler-host") {

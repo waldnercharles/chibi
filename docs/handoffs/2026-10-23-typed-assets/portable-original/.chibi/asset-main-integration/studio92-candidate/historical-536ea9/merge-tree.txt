@@ -1,0 +1,111 @@
+590e3e107687135e10afbb7b26180924d2650b15
+100644 2de71bc42d1ab289533e578c24cb2e2d019de505 1	EXTRACTION.json
+100644 ab6808f14bf3956d109eb17e7c7150bbd7d6fd4c 2	EXTRACTION.json
+100644 f1f05b83db6d480f61dc0606faf092a86b4789d0 3	EXTRACTION.json
+100644 aaa63ac21e7d72d47abea8f973ee3867f8b6616a 1	src/editor/collab/actions_graph.c
+100644 27250e8ed53afd9895427dfb8d7c3b028629c510 2	src/editor/collab/actions_graph.c
+100644 d45d417e1fe93cae92d3d60e8887b948255cca7d 3	src/editor/collab/actions_graph.c
+100644 10097c403d8adee74f104e5e7c0bbc127a71979b 1	src/editor/collab/actions_scene.c
+100644 4b50a15a7225c656f2447bc78a76f0e464c5bb84 2	src/editor/collab/actions_scene.c
+100644 151737efea04ff3f4ddfcb4907c177715aaa46a8 3	src/editor/collab/actions_scene.c
+100644 4cd497854e7c484c0b9b803566f17793a6a69c0b 1	src/editor/documents/scene_history.c
+100644 b568d3e3199bfffa47d154f9d8934155d4ee8058 2	src/editor/documents/scene_history.c
+100644 d01b32bd14e5a06c18e14ffc561c0a1260b48577 3	src/editor/documents/scene_history.c
+100644 cfce346ac0b7e8cc5d88f9d1aba6d5207b936268 1	src/editor/documents/scene_prototype_actions.c
+100644 67576f8398c9ce658aae4b4af7e7d96ac99007d1 2	src/editor/documents/scene_prototype_actions.c
+100644 bca406e20dceabf9ca5871c7a7220a72f24e52fa 3	src/editor/documents/scene_prototype_actions.c
+100644 e1068bb92e8e178dda68894c4ce1fa309ed53218 1	src/editor/documents/scene_prototypes.c
+100644 7a385085a6cde3af04bcaf5b9a7e7126165177bf 2	src/editor/documents/scene_prototypes.c
+100644 211d610509595ff90854bfcd077557c1da5ef6c6 3	src/editor/documents/scene_prototypes.c
+100644 ff978499e883198489dc42c85a1d6d2997112de5 1	src/editor/studio/studio_graph_properties.c
+100644 7e1a1e38245a133fc662b60ea72ee05b193bf9a4 2	src/editor/studio/studio_graph_properties.c
+100644 9178fc43cf5b21bb89ebb0991219f6fb91b37c1b 3	src/editor/studio/studio_graph_properties.c
+100644 fbc92ec0b1401e7ae6bcc54d678799460c256d6d 1	src/editor/studio/studio_graph_values.c
+100644 6ede428c75bec7d85342ec3fac63185cf33e0c6c 2	src/editor/studio/studio_graph_values.c
+100644 9390d63f22e13be9559d7be9e9a5c5928e6c51ff 3	src/editor/studio/studio_graph_values.c
+100644 e2808e04b29908baa877ebe97077d7dde5fe0aca 1	src/editor/studio/studio_node_calls.c
+100644 53d359617d2980e591b431e95e4321def5efb780 2	src/editor/studio/studio_node_calls.c
+100644 b1c5e2be16ba6494d5d5559a52b3a01dfcb25bda 3	src/editor/studio/studio_node_calls.c
+100644 fca4fb129ce394400909f4f3fa7a13f3cc2cde22 1	src/editor/studio/studio_properties.c
+100644 ee573286158edb5d7329d760f75076a15ff79e18 2	src/editor/studio/studio_properties.c
+100644 b227b715d842fc4347bef3a5bfab71971b6cd02c 3	src/editor/studio/studio_properties.c
+100644 f1f64cf8222e1a915b03b6759c3e1a63e96551fc 1	src/editor/studio/studio_properties_view.c
+100644 bf966266c67f36c3a5c3de5edb26fddc3731137e 2	src/editor/studio/studio_properties_view.c
+100644 d05117a5253ea40cfabdc42f9fa011e23447a74d 3	src/editor/studio/studio_properties_view.c
+100644 ad6119a0fb038b6879edca6a049a49df5c5bfae1 1	src/editor/workspace/scene_asset_drop.c
+100644 19d5bf1f420e27ff659cc2ea83354fa16c490575 2	src/editor/workspace/scene_asset_drop.c
+100644 22d809014ff9ea2e3cd5b578c5082b72eb04e7ef 3	src/editor/workspace/scene_asset_drop.c
+100644 21f2a134316f7166db01558da5ecab92500397e1 1	src/editor/workspace/scene_authoring.c
+100644 01fbb370218d899ab29ff7b45258ae72f8e99565 2	src/editor/workspace/scene_authoring.c
+100644 d6e329643cef6e95f7134c524c7e34d3a1e6537b 3	src/editor/workspace/scene_authoring.c
+100644 96bb37ac123d5da6bdf4901a66df10fa20ff0b84 1	src/editor/workspace/scene_authoring.h
+100644 e0f61fb69bc663a415f86e289e4b3f5701acb8e5 2	src/editor/workspace/scene_authoring.h
+100644 92fb94afeabea9f983e20fd883c695b3ccd3162c 3	src/editor/workspace/scene_authoring.h
+100644 aec2bc4ab74f13c60aa61d66419a64efad408acc 1	src/editor/workspace/scene_gizmo.c
+100644 a80ca14868142eef359b5dee7934ba98325c2e31 2	src/editor/workspace/scene_gizmo.c
+100644 a9d9af2c5bfbf57e2d738a86850448b9efd301c6 3	src/editor/workspace/scene_gizmo.c
+100644 1194733fe5d53a0764599959c849ffa897a4db29 1	src/editor/workspace/scene_runtime.c
+100644 2ff27a6834c1f56879937a86b199f748c08c5ba2 2	src/editor/workspace/scene_runtime.c
+100644 c6a626fa39032b90e6ee7bd09c36320a73caee5f 3	src/editor/workspace/scene_runtime.c
+100644 743a8622f840fd48e14fb34105fe755f94ad8b02 1	tests/acceptance/main.c
+100644 2e07c21332807961b7979f1e381b23c372bf0a8b 2	tests/acceptance/main.c
+100644 c093c316b9573eaae62477a06f1049ba2ca5fa81 3	tests/acceptance/main.c
+100644 71ca3389ea782626c0c60dbe88aaa4dd45f52a90 1	tests/acceptance/outliner_row_policies.h
+100644 5f3f9e224278d2c430799f433ccac3ff26c548c7 2	tests/acceptance/outliner_row_policies.h
+100644 709efdb6c1810d7a6577a7f806fc4a43f56ec589 3	tests/acceptance/outliner_row_policies.h
+100644 153ba450c3fa6afde454eea97e006907370591ec 1	tests/acceptance/prototype_source.h
+100644 a0534c5408a9ac1484ee4b3892adbb45b9173dc5 2	tests/acceptance/prototype_source.h
+100644 5bdcd1c26cdf2370165fa39d0385447f7b295e8c 3	tests/acceptance/prototype_source.h
+100644 ab50d717989d4df504a2686e6c900e5d90a1c9ad 1	tests/acceptance/prototype_source_authority.h
+100644 815b5c3d52e9b6b8f9aa5158b96e11fa19b981d0 2	tests/acceptance/prototype_source_authority.h
+100644 720f256790cab7d7e65834755efa064016210df9 3	tests/acceptance/prototype_source_authority.h
+100644 f93a46b58f5f003ea7ee9353aa262159c7c75f01 1	tests/acceptance/scene_move.h
+100644 6e77b7016b013b048d34d9a6acf771d275f77ff4 2	tests/acceptance/scene_move.h
+100644 742d51497b1b941e568cb19452138fc462817a93 3	tests/acceptance/scene_move.h
+
+Auto-merging EXTRACTION.json
+CONFLICT (content): Merge conflict in EXTRACTION.json
+Auto-merging src/editor/collab/actions_graph.c
+CONFLICT (content): Merge conflict in src/editor/collab/actions_graph.c
+Auto-merging src/editor/collab/actions_scene.c
+CONFLICT (content): Merge conflict in src/editor/collab/actions_scene.c
+Auto-merging src/editor/documents/scene_document.c
+Auto-merging src/editor/documents/scene_history.c
+CONFLICT (content): Merge conflict in src/editor/documents/scene_history.c
+Auto-merging src/editor/documents/scene_prototype_actions.c
+CONFLICT (content): Merge conflict in src/editor/documents/scene_prototype_actions.c
+Auto-merging src/editor/documents/scene_prototypes.c
+CONFLICT (content): Merge conflict in src/editor/documents/scene_prototypes.c
+Auto-merging src/editor/studio/studio_graph_properties.c
+CONFLICT (content): Merge conflict in src/editor/studio/studio_graph_properties.c
+Auto-merging src/editor/studio/studio_graph_values.c
+CONFLICT (content): Merge conflict in src/editor/studio/studio_graph_values.c
+Auto-merging src/editor/studio/studio_member_properties.c
+Auto-merging src/editor/studio/studio_node_calls.c
+CONFLICT (content): Merge conflict in src/editor/studio/studio_node_calls.c
+Auto-merging src/editor/studio/studio_properties.c
+CONFLICT (content): Merge conflict in src/editor/studio/studio_properties.c
+Auto-merging src/editor/studio/studio_properties_view.c
+CONFLICT (content): Merge conflict in src/editor/studio/studio_properties_view.c
+Auto-merging src/editor/studio/studio_prototype_actions.c
+Auto-merging src/editor/workspace/scene_asset_drop.c
+CONFLICT (content): Merge conflict in src/editor/workspace/scene_asset_drop.c
+Auto-merging src/editor/workspace/scene_authoring.c
+CONFLICT (content): Merge conflict in src/editor/workspace/scene_authoring.c
+Auto-merging src/editor/workspace/scene_authoring.h
+CONFLICT (content): Merge conflict in src/editor/workspace/scene_authoring.h
+Auto-merging src/editor/workspace/scene_gizmo.c
+CONFLICT (content): Merge conflict in src/editor/workspace/scene_gizmo.c
+Auto-merging src/editor/workspace/scene_runtime.c
+CONFLICT (content): Merge conflict in src/editor/workspace/scene_runtime.c
+Auto-merging tests/acceptance/README.md
+Auto-merging tests/acceptance/main.c
+CONFLICT (content): Merge conflict in tests/acceptance/main.c
+Auto-merging tests/acceptance/outliner_row_policies.h
+CONFLICT (content): Merge conflict in tests/acceptance/outliner_row_policies.h
+Auto-merging tests/acceptance/prototype_source.h
+CONFLICT (content): Merge conflict in tests/acceptance/prototype_source.h
+Auto-merging tests/acceptance/prototype_source_authority.h
+CONFLICT (content): Merge conflict in tests/acceptance/prototype_source_authority.h
+Auto-merging tests/acceptance/scene_move.h
+CONFLICT (content): Merge conflict in tests/acceptance/scene_move.h

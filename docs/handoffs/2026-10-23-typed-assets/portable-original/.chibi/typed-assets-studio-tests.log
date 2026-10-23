@@ -1,0 +1,24 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+Prototype source edge controls: deleted_source_retained=1 queued_commands_quiet=1
+Running: prototype_source_ownership 
+Studio prototype source ownership accepted: frames=2 prototypes=4 actors=3 checkpoints=1
+(OK) (1.969511 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 324
+Test command wall time: 4.220s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

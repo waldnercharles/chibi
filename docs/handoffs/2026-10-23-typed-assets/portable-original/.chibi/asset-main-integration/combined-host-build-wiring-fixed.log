@@ -1,0 +1,9 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Configuring done (1.1s)
+-- Generating done (0.1s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/host
+[0/4] Re-checking globbed directories...
+[1/5] Linking C static library libchibi_compiler_host.a
+[2/5] Linking C executable chibi-compiler-host
+ld: warning: ignoring duplicate libraries: 'libchibi_json.a', 'libchibi_support.a'

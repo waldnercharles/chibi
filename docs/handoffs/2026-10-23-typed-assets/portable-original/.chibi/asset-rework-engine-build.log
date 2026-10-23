@@ -1,0 +1,28 @@
+native-toolchain: running (log: .chibi/logs/1792630547542189000-8547-native-toolchain.log)
+native-toolchain: FAILED (4.6s; log: .chibi/logs/1792630547542189000-8547-native-toolchain.log)
+[17/240] Building C object sdk/CMakeFiles/chibi_physics_runtime.dir/__/src/runtime/physics_native.c.o
+[18/240] Building C object sdk/CMakeFiles/chibi_core_capabilities.dir/__/src/runtime/core_definition.c.o
+[19/240] Linking C static library sdk/libchibi_entity_runtime.a
+[20/240] Building C object sdk/CMakeFiles/chibi_input_runtime.dir/__/src/runtime/source_input.c.o
+[21/240] Building C object sdk/CMakeFiles/chibi_physics3d_runtime.dir/__/src/runtime/physics3d_native.c.o
+[22/240] Building C object sdk/CMakeFiles/chibi_visibility_runtime.dir/__/src/runtime/visibility.c.o
+[23/240] Building C object sdk/CMakeFiles/chibi_physics3d_runtime.dir/__/src/runtime/scenes/physics3d.c.o
+[24/240] Building C object sdk/CMakeFiles/chibi_asset_documents.dir/__/src/support/asset_document.c.o
+[25/240] Building C object sdk/CMakeFiles/chibi_visibility_runtime.dir/__/src/runtime/visibility_definition.c.o
+[26/240] Linking CXX static library sdk/libchibi_material_runtime.a
+[27/240] Building C object sdk/CMakeFiles/chibi_graph_model.dir/__/src/graph/model/behavior_asset.c.o
+[28/240] Building C object sdk/CMakeFiles/chibi_asset_documents.dir/__/src/authoring/asset_compiler_host.c.o
+[29/240] Linking C static library sdk/libchibi_core_capabilities.a
+[30/240] Linking C static library sdk/libchibi_input_runtime.a
+[31/240] Linking CXX static library sdk/libchibi_physics3d_runtime.a
+[32/240] Linking CXX static library sdk/libchibi_physics_runtime.a
+[33/240] Linking C static library sdk/libchibi_graph_model.a
+[34/240] Building C object sdk/CMakeFiles/chibi_engine.dir/__/src/runtime/engine.c.o
+[35/240] Linking C static library sdk/libchibi_asset_documents.a
+[36/240] Linking CXX static library sdk/libchibi_visibility_runtime.a
+[37/240] Building C object sdk/CMakeFiles/chibi_compiler.dir/__/src/language/lower.c.o
+[38/240] Building C object sdk/CMakeFiles/chibi_engine.dir/__/src/runtime/world.c.o
+[39/240] Building C object sdk/CMakeFiles/chibi_declared_components.dir/__/src/runtime/declared_components.c.o
+[40/240] Building C object sdk/CMakeFiles/chibi_engine.dir/__/src/runtime/particle_emitters.c.o
+[41/240] Building C object sdk/CMakeFiles/chibi_graph_authoring.dir/__/src/graph/authomake[1]: *** [toolchain-build] Error 1
+make: *** [build] Error 2

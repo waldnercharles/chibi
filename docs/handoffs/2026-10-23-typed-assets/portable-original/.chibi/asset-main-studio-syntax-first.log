@@ -1,0 +1,99 @@
+syntax 1:34: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:58: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:33: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Expected identifier
+syntax 1:40: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:67: Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/Dismiss.chibi
+  2:5 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/NavKeys.chibi
+  4:5 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/NewProjectKeys.chibi
+  2:5 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/OutlinerHeaderInput.chibi
+  6:5 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/OutlinerInput.chibi
+  9:5 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/OutlinerMenu.chibi
+  1:1 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/OutlinerRename.chibi
+  11:5 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/OutlinerRows.chibi
+  14:8 Unexpected syntax
+  22:21 Unexpected syntax
+  23:9 Unexpected syntax
+  23:21 Unexpected syntax
+  24:5 Unexpected syntax
+  33:9 Unexpected syntax
+  34:57 Unexpected syntax
+  35:26 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/VirtualList.chibi
+  12:8 Unexpected syntax
+  18:242 Unexpected syntax
+  18:253 Unexpected syntax
+  21:43 Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/WidgetGallery.chibi
+  7:5 Unexpected syntax
+  13:5 Unexpected syntax
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/syntax.c (848): failures == 0)
+Running: language_declarations_actions_and_bindings (OK) (0.000405 secs)
+Running: language_handlers_name_payload_fields (OK) (0.000249 secs)
+Running: language_systems_name_their_step (OK) (0.000017 secs)
+Running: language_retained_binding_syntax (OK) (0.000042 secs)
+Running: language_unified_declarations_and_generic_map_shapes (OK) (0.000092 secs)
+Running: language_authored_asset_declarations (OK) (0.000025 secs)
+Running: language_obsolete_symbol_spellings_rejected (OK) (0.000586 secs)
+Running: language_retained_bindings_reject_prefixes_and_value_types (OK) (0.000243 secs)
+Running: language_keywords_are_contextual_data_member_names (OK) (0.000072 secs)
+Running: language_not_callable_and_unary_spellings_disambiguate (OK) (0.000048 secs)
+Running: language_callable_types_entries_and_results (OK) (0.000079 secs)
+Running: language_system_queries_and_control_flow (OK) (0.000076 secs)
+Running: language_nested_typed_records_and_explicit_labels (OK) (0.000062 secs)
+Running: language_definitions_unions_and_type_patterns (OK) (0.000057 secs)
+Running: language_query_header_and_cancel_deadline (OK) (0.000024 secs)
+Running: language_query_generators_preserve_authored_order (OK) (0.000020 secs)
+Running: language_obsolete_declaration_tokens_rejected (OK) (0.000082 secs)
+Running: language_expressions_precedence_and_continuation (OK) (0.000116 secs)
+Running: language_invalid_source_has_positioned_diagnostics (OK) (0.000172 secs)
+Running: language_incremental_snapshot_matches_fresh (OK) (0.000064 secs)
+Running: language_incremental_errors_match_fresh (OK) (0.000043 secs)
+Running: language_retained_corpus Retained syntax corpus: 72 files, 71890 bytes, 10 failures
+
+===============================================================
+Summary: Passed: 21 Failed: 1 Total: 22 Suites: 0 Asserts: 527
+Test command wall time: 0.448s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,48 @@
+Running: binding_schedule_benchmark BINDING_BENCH backend=BYTECODE mode=stable owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000271000 us_per_maintenance=22.583
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000370000 us_per_maintenance=30.833
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000222000 us_per_maintenance=18.500
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000219000 us_per_maintenance=18.250
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000217000 us_per_maintenance=18.083
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH backend=BYTECODE mode=membership-churn owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000282000 us_per_maintenance=23.500
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000266000 us_per_maintenance=22.167
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000265000 us_per_maintenance=22.083
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000264000 us_per_maintenance=22.000
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000264000 us_per_maintenance=22.000
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH backend=SLJIT mode=stable owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000145000 us_per_maintenance=12.083
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000144000 us_per_maintenance=12.000
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000144000 us_per_maintenance=12.000
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000144000 us_per_maintenance=12.000
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000144000 us_per_maintenance=12.000
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH backend=SLJIT mode=membership-churn owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000197000 us_per_maintenance=16.417
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000195000 us_per_maintenance=16.250
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000195000 us_per_maintenance=16.250
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000195000 us_per_maintenance=16.250
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000196000 us_per_maintenance=16.333
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+(OK) (0.005883 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 728
+Test command wall time: 0.138s; includes in-test fixture setup; external configuration/build excluded.

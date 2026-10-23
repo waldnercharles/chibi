@@ -1,0 +1,28 @@
+{
+  "source_count": 19,
+  "source_texts_match": true,
+  "facts_count": 6,
+  "target_inputs_equal": true,
+  "request_sha256": "09a38895232ccfbedd3dd02a86ac8a0a1a6f1d84d10df21fd6ea0ad8cc9e2314",
+  "source_paths": [
+    "package_compiler/Compile.chibi",
+    "package_compiler/Body.chibi",
+    "package_compiler/Steps.chibi",
+    "package_compiler/Maps.chibi",
+    "package_compiler/References.chibi",
+    "package_compiler/Tree.chibi",
+    "package_compiler/Number.chibi",
+    "package_compiler/Behavior.chibi",
+    "syntax_diagnostics/Diagnostics.chibi",
+    "/sdk/core/strings/Strings.chibi",
+    "source_snapshot/Snapshot.chibi",
+    "compiler_syntax/Syntax.chibi",
+    "package_routes/Routes.chibi",
+    "package_syntax/Extract.chibi",
+    "package_graph/Graph.chibi",
+    "package_paths/Paths.chibi",
+    "lexical_binding/Binding.chibi",
+    "prepared_writer/Writer.chibi",
+    "package_compiler/Bootstrap.chibi"
+  ]
+}

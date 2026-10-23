@@ -1,0 +1,5 @@
+Running: asset_source_navigates_event_payloads (OK) (0.000213 secs)
+Running: asset_source_reconcile_keeps_authored_text (OK) (1.836201 secs)
+Running: asset_source_parses_incomplete_drafts (OK) (0.001222 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 15

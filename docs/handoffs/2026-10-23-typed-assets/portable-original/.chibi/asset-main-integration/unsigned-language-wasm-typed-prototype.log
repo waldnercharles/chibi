@@ -1,0 +1,13 @@
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/source_assets.c (2468): located && located + strlen(call) <= typed_enemy + info.expression.end)
+Running: typed_prototype_helpers_and_parameter_recomputation 
+Running: typed_prototype_override_reset_preserves_formula (OK) (4.104391 secs)
+Running: typed_prototype_parameter_type_refusal_is_atomic (OK) (1.373663 secs)
+Running: typed_prototype_rejects_unavailable_capabilities_and_maps_errors (OK) (4.645941 secs)
+Running: typed_prototype_budget_and_cancellation_bound_runtime (OK) (4.006113 secs)
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/source_assets.c (2763): !info.computed && !info.overridden)
+Running: typed_prototype_metadata_never_executes_helpers 
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/source_assets.c (2821): strstr(error, "entire native record position"))
+Running: typed_prototype_native_record_override_preserves_resolved_siblings 
+===============================================================
+Summary: Passed: 4 Failed: 3 Total: 7 Suites: 0 Asserts: 63
+Test command wall time: 18.828s; includes in-test fixture setup; external configuration/build excluded.

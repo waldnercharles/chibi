@@ -1,0 +1,204 @@
+{
+  "scope": "Immutable current staged source trees, decompressed tracked gzip text evidence and current native SDK manifest. Git history, unrelated branches/retired repos and ignored build/scratch files excluded. Binary payload contents not interpreted. Source/dependency audit only; no runtime claim.",
+  "repositories": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi",
+      "tree": "aa8d23d61dc4fec6e56598a0472c05a6ac7122b2",
+      "tracked_paths": 3333,
+      "kdl_paths": [],
+      "semantic_text_matches": [],
+      "incidental_text_matches": [
+        {
+          "path": "docs/hrc-lab-compare.html",
+          "hits": [
+            {
+              "line": 27,
+              "context": "3/DVobBiihp5DZzHEGKIeo64VU0INchhh1lOkDL7i62j+g8lH/3Dnx/x5SOMgVzsM8T4ZpbhNHJ",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "NUA3PGF7UOEzUDhOP0ZRsM6wOgHYKHPAsNXfkDlEHkMlkcQbkbUhqgdVFg84uoMI3dqsTYyUTqf",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "r5xNMIdmFxMfojKO7Cxp41OwwI9dQ2DqY6B1kdLWIyhWLWiRHEzvri0iH2DqouNVgb6Cjd2KxdY",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "q+RJmFxtHGwRouuDoDKAGEnICw1xUIKSzxjKkdLkGwVsJI49jyAapduDrO6HUopl2IkELfw4+ce",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "1UmFrkhjmYRmtQ4F7CjHvWF4uH4PkIX4bEumKDlA4QctgRmfexlUEoiRWbGFpM4I0mbIJoaYuwG",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "noCRnSUYVLI+Qs1kWOVQ0rv2Dq+6NGDogdXWkDLB0jNWBxxitZYwKoWvUGBFJ7IaQ0pX+LsFOPI",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "894m1JInViMWVYk/6DnA+TIwDbrC6ah5sA6wKDlz5Clz8COMLQT/JMZ2AEGLgllAnWA4W5F6zwi",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "gp0fD2hioHWcIgHWMsS2pBgUPTA7hdkjBx87KDLzfGLodAUkD9iXn+JYnk9dBxcivMAfj6KQhnE",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "dSDuOEAo+gKc/QWVeZD9v5hLoCHpErK3Hp5HkDLE6AFYtARYOpjI9QoJHV58HUNkgL2ziOoe7E5",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "SdHsDOM1KnFLYdUsOGTIxBguEcgUXRDzENrmKDLwSsTFDHUyhnZHITbMdUQmv3Fu/QZX0cXKXQI",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "jsSnt6KKW3siNd1QxeMziLLSxBwHOqgGjwqIkDlDjkpjEj60zjL9gx54xsDmWlCXQRDf8UCos5L",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "p59CwBn5HCUz5gG0DCPdOCv3GIXN4gL3mHzQKDlkLDr3oBQfCJt9AYxRLvyGU9RjlOoNzD3SlGD",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "4w5gAWlhjDkcZhNKYc4dkLajVwUBvhkDADzQKDl28idYbBs1kgiLSkE29ZDzMXd+WDtyGMJeujp",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 27,
+              "context": "qNlA4x2nvkzP6ipSN4ZxKtgY+cr2AdQ6TBYsKdLHwNPOxhh5nXMMsHFA9CB5ew1cFY61vkvAofN",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "mSNaDVMqwChx8gBX8UB7YXYnQBvl34IwUcDYKdl8i5OoWzFOg4Y165MN4wA0AzIOwcC2BRt0XjG",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "WFwQxz1ygg4jbQHEbRvCtRQYAeOlltYWEBmpkDLM6HLqMEFAXzwBJGkkfdGgU99Blb8J4BXQkCu",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "bRGUZpWONomGPJ1RjpEG1gAvfAKfa0hJr3EekdLoeWD9DNQQ9fDDXYOuBo8YSvIsc20IPqLRwdF",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "Vfg8mdwpxc0QAlUB+kAQzrBsGuPMJZAwwbEYKdLw8xG64hj6/wiwh1aNiO3W9DLVpjv8BV0KBGF",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "jWwcTS4YD4B3QAFsQNsA4wI+gQLPAMMLQzC+KDlIA7wEAGfEYYmsaROr6IDjBSAxomBwtX2LVIs",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "IGb2cY4mZcZTxSNwnOhmQHpIF7PAM2iE41ZpkDL2aQ6ktw5wHewQUdhAXa8wvq+EI6wrCrkpA7v",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "XCRqURDVyso8folT5SxYkIL9SKFLPiRFoCDRKDLc/D6MRCKhoMMWQaKb7QO7/os7/whgw2/egdZ",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "neYOoRHVykBi5IHDk7QtM/4k5goFroNUjI9wKDlz6DlKJ1gMFGABu0/0D5DdRBBd4DDJKHDk9ge",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "3gBFextUxxL9/FskGzI4cWscVX4cMa6cPl52kdlDR/EfYz5R0ULF1QrF14LF0hvG4Hbtd2MKX1I",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "bnAQncwng4vtmDB0nrH2iVC7+hi6+AiBy9yvKDlEZwHYCF3lGF6kPMWuA2JSsOuQQIBcOMSxGZG",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "su9yDqb2wrYogbkMNWdgwHgH3mEXvHF98SXcKdLUxziJoZRpKDAexlPHmdYVydYPSTntFngZE7v",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "sd+gjDawCeO+oSY5Z04PI2zLoYrQQ4ybBUdHKDlEWjnFjbjC+4Eg05/hi6BBneA0fMT1vSCpZGK",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "s4wQglxFQQuGp5e4AGJpZmB1pBFTgPIjWdElkDLs0h5F2/KRIlL/COq6HGH3MBFadyid3jh8YwU",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "aBgGd4Ch4QUbfEBtv+CYtMDajsE28E98exMdkDLDjBpYBNoPWPQQ3RnGbxX2PI+zXYa97YV95pK",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "8phzgJj0w8XRx+Yw1K+wMXR9wBjTRwYmQdndkDLGPjbiMQ1ILFVnKgVKN4eM0qiRTMG6mZazv4i",
+              "embedded_png_base64": true
+            },
+            {
+              "line": 28,
+              "context": "jQJsqR1HuKC3tHEHBzFqkNUSBvhmfYmNA2zmkDLri9kZRjQkabHnF58c8Xt+MZcgofYGcBQ8KAU",
+              "embedded_png_base64": true
+            }
+          ]
+        }
+      ],
+      "compressed_files": 74,
+      "decompressed_bytes": 18951688,
+      "compressed_matches": []
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio",
+      "tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+      "tracked_paths": 826,
+      "kdl_paths": [],
+      "semantic_text_matches": [],
+      "incidental_text_matches": [],
+      "compressed_files": 0,
+      "decompressed_bytes": 0,
+      "compressed_matches": []
+    }
+  ],
+  "native_sdk": {
+    "build_id": "c676e3cc48e8a3fb2110d57477d5d83875a0ac8b337d4e549129eeb3caf274d9",
+    "manifest_sha256": "126aba47d13c1901c0364fbd6ee47605f3b3f1cfda7d872a3a9d9cb2a0cfe2f5",
+    "file_count": 1281,
+    "kdl_paths": [],
+    "manifest_text_kdl_matches": 0
+  },
+  "incidental_classification": "Every incidental hit is inside an exact PNG data URI base64 payload range, not merely on a line containing an image.",
+  "external_bootstrap_limit": {
+    "status": "KDL dependency confirmed in newly eligible .2 pinned compiler host; source string/path audit does not establish binary contract compatibility",
+    "eligible_pin_tag": "compiler-runtime-2026-10-22.2",
+    "eligible_pin_source": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "evidence": "src/toolchain/compiler_bootstrap.c CONTRACT_FILE bootstrap.kdl; validated/read_contract require it. Typed host uses compiled BootstrapContract.",
+    "required_action": "After source validation/freeze, provision matching reviewed native hosts/pins and prove no-C CI on all platforms. No legacy contract restoration or contract-check bypass.",
+    "current_active_source_pin": {
+      "tag": "compiler-runtime-2026-10-22",
+      "source_revision": "65da1206bd6fb228c4cc22ce9822ac54314c87bb",
+      "source_tree": "30692e802874e003de603e93c82f7de369ed962b"
+    },
+    "full_removal_acceptance": false
+  }
+}

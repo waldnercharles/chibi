@@ -1,0 +1,11 @@
+model-catalog exit=0
+render-geometry exit=0
+arena exit=0
+shader-graphs exit=0
+shader-bake exit=0
+terrain-seams exit=0
+terrain-storage exit=0
+material-surface-mesh exit=0
+scene3d-camera exit=0
+scene3d-volume exit=0
+scene3d-terrain exit=0

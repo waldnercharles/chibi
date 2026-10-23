@@ -1,0 +1,39 @@
+{
+  "name": "required-test-materials",
+  "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "argv": [
+    "make",
+    "test-materials",
+    "JOBS=4"
+  ],
+  "status": "passed",
+  "started_utc": "2026-10-23T06:02:12.224697+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/required-test-materials.log",
+  "python": "Python 3.13.16",
+  "jobs": "4 only via Make argument; no global -j",
+  "pid": 21407,
+  "exit_code": 0,
+  "elapsed_seconds": 165.991,
+  "completed_utc": "2026-10-23T06:04:58.235607+00:00",
+  "log_sha256": "3858541052e265483221ae8e20ab2f77089f8e7ecaac196b2e6910d1d2c43281",
+  "source_currency": "unchanged",
+  "results": {
+    "summary_rows": 9,
+    "passed_cases": 110,
+    "failed_cases": 0,
+    "assertions": 270494,
+    "test_command_wall_seconds": 65.63
+  },
+  "build_timings": [
+    {
+      "operation": "third-party",
+      "seconds": 8.3
+    },
+    {
+      "operation": "graph",
+      "seconds": 91.2
+    }
+  ]
+}

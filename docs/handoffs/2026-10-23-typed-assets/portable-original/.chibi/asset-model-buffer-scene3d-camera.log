@@ -1,0 +1,6 @@
+Running: orthographic_preserves_span_at_different_depths (OK) (0.000005 secs)
+Running: orthographic_rays_are_parallel_and_pick_ground (OK) (0.000011 secs)
+Running: default_perspective_keeps_diverging_rays (OK) (0.000002 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 19
+Test command wall time: 0.105s; includes in-test fixture setup; external configuration/build excluded.

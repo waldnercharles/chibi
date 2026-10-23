@@ -1,0 +1,7 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: project_manifests_open_only_supported_versions (OK) (1.721467 secs)
+Running: project_creation_writes_an_empty_start_scene (OK) (0.907096 secs)
+Running: contract_projects_resolve_their_own_content (OK) (1.376607 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 4
+Test command wall time: 4.399s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

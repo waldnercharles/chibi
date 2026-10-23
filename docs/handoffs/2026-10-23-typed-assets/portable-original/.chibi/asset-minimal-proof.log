@@ -1,0 +1,4 @@
+compiler-host bytecode=1 sljit=0 wasm=0 fallback=0 overflow=0
+Test command wall time: 0.167s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+artifact_bytes 8225 schemas False
+

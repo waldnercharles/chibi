@@ -1,0 +1,14 @@
+(lldb) target create "build-release/bin/chibi_ctl"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/bin/chibi_ctl' (arm64).
+(lldb) settings set -- target.run-args  "--project-root" "/tmp/chibi-controller-6CitOk" "--format"
+(lldb) run
+Process 16758 launched: '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/bin/chibi_ctl' (arm64)
+Process 16758 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x8)
+       frame #0: 0x0000000100a6822c chibi_ctl`ts_node_child_by_field_name + 40
+chibi_ctl`ts_node_child_by_field_name:
+->  0x100a6822c <+40>: ldr    x8, [x8, #0x8]
+    0x100a68230 <+44>: ldrh   w25, [x8, #0x20]
+    0x100a68234 <+48>: cbz    w25, 0x100a68284          ; <+128>
+    0x100a68238 <+52>: mov    x21, x1
+Target 0: (chibi_ctl) stopped.

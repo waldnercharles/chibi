@@ -1,0 +1,113 @@
+--- a/docs/typed-assets/PLAN.md
++++ b/docs/typed-assets/PLAN.md
+@@ -21,15 +21,16 @@
+ 
+ ### Current-main integration in progress — 2026-10-22
+ 
+-The first engine-main integration (`444e5b20e`) was checkpointed locally at
+-`d46e436a0`; integration of `329d8fb04` and the remaining compiled fixtures
+-was checkpointed at `a504d8e59`. The current tree integrates engine main
+-`b934720185`, refreshed compiler resources and the validation recorded below.
+-The working tree now integrates reviewed main `fa1b7b2bb` at source level; it
+-requires another compiler/resource refresh and checks of its new Build/Graph
+-path. Studio includes main `305053fc` and the Properties guards at local
+-checkpoint `0326958`. These are local integration
+-states, not a clean final candidate, a main landing or a publication.
++The engine's local compiler/source checkpoint is `31098151b`; optional decoded
++host retention is separate at `30cd287d1`. The staged integration resolves main
++`fa1b7b2bb`, includes the runtime preparation fix `3dd03160d`, and reconciles the
++reviewed main baseline `d0de4a84e`. Compiler and asset resources are generated and
++verified for their recorded inputs. The engine integration remains uncommitted.
++
++Studio's ordinary main merge is local commit `466e2cc354`, with parents
++`521b666a6` and `df050886d`. Its tree exactly matches the tested Studio candidate.
++The native SDK, focused checks and remaining gates are recorded below. These
++local states do not establish a main landing, publication or final acceptance.
+ 
+ The newer main retires the global runtime timing policy. Its removal supersedes
+ this document's earlier timing-based admissions, pins and quarantines. Historical
+@@ -439,13 +440,55 @@
+ This establishes CPU model coverage with zero host frames or renders. Final
+ cold-start and Web acceptance remain pending.
+ 
+-The local build lane has been released to the prepared-host checks. Full CI
+-ancestry remains held until its corrected hosted checks and paired Studio
+-proof are cleared. After baseline eligibility and the next lane release,
+-final checks are:
+-
+-1. Reconcile the reviewed, eligible baseline and build fresh native and Web
+-   SDKs and drivers. Regenerate resources only if their source inputs change.
++The reviewed SDK/CI baseline landed at main `d0de4a84e`; its former review and
++hosted-check holds are cleared. That baseline proof is separate from this typed
++integration. The narrow native focus subsequently passed:
++
++| Check | Result | Recorded source |
++| --- | --- | --- |
++| Native compiler/desktop SDK | Packaged in Release with sanitizers and asset recovery disabled | Engine production tree `0b5c20a7` |
++| Studio SDK values | 12 cases / 163 assertions, 0.963s | Studio tree `33526285` |
++| Studio editor model | 1 case / 261 assertions, 5.189s; nine compile attempts, 39 memory hits, zero persistent hits | Same Studio tree; zero frames or renders |
++| Graph SDK packaging and relocation | 8 cases / 202 assertions, 43.639s | Engine tree `966dbacc` |
++
++The SDK build ID is
++`68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad`.
++Its source snapshot is
++`a8e7033a3475110498bd5de2193c0ff039efb3d57d0b6cea43656c296ec64f3e`;
++the package manifest has SHA-256
++`ae3533450bd954297b10bf69fd95febf4f1b820fa6c8c83ad2c69ad19e2e1004`.
++The exact source, product, SDK and command receipts are retained under
++`.chibi/asset-main-integration/narrow-d0-focus`.
++
++The first SDK family run passed seven cases and failed its final hardcoded
++five-command assertion. The support target now includes the cache and SHA
++sources. The fixture now checks a nonempty command array, source-root/support
++paths, the required file operation source and the requested explicit compiler
++for every row. The subsequent complete family passed. `966dbacc` differs from
++`0b5c20a7` only in that C fixture; compiler inputs, generated resources, SDK
++products and private graph hosts/records remained unchanged. The original
++failed log remains retained.
++
++Static inspection of the SDK's five products and 114 archives found no retired
++parser symbols, semantic format references or linked dependencies. This does
++not validate the external compiler runtime pin. Its native recovery interface
++still expects the retired bootstrap contract and lacks the current target
++query. The reviewed CI compatibility adaptation keeps generic artifact-only
++consumer proof separate from native runtime production. A matching reviewed
++runtime release, exact pins and platform proof remain required; source review
++is not that proof.
++
++The normal Studio CI job also needs a published, compatible immutable Studio
++commit. The proposal identifies local `466e2cc354`, whose tested tree is
++`33526285`; it is not yet published or applied as a workflow pin. Studio's
++ordinary merge is checkpointed locally and its worktree is clean.
++
++The build lane is returned to the compiler work after this narrow focus.
++Remaining validation is:
++
++1. Reconcile any later reviewed, eligible compiler changes before the final
++   native/Web SDK and driver builds. Regenerate resources when their source
++   inputs change; the baseline adaptation alone did not require regeneration.
+ 2. Check bootstrap loading/recovery, Build process behavior, resource-only
+    assembly and the public constructor case with the new native drivers.
+ 3. Finish the existing project routes: prototype expansion, feature coverage,
+@@ -454,15 +497,15 @@
+    project formatting.
+ 4. Run standalone tooling, the affected native/language checks and actual
+    Node/Wasm typed-source coverage.
+-5. Complete ordinary Studio main reconciliation, check the added SDK selector,
+-   then run the remaining paired native/Web SDK and Studio acceptance.
+-   Refresh the source, dependency, extraction and artifact audits on that final
+-   combination before assessing main readiness.
++5. Run the remaining paired native/Web SDK and Studio acceptance, establish
++   matching published runtime and Studio bindings, and refresh source,
++   dependency, extraction and artifact audits on the final combination before
++   assessing main readiness.
+ 
+ The last shared-expansion run was interrupted when its source candidate was
+ superseded; downstream project routes did not start. Its incomplete log remains
+-retained. The generated source combination still awaits SDK and runtime checks
+-before it is a validated merge candidate. Rich compiler and prepared-host work
++retained. The source combination still awaits the remaining required engine and paired
++acceptance checks before it is a validated merge candidate. Rich compiler and prepared-host work
+ remain separate and are not included in this generation checkpoint.
+ 
+ ### Historical failures and remaining coverage

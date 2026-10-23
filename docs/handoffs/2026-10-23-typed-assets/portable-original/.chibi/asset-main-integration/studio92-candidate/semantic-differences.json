@@ -1,0 +1,958 @@
+[
+  {
+    "file": "src/editor/collab/actions_graph.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "# include \"graph/authoring/graph_edit.h\" # include \"graph/authoring/local_edit.h\"",
+        "typed": "",
+        "context": ""
+      },
+      {
+        "incoming": "",
+        "typed": "# include \"graph/authoring/graph_edit.h\" # include \"graph/authoring/local_edit.h\"",
+        "context": "\"editor/collab/actions_internal.h\" # include \"editor/collab/collab.h\" # include \"editor/graph/search.h\" # include \"editor/workspace/editor_internal.h\""
+      },
+      {
+        "incoming": "",
+        "typed": "\"support/arena.h\" # include",
+        "context": "include \"graph/model/pin_conv.h\" # include \"graph/model/registry.h\" # include \"graph/model/value_copy.h\" # include"
+      },
+      {
+        "incoming": "",
+        "typed": "# include \"types/text.h\"",
+        "context": "\"graph/model/registry.h\" # include \"graph/model/value_copy.h\" # include \"support/asset_json.h\" # include \"types/array.h\""
+      },
+      {
+        "incoming": "",
+        "typed": ") | | yyjson_get_len ( data ) ! = strlen ( yyjson_get_str ( data )",
+        "context": "; case PIN_NAME : if ( ! yyjson_is_str ( data"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/collab/actions_scene.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/documents/scene_document.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "\"support/asset_text.h\"",
+        "typed": "\"support/asset_document.h\"",
+        "context": "include \"editor/workspace/scene_internal.h\" # include \"graph/document/serialize.h\" # include \"runtime/declared_components.h\" # include"
+      },
+      {
+        "incoming": "asset_text_write",
+        "typed": "asset_document_write",
+        "context": "( scene ) ; char * text = value ?"
+      },
+      {
+        "incoming": "(",
+        "typed": "",
+        "context": ", '.' ) ; if ( ! extension | |"
+      },
+      {
+        "incoming": "\".chibi\" ) & & strcmp ( extension , \".kdl\" )",
+        "typed": "CODE_ASSET_EXTENSION",
+        "context": "( ! extension | | ( strcmp ( extension ,"
+      },
+      {
+        "incoming": "asset_text_read",
+        "typed": "asset_document_read",
+        "context": "[ 256 ] ; av_doc * doc = text ?"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/documents/scene_history.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/documents/scene_prototype_actions.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "",
+        "typed": "\"support/arena.h\" # include",
+        "context": "include \"editor/collab/collab.h\" # include \"editor/documents/asset_code.h\" # include \"editor/workspace/scene_internal.h\" # include"
+      },
+      {
+        "incoming": "\"support/asset_text.h\"",
+        "typed": "\"support/asset_document.h\"",
+        "context": "include \"editor/documents/asset_code.h\" # include \"editor/workspace/scene_internal.h\" # include \"support/array.h\" # include"
+      },
+      {
+        "incoming": "bool changed =",
+        "typed": "if ( !",
+        "context": "{ 0 } , inherited = { 0 } ;"
+      },
+      {
+        "incoming": "& &",
+        "typed": "| |",
+        "context": "inherited = { 0 } ; bool changed = component"
+      },
+      {
+        "incoming": "=",
+        "typed": "!",
+        "context": "> id , o . field , & value )"
+      },
+      {
+        "incoming": "",
+        "typed": ") { arena_free (",
+        "context": "o . field , & value ) = = ECS_OK"
+      },
+      {
+        "incoming": "&",
+        "typed": "storage ) ; return false ; } bool changed =",
+        "context": ". field , & value ) = = ECS_OK &"
+      },
+      {
+        "incoming": "scene_field_edit * edits = NULL ;",
+        "typed": "",
+        "context": ", const prototype_field * fields , int count ) {"
+      },
+      {
+        "incoming": "",
+        "typed": "; scene_field_edit * edits = NULL",
+        "context": "edits = NULL ; arena storage = { 0 }"
+      },
+      {
+        "incoming": "| |",
+        "typed": ") { complete = false ; continue ; } if (",
+        "context": "o . field , & now ) ! = ECS_OK"
+      },
+      {
+        "incoming": "authoring_prototype_edit * edits = NULL ;",
+        "typed": "",
+        "context": ") < 0 ) { return - 1 ; }"
+      },
+      {
+        "incoming": "",
+        "typed": "; authoring_prototype_edit * edits = NULL",
+        "context": "edits = NULL ; arena storage = { 0 }"
+      },
+      {
+        "incoming": "DECLARATIVE_ASSET_EXTENSION",
+        "typed": "CODE_ASSET_EXTENSION",
+        "context": "folder ) + strlen ( name ) + sizeof \"/\""
+      },
+      {
+        "incoming": "DECLARATIVE_ASSET_EXTENSION",
+        "typed": "CODE_ASSET_EXTENSION",
+        "context": "length ) ; snprintf ( path , length , \"%s/%s\""
+      }
+    ]
+  },
+  {
+    "file": "src/editor/documents/scene_prototypes.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "\"support/asset_json.h\"",
+        "typed": "\"support/arena.h\"",
+        "context": "include \"editor/documents/prototype_source_input.h\" # include \"editor/workspace/scene_internal.h\" # include \"runtime/component_catalog.h\" # include"
+      },
+      {
+        "incoming": "\"support/asset_text.h\"",
+        "typed": "\"support/asset_document.h\" # include \"support/asset_json.h\"",
+        "context": "include \"editor/workspace/scene_internal.h\" # include \"runtime/component_catalog.h\" # include \"support/asset_json.h\" # include"
+      },
+      {
+        "incoming": "",
+        "typed": "arena fields = { 0 } ;",
+        "context": "error , size ) ) { return false ; }"
+      },
+      {
+        "incoming": "; arena values = { 0 }",
+        "typed": "",
+        "context": "{ return false ; } authoring_prototype_edit * ops = NULL"
+      },
+      {
+        "incoming": "read_error",
+        "typed": "problem",
+        "context": ", after = { 0 } ; const char *"
+      },
+      {
+        "incoming": "values",
+        "typed": "fields",
+        "context": "} ; const char * read_error = pin_read_field ( &"
+      },
+      {
+        "incoming": "read_error",
+        "typed": "problem",
+        "context": ", desc , & before ) ; if ( !"
+      },
+      {
+        "incoming": "read_error",
+        "typed": "problem",
+        "context": "& before ) ; if ( ! read_error ) {"
+      },
+      {
+        "incoming": "values",
+        "typed": "fields",
+        "context": "( ! read_error ) { read_error = pin_read_field ( &"
+      },
+      {
+        "incoming": "read_error",
+        "typed": "problem",
+        "context": ", desc , & after ) ; } if ("
+      },
+      {
+        "incoming": "read_error",
+        "typed": "problem",
+        "context": ") { snprintf ( error , size , \"%s\" ,"
+      },
+      {
+        "incoming": "values",
+        "typed": "fields",
+        "context": "size , \"%s\" , read_error ) ; arena_free ( &"
+      },
+      {
+        "incoming": "values",
+        "typed": "fields",
+        "context": "; } afree ( ops ) ; arena_free ( &"
+      },
+      {
+        "incoming": "storage",
+        "typed": "fields",
+        "context": "- > field_count ; field + + ) { arena"
+      },
+      {
+        "incoming": "bool written = !",
+        "typed": "if (",
+        "context": "arena storage = { 0 } ; pin_value value ;"
+      },
+      {
+        "incoming": "storage",
+        "typed": "fields",
+        "context": "pin_value value ; bool written = ! pin_read_field ( &"
+      },
+      {
+        "incoming": "",
+        "typed": ") { arena_free (",
+        "context": "- > fields [ field ] , & value )"
+      },
+      {
+        "incoming": "&",
+        "typed": "fields ) ; av_value_free ( overrides ) ; return - 1 ; } if (",
+        "context": "> fields [ field ] , & value ) &"
+      },
+      {
+        "incoming": "=",
+        "typed": "!",
+        "context": "> desc - > id , field , value )"
+      },
+      {
+        "incoming": ";",
+        "typed": ") {",
+        "context": "> id , field , value ) = = ECS_OK"
+      },
+      {
+        "incoming": "storage",
+        "typed": "fields",
+        "context": ", value ) = = ECS_OK ; arena_free ( &"
+      },
+      {
+        "incoming": "if ( ! written ) {",
+        "typed": "",
+        "context": "= = ECS_OK ; arena_free ( & storage ) ;"
+      },
+      {
+        "incoming": "",
+        "typed": "arena_free ( & fields ) ;",
+        "context": "av_value_free ( overrides ) ; return - 1 ; }"
+      },
+      {
+        "incoming": "",
+        "typed": "scene_register_prototype_value ( app_scene_authoring * scene , const av_value * value , const char * path ) { char error [ 256 ] ; prototype * native = prototype_load_value ( value , & scene - > registry , error , sizeof error ) ; return append_prototype_asset ( scene , native , path ) ; } int",
+        "context": ", 0 ) ; } return 0 ; } int"
+      },
+      {
+        "incoming": "const char * extension = strrchr ( path , '.' ) ;",
+        "typed": "",
+        "context": "| ! path ) { return - 1 ; }"
+      },
+      {
+        "incoming": "; } if ( extension & & ! strcmp ( extension , CODE_ASSET_EXTENSION ) ) { snprintf ( scene - > prototype_message , sizeof scene - > prototype_message , \"A model-only prototype cannot be saved as canonical source.\" ) ; return - 1",
+        "typed": "",
+        "context": "1 ; } return scene_prototype_source_save ( scene , asset )"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/studio/studio_graph_literals.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/studio/studio_graph_live.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/studio/studio_graph_properties.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "",
+        "typed": "type - > fields [ i ] . type < PIN_I8 | | type - > fields [ i ] . type > PIN_F64 | |",
+        "context": "i + + ) { pin_value component ; if ("
+      }
+    ]
+  },
+  {
+    "file": "src/editor/studio/studio_graph_values.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "# include \"graph/nodes/core_nodes.h\"",
+        "typed": "",
+        "context": ""
+      },
+      {
+        "incoming": "",
+        "typed": "# include \"graph/nodes/core_nodes.h\"",
+        "context": "# include \"graph/nodes/core_nodes.h\" # include \"graph/authoring/graph_edit.h\" # include \"graph/authoring/local_edit.h\""
+      }
+    ]
+  },
+  {
+    "file": "src/editor/studio/studio_member_properties.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/studio/studio_node_calls.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/studio/studio_properties.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "",
+        "typed": "# include \"authoring/source_asset.h\"",
+        "context": ""
+      },
+      {
+        "incoming": "# include \"support/arena.h\"",
+        "typed": "",
+        "context": "\"editor/studio/studio_properties_internal.h\" # include \"editor/ui/labels.h\" # include \"graph/model/registry.h\" # include \"runtime/component_catalog.h\""
+      },
+      {
+        "incoming": "",
+        "typed": ", \"parameters\"",
+        "context": ", \"Appearance\" , \"Orientation\" , \"behaviors\" , \"ui\" , \"physics\""
+      },
+      {
+        "incoming": "",
+        "typed": "PROPERTIES_PARAMETER : snprintf ( out , PROPERTIES_ROW_ID , \"q.%zu.%\" PRIx64 , row - > parameter_index , row - > parameter_identity ) ; return ; case",
+        "context": ", row - > prototype ) ; return ; case"
+      },
+      {
+        "incoming": "",
+        "typed": "; } if ( ! strncmp ( id , \"q.\" , 2 ) ) { out - > kind = PROPERTIES_PARAMETER ; return sscanf ( id , \"q.%zu.%\" SCNx64 \"%n\" , & out - > parameter_index , & out - > parameter_identity , & used ) = = 2 & & ! id [ used ]",
+        "context": ", \"%s\" , id + used ) ; return true"
+      },
+      {
+        "incoming": "bool mixed = false ;",
+        "typed": "",
+        "context": "> scene ; arena storage = { 0 } ;"
+      },
+      {
+        "incoming": "mixed =",
+        "typed": "arena_free ( & storage ) ; return",
+        "context": "| ! same_path ( path , named ) ) {"
+      },
+      {
+        "incoming": "; break",
+        "typed": "",
+        "context": "( path , named ) ) { mixed = true"
+      },
+      {
+        "incoming": "mixed",
+        "typed": "false",
+        "context": "; } } arena_free ( & storage ) ; return"
+      },
+      {
+        "incoming": "",
+        "typed": "arena storage = { 0 } ;",
+        "context": ", c - > value ) ; return ; }"
+      },
+      {
+        "incoming": "; arena storage = { 0 }",
+        "typed": "",
+        "context": "* merged = xmalloc ( type - > size )"
+      },
+      {
+        "incoming": "const char * error =",
+        "typed": "if (",
+        "context": "i + + ) { pin_value before , after ;"
+      },
+      {
+        "incoming": "; if ( ! error ) { error =",
+        "typed": "| |",
+        "context": "- > fields [ i ] , & before )"
+      },
+      {
+        "incoming": "; } if ( error",
+        "typed": "",
+        "context": "- > fields [ i ] , & after )"
+      },
+      {
+        "incoming": "",
+        "typed": "free ( merged ) ;",
+        "context": "& after ) ; } if ( error ) {"
+      },
+      {
+        "incoming": ") ; free ( merged",
+        "typed": "",
+        "context": "} if ( error ) { arena_free ( & storage"
+      },
+      {
+        "incoming": "",
+        "typed": "free ( merged ) ;",
+        "context": "> fields [ i ] , after ) ) {"
+      },
+      {
+        "incoming": ") ; free ( merged",
+        "typed": "",
+        "context": "] , after ) ) { arena_free ( & storage"
+      },
+      {
+        "incoming": "",
+        "typed": "free ( merged ) ;",
+        "context": "component , c - > field , value ) ;"
+      },
+      {
+        "incoming": ") ; free ( merged",
+        "typed": "",
+        "context": "> field , value ) ; arena_free ( & storage"
+      },
+      {
+        "incoming": "pin_value written",
+        "typed": "arena storage",
+        "context": ", c . value ) = = ECS_OK ) {"
+      },
+      {
+        "incoming": "arena storage",
+        "typed": "pin_value written",
+        "context": "ECS_OK ) { pin_value written = { 0 } ;"
+      },
+      {
+        "incoming": "if (",
+        "typed": "const char * type_name = value . type_name ; const char * error =",
+        "context": "if ( value . type = = PIN_STR ) {"
+      },
+      {
+        "incoming": ") { arena_free",
+        "typed": "; assert",
+        "context": "& value , text , strlen ( text ) )"
+      },
+      {
+        "incoming": "& storage",
+        "typed": "! error",
+        "context": ", strlen ( text ) ) ) { arena_free ("
+      },
+      {
+        "incoming": "return",
+        "typed": "( void ) error",
+        "context": ") ) ) { arena_free ( & storage ) ;"
+      },
+      {
+        "incoming": "}",
+        "typed": "",
+        "context": ") { arena_free ( & storage ) ; return ;"
+      },
+      {
+        "incoming": "before .",
+        "typed": "",
+        "context": "storage ) ; return ; } value . type_name ="
+      },
+      {
+        "incoming": "copy",
+        "typed": "vector",
+        "context": ", axis ) ) { continue ; } void *"
+      },
+      {
+        "incoming": "copy",
+        "typed": "vector",
+        "context": "xmalloc ( type - > size ) ; memcpy ("
+      },
+      {
+        "incoming": "copy",
+        "typed": "vector",
+        "context": "; const char * error = pin_write_field ( storage ,"
+      },
+      {
+        "incoming": "copy",
+        "typed": "vector",
+        "context": "} ) ; if ( error ) { free ("
+      },
+      {
+        "incoming": "copy",
+        "typed": "vector",
+        "context": "; return false ; } value - > ptr ="
+      },
+      {
+        "incoming": "if (",
+        "typed": "const char * error =",
+        "context": "const char * type_name = value - > type_name ;"
+      },
+      {
+        "incoming": ") { return false",
+        "typed": "",
+        "context": ", value , text , strlen ( text ) )"
+      },
+      {
+        "incoming": "}",
+        "typed": "",
+        "context": "strlen ( text ) ) ) { return false ;"
+      },
+      {
+        "incoming": "true",
+        "typed": "! error",
+        "context": "; } value - > type_name = type_name ; return"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; } void properties_parameter_row ( const char * path , const char * name , size_t index , properties_row * row ) { * row = ( properties_row ) { . kind = PROPERTIES_PARAMETER , . parameter_index = index } ; uint64_t identity = UINT64_C ( 14695981039346656037 ) ; for ( const unsigned char * c = ( const unsigned char * ) path ; * c ; c + + ) { identity = ( identity ^ * c ) * UINT64_C ( 1099511628211 ) ; } identity * = UINT64_C ( 1099511628211 ) ; for ( const unsigned char * c = ( const unsigned char * ) name ; * c ; c + + ) { identity = ( identity ^ * c ) * UINT64_C ( 1099511628211 ) ; } row - > parameter_identity = identity ; } const char * properties_parameter_name ( const av_value * parameters , const char * path , const properties_row * row ) { if ( row - > parameter_index > = av_obj_size ( parameters ) ) { return NULL ; } const char * name = av_get_str ( av_obj_key_at ( parameters , row - > parameter_index ) ) ; properties_row current ; properties_parameter_row ( path , name , row - > parameter_index , & current ) ; return current . parameter_identity = = row - > parameter_identity ? name : NULL ; } bool properties_parameter_value ( arena * storage , const av_value * value , pin_value * out ) { * out = ( pin_value ) { 0 } ; if ( ! value ) { return false ; } switch ( av_get_type ( value ) ) { case AV_BOOL : * out = ( pin_value ) { . type = PIN_BOOL , . b = av_get_bool ( value ) } ; return true ; case AV_STRING : return ! pin_value_text ( storage , out , av_get_str ( value ) , strlen ( av_get_str ( value ) ) ) ; case AV_REAL : * out = ( pin_value ) { . type = PIN_F64 , . d = av_get_num ( value ) } ; return true ; case AV_SINT : case AV_UINT : { if ( av_is_uint ( value ) ) { * out = ( pin_value ) { . type = PIN_U64 , . u64 = av_get_uint ( value ) } ; return true ; } int64_t number = av_get_sint ( value ) ; if ( number > = INT32_MIN & & number < = INT32_MAX ) { * out = ( pin_value ) { . type = PIN_I32 , . i = ( int32_t ) number } ; return true ; } * out = ( pin_value ) { . type = PIN_I64 , . i64 = number } ; return true ; } default : return false ; } } static void source_edit_result ( studio * s , int result ) { if ( result < 0 | | result = = APP_PROTOTYPE_EDIT_NOT_APPLIED ) { studio_error ( s , result < 0 ? \"Could not edit prototype\" : \"Edited, but not applied\" , s - > scene - > prototype_message ) ; } } static void edit_parameter ( studio * s , const edit * e ) { properties_subject subject ; properties_subject_of ( s , & subject ) ; scene_prototype_asset * asset = subject . asset ; if ( ! asset | | subject . locked | | ! scene_prototype_source_owned ( asset ) ) { return ; } char error [ 256 ] ; av_doc * doc = authoring_prototype_source_parameters ( scene_source_input_text ( s - > scene , asset ) , error , sizeof error ) ; const char * name = doc ? properties_parameter_name ( av_doc_root ( doc ) , asset - > path , & e - > row ) : NULL ; if ( ! name ) { av_doc_free ( doc ) ; return ; } arena storage = { 0 } ; pin_value value ; bool valid = properties_parameter_value ( & storage , av_obj_get ( av_doc_root ( doc ) , name ) , & value ) ; if ( valid ) { char * end ; errno = 0 ; switch ( value . type ) { case PIN_BOOL : value . b = ! strcmp ( e - > text , \"1\" ) | | ! strcmp ( e - > text , \"true\" ) ; break ; case PIN_STR : valid = ! pin_value_text ( & storage , & value , e - > text , strlen ( e - > text ) ) ; break ; case PIN_I64 : case PIN_U64 : valid = parse_integer64 ( e - > text , & value ) ; break ; case PIN_I32 : { int64_t number = strtoimax ( e - > text , & end , 10 ) ; valid = end ! = e - > text & & ! * end & & errno ! = ERANGE & & number > = INT32_MIN & & number < = INT32_MAX ; if ( valid ) { value . i = ( int32_t ) number ; } break ; } case PIN_F64 : value . d = strtod ( e - > text , & end ) ; valid = end ! = e - > text & & ! * end & & errno ! = ERANGE & & isfinite ( value . d ) ; break ; default : valid = false ; break ; } } if ( valid ) { char key [ 192 ] ; properties_row_id ( & e - > row , key ) ; authoring_prototype_edit change = { . kind = AUTHORING_PROTOTYPE_SET_PARAMETER , . field = name , . value = value } ; source_edit_result ( s , scene_source_input_edit ( s - > scene , asset , & change , 1 , key , ! strcmp ( s - > prototype_edit , key ) ) ) ; snprintf ( s - > prototype_edit , sizeof s - > prototype_edit , \"%s\" , key ) ; } av_doc_free ( doc ) ; arena_free ( & storage ) ; if ( ! e - > active ) { s - > prototype_edit [ 0 ] = 0 ; scene_source_input_end ( s - > scene , asset - > path ) ; asset_code_end_typing ( asset - > source ) ; } } static void reset_source_override ( studio * s , const properties_row * row ) { properties_subject subject ; properties_subject_of ( s , & subject ) ; scene_prototype_asset * asset = subject . asset ; const ecs_component_desc * desc = properties_component ( s - > scene , row - > component ) ; if ( row - > kind ! = PROPERTIES_PROTOTYPE | | ! asset | | subject . locked | | ! desc | | strcmp ( row - > prototype , asset - > prototype - > name ) | | row - > field < 0 | | row - > field > = desc - > type - > field_count | | ! scene_prototype_source_owned ( asset ) ) { return ; } authoring_prototype_edit change = { . kind = AUTHORING_PROTOTYPE_RESET_FIELD_OVERRIDE , . component = desc - > name , . field = desc - > type - > fields [ row - > field ] . name } ; s - > prototype_edit [ 0 ] = 0 ; source_edit_result ( s , scene_source_input_edit ( s - > scene , asset , & change , 1 , \"reset-override\" , false ) ) ; scene_source_input_end ( s - > scene , asset - > path",
+        "context": "value . ptr ) ; } arena_free ( & storage"
+      },
+      {
+        "incoming": "",
+        "typed": "if (",
+        "context": "- > name , e - > axis ) ;"
+      },
+      {
+        "incoming": "",
+        "typed": ") { free ( value . ptr )",
+        "context": "- > fields [ i ] , & leaf )"
+      },
+      {
+        "incoming": "",
+        "typed": "arena_free ( & storage ) ; return ; }",
+        "context": "> fields [ i ] , & leaf ) ;"
+      },
+      {
+        "incoming": "",
+        "typed": "case PROPERTIES_PARAMETER : edit_parameter ( s , e ) ; return ;",
+        "context": ": edit_scene ( s , e ) ; return ;"
+      },
+      {
+        "incoming": "",
+        "typed": "| | row - > kind = = PROPERTIES_PARAMETER",
+        "context": "; if ( row - > kind = = PROPERTIES_SCENE"
+      },
+      {
+        "incoming": "edit_scene",
+        "typed": "edit_row",
+        "context": "( row - > kind = = PROPERTIES_SCENE ) {"
+      },
+      {
+        "incoming": "read = !",
+        "typed": "if (",
+        "context": "< desc - > type - > field_count ) {"
+      },
+      {
+        "incoming": "",
+        "typed": ") { arena_free ( & storage ) ; return ; } read = true",
+        "context": "[ row - > field ] , & value )"
+      },
+      {
+        "incoming": "read =",
+        "typed": "if (",
+        "context": "} } else if ( subject . actor ) {"
+      },
+      {
+        "incoming": "=",
+        "typed": "!",
+        "context": "component , row - > field , & value )"
+      },
+      {
+        "incoming": "",
+        "typed": ") { arena_free ( & storage ) ; return ; } read = true",
+        "context": "- > field , & value ) = = ECS_OK"
+      },
+      {
+        "incoming": "bool changed =",
+        "typed": "if (",
+        "context": ", row - > field , & value ) ;"
+      },
+      {
+        "incoming": "; arena_free ( & storage ) ; if ( changed",
+        "typed": "",
+        "context": "= mixed | | value . b ! = on"
+      },
+      {
+        "incoming": "",
+        "typed": "arena_free ( & storage ) ;",
+        "context": "{ edit_row ( s , & e ) ; }"
+      },
+      {
+        "incoming": "",
+        "typed": "arena storage = { 0 } ;",
+        "context": "( const prototype_component * component , Transform at ) {"
+      },
+      {
+        "incoming": "",
+        "typed": "if (",
+        "context": "PIN_F32 , . f = at . y } ;"
+      },
+      {
+        "incoming": "NULL",
+        "typed": "& storage",
+        "context": ". f = at . y } ; pin_read_field ("
+      },
+      {
+        "incoming": ";",
+        "typed": "| |",
+        "context": "- > fields [ 0 ] , & x )"
+      },
+      {
+        "incoming": "NULL",
+        "typed": "& storage",
+        "context": "[ 0 ] , & x ) ; pin_read_field ("
+      },
+      {
+        "incoming": "",
+        "typed": ") { arena_free ( & storage )",
+        "context": "- > fields [ 1 ] , & y )"
+      },
+      {
+        "incoming": "",
+        "typed": "return at ; }",
+        "context": "> fields [ 1 ] , & y ) ;"
+      },
+      {
+        "incoming": "",
+        "typed": "; arena_free ( & storage )",
+        "context": ". f ; at . y = y . f"
+      },
+      {
+        "incoming": "arena_free ( & storage ) ;",
+        "typed": "",
+        "context": "{ arena_free ( & storage ) ; return ; }"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; arena_free ( & storage",
+        "context": "- > scene , ecs_entity_from_u64 ( value . u64 )"
+      },
+      {
+        "incoming": "",
+        "typed": "const char * properties_text ( arena * storage , const pin_value * value ) { if ( value - > type = = PIN_NAME ) { return value - > str ? value - > str : \"\" ; } const char * text ; if ( value - > type = = PIN_STR & & ! pin_text_cstring ( storage , * value , & text , NULL ) ) { return text ; } return pin_value_to_string ( value ) ; }",
+        "context": ") ; show_menu ( a , \"component-menu\" ) ; }"
+      },
+      {
+        "incoming": "",
+        "typed": "arena storage = { 0 } ;",
+        "context": "{ if ( ! field ) { return ; }"
+      },
+      {
+        "incoming": "; arena storage = { 0 }",
+        "typed": "",
+        "context": "properties_subject_of ( s , & subject ) ; properties_row row"
+      },
+      {
+        "incoming": "",
+        "typed": "PROPERTIES_PARAMETER & & subject . asset ) { char error [ 256 ] ; av_doc * doc = authoring_prototype_source_parameters ( scene_source_input_text ( s - > scene , subject . asset ) , error , sizeof error ) ; const char * name = doc ? properties_parameter_name ( av_doc_root ( doc ) , subject . asset - > path , & row ) : NULL ; if ( name & & properties_parameter_value ( & storage , av_obj_get ( av_doc_root ( doc ) , name ) , & value ) ) { snprintf ( text , sizeof text , \"%s\" , properties_text ( & storage , & value ) ) ; } av_doc_free ( doc ) ; } else if ( properties_row_parse ( id , & row ) & & row . kind = = PROPERTIES_PROTOTYPE & & subject . asset ) { const ecs_component_desc * desc = properties_component ( s - > scene , row . component ) ; const prototype * shown = scene_source_input_preview ( s - > scene , subject . asset ) ; if ( desc & & row . field > = 0 & & row . field < desc - > type - > field_count & & ! prototype_read_field ( & storage , shown , desc - > name , desc - > type - > fields [ row . field ] . name , & value ) ) { snprintf ( text , sizeof text , \"%s\" , properties_text ( & storage , & value ) ) ; } } else if ( properties_row_parse ( id , & row ) & & row . kind = =",
+        "context": "& row ) & & row . kind = ="
+      },
+      {
+        "incoming": "bool text_value = value . type = = PIN_STR | | value . type = = PIN_NAME ; const char * shown = pin_value_to_string ( & value ) ; if ( text_value ) { pin_text_cstring ( & storage , value , & shown , NULL ) ; }",
+        "typed": "",
+        "context": "field , & value ) = = ECS_OK ) {"
+      },
+      {
+        "incoming": "shown",
+        "typed": "properties_text ( & storage , & value )",
+        "context": "} snprintf ( text , sizeof text , \"%s\" ,"
+      },
+      {
+        "incoming": "arena_free ( & storage ) ;",
+        "typed": "",
+        "context": ", sizeof text , \"%s\" , shown ) ; }"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; arena_free ( & storage",
+        "context": "rml_element_set_value ( field , text ) ; rml_element_blur ( field"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; } else if ( ! strcmp ( action , \"resetOverride\" ) & & parsed ) { reset_source_override ( s , & row",
+        "context": ") { field_menu ( s , & row , a"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/studio/studio_properties_view.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "",
+        "typed": "# include \"authoring/source_asset.h\"",
+        "context": ""
+      },
+      {
+        "incoming": "# include \"support/arena.h\"",
+        "typed": "",
+        "context": "\"editor/studio/studio_properties_internal.h\" # include \"editor/ui/labels.h\" # include \"graph/model/registry.h\" # include \"runtime/component_catalog.h\""
+      },
+      {
+        "incoming": "",
+        "typed": "arena storage ;",
+        "context": "ROOM 32 typedef struct view { studio * s ;"
+      },
+      {
+        "incoming": "; arena storage",
+        "typed": "",
+        "context": "shown ; int slots ; bool changed ; bool values_changed"
+      },
+      {
+        "incoming": "",
+        "typed": ", \"origin\" , \"originTip\"",
+        "context": ", \"text\" , \"drop\" , \"problem\" , \"kind\" , \"hint\""
+      },
+      {
+        "incoming": "",
+        "typed": ", \"resetOverride\"",
+        "context": ", \"integer\" , \"float\" , \"slider\" , \"checked\" , \"preview\""
+      },
+      {
+        "incoming": "",
+        "typed": "const char * origin , * origin_tip ; bool reset_override ;",
+        "context": ", * label , * about , * control ;"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; put_text ( v , row , \"origin\" , d - > origin ? d - > origin : \"\" ) ; put_text ( v , row , \"originTip\" , d - > origin_tip ? d - > origin_tip : \"\" ) ; put_flag ( v , row , \"resetOverride\" , d - > reset_override",
+        "context": "v , row , \"invalid\" , d - > invalid"
+      },
+      {
+        "incoming": "",
+        "typed": "if (",
+        "context": "+ ) { pin_value axis = { 0 } ;"
+      },
+      {
+        "incoming": "",
+        "typed": ") { return",
+        "context": "- > fields [ i ] , & axis )"
+      },
+      {
+        "incoming": "",
+        "typed": "}",
+        "context": "> fields [ i ] , & axis ) ;"
+      },
+      {
+        "incoming": "",
+        "typed": "authoring_prototype_field_source source = { 0 } ; if ( scene_prototype_source_owned ( asset ) & & authoring_prototype_source_field ( scene_source_input_text ( s - > scene , asset ) , component - > desc - > name , field - > name , & source ) ) { f . row . origin = source . overridden ? \"Override\" : source . computed ? \"Computed\" : \"\" ; f . row . origin_tip = source . overridden ? \"Explicit source override. Reset restores the \" \"computed value.\" : source . computed ? \"Computed from source. Editing \" \"stores an explicit override.\" : \"\" ; f . row . reset_override = source . overridden ; f . row . overridden = source . overridden ; }",
+        "context": "> desc - > id , index ) } ;"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; } static void prototype_parameters ( view * v , scene_prototype_asset * asset , bool locked ) { if ( v - > s - > tab ! = STUDIO_TAB_OBJECT | | ! scene_prototype_source_owned ( asset ) ) { return ; } char error [ 256 ] ; av_doc * doc = authoring_prototype_source_parameters ( scene_source_input_text ( v - > s - > scene , asset ) , error , sizeof error ) ; const av_value * parameters = av_doc_root ( doc ) ; if ( ! av_obj_size ( parameters ) ) { av_doc_free ( doc ) ; return ; } rows r = next_panel ( v , & ( panel_desc ) { . key = \"parameters\" , . title = \"Parameters\" , . order = - 1 , . open = properties_open ( v - > s , \"parameters\" ) } ) ; for ( size_t i = 0 ; properties_open ( v - > s , \"parameters\" ) & & i < av_obj_size ( parameters ) ; i + + ) { const char * name = av_get_str ( av_obj_key_at ( parameters , i ) ) ; if ( v - > s - > property_search [ 0 ] & & ! studio_matches ( v - > s - > property_search , \"Parameters\" ) & & ! studio_matches ( v - > s - > property_search , name ) ) { continue ; } pin_value value ; if ( ! properties_parameter_value ( & v - > storage , av_obj_value_at ( parameters , i ) , & value ) ) { continue ; } properties_row key ; properties_parameter_row ( asset - > path , name , i , & key ) ; char id [ PROPERTIES_ROW_ID ] , label [ 128 ] ; properties_row_id ( & key , id ) ; editor_component_label ( name , label , sizeof label ) ; row_desc row = { . id = id , . label = label , . readonly = locked } ; if ( value . type = = PIN_STR | | value . type = = PIN_I64 | | value . type = = PIN_U64 ) { row . control = \"text\" ; text_row ( & r , & row , properties_text ( & v - > storage , & value ) ) ; } else if ( value . type = = PIN_BOOL ) { row . control = \"bool\" ; bool_row ( & r , & row , value . b ) ; } else { row . control = \"number\" ; number_shape shape = { . integer = value . type ! = PIN_F64 , . step = 1 } ; number_bounds ( value . type , & shape ) ; if ( ! shape . integer ) { float_step ( & shape ) ; } number_row ( & r , & row , & shape , value . type = = PIN_F64 ? value . d : integer_of ( & value ) ) ; } } end_panel ( & r ) ; av_doc_free ( doc",
+        "context": ") ; } } field_row ( r , & f"
+      },
+      {
+        "incoming": "",
+        "typed": "prototype_parameters ( v , subject - > asset , subject - > locked ) ;",
+        "context": "subject - > asset - > prototype ) ; }"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/studio/studio_prototype_actions.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/workspace/scene_asset_drop.c",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/workspace/scene_authoring.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "# include \"authoring/source_format.h\"",
+        "typed": "",
+        "context": "\"authoring/behavior_loader.h\" # include \"authoring/preview_source.h\" # include \"authoring/prototype_preview.h\" # include \"authoring/source_asset.h\""
+      },
+      {
+        "incoming": "\"support/asset_json.h\"",
+        "typed": "\"support/asset_document.h\"",
+        "context": "include \"runtime/declared_components.h\" # include \"support/arena.h\" # include \"support/array.h\" # include"
+      },
+      {
+        "incoming": "\"support/asset_text.h\"",
+        "typed": "\"support/asset_json.h\"",
+        "context": "include \"support/arena.h\" # include \"support/array.h\" # include \"support/asset_json.h\" # include"
+      },
+      {
+        "incoming": "const char * extension = strrchr ( path , '.' ) ; if ( extension & & ! strcmp ( extension , \".chibi\" ) ) { script_syntax * syntax = script_parse ( text ) ;",
+        "typed": "",
+        "context": "char * path , const char * text ) {"
+      },
+      {
+        "incoming": "formatted",
+        "typed": "source",
+        "context": ") ; char error [ 192 ] ; char *"
+      },
+      {
+        "incoming": "authoring_source_format",
+        "typed": "asset_document_to_disk",
+        "context": "char error [ 192 ] ; char * formatted ="
+      },
+      {
+        "incoming": "syntax",
+        "typed": "text",
+        "context": "[ 192 ] ; char * formatted = authoring_source_format ("
+      },
+      {
+        "incoming": "formatted",
+        "typed": "source",
+        "context": ", error , sizeof error ) ; if ( !"
+      },
+      {
+        "incoming": "script_syntax_free ( syntax ) ;",
+        "typed": "",
+        "context": "sizeof error ) ; if ( ! formatted ) {"
+      },
+      {
+        "incoming": "formatted ) ; script_syntax_free ( syntax",
+        "typed": "source",
+        "context": "1 ; } int result = write_file_atomic ( path ,"
+      },
+      {
+        "incoming": "formatted ) ; return result ; } char error [ 128 ] ; av_doc * document = asset_text_read ( text , error , sizeof error ) ; if ( ! document ) { return - 1 ; } char * previous = text_file_read ( path ) ; char * updated = previous & & * previous ? asset_source_reconcile ( previous , av_doc_root ( document ) , error , sizeof error ) : av_doc_write ( document ) ; free ( previous ) ; av_doc_free ( document ) ; int result = updated ? write_file_atomic ( path , updated ) : - 1 ; free ( updated",
+        "typed": "source",
+        "context": "formatted ) ; script_syntax_free ( syntax ) ; free ("
+      },
+      {
+        "incoming": "",
+        "typed": "& & ! asset_document_source ( text )",
+        "context": "& source_catalog_source_path ( scene - > content_root , path )"
+      },
+      {
+        "incoming": "asset_text_read",
+        "typed": "asset_document_read",
+        "context": "size , \"Executable source requires a canonical presentation\" ) ; return NULL ; } return"
+      },
+      {
+        "incoming": "",
+        "typed": ") & & ! asset_document_source ( text",
+        "context": "& & source_catalog_source_path ( scene - > content_root , path"
+      },
+      {
+        "incoming": "",
+        "typed": "char * previous = text_file_read ( path ) ; char * updated = NULL ; if ( previous ) { char error [ 256 ] ; av_doc * document = asset_document_read ( text , error , sizeof error ) ; updated = document ? asset_source_reconcile ( previous , av_doc_root ( document ) , error , sizeof error ) : NULL ; av_doc_free ( document ) ; free ( previous ) ; if ( ! updated ) { snprintf ( scene - > message , sizeof scene - > message , \"Could not preserve source while saving: %s\" , error ) ; return - 1 ; } text = updated ; }",
+        "context": "char * path , const char * text ) {"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; free ( updated",
+        "context": ") { int result = write_asset_file ( path , text"
+      },
+      {
+        "incoming": "tree_watch_free ( & scene - > code_disk ) ;",
+        "typed": "",
+        "context": "; tree_watch_free ( & scene - > disk ) ;"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/workspace/scene_authoring.h",
+    "identical_tokens": true,
+    "changes": []
+  },
+  {
+    "file": "src/editor/workspace/scene_gizmo.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "",
+        "typed": "# include \"support/arena.h\"",
+        "context": "\"platform/cute.h\" # include \"render/grid_2d.h\" # include \"runtime/component_catalog.h\" # include \"runtime/transform_propagation.h\""
+      },
+      {
+        "incoming": "",
+        "typed": "arena storage = { 0 } ;",
+        "context": "field = field_named ( component , name ) } ;"
+      },
+      {
+        "incoming": "NULL",
+        "typed": "& storage",
+        "context": "= { 0 } ; int read = ecs_component_read_field ("
+      },
+      {
+        "incoming": "",
+        "typed": ") ; arena_free ( & storage",
+        "context": "& & scene_property_value_copy ( & field . after , value"
+      }
+    ]
+  },
+  {
+    "file": "src/editor/workspace/scene_runtime.c",
+    "identical_tokens": false,
+    "changes": [
+      {
+        "incoming": "",
+        "typed": "# include \"execution/status.h\"",
+        "context": "# include \"authoring/material_prepare.h\""
+      },
+      {
+        "incoming": "\"execution/status.h\" # include",
+        "typed": "",
+        "context": "include \"editor/collab/actions_scene.h\" # include \"editor/workspace/model_preview.h\" # include \"editor/workspace/scene_internal.h\" # include"
+      },
+      {
+        "incoming": "# include \"support/arena.h\"",
+        "typed": "",
+        "context": "\"editor/workspace/scene_internal.h\" # include \"execution/status.h\" # include \"render/shader_catalog.h\" # include \"runtime/component_catalog.h\""
+      },
+      {
+        "incoming": "",
+        "typed": "arena storage = { 0 } ;",
+        "context": "const prototype_component * authored , scene_kept * kept ) {"
+      },
+      {
+        "incoming": "; arena storage = { 0 }",
+        "typed": "",
+        "context": "{ const ecs_component_desc * desc = authored - > desc"
+      },
+      {
+        "incoming": "arena_reset ( & storage ) ;",
+        "typed": "",
+        "context": "type - > field_count ; f + + ) {"
+      },
+      {
+        "incoming": "{ 0 }",
+        "typed": "running",
+        "context": "running ) ) { continue ; } pin_value before ="
+      },
+      {
+        "incoming": "| |",
+        "typed": ") { continue ; } if (",
+        "context": "- > fields [ f ] , & before )"
+      },
+      {
+        "incoming": "arena_free ( & storage ) ;",
+        "typed": "",
+        "context": "> after ) ) { abort ( ) ; }"
+      },
+      {
+        "incoming": "",
+        "typed": ") ; arena_free ( & storage",
+        "context": "- > scene_dirty = true ; } finish_property_edit ( scene"
+      }
+    ]
+  }
+]

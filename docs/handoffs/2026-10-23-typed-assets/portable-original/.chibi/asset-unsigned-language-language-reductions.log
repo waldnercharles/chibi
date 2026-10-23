@@ -1,0 +1,10 @@
+Running: reductions_prepared_ordered_fold_preserves_storage_and_clamps (OK) (0.001726 secs)
+Running: reductions_unordered_opt_in_regroups_contributions (OK) (0.000330 secs)
+Running: reductions_min_max_preserve_candidate_nan_and_signed_zero (OK) (0.000253 secs)
+Running: reductions_failures_and_discard_do_not_publish_partial_results (OK) (0.000418 secs)
+Running: reductions_scalar_helper_closure_streams_and_preserves_fallbacks (OK) (0.001734 secs)
+Running: reductions_mixed_public_ir_preserves_serial_failure_owner (OK) (0.000128 secs)
+Running: reductions_effects_include_component_payload_reads (OK) (0.000105 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 450
+Test command wall time: 0.119s; includes in-test fixture setup; external configuration/build excluded.

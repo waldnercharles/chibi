@@ -1,0 +1,26 @@
+{
+  "name": "green-build-toolchain",
+  "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "argv": [
+    "env",
+    "CHIBI_TOOLS_BUILD_DIR=build-release/test/tools",
+    "CHIBI_BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/sdk/chibi-build-host",
+    "python3",
+    "tools/test_policy.py",
+    "tool",
+    "build-toolchain"
+  ],
+  "status": "passed",
+  "started_utc": "2026-10-23T05:31:42.593534+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/green-build-toolchain.log",
+  "python": "Python 3.13.16",
+  "jobs": "4 only via Make argument; no global -j",
+  "pid": 81911,
+  "exit_code": 0,
+  "elapsed_seconds": 34.028,
+  "completed_utc": "2026-10-23T05:32:16.623904+00:00",
+  "log_sha256": "e5270be0bee0be30283eb63233d9318ccd84e03087cf33d6849d4984c7275cfc",
+  "source_currency": "unchanged"
+}

@@ -1,0 +1,47 @@
+{
+  "sdk_build_id": "cb8e0b94d607789e9f7e8871a08e3f6834ee59392212be9f88595029c00e1c38",
+  "sdk_manifest_sha256": "35286d3b4eb2814e02b32ce67a6600424455a76f4e122ca15ed6570632e162ea",
+  "configuration": {
+    "build_type": "Release",
+    "sanitizers": false,
+    "acceptance": true
+  },
+  "build": {
+    "exit_code": 0,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-final-flow-studio-build.log"
+  },
+  "acceptance_binary_sha256": "04d781c2d3288fde67c5e536b4c3408467260fa113747817366ab1685b5870ad",
+  "model": {
+    "exit_code": 0,
+    "cases": 1,
+    "assertions": 87,
+    "wall_seconds": 20.047,
+    "compile_attempts": 9,
+    "memory_hits": 39,
+    "persistent_hits": 0,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-final-flow-studio-model.log",
+    "command": "/opt/homebrew/bin/python3.13 tools/test_policy.py --timeout 60 tool compiled-asset-edit-model"
+  },
+  "full_cold": {
+    "exit_code": 0,
+    "cases": 1,
+    "assertions": 62,
+    "wall_seconds": 64.03,
+    "compile_attempts": 69,
+    "memory_hits": 161,
+    "persistent_hits": 0,
+    "frames": 2,
+    "source_edits": 3,
+    "undo": 1,
+    "redo": 1,
+    "save": 1,
+    "reload": 1,
+    "startup_health_error_matches": 0,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-final-flow-studio-cold.log",
+    "command": "CHIBI_ASSET_CACHE_DIR=empty tools/test_policy.py --timeout 120 native build-studio-release/bin/studio-acceptance --compiled-asset-edit --project-root <task-local-COW-project>",
+    "project_copy": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/final-flow-studio-project.mKunvK/project"
+  },
+  "persistent_cache": "disabled for both invocations",
+  "timing_note": "Both invocations ran under concurrent validation load. Optional timeout arguments were agent-selected, not owner-required admissions; owner instructed not to add such normal-work cutoffs to subsequent runs. Neither invocation reached its timeout.",
+  "scope": "Existing CPU model and production two-frame full host; no pointer fixture or screenshot added."
+}

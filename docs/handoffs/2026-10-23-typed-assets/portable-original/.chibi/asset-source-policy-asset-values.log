@@ -1,0 +1,11 @@
+Running: asset_document_owns_each_property_name (OK) (1.724708 secs)
+Running: asset_document_reads_typed_values_and_writes_them_canonically (OK) (1.971574 secs)
+Running: asset_document_reals_round_trip_exactly (OK) (12.453226 secs)
+Running: asset_document_floats_keep_their_bits_through_copies (OK) (7.503490 secs)
+Running: asset_document_strings_escape_separators_and_decode_scalars (OK) (2.148562 secs)
+Running: asset_value_snapshots_own_their_values (OK) (0.000021 secs)
+Running: asset_value_collections_keep_order_and_exact_numbers (OK) (0.000004 secs)
+Running: asset_value_json_owns_its_strings (OK) (0.000092 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 132
+Test command wall time: 65.205s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,39 @@
+{
+  "state": "applied and source-reviewed; unbuilt/untested combined tree",
+  "source_first_base_tree": "aa8d23d61dc4fec6e56598a0472c05a6ac7122b2",
+  "reviewed_tree": "c3bad71fa0026273eadab8a899f92587fd932594",
+  "applied_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "eligible_main": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "HEAD": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "MERGE_HEAD": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "candidate_patch_sha256": "5d96ae8238c518279b510bc23e2b6bb4e0bab88cb8a9bee2d032f3609f4abfa3",
+  "format_patch_sha256": "e0773ca2d138b0b9beaa6497b05aac2fb09873282acb13b2fab4db9cc13ea285",
+  "format_scope": [
+    "test/tools/main.c selector wrapping",
+    "test/tools/build_sdk.c directory-array packing after removed ckdl row"
+  ],
+  "checks": {
+    "independent_seam_review": "asset_evaluator clear on c3bad71f",
+    "changed_lines_clang_format_22": "clear after formatting",
+    "whitespace": "clear",
+    "unmerged_entries": "",
+    "unstaged_source_diff": "",
+    "whole_engine_make_check_format": "passed8.5s; staticformatter only",
+    "native_source_snapshot": "passed fullhash+directoryinventory cmakeverifier",
+    "wasm_source_snapshot": "passed fullhash+directoryinventory cmakeverifier",
+    "SDK_independent_source_review": {
+      "state": "clear0b5",
+      "receipt": "/Users/cwaldner/Personal/chibi/.worktrees/self-hosted-build-programs/chibi/.chibi/sdk-packaging/typed-integration-0b5-source-audit.json",
+      "sha256": "2e524eb99666944a4d89a950bd79f5e7beade41dd9a2407e58df1c90d4b2a08e"
+    }
+  },
+  "generation_inputs": "19/37/37 and products unchanged; no regeneration",
+  "execution": "No combined native builds/tests or SDK packaging; compiler owns lane for rich+Append+prepared-host+d0 after released task/writer focus. Typed follows explicit release.",
+  "gates": [
+    "Native .2 host requires retired bootstrap.kdl; matching runtime provisioning/pins after validated freeze",
+    "Normal Studio CI needs exact migrated compatible Studio source; paired receipt paths alone insufficient",
+    "New Studio --sdk-values selector pending on staged335262 merge",
+    "Final broad/cold/Web integration acceptance pending"
+  ],
+  "ancestry": "After checked pending fa1b checkpoint, ordinary d0 merge and exact tested-tree equality; never abort/reset/rewrite pending merge"
+}

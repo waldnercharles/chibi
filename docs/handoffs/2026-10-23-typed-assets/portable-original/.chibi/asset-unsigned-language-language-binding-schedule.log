@@ -1,0 +1,8 @@
+Running: binding_schedule_tracks_program_and_owner_lifetimes (OK) (0.001477 secs)
+Running: binding_schedule_preserves_order_and_rejects_cycles_before_writes (OK) (0.001333 secs)
+Running: binding_schedule_rechecks_query_gates_and_uses_bounded_fallback (OK) (0.006397 secs)
+Running: binding_schedule_keeps_dynamic_target_dependencies (OK) (0.000921 secs)
+Running: binding_schedule_snapshots_managed_evaluator_results (OK) (0.000832 secs)
+===============================================================
+Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 5668
+Test command wall time: 0.131s; includes in-test fixture setup; external configuration/build excluded.

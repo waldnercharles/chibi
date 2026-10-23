@@ -1,0 +1,37 @@
+src/types/value_document.c:199:        case PIN_I8: return av_sint(doc, v->i8);
+src/types/value_document.c:201:        case PIN_I16: return av_sint(doc, v->i16);
+src/types/value_document.c:203:        case PIN_I32: return av_sint(doc, v->i);
+src/types/value_document.c:205:        case PIN_I64: return av_sint(doc, v->i64);
+src/types/value_document.c:211:            return label ? av_str(doc, label) : av_sint(doc, v->e);
+src/authoring/asset_compiler_host.c:334:                    replacement = av_sint(document, (int64_t)av_get_uint(value));
+src/authoring/asset_compiler_host.c:660:    av_arr_append(values, av_sint(args, bytes[0]));
+src/authoring/asset_compiler_host.c:1028:        av_arr_append(values[0], av_sint(doc, type));
+src/authoring/asset_compiler_host.c:1029:        av_arr_append(values[1], av_sint(doc, item.parent));
+src/authoring/asset_compiler_host.c:1032:        av_arr_append(values[4], av_sint(doc, type == AV_SINT ? av_get_sint(item.value) : 0));
+src/assets/physics_settings.c:62:        av_obj_add_int(doc, object, "workers", settings.workers);
+src/assets/physics_settings.c:65:        av_obj_add_int(doc, object, "substeps", settings.substeps);
+src/assets/prototype.c:1233:        case PIN_I8: return av_sint(doc, value.i8);
+src/assets/prototype.c:1234:        case PIN_I16: return av_sint(doc, value.i16);
+src/assets/prototype.c:1235:        case PIN_I32: return av_sint(doc, value.i);
+src/assets/prototype.c:1236:        case PIN_I64: return av_sint(doc, value.i64);
+src/assets/prototype.c:1239:            return label ? av_str(doc, label) : av_sint(doc, value.e);
+src/authoring/source_asset_metadata.c:44:                    av_obj_set(result, root, key, av_sint(result, (int64_t)av_get_uint(value)));
+src/assets/project.c:84:    av_obj_add_int(doc, root, "version", CHIBI_PROJECT_VERSION);
+src/assets/project.c:98:    av_obj_add_int(doc, root, "version", 1);
+src/assets/scenario_document.c:261:    av_obj_add_int(doc, value, "frame", key->step);
+src/assets/scenario_document.c:318:    av_obj_add_int(doc, root, "frames", document->frames);
+src/assets/input_map.c:163:            av_obj_add_int(document, action, "controller", map[i].controller);
+src/authoring/parts_prepare.c:113:        av_obj_add_int(doc, object, "primitive", part->primitive);
+src/authoring/source_prototype_edit.c:540:    av_arr_append(args, av_sint(request, kind));
+src/authoring/source_prototype_edit.c:542:    av_arr_append(args, av_sint(request, signed_value));
+src/support/asset_value.c:97:av_value *av_sint(av_doc *doc, int64_t value)
+src/support/asset_value.c:385:bool av_obj_add_int(av_doc *doc, av_value *obj, const char *key, int64_t value)
+src/support/asset_value.c:387:    return av_obj_set(doc, obj, key, av_sint(doc, value));
+src/support/asset_value.c:499:        case AV_SINT: copy = av_sint(doc, value->data.sint); break;
+src/support/asset_json.c:20:        return av_sint(doc, yyjson_get_sint(value));
+src/graph/document/serialize_write.c:172:        av_obj_set(doc, o, "container", av_sint(doc, p->container));
+src/graph/document/serialize_write.c:186:        av_obj_set(doc, o, "group", av_sint(doc, p->group));
+src/graph/document/serialize_write.c:371:        av_obj_set(doc, o, "order", av_sint(doc, e->exec_order));
+src/graph/document/serialize_write.c:708:        av_obj_set(doc, o, "container", av_sint(doc, v->container));
+src/graph/document/serialize_write.c:771:        av_obj_set(doc, obj, "expression_mode", av_sint(doc, g->expression_mode));
+src/graph/document/serialize_write.c:780:        av_obj_set(doc, obj, "call_depth_limit", av_sint(doc, g->call_depth_limit));

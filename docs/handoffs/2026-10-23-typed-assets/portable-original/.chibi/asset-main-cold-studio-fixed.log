@@ -1,0 +1,25 @@
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+Studio UI: Unexpected syntax
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_edit.h (151): s->ui)
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_edit.h (191): status == 0 && clean && callback_ok && frames == 2)
+Running: compiled_asset_edit 
+Compiled asset cache: attempts=63 memory_hits=4 persistent_hits=0
+
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 3
+Test command wall time: 34.806s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

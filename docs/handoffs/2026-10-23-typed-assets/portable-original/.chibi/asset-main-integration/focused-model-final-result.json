@@ -1,0 +1,87 @@
+{
+  "scope": "Focused current typed SDK/model preparation; held baseline unimported; no broad/cold/Web acceptance",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "index_tree": "2b63ff9322987a92b40e36c69ca251e0c1c08094",
+    "runtime_patch": "3dd03160d89510e8a7f579affb8e51a77fe075a7",
+    "current_docs_tree": "aa8d23d61dc4fec6e56598a0472c05a6ac7122b2",
+    "docs_change": "Only typed-assets PLAN updated to reflect focused checkpoint; SDK was built from2b63. Generated inputs/artifacts unchanged."
+  },
+  "sdk": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release",
+    "build_id": "c676e3cc48e8a3fb2110d57477d5d83875a0ac8b337d4e549129eeb3caf274d9",
+    "source": {
+      "dirty": true,
+      "revision": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "snapshot_sha256": "48c80da1d7e1d605965c0f14a4e8e08458b3d7f2fa658c83ae025775a8057931"
+    },
+    "package_sha256": "126aba47d13c1901c0364fbd6ee47605f3b3f1cfda7d872a3a9d9cb2a0cfe2f5",
+    "recovery": "OFF",
+    "configuration": "Release / sanitizers OFF / native desktop compiler ON",
+    "log": "focused-native-sdk-package.log"
+  },
+  "studio": {
+    "head": "03269586af3c333b92a83fb6ea55a04373ed190f",
+    "index_tree": "e3abb80930dbed185d915a8f289f24791f51a865",
+    "files": {
+      "src/editor/documents/scene_history.c": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+      "src/editor/collab/actions_graph.c": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8",
+      "tests/acceptance/compiled_asset_edit.h": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835",
+      "tests/acceptance/compiled_asset_history.h": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526",
+      "EXTRACTION.json": "86be7f393daa744ebb15684be7465e6b69181b139571071db93e821c3b8e9d63",
+      "tests/acceptance/README.md": "027707285cf4f31ee85418ea08073fc96c296f92babd47df3a776a1253b0bc0d"
+    },
+    "binaries": {
+      "build-studio-release/bin/studio-acceptance": "55dd341bfae238c3739b9e4779dddfcef4b9c72c36541b6e4a2a1621abcf2f53",
+      "build-studio-release/bin/chibi-dev": "747e42fa4d6ad8ff90b2e707b1d02b5dedec3254e585d4c7ac3e8bcee26071f3"
+    },
+    "build_logs": [
+      "focused-studio-build.log",
+      "focused-studio-acceptance-build.log"
+    ],
+    "post_result_docs_tree": "19c1bbfb599f7c8a6a0ba92e063b37e60c078524",
+    "docs_change": "README records final261 pass and five red controls; tested C/header blobs unchanged",
+    "tested_code_tree": "a4afa345f15bbde8f972694d4caa16b91072a8c0",
+    "local_commit": "521b666a62406fabae8e1d23bad00765717b3635",
+    "committed_tree": "19c1bbfb599f7c8a6a0ba92e063b37e60c078524",
+    "working_tree": "clean"
+  },
+  "generation_receipt_sha256": "f9f2a7926ffb5fd8a7d0c4a0bfbdfd9466ada623f078c86f35b9bec921276b67",
+  "model": {
+    "expected_assertions": 261,
+    "state": "passed",
+    "cases": 1,
+    "assertions": 261,
+    "wall_seconds": 6.174,
+    "cache": {
+      "compile_attempts": 9,
+      "memory_hits": 39,
+      "persistent_hits": 0
+    },
+    "frames": 0,
+    "renders": 0,
+    "log": "focused-studio-model-final.log",
+    "log_sha256": "db02bf48b891fbf93a7538aef5e93d59ce5e1e4a1819863a758f61031bd975cf"
+  },
+  "checks": {
+    "changed_lines_clang_format_22": "clear; no changes",
+    "staged_whitespace": "clear",
+    "independent_future_studio92_source_review": "clear; result536ea9 production and EXTRACTION byte-identical; README refresh needed after current result",
+    "negative_controls": {
+      "expected_reds": 5,
+      "neutral_control": "graph-type-name deletion passed261; redundant assignment removed",
+      "summary": "studio-controls/execution-summary.json",
+      "independent_review": "studio-controls/type-name-neutral-review.md"
+    },
+    "final_build_log": "focused-studio-final-build.log",
+    "extraction": {
+      "entries": 476,
+      "consumer_hashes": 258,
+      "source_hashes": 218,
+      "mismatches": []
+    }
+  },
+  "lane": "Explicitly released; all local build/model/control commands completed; scratch binaries/archives/objects removed",
+  "publication": "Local commit only; no push or main landing"
+}

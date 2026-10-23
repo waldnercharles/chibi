@@ -1,0 +1,280 @@
+{
+  "state": "sealed",
+  "started_utc": "2026-10-23T04:44:29.499632+00:00",
+  "scope": "nativeSDK, existingSDK packaging/relocation, Studio model and new12sdkvalues only",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1"
+  },
+  "studio": {
+    "head": "521b666a62406fabae8e1d23bad00765717b3635",
+    "merge_head": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+    "tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+  },
+  "generation_receipt_sha256": "f9f2a7926ffb5fd8a7d0c4a0bfbdfd9466ada623f078c86f35b9bec921276b67",
+  "jobs": 4,
+  "rich32_imported": false,
+  "publication": "none",
+  "checks": [
+    {
+      "label": "native-sdk-package",
+      "argv": [
+        "make",
+        "package-sdk",
+        "SDK_BUILD_DIR=build-sdk-release",
+        "SDK_PREFIX=dist/sdk-release",
+        "SDK_REFLECT_BUILD_DIR=build-sdk-reflect",
+        "JOBS=4",
+        "SDK_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ASSET_COMPILER_RECOVERY=OFF"
+      ],
+      "started_utc": "2026-10-23T04:44:48.452021+00:00",
+      "state": "passed",
+      "log": "native-sdk-package.log",
+      "exit_code": 0,
+      "elapsed_seconds": 37.297,
+      "completed_utc": "2026-10-23T04:45:25.749986+00:00",
+      "log_sha256": "2e08261f728720fe6a43d0243b7d440fd999ce39f6ad8f85f13a8cadf416eb9e",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "studio-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "../chibi-studio",
+        "-B",
+        "build-studio-release",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_STUDIO_BUILD_ACCEPTANCE=ON",
+        "-DChibi_DIR=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/lib/cmake/Chibi"
+      ],
+      "started_utc": "2026-10-23T04:46:14.267447+00:00",
+      "state": "passed",
+      "log": "studio-configure.log",
+      "exit_code": 0,
+      "elapsed_seconds": 0.865,
+      "completed_utc": "2026-10-23T04:46:15.138841+00:00",
+      "log_sha256": "f1a09517fb801e083c44fbdcc95f446258fd9baa06e427d6afef61b51eeeafad",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "studio-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "build-studio-release",
+        "--target",
+        "chibi-studio",
+        "studio-acceptance",
+        "--parallel",
+        "4"
+      ],
+      "started_utc": "2026-10-23T04:46:27.831724+00:00",
+      "state": "passed",
+      "log": "studio-build.log",
+      "exit_code": 0,
+      "elapsed_seconds": 10.312,
+      "completed_utc": "2026-10-23T04:46:38.144278+00:00",
+      "log_sha256": "78890b7d01d0811d1d2f94edb90fbbb2e88a0139f13eb5d1b9c6436f96703ef0",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "studio-sdk-values",
+      "argv": [
+        "build-studio-release/bin/studio-acceptance",
+        "--sdk-values"
+      ],
+      "started_utc": "2026-10-23T04:46:52.301532+00:00",
+      "state": "passed",
+      "log": "studio-sdk-values.log",
+      "exit_code": 0,
+      "elapsed_seconds": 0.963,
+      "completed_utc": "2026-10-23T04:46:53.265324+00:00",
+      "log_sha256": "5190095bc0c4c27dcd504f2afd88349b638a25ad0f1c926a87786c18f30480b4",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "studio-model",
+      "argv": [
+        "build-studio-release/bin/studio-acceptance",
+        "--compiled-asset-edit-model"
+      ],
+      "started_utc": "2026-10-23T04:46:58.598453+00:00",
+      "state": "passed",
+      "log": "studio-model.log",
+      "exit_code": 0,
+      "elapsed_seconds": 5.189,
+      "completed_utc": "2026-10-23T04:47:03.787951+00:00",
+      "log_sha256": "e62fa8ef335a82a6e66f0e779f7efd62332c01f13a7b0580569804d274ab8a15",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "graph-sdk-products",
+      "argv": [
+        "make",
+        "build-release",
+        "BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host",
+        "BUILD_TARGET=chibi-compiler-host test_tools",
+        "JOBS=4"
+      ],
+      "started_utc": "2026-10-23T04:47:22.453461+00:00",
+      "state": "passed",
+      "log": "graph-sdk-products.log",
+      "exit_code": 0,
+      "elapsed_seconds": 43.357,
+      "completed_utc": "2026-10-23T04:48:05.811536+00:00",
+      "log_sha256": "683c128d94d9798027e92da0429c3c895fe453f7e19536f23ee564c6f594a7d5",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "graph-sdk",
+      "argv": [
+        "env",
+        "CHIBI_TOOLS_BUILD_DIR=build-release/test/tools",
+        "CHIBI_BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/sdk/chibi-build-host",
+        "CHIBI_SDK_GRAPH_BUILD_DIR=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release",
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "build-sdk"
+      ],
+      "started_utc": "2026-10-23T04:48:42.327445+00:00",
+      "state": "failed",
+      "log": "graph-sdk.log",
+      "exit_code": 1,
+      "elapsed_seconds": 42.546,
+      "completed_utc": "2026-10-23T04:49:24.874791+00:00",
+      "log_sha256": "a7b29334bd3a1bac4510a338ae1bb9ca7372d5af07b1ef8117227c3957cd9807",
+      "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+    },
+    {
+      "label": "graph-sdk-oracle-build",
+      "argv": [
+        "make",
+        "build-release",
+        "BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host",
+        "BUILD_TARGET=test_tools",
+        "JOBS=4"
+      ],
+      "started_utc": "2026-10-23T04:55:26.725448+00:00",
+      "state": "passed",
+      "log": "graph-sdk-oracle-build.log",
+      "engine_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+      "exit_code": 0,
+      "elapsed_seconds": 9.556,
+      "completed_utc": "2026-10-23T04:55:36.281744+00:00",
+      "log_sha256": "632d304fef70684354fbc26a76310368d4a4175ebb9be4f649dc96110eb6923c"
+    },
+    {
+      "label": "graph-sdk-oracle-rerun",
+      "argv": [
+        "env",
+        "CHIBI_TOOLS_BUILD_DIR=build-release/test/tools",
+        "CHIBI_BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/sdk/chibi-build-host",
+        "CHIBI_SDK_GRAPH_BUILD_DIR=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release",
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "build-sdk"
+      ],
+      "started_utc": "2026-10-23T04:55:58.722627+00:00",
+      "state": "passed",
+      "log": "graph-sdk-oracle-rerun.log",
+      "engine_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+      "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+      "exit_code": 0,
+      "elapsed_seconds": 43.639,
+      "completed_utc": "2026-10-23T04:56:42.362256+00:00",
+      "log_sha256": "39767cf0527841cd1808294b800c10ec6a2e43b64e6656b0d307bdac6df54aae"
+    }
+  ],
+  "sdk": {
+    "build_id": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+    "source": {
+      "dirty": true,
+      "revision": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "snapshot_sha256": "a8e7033a3475110498bd5de2193c0ff039efb3d57d0b6cea43656c296ec64f3e"
+    },
+    "manifest_sha256": "ae3533450bd954297b10bf69fd95febf4f1b820fa6c8c83ad2c69ad19e2e1004",
+    "configuration": {
+      "configuration": "Release",
+      "native_backend": true
+    },
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release",
+    "products_sha256": {
+      "bin/chibi": "547770a5bbe73bbdec38850a6a2efbf2cf2311fd9a4221c890ebb1b14752a74f",
+      "bin/chibi-compile": "7cebdce55b2fc45ca576a3a35faf194ebb1a0ad69c86dbad9eff94b49f9451f7",
+      "bin/chibi-player": "0697b69ef27dc320a10768e9c09a74a4d46251a32ce651ebaba5755ef903adbc",
+      "libexec/chibi/chibi-build-host": "c1c1d7e4b09e3f67f8085514adc0fe95f00ee86bd08150ea1a259590d846da75",
+      "libexec/chibi/chibi-compiler-host": "7b325af4ec852ce263894ea8c035b737d68ee8793455499f1fe3a578aa3dca02"
+    }
+  },
+  "execution_engine_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+  "fixture_only_adaptation": {
+    "base_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+    "path": "test/tools/build_sdk.c",
+    "patch_sha256": "acb833370191ab062584e04d3dc04b4ced8ef4e150fd5186586d2f8c72e462ae",
+    "changes": "semantic relocated commands oracle; loop bound renamed command_count to avoid later count collision; clang-format22",
+    "production_compiler_resource_sdk_inputs": "unchanged"
+  },
+  "outcome": "Narrow native focus passed after a C-fixture-only semantic oracle correction; original failed8-case run retained",
+  "sealed_utc": "2026-10-23T04:57:29.429843+00:00",
+  "lane": "released; no local heavy process remains; compiler diagnosis resumes before broad/cold/Web",
+  "results": {
+    "studio_sdk_values": {
+      "cases": 12,
+      "assertions": 163,
+      "seconds": 0.963
+    },
+    "studio_model": {
+      "cases": 1,
+      "assertions": 261,
+      "seconds": 5.189,
+      "frames": 0,
+      "renders": 0,
+      "compiles": 9,
+      "memory_hits": 39,
+      "disk_hits": 0
+    },
+    "graph_sdk": {
+      "cases": 8,
+      "assertions": 202,
+      "seconds": 43.639,
+      "tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74"
+    },
+    "original_graph_sdk_failure": {
+      "cases_passed": 7,
+      "cases_failed": 1,
+      "assertions": 199,
+      "seconds": 42.546,
+      "tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+      "resolution": "semantic support commands oracle; original log preserved"
+    },
+    "static_dependency_audit": {
+      "products": 5,
+      "archives": 114,
+      "parser_symbols": 0,
+      "semantic_format_references": 0,
+      "raw_code_signature_hits": 1
+    }
+  },
+  "limitations": [
+    "not a clean final commit or main landing",
+    "no broad remaining project groups, cold Studio, Web or hosted/platform acceptance",
+    "external .2 native recovery pin remains incompatible with typed compiledBootstrap; matching reviewed native producer/pins still required",
+    "compiler32 remains unimported and runtime-held",
+    "CI compatibility patch and unpublished Studio pin proposal source-prepared only"
+  ]
+}

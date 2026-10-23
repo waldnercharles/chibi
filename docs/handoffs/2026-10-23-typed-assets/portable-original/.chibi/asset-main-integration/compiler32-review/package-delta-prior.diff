@@ -1,0 +1,1094 @@
+diff --git a/tools/compiler/package_compiler/Behavior.chibi b/tools/compiler/package_compiler/Behavior.chibi
+index aaff4301e..e74f8324e 100644
+--- a/tools/compiler/package_compiler/Behavior.chibi
++++ b/tools/compiler/package_compiler/Behavior.chibi
+@@ -460,18 +460,19 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
+                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                         make_fields: int[]) -> Result {
++    context: BodyContext = BodyContext.Unknown(false);
+     return CompileBehaviorResolved(identity, source, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                    game_events, event_fields, types, type_fields, entity, operators, globals,
+-                                   makes, make_fields, resize([int(0)], length(natives)));
++                                   makes, make_fields, resize([int(0)], length(natives)), context);
+ }
+ CompileBehaviorResolved :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
+                             natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                             event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                             entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+-                            make_fields: int[], native_effects: int[]) -> Result {
++                            make_fields: int[], native_effects: int[], context: BodyContext) -> Result {
+     return CompileSources([identity], [source], target, abi, names, natives, ports, native_ids, game_events,
+                           event_fields, types, type_fields, entity, operators, globals, makes, make_fields,
+-                          native_effects, false);
++                          native_effects, context, false);
+ }
+ // Every source is declared before a body is emitted. Source-owned records
+ // replace their catalog row in place, preserving nominal indices in fields.
+@@ -647,7 +648,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
+                    natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                    event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                    entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+-                   make_fields: int[], native_effects: int[], closure: bool) -> Result {
++                   make_fields: int[], native_effects: int[], context: BodyContext, closure: bool) -> Result {
+     ops := ResolveOps(names, true);
+     if (abi == 0 || !Complete(ops) || !NativeInputValid(natives, ports, native_ids, native_effects) ||
+         length(identities) == 0 || length(identities) != length(sources)) {
+@@ -741,50 +742,75 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
+     }
+     natives = SourceNatives(documents, callables, natives, native_ids);
+     bodies: Body[] = [];
+-    solid: int[] = [];
+-    solid_document: int = -1;
++    summaries: int[] = [];
+     edges: graph.Edge[] = [];
+     constants: ConstDecl[] = [];
+-    index = 0;
+-    while (index < length(callables)) {
+-        callable := callables[index];
+-        game := games[callable.package];
+-        if (solid_document != callable.document) {
+-            solid = SolidOffsets(documents[callable.document].text);
+-            solid_document = callable.document;
+-        }
+-        undeclared := OccurrenceIn(DocumentHash(documents[callable.document].key), SymbolRecord, 0,
+-                                   solid[length(solid) - 1]);
+-        behaving: Name[] = [];
+-        switch game {
+-            case .Package:
+-                return InputFailure(callable.document, "invalid executable source mode");
+-            case .Library(owner, operators, globals, makes, fields):
+-                behaving = BehaviorNames([], globals, TypeWithId(declared_types, owner));
+-            case .Behavior(kept, handlers, declared_events, payloads, owner, operators, globals, makes, fields):
+-                behaving = BehaviorNames(kept, globals, TypeWithId(declared_types, owner));
+-        }
+-        meaning := binding.ID("symbol", format_text("{}:1:{}:callable", identities[callable.package], callable.name));
+-        if (Is(forest, callable.node, "handler")) {
+-            meaning = game_events[FindEvent(game_events, callable.name)].id;
+-        }
+-        body := FunctionBody(forest, documents, callables, params, declared_types, members, constants, natives, ports,
+-                             native_ids, extend(Aliases(namespaces, callable.document), behaving), operators, makes,
+-                             make_fields, index, solid, undeclared, meaning, ops, target);
+-        switch body {
+-            case .Failed(diagnostic):
+-                return Result.Rejected(diagnostic);
+-            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects):
+-                for (call in calls) {
+-                    target_package := callables[call.callee].package;
+-                    if (target_package != callable.package) {
+-                        edge: graph.Edge = {from: callable.package, to: target_package, import_index: -1};
+-                        edges.append(edge);
++    pass: int = 0;
++    while (pass < 2) {
++        solid: int[] = [];
++        solid_document: int = -1;
++        index = 0;
++        while (index < length(callables)) {
++            callable := callables[index];
++            generic: int[] = [];
++            if (pass > 0) {
++                generic = GenericUpdates(forest, bodies[index], summaries, context);
++            }
++            if (pass == 0 || length(generic) > 0) {
++                game := games[callable.package];
++                if (solid_document != callable.document) {
++                    solid = SolidOffsets(documents[callable.document].text);
++                    solid_document = callable.document;
++                }
++                undeclared := OccurrenceIn(DocumentHash(documents[callable.document].key), SymbolRecord, 0,
++                                           solid[length(solid) - 1]);
++                behaving: Name[] = [];
++                switch game {
++                    case .Package:
++                        return InputFailure(callable.document, "invalid executable source mode");
++                    case .Library(owner, operators, globals, makes, fields):
++                        behaving = BehaviorNames([], globals, TypeWithId(declared_types, owner));
++                    case .Behavior(kept, handlers, declared_events, payloads, owner, operators, globals, makes, fields):
++                        behaving = BehaviorNames(kept, globals, TypeWithId(declared_types, owner));
++                }
++                meaning := binding.ID("symbol", format_text("{}:1:{}:callable", identities[callable.package], callable.name));
++                if (Is(forest, callable.node, "handler")) {
++                    meaning = game_events[FindEvent(game_events, callable.name)].id;
++                }
++                body := FunctionBody(forest, documents, callables, params, declared_types, members, constants, natives,
++                                     ports, native_ids, extend(Aliases(namespaces, callable.document), behaving),
++                                     operators, makes, make_fields, index, solid, undeclared, meaning, context,
++                                     generic, ops, target);
++                switch body {
++                    case .Failed(diagnostic):
++                        return Result.Rejected(diagnostic);
++                    case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
++                                  direct_write, facts):
++                        if (pass == 0) {
++                            for (call in calls) {
++                                target_package := callables[call.callee].package;
++                                if (target_package != callable.package) {
++                                    edge: graph.Edge = {from: callable.package, to: target_package, import_index: -1};
++                                    edges.append(edge);
++                                }
++                            }
++                        }
++                }
++                if (pass == 0) {
++                    bodies.append(body);
++                } else {
++                    if (!StablePreparation(forest, bodies[index], body, summaries, context)) {
++                        return InputFailure(callable.document, "array update effects changed during preparation");
+                     }
++                    bodies[index] = body;
+                 }
++            }
++            index += 1;
+         }
+-        bodies.append(body);
+-        index += 1;
++        if (pass == 0) {
++            summaries = WriteSummaries(bodies);
++        }
++        pass += 1;
+     }
+     done := resize([false], length(documents));
+     fingerprints := resize([uint64(0)], length(documents));
+@@ -841,18 +867,19 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
+                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                          make_fields: int[]) -> byte[] {
++    context: BodyContext = BodyContext.Unknown(false);
+     return CompileBehaviorsResolved(identities, sources, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                     game_events, event_fields, types, type_fields, entity, operators, globals,
+-                                    makes, make_fields, resize([int(0)], length(natives)));
++                                    makes, make_fields, resize([int(0)], length(natives)), context);
+ }
+ CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                              natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                              event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                              entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+-                             make_fields: int[], native_effects: int[]) -> byte[] {
++                             make_fields: int[], native_effects: int[], context: BodyContext) -> byte[] {
+     switch CompileSources(identities, sources, target, abi, names, natives, ports, native_ids, game_events,
+                           event_fields, types, type_fields, entity, operators, globals, makes, make_fields,
+-                          native_effects, true) {
++                          native_effects, context, true) {
+         case .Rejected(diagnostic):
+             return [];
+         case .Compiled(module, bytes):
+@@ -866,18 +893,19 @@ pub BehaviorRejection :: (identities: string[], sources: string[], target: Targe
+                           event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                           entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                           make_fields: int[]) -> string {
++    context: BodyContext = BodyContext.Unknown(false);
+     return BehaviorRejectionResolved(identities, sources, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                      game_events, event_fields, types, type_fields, entity, operators, globals,
+-                                     makes, make_fields, resize([int(0)], length(natives)));
++                                     makes, make_fields, resize([int(0)], length(natives)), context);
+ }
+ BehaviorRejectionResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                               natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                               event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                               entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+-                              make_fields: int[], native_effects: int[]) -> string {
++                              make_fields: int[], native_effects: int[], context: BodyContext) -> string {
+     switch CompileSources(identities, sources, target, abi, names, natives, ports, native_ids, game_events,
+                           event_fields, types, type_fields, entity, operators, globals, makes, make_fields,
+-                          native_effects, true) {
++                          native_effects, context, true) {
+         case .Rejected(diagnostic):
+             if (diagnostic.document < 0 || diagnostic.document >= length(identities)) {
+                 return diagnostic.message;
+@@ -990,6 +1018,7 @@ pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], tar
+                                     type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+                                     globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
+                                     native_effects: int[]) -> byte[] {
++    context: BodyContext = BodyContext.Known(false, native_effects);
+     resolved := CatalogPorts(ports, NativeTypes(types), entity);
+     resolved_natives := CatalogNatives(natives);
+     if (!NativeInputValid(resolved_natives, resolved, native_ids, native_effects)) {
+@@ -997,7 +1026,7 @@ pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], tar
+     }
+     return CompileBehaviorsResolved(identities, sources, target, abi, names, resolved_natives, resolved, native_ids,
+                                     game_events, event_fields, types, type_fields, entity, operators, globals,
+-                                    CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects);
++                                    CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects, context);
+ }
+ pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
+                                      names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: uint64[],
+@@ -1005,6 +1034,7 @@ pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], ta
+                                      type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+                                      globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
+                                      native_effects: int[]) -> string {
++    context: BodyContext = BodyContext.Known(false, native_effects);
+     resolved := CatalogPorts(ports, NativeTypes(types), entity);
+     resolved_natives := CatalogNatives(natives);
+     if (!NativeInputValid(resolved_natives, resolved, native_ids, native_effects)) {
+@@ -1012,5 +1042,5 @@ pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], ta
+     }
+     return BehaviorRejectionResolved(identities, sources, target, abi, names, resolved_natives, resolved, native_ids,
+                                      game_events, event_fields, types, type_fields, entity, operators, globals,
+-                                     CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects);
++                                     CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects, context);
+ }
+diff --git a/tools/compiler/package_compiler/Body.chibi b/tools/compiler/package_compiler/Body.chibi
+index e665330b1..114085c3b 100644
+--- a/tools/compiler/package_compiler/Body.chibi
++++ b/tools/compiler/package_compiler/Body.chibi
+@@ -88,10 +88,28 @@ Root :: struct {
+     container: int;
+     record: int;
+ }
++// Entry points state the native-effect contract explicitly. Package assertion
++// policy is carried separately from the selected catalog's intrinsic facts.
++BodyContext :: union {
++    Unknown(package_assert: bool) | Known(package_assert: bool, masks: int[])
++}
++// Sparse preparation facts identify update items and the resolved operations
++// inside them. Nodes are global forest indices, never document byte ranges.
++SemanticFact :: struct {
++    node: int;
++    kind: int;
++    target: int;
++}
++UpdateFact: int : 0;
++NativeFact: int : 1;
++CallFact: int : 2;
++WriteFact: int : 3;
++UnknownWrite: int : -1;
+ Body :: union {
+     Failed(diagnostic: syntax.Diagnostic)
+     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
+-              hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[], effects: int)
++              hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[], effects: int,
++              direct_write: int, facts: SemanticFact[])
+ }
+ // A debugger point: a record of stage zero's kind at a source range, which
+ // breakpoints find by its occurrence; `meaning` names what it is, such as the
+@@ -307,6 +325,7 @@ EffectsPhase: int : -1;
+ // A private directive: publish the resolved native without emitting code.
+ NativeCallPhase: int : -2;
+ OwnerArgumentPhase: int : -3;
++SemanticPhase: int : -4;
+ RecordOwnerArgument :: (node: int, slot: int, record: int) -> Work {
+     item := Resume(node, OwnerArgumentPhase, slot, 0);
+     item.storage = HandleStorage;
+@@ -601,6 +620,111 @@ Visit :: (node: int) -> Work {
+ RecordEffects :: (effects: int) -> Work {
+     return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1};
+ }
++RecordSemantic :: (node: int, kind: int, target: int) -> Work {
++    return {node: node, phase: SemanticPhase, a: kind, b: target, c: 0,
++            storage: 0, container: 0, record: -1};
++}
++// WRITE dominates unknown, which dominates a proven clear summary.
++JoinWrite :: (left: int, right: int) -> int {
++    if (left == WriteEffect || right == WriteEffect) {
++        return WriteEffect;
++    }
++    if (left == UnknownWrite || right == UnknownWrite) {
++        return UnknownWrite;
++    }
++    return 0;
++}
++NativeWrite :: (context: BodyContext, native: int) -> int {
++    switch context {
++        case .Unknown(package_assert):
++            return UnknownWrite;
++        case .Known(package_assert, masks):
++            return masks[native] & WriteEffect;
++    }
++}
++InSubtree :: (forest: snapshot.SnapshotNode[], node: int, root: int) -> bool {
++    at := node;
++    remaining := length(forest);
++    while (at >= 0 && remaining > 0) {
++        if (at == root) {
++            return true;
++        }
++        at = forest[at].parent;
++        remaining -= 1;
++    }
++    return false;
++}
++InUpdateItem :: (forest: snapshot.SnapshotNode[], facts: SemanticFact[], node: int) -> bool {
++    for (fact in facts) {
++        if (fact.kind == UpdateFact && InSubtree(forest, node, fact.target)) {
++            return true;
++        }
++    }
++    return false;
++}
++HasSemanticFact :: (facts: SemanticFact[], node: int, kind: int, target: int) -> bool {
++    for (fact in facts) {
++        if (fact.node == node && fact.kind == kind && fact.target == target) {
++            return true;
++        }
++    }
++    return false;
++}
++SemanticState :: union {
++    Read(direct_write: int, facts: SemanticFact[])
++}
++// Directives record resolved semantic choices even when lowering replaced a
++// native call with an intrinsic. The sparse facts belong only to item trees.
++DirectiveFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct: int,
++                   facts: SemanticFact[], item: Work) -> SemanticState {
++    recorded := facts;
++    summary := direct;
++    kind := item.a;
++    target := item.b;
++    if (item.phase == NativeCallPhase) {
++        kind = NativeFact;
++        target = item.a;
++    }
++    if (kind == UpdateFact) {
++        fact: SemanticFact = {node: item.node, kind: UpdateFact, target: target};
++        recorded.append(fact);
++        return SemanticState.Read(summary, recorded);
++    }
++    if (kind == WriteFact) {
++        summary = WriteEffect;
++    } else if (kind == NativeFact) {
++        summary = JoinWrite(summary, NativeWrite(context, target));
++    }
++    if (InUpdateItem(forest, recorded, item.node) && !HasSemanticFact(recorded, item.node, kind, target)) {
++        fact: SemanticFact = {node: item.node, kind: kind, target: target};
++        recorded.append(fact);
++    }
++    return SemanticState.Read(summary, recorded);
++}
++// Actual linked hosts and authored invocations come from resolved steps,
++// before retention adds any implementation-only intrinsics.
++StepFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct: int, facts: SemanticFact[],
++              node: int, hosts: Host[], calls: Invocation[]) -> SemanticState {
++    summary := direct;
++    recorded := facts;
++    inside := InUpdateItem(forest, recorded, node);
++    for (host in hosts) {
++        if (host.linked >= 0) {
++            summary = JoinWrite(summary, NativeWrite(context, host.linked));
++            if (inside && !HasSemanticFact(recorded, node, NativeFact, host.linked)) {
++                fact: SemanticFact = {node: node, kind: NativeFact, target: host.linked};
++                recorded.append(fact);
++            }
++        }
++    }
++    if (inside) {
++        for (call in calls) {
++            fact: SemanticFact = {node: node, kind: CallFact, target: call.callee};
++            recorded.append(fact);
++        }
++    }
++    return SemanticState.Read(summary, recorded);
++}
+ RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
+     return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
+             storage: result.storage, container: result.container, record: result.record};
+@@ -1618,11 +1742,11 @@ NativePort :: (native: ResolvedNative, index: int) -> int {
+     return native.first + index;
+ }
+ ArrayUpdate :: union {
+-    NotApplicable | InPlace(mode: int, array: int, item: int)
++    NotApplicable | InPlace(mode: int, array: int, item: int, native: int)
+ }
+ // How `xs = name(xs, value)` updates the local array names[found] in place:
+-// mode 0 pushes and mode 1 extends. The actual native and bound port order
+-// establish whether the source can use this path without reordering values.
++// mode 0 pushes and mode 1 extends. The actual native and bound parameters
++// identify a candidate; preparation proves whether its item may write.
+ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[],
+                   ports: ResolvedPort[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                   value: int) -> ArrayUpdate {
+@@ -1658,14 +1782,23 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
+         case .Failed(problem, message):
+             return ArrayUpdate.NotApplicable;
+         case .Bound(arguments, total):
+-            if (total != 2 || length(arguments) != 2 || arguments[0].parameter != 0 || arguments[1].parameter != 1) {
++            if (total != 2 || length(arguments) != 2) {
+                 return ArrayUpdate.NotApplicable;
+             }
+-            array := arguments[0].node;
+-            if (!Is(forest, array, "identifier") || Text(forest, text, array) != Text(forest, text, destination)) {
++            array: int = -1;
++            item: int = -1;
++            for (argument in arguments) {
++                if (argument.parameter == 0) {
++                    array = argument.node;
++                } else if (argument.parameter == 1) {
++                    item = argument.node;
++                }
++            }
++            if (array < 0 || item < 0 || !Is(forest, array, "identifier") ||
++                Text(forest, text, array) != Text(forest, text, destination)) {
+                 return ArrayUpdate.NotApplicable;
+             }
+-            return ArrayUpdate.InPlace(mode, array, arguments[1].node);
++            return ArrayUpdate.InPlace(mode, array, item, native);
+     }
+ }
+ 
+@@ -1830,12 +1963,56 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
+     code.append(PointCode(ops, 0, declaration));
+     return Start.Begun(work, names, slots, locals, cells, hosts, code, points, named);
+ }
++OwnerCodes :: union {
++    Failed(diagnostic: syntax.Diagnostic) | Read(code: Code[])
++}
++// The selected constant owner argument becomes the invocation owner, along
++// with its typed output watch. Selection and validation stay unchanged.
++OwnerArgumentCodes :: (forest: snapshot.SnapshotNode[], document: int, original: Code[], item: Work,
++                       ops: Ops) -> OwnerCodes {
++    code := original;
++    producer: int = -1;
++    index: int = 0;
++    while (index < length(code)) {
++        instruction := code[index];
++        if (instruction.output == item.a && instruction.op == ops.constant &&
++            instruction.type == HandleStorage && instruction.value_storage == HandleStorage &&
++            instruction.value_container == 0 && instruction.payload == 0 && !instruction.has_text) {
++            if (producer >= 0) {
++                return OwnerCodes.Failed(Diagnose(forest, item.node, document,
++                                                  "native owner argument has several constant producers"));
++            }
++            producer = index;
++        }
++        index += 1;
++    }
++    if (producer < 0 || item.storage != HandleStorage || item.container != 0 || item.record < 0) {
++        return OwnerCodes.Failed(Diagnose(forest, item.node, document,
++                                          "native owner argument has no constant handle producer"));
++    }
++    instruction := code[producer];
++    instruction.op = ops.owner;
++    instruction.value_record = item.record;
++    code[producer] = instruction;
++    index = 0;
++    while (index < length(code)) {
++        watch := code[index];
++        if (watch.op == ops.source_watch && watch.output == 1 && watch.left == item.a &&
++            watch.value_storage == HandleStorage && watch.value_container == 0) {
++            watch.value_record = item.record;
++            code[index] = watch;
++        }
++        index += 1;
++    }
++    return OwnerCodes.Read(code);
++}
+ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+              constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: uint64[],
+              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
+              solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
+-             mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
++             mutated: string[], built: int[], context: BodyContext, generic_updates: int[],
++             ops: Ops, target: Target) -> Body {
+     callable := callables[function];
+     declaration := forest[callable.node];
+     document_hash := DocumentHash(key);
+@@ -1880,6 +2057,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+     value_top: int = 0;
+     watches: SourceWatch[] = [];
+     semantic_effects: int = 0;
++    direct_write: int = 0;
++    facts: SemanticFact[] = [];
+     work_top = length(work);
+     while (work_top > 0) {
+         work_top -= 1;
+@@ -1888,45 +2067,26 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             semantic_effects = semantic_effects | item.a;
+             continue;
+         }
+-        if (item.phase == NativeCallPhase) {
++        if (item.phase == SemanticPhase || item.phase == NativeCallPhase) {
++            switch DirectiveFacts(forest, context, direct_write, facts, item) {
++                case .Read(summary, recorded):
++                    direct_write = summary;
++                    facts = recorded;
++            }
++            if (item.phase == SemanticPhase) {
++                continue;
++            }
+             fact: NativeCallFact = {node: item.node, native: item.a, storage: item.storage,
+                                     container: item.container, record: item.record};
+             native_calls.append(fact);
+             continue;
+         }
+         if (item.phase == OwnerArgumentPhase) {
+-            producer: int = -1;
+-            index: int = 0;
+-            while (index < length(code)) {
+-                instruction := code[index];
+-                if (instruction.output == item.a && instruction.op == ops.constant &&
+-                    instruction.type == HandleStorage && instruction.value_storage == HandleStorage &&
+-                    instruction.value_container == 0 && instruction.payload == 0 && !instruction.has_text) {
+-                    if (producer >= 0) {
+-                        return Body.Failed(Diagnose(forest, item.node, document,
+-                                                    "native owner argument has several constant producers"));
+-                    }
+-                    producer = index;
+-                }
+-                index += 1;
+-            }
+-            if (producer < 0 || item.storage != HandleStorage || item.container != 0 || item.record < 0) {
+-                return Body.Failed(Diagnose(forest, item.node, document,
+-                                            "native owner argument has no constant handle producer"));
+-            }
+-            instruction := code[producer];
+-            instruction.op = ops.owner;
+-            instruction.value_record = item.record;
+-            code[producer] = instruction;
+-            index = 0;
+-            while (index < length(code)) {
+-                watch := code[index];
+-                if (watch.op == ops.source_watch && watch.output == 1 && watch.left == item.a &&
+-                    watch.value_storage == HandleStorage && watch.value_container == 0) {
+-                    watch.value_record = item.record;
+-                    code[index] = watch;
+-                }
+-                index += 1;
++            switch OwnerArgumentCodes(forest, document, code, item, ops) {
++                case .Failed(diagnostic):
++                    return Body.Failed(diagnostic);
++                case .Read(rewritten):
++                    code = rewritten;
+             }
+             continue;
+         }
+@@ -2516,7 +2676,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                    kind == "return_statement" || kind == "delete_statement") {
+             step = StatementStep(forest, text, document, callables, params, types, members, natives, ports, identities, names,
+                                  scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
+-                                 referenced, mutated, built, item, ops, target, at);
++                                 referenced, mutated, built, generic_updates, item, ops, target, at);
+         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
+                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
+             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
+@@ -2563,6 +2723,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                         return Body.Failed(diagnostic);
+                     case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                   added_calls, added_names, scheduled, popped, value, kept, marks):
++                        if (pass == 0) {
++                            switch StepFacts(forest, context, direct_write, facts, item.node, added_hosts, added_calls) {
++                                case .Read(summary, recorded):
++                                    direct_write = summary;
++                                    facts = recorded;
++                            }
++                        }
+                         code.extend(added_code);
+                         slots.extend(added_slots);
+                         locals.extend(added_locals);
+@@ -2745,7 +2912,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+         points = [];
+     }
+     return NumberPoints(forest, solid, undeclared, meaning, document_hash, declaration, ops, slots, locals, cells,
+-                        code, calls, hosts, roots, points, watches, semantic_effects);
++                        code, calls, hosts, roots, points, watches, semantic_effects, direct_write, facts);
+ }
+ 
+ // A body's tables, with the points and watches the steps placed, each at its
+@@ -2755,7 +2922,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+ NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint64, meaning: uint64,
+                  document_hash: uint64, declaration: snapshot.SnapshotNode, ops: Ops, slots: Slot[], locals: Slot[],
+                  cells: Cell[], code: Code[], calls: Invocation[], hosts: Host[], roots: Root[],
+-                 points: SourcePoint[], watches: SourceWatch[], effects: int) -> Body {
++                 points: SourcePoint[], watches: SourceWatch[], effects: int, direct_write: int,
++                 facts: SemanticFact[]) -> Body {
+     numbered_code := code;
+     numbered_points := points;
+     numbered_watches := watches;
+@@ -2813,5 +2981,5 @@ NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint
+         at_point += 1;
+     }
+     return Body.Emitted(slots, locals, cells, numbered_code, calls, hosts, roots, numbered_points, numbered_watches,
+-                        effects);
++                        effects, direct_write, facts);
+ }
+diff --git a/tools/compiler/package_compiler/Compile.chibi b/tools/compiler/package_compiler/Compile.chibi
+index 8f1760fce..76d4a5a6b 100644
+--- a/tools/compiler/package_compiler/Compile.chibi
++++ b/tools/compiler/package_compiler/Compile.chibi
+@@ -1400,6 +1400,16 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
+         package_names.append(documents[files_of[listed.member_start]].identity);
+         package_ids.append(binding.ID("module", package_names[length(package_names) - 1]));
+     }
++    context: BodyContext = BodyContext.Known(true, native_effects);
++    prepared: Body[] = [];
++    switch PreparePackages(forest, documents, packages, files_of, order, edges, links, package_names,
++                           callables, params, types, members, constants, natives, ports, identities,
++                           context, ops, target) {
++        case .Failed(diagnostic):
++            return Result.Rejected(diagnostic);
++        case .Read(bodies):
++            prepared = bodies;
++    }
+     fingerprints := resize([uint64(0)], length(packages));
+     data: byte[] = [];
+     starts := resize([int(0)], length(packages));
+@@ -1409,7 +1419,7 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
+         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
+                         package_ids, fingerprints,
+                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
+-                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, []) {
++                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared) {
+             case .Rejected(diagnostic):
+                 return Result.Rejected(diagnostic);
+             case .Compiled(module, bytes, summaries):
+@@ -1499,11 +1509,214 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
+     }
+     return used;
+ }
++// A closed, prepared source cycle starts at its direct facts. Unknown native
++// contracts remain unknown; WRITE propagates through actual invocation edges.
++WriteSummaries :: (bodies: Body[]) -> int[] {
++    summaries: int[] = [];
++    for (body in bodies) {
++        switch body {
++            case .Failed(diagnostic):
++                summaries.append(UnknownWrite);
++            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
++                          direct_write, facts):
++                summaries.append(direct_write);
++        }
++    }
++    changed := true;
++    while (changed) {
++        changed = false;
++        index: int = 0;
++        for (body in bodies) {
++            switch body {
++                case .Failed(diagnostic):
++                    summaries[index] = UnknownWrite;
++                case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
++                              direct_write, facts):
++                    for (call in calls) {
++                        joined := JoinWrite(summaries[index], summaries[call.callee]);
++                        if (joined != summaries[index]) {
++                            summaries[index] = joined;
++                            changed = true;
++                        }
++                    }
++            }
++            index += 1;
++        }
++    }
++    return summaries;
++}
++ItemWrite :: (forest: snapshot.SnapshotNode[], facts: SemanticFact[], item: int, summaries: int[],
++              context: BodyContext) -> int {
++    summary: int = 0;
++    for (fact in facts) {
++        if (fact.kind != UpdateFact && InSubtree(forest, fact.node, item)) {
++            if (fact.kind == WriteFact) {
++                summary = WriteEffect;
++            } else if (fact.kind == NativeFact) {
++                summary = JoinWrite(summary, NativeWrite(context, fact.target));
++            } else if (fact.kind == CallFact) {
++                summary = JoinWrite(summary, summaries[fact.target]);
++            }
++        }
++    }
++    return summary;
++}
++// Only a proven clear item may mutate the receiver in place. The first pass
++// uses contextual in-place typing, but is never published before this proof.
++GenericUpdates :: (forest: snapshot.SnapshotNode[], body: Body, summaries: int[], context: BodyContext) -> int[] {
++    generic: int[] = [];
++    switch body {
++        case .Failed(diagnostic):
++            return generic;
++        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
++                      direct_write, facts):
++            for (fact in facts) {
++                if (fact.kind == UpdateFact && ItemWrite(forest, facts, fact.target, summaries, context) != 0) {
++                    generic.append(fact.node);
++                }
++            }
++    }
++    return generic;
++}
++// Changing the lowering must preserve its resolved semantic write contract.
++StablePreparation :: (forest: snapshot.SnapshotNode[], before: Body, next_body: Body, summaries: int[],
++                      context: BodyContext) -> bool {
++    switch before {
++        case .Failed(diagnostic):
++            return false;
++        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
++                      direct_write, facts):
++            switch next_body {
++                case .Failed(diagnostic):
++                    return false;
++                case .Emitted(next_slots, next_locals, next_cells, next_code, next_calls, next_hosts, next_roots,
++                              next_points, next_watches, next_effects, next_write, next_facts):
++                    if (direct_write != next_write || length(calls) != length(next_calls)) {
++                        return false;
++                    }
++                    index: int = 0;
++                    while (index < length(calls)) {
++                        if (calls[index].callee != next_calls[index].callee) {
++                            return false;
++                        }
++                        index += 1;
++                    }
++                    index = 0;
++                    next_index: int = 0;
++                    while (index < length(facts)) {
++                        if (facts[index].kind == UpdateFact) {
++                            while (next_index < length(next_facts) && next_facts[next_index].kind != UpdateFact) {
++                                next_index += 1;
++                            }
++                            if (next_index == length(next_facts)) {
++                                return false;
++                            }
++                            old := facts[index];
++                            current := next_facts[next_index];
++                            if (old.node != current.node || old.target != current.target ||
++                                ItemWrite(forest, facts, old.target, summaries, context) !=
++                                ItemWrite(forest, next_facts, current.target, summaries, context)) {
++                                return false;
++                            }
++                            next_index += 1;
++                        }
++                        index += 1;
++                    }
++                    while (next_index < length(next_facts)) {
++                        if (next_facts[next_index].kind == UpdateFact) {
++                            return false;
++                        }
++                        next_index += 1;
++                    }
++            }
++    }
++    return true;
++}
++Preparation :: union {
++    Failed(diagnostic: syntax.Diagnostic) | Read(bodies: Body[])
++}
++// Pure packages use the same two-stage body cache as executable sources.
++// Constants keep the importing package's first-use symbol occurrence.
++PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
++                    files_of: int[], order: int[], edges: graph.Edge[], links: graph.Binding[],
++                    package_names: string[], callables: Callable[], params: Param[], types: TypeDecl[],
++                    members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
++                    identities: uint64[], context: BodyContext, ops: Ops, target: Target) -> Preparation {
++    bodies: Body[] = [];
++    for (callable in callables) {
++        bodies.append(Body.Failed(Diagnose(forest, callable.node, callable.document, "missing prepared body")));
++    }
++    summaries: int[] = [];
++    pass: int = 0;
++    while (pass < 2) {
++        for (package in order) {
++            first: int = 0;
++            while (first < length(callables) && callables[first].package != package) {
++                first += 1;
++            }
++            needed := pass == 0;
++            index := first;
++            while (!needed && index < length(callables) && callables[index].package == package) {
++                needed = length(GenericUpdates(forest, bodies[index], summaries, context)) > 0;
++                index += 1;
++            }
++            if (!needed) {
++                continue;
++            }
++            reachable := Reachable(edges, length(packages), package);
++            used := UsedConstants(forest, documents, links, callables, constants, package, first, reachable);
++            first_document := files_of[packages[package].member_start];
++            first_solid := SolidOffsets(documents[first_document].text);
++            undeclared := OccurrenceIn(DocumentHash(documents[first_document].key), SymbolRecord, 0,
++                                       first_solid[length(first_solid) - 1]);
++            solid: int[] = [];
++            solid_document: int = -1;
++            index = first;
++            while (index < length(callables) && callables[index].package == package) {
++                callable := callables[index];
++                generic: int[] = [];
++                if (pass > 0) {
++                    generic = GenericUpdates(forest, bodies[index], summaries, context);
++                }
++                if (pass == 0 || length(generic) > 0) {
++                    if (callable.document != solid_document) {
++                        solid = SolidOffsets(documents[callable.document].text);
++                        solid_document = callable.document;
++                    }
++                    meaning := binding.ID("package-symbol",
++                                          format_text("{}:{}:{}:callable", package_names[package], FunctionKind,
++                                                      callable.name));
++                    body := FunctionBody(forest, documents, callables, params, types, members, used, natives, ports,
++                                         identities, Aliases(links, callable.document), [], [], [], index, solid,
++                                         undeclared, meaning, context, generic, ops, target);
++                    switch body {
++                        case .Failed(diagnostic):
++                            return Preparation.Failed(diagnostic);
++                        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
++                                      direct_write, facts):
++                            if (pass > 0 && !StablePreparation(forest, bodies[index], body, summaries, context)) {
++                                return Preparation.Failed(Diagnose(forest, callable.node, callable.document,
++                                                                   "array update effects changed during preparation"));
++                            }
++                            bodies[index] = body;
++                    }
++                }
++                index += 1;
++            }
++        }
++        if (pass == 0) {
++            summaries = WriteSummaries(bodies);
++        }
++        pass += 1;
++    }
++    return Preparation.Read(bodies);
++}
+ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
+                  params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                  natives: ResolvedNative[], ports: ResolvedPort[], identities: uint64[], aliases: Name[],
+                  operators: NumericOperator[], makes: NativeMake[], make_fields: int[], index: int,
+-                 solid: int[], undeclared: uint64, meaning: uint64, ops: Ops, target: Target) -> Body {
++                 solid: int[], undeclared: uint64, meaning: uint64, context: BodyContext, generic_updates: int[],
++                 ops: Ops, target: Target) -> Body {
+     callable := callables[index];
+     document := documents[callable.document];
+     referenced: string[] = [];
+@@ -1519,7 +1732,7 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
+     }
+     return EmitBody(forest, document.text, callable.document, callables, params, types, members, constants,
+                     natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
+-                    undeclared, meaning, index, referenced, mutated, built, ops, target);
++                    undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target);
+ }
+ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
+              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
+@@ -1538,20 +1751,12 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+     owner_type: uint64 = 0;
+     source_mode: bool = true;
+     library_mode: bool = false;
+-    behaving: Name[] = [];
+-    aggregates: NumericOperator[] = [];
+-    record_makes: NativeMake[] = [];
+-    make_fields: int[] = [];
+     switch game {
+         case .Package:
+             source_mode = false;
+         case .Library(entity, operators, globals, makes, made_fields):
+             owner_type = entity;
+             library_mode = true;
+-            behaving = BehaviorNames([], globals, TypeWithId(types, owner_type));
+-            aggregates = operators;
+-            record_makes = makes;
+-            make_fields = made_fields;
+         case .Behavior(declared_states, handlers, declared_events, payloads, entity, operators, globals, makes,
+                        made_fields):
+             kept_states = declared_states;
+@@ -1559,10 +1764,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+             game_events = declared_events;
+             game_fields = payloads;
+             owner_type = entity;
+-            behaving = BehaviorNames(declared_states, globals, TypeWithId(types, owner_type));
+-            aggregates = operators;
+-            record_makes = makes;
+-            make_fields = made_fields;
+     }
+     wide: uint64[] = [0];
+     values: writer.Value[] = [];
+@@ -1642,48 +1843,24 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
+     while (first_own < length(callables) && callables[first_own].package != package) {
+         first_own += 1;
+     }
+-    used := UsedConstants(forest, documents, links, callables, constants, package, first_own, reachable);
+     // The packages this module calls into, each an import row.
+     imported: int[] = [];
+     imports: writer.Import[] = [];
+     points: writer.Point[] = [];
+     watches: writer.Watch[] = [];
+-    solid: int[] = [];
+-    solid_document: int = -1;
+-    first_solid := SolidOffsets(documents[first_document].text);
+-    undeclared := OccurrenceIn(DocumentHash(documents[first_document].key), SymbolRecord, 0,
+-                               first_solid[length(first_solid) - 1]);
+     index := first_own;
+     while (index < length(callables) && callables[index].package == package) {
+         callable := callables[index];
+-        if (callable.document != solid_document) {
+-            solid = SolidOffsets(documents[callable.document].text);
+-            solid_document = callable.document;
+-        }
+         handler: int = -1;
+         if (index - first_own < length(handled)) {
+             handler = handled[index - first_own];
+         }
+-        // A function's points mean the event it handles, or the function.
+-        meaning := binding.ID("package-symbol", format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name));
+-        if (handler >= 0) {
+-            meaning = game_events[handler].id;
+-        } else if (source_mode) {
+-            meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
+-        }
+-        aliases := extend(Aliases(links, callable.document), behaving);
+-        tables := Body.Failed(Diagnose(forest, callable.node, callable.document, "missing prepared body"));
+-        if (length(prepared) > 0) {
+-            tables = prepared[index];
+-        } else {
+-            tables = FunctionBody(forest, documents, callables, params, types, members, used, natives, ports,
+-                                  identities, aliases, aggregates, record_makes, make_fields, index, solid, undeclared, meaning, ops, target);
+-        }
++        tables := prepared[index];
+         switch tables {
+             case .Failed(diagnostic):
+                 return Assembly.Rejected(diagnostic);
+             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
+-                          body_points, body_watches, body_effects):
++                          body_points, body_watches, body_effects, body_write, body_facts):
+                 direct_effects := body_effects;
+                 if (library_mode) {
+                     for (instruction in body_code) {
+diff --git a/tools/compiler/package_compiler/Steps.chibi b/tools/compiler/package_compiler/Steps.chibi
+index e514362a9..261a39b12 100644
+--- a/tools/compiler/package_compiler/Steps.chibi
++++ b/tools/compiler/package_compiler/Steps.chibi
+@@ -241,7 +241,8 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
+ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
+                   params: Param[], types: TypeDecl[], members: TypeMember[], natives: ResolvedNative[], ports: ResolvedPort[],
+                   identities: uint64[], names: Name[], scope: int, package: int, values: Value[], top: int,
+-                  function: int, named: int, referenced: string[], mutated: string[], built: int[], item: Work,
++                  function: int, named: int, referenced: string[], mutated: string[], built: int[], generic_updates: int[],
++                  item: Work,
+                   ops: Ops, target: Target, at: Bases) -> Step {
+     callable := callables[function];
+     node := forest[item.node];
+@@ -319,10 +320,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                                              found, destination, value) {
+                             case .NotApplicable:
+                                 update = -1;
+-                            case .InPlace(mode, receiver, supplied):
+-                                update = mode;
+-                                array = receiver;
+-                                argument = supplied;
++                            case .InPlace(mode, receiver, supplied, native):
++                                // Preparation keeps contextual element typing, but no
++                                // body is published before its WRITE proof closes.
++                                next.append(RecordSemantic(item.node, UpdateFact, supplied));
++                                next.append(RecordSemantic(value, NativeFact, native));
++                                if (!generic_updates.contains(item.node)) {
++                                    update = mode;
++                                    array = receiver;
++                                    argument = supplied;
++                                }
+                         }
+                     }
+                     if (update >= 0) {
+@@ -336,6 +343,19 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                         }
+                         code.append(ExpressionCode(ops, forest[value]));
+                         code.extend(NamePoints(forest, text, names, ops, array));
++                        address := AddressSlot(target);
++                        slots.extend([address, address]);
++                        code.extend(CellRead(target.pointer_storage, binding.index, ops, target, at.slot,
++                                             forest[array]));
++                        receiver: Root = {slot: at.slot + 1, storage: binding.storage, container: ArrayContainer,
++                                          record: binding.record};
++                        roots.append(receiver);
++                        if (ops.debug) {
++                            code.append(WatchCode(ops, at.slot + 1, binding.storage, ArrayContainer, binding.record,
++                                                  0, true, forest[array], target));
++                            code.append(WatchCode(ops, at.slot + 1, binding.storage, ArrayContainer, binding.record,
++                                                  0, false, forest[value], target));
++                        }
+                         container: int = 0;
+                         if (update == 1) {
+                             container = ArrayContainer;
+@@ -553,7 +573,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             }
+             binding := names[found];
+             if (binding.place == ReferencePlace || binding.place == BoxPlace) {
+-                return PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node);
++                return WriteStep(PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node),
++                                 item.node, binding.place == ReferencePlace);
+             }
+             stored := result;
+             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+@@ -604,6 +625,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                 }
+                 next.append(Resume(item.node, RetainedPhase, binding.index, 0));
+             } else if (binding.place == StatePlace) {
++                next.append(RecordSemantic(item.node, WriteFact, 0));
+                 if (binding.storage == TextStorage) {
+                     // STORE_VALUE snapshots the descriptor and its bytes into
+                     // the instance's storage, beyond this invocation's arena.
+@@ -657,13 +679,15 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+     } else if (item.phase == FieldPhase) {
+         popped = 1;
+         binding := names[item.a];
+-        return EffectsStep(FieldStep(forest, text, document, binding, members[item.b], values[top - 1], item,
+-                                     ops, target, at, node), MemberEffects(types, binding.record));
++        return WriteStep(EffectsStep(FieldStep(forest, text, document, binding, members[item.b], values[top - 1], item,
++                                               ops, target, at, node), MemberEffects(types, binding.record)),
++                         item.node, binding.place == ReferencePlace);
+     } else if (item.phase == ComponentPhase) {
+-        return ComponentWriteStep(forest, text, document, members[item.b], values[top - 1], item, ops, target, at,
+-                                  node);
++        return WriteStep(ComponentWriteStep(forest, text, document, members[item.b], values[top - 1], item, ops,
++                                            target, at, node), item.node, true);
+     } else if (item.phase == ComponentAssignPhase) {
+-        return ComponentAssignStep(forest, document, types, values[top - 1], item, ops, target, at, node);
++        return WriteStep(ComponentAssignStep(forest, document, types, values[top - 1], item, ops, target, at, node),
++                         item.node, true);
+     } else if (item.phase == ReturnsPhase) {
+         return ResultsStep(forest, document, params, callable, named, values, top, item, ops, target, at, node);
+     } else if (item.phase == MapStorePhase || item.phase == MapDeletePhase) {
+@@ -802,26 +826,15 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+         done: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+         cells.append(done);
+         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+-        slots.append(address);
+-        header_slot := at.slot + length(slots) - 1;
+-        code.append(Instruction(ops.host_slot, target.pointer_storage, header_slot, binding.index, 0, 0, node));
+-        sources[0] = header_slot;
+-        // A push watches the array it reads, as the array argument and the
+-        // call's first input, and the item as its second.
+         call := StatementValue(forest, item.node);
+         if (item.phase == PushPhase && ops.debug) {
+-            slots.append(address);
+-            read := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, header_slot, 0, 0, node);
+-            read.offset = target.payload_offset;
+-            code.append(read);
+-            array_slot := at.slot + length(slots) - 1;
+-            code.append(WatchCode(ops, array_slot, binding.storage, ArrayContainer, binding.record, 0, true,
+-                                  forest[item.c], target));
+-            code.append(WatchCode(ops, array_slot, binding.storage, ArrayContainer, binding.record, 0, false,
+-                                  forest[call], target));
+             code.append(WatchCode(ops, item_value.slot, item_value.storage, item_value.container,
+                                   item_value.record, 1, false, forest[call], target));
+         }
++        slots.append(address);
++        header_slot := at.slot + length(slots) - 1;
++        code.append(Instruction(ops.host_slot, target.pointer_storage, header_slot, binding.index, 0, 0, node));
++        sources[0] = header_slot;
+         argument: int = 0;
+         while (argument < length(sources)) {
+             slots.append(address);
+@@ -2089,6 +2102,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+             if (message >= 0 && !Is(forest, Unparenthesized(forest, message), "string")) {
+                 return Fail(forest, message, document, "assert's message is a string constant");
+             }
++            next.append(RecordSemantic(item.node, NativeFact, assertion));
+             next.append(Expect(condition, BoolStorage, 0, -1));
+             finish := Resume(item.node, 1, message, condition);
+             finish.c = 6;
+@@ -3599,6 +3613,20 @@ EffectsStep :: (step: Step, effects: int) -> Step {
+                                 retained, marks);
+     }
+ }
++// A resolved store through external storage contributes WRITE to preparation.
++// Local boxes and copy-on-write record/array stores do not.
++WriteStep :: (step: Step, node: int, writes: bool) -> Step {
++    if (!writes) {
++        return step;
++    }
++    switch step {
++        case .Failed(diagnostic):
++            return Step.Failed(diagnostic);
++        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
++            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound,
++                                extend([RecordSemantic(node, WriteFact, 0)], next), popped, value, retained, marks);
++    }
++}
+ // Publishes named locals after all return assignments. Records are copied
+ // before their complete headers enter the result bank, preserving nominal
+ // layouts and nested owned values just as an unnamed record return does.

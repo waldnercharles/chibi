@@ -1,0 +1,18 @@
+Running: component_write_keeps_scalar_ranges_versions_and_managed_siblings (OK) (0.001611 secs)
+Running: component_write_preserves_ordinary_and_compound_reference_writes (OK) (0.000590 secs)
+Running: component_write_preserves_managed_field_publication (OK) (0.000267 secs)
+Running: component_write_failure_does_not_publish_results_or_undo_callback_effects (OK) (0.000528 secs)
+Running: component_assignment_keeps_explicit_rhs_and_property_results (OK) (0.000839 secs)
+Running: component_write_evaluates_owner_then_rhs_then_revalidates_current_storage (OK) (0.000745 secs)
+Running: component_write_keeps_unproven_and_root_returning_setters_generic (OK) (0.000396 secs)
+Running: component_private_write_call_preserves_used_scalar_and_root_results (OK) (0.000977 secs)
+Running: component_write_ir_stack_cells_precede_locals (OK) (0.000002 secs)
+Running: component_write_ir_no_result_register_operands_preserve_stack_locals (OK) (0.000131 secs)
+Running: component_write_ir_all_widths_exact_bits_and_live_values (OK) (0.000164 secs)
+Running: component_write_ir_failure_checks_and_same_context_recovery (OK) (0.000047 secs)
+Running: component_write_ir_verifier_rejects_invalid_metadata_and_provenance (OK) (0.000025 secs)
+Running: component_write_ir_write_is_live_and_invalidates_reads (OK) (0.000030 secs)
+Running: component_write_ir_prepared_effects_preflight_and_schema (OK) (0.000253 secs)
+===============================================================
+Summary: Passed: 15 Failed: 0 Total: 15 Suites: 0 Asserts: 3344
+Test command wall time: 0.112s; includes in-test fixture setup; external configuration/build excluded.

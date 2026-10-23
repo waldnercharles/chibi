@@ -1,0 +1,220 @@
+{
+  "status": "read-only source inspection; conversion and new SDK execution not performed",
+  "observed_utc": "2026-10-23T05:46:25.982025+00:00",
+  "typed_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "old_fixture_revision": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "projects": [
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/behaviors/Explorer.chibi",
+      "local_sha256": "e9084ea588b4bbe3f1d7d21c599a6871d1d4305cc5c33f66865897166245e296",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/behaviors/Explorer.chibi",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/behaviors/Explorer.chibi",
+      "typed_fixture_sha256": "e9084ea588b4bbe3f1d7d21c599a6871d1d4305cc5c33f66865897166245e296",
+      "typed_fixture_same_executable_bytes": true
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/behaviors/QuarryCamera.chibi",
+      "local_sha256": "9c30a1702f3ab008ee4670e52e53f97707befb2bbfc6dd165eb3195b068c0091",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/behaviors/QuarryCamera.chibi",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/behaviors/QuarryCamera.chibi",
+      "typed_fixture_sha256": "9c30a1702f3ab008ee4670e52e53f97707befb2bbfc6dd165eb3195b068c0091",
+      "typed_fixture_same_executable_bytes": true
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/fields/QuarryField.kdl",
+      "local_sha256": "ef8f5ae72cefe5fb0172e55d9e3b768ca2d06a5fb012736883051ae03c250360",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/fields/QuarryField.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/fields/QuarryField.chibi",
+      "typed_fixture_sha256": "14ef42ea657fed8295d113644e17238a6f5139d5e317c1ffd56e07fd30141bf4",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/input.kdl",
+      "local_sha256": "74115c4013053ea817496c45cdfefd2df485d62a208b1d9b6d92fce917415320",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/input.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/input.chibi",
+      "typed_fixture_sha256": "017c68c8d86b93b4b0ce807d6e303c0d1c89de812af29ea192ed5318c5d5c0e2",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/libraries/QuarryShapes.chibi",
+      "local_sha256": "ab14672155605c2fd545676ee0bbadecd10ed1ea604c8bae7b098fea738b1618",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/libraries/QuarryShapes.chibi",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/libraries/QuarryShapes.chibi",
+      "typed_fixture_sha256": "ab14672155605c2fd545676ee0bbadecd10ed1ea604c8bae7b098fea738b1618",
+      "typed_fixture_same_executable_bytes": true
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Backdrop.kdl",
+      "local_sha256": "e8844db5b09276a9234f44d0fbbc832188960f3bf5b8f4e48ed3ed4b5ef8003a",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Backdrop.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Backdrop.chibi",
+      "typed_fixture_sha256": "5eedc705b407d247eae97f7ec3429e83f638523d9e7044b6670bd23f0cdaa8f6",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Camera.kdl",
+      "local_sha256": "fc4a5b73a16702a48dc9a267f17997da53cba4748c13f5f6a75f0f2f8eb52566",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Camera.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Camera.chibi",
+      "typed_fixture_sha256": "a2c451c9ad3d3ea208dbd24cfbfa70e452a4798112804606a58a3371efb6acc6",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Explorer.kdl",
+      "local_sha256": "ba1f233943b99e1aed770e5a36d18c6e9536de0cb5750d54c2f4a3851e3ed4e8",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Explorer.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Explorer.chibi",
+      "typed_fixture_sha256": "c117ba5d56800d420e6484568e7a424e8168bf0d05c1d5426baa7a240a260436",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Flag.kdl",
+      "local_sha256": "f04d93c10e3fb9d5ff486fd6391e070167e3cd6f64cd0c7b35adff7d059b80bc",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Flag.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Flag.chibi",
+      "typed_fixture_sha256": "2633fd9bd026e81ff3c4b92b7f9090f4fcc6c4960630381cb38c095422e050aa",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Marker.kdl",
+      "local_sha256": "1a235e8c08866de6495c756b548d827926019bb6593d2cd2f142baeef5a8b4a9",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Marker.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Marker.chibi",
+      "typed_fixture_sha256": "620a24df3aca9b9962f1cfa5d02913ac0d82535856b5b7a075ebc735042a37c7",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Scenery.kdl",
+      "local_sha256": "e4e9d63ce1786c14dd0872b5674747da626858a24d72c935d6df62030b62d7fa",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Scenery.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Scenery.chibi",
+      "typed_fixture_sha256": "fb0611bff74c64f2f3f49331abf04e7fc48bc7556f47ade0436591a76b083cb2",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Target.kdl",
+      "local_sha256": "5c7f8e7504522f05cbae488827e032aab17f87694688d3216cd326ece500d079",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Target.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Target.chibi",
+      "typed_fixture_sha256": "2b8f33f95bbd65c11d754c2c13c05aa3f83b97aff790c0752882fccf14b40661",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Terrain.kdl",
+      "local_sha256": "d0a5277519dd65d34e122eaf1ba9febc44df612c2bfef561f3b7613f060e3bf1",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Terrain.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Terrain.chibi",
+      "typed_fixture_sha256": "31221832af3487a4abd2f2c250f87dc610b5f6c4e1f69e7a36a7efb2fe6c6f82",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/Visor.kdl",
+      "local_sha256": "7be4c056057efcf1001a5df34ed30d8a17a23023885d9c8e1c1d48d5c628e616",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/Visor.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/Visor.chibi",
+      "typed_fixture_sha256": "cd5f34c7c5652b2392692c40bce0a8ff2ffb9d31f9c7318206bf96625dc717e1",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/prototypes/World.kdl",
+      "local_sha256": "5aa97a2e62a2209b78706a82f378556e376c5d84ae278a8f32a7489de3a04c48",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/prototypes/World.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/prototypes/World.chibi",
+      "typed_fixture_sha256": "a1545df2a46bdba7f8113b980b2bf9074a96642c3387b1ef5c514afc0b143bc7",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/scenes/Quarry.kdl",
+      "local_sha256": "3e96b8b039d4d9c085e5c0faa53ce965d3e50e812514a260e22377b325ee1041",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/scenes/Quarry.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/scenes/Quarry.chibi",
+      "typed_fixture_sha256": "fd69541f07e50561a18987659428d330b30ba372a3f34995206fb6d66cb9c763",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/ui/QuarryHud.rcss",
+      "local_sha256": "c0fd435e321757b145bcb9889fdfa0ad74df4ab2d47723e8c7310f90e610ea09",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/ui/QuarryHud.rcss",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/ui/QuarryHud.rcss",
+      "typed_fixture_sha256": "c0fd435e321757b145bcb9889fdfa0ad74df4ab2d47723e8c7310f90e610ea09",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/content/ui/QuarryHud.rml",
+      "local_sha256": "37c0fbe94e5256956ed5bcf7b4d352abde32f4de041052616e6e02345fb09e66",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/content/ui/QuarryHud.rml",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/content/ui/QuarryHud.rml",
+      "typed_fixture_sha256": "37c0fbe94e5256956ed5bcf7b4d352abde32f4de041052616e6e02345fb09e66",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "terrain-lab",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/terrain-lab/project.kdl",
+      "local_sha256": "aec8671f21a4578d7460f036abe942b8524dd6c5c175570b7cea9c0efa10f72f",
+      "old_fixture_at_d0": "test/fixtures/terrain-lab/project.kdl",
+      "equals_pinned_old_fixture": true,
+      "typed_fixture": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/fixtures/terrain-lab/project.chibi",
+      "typed_fixture_sha256": "1c09bd5ef0818949aa81a95daa52df4ccb884d52931faae009b6c76f4da079db",
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "starter",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/starter/content/scenes/Start.kdl",
+      "local_sha256": "4512130a3539013e0ec2e50c0c0427cb9f027f9f997d95379b6a47950aee745b",
+      "old_fixture_at_d0": null,
+      "equals_pinned_old_fixture": false,
+      "typed_fixture": null,
+      "typed_fixture_sha256": null,
+      "typed_fixture_same_executable_bytes": false
+    },
+    {
+      "project": "starter",
+      "local_path": "/Users/cwaldner/Personal/chibi/local-projects/starter/project.kdl",
+      "local_sha256": "8d9cff8721e766690ff142d51fc3b81861151527339c7108346c337eac0c1556",
+      "old_fixture_at_d0": null,
+      "equals_pinned_old_fixture": false,
+      "typed_fixture": null,
+      "typed_fixture_sha256": null,
+      "typed_fixture_same_executable_bytes": false
+    }
+  ],
+  "ready_legacy_converter": false,
+  "projects_and_installed_sdk_changed": false
+}

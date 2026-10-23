@@ -1,0 +1,218 @@
+{
+  "studio_root": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio",
+  "head": "03269586af3c333b92a83fb6ea55a04373ed190f",
+  "base": "305053fc6d8db4ba9a73c50f09f474c6fde1c1eb",
+  "incoming": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+  "tested": "a3639ed69dc67a79c225b0f10c961941b7624e39",
+  "incoming_equals_tested_tree": true,
+  "actual_merge_base": "305053fc6d8db4ba9a73c50f09f474c6fde1c1eb",
+  "mode": "read-only source/control audit; no merge/index/worktree changes",
+  "staged_files_preserved": [
+    {
+      "path": "EXTRACTION.json",
+      "worktree_sha256": "002b0a818c19fc22d60601a3f57608dae9b77bb8a4cf7e3a7223842383218932"
+    },
+    {
+      "path": "src/editor/documents/scene_history.c",
+      "worktree_sha256": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534"
+    },
+    {
+      "path": "tests/acceptance/README.md",
+      "worktree_sha256": "8e4acbcdce33da5b38fe7025302f23e747610ecd6c89fe4827c1e4b2a4ac1eba"
+    },
+    {
+      "path": "tests/acceptance/compiled_asset_edit.h",
+      "worktree_sha256": "29539fffff3b904fc37bb2e23d4157192f6c74e7a5f0426f96ae0abcfe6843a1"
+    },
+    {
+      "path": "tests/acceptance/compiled_asset_history.h",
+      "worktree_sha256": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526"
+    }
+  ],
+  "preview_scope": "git merge-tree three-tree read-only preview against HEAD only; staged local commit will change overlap",
+  "preview_conflicted_files": 21,
+  "preview_conflict_hunks": 85,
+  "files": [
+    {
+      "path": "EXTRACTION.json",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 19,
+      "resolution": "Recompute final consumer hashes after resolving source; preserve provenance/source hashes and all local records."
+    },
+    {
+      "path": "src/editor/collab/actions_graph.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Keep shared value_document PIN_STR codec. Add main producer payload/add_val failure propagation and decoded.type_name restoration. Retain both existing set_binding constant producer and set_default command producer APIs."
+    },
+    {
+      "path": "src/editor/collab/actions_scene.c",
+      "head_comparison": "whitespace_only_difference",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/documents/scene_document.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "Keep asset_document API and CODE_ASSET_EXTENSION; incoming native-read signature already adapted. Do not restore asset_text or .kdl acceptance."
+    },
+    {
+      "path": "src/editor/documents/scene_history.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Keep staged typed PIN_STR decoder, PIN_NAME NUL rejection, field_value_valid, both checkpoint-side checks and whole-fieldbatch preflight; main ownership/copy changes already present."
+    },
+    {
+      "path": "src/editor/documents/scene_prototype_actions.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 2,
+      "resolution": "Keep compiled asset_document source path and edit/history flows; merge arena lifetime/error handling only where not already equivalent."
+    },
+    {
+      "path": "src/editor/documents/scene_prototypes.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 3,
+      "resolution": "Keep compiled source/formula import and parameters/overrides paths, asset_document APIs, native owned read arenas."
+    },
+    {
+      "path": "src/editor/studio/studio_graph_literals.c",
+      "head_comparison": "identical",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/studio/studio_graph_live.c",
+      "head_comparison": "identical",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/studio/studio_graph_properties.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Retain typed numeric field guards; incoming removes current color-channel nonnumeric rejection."
+    },
+    {
+      "path": "src/editor/studio/studio_graph_values.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 2,
+      "resolution": "Only include ordering differs after token comparison; preserve current includes."
+    },
+    {
+      "path": "src/editor/studio/studio_member_properties.c",
+      "head_comparison": "whitespace_only_difference",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/studio/studio_node_calls.c",
+      "head_comparison": "whitespace_only_difference",
+      "head_preview_conflict_hunks": 3,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/studio/studio_properties.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 13,
+      "resolution": "Retain parameter rows/identities, authored computed-field and override reset flows, native text representation guards; preserve arena lifetimes."
+    },
+    {
+      "path": "src/editor/studio/studio_properties_view.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 2,
+      "resolution": "Retain parameters and computed origins/originTip/resetOverride UI schema; preserve owned view/read arenas."
+    },
+    {
+      "path": "src/editor/studio/studio_prototype_actions.c",
+      "head_comparison": "whitespace_only_difference",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/workspace/scene_asset_drop.c",
+      "head_comparison": "whitespace_only_difference",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Retain equivalent typed SDK ownership adaptation; merge only any independently missing change."
+    },
+    {
+      "path": "src/editor/workspace/scene_authoring.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Retain asset_document_to_disk compiled authoring path; do not restore asset_text read or extension-dependent dual format writer."
+    },
+    {
+      "path": "src/editor/workspace/scene_authoring.h",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Signatures semantically match (arena first); preserve current typed source/edit declarations."
+    },
+    {
+      "path": "src/editor/workspace/scene_gizmo.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Retain current arena-owned field reads; main NULL-storage scalar variant is not needed."
+    },
+    {
+      "path": "src/editor/workspace/scene_runtime.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 1,
+      "resolution": "Reconcile arena lifetimes semantically, retaining typed runtime source and property ownership."
+    },
+    {
+      "path": "tests/acceptance/README.md",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "Combine incoming SDK selector documentation with five staged local changes; avoid obsolete parser or false Web proof claims."
+    },
+    {
+      "path": "tests/acceptance/main.c",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 4,
+      "resolution": "Add sdk_values.h include/--sdk-values branch/help while retaining compiled asset model selectors and all typed fixtures."
+    },
+    {
+      "path": "tests/acceptance/outliner_row_policies.h",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 2,
+      "resolution": "Retain all migrated ordinary .chibi fixtures and formula/parameters/history assertions; adapt only arena-read/lifetime hunks. Main contains obsolete declaration/KDL fixture spellings relative to typed branch."
+    },
+    {
+      "path": "tests/acceptance/prototype_source.h",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 6,
+      "resolution": "Retain all migrated ordinary .chibi fixtures and formula/parameters/history assertions; adapt only arena-read/lifetime hunks. Main contains obsolete declaration/KDL fixture spellings relative to typed branch."
+    },
+    {
+      "path": "tests/acceptance/prototype_source_authority.h",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 13,
+      "resolution": "Retain all migrated ordinary .chibi fixtures and formula/parameters/history assertions; adapt only arena-read/lifetime hunks. Main contains obsolete declaration/KDL fixture spellings relative to typed branch."
+    },
+    {
+      "path": "tests/acceptance/scene_move.h",
+      "head_comparison": "reconcile_both_changed",
+      "head_preview_conflict_hunks": 7,
+      "resolution": "Retain all migrated ordinary .chibi fixtures and formula/parameters/history assertions; adapt only arena-read/lifetime hunks. Main contains obsolete declaration/KDL fixture spellings relative to typed branch."
+    },
+    {
+      "path": "tests/acceptance/sdk_values.h",
+      "head_comparison": "new_incoming",
+      "head_preview_conflict_hunks": 0,
+      "resolution": "New renderer-free 12-case selector. APIs exist unchanged; optional catalog bool/table ABI matches current installed SDK. Keep direct set_default graph route as complementary to local protocol/set_binding proof. Integrate producer refusal/type_name fixes with tests."
+    }
+  ],
+  "sequencing": [
+    "Run current model (owner expects252 assertions) using fresh native SDK; treat expectation as unexecuted.",
+    "After pass, commit existing five staged local patch files with recorded hashes.",
+    "Ordinary merge incoming main, resolve listed overlaps preserving compiled Chibi assets and source/formula workflows.",
+    "Refresh extraction consumer hashes; independently review resolved diff.",
+    "Build and run affected native SDK/model tests on merged candidate, then final cold and Web proofs."
+  ],
+  "holds": [
+    "No merge/import/stash/edit/build/test authorized in this audit.",
+    "Do not cherry-pick full incoming file versions over typed source/assets.",
+    "Do not claim main test evidence validates adapted merged candidate.",
+    "No session or Web proof inferred from renderer-free graph/history tests."
+  ]
+}

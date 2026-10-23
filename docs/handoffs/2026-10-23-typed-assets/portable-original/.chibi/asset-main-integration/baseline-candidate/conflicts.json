@@ -1,0 +1,7 @@
+[
+  ".gitignore",
+  "docs/testing.md",
+  "test/language/program.c",
+  "test/tools/CMakeLists.txt",
+  "test/tools/main.c"
+]

@@ -1,0 +1,22 @@
+(FAILED: test/language/source_assets.c (1462): !strcmp( bridge_result.source, "// keep header\n" "/* keep */\n" "package asset\n" "\n" "import data \"game:assets\"\n" "\n" "pub Build :: () -> byte[] {\n" "    return data.Encode(\n" "        data.Object([\n" "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n" "            data.Field.Named(\"includes\", data.List([])),\n" "            data.Field.Named(\"components\", data.Object([\n" "                data.Field.Named(\"HeAlTh\", data.Object([\n" "                    data.Field.Named(\"Cu_rRent\", " "data.Value.Int(200)),\n" "                    data.Field.Named(\"maximum\", " "data.Value.Int(150))\n" "                ]))\n" "            ]))\n" "        ])\n" "    )\n" "}\n" ))
+(FAILED: test/language/source_assets.c (1699): !strcmp( bridge_result.source, "/* axis */\n" "package asset\n" "\n" "import data \"game:assets\"\n" "\n" "pub Build :: () -> byte[] {\n" "    return data.Encode(\n" "        data.Object([\n" "            data.Field.Named(\"name\", data.Value.Text(\"Elite\")),\n" "            data.Field.Named(\"includes\", data.List([])),\n" "            data.Field.Named(\"components\", data.Object([\n" "                data.Field.Named(\"Sample\", data.Object([\n" "                    data.Field.Named(\"position\", data.Object([\n" "                        data.Field.Named(\"x\", data.Value.Int(9)),\n" "                        data.Field.Named(\"y\", data.Value.Int(2))\n" "                    ]))\n" "                ]))\n" "            ]))\n" "        ])\n" "    )\n" "}\n" ))
+prototype source edit: Prototype does not contain this local component
+(FAILED: test/language/source_assets.c (1905): bridge_edit(source, &registry, &remove, 1))
+(FAILED: test/language/source_assets.c (2131): bridge_result.materialized && !prototype_has_graph(bridge_result.value, "First") && acount(bridge_result.value->graphs) == 3 && !strcmp(bridge_result.value->graphs[0], "Second") && !strcmp(bridge_result.value->graphs[1], "Third") && !strcmp(bridge_result.value->graphs[2], "Local") && strstr(bridge_result.source, "/* keep metadata */"))
+prototype source edit: Runtime handles cannot be authored as entity references
+prototype source edit: Overlapping prototype component operations
+prototype source edit: Prototype edit requires a finite native scalar value
+prototype source edit: Prototype edit nominal type does not match its native layout
+prototype source edit: Prototype reference must resolve to a declared prototype
+prototype source edit: line 2, column 36: Expected }
+Running: source_edit_replaces_only_the_normalized_value_span 
+Running: source_edit_sparse_component_keeps_other_base_fields_live (OK) (2.439228 secs)
+Running: source_edit_nested_axis_obeys_existing_whole_record_semantics 
+Running: source_edit_add_uses_explicit_creation_payload_and_local_remove (OK) (2.490222 secs)
+Running: source_edit_inherited_remove_preserves_children_links_and_behavior_order 
+Running: source_edit_behavior_splices_and_inherited_detach 
+Running: source_edit_typed_batch_and_null_symbolic_link (OK) (3.626534 secs)
+Running: source_edit_batch_rejections_have_no_partial_result (OK) (0.997659 secs)
+===============================================================
+Summary: Passed: 4 Failed: 4 Total: 8 Suites: 0 Asserts: 61
+Test command wall time: 22.100s; includes in-test fixture setup; external configuration/build excluded.

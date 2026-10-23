@@ -1,0 +1,9 @@
+{"selector": "--asset-transport", "sdk_package_id": "14f933b490c3b9ce128738417780fc822eb509ddc442cacf7ffccab698ac635f", "sdk_engine_id": "0f9c89d076b1c60104de618627906797315cdfd71ec0892ab493f26db37b15b3", "artifact": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/share/chibi/assets/compiler/asset_compiler.chibip", "artifact_sha256": "d95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b", "binary_sha256": "6e5268ec7c8d93f50c5467437fe97461b4c3a7cbd699b84ab4ae63fdae467321", "fixture_sha256": "0aaaa6333cb947e84995a0297d3ce79ab4ff1b609eccf5d48ff43d63d51dacb0", "configuration": "Release installed SDK; SDK/test consumer -O3 -DNDEBUG; test assertions -UNDEBUG; sanitizers OFF; LLVM23; bytecode compiler/value hosts", "consumer_warning_flags": "-Wno-error=missing-field-initializers -Wno-error=string-concatenation", "cache": "CHIBI_ASSET_CACHE_DIR empty", "python": "3.13.16 (main, Sep 30 2026, 18:57:20) [Clang 21.0.0 (clang-2100.3.34.2)]"}
+raw Build depth 1025: line 0, column 0: Asset document exceeds value/depth limits
+Running: asset_transport_checks_raw_build_depth (OK) (2.919554 secs)
+Running: asset_transport_rejects_escaped_nul (OK) (2.640535 secs)
+Running: asset_transport_writer_matches_read_depth (OK) (19.883542 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 1039
+Test command wall time: 28.742s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+exit: 0

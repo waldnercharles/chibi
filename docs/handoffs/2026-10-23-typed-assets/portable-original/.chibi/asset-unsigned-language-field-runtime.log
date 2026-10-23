@@ -1,0 +1,13 @@
+Running: prepared_field_survives_authoring_storage_and_serialized_bytes (OK) (0.000109 secs)
+Running: prepared_field_baker_slices_match_scalar_geometry (OK) (0.000001 secs)
+Running: prepared_field_rejects_invalid_topology_and_truncated_records (OK) (0.000036 secs)
+Running: typed_field_catalog_preserves_overrides_and_invalidates_old_sessions (OK) (0.000007 secs)
+Running: typed_argument_catalog_survives_prepared_handoff (OK) (0.000021 secs)
+Running: field_z_is_slice_depth_and_zero_for_planar_bakes (OK) (0.000004 secs)
+Running: point_bake_matches_grid_bake_at_the_same_positions (OK) (0.000035 secs)
+Running: cells_are_the_voronoi_diagram_of_jittered_lattice_sites (OK) (0.002191 secs)
+Running: library_calls_evaluate_every_field_operation_as_programs_do (OK) (0.022525 secs)
+Running: library_calls_take_seed_offset_as_the_whole_seed (OK) (0.000003 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 227840
+Test command wall time: 0.240s; includes in-test fixture setup; external configuration/build excluded.

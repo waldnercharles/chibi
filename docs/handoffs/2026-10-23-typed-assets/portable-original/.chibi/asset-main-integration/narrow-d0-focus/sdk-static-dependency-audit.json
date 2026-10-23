@@ -1,0 +1,1046 @@
+{
+  "state": "static SDK dependency audit complete; no parser symbols, semantic format references or dynamic dependencies found",
+  "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "sdk_build_id": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+  "manifest_sha256": "ae3533450bd954297b10bf69fd95febf4f1b820fa6c8c83ad2c69ad19e2e1004",
+  "prior_receipt_sha256": "d5a0fef203be9f160f6dcf6e1f970aec9d077fcc5d64c02925d284c47925eb2f",
+  "source": {
+    "dirty": true,
+    "revision": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "snapshot_sha256": "a8e7033a3475110498bd5de2193c0ff039efb3d57d0b6cea43656c296ec64f3e"
+  },
+  "products": 5,
+  "archives": 114,
+  "new_inspections": 40,
+  "reused_identical_inspections": 79,
+  "elapsed_seconds": 5.646,
+  "methods": {
+    "symbols": [
+      "nm",
+      "-A",
+      "<file>"
+    ],
+    "dependencies": [
+      "otool",
+      "-L",
+      "<product>"
+    ],
+    "semantic_byte_patterns": [
+      "word ckdl",
+      "word KDL",
+      "word kdl_<identifier>",
+      "bootstrap.kdl",
+      "libkdl"
+    ],
+    "execution": "No SDK executable invoked; read-only binary/archive inspection",
+    "limitations": "Not an exhaustive arbitrary-byte case-insensitive three-letter match; does not audit external .2 runtime pin or validate current0b5 runtime"
+  },
+  "rows": [
+    {
+      "path": "bin/chibi",
+      "bytes": 16343096,
+      "sha256": "547770a5bbe73bbdec38850a6a2efbf2cf2311fd9a4221c890ebb1b14752a74f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan",
+      "dynamic_links": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    },
+    {
+      "path": "bin/chibi-compile",
+      "bytes": 28682576,
+      "sha256": "7cebdce55b2fc45ca576a3a35faf194ebb1a0ad69c86dbad9eff94b49f9451f7",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan",
+      "dynamic_links": [
+        "\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)",
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    },
+    {
+      "path": "bin/chibi-player",
+      "bytes": 22703664,
+      "sha256": "0697b69ef27dc320a10768e9c09a74a4d46251a32ce651ebaba5755ef903adbc",
+      "symbol_hits": [],
+      "byte_pattern_hits": [
+        {
+          "offset": 22628313,
+          "context": "\\xf1^;1Uk#4|8u\\xcd3\ubcd1ih\\x92\\xc2:\\xd5j\\xc73\u0014\u00caMb\\xf0?~\u0013\\xa2\t\\xa0\u0016I\\\u0001\u0010>~\\xd1\\xd1\u0016\\x91I\\xe6%0\\xe1\\xdc\\xe9P\r\\xa8\\xa9\\xcf\\xfe\\xf0\b\\xc4i[l\u000b\\xa1\\xceU\\xe2+f\\x8ek7\\xadaFr\u014f\\xac\\x89\\x81n\\xb4\\xf4\\xe9\u000b\u0016bM\\x90q\\xb5\\xf7\\xc5\\xd2KDl\\x85\\xf5mT\\x98\u0018d6",
+          "classification": "arbitrary three-letter byte match inside Mach-O code signature data; no parser symbol or semantic text reference",
+          "code_signature_range": {
+            "start": 22527536,
+            "bytes": 176128,
+            "end": 22703664
+          }
+        }
+      ],
+      "inspection": "fresh nm and semantic byte scan",
+      "dynamic_links": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit (compatibility version 1.0.0, current version 275.0.0)",
+        "\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61901.120.67)",
+        "\t/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (compatibility version 1.2.0, current version 1195.14.4)",
+        "\t/System/Library/Frameworks/MetalKit.framework/Versions/A/MetalKit (compatibility version 1.0.0, current version 173.7.0)",
+        "\t/System/Library/Frameworks/Network.framework/Versions/A/Network (compatibility version 1.0.0, current version 5812.121.1)",
+        "\t/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox (compatibility version 1.0.0, current version 3320.8.5)",
+        "\t/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia (compatibility version 1.0.0, current version 3320.8.5)",
+        "\t/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo (compatibility version 1.2.0, current version 734.4.0)",
+        "\t/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)",
+        "\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5026.5.4)",
+        "\t/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)",
+        "\t/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers (compatibility version 1.0.0, current version 709.0.0, weak)",
+        "\t/System/Library/Frameworks/ForceFeedback.framework/Versions/A/ForceFeedback (compatibility version 1.0.0, current version 1.0.2)",
+        "\t/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon (compatibility version 2.0.0, current version 170.0.0)",
+        "\t/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio (compatibility version 1.0.0, current version 1.0.0)",
+        "\t/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox (compatibility version 1.0.0, current version 1000.0.0)",
+        "\t/System/Library/Frameworks/AVFoundation.framework/Versions/A/AVFoundation (compatibility version 1.0.0, current version 2.0.0)",
+        "\t/System/Library/Frameworks/GameController.framework/Versions/A/GameController (compatibility version 1.0.0, current version 13.5.1)",
+        "\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 373.2.0)",
+        "\t/System/Library/Frameworks/CoreHaptics.framework/Versions/A/CoreHaptics (compatibility version 1.0.0, current version 1.0.0, weak)",
+        "\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)",
+        "\t/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.60.104)",
+        "\t/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)",
+        "\t/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)",
+        "\t/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)"
+      ]
+    },
+    {
+      "path": "libexec/chibi/chibi-build-host",
+      "bytes": 1731344,
+      "sha256": "c1c1d7e4b09e3f67f8085514adc0fe95f00ee86bd08150ea1a259590d846da75",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan",
+      "dynamic_links": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    },
+    {
+      "path": "libexec/chibi/chibi-compiler-host",
+      "bytes": 1132704,
+      "sha256": "7b325af4ec852ce263894ea8c035b737d68ee8793455499f1fe3a578aa3dca02",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan",
+      "dynamic_links": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_SDL3_static.a",
+      "bytes": 4587824,
+      "sha256": "248372521d8cf9a3a72c33e7b84637130449f84aac748c8371d68a347e43ae16",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_box2d.a",
+      "bytes": 327088,
+      "sha256": "3b327271574f3d3e2a6f9bb0ca342a33ff8d341bbdd4e1ba33626070f151eb54",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_box3d.a",
+      "bytes": 981664,
+      "sha256": "8ebe283f1724c7fec7d736dbc76c5237f7c92dfa59f423fa4605a113c29129c4",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_cute.a",
+      "bytes": 8491912,
+      "sha256": "7f9696b4912001a4d4e5a694e878be5b72773116a1dfce446e9f4f560724bd40",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_enkits.a",
+      "bytes": 46312,
+      "sha256": "b315de1d9e506dca1e2cc111fd723acc1bd26c7f1238085e9776d14a74c63152",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_freetype.a",
+      "bytes": 939944,
+      "sha256": "7f2ad9ea9cc099dfa331a09bb843910f91ff14783ccafc5e472d8be455703c73",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_physfs_static.a",
+      "bytes": 228592,
+      "sha256": "92e8876a8ca16ea1e8cf7ad760f95badbf73477dfde66e2cad5267115e1c7a3e",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
+      "bytes": 5069888,
+      "sha256": "8267294f26de3658a547e3cf9daf80ae52f4e103aa3fd83e3cabf5d0af4692ae",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_sljit.a",
+      "bytes": 141152,
+      "sha256": "a5912ed131fb3e17d480d254ce7e0fa8aa8c94cfb9018e72de6e34ca030609a7",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_tree_sitter.a",
+      "bytes": 207952,
+      "sha256": "dadb47300f42bebabeed2293407e25cfe3347b4efd48e1f3b53c166b732ec2f3",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a",
+      "bytes": 153552,
+      "sha256": "dbf4c6d371e566b1637997d32af0be4750e30fb5b6961b59764af8ce5513aafe",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a",
+      "bytes": 24584,
+      "sha256": "69edcb62a31fe76dbe4ad43807c329273aaf9cd9ddcb9857499484c87b722e21",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_arithmetic_capabilities.a",
+      "bytes": 30856,
+      "sha256": "f89b01f10769e6e616d8b0e81cebffc11c0531c7b8f3754015564919fd4e6580",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_array_capabilities.a",
+      "bytes": 54400,
+      "sha256": "a296f35ea8979343d47bd4bdddb17b1a8a948aafdf20fffed88bf0bccb97fc8d",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_asset_authoring.a",
+      "bytes": 90088,
+      "sha256": "dbde9c9829478bbf57033db79f420aa9aa4c426bb6225e523558f090639a7cc4",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_asset_documents.a",
+      "bytes": 14546576,
+      "sha256": "5def96f1a71165182460dd1b3d859164b58c78f2d0b3f2670f0a9f08208386f1",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_asset_json.a",
+      "bytes": 4808,
+      "sha256": "6b12fbf1cd760f5b04d295e491a81e73d9ced815fcdb203490fb2f1ccf1e9a72",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_asset_values.a",
+      "bytes": 25432,
+      "sha256": "7c61886e2f780ebe72e8452ef71380d7f4beaedd7fb194d07334a2113c2453f4",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_audio_runtime.a",
+      "bytes": 28776,
+      "sha256": "f7fd5496ffcaa8be0f070c1e0e0c35e68392312eb6a47a8fc096be59c47b79c1",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_authoring.a",
+      "bytes": 130912,
+      "sha256": "ab257a8b3bd519082dc591cb9caf54b70af429da539c6da5629adcbba78a8044",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_behavior_runtime.a",
+      "bytes": 64584,
+      "sha256": "2b28f38a5e89f6fb9c2cc9bfd942dda74b33f98f546d569d686a5336f465bb3b",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_builtin_fonts.a",
+      "bytes": 7310584,
+      "sha256": "7bb8a3098d81b4ad45020666a5afce52de61dd7cd18512e265748b4acad6c735",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_capabilities.a",
+      "bytes": 46568,
+      "sha256": "784535c55866df398d3d537a03fb30ccf0924f4745896eacf43d327d616c75eb",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_comparison_capabilities.a",
+      "bytes": 21064,
+      "sha256": "e893d6f2aeba3cfb57b1d08ad86b535588cfcc675cb1672357f5dba8207593d8",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_compiler.a",
+      "bytes": 224368,
+      "sha256": "c2b144cc371b1e260e3304ec83048ca7595c12ce39e576262ecb1e639dc4a962",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_compiler_host.a",
+      "bytes": 97328,
+      "sha256": "a4984626d477fd9cafbbc7f7ede74dc57ade30291e67d7c53b5ced4a695f4c6e",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_compiler_json.a",
+      "bytes": 4360,
+      "sha256": "329a3429f27ced2745df7c0c1ffa336e61e8c5819af2c3a7fd94230ab6d670d2",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_compiler_syntax.a",
+      "bytes": 9424,
+      "sha256": "297a3109ce89a3f8c520f7e05cbd951b54b5d7c06ed0d3aea2f2a61b8bafcbfe",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_component_presentation.a",
+      "bytes": 23712,
+      "sha256": "3611d628323ac77c6711d7c367957dad4788d77c594674154939f8a6903a4e27",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_conversion_capabilities.a",
+      "bytes": 21584,
+      "sha256": "b21f15393c1c07633334624685b9784c404e16f09e7264912c2170b5142fce19",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_core_capabilities.a",
+      "bytes": 17984,
+      "sha256": "8c8af0b990e8b886efb6edcde52fb4c2ea4f1603216fc12935191b12a74fd14f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_declared_components.a",
+      "bytes": 11896,
+      "sha256": "e05cf769be16531cbd13562d3976e62549d4e36aa0047907b908b50dd3144d00",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_ecs.a",
+      "bytes": 80480,
+      "sha256": "71b079d986c55f582cfc32690327d4b93fb6cc2aa856563fd02f48860c77fa85",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_engine.a",
+      "bytes": 49304,
+      "sha256": "58e30f233bddb0c630773a5835ded1e473444789787d880fc4f89448e9b20985",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_entity_runtime.a",
+      "bytes": 69944,
+      "sha256": "94f07084f944f07e157c55bfcd19951bd7cc0df9d282ccbbbd64149f7bd0fec7",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_events.a",
+      "bytes": 4272,
+      "sha256": "27b47a1c0c6983deb415a83ae22a1ca0a4de6ca7daf04fe2d63f57a1980742b0",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_execution.a",
+      "bytes": 778448,
+      "sha256": "8a10e3c7adc117189107a0f89af82d6d2b15b8ac8fd9bb22f6a9881ff4a3fa05",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_field_capabilities.a",
+      "bytes": 46096,
+      "sha256": "80ba1c0c6a35205dfebd82610e95fc329aa204b33a310e28f25f49e2c1569cd6",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_field_catalog.a",
+      "bytes": 16608,
+      "sha256": "fdb077d5594aa636b176a9b98ebb781d1d96fff4de7be233c17174247edc2e08",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_fields.a",
+      "bytes": 36960,
+      "sha256": "ad1c3876095b9dceea2d96f677992fc6a969df7b4dcbc4458fe2a6f9bc1f3740",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_fmt.a",
+      "bytes": 2584,
+      "sha256": "329b755c3b0c5aab5f2b9c16c126f871257dfd78bc5384b25652ccaf128edafe",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_graph_authoring.a",
+      "bytes": 738712,
+      "sha256": "99c30ae11a07c473973926a663a120569f714b294600c263ac924bfcf7492281",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_graph_catalog.a",
+      "bytes": 8592,
+      "sha256": "679e0ee246876bee01422f4fe9dc2552fddc120ad7b44e8adb63fd3039cecf3d",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_graph_compilation.a",
+      "bytes": 357296,
+      "sha256": "6dfd78854faba9a11f6a79b25563af0db66ca8b9d8a91f4cc0388a55c551226a",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_graph_model.a",
+      "bytes": 65136,
+      "sha256": "2e32189cf10584254bc211467637329b518757fb64da2fed4754580c51b7f1e6",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_host_native_catalog.a",
+      "bytes": 3200,
+      "sha256": "317e308d84a65fee9399597ff2b3abb12c90c01c35bf92b00d8c70fff3a8f347",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_host_native_default.a",
+      "bytes": 8704,
+      "sha256": "ef162a06eb86d22ca5ee5fedc8d6dddc7a6ca0b5c0a8bff659f7d993079a2250",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_image_catalog.a",
+      "bytes": 27408,
+      "sha256": "5cdf6723ce6ad8e1a9b8cf46b74dc361a435e2fe6c9b33a3c760d266d4d48412",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_image_preparation.a",
+      "bytes": 89448,
+      "sha256": "0de6192b22c62a0a39fa88fe1fa9dceff5003e7dde444df03f97cf8e5ae7114c",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_input_map.a",
+      "bytes": 7376,
+      "sha256": "6c42fd0499ff112ddee66ecbfb26641261802288f60cde33db1de2c9655f808c",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_input_runtime.a",
+      "bytes": 19928,
+      "sha256": "3a09e918b1ba1fcf4b70d8a0a4063fadd7cb3fd042c7239a6b2bc43d98faff4b",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_json.a",
+      "bytes": 274656,
+      "sha256": "3409b91795a9a81e2f25cbf26fa02bc516b0fb2efd7dcb98f3b768b7efaf7baa",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_language.a",
+      "bytes": 545832,
+      "sha256": "2a7be485b0f5c2eb35806c861d499d5973d222f9ebd4e62f80abc753b5e21c4b",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_language_syntax.a",
+      "bytes": 260024,
+      "sha256": "4eb37bd0413504f6c2a9a5d8a29bdfb0332fc796f3bd524f66ed2292cb86a0fa",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_material_runtime.a",
+      "bytes": 284784,
+      "sha256": "5306bc36d3b98e644d9e219a06e54da908651b8a073467ff99fed8c2510857ae",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_math_capabilities.a",
+      "bytes": 55688,
+      "sha256": "3885c3d00dc629061859582f693792ca3226cefdbae04c1bad4bdca517961500",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_mesh_runtime.a",
+      "bytes": 21464,
+      "sha256": "7e5d3a1bda9303f9d5c17cc634048d6dac24388bff321ac91ff3759d3255facd",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_model_authoring.a",
+      "bytes": 37784,
+      "sha256": "31164d760b9af77fac3073604e312dd91a7a03606ef00a5150ef26ea77f88c5e",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_model_bake.a",
+      "bytes": 15792,
+      "sha256": "7cdb2ce0b26fae826fd5a26cb31324d729b542298a0e6527dd401aa187137316",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_model_import.a",
+      "bytes": 46440,
+      "sha256": "dee01e2ff929e91052ad9f7ee4dcab7017f6c64d5d32216e45b745b830168fa2",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_model_runtime.a",
+      "bytes": 68080,
+      "sha256": "c2324f0beaf4494a050c17a242a46c3d02acc0e4013b554657266235690ae6dd",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_native_bindings.a",
+      "bytes": 1088216,
+      "sha256": "db41cee83d6f7d1c0bbb0443b96201050f984ca97849a61e6bb2ef0f318fed36",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_native_capabilities.a",
+      "bytes": 30280,
+      "sha256": "651b36dc8b081a2108d353ea85bb3b7395bab00142a73cc0151ec16a23a32d5d",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_native_prepared.a",
+      "bytes": 2776,
+      "sha256": "8296e47c6b91ed900381ffc7cbe742cf13dc3fca478713e61b5e4f38af0ac321",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_native_types.a",
+      "bytes": 194368,
+      "sha256": "281bfdbb0b9a0378b0124f275acc1e3fd7daff7873bb718c251d280a07fcf9b4",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_particle_runtime.a",
+      "bytes": 18528,
+      "sha256": "4eaf30fa3f18135536fe0c3e3002769323221027e98d397a15479b29dc841300",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_physics3d_runtime.a",
+      "bytes": 66744,
+      "sha256": "f32ab097a86d77e4b20a755f507ffb24836782e6f1102a1ca81215e57dfdfd2a",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_physics_runtime.a",
+      "bytes": 68208,
+      "sha256": "6c0ac3e5d2e227816a684242f92a94287a428e9ee46f5e27d913fa7eeb5e924f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_platform.a",
+      "bytes": 9528,
+      "sha256": "afb4bef178ddf316ecc8f2b91ae93a686336d0217f100f43df0b3144644a5d84",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_player.a",
+      "bytes": 30616,
+      "sha256": "f92f207ad19219082bc0739d72b1c96d59c9e1e89ed6b4fb7ed1a8f344603df5",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_project_compilation.a",
+      "bytes": 184688,
+      "sha256": "1ca0bd7c2291f436c7b7fa45fd09bcb9c579e89f42f0ae8f2f5e7f7980cb3f47",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_project_document.a",
+      "bytes": 19000,
+      "sha256": "35ca913973f337a649a7b54426898da1f6e312c16d328d6808f91ecac7582a7f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_project_format.a",
+      "bytes": 17024,
+      "sha256": "8e612b6507531b698a03b88ea6b48f54706030fa9a8f80433f2c7092b58372ec",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_project_preparation.a",
+      "bytes": 97576,
+      "sha256": "d9d7a1352cfb1e055db24bf5227f69dc0a1a2e14e638582fb88031c75406d472",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_prototype_document.a",
+      "bytes": 54288,
+      "sha256": "627e9c6fe90b58d07faac572064355f27361ffeee50c39c73e64cef4ba82c943",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_reference_index.a",
+      "bytes": 13904,
+      "sha256": "1e4a87228e64dcbef6d57a52aaebe12cd10186a6fea1a8d7c8118e08e2612dd4",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_renderer.a",
+      "bytes": 685840,
+      "sha256": "5bef26615a5e3ee263f6ce5985258eb97a36abdd712fc65035e4c6b75f5ae956",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_rhythm_runtime.a",
+      "bytes": 4488,
+      "sha256": "58ebd1f14a512e926f7027cf4100a4e863db885060c6a07b4faa19537c512986",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_save_runtime.a",
+      "bytes": 26976,
+      "sha256": "f25c46f82d32300b994126fa293a9ba68e2984e39d478f6d591c81eee43a7572",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_scenario_document.a",
+      "bytes": 12424,
+      "sha256": "1355c47c1b1a0867c05f6b41d6fbc71a2a58c20d61a202805ba6ee94b4e5766f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_scene_authoring.a",
+      "bytes": 17280,
+      "sha256": "48c9701a257c9a8979295ca732af3753216046b51740dc8b70a16e26789e0a0b",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_scene_document.a",
+      "bytes": 22400,
+      "sha256": "d2432f443869e2eb3bd2539e9dff0927cce93c915c6ad6f2251b168d0ec05a1b",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_scene_runtime.a",
+      "bytes": 33416,
+      "sha256": "b968d665752048e115ca11e5dc747b6d20043f3cb7d9115699feee8690ed9564",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_scheduling.a",
+      "bytes": 14000,
+      "sha256": "5f19dcbb6b8502298b49a37f2e547ca09935b2f3569145f1e3187ae78fa0e650",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_selection_capabilities.a",
+      "bytes": 10280,
+      "sha256": "4a8cc87fa06d052e8dc116ea78047463a5f88cbaecd12e114479a5574f6a7a6a",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_set_capabilities.a",
+      "bytes": 14000,
+      "sha256": "cc43b6d94be5702f7b8a32d3ed33ab4de6866d4d8eeff3824c8ec0eca387002e",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_shader_preparation.a",
+      "bytes": 59528,
+      "sha256": "4910f28cd85e1f11be41456ea8f4fa5c40c5ca6f905b34b7435b64757900321f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_shader_runtime.a",
+      "bytes": 128320,
+      "sha256": "cfd0f1b4df9c50cbbef25037aba9031bb93d701b27dab011097df7dc67f9dc0f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_source_catalog.a",
+      "bytes": 191120,
+      "sha256": "c89aa5af145b2b02ae1783d93f7ac3cd597d4ea1a22a5acfe2796a4995d6a316",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_source_presentation.a",
+      "bytes": 309328,
+      "sha256": "ebb9800c3a3d6f8566573612298408d6b24c76623a94c39b5c3a8704877a76ac",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_spatial_runtime.a",
+      "bytes": 11072,
+      "sha256": "a66082f0ee8a5783cca9c0d5bd8994452485150d47f56f6331e18d66c4f416d9",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_state_capabilities.a",
+      "bytes": 8736,
+      "sha256": "245a166a34efd35ef48d5bf3665ce2fbe1f4d9f59c498d4aeef5833d17cf7ded",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_studio_capabilities.a",
+      "bytes": 39864,
+      "sha256": "e77a70d95f7d084ffae9014b0f47ced5fc1ba34247099f9d745eb453202d2a2a",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_studio_catalog.a",
+      "bytes": 1880,
+      "sha256": "ba59339538bd6f3cfc0c86b735c853dbf8e861ce35fa19152cdb088f2afad6a5",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_studio_graph.a",
+      "bytes": 35600,
+      "sha256": "81a3d19bf39d2ddbc699a167787093329e3837014c89a86d145b2cf4692c1010",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_support.a",
+      "bytes": 26112,
+      "sha256": "817d4c5330abcd1e8dac2d30791651bc23e2d1c44ebd38076b45d05a4059bfae",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_task_pool_runtime.a",
+      "bytes": 4464,
+      "sha256": "078a3c45989081197caf48cd7c815f323935d2f229c46d7955898e38aa142bcb",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_text_capabilities.a",
+      "bytes": 19936,
+      "sha256": "1908b685351e29013176d583ccde04384fe3c657e939090b190e0d2f09839cdf",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_text_search.a",
+      "bytes": 9928,
+      "sha256": "b0832bb831ff73aee4b7e8cb0767a2757e66ceb3ef15b21b420c8b0946cb13cb",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_text_source.a",
+      "bytes": 9784,
+      "sha256": "14ff703553b170df161250cddd93d90016ea31c630bf14038fdc5236a69e4b8f",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_tilemap_runtime.a",
+      "bytes": 4488,
+      "sha256": "8de7695c1b8b8673808d073a6e59e3cfe9e342191f8b9566e847a500bc664be9",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_types.a",
+      "bytes": 97488,
+      "sha256": "e011d82e9d6275ebf9b1b9f9374c8f3321066b48dbf4153432b2448eb1ab7284",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_ui_authoring.a",
+      "bytes": 112280,
+      "sha256": "4bcee5fad4bb44848b32f0f674446a4da5a11e72704a9c0cc6048ddf7c7683ce",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_ui_document.a",
+      "bytes": 53872,
+      "sha256": "d2e1fc3e81badf72283517c0091498ced340fe245aaf40530053888784d59832",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_ui_document_values.a",
+      "bytes": 1680,
+      "sha256": "366f3cc6d4f8b1399d2363769db6c10dfdcf46dea5808db60f4edbb195d5b1d4",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_ui_documents.a",
+      "bytes": 10680,
+      "sha256": "5409ad14c2da9821ccdaf416d492391182db83f4e5373a8b542b2a0cbe60b226",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_ui_host.a",
+      "bytes": 454040,
+      "sha256": "f669dc3d2e480b4ac76babe809aa117d02f3f00ec68450441b6e630a3ee4602a",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "fresh nm and semantic byte scan"
+    },
+    {
+      "path": "lib/libchibi_ui_runtime.a",
+      "bytes": 36688,
+      "sha256": "4adef46f9fe1f72973e79c9c88ba18b372e31e13fbb9d1efa31c09c4c59b8f9d",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_url_runtime.a",
+      "bytes": 6608,
+      "sha256": "a833c09d8a74808cc432903976e984242a621b01c870b2aa7f229bfd1b0f446e",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_value_document.a",
+      "bytes": 26704,
+      "sha256": "f36df3bad327004b00d75db513cb7c0ce24ce66d511d56dce146611eacb4d6e6",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_vector_capabilities.a",
+      "bytes": 15112,
+      "sha256": "e0365e8c557e5149b1024069f4a34760de992b814b0b756af193c9ec33ade9f6",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_visibility_runtime.a",
+      "bytes": 9584,
+      "sha256": "16bbab5b85b4917809a88f146cb7336de333a14f506ca8bd7fcf8ba4de7334ce",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_visual_catalog.a",
+      "bytes": 81888,
+      "sha256": "9bd243798732ecfbc74f1bbed7247e6231816f8adfd6487b30d3bf91061066ea",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    },
+    {
+      "path": "lib/libchibi_visual_motion_runtime.a",
+      "bytes": 7296,
+      "sha256": "c96143254acfb2e414fdef9c4214451928ae05fb623bfd1e9b84648702c7f86e",
+      "symbol_hits": [],
+      "byte_pattern_hits": [],
+      "inspection": "reused byte-identical prior static audit"
+    }
+  ],
+  "raw_three_letter_hits": 1,
+  "semantic_format_references": 0
+}

@@ -1,0 +1,71 @@
+Running: scoped_native_matches_canonical_vm (OK) (0.000541 secs)
+Running: scoped_native_shared_budget_and_pure_fallback (OK) (0.000035 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 120
+syntax 1:34: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:58: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:33: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Expected identifier
+syntax 1:40: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:67: Unexpected syntax
+(FAILED: test/language/syntax.c (840): fgetc(manifest_file) == EOF)
+Running: language_declarations_actions_and_bindings (OK) (0.000962 secs)
+Running: language_handlers_name_payload_fields (OK) (0.000330 secs)
+Running: language_systems_name_their_step (OK) (0.000025 secs)
+Running: language_retained_binding_syntax (OK) (0.000099 secs)
+Running: language_unified_declarations_and_generic_map_shapes (OK) (0.000238 secs)
+Running: language_authored_asset_declarations (OK) (0.000053 secs)
+Running: language_obsolete_symbol_spellings_rejected (OK) (0.001637 secs)
+Running: language_retained_bindings_reject_prefixes_and_value_types (OK) (0.000803 secs)
+Running: language_keywords_are_contextual_data_member_names (OK) (0.000183 secs)
+Running: language_not_callable_and_unary_spellings_disambiguate (OK) (0.000137 secs)
+Running: language_callable_types_entries_and_results (OK) (0.000157 secs)
+Running: language_system_queries_and_control_flow (OK) (0.000101 secs)
+Running: language_nested_typed_records_and_explicit_labels (OK) (0.000077 secs)
+Running: language_definitions_unions_and_type_patterns (OK) (0.000161 secs)
+Running: language_query_header_and_cancel_deadline (OK) (0.000058 secs)
+Running: language_query_generators_preserve_authored_order (OK) (0.000030 secs)
+Running: language_obsolete_declaration_tokens_rejected (OK) (0.000316 secs)
+Running: language_expressions_precedence_and_continuation (OK) (0.000241 secs)
+Running: language_invalid_source_has_positioned_diagnostics (OK) (0.000254 secs)
+Running: language_incremental_snapshot_matches_fresh (OK) (0.000137 secs)
+Running: language_incremental_errors_match_fresh (OK) (0.000049 secs)
+Running: language_retained_corpus 
+===============================================================
+Summary: Passed: 21 Failed: 1 Total: 22 Suites: 0 Asserts: 1262
+Test command wall time: 1.287s; includes in-test fixture setup; external configuration/build excluded.

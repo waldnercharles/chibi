@@ -1,0 +1,72 @@
+Running: scalar_authored_call_benchmark BENCH backend=BYTECODE helper=0 loop=100 dispatches=200 trials=5 module_bytes=89640 publish_ms=0.017000
+BENCH trial=0 seconds=0.005634000 ns_per_loop=281.700 us_per_dispatch=28.170
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.005732000 ns_per_loop=286.600 us_per_dispatch=28.660
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.004921000 ns_per_loop=246.050 us_per_dispatch=24.605
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.004293000 ns_per_loop=214.650 us_per_dispatch=21.465
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.004582000 ns_per_loop=229.100 us_per_dispatch=22.910
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH backend=BYTECODE helper=1 loop=100 dispatches=200 trials=5 module_bytes=87368 publish_ms=0.012000
+BENCH trial=0 seconds=0.010345000 ns_per_loop=517.250 us_per_dispatch=51.725
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.010365000 ns_per_loop=518.250 us_per_dispatch=51.825
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.010429000 ns_per_loop=521.450 us_per_dispatch=52.145
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.010416000 ns_per_loop=520.800 us_per_dispatch=52.080
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.010698000 ns_per_loop=534.900 us_per_dispatch=53.490
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH backend=SLJIT helper=0 loop=100 dispatches=200 trials=5 module_bytes=89640 publish_ms=0.079000
+BENCH trial=0 seconds=0.000070000 ns_per_loop=3.500 us_per_dispatch=0.350
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.000070000 ns_per_loop=3.500 us_per_dispatch=0.350
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.000069000 ns_per_loop=3.450 us_per_dispatch=0.345
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.000069000 ns_per_loop=3.450 us_per_dispatch=0.345
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.000069000 ns_per_loop=3.450 us_per_dispatch=0.345
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH backend=SLJIT helper=1 loop=100 dispatches=200 trials=5 module_bytes=87368 publish_ms=0.095000
+BENCH trial=0 seconds=0.002109000 ns_per_loop=105.450 us_per_dispatch=10.545
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.002117000 ns_per_loop=105.850 us_per_dispatch=10.585
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.002074000 ns_per_loop=103.700 us_per_dispatch=10.370
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.002080000 ns_per_loop=104.000 us_per_dispatch=10.400
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.002108000 ns_per_loop=105.400 us_per_dispatch=10.540
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.089695 secs)
+Running: record_row_snapshot_benchmark BENCH record_rows fields=24 rows=256 copies=200 trial=0 ns_per_row=120.527
+BENCH record_rows fields=24 rows=256 copies=200 trial=1 ns_per_row=119.902
+BENCH record_rows fields=24 rows=256 copies=200 trial=2 ns_per_row=120.293
+BENCH record_rows fields=24 rows=256 copies=200 trial=3 ns_per_row=120.381
+BENCH record_rows fields=24 rows=256 copies=200 trial=4 ns_per_row=120.000
+(OK) (0.061514 secs)
+Running: text_slice_benchmark BENCH text bytes=131072 reads=4096 trial=0 ns_per_read=1388.184
+BENCH text bytes=131072 reads=4096 trial=1 ns_per_read=1396.240
+BENCH text bytes=131072 reads=4096 trial=2 ns_per_read=1393.433
+BENCH text bytes=131072 reads=4096 trial=3 ns_per_read=1370.239
+BENCH text bytes=131072 reads=4096 trial=4 ns_per_read=1420.654
+(OK) (0.056296 secs)
+Running: byte_array_build_benchmark BENCH bytes pieces=4096 piece=16 trial=0 ns_per_byte=12.405
+BENCH bytes pieces=4096 piece=16 trial=1 ns_per_byte=12.238
+BENCH bytes pieces=4096 piece=16 trial=2 ns_per_byte=12.344
+BENCH bytes pieces=4096 piece=16 trial=3 ns_per_byte=11.719
+BENCH bytes pieces=4096 piece=16 trial=4 ns_per_byte=11.673
+(OK) (0.003951 secs)
+Running: data_reset_benchmark BENCH reset cells=200 trial=0 ns_per_reset=99.505
+BENCH reset cells=200 trial=1 ns_per_reset=95.740
+BENCH reset cells=200 trial=2 ns_per_reset=95.700
+BENCH reset cells=200 trial=3 ns_per_reset=102.055
+BENCH reset cells=200 trial=4 ns_per_reset=104.740
+(OK) (0.098680 secs)
+===============================================================
+Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 647202
+Test command wall time: 0.420s; includes in-test fixture setup; external configuration/build excluded.

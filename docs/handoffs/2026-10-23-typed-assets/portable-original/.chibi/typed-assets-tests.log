@@ -1,0 +1,11 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: typed_prototype_helpers_and_parameter_recomputation (OK) (0.019970 secs)
+Running: typed_prototype_override_reset_preserves_formula (OK) (0.021809 secs)
+Running: typed_prototype_parameter_type_refusal_is_atomic (OK) (0.010492 secs)
+Running: typed_prototype_rejects_unavailable_capabilities_and_maps_errors (OK) (0.000945 secs)
+Running: typed_prototype_budget_and_cancellation_bound_runtime (OK) (0.008114 secs)
+Running: typed_prototype_metadata_never_executes_helpers (OK) (0.000480 secs)
+Running: typed_prototype_native_record_override_preserves_resolved_siblings (OK) (0.002854 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 91
+Test command wall time: 0.538s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

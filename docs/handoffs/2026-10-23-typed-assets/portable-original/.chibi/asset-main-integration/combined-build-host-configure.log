@@ -1,0 +1,10 @@
+CMake Error at contracts.cmake:11 (message):
+  chibi_compiler_host owns source outside
+  /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain:
+  /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/support/sha256.c
+Call Stack (most recent call first):
+  contracts.cmake:217 (chibi_sdk_contract)
+  CMakeLists.txt:742 (include)
+
+
+-- Configuring incomplete, errors occurred!

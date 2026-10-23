@@ -1,0 +1,24 @@
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_history.h (227): !scene_history_restore_checkpoint( compiled_history.restored, compiled_history.checkpoint, &identity, &identity, 1 ))
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_history.h (250): compiled_native_checkpoint_rejects_nul(true))
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_history.h (286): compiled_checkpoint_rejects_native_nul_after())
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_edit.h (547): compiled_model_history())
+Running: compiled_asset_edit_model 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 214
+Test command wall time: 4.568s; includes in-test fixture setup; external configuration/build excluded.

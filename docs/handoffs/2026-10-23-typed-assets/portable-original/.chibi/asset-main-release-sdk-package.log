@@ -1,0 +1,10 @@
+configure-sdk-reflect: running (log: .chibi/logs/1792697975540520000-23232-configure-sdk-reflect.log)
+configure-sdk-reflect: ok (2.6s; log: .chibi/logs/1792697975540520000-23232-configure-sdk-reflect.log)
+build-sdk-reflect: running (log: .chibi/logs/1792697978197157000-23581-build-sdk-reflect.log)
+build-sdk-reflect: ok (3.5s; log: .chibi/logs/1792697978197157000-23581-build-sdk-reflect.log)
+configure-sdk: running (log: .chibi/logs/1792697981731828000-24046-configure-sdk.log)
+configure-sdk: ok (2.1s; log: .chibi/logs/1792697981731828000-24046-configure-sdk.log)
+build-sdk: running (log: .chibi/logs/1792697983862926000-24213-build-sdk.log)
+build-sdk: ok (27.2s; log: .chibi/logs/1792697983862926000-24213-build-sdk.log)
+package-sdk: Compiled dependency changed after its object was built: function.c; rebuild first
+make: *** [package-sdk] Error 1

@@ -1,0 +1,4 @@
+Running: graph_authoring_constant_uses_authored_defaults_and_refuses_runtime_inputs (OK) (0.000048 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 13
+Test command wall time: 1.139s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,7 @@
+Running: arena_growth_keeps_allocations_and_reset_reuses_blocks (OK) (0.000251 secs)
+Running: zero_arena_allocates_on_first_use (OK) (0.000001 secs)
+Running: collectable_arena_finds_values_by_address (OK) (0.001030 secs)
+Running: arena_remembers_last_copy_until_reset_or_collection (OK) (0.000002 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 371
+Test command wall time: 0.095s; includes in-test fixture setup; external configuration/build excluded.

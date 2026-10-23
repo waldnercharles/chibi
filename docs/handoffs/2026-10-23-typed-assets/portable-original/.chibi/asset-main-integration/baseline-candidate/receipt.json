@@ -1,0 +1,46 @@
+{
+  "state": "frozen prospective source candidate; not applied, unbuilt, untested",
+  "typed_base_tree": "aa8d23d61dc4fec6e56598a0472c05a6ac7122b2",
+  "candidate_tree": "c3bad71fa0026273eadab8a899f92587fd932594",
+  "eligible_main": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "eligible_main_tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+  "patch": "candidate.patch",
+  "patch_sha256": "5d96ae8238c518279b510bc23e2b6bb4e0bab88cb8a9bee2d032f3609f4abfa3",
+  "changed_files": 40,
+  "omitted_incoming_retired_files": [
+    "src/assets/project_migrate.c",
+    "test/language/program.c"
+  ],
+  "no_ckdl_adapter_sha256": "a78d8d0e86c9c51501b666343ae0da50e67e11348a1c9d864704feeb33b6cbd0",
+  "active_HEAD": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "active_MERGE_HEAD": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "active_index_diff_from_pinned_tree": [],
+  "all_generation_inputs_and_products_unchanged": true,
+  "compiler_bootstrap_contract": [
+    5,
+    2
+  ],
+  "compiler_resource_counts": [
+    19,
+    37,
+    37
+  ],
+  "all_original_typed_host_cases_retained": true,
+  "source_diff_check_exit": 0,
+  "no_C_gate": {
+    "state": "pending matching native host release after exact source validation/freeze",
+    "manifest": "tools/compiler/runtime.json",
+    "preserved_exact_eligible_main_blob": true,
+    "known_incompatibility": "Pinned .2 compiler host still requires old bootstrap.kdl. Do not restore retired contract or fake ABI. Compiler owner to review replacement release separately."
+  },
+  "execution": {
+    "builds": [],
+    "tests": [],
+    "generation": [],
+    "source_checks": [
+      "local object/hash/invariant comparison",
+      "git diff --check"
+    ]
+  },
+  "application": "Parent review before active application. Later commit checked pending fa1b merge, ordinary eligible-main ancestry merge, require final tree equality with tested prospective candidate. Never abort/reset/rewrite active MERGE_HEAD."
+}

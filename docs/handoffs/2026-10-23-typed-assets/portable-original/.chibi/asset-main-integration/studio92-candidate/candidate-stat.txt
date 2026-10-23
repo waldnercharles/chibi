@@ -1,0 +1,4 @@
+ tests/acceptance/README.md    |  15 ++
+ tests/acceptance/main.c       |   6 +-
+ tests/acceptance/sdk_values.h | 383 ++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 403 insertions(+), 1 deletion(-)

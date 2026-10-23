@@ -1,0 +1,12 @@
+{
+  "base_source_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+  "patch_sha256": "ff6cb295466f246a1db5a8c9ec042e0cb4e2d211e35610a3e0326853929e59e2",
+  "files": {
+    "sdk/CMakeLists.txt": "198d0c945b60ca668da5f62db526f16dbdce314cae88f2ec2b4fed0cccd4763f",
+    "sdk/contracts.cmake": "215f17728788b125d17705e9b3a2f090770f42ac01962480bd3a220b3791401e",
+    "tools/graph/engine/Targets.chibi": "3f8c680fc88c0b13a2e9d2d11f89335593ae22f1cb544ad6266276fc4987831b"
+  },
+  "compiler_input_changes": false,
+  "retains_strict_contracts": true,
+  "reason": "compiler_host SHA256 source violates strict toolchain directory ownership; support already owns it; declare direct support and existing JSON link dependencies"
+}

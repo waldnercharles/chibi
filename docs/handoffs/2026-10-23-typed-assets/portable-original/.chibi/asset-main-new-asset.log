@@ -1,0 +1,5 @@
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/authoring/new_asset.c (175): !new_asset_text(kinds[i], "if"))
+Running: new_asset_create_writes_the_template_once_into_its_folder (OK) (0.288781 secs)
+Running: new_asset_source_templates_use_canonical_identifiers_and_headers 
+===============================================================
+Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 58

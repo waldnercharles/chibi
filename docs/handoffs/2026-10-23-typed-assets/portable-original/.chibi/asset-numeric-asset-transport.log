@@ -1,0 +1,8 @@
+raw Build depth 1025: line 0, column 0: Asset document exceeds value/depth limits
+Running: asset_transport_checks_raw_build_depth (OK) (1.480219 secs)
+Running: asset_transport_rejects_escaped_nul (OK) (1.137002 secs)
+Running: asset_transport_checks_numeric_metadata (OK) (7.804332 secs)
+Running: asset_transport_writer_matches_read_depth (OK) (0.822965 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 1057
+Test command wall time: 11.689s; includes in-test fixture setup; external configuration/build excluded.

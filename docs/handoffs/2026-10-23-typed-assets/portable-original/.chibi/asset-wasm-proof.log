@@ -1,0 +1,4 @@
+compiler-host bytecode=1211211 sljit=0 wasm=0 fallback=0 overflow=0
+Test command wall time: 1.673s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+compiler-host bytecode=197 sljit=0 wasm=0 fallback=0 overflow=0
+Test command wall time: 0.170s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

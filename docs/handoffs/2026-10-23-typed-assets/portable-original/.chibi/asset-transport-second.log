@@ -1,0 +1,10 @@
+{"selector": "--asset-transport", "artifact": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/tools/compiler/asset_compiler/bootstrap/native64/asset_compiler.chibip", "artifact_sha256": "d95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b", "resource_sha256": "b60da211f706619d15e68e6896d5f2ab67eec2035ae2cf834157fac78f633704", "binary_sha256": "f786f73b81a78232900190174943b3151f55d2205e705b6bd86eb0269af87289", "fixture_sha256": "4ad2705581cab04eacf0e705cce5529c5bf46188f7abeb582982fff45d4deab9", "configuration": "Debug; sanitizers OFF; in-tree SDK; bytecode compiler/value hosts", "cache": "CHIBI_ASSET_CACHE_DIR empty", "python": "3.13.16 (main, Sep 30 2026, 18:57:20) [Clang 21.0.0 (clang-2100.3.34.2)]"}
+raw Build depth 1024: line 3, column 25: an untyped number is a double; give the local an integer type
+(FAILED: ../test/authoring/asset_source.c (174): transport_document)
+Running: asset_transport_checks_raw_build_depth 
+Running: asset_transport_rejects_escaped_nul (OK) (8.108517 secs)
+Running: asset_transport_writer_matches_read_depth (OK) (33.818269 secs)
+===============================================================
+Summary: Passed: 2 Failed: 1 Total: 3 Suites: 0 Asserts: 12
+Test command wall time: 47.875s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+exit: 1

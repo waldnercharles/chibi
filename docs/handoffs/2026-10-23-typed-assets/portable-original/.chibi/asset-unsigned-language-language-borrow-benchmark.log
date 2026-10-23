@@ -1,0 +1,76 @@
+Running: borrow_authored_collection_benchmark BORROW backend=BYTECODE helpers=0 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=71112
+BORROW trial=0 seconds=0.000048000 us_per_dispatch=1.500 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000046000 us_per_dispatch=1.437 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000047000 us_per_dispatch=1.469 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000046000 us_per_dispatch=1.437 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000047000 us_per_dispatch=1.469 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=0 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=71112
+BORROW trial=0 seconds=0.002368000 us_per_dispatch=74.000 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.002141000 us_per_dispatch=66.906 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.002175000 us_per_dispatch=67.969 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.002158000 us_per_dispatch=67.438 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.002142000 us_per_dispatch=66.938 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=1 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=102968
+BORROW trial=0 seconds=0.000063000 us_per_dispatch=1.969 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000061000 us_per_dispatch=1.906 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000061000 us_per_dispatch=1.906 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000061000 us_per_dispatch=1.906 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000062000 us_per_dispatch=1.938 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=1 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=102968
+BORROW trial=0 seconds=0.002100000 us_per_dispatch=65.625 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.002097000 us_per_dispatch=65.531 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.002202000 us_per_dispatch=68.813 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.002144000 us_per_dispatch=67.000 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.002139000 us_per_dispatch=66.844 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=2 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=136248
+BORROW trial=0 seconds=0.000081000 us_per_dispatch=2.531 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000080000 us_per_dispatch=2.500 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000080000 us_per_dispatch=2.500 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000080000 us_per_dispatch=2.500 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000079000 us_per_dispatch=2.469 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=2 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=136248
+BORROW trial=0 seconds=0.002134000 us_per_dispatch=66.687 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.002212000 us_per_dispatch=69.125 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.002155000 us_per_dispatch=67.344 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.002133000 us_per_dispatch=66.656 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.002133000 us_per_dispatch=66.656 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=0 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=71112
+BORROW trial=0 seconds=0.000010000 us_per_dispatch=0.312 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000009000 us_per_dispatch=0.281 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000009000 us_per_dispatch=0.281 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000009000 us_per_dispatch=0.281 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000009000 us_per_dispatch=0.281 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=0 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=71112
+BORROW trial=0 seconds=0.000026000 us_per_dispatch=0.812 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000025000 us_per_dispatch=0.781 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000025000 us_per_dispatch=0.781 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000026000 us_per_dispatch=0.812 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000026000 us_per_dispatch=0.812 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=1 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=102968
+BORROW trial=0 seconds=0.000017000 us_per_dispatch=0.531 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000016000 us_per_dispatch=0.500 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000017000 us_per_dispatch=0.531 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000017000 us_per_dispatch=0.531 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000016000 us_per_dispatch=0.500 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=1 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=102968
+BORROW trial=0 seconds=0.000034000 us_per_dispatch=1.063 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000033000 us_per_dispatch=1.031 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000033000 us_per_dispatch=1.031 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000033000 us_per_dispatch=1.031 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000033000 us_per_dispatch=1.031 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=2 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=136248
+BORROW trial=0 seconds=0.000024000 us_per_dispatch=0.750 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000023000 us_per_dispatch=0.719 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000023000 us_per_dispatch=0.719 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000023000 us_per_dispatch=0.719 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000023000 us_per_dispatch=0.719 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=2 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=136248
+BORROW trial=0 seconds=0.000059000 us_per_dispatch=1.844 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000040000 us_per_dispatch=1.250 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000039000 us_per_dispatch=1.219 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000040000 us_per_dispatch=1.250 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000040000 us_per_dispatch=1.250 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.037896 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 252
+Test command wall time: 0.163s; includes in-test fixture setup; external configuration/build excluded.

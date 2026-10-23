@@ -1,0 +1,40 @@
+{
+  "status": "source patch applied and staged; execution pending coordinated gate",
+  "timestamp_utc": "2026-10-23T05:01:16.263600+00:00",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "before_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+  "after_tree": "f854194089e27e3ebbc987aaf213aa74dd1793bb",
+  "patch_sha256": "aeaa4e46ded85875499d9230087cfef451cf0a4a6264c1e3776b0deac4f9f453",
+  "changed_files": {
+    ".github/scripts/compiler-self-build.ps1": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4",
+    ".github/workflows/compiler-runtime-seed.yml": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b",
+    ".github/workflows/compiler-recovery.yml": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1"
+  },
+  "original_index_backup": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-compatibility-applied/index-before",
+  "original_index_sha256": "631442cd9273b8d50dafa365f16c43bc1b06a6120867b7266fd8d2f44fda0a4a",
+  "typed_receipt_sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461",
+  "runtime_pin_sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+  "checks": {
+    "apply_index_check": "passed during application",
+    "changed_paths_exact": "passed",
+    "whitespace": "passed",
+    "actionlint": {
+      ".github/workflows/compiler-runtime-seed.yml": {
+        "exit_code": 0,
+        "output": ""
+      },
+      ".github/workflows/compiler-recovery.yml": {
+        "exit_code": 0,
+        "output": ""
+      }
+    },
+    "selector_inventory_closure_unchanged": true,
+    "prepare_body_unchanged": true,
+    "head_merge_and_original_staged_paths_preserved": true,
+    "powershell_ast": "unrun; pwsh absent",
+    "runtime_execution": "unrun; shared lane held by compiler diagnostic"
+  },
+  "commit_dispatch_provision_publication": "none",
+  "receipt_preparation_note": "First verification script stopped after successful apply+lint on missing scratch base copy; final checks read exact original966 Git blob instead."
+}

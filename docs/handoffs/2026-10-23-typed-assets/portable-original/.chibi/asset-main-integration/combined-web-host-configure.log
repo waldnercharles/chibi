@@ -1,0 +1,4 @@
+emcmake: cmake -S sdk -B .chibi/asset-main-integration/web-host -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCHIBI_BUILD_COMPILER_HOST_COMMAND=ON -DCHIBI_ASSET_COMPILER_RECOVERY=OFF -DCMAKE_TOOLCHAIN_FILE=/opt/homebrew/Cellar/emscripten/6.0.9/libexec/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CROSSCOMPILING_EMULATOR=/opt/homebrew/opt/node/bin/node in directory /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi
+-- Configuring done (1.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/web-host

@@ -1,0 +1,36 @@
+{
+  "base_main": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "checkpoint_kind": "single-parent WIP snapshot; original merge/index/worktree unchanged",
+  "implementation_handoff": "No further overlapping local implementation after handoff; original candidate held pending cloud confirmation.",
+  "pending_merge_preservation": "Original HEAD/index/MERGE_HEAD left intact. Snapshot has a single parent; no actual merge was performed. Pending merge commit fa1b is an ancestor of already-published d0/coordinator93d.",
+  "preserved_pending_merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "publication": "WIP branch preservation only; no merge, release, default flip, acceptance, protected upload or deployment approval.",
+  "publication_state_at_capture": "Local WIP preparation; verify the remote branch tips named by the final handoff response.",
+  "repository": "https://github.com/waldnercharles/chibi.git",
+  "source_branch": "codex/typed-assets-source-handoff-20261023",
+  "source_commit": "2227496827abb8ef59578216b65573f8cc6fae39",
+  "source_parent": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "staged_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "studio": {
+    "commit": "466e2cc3545927261cf68f88d54caed0093f7cc4",
+    "dirty": false,
+    "parents": [
+      "521b666a62406fabae8e1d23bad00765717b3635",
+      "df050886dd7721db63b40fdf5435f1cb20ceeb34"
+    ],
+    "repository": "https://github.com/waldnercharles/chibi-studio.git",
+    "tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+  },
+  "tests": {
+    "handoff": "No build/test/feature fix run for checkpointing",
+    "language_all": "UNRUN on exact6ef",
+    "materials": "passed110 /270494 exact6ef",
+    "native": "passed 632 cases /236737 assertions on exact6ef",
+    "projects": "FAILED exit2; public_asset_constructors_reach_native_readers at validate_project.c279, Constructor scenario scene has no entities; final selector27pass1fail329assertions",
+    "targeted": "Protocol9 normal Make upgrade, build-toolchain11/168 and build-process45/8975 passed on6ef; earlier graphSDK8/202 and Studio values12/163 +model1/261 are historical narrower SDK68e625 production0b5 /Studio335 proof, not final6ef SDK validation",
+    "tools": "UNRUN broad group on exact6ef"
+  },
+  "unstaged_paths": [],
+  "untracked_active_paths": []
+}

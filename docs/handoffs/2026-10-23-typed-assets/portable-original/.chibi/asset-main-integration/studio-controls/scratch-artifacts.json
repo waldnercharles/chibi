@@ -1,0 +1,20 @@
+[
+  {
+    "path": ".chibi/asset-main-integration/studio-controls/graph-type-name/libstudio.a",
+    "bytes": 3170416,
+    "sha256": "3f39797b936d31a993c09aa689837ddfa304f8692c0613fa35275a5861990c1b",
+    "kind": "scratch archive"
+  },
+  {
+    "path": ".chibi/asset-main-integration/studio-controls/graph-type-name/actions_graph.c.o",
+    "bytes": 57616,
+    "sha256": "b12b9cc516a9a74f9c1da2adcdbc37df3aba9fcc69f1a200ce5bc971286171e1",
+    "kind": "scratch object"
+  },
+  {
+    "path": ".chibi/asset-main-integration/studio-controls/bin/studio-acceptance-graph-type-name",
+    "bytes": 43952432,
+    "sha256": "725eaa53b99d4fdfa97e463e44d8269fff6f07d90307d9fdc3216400b112cc48",
+    "kind": "control dispatcher"
+  }
+]

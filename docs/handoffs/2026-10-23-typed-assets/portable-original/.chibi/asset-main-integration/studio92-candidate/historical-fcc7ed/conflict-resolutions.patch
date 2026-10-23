@@ -1,0 +1,1657 @@
+diff --git a/EXTRACTION.json b/EXTRACTION.json
+index 9bb47ca1053591bc817704319c5256d910ec3f0e..ab6808f14bf3956d109eb17e7c7150bbd7d6fd4c 100644
+--- a/EXTRACTION.json
++++ b/EXTRACTION.json
+@@ -1732,12 +1732,7 @@
+       "consumer_sha256": "bb8114d3599024adeed36865ab166d9cc5fabcfabebac3ac63fbba0f41367d9c",
+       "current_source_sha256": "d653edabdd9b9bf566aebd6b8a9af54edd155c5aab146ab61376c43161550c75",
+       "sha256": "ad5f7bf0fdad510eb1770521e58aa9f2eda84220e82d9db68bf75f29475ebcc9",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/collab/actions_graph.c"
+-=======
+-      "source_path": "src/editor/collab/actions_graph.c",
+-      "consumer_sha256": "656383d01234cd6b9c2d397bf3bc7d147ccae750cddccd2a66197af2b0c2de69"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/collab/actions_internal.h": {
+       "current_source_sha256": "a740221aeca4a89a67df5a234d269b5c596b5ec28a2fafdf762d307a8bc0746d",
+@@ -1748,12 +1743,7 @@
+       "consumer_sha256": "84b707ed8fcd2f8bfee268f7abfcaefa4901b623dd18145bbd8056eb7d15fc62",
+       "current_source_sha256": "19ddcb8ed8f796c0dcc5a972e5c4ddc02aedc001de5c4d1d76769cafe1d9d34a",
+       "sha256": "19ddcb8ed8f796c0dcc5a972e5c4ddc02aedc001de5c4d1d76769cafe1d9d34a",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/collab/actions_scene.c"
+-=======
+-      "source_path": "src/editor/collab/actions_scene.c",
+-      "consumer_sha256": "4c62d63bfa6222e4dfe693ef21884b9af887ad7b8f2ec75fa6c10f47691c53d8"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/collab/actions_scene.h": {
+       "current_source_sha256": "0750590697691399d5b65bca467f6caa0f535a232a590fc17925455697ad98e2",
+@@ -1857,12 +1847,7 @@
+       "consumer_sha256": "a18990e6ce3b1d21938b87c313727ced8a27783a052dfda075b22ef63a0a4c93",
+       "current_source_sha256": "98dcf951fd9aa56b582ff9de36ddfe2bf0ae0ea22b64f16179bbc1d9bb2762de",
+       "sha256": "f85160094ed7aec755eaa8f5db4dc40000de7e786cb3ad8e501822b7e76acffb",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/documents/scene_document.c"
+-=======
+-      "source_path": "src/editor/documents/scene_document.c",
+-      "consumer_sha256": "015041a0cac925e12f7fd374c2c78272597d838dd0a7befd6ba50e20d2fd5a01"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/documents/scene_documents.c": {
+       "consumer_sha256": "a3a2fce53877192b7a40ced3536aed34f1b53004704157c6cb5a77c4a3990b97",
+@@ -1874,12 +1859,7 @@
+       "consumer_sha256": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+       "current_source_sha256": "c4d1eb0517f158231bd435974e3f127a011630df89d1057fb59d1bb6a81ef523",
+       "sha256": "c4d1eb0517f158231bd435974e3f127a011630df89d1057fb59d1bb6a81ef523",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/documents/scene_history.c"
+-=======
+-      "source_path": "src/editor/documents/scene_history.c",
+-      "consumer_sha256": "408302f1f495e496d4056f35fa4b80d2b11c6e8885ab2b72d46adaec1103d12d"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/documents/scene_history.h": {
+       "consumer_sha256": "b4ff9050dd63cb59ad410efb7aa9a384eca64ff549766597535a8eba2e63946d",
+@@ -1891,23 +1871,13 @@
+       "consumer_sha256": "c17e6b67d5caa72a1f9c478760603f1af9c7cf4cdb0b3323e9c207b09d8931a1",
+       "current_source_sha256": "3271207bf0f329054742ebd367b80ab51f801e8cd1e71219395fc4892d139004",
+       "sha256": "3271207bf0f329054742ebd367b80ab51f801e8cd1e71219395fc4892d139004",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/documents/scene_prototype_actions.c"
+-=======
+-      "source_path": "src/editor/documents/scene_prototype_actions.c",
+-      "consumer_sha256": "7563bab5603c80ff0306bf15a095f0982176be62b96e0bac701a1a27033e3cd1"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/documents/scene_prototypes.c": {
+       "consumer_sha256": "63398a562fab1c2a03aaee3c293b23d63d40e9db80a100e4732d7cbdd0fb90f9",
+       "current_source_sha256": "a724d0af657b5ab587528c2d1f475b7d303938d5a5e2c8e897122829748fa68d",
+       "sha256": "3ac2e12fa9e512325a07c336a9ea0c908bbd8447098aa6ec4b52d6b80366041b",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/documents/scene_prototypes.c"
+-=======
+-      "source_path": "src/editor/documents/scene_prototypes.c",
+-      "consumer_sha256": "cac29af62f2a0a26799fabc115997e650093c3dc91e60176b433f9266944c540"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/documents/scene_retention.c": {
+       "consumer_sha256": "1421199c774902542020237e36f053f6f9bee9d17791ae9cccd36672717a70ff",
+@@ -2290,12 +2260,7 @@
+       "consumer_sha256": "7883cd6a2ce721789ea692160dff472819febc07df7513503d2e32d3c520a06a",
+       "current_source_sha256": "1d8ce15646219e1fa5a84810ff2d1fb91e76f9846216a246aac391275156ffc1",
+       "sha256": "2c1bc02e122ca02cf52ca673d44c48902a363428aff1808e573ea4fdd7f5e8e0",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_graph_literals.c"
+-=======
+-      "source_path": "src/editor/studio/studio_graph_literals.c",
+-      "consumer_sha256": "7883cd6a2ce721789ea692160dff472819febc07df7513503d2e32d3c520a06a"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_graph_live.c": {
+       "current_source_sha256": "960098ffd026e0250c3c06f67de1f2f7f3fc4ebfa18edd5769fdbcc285a186df",
+@@ -2325,23 +2290,13 @@
+       "consumer_sha256": "125b7e9370e4901bd7eeb55b79be4072e98a4dd77d98354aca59bc60e539e731",
+       "current_source_sha256": "a276621639c97c357f70b5ecb8f2497e6604915fef946db10796fd7a4a7e1b1f",
+       "sha256": "653a4bfe5021362ac29f28e7eb28d8e6f7dff9412ac890b1465d6c028ece8176",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_graph_properties.c"
+-=======
+-      "source_path": "src/editor/studio/studio_graph_properties.c",
+-      "consumer_sha256": "f1d9297a5145b2db743b0e225ce91d414c30656d2920bac3d67cc73f6c1b89fb"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_graph_values.c": {
+       "consumer_sha256": "aed1e130ec496cc67081afdcf96bd32377b0263b7d6d63d44c7e9018b12296db",
+       "current_source_sha256": "741fd7736678afc5b6dc17902d468a95f6e748961b91a42f8b68e5e473647f02",
+       "sha256": "1346be855e518fb3d7db152181a1d95613da0eb42d2879849ced9b5b0f634c3b",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_graph_values.c"
+-=======
+-      "source_path": "src/editor/studio/studio_graph_values.c",
+-      "consumer_sha256": "90459878d610113ab40cdc034e3296fabf8c81db5f1e5d48092863be7ce63afb"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_graph_view.c": {
+       "consumer_sha256": "d272fbc4afa24084fcb9d36110a55d7a68b0af43d118e89abd2b22e2d4bee20b",
+@@ -2389,12 +2344,7 @@
+       "consumer_sha256": "c50a653a9d0edd5104de6b7caf5b79e28778a45d83fe950c92e1f176cef8da9d",
+       "current_source_sha256": "0d345e02baae1cb501fb3788b52b38902547694e9cba9c52c4f8c9ae542e5ffa",
+       "sha256": "e366052eea9670b6d87c3b2a6f50bc93de4d7b2ec632bc8d73ae0b4f2a3fddc8",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_member_properties.c"
+-=======
+-      "source_path": "src/editor/studio/studio_member_properties.c",
+-      "consumer_sha256": "c86763348875435dc6da2e055fc2b637e69dce515ae120ccc90cea5d9d35cacf"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_members.c": {
+       "consumer_sha256": "7a3d41ec297a2a7d35b86207b395ccac2753e0fed73cb704886dbc2c7bd3ba33",
+@@ -2418,12 +2368,7 @@
+       "consumer_sha256": "f331c2da6f087ce1bcfdad479e7cf66efe1a82fee47edc6e6f5214a472d78082",
+       "current_source_sha256": "c512a78fda114be112fab7d6fa5e9e417720f964e61a2941f77cb3ad6e33500d",
+       "sha256": "c512a78fda114be112fab7d6fa5e9e417720f964e61a2941f77cb3ad6e33500d",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_node_calls.c"
+-=======
+-      "source_path": "src/editor/studio/studio_node_calls.c",
+-      "consumer_sha256": "e42522967f4be179c430cc0e541ff8dea004bd41e9746833b0ac1512bf870672"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_nodes.h": {
+       "current_source_sha256": "f6f9ea26d635804f7c7a633a3fd5010cbe9dc89a81eb917003098e0141bad885",
+@@ -2486,12 +2431,7 @@
+       "consumer_sha256": "6ce2e7e5516c15f0ea663d063875bbde6647b294450330e85e86e02ccadf53b8",
+       "current_source_sha256": "e8fbc165c4c7717a11566265e0b7dc717e19f27f7166260ee4f1b1dd62600b4f",
+       "sha256": "e8fbc165c4c7717a11566265e0b7dc717e19f27f7166260ee4f1b1dd62600b4f",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_properties.c"
+-=======
+-      "source_path": "src/editor/studio/studio_properties.c",
+-      "consumer_sha256": "618c02992d580dda4e270790cd44d0ca3f93c8a6177f8dfabd2b9c3a6738e777"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_properties_internal.h": {
+       "consumer_sha256": "73653f1e0c174f39841ed5ed965d17ac2ffd6f3a77fb65b9bfcc0743b10f7fbf",
+@@ -2503,23 +2443,13 @@
+       "consumer_sha256": "dc2db3a40cec99b97397cd2bc2c5611ef1c1c610d0cad62309c2101e0ba8a2d6",
+       "current_source_sha256": "a0579bb794e0d93710c7c4e3c18b328c8fb94b5c2bb40b07304923167aef3130",
+       "sha256": "a0579bb794e0d93710c7c4e3c18b328c8fb94b5c2bb40b07304923167aef3130",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_properties_view.c"
+-=======
+-      "source_path": "src/editor/studio/studio_properties_view.c",
+-      "consumer_sha256": "e13cc7ed2c314bbda4b6f595aa194e1175b01f41894b074a0be85b14abf60a2a"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_prototype_actions.c": {
+       "consumer_sha256": "9d89e3f6a3ef79b3eb86736955ba72121c68a72aa66cae9a3de9bf2b154bcbee",
+       "current_source_sha256": "2d69a48bc7c1cb006a19e11a9b0df180defa389464e0eeeac40fc04adb0b345d",
+       "sha256": "2d69a48bc7c1cb006a19e11a9b0df180defa389464e0eeeac40fc04adb0b345d",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/studio/studio_prototype_actions.c"
+-=======
+-      "source_path": "src/editor/studio/studio_prototype_actions.c",
+-      "consumer_sha256": "9e47db02661bd031417dab9a34dc6242b72eb8243a32a3cc63d990647dad51af"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/studio/studio_refactor.c": {
+       "consumer_sha256": "7dc6985c1ec0619a36390c6bb87a89c2409b3fadfa3ac36d173d4f215423797a",
+@@ -2790,33 +2720,19 @@
+       "current_source_sha256": "068cafc2d0558fcccba9dc115eae52ef648c9f72aa134636f949b8ef9319df13",
+       "sha256": "068cafc2d0558fcccba9dc115eae52ef648c9f72aa134636f949b8ef9319df13",
+       "source_path": "src/editor/workspace/scene_asset_drop.c",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "consumer_sha256": "cf0c060b37ea4f3090532cc827d2ef58c328fa4fdf2b66caad3fbb92a9fd1dbd"
+-=======
+-      "consumer_sha256": "dc1f5c366b75eb47e75fd24921c6ffc1727848d1ee33fafc144cda90f30f857b"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/workspace/scene_authoring.c": {
+       "consumer_sha256": "5fdab9447ba5e29881b1602c82ddd9d29a0c92670cbff75cd1f992b0476dabe8",
+       "current_source_sha256": "b60c6ff2f94a8a5733efdb4ec8fe811f89d0d02e8d1635b0ec68dc73588f9612",
+       "sha256": "0e6389b4bfcaf9c1f64637bf80918284091122a81e90e2efa2c77e99f36c1421",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/workspace/scene_authoring.c"
+-=======
+-      "source_path": "src/editor/workspace/scene_authoring.c",
+-      "consumer_sha256": "2978a60d61c5346a8af7afff9851bc64aad8d6bd31218d99a1d0fbeb7db1a504"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/workspace/scene_authoring.h": {
+       "consumer_sha256": "804e77a297fb2e41778064a29791088396e07b589deccff94311851bf01eae35",
+       "current_source_sha256": "8b5270dfd0df43786a42529669ece1f70460727a5fb805aefabab953e5139a1f",
+       "sha256": "9afa2c3ec87823c00dba8784a603989decd5078097704a2fba076d5d8c16028c",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/workspace/scene_authoring.h"
+-=======
+-      "source_path": "src/editor/workspace/scene_authoring.h",
+-      "consumer_sha256": "340b350a79c656732f1d45bcbcf95887b563673459f0c0f35c6c7de5a4676583"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/workspace/scene_checkpoint.c": {
+       "consumer_sha256": "cecad8cd23fc33f38225c0f18a44bece0311cb555832ddc592ca933f2e8c9977",
+@@ -2840,12 +2756,7 @@
+       "consumer_sha256": "128367824fe5d58942de1202669503f142eb44038fbc67bf1e04ba30d3441357",
+       "current_source_sha256": "d5169b852ed4f14906f72e71a02c3ae67da8655b51fc678f2666a243819e4483",
+       "sha256": "d5169b852ed4f14906f72e71a02c3ae67da8655b51fc678f2666a243819e4483",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/workspace/scene_gizmo.c"
+-=======
+-      "source_path": "src/editor/workspace/scene_gizmo.c",
+-      "consumer_sha256": "4b696845fa720c2b1835dd5cd2e59dfdf068df6d053dd1e66c0058c7243c8c34"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/workspace/scene_gizmo.h": {
+       "consumer_sha256": "7ca10c9cb37b7e4564f02b5eba222cc33586034d1e8fb2da92e78be63f8b1fca",
+@@ -2875,12 +2786,7 @@
+       "consumer_sha256": "55bc025c77fe8cd2687281150eba8968260fd279157cac2617e35752fcb88a23",
+       "current_source_sha256": "c13c72958fa5e50bbf97919ac212f5a41a824d69aedc5d89fa9d9ce37ab7e77d",
+       "sha256": "6046e226fe5e17ded4a1c01e38cf220faaafa6bd91c9e6d669f5bbecb53f4c91",
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+       "source_path": "src/editor/workspace/scene_runtime.c"
+-=======
+-      "source_path": "src/editor/workspace/scene_runtime.c",
+-      "consumer_sha256": "5c89330124eea67e5c9d54f2179ca6fef49a36687532b09653511c2bbbc593e1"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     },
+     "src/editor/workspace/scene_tabs.c": {
+       "consumer_sha256": "61224b890f592a5d43602c27c660d14d5fbb49c96cdaccd4b1b297eb04264aa4",
+diff --git a/src/editor/collab/actions_graph.c b/src/editor/collab/actions_graph.c
+index 7a9364d7942de0bfc4951e6a4cbb556f7d79c481..27250e8ed53afd9895427dfb8d7c3b028629c510 100644
+--- a/src/editor/collab/actions_graph.c
++++ b/src/editor/collab/actions_graph.c
+@@ -328,12 +328,8 @@ static bool read_pin_value(yyjson_val *item, pin_value *out, graph *storage)
+             value.d = yyjson_get_real(data);
+             break;
+         case PIN_NAME:
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             if (!yyjson_is_str(data) ||
+                 yyjson_get_len(data) != strlen(yyjson_get_str(data))) {
+-=======
+-            if (!yyjson_is_str(data)) {
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                 return false;
+             }
+             value.str = yyjson_get_str(data);
+diff --git a/src/editor/collab/actions_scene.c b/src/editor/collab/actions_scene.c
+index c306b57aadf4d2c00d12d067858cc9faf669901c..4b50a15a7225c656f2447bc78a76f0e464c5bb84 100644
+--- a/src/editor/collab/actions_scene.c
++++ b/src/editor/collab/actions_scene.c
+@@ -230,12 +230,6 @@ static void free_action_value(pin_value *value)
+ {
+     if (value->type == PIN_STR || value->type == PIN_NAME) {
+         pin_value_destroy(value);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+-=======
+-    }
+-    if (value->type == PIN_STRUCT) {
+-        free(value->ptr);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     }
+     if (value->type == PIN_STRUCT) { free(value->ptr); }
+     *value = (pin_value){ 0 };
+diff --git a/src/editor/documents/scene_history.c b/src/editor/documents/scene_history.c
+index 4f8832686f7143f14e44b95980c404b2e92d63df..b568d3e3199bfffa47d154f9d8934155d4ee8058 100644
+--- a/src/editor/documents/scene_history.c
++++ b/src/editor/documents/scene_history.c
+@@ -885,15 +885,8 @@ static bool history_read_value(av_value *object, pin_value *out)
+         return history_read_typed_value(PIN_STR, out->type_name, value, out);
+     }
+     if (out->type == PIN_NAME) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (!av_is_str(value)) { return false; }
+         if (memchr(av_get_str(value), 0, av_get_len(value))) {
+-=======
+-        if (!av_is_str(value)) {
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+-            return false;
+-        }
+-        if (memchr(av_get_str(value), 0, av_get_len(value))) {
+             return false;
+         }
+         out->str = xstrdup(av_get_str(value));
+diff --git a/src/editor/documents/scene_prototype_actions.c b/src/editor/documents/scene_prototype_actions.c
+index 39efb7f32587f9303b235a70882d8637443f29ad..67576f8398c9ce658aae4b4af7e7d96ac99007d1 100644
+--- a/src/editor/documents/scene_prototype_actions.c
++++ b/src/editor/documents/scene_prototype_actions.c
+@@ -43,7 +43,6 @@ static bool overrides(const app_scene_authoring *scene, const scene_actor *actor
+     const prototype_component *component = base_component(actor, o.component->id);
+     arena storage = { 0 };
+     pin_value value = { 0 }, inherited = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     if (!component || ecs_component_read_field(
+                           &storage,
+                           scene->world,
+@@ -56,18 +55,6 @@ static bool overrides(const app_scene_authoring *scene, const scene_actor *actor
+         return false;
+     }
+     bool changed = !pin_read_field(
+-=======
+-    bool changed = component &&
+-                   ecs_component_read_field(
+-                       &storage,
+-                       scene->world,
+-                       actor->entity,
+-                       o.component->id,
+-                       o.field,
+-                       &value
+-                   ) == ECS_OK &&
+-                   !pin_read_field(
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                        &storage,
+                        component->data,
+                        &o.component->type->fields[o.field],
+@@ -224,7 +211,6 @@ static bool follow_prototype(
+ {
+     arena storage = { 0 };
+     scene_field_edit *edits = NULL;
+-    arena storage = { 0 };
+     bool complete = true;
+     for (int i = 0; i < count; i++) {
+         prototype_field o = fields[i];
+@@ -247,16 +233,11 @@ static bool follow_prototype(
+                 o.component->id,
+                 o.field,
+                 &now
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             ) != ECS_OK) {
+             complete = false;
+             continue;
+         }
+         if (pin_read_field(&storage, after->data, &o.component->type->fields[o.field], &next)) {
+-=======
+-            ) != ECS_OK ||
+-            pin_read_field(&storage, after->data, &o.component->type->fields[o.field], &next)) {
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             complete = false;
+             continue;
+         }
+@@ -317,7 +298,6 @@ static int apply_source_overrides(
+     }
+     arena storage = { 0 };
+     authoring_prototype_edit *edits = NULL;
+-    arena storage = { 0 };
+     for (int i = 0; i < count; i++) {
+         const ecs_component_desc *component = fields[i].component;
+         int field = fields[i].field;
+diff --git a/src/editor/documents/scene_prototypes.c b/src/editor/documents/scene_prototypes.c
+index 3f43ce7fe6f3898deb48a50e37b2061eeb082537..7a385085a6cde3af04bcaf5b9a7e7126165177bf 100644
+--- a/src/editor/documents/scene_prototypes.c
++++ b/src/editor/documents/scene_prototypes.c
+@@ -136,7 +136,6 @@ static bool source_import_model(
+     }
+     arena fields = { 0 };
+     authoring_prototype_edit *ops = NULL;
+-    arena values = { 0 };
+     for (int i = 0; i < acount(asset->prototype->components); i++) {
+         const prototype_component *next = &asset->prototype->components[i];
+         const prototype_component
+@@ -156,7 +155,6 @@ static bool source_import_model(
+         for (int field = 0; field < next->desc->type->field_count; field++) {
+             const type_field *desc = &next->desc->type->fields[field];
+             pin_value before = { 0 }, after = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             const char *problem = pin_read_field(&fields, prior->data, desc, &before);
+             if (!problem) {
+                 problem = pin_read_field(&fields, next->data, desc, &after);
+@@ -164,15 +162,6 @@ static bool source_import_model(
+             if (problem) {
+                 snprintf(error, size, "%s", problem);
+                 arena_free(&fields);
+-=======
+-            const char *read_error = pin_read_field(&values, prior->data, desc, &before);
+-            if (!read_error) {
+-                read_error = pin_read_field(&values, next->data, desc, &after);
+-            }
+-            if (read_error) {
+-                snprintf(error, size, "%s", read_error);
+-                arena_free(&values);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                 afree(ops);
+                 authoring_prototype_edit_result_free(&disk);
+                 return false;
+@@ -242,11 +231,7 @@ static bool source_import_model(
+         ok = asset_code_edit_source(code, text, edited.source, NULL, false);
+     }
+     afree(ops);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     arena_free(&fields);
+-=======
+-    arena_free(&values);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     authoring_prototype_edit_result_free(&disk);
+     authoring_prototype_edit_result_free(&edited);
+     return ok;
+@@ -788,7 +773,6 @@ static int refresh_prototype_actor(
+     for (int i = 0; i < acount(native_prototype->components); i++) {
+         const prototype_component *component = &native_prototype->components[i];
+         for (int field = 0; field < component->desc->type->field_count; field++) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             arena fields = { 0 };
+             pin_value value;
+             if (pin_read_field(&fields, component->data, &component->desc->type->fields[field], &value)) {
+@@ -804,25 +788,6 @@ static int refresh_prototype_actor(
+                     value
+                 ) != ECS_OK) {
+                 arena_free(&fields);
+-=======
+-            arena storage = { 0 };
+-            pin_value value;
+-            bool written = !pin_read_field(
+-                               &storage,
+-                               component->data,
+-                               &component->desc->type->fields[field],
+-                               &value
+-                           ) &&
+-                           ecs_component_write_field(
+-                               scene->world,
+-                               actor->entity,
+-                               component->desc->id,
+-                               field,
+-                               value
+-                           ) == ECS_OK;
+-            arena_free(&storage);
+-            if (!written) {
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                 av_value_free(overrides);
+                 return -1;
+             }
+diff --git a/src/editor/studio/studio_graph_properties.c b/src/editor/studio/studio_graph_properties.c
+index c0afea4c3dfd180c14127fd1cccf9f3369394558..7e1a1e38245a133fc662b60ea72ee05b193bf9a4 100644
+--- a/src/editor/studio/studio_graph_properties.c
++++ b/src/editor/studio/studio_graph_properties.c
+@@ -321,12 +321,8 @@ static void vector_row(gd_rows *r, const gd_row *d, const pin_value *value, cons
+     gd_number_shape axis = number_shape(PIN_F32);
+     for (int i = 0; type && value->ptr && i < width; i++) {
+         pin_value component;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (type->fields[i].type < PIN_I8 || type->fields[i].type > PIN_F64 ||
+             pin_read_field(NULL, value->ptr, &type->fields[i], &component)) {
+-=======
+-        if (pin_read_field(NULL, value->ptr, &type->fields[i], &component)) {
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             continue;
+         }
+         values[i] = sg_literal_number(&component);
+diff --git a/src/editor/studio/studio_graph_values.c b/src/editor/studio/studio_graph_values.c
+index 8b4b796167583b42047d302961b7e654019f2998..6ede428c75bec7d85342ec3fac63185cf33e0c6c 100644
+--- a/src/editor/studio/studio_graph_values.c
++++ b/src/editor/studio/studio_graph_values.c
+@@ -185,13 +185,7 @@ static void add_literal_choice(
+     pin_string text = { 0 };
+     if (value->type == PIN_STR || value->type == PIN_NAME) {
+         text = pin_text(*value);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (text.length >= sizeof((source_choice *)0)->literal_text) { return; }
+-=======
+-        if (text.length >= sizeof((source_choice *)0)->literal_text) {
+-            return;
+-        }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     }
+     add_choice(
+         choices,
+@@ -408,7 +402,6 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
+     if (spec->type == PIN_STR || spec->type == PIN_NAME) {
+         static char decoded[256];
+         static pin_string string;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (!quoted_text(text, decoded, sizeof decoded)) { return false; }
+         if (spec->type == PIN_STR) {
+             string = (pin_string){ decoded, (uint32_t)strlen(decoded) };
+@@ -416,17 +409,6 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
+         } else {
+             value.str = decoded;
+         }
+-=======
+-        if (!quoted_text(text, decoded, sizeof decoded)) {
+-            return false;
+-        }
+-        if (spec->type == PIN_STR) {
+-            string = (pin_string){ decoded, (uint32_t)strlen(decoded) };
+-            value.text = &string;
+-        } else {
+-            value.str = decoded;
+-        }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         *out = value;
+         return true;
+     }
+diff --git a/src/editor/studio/studio_node_calls.c b/src/editor/studio/studio_node_calls.c
+index d4b60f2f8c332c87097105e1ab8ab04eab177274..53d359617d2980e591b431e95e4321def5efb780 100644
+--- a/src/editor/studio/studio_node_calls.c
++++ b/src/editor/studio/studio_node_calls.c
+@@ -259,7 +259,6 @@ static void select_object(studio *s, const pin_value *a, const char *object)
+ static void set_view(studio *s, const pin_value *a, const char *object, unsigned flag)
+ {
+     int index = studio_object_index(s, object);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     if (index >= 0) { studio_set_object_view(s, index, flag, a[1].b); }
+ }
+ 
+@@ -291,41 +290,6 @@ static int text_input_count(studio_node_op op)
+     }
+ }
+ 
+-=======
+-    if (index >= 0) {
+-        studio_set_object_view(s, index, flag, a[1].b);
+-    }
+-}
+-
+-static void drop_on_object(studio *s, const char *const *text)
+-{
+-    int index = studio_object_index(s, text[0]);
+-    if (index >= 0 && studio_editable(s)) {
+-        studio_drop_on(s, index, text[1], text[2]);
+-    }
+-}
+-
+-static int text_input_count(studio_node_op op)
+-{
+-    switch (op) {
+-        case STUDIO_NODE_DROP_ON_OBJECT:
+-        case STUDIO_NODE_MOVE_OBJECTS: return 3;
+-        case STUDIO_NODE_RENAME_OBJECT: return 2;
+-        case STUDIO_NODE_OBJECT_SELECTED:
+-        case STUDIO_NODE_OBJECT_ROW:
+-        case STUDIO_NODE_SPAWN_BREAK:
+-        case STUDIO_NODE_SELECT_OBJECT:
+-        case STUDIO_NODE_SET_HIDDEN:
+-        case STUDIO_NODE_SET_LOCKED:
+-        case STUDIO_NODE_ISOLATE:
+-        case STUDIO_NODE_ADD_OBJECT:
+-        case STUDIO_NODE_SET_FILTER:
+-        case STUDIO_NODE_TOGGLE_SPAWN_BREAK: return 1;
+-        default: return 0;
+-    }
+-}
+-
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+ const char *studio_node_run(studio *s, studio_node_op op, const pin_value *in, arena *storage, pin_value *out)
+ {
+     arena scratch = { 0 };
+@@ -384,21 +348,10 @@ const char *studio_node_run(studio *s, studio_node_op op, const pin_value *in, a
+             break;
+         case STUDIO_NODE_ISOLATE:
+             index = studio_object_index(s, text[0]);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             if (index >= 0) { studio_isolate(s, index); }
+             break;
+         case STUDIO_NODE_ADD_OBJECT:
+             if (text[0][0]) { studio_add_object(s, text[0]); }
+-=======
+-            if (index >= 0) {
+-                studio_isolate(s, index);
+-            }
+-            break;
+-        case STUDIO_NODE_ADD_OBJECT:
+-            if (text[0][0]) {
+-                studio_add_object(s, text[0]);
+-            }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             break;
+         case STUDIO_NODE_DROP_ON_OBJECT: drop_on_object(s, text); break;
+         case STUDIO_NODE_MOVE_OBJECTS:
+@@ -408,13 +361,7 @@ const char *studio_node_run(studio *s, studio_node_op op, const pin_value *in, a
+             snprintf(s->outliner_filter, sizeof s->outliner_filter, "%s", text[0]);
+             break;
+         case STUDIO_NODE_TOGGLE_SPAWN_BREAK:
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             if (text[0][0]) { studio_toggle_spawn_break(s, text[0]); }
+-=======
+-            if (text[0][0]) {
+-                studio_toggle_spawn_break(s, text[0]);
+-            }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             break;
+     }
+     arena_free(&scratch);
+diff --git a/src/editor/studio/studio_properties.c b/src/editor/studio/studio_properties.c
+index 67cb48c5dc3ce0d606a623e18db9d2745984715d..ee573286158edb5d7329d760f75076a15ff79e18 100644
+--- a/src/editor/studio/studio_properties.c
++++ b/src/editor/studio/studio_properties.c
+@@ -13,7 +13,6 @@
+ #include "editor/ui/labels.h"
+ #include "graph/model/registry.h"
+ #include "runtime/component_catalog.h"
+-#include "support/arena.h"
+ #include "support/array.h"
+ #include "support/xalloc.h"
+ #include "types/text.h"
+@@ -464,8 +463,6 @@ bool properties_mixed(
+         return false;
+     }
+     app_scene_authoring *scene = s->scene;
+-    arena storage = { 0 };
+-    bool mixed = false;
+     /* Objects naming different paths differ though none resolves. */
+     arena storage = { 0 };
+     const char *path = scene_link_path(actor->paths, component, field);
+@@ -481,21 +478,12 @@ bool properties_mixed(
+                  ECS_OK &&
+              !pin_value_equal(&other, value)) ||
+             !same_path(path, named)) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             arena_free(&storage);
+             return true;
+         }
+     }
+     arena_free(&storage);
+     return false;
+-=======
+-            mixed = true;
+-            break;
+-        }
+-    }
+-    arena_free(&storage);
+-    return mixed;
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+ }
+ 
+ /* ---------- Writes ---------- */
+@@ -523,42 +511,25 @@ static void write_merged(ecs_world *world, ecs_entity entity, const field_change
+     }
+     arena storage = { 0 };
+     void *merged = xmalloc(type->size);
+-    arena storage = { 0 };
+     memcpy(merged, current.ptr, type->size);
+     for (int i = 0; i < type->field_count; i++) {
+         pin_value before, after;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (pin_read_field(&storage, c->before.ptr, &type->fields[i], &before) ||
+             pin_read_field(&storage, c->value.ptr, &type->fields[i], &after)) {
+             free(merged);
+             arena_free(&storage);
+-=======
+-        const char *error = pin_read_field(&storage, c->before.ptr, &type->fields[i], &before);
+-        if (!error) {
+-            error = pin_read_field(&storage, c->value.ptr, &type->fields[i], &after);
+-        }
+-        if (error) {
+-            arena_free(&storage);
+-            free(merged);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             return;
+         }
+         if (!pin_value_equal(&before, &after)) {
+             if (pin_write_field(&storage, merged, &type->fields[i], after)) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                 free(merged);
+                 arena_free(&storage);
+-=======
+-                arena_free(&storage);
+-                free(merged);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                 return;
+             }
+         }
+     }
+     pin_value value = { .type = PIN_STRUCT, .type_name = type->name, .ptr = merged };
+     ecs_component_write_field(world, entity, c->component, c->field, value);
+-    arena_free(&storage);
+     free(merged);
+     arena_free(&storage);
+ }
+@@ -630,10 +601,6 @@ static void write_field(studio *s, scene_actor *actor, field_change c)
+             ECS_OK) {
+             arena storage = { 0 };
+             pin_value written = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+-=======
+-            arena storage = { 0 };
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             if (ecs_component_read_field(&storage, scene->world, actor->entity, c.component, c.field, &written) !=
+                 ECS_OK) {
+                 abort();
+@@ -671,19 +638,11 @@ void studio_set_field(studio *s, scene_actor *actor, ecs_component_id component,
+     }
+     pin_value value = before;
+     if (value.type == PIN_STR) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         const char *type_name = value.type_name;
+         const char *error = pin_value_text(&storage, &value, text, strlen(text));
+         assert(!error);
+         (void)error;
+         value.type_name = type_name;
+-=======
+-        if (pin_value_text(&storage, &value, text, strlen(text))) {
+-            arena_free(&storage);
+-            return;
+-        }
+-        value.type_name = before.type_name;
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     } else {
+         value.str = text;
+     }
+@@ -840,37 +799,21 @@ static bool parse_field(
+                 if (strcmp(f->name, axis)) {
+                     continue;
+                 }
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                 void *vector = xmalloc(type->size);
+                 memcpy(vector, value->ptr, type->size);
+                 double v = strtod(text, NULL);
+                 const char *error = pin_write_field(
+                     storage,
+                     vector,
+-=======
+-                void *copy = xmalloc(type->size);
+-                memcpy(copy, value->ptr, type->size);
+-                double v = strtod(text, NULL);
+-                const char *error = pin_write_field(
+-                    storage,
+-                    copy,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                     f,
+                     f->type == PIN_F32 ? (pin_value){ .type = PIN_F32, .f = (float)v }
+                                        : (pin_value){ .type = PIN_F64, .d = v }
+                 );
+                 if (error) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                     free(vector);
+                     return false;
+                 }
+                 value->ptr = vector;
+-=======
+-                    free(copy);
+-                    return false;
+-                }
+-                value->ptr = copy;
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                 return true;
+             }
+             return false;
+@@ -878,17 +821,9 @@ static bool parse_field(
+         case PIN_NAME: value->str = text; return true;
+         case PIN_STR: {
+             const char *type_name = value->type_name;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             const char *error = pin_value_text(storage, value, text, strlen(text));
+             value->type_name = type_name;
+             return !error;
+-=======
+-            if (pin_value_text(storage, value, text, strlen(text))) {
+-                return false;
+-            }
+-            value->type_name = type_name;
+-            return true;
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         }
+         default: return false;
+     }
+@@ -952,7 +887,6 @@ static void edit_object(studio *s, const edit *e)
+         free(value.ptr);
+     }
+     arena_free(&storage);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+ }
+ 
+ void properties_parameter_row(const char *path, const char *name, size_t index, properties_row *row)
+@@ -1116,8 +1050,6 @@ static void reset_source_override(studio *s, const properties_row *row)
+     s->prototype_edit[0] = 0;
+     source_edit_result(s, scene_source_input_edit(s->scene, asset, &change, 1, "reset-override", false));
+     scene_source_input_end(s->scene, asset->path);
+-=======
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+ }
+ 
+ /* Prototype edits preview live and record one Undo step per gesture, on the
+@@ -1164,15 +1096,11 @@ static void edit_prototype(studio *s, const edit *e)
+             for (int i = 0; vector && i < vector->field_count; i++) {
+                 if (!strcmp(vector->fields[i].name, e->axis)) {
+                     snprintf(path, sizeof path, "%s.%s", field->name, e->axis);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                     if (pin_read_field(&storage, value.ptr, &vector->fields[i], &leaf)) {
+                         free(value.ptr);
+                         arena_free(&storage);
+                         return;
+                     }
+-=======
+-                    pin_read_field(&storage, value.ptr, &vector->fields[i], &leaf);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                     break;
+                 }
+             }
+@@ -1284,7 +1212,6 @@ static void check(studio *s, const properties_row *row, bool on)
+         for (int i = 0; asset && desc && i < acount(asset->prototype->components); i++) {
+             const prototype_component *c = &asset->prototype->components[i];
+             if (c->desc == desc && c->data && row->field < desc->type->field_count) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                 if (pin_read_field(&storage, c->data, &desc->type->fields[row->field], &value)) {
+                     arena_free(&storage);
+                     return;
+@@ -1305,20 +1232,6 @@ static void check(studio *s, const properties_row *row, bool on)
+             return;
+         }
+         read = true;
+-=======
+-                read = !pin_read_field(&storage, c->data, &desc->type->fields[row->field], &value);
+-            }
+-        }
+-    } else if (subject.actor) {
+-        read = ecs_component_read_field(
+-                   &storage,
+-                   s->scene->world,
+-                   subject.actor->entity,
+-                   row->component,
+-                   row->field,
+-                   &value
+-               ) == ECS_OK;
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     }
+     if (!read || value.type != PIN_BOOL) {
+         arena_free(&storage);
+@@ -1326,9 +1239,7 @@ static void check(studio *s, const properties_row *row, bool on)
+     }
+     bool mixed = row->kind == PROPERTIES_OBJECT && subject.actor &&
+                  properties_mixed(s, subject.actor, row->component, row->field, &value);
+-    bool changed = mixed || value.b != on;
+-    arena_free(&storage);
+-    if (changed) {
++    if (mixed || value.b != on) {
+         edit_row(s, &e);
+     }
+     arena_free(&storage);
+@@ -1350,16 +1261,11 @@ static Transform inherited_position(const prototype_component *component, Transf
+ {
+     arena storage = { 0 };
+     pin_value x = { .type = PIN_F32, .f = at.x }, y = { .type = PIN_F32, .f = at.y };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     if (pin_read_field(&storage, component->data, &component->desc->type->fields[0], &x) ||
+         pin_read_field(&storage, component->data, &component->desc->type->fields[1], &y)) {
+         arena_free(&storage);
+         return at;
+     }
+-=======
+-    pin_read_field(NULL, component->data, &component->desc->type->fields[0], &x);
+-    pin_read_field(NULL, component->data, &component->desc->type->fields[1], &y);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     at.x = x.f;
+     at.y = y.f;
+     arena_free(&storage);
+@@ -1883,7 +1789,6 @@ static void reveal(studio *s, const properties_row *row)
+         arena_free(&storage);
+         return;
+     }
+-    arena_free(&storage);
+     /* A placed object selects as the Outliner selects it; a spawned one as
+        a pick in the Scene does. */
+     app_scene_authoring_select_entity(s->scene, ecs_entity_from_u64(value.u64));
+@@ -1978,7 +1883,6 @@ static void settle(studio *s, rml_element *field, const char *id)
+     properties_subject subject;
+     properties_subject_of(s, &subject);
+     properties_row row;
+-    arena storage = { 0 };
+     pin_value value = { 0 };
+     char text[512] = "";
+     if (!strcmp(id, "name") && subject.actor) {
+@@ -2032,18 +1936,8 @@ static void settle(studio *s, rml_element *field, const char *id)
+             &value
+         ) == ECS_OK
+     ) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         snprintf(text, sizeof text, "%s", properties_text(&storage, &value));
+-=======
+-        bool text_value = value.type == PIN_STR || value.type == PIN_NAME;
+-        const char *shown = pin_value_to_string(&value);
+-        if (text_value) {
+-            pin_text_cstring(&storage, value, &shown, NULL);
+-        }
+-        snprintf(text, sizeof text, "%s", shown);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     }
+-    arena_free(&storage);
+     rml_element_set_value(field, text);
+     rml_element_blur(field);
+     arena_free(&storage);
+diff --git a/src/editor/studio/studio_properties_view.c b/src/editor/studio/studio_properties_view.c
+index 41121de2cbc7ce9126434ebd9919773656daa0c9..bf966266c67f36c3a5c3de5edb26fddc3731137e 100644
+--- a/src/editor/studio/studio_properties_view.c
++++ b/src/editor/studio/studio_properties_view.c
+@@ -36,7 +36,6 @@
+ #include "editor/ui/labels.h"
+ #include "graph/model/registry.h"
+ #include "runtime/component_catalog.h"
+-#include "support/arena.h"
+ #include "support/array.h"
+ #include "types/text.h"
+ #include "types/value_format.h"
+@@ -65,7 +64,6 @@ typedef struct view
+     int slots;              /* the values written this refresh */
+     bool changed;           /* properties changed */
+     bool values_changed;
+-    arena storage;
+ } view;
+ 
+ /* ---------- Members, written in place ---------- */
+@@ -890,13 +888,9 @@ static void struct_row(rows *r, const field_source *f)
+     axis_desc axes[4];
+     for (int i = 0; i < type->field_count; i++) {
+         pin_value axis = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (pin_read_field(&r->v->storage, f->value.ptr, &type->fields[i], &axis)) {
+             return;
+         }
+-=======
+-        pin_read_field(&r->v->storage, f->value.ptr, &type->fields[i], &axis);
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         double value = axis.type == PIN_F32 ? axis.f : axis.d;
+         axes[i] = (axis_desc){ .key = type->fields[i].name,
+                                .label = LABELS[i],
+@@ -1233,7 +1227,6 @@ static void show_prototype_field(
+         .row = { .id = id, .label = label, .about = field->description, .readonly = locked },
+         .path = scene_link_path(asset->prototype->links, component->desc->id, index)
+     };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     authoring_prototype_field_source source = { 0 };
+     if (scene_prototype_source_owned(asset) &&
+         authoring_prototype_source_field(
+@@ -1254,8 +1247,6 @@ static void show_prototype_field(
+         f.row.reset_override = source.overridden;
+         f.row.overridden = source.overridden;
+     }
+-=======
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     if (pin_read_field(&r->v->storage, component->data, field, &f.value)) {
+         return;
+     }
+diff --git a/src/editor/workspace/scene_asset_drop.c b/src/editor/workspace/scene_asset_drop.c
+index 83a8d813546bd895fb09beb4876373b907301dbb..19d5bf1f420e27ff659cc2ea83354fa16c490575 100644
+--- a/src/editor/workspace/scene_asset_drop.c
++++ b/src/editor/workspace/scene_asset_drop.c
+@@ -85,13 +85,7 @@ void scene_field_previews_apply(app_scene_authoring *scene)
+         }
+         p->shown = ecs_component_write_field(scene->world, p->entity, p->component, p->field, value) ==
+                    ECS_OK;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         if (!p->shown) { scene_property_value_free(&p->before); }
+-=======
+-        if (!p->shown) {
+-            scene_property_value_free(&p->before);
+-        }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     }
+     arena_free(&storage);
+ }
+diff --git a/src/editor/workspace/scene_authoring.c b/src/editor/workspace/scene_authoring.c
+index b9ae131ca0092b688891babff7063e75c2ff05b8..01fbb370218d899ab29ff7b45258ae72f8e99565 100644
+--- a/src/editor/workspace/scene_authoring.c
++++ b/src/editor/workspace/scene_authoring.c
+@@ -1077,21 +1077,9 @@ void scene_property_value_free(pin_value *value)
+ {
+     assert(value);
+     free((void *)value->type_name);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     if (value->type == PIN_STR) { free((void *)value->text); }
+     if (value->type == PIN_NAME) { free((void *)value->str); }
+     if (value->type == PIN_STRUCT) { free(value->ptr); }
+-=======
+-    if (value->type == PIN_STR) {
+-        free((void *)value->text);
+-    }
+-    if (value->type == PIN_NAME) {
+-        free((void *)value->str);
+-    }
+-    if (value->type == PIN_STRUCT) {
+-        free(value->ptr);
+-    }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     *value = (pin_value){ 0 };
+ }
+ 
+diff --git a/src/editor/workspace/scene_authoring.h b/src/editor/workspace/scene_authoring.h
+index 7a11ab0d2b95821e473346c3f4d721f9778c6e4d..e0f61fb69bc663a415f86e289e4b3f5701acb8e5 100644
+--- a/src/editor/workspace/scene_authoring.h
++++ b/src/editor/workspace/scene_authoring.h
+@@ -131,13 +131,8 @@ int app_scene_authoring_save_prototype(
+     const char *prototype_name,
+     const char *path
+ );
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+ /* Struct storage is borrowed until the next edit. Native string field
+  * descriptors and bytes are copied into caller-owned storage. */
+-=======
+-/* Native string reads copy into storage (NULL selects heap ownership).
+- * Aggregate and authored descriptor reads borrow until the prototype changes. */
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+ int app_scene_authoring_read_prototype_field(
+     arena *storage,
+     app_scene_authoring *scene,
+diff --git a/src/editor/workspace/scene_gizmo.c b/src/editor/workspace/scene_gizmo.c
+index 620211fe470f60936444e4d107cbad21a29d1ea7..a80ca14868142eef359b5dee7934ba98325c2e31 100644
+--- a/src/editor/workspace/scene_gizmo.c
++++ b/src/editor/workspace/scene_gizmo.c
+@@ -361,11 +361,7 @@ int scene_gizmo_record(
+     arena storage = { 0 };
+     pin_value value = { 0 };
+     int read = ecs_component_read_field(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         &storage,
+-=======
+-        NULL,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         scene->world,
+         entity,
+         component->id,
+diff --git a/src/editor/workspace/scene_runtime.c b/src/editor/workspace/scene_runtime.c
+index 4a3864035babc7a7fead1dd57a20fd8fc8b09cf8..2ff27a6834c1f56879937a86b199f748c08c5ba2 100644
+--- a/src/editor/workspace/scene_runtime.c
++++ b/src/editor/workspace/scene_runtime.c
+@@ -1,11 +1,10 @@
+ #include "authoring/material_prepare.h"
++#include "execution/status.h"
+ #include "editor/collab/actions_scene.h"
+ #include "editor/workspace/model_preview.h"
+ #include "editor/workspace/scene_internal.h"
+-#include "execution/status.h"
+ #include "render/shader_catalog.h"
+ #include "runtime/component_catalog.h"
+-#include "support/arena.h"
+ #include "types/array.h"
+ #include "types/type.h"
+ 
+@@ -209,26 +208,18 @@ static void keep_component(
+ {
+     arena storage = { 0 };
+     const ecs_component_desc *desc = authored->desc;
+-    arena storage = { 0 };
+     for (int f = 0; f < desc->type->field_count; f++) {
+-        arena_reset(&storage);
+         pin_value running = { 0 };
+         if (ecs_component_read_field(&storage, scene->world, entity, desc->id, f, &running) !=
+                 ECS_OK ||
+             !editable_scalar(&running)) {
+             continue;
+         }
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         pin_value before = running;
+         if (pin_read_field(&storage, authored->data, &desc->type->fields[f], &before)) {
+             continue;
+         }
+         if (pin_value_equal(&running, &before)) {
+-=======
+-        pin_value before = { 0 };
+-        if (pin_read_field(&storage, authored->data, &desc->type->fields[f], &before) ||
+-            pin_value_equal(&running, &before)) {
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             continue;
+         }
+         scene_field_edit edit = { .component = desc->id, .field = f };
+@@ -320,7 +311,6 @@ static void apply_kept_field(app_scene_authoring *scene, ecs_entity entity, cons
+         !scene_property_value_copy(&scene->property_edit.after, kept->after)) {
+         abort();
+     }
+-    arena_free(&storage);
+     scene->property_dirty = scene->scene_dirty;
+     if (scene_collab_can_write_locally() &&
+         ecs_component_write_field(scene->world, entity, kept->component, kept->field, kept->after) ==
+diff --git a/tests/acceptance/main.c b/tests/acceptance/main.c
+index efc38b6aefad33b3520056565276f05d46e1e5f1..bf251846d6dd79a6f9f253569489cff17f30f23a 100644
+--- a/tests/acceptance/main.c
++++ b/tests/acceptance/main.c
+@@ -42,7 +42,6 @@
+ #include <sys/stat.h>
+ #include <unistd.h>
+ 
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+ /* Own native-string projections until the selected acceptance command exits. */
+ static arena acceptance_field_reads;
+ static void acceptance_field_reads_free()
+@@ -50,9 +49,6 @@ static void acceptance_field_reads_free()
+     arena_free(&acceptance_field_reads);
+ }
+ 
+-=======
+-/* Test bodies require the application and pico_unit declarations above. */
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+ #include "scene_read.h"
+ #include "sdk_values.h"
+ 
+@@ -2945,7 +2941,6 @@ static bool links(app_scene_authoring *scene, int actor, int target)
+ {
+     pin_value value = { 0 };
+     REQUIRE(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         ecs_component_read_field(
+             &acceptance_field_reads,
+             scene->world,
+@@ -2954,10 +2949,6 @@ static bool links(app_scene_authoring *scene, int actor, int target)
+             0,
+             &value
+         ) == ECS_OK
+-=======
+-        ecs_component_read_field(NULL, scene->world, scene->actors[actor].entity, link_id(scene), 0, &value) ==
+-        ECS_OK
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     );
+     return value.u64 ==
+            (target < 0 ? 0 : ecs_entity_to_u64(scene->actors[target].entity));
+@@ -5351,8 +5342,10 @@ TEST_CASE(debugger_source_history)
+ 
+ int main(int argc, char **argv)
+ {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     atexit(acceptance_field_reads_free);
++    if (argc == 2 && !strcmp(argv[1], "--sdk-values")) {
++        return sdk_values_main();
++    }
+     if (argc == 2 && !strcmp(argv[1], "--compiled-asset-edit-model")) {
+         pu_setup(NULL, compiled_model_cleanup);
+         RUN_TEST_CASE(compiled_asset_edit_model);
+@@ -5361,11 +5354,6 @@ int main(int argc, char **argv)
+         return pu_test_failed() ? 1 : 0;
+     }
+ 
+-=======
+-    if (argc == 2 && !strcmp(argv[1], "--sdk-values")) {
+-        return sdk_values_main();
+-    }
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     if (argc == 2 && !strcmp(argv[1], "--scene-read")) {
+         studio_scene_read_tests();
+         pu_print_stats();
+@@ -5444,14 +5432,9 @@ int main(int argc, char **argv)
+             "--code-followups|--code-glyphs|--panel-idle|--debugger-source-"
+             "history "
+             "--project-root PATH | --scene-cursors | --scene-read | "
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+-            "--project-open | "
++            "--project-open | --sdk-values | "
+             "--outliner-row-policies --source PATH | "
+             "--typed-prototype-preview --project-root PATH --screenshot PATH\n"
+-=======
+-            "--project-open | --sdk-values | "
+-            "--outliner-row-policies --source PATH\n"
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         );
+         return 2;
+     }
+diff --git a/tests/acceptance/outliner_row_policies.h b/tests/acceptance/outliner_row_policies.h
+index f82a1c1bc4000fd240d70756ee3a03d708c0bffb..5f3f9e224278d2c430799f433ccac3ff26c548c7 100644
+--- a/tests/acceptance/outliner_row_policies.h
++++ b/tests/acceptance/outliner_row_policies.h
+@@ -9,7 +9,6 @@
+ #include "runtime/arrays.h"
+ #include "runtime/text_format.h"
+ #include "types/record.h"
+-#include "types/text.h"
+ 
+ /* Renderer-free exact-source check. One source preparation and 41 direct
+  * helper invocations per backend: four depths, 19 icons, ten drop strings and
+@@ -240,19 +239,11 @@ static bool outliner_policy_text(
+         { .type = PIN_BOOL, .b = editable },
+     };
+     REQUIRE(outliner_policy_invoke(name, arguments, !strcmp(name, "Drop") ? 2 : 1, call, backend));
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(call->result.type == PIN_STR && call->result.text);
+     /* Scalar literal returns borrow the module; publication into a row record
+      * owns its strings. Inspect these direct returns before module retirement. */
+     REQUIRE(pin_text(call->result).length == strlen(expected));
+     REQUIRE(!memcmp(pin_text(call->result).bytes, expected, strlen(expected)));
+-=======
+-    REQUIRE(call->result.type == PIN_STR);
+-    /* Scalar literal returns borrow the module; publication into a row record
+-     * owns its strings. Inspect these direct returns before module retirement. */
+-    pin_string text = pin_text(call->result);
+-    REQUIRE(text.length == strlen(expected) && !memcmp(text.bytes, expected, text.length));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(outliner_policy_unchanged(arguments[0], values, count));
+     return true;
+ }
+@@ -489,7 +480,6 @@ TEST_CASE(outliner_row_policy_contract)
+         REQUIRE(arena_contains(
+             &outliner_policy.calls[1].storage,
+             outliner_policy.calls[1].result.text
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         ));
+         REQUIRE(arena_contains(
+             &outliner_policy.calls[1].storage,
+@@ -504,13 +494,6 @@ TEST_CASE(outliner_row_policy_contract)
+             "object behavior shape field",
+             sizeof("object behavior shape field") - 1
+         ));
+-=======
+-        ));
+-        pin_string text = pin_text(outliner_policy.calls[1].result);
+-        REQUIRE(arena_contains(&outliner_policy.calls[1].storage, text.bytes));
+-        const char *expected = "object behavior shape field";
+-        REQUIRE(text.length == strlen(expected) && !memcmp(text.bytes, expected, text.length));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         printf(
+             "Outliner row policies accepted: backend=%s calls=41\n",
+             behavior_backend_name(backends[i])
+diff --git a/tests/acceptance/prototype_source.h b/tests/acceptance/prototype_source.h
+index 04fdd549d2f2349132229af83dad311fb1a51481..a0534c5408a9ac1484ee4b3892adbb45b9173dc5 100644
+--- a/tests/acceptance/prototype_source.h
++++ b/tests/acceptance/prototype_source.h
+@@ -8,11 +8,7 @@ static bool bridge_field(app_scene_authoring *scene, const char *name, const cha
+ {
+     pin_value value = { 0 };
+     REQUIRE(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         !app_scene_authoring_read_prototype_field(&acceptance_field_reads, scene, name, "Transform", field, &value)
+-=======
+-        !app_scene_authoring_read_prototype_field(NULL, scene, name, "Transform", field, &value)
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     );
+     REQUIRE(value.type == PIN_F32 && value.f == expected);
+     return true;
+@@ -585,20 +581,15 @@ static bool prototype_source_contract(studio *s)
+     }
+     REQUIRE(component);
+     int vector_field = -1;
+-    arena storage = { 0 };
+     pin_value vector = { 0 };
+     const type_desc *vector_type = NULL;
+     for (int i = 0; i < visual->type->field_count && !vector_type; i++) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         REQUIRE(!pin_read_field(
+             &acceptance_field_reads,
+             component->data,
+             &visual->type->fields[i],
+             &vector
+         ));
+-=======
+-        REQUIRE(!pin_read_field(&storage, component->data, &visual->type->fields[i], &vector));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         vector_type = properties_vector(&vector);
+         if (vector_type) {
+             vector_field = i;
+@@ -606,35 +597,23 @@ static bool prototype_source_contract(studio *s)
+     }
+     REQUIRE(vector_type && vector_type->field_count >= 2);
+     pin_value sibling = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[1], &sibling)
+     );
+-=======
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[1], &sibling));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     const char *axis = vector_type->fields[0].name;
+     REQUIRE(bridge_property(s, visual, vector_field, names[1], axis, "6", true));
+     REQUIRE(bridge_property(s, visual, vector_field, names[1], axis, "8", false));
+     REQUIRE(!prototype_read_field(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         &acceptance_field_reads,
+-=======
+-        &storage,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         asset->prototype,
+         visual->name,
+         visual->type->fields[vector_field].name,
+         &vector
+     ));
+     pin_value after_sibling = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[1], &after_sibling)
+     );
+-=======
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[1], &after_sibling));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(pin_value_equal(&sibling, &after_sibling));
+     const ecs_component_desc *motion = component_descriptor(scene, "VisualMotion");
+     REQUIRE(motion);
+@@ -644,7 +623,6 @@ static bool prototype_source_contract(studio *s)
+     for (int i = 0; i < motion->type->field_count; i++) {
+         pin_value expected = { 0 }, actual = { 0 };
+         const char *field = motion->type->fields[i].name;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         REQUIRE(
+             !prototype_read_field(&acceptance_field_reads, native, motion->name, field, &expected)
+         );
+@@ -655,13 +633,8 @@ static bool prototype_source_contract(studio *s)
+             field,
+             &actual
+         ));
+-=======
+-        REQUIRE(!prototype_read_field(&storage, native, motion->name, field, &expected));
+-        REQUIRE(!prototype_read_field(&storage, asset->prototype, motion->name, field, &actual));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         REQUIRE(pin_value_equal(&expected, &actual));
+     }
+-    arena_free(&storage);
+     prototype_free(native);
+     REQUIRE(!prototype_undo(scene));
+     REQUIRE(!prototype_undo(scene));
+diff --git a/tests/acceptance/prototype_source_authority.h b/tests/acceptance/prototype_source_authority.h
+index 3edfc551b85a5099b19b695eeb09f2974576a774..815b5c3d52e9b6b8f9aa5158b96e11fa19b981d0 100644
+--- a/tests/acceptance/prototype_source_authority.h
++++ b/tests/acceptance/prototype_source_authority.h
+@@ -44,14 +44,10 @@ static bool authority_model_x(authority_fixture *test, float expected)
+ {
+     pin_value value = { 0 };
+     scene_prototype_asset *asset = authority_asset(test);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         asset &&
+         !prototype_read_field(&acceptance_field_reads, asset->prototype, "Transform", "x", &value)
+     );
+-=======
+-    REQUIRE(asset && !prototype_read_field(NULL, asset->prototype, "Transform", "x", &value));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(value.type == PIN_F32 && value.f == expected);
+     return true;
+ }
+@@ -320,7 +316,6 @@ static bool authority_entry_probes(authority_fixture *test)
+     authority_code_paste(test, AUTHORITY_SOURCE(91, 2));
+     authority_code_draw(test);
+     pin_value value = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     bool model = !prototype_read_field(
+                      &acceptance_field_reads,
+                      authority_asset(test)->prototype,
+@@ -328,9 +323,6 @@ static bool authority_entry_probes(authority_fixture *test)
+                      "x",
+                      &value
+                  ) &&
+-=======
+-    bool model = !prototype_read_field(NULL, authority_asset(test)->prototype, "Transform", "x", &value) &&
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                  value.type == PIN_F32 && value.f == 1;
+     test->code_authority = model &&
+                            !strcmp(
+@@ -351,7 +343,6 @@ static bool authority_entry_probes(authority_fixture *test)
+     REQUIRE(scalar >= 0 && authority_start(test, "editor"));
+     step = asset_code_step(authority_asset(test)->source);
+     REQUIRE(bridge_property(test->s, transform, scalar, "AuthoritySource", "", "92", false));
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     model = !prototype_read_field(
+                 &acceptance_field_reads,
+                 authority_asset(test)->prototype,
+@@ -359,9 +350,6 @@ static bool authority_entry_probes(authority_fixture *test)
+                 "x",
+                 &value
+             ) &&
+-=======
+-    model = !prototype_read_field(NULL, authority_asset(test)->prototype, "Transform", "x", &value) &&
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             value.type == PIN_F32 && value.f == 1;
+     test->property_authority = model &&
+                                !strcmp(
+@@ -445,14 +433,10 @@ static bool authority_pending_and_history(authority_fixture *test)
+     REQUIRE(bridge_field(scene, "AuthoritySource", "x", 2));
+     const prototype *preview = scene_source_input_preview(scene, authority_asset(test));
+     pin_value preview_x = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         preview &&
+         !prototype_read_field(&acceptance_field_reads, preview, "Transform", "x", &preview_x)
+     );
+-=======
+-    REQUIRE(preview && !prototype_read_field(NULL, preview, "Transform", "x", &preview_x));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(preview_x.type == PIN_F32 && preview_x.f == 4);
+     REQUIRE(scene_source_input_save(scene, authority_asset(test)) == APP_PROTOTYPE_EDIT_PENDING);
+     REQUIRE(!studio_code_history(test->s, false, true));
+@@ -591,7 +575,6 @@ static bool authority_conflicts(authority_fixture *test)
+         REQUIRE(asset_code_error(authority_asset(test)->source)[0]);
+         pin_value rejected = { 0 };
+         REQUIRE(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             app_scene_authoring_read_prototype_field(
+                 &acceptance_field_reads,
+                 scene,
+@@ -600,10 +583,6 @@ static bool authority_conflicts(authority_fixture *test)
+                 "x",
+                 &rejected
+             ) < 0
+-=======
+-            app_scene_authoring_read_prototype_field(NULL, scene, "AuthoritySource", "Transform", "x", &rejected) <
+-            0
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         );
+         REQUIRE(authority_model_x(test, 10));
+         REQUIRE(
+@@ -635,16 +614,11 @@ static bool authority_properties(authority_fixture *test)
+             scalar = i;
+         }
+     }
+-    arena storage = { 0 };
+     pin_value vector = { 0 };
+     const type_desc *vector_type = NULL;
+     for (int i = 0; i < visual->type->field_count && !vector_type; i++) {
+         REQUIRE(!prototype_read_field(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+             &acceptance_field_reads,
+-=======
+-            &storage,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+             authority_asset(test)->prototype,
+             visual->name,
+             visual->type->fields[i].name,
+@@ -659,17 +633,12 @@ static bool authority_properties(authority_fixture *test)
+     const char *axis0 = vector_type->fields[0].name,
+                *axis1 = vector_type->fields[1].name;
+     pin_value before0 = { 0 }, before1 = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[0], &before0)
+     );
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[1], &before1)
+     );
+-=======
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[0], &before0));
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[1], &before1));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(before0.type == PIN_F32 && before1.type == PIN_F32);
+     REQUIRE(bridge_property(test->s, transform, scalar, "AuthoritySource", "", "11", true));
+     REQUIRE(bridge_property(test->s, transform, scalar, "AuthoritySource", "", "12", false));
+@@ -690,40 +659,29 @@ static bool authority_properties(authority_fixture *test)
+     );
+     test->source_guard &= !strcmp(asset_code_text(authority_asset(test)->source), before);
+     if (!test->source_guard) {
+-        arena_free(&storage);
+         return false;
+     }
+     REQUIRE(bridge_field(scene, "AuthoritySource", "x", 10));
+     pin_value first = { 0 }, second = { 0 };
+     REQUIRE(!prototype_read_field(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         &acceptance_field_reads,
+-=======
+-        &storage,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         authority_asset(test)->prototype,
+         visual->name,
+         visual->type->fields[vector_field].name,
+         &vector
+     ));
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[0], &first)
+     );
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[1], &second)
+     );
+-=======
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[0], &first));
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[1], &second));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(
+         first.type == PIN_F32 && first.f == before0.f &&
+         second.type == PIN_F32 && second.f == before1.f
+     );
+     const prototype *preview = scene_source_input_preview(scene, authority_asset(test));
+     pin_value preview_x = { 0 };
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         preview &&
+         !prototype_read_field(&acceptance_field_reads, preview, "Transform", "x", &preview_x)
+@@ -731,28 +689,17 @@ static bool authority_properties(authority_fixture *test)
+     REQUIRE(preview_x.type == PIN_F32 && preview_x.f == 12);
+     REQUIRE(!prototype_read_field(
+         &acceptance_field_reads,
+-=======
+-    REQUIRE(preview && !prototype_read_field(&storage, preview, "Transform", "x", &preview_x));
+-    REQUIRE(preview_x.type == PIN_F32 && preview_x.f == 12);
+-    REQUIRE(!prototype_read_field(
+-        &storage,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         preview,
+         visual->name,
+         visual->type->fields[vector_field].name,
+         &vector
+     ));
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[0], &first)
+     );
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[1], &second)
+     );
+-=======
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[0], &first));
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[1], &second));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(first.type == PIN_F32 && first.f == 8 && second.type == PIN_F32 && second.f == 7);
+     REQUIRE(authority_echo(test));
+     REQUIRE(authority_echo(test));
+@@ -768,29 +715,19 @@ static bool authority_properties(authority_fixture *test)
+     REQUIRE(authority_text(test, both_axes, NULL));
+     REQUIRE(bridge_field(scene, "AuthoritySource", "x", 12));
+     REQUIRE(!prototype_read_field(
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         &acceptance_field_reads,
+-=======
+-        &storage,
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         authority_asset(test)->prototype,
+         visual->name,
+         visual->type->fields[vector_field].name,
+         &vector
+     ));
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[0], &first)
+     );
+     REQUIRE(
+         !pin_read_field(&acceptance_field_reads, vector.ptr, &vector_type->fields[1], &second)
+     );
+-=======
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[0], &first));
+-    REQUIRE(!pin_read_field(&storage, vector.ptr, &vector_type->fields[1], &second));
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(first.type == PIN_F32 && first.f == 8 && second.type == PIN_F32 && second.f == 7);
+-    arena_free(&storage);
+     REQUIRE(authority_history(test, false, axis0_text));
+     REQUIRE(authority_history(test, false, scalar_text));
+     REQUIRE(authority_history(test, false, before));
+diff --git a/tests/acceptance/scene_move.h b/tests/acceptance/scene_move.h
+index 300b097cec44419fba6d18fe053ff69e0c26a98f..6e77b7016b013b048d34d9a6acf771d275f77ff4 100644
+--- a/tests/acceptance/scene_move.h
++++ b/tests/acceptance/scene_move.h
+@@ -165,11 +165,7 @@ static bool source_history_reopens(
+                              : NULL;
+         pin_value field;
+         valid = value &&
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                 !prototype_read_field(&acceptance_field_reads, value, "Transform", "x", &field) &&
+-=======
+-                !prototype_read_field(NULL, value, "Transform", "x", &field) &&
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                 field.type == PIN_F32 && field.f == (changed ? 2 : 1);
+         prototype_free(value);
+         av_doc_free(document);
+@@ -866,7 +862,6 @@ static bool static_prototype_refresh(void)
+     }
+     int passive_tabs = acount(scene->tabs), passive_active = scene->active_tab;
+     pin_value value;
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(!app_scene_authoring_read_prototype_field(
+         &acceptance_field_reads,
+         scene,
+@@ -875,11 +870,6 @@ static bool static_prototype_refresh(void)
+         "x",
+         &value
+     ));
+-=======
+-    REQUIRE(
+-        !app_scene_authoring_read_prototype_field(NULL, scene, names[2], "Transform", "x", &value)
+-    );
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(value.type == PIN_F32 && value.f == 1);
+     REQUIRE(!write_file_atomic(
+         paths[0],
+@@ -905,7 +895,6 @@ static bool static_prototype_refresh(void)
+     ));
+     REQUIRE(app_scene_authoring_reload_path(scene, paths[0]) == APP_DISK_RELOADED);
+     for (int i = 0; i < 3; i++) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         REQUIRE(!app_scene_authoring_read_prototype_field(
+             &acceptance_field_reads,
+             scene,
+@@ -914,16 +903,10 @@ static bool static_prototype_refresh(void)
+             "x",
+             &value
+         ));
+-=======
+-        REQUIRE(
+-            !app_scene_authoring_read_prototype_field(NULL, scene, names[i], "Transform", "x", &value)
+-        );
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+         REQUIRE(value.type == PIN_F32 && value.f == 2);
+     }
+     scene_prototype_asset *nest = find_prototype(scene, names[3]);
+     REQUIRE(nest && acount(nest->prototype->child_prototypes) == 1);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(!prototype_read_field(
+         &acceptance_field_reads,
+         nest->prototype->child_prototypes[0],
+@@ -931,11 +914,6 @@ static bool static_prototype_refresh(void)
+         "x",
+         &value
+     ));
+-=======
+-    REQUIRE(
+-        !prototype_read_field(NULL, nest->prototype->child_prototypes[0], "Transform", "x", &value)
+-    );
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(value.type == PIN_F32 && value.f == 2);
+     REQUIRE(acount(scene->tabs) == passive_tabs && scene->active_tab == passive_active);
+ 
+@@ -986,7 +964,6 @@ static bool static_prototype_refresh(void)
+     float refreshed[4] = { 0 };
+     bool propagated = true, reloaded = false;
+     for (int i = 0; i < 3; i++) {
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+         bool read = !app_scene_authoring_read_prototype_field(
+                         &acceptance_field_reads,
+                         scene,
+@@ -995,9 +972,6 @@ static bool static_prototype_refresh(void)
+                         "x",
+                         &value
+                     ) &&
+-=======
+-        bool read = !app_scene_authoring_read_prototype_field(NULL, scene, names[i], "Transform", "x", &value) &&
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                     value.type == PIN_F32;
+         if (read) {
+             refreshed[i] = value.f;
+@@ -1006,7 +980,6 @@ static bool static_prototype_refresh(void)
+     }
+     nest = find_prototype(scene, names[3]);
+     bool child = nest && acount(nest->prototype->child_prototypes) == 1 &&
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+                  !prototype_read_field(
+                      &acceptance_field_reads,
+                      nest->prototype->child_prototypes[0],
+@@ -1014,9 +987,6 @@ static bool static_prototype_refresh(void)
+                      "x",
+                      &value
+                  ) &&
+-=======
+-                 !prototype_read_field(NULL, nest->prototype->child_prototypes[0], "Transform", "x", &value) &&
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+                  value.type == PIN_F32;
+     if (child) {
+         refreshed[3] = value.f;
+@@ -1098,7 +1068,6 @@ static bool static_prototype_refresh(void)
+         "}\n"
+     ));
+     REQUIRE(app_scene_authoring_reload_path(scene, paths[0]) == APP_DISK_UNSAVED);
+-<<<<<<< a7ebaed0a999bd97a38b9f9676f02f824beac9ed
+     REQUIRE(!app_scene_authoring_read_prototype_field(
+         &acceptance_field_reads,
+         scene,
+@@ -1116,15 +1085,6 @@ static bool static_prototype_refresh(void)
+         "x",
+         &value
+     ));
+-=======
+-    REQUIRE(
+-        !app_scene_authoring_read_prototype_field(NULL, scene, names[1], "Transform", "x", &value)
+-    );
+-    REQUIRE(value.f == 9 && middle->dirty);
+-    REQUIRE(
+-        !app_scene_authoring_read_prototype_field(NULL, scene, names[2], "Transform", "x", &value)
+-    );
+->>>>>>> df050886dd7721db63b40fdf5435f1cb20ceeb34
+     REQUIRE(value.f == 3);
+     REQUIRE(strstr(app_scene_authoring_message(scene), "unsaved edits"));
+ 

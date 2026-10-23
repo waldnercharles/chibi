@@ -1,0 +1,15 @@
+{
+  "candidate_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+  "self_parity": true,
+  "bytes": 12099901,
+  "sha256": "03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c",
+  "manifest_sha256": "1328526b992a05385292a7d54b98908e91cf6871cee4a3da5725a99fb0938ad8",
+  "source_count": 19,
+  "version": 5,
+  "minimum": 2,
+  "logs": [
+    "combined-compile.log",
+    "combined-export.log"
+  ],
+  "new_rich_source_imported": false
+}

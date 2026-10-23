@@ -1,0 +1,4 @@
+[ 33%] Building C object CMakeFiles/test_tools.dir/main.c.o
+[ 66%] Building C object CMakeFiles/test_tools.dir/asset_cache_browser.c.o
+[100%] Linking C executable test_tools.js
+[100%] Built target test_tools

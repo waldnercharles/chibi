@@ -1,0 +1,15 @@
+(FAILED: test/tools/build_toolchain.c (694): correct)
+Running: native_compiler_and_explicit_cache_precedence (OK) (1.784778 secs)
+Running: warm_configuration_tracks_inputs_options_environment_and_compiler (OK) (2.355200 secs)
+Running: configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow (OK) (0.881804 secs)
+Running: configuration_ignores_retired_dependency_switches (OK) (0.297017 secs)
+Running: third_party_archives_download_once_and_refuse_another_hash (OK) (0.877866 secs)
+Running: third_party_mode_prepares_archives_without_cmake (OK) (0.587067 secs)
+Running: cmake_loader_downloads_a_missing_archive_once (OK) (0.028646 secs)
+Running: third_party_store_keeps_what_worktrees_pin (OK) (0.328623 secs)
+Running: compiler_driver_report_names_the_sdk_before_xcrun (OK) (1.184912 secs)
+Running: private_cli_forwards_empty_and_special_tail_arguments (OK) (0.009898 secs)
+Running: make_recovers_missing_or_old_hosts_and_selects_current_protocol 
+===============================================================
+Summary: Passed: 10 Failed: 1 Total: 11 Suites: 0 Asserts: 164
+Test command wall time: 33.089s; includes in-test fixture setup; external configuration/build excluded.

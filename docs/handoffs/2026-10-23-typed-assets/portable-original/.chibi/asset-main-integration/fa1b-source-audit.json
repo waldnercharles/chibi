@@ -1,0 +1,26 @@
+{
+  "scope": "Existing tracked and nonignored untracked active files; binary/encoded image data excluded from semantic text scan",
+  "source_tree": "258953e107c129597f6cc072af2b25f80aa9bb31",
+  "merge_target": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "resource_state": "b934 recovery artifacts retained; combined generation and runtime checks pending",
+  "stale_bootstrap_sources": [
+    "package_compiler/Compile.chibi",
+    "package_compiler/Body.chibi",
+    "package_compiler/Steps.chibi",
+    "package_compiler/Behavior.chibi"
+  ],
+  "reports": [
+    {
+      "root": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi",
+      "files": 3333,
+      "path_hits": [],
+      "text_hits": []
+    },
+    {
+      "root": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio",
+      "files": 824,
+      "path_hits": [],
+      "text_hits": []
+    }
+  ]
+}

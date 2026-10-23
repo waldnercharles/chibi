@@ -1,0 +1,10 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -213,6 +213,7 @@
+       - uses: actions/checkout@v4
+         with:
+           repository: waldnercharles/chibi-studio
++          ref: 521b666a62406fabae8e1d23bad00765717b3635
+           path: studio
+           persist-credentials: false
+       - name: Record clean engine and Studio sources

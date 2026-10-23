@@ -1,0 +1,35 @@
+[
+  {
+    "file": ".gitignore",
+    "resolution": "Retain typed release SDK ignore plus root SDK test-harness ignore.",
+    "blob": "25262ff239daceea59e9d8813767ca3a4cf47692"
+  },
+  {
+    "file": "docs/testing.md",
+    "resolution": "Keep typed prototype workload section and incoming publication/paired SDK sections.",
+    "blob": "a7271153f1541e8395c0d46cdf7e2526be3c750b"
+  },
+  {
+    "file": "test/language/program.c",
+    "resolution": "Keep typed file exactly: incoming changes only retired version28 migrator fixture.",
+    "blob": "fae7218d09bd6d84d60768ec4c635a9da748fdee"
+  },
+  {
+    "file": "test/tools/CMakeLists.txt",
+    "resolution": "Preserve asset_cache_browser source and add third_party_publish; clean automatic hunk already adds build_sdk.",
+    "blob": "ad8c63664ecae1e0a55eb308373d2d39f32847c7"
+  },
+  {
+    "file": "test/tools/main.c",
+    "resolution": "Combine third-party publication selector admission with all typed selector flags.",
+    "blob": "4e5c101471dbd57d129f73693b523944dd75988f"
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "resolution": "Two starter receipt paths project.kdl -> project.chibi only."
+  },
+  {
+    "file": ".github/workflows/paired-studio.yml",
+    "resolution": "Two starter receipt paths project.kdl -> project.chibi only."
+  }
+]

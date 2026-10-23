@@ -1,0 +1,7 @@
+{"selector": "--asset-cache", "artifact": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/tools/compiler/asset_compiler/bootstrap/native64/asset_compiler.chibip", "artifact_sha256": "d95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b", "resource_sha256": "b60da211f706619d15e68e6896d5f2ab67eec2035ae2cf834157fac78f633704", "binary_sha256": "41d3a149d6c057abac96c45a2bd079b54818fc497f2a4ae3dc59428966d9bde7", "fixture_sha256": "0aaaa6333cb947e84995a0297d3ce79ab4ff1b609eccf5d48ff43d63d51dacb0", "configuration": "Debug; sanitizers OFF; in-tree SDK; bytecode compiler/value hosts", "cache": "private mkdtemp fixture", "python": "3.13.16 (main, Sep 30 2026, 18:57:20) [Clang 21.0.0 (clang-2100.3.34.2)]"}
+Running: asset_cache_reuses_invalidates_and_recovers (OK) (22.001908 secs)
+Running: asset_cache_backend_and_retention (OK) (0.816206 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 36
+Test command wall time: 25.669s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+exit: 0

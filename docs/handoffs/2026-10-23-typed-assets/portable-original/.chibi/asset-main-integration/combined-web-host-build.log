@@ -1,0 +1,70 @@
+[0/2] Re-checking globbed directories...
+[1/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/borrow.c.o
+[2/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/c.c.o
+[3/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/call.c.o
+[4/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/component.c.o
+[5/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/function.c.o
+[6/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/function_builder.c.o
+[7/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/fusion.c.o
+[8/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/host.c.o
+[9/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/inputs.c.o
+[10/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit.c.o
+[11/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_component.c.o
+[12/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_host_call.c.o
+[13/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_integer.c.o
+[14/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_memory.c.o
+[15/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_registers.c.o
+[16/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_suspend.c.o
+[17/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_system.c.o
+[18/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/jit_watch.c.o
+[19/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/machine.c.o
+[20/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/module.c.o
+[21/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/module_effects.c.o
+[22/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/opt.c.o
+[23/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/parallel.c.o
+[24/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/preparation_budget.c.o
+[25/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/prepared.c.o
+[26/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/prepared_function.c.o
+[27/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/prepared_record.c.o
+[28/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program.c.o
+[29/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_inspection.c.o
+[30/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_activation.c.o
+[31/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_observers.c.o
+[32/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_bindings.c.o
+[33/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_commands.c.o
+[34/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_locals.c.o
+[35/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_storage.c.o
+[36/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_preflight.c.o
+[37/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/program_tasks.c.o
+[38/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/range_opt.c.o
+[39/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/reads.c.o
+[40/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/runner.c.o
+[41/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/scalar_lowering_plan.c.o
+[42/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/scalarize.c.o
+[43/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/source_debug.c.o
+[44/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/storage.c.o
+[45/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/suspend.c.o
+[46/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/wasm_emit.c.o
+[47/70] Building C object CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/execution/wasm_jit.c.o
+[48/70] Building C object CMakeFiles/chibi_native_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/native_capabilities.c.o
+[49/70] Building C object CMakeFiles/chibi_native_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/native_definitions.c.o
+[50/70] Building C object CMakeFiles/chibi_native_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/type_definitions.c.o
+[51/70] Linking C static library libchibi_execution.a
+[52/70] Linking C static library libchibi_native_capabilities.a
+[53/70] Building C object CMakeFiles/chibi_array_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/arrays.c.o
+[54/70] Building C object CMakeFiles/chibi_array_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/arrays_definition.c.o
+[55/70] Building C object CMakeFiles/chibi_text_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/text_format.c.o
+[56/70] Building C object CMakeFiles/chibi_text_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/text_definition.c.o
+[57/70] Building C object CMakeFiles/chibi_native_prepared.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/runtime/native_prepared.c.o
+[58/70] Linking C static library libchibi_array_capabilities.a
+[59/70] Linking C static library libchibi_text_capabilities.a
+[60/70] Linking C static library libchibi_native_prepared.a
+[61/70] Building C object CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_artifact.c.o
+[62/70] Building C object CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_host.c.o
+[63/70] Building C object CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_json.c.o
+[64/70] Building C object CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_syntax.c.o
+[65/70] Building C object CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_target.c.o
+[66/70] Building C object CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_bootstrap.c.o
+[67/70] Linking C static library libchibi_compiler_host.a
+[68/70] Building C object CMakeFiles/chibi-compiler-host.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/toolchain/compiler_main.c.o
+[69/70] Linking C executable chibi-compiler-host.js

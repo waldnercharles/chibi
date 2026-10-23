@@ -1,0 +1,242 @@
+[
+  {
+    "file": ".github/workflows/ci.yml",
+    "blob": "86be12daca12afc39b4deaa054286b6c0357d8e4",
+    "sha256": "708a280956f48f32edb21aba70a81b19dc68fbbb74a51d9f6c2c35371d67e0df",
+    "bytes": 18965
+  },
+  {
+    "file": ".github/workflows/paired-studio.yml",
+    "blob": "aa8c4ac0ff2edc4c792b2fd80186ca06e1d73a55",
+    "sha256": "3f6379d52f9d543917ebe4d095600204f8a3429dfad1f1ca408aa9d6d4b043fa",
+    "bytes": 12670
+  },
+  {
+    "file": ".github/workflows/publish.yml",
+    "blob": "e70f2f40a4f8a51f60c1ab1c13d6ae4dc745ab8a",
+    "sha256": "508800a83854b2801eccb33ff72ade2709a3e854de93d9aaa130d53ea6077b6c",
+    "bytes": 6448
+  },
+  {
+    "file": ".github/workflows/third-party.yml",
+    "blob": "afa8d4ef0866f590d13f2000a1d49d0ae14799f6",
+    "sha256": "80c9aa104c8e322bcd6df8ff5be7baabc34a38075f31717a0079cc771005a408",
+    "bytes": 5886
+  },
+  {
+    "file": ".gitignore",
+    "blob": "25262ff239daceea59e9d8813767ca3a4cf47692",
+    "sha256": "6f346acd53f56d5d3e721e45cf10fbe11855ff402c24c44633bf004be0e5904f",
+    "bytes": 1456
+  },
+  {
+    "file": "PLAN.md",
+    "blob": "67f98c2adcc15b2c2626213b958e9e1e5583e874",
+    "sha256": "e399435b88340306026c003705166b143e63540b3e84e7d7bb29b70d1db020b3",
+    "bytes": 113066
+  },
+  {
+    "file": "cmake/tests/desktop_dependencies/consumer/CMakeLists.txt",
+    "blob": "0c77b5a6da8443afb7f8d2b9436b24b9e4867383",
+    "sha256": "9fa82074dab62bc499ce26593c8428debf12a79590e64937c41afb7f54834292",
+    "bytes": 5966
+  },
+  {
+    "file": "cmake/tests/desktop_dependencies/modules/FindOpenGL.cmake",
+    "blob": "11f7639a794da3af6fc2c7ab2243df3651b368ff",
+    "sha256": "b151c2ab371d018ab4058b70b30f610ffd21324adfb7b36232d318f90f883352",
+    "bytes": 750
+  },
+  {
+    "file": "cmake/tests/desktop_dependencies/producer/CMakeLists.txt",
+    "blob": "fabed2c4218896ac3d9b214381ae8811144d0da0",
+    "sha256": "6498fdcd75d98dfd955da302e6ea648807a5cc56e6797fd0839a547a1b0b07f2",
+    "bytes": 6142
+  },
+  {
+    "file": "docs/design/graph-sdk-packaging.md",
+    "blob": "2774457e12dcb9da16476e023059becceaf94026",
+    "sha256": "fac819bfd3a89ea1442138b8c19121a0fdfa27fb740f2eef60559efb19234e02",
+    "bytes": 8847
+  },
+  {
+    "file": "docs/self-hosting-build.md",
+    "blob": "1b0dff6468a50f58dba6f9792b8de6e616a83417",
+    "sha256": "4dded3c950db380db2c187d67920ae31d62f22b777d8e52edb83f18106133d4c",
+    "bytes": 63644
+  },
+  {
+    "file": "docs/testing.md",
+    "blob": "a7271153f1541e8395c0d46cdf7e2526be3c750b",
+    "sha256": "225deb1c279f3458328797f9fbd85cd8cf51bf034e91e814d5ef8263a95f57ed",
+    "bytes": 219919
+  },
+  {
+    "file": "docs/toolchain-inventory.md",
+    "blob": "74591c5239e40b255c619639de18f74e20bf7333",
+    "sha256": "51b4da29d9b803bd09d4431c4a3bfaaf214d5b8d159c261f45b56645e89da57f",
+    "bytes": 22038
+  },
+  {
+    "file": "sdk/vendor_dependencies.cmake",
+    "blob": "a58b2250f76e993416076bf0613f901bfe81c596",
+    "sha256": "42d6a746c71d1234933054947439e63a82013abec5f1e1cbfac40af249be8f33",
+    "bytes": 10799
+  },
+  {
+    "file": "src/authoring/source_intelligence.c",
+    "blob": "cc1dd378bfa12eca9c6bb1d6601f0d6f967ce998",
+    "sha256": "1909b5ec93462043ef2787755a273f26de9fe524f7c937c2e31c062f1055688c",
+    "bytes": 53809
+  },
+  {
+    "file": "src/host/build_catalog.c",
+    "blob": "824057646b5bf33d163b984471f50349f75fc9f0",
+    "sha256": "f736f3c377f16d01791ca3953a9e668fdeb84d4e2aa4e365397cb96613c1a4e1",
+    "bytes": 22289
+  },
+  {
+    "file": "src/host/build_io.c",
+    "blob": "31715c70917265fbd45e6e8f3f6a5de781e78798",
+    "sha256": "f9a44da766b3a20de6f7a3da30b74817a6e12e75a7f4fc6846b710bbc0e641b1",
+    "bytes": 18897
+  },
+  {
+    "file": "src/host/build_io.h",
+    "blob": "4a56df7a787b1cbda9999c4adc3541662a7c9358",
+    "sha256": "6e8dfc7693f8bfc40a8993abb430a77854e17a8465927f589151adf58c29dc9d",
+    "bytes": 4474
+  },
+  {
+    "file": "test/fixtures/third_party_publish/gh",
+    "blob": "20f833b6a19e4cede3d20be411b742541a9440ee",
+    "sha256": "04788bea938056d78aa46bb063e323b14d7d9fe47c4c89d24ec433aaf7a3c8ad",
+    "bytes": 3259
+  },
+  {
+    "file": "test/language/constant_scalar_chibi.c",
+    "blob": "3254876f1723419aecdf0b07c01154b99aa89395",
+    "sha256": "555c14b4680b515ba70d3a90396edd29798754aeecf3ac383fc728fe80e71806",
+    "bytes": 28759
+  },
+  {
+    "file": "test/language/format.c",
+    "blob": "41b657d2f42ad7e67877e15f14672df299292f08",
+    "sha256": "ea8e5af89936def7972966b5926ee94a1ec5d72e4e998779d62c0e0303a849ea",
+    "bytes": 67758
+  },
+  {
+    "file": "test/language/navigation.c",
+    "blob": "c148bd7db53ae42d21ba84921ed7f0d07cb069f0",
+    "sha256": "b2f06ae6778cfc95ade6ea082b17ac3e6eb8f4ec350e8f28f863f7b0c5f1c888",
+    "bytes": 91496
+  },
+  {
+    "file": "test/tools/CMakeLists.txt",
+    "blob": "ad8c63664ecae1e0a55eb308373d2d39f32847c7",
+    "sha256": "d1e90c261d57f30a2435137846dd35ae4a89c7cc2e7bca3181fd9b3c6f26c738",
+    "bytes": 38238
+  },
+  {
+    "file": "test/tools/build_process.c",
+    "blob": "c69499e37b5e5c22e9a269cebd6011e4554fbf0e",
+    "sha256": "0f34670b7f18397047ff30713329397839d228249f213acf123525f6c1a2096f",
+    "bytes": 100749
+  },
+  {
+    "file": "test/tools/build_sdk.c",
+    "blob": "8d997480edcb3b95b6eb657c60089a967624433b",
+    "sha256": "79f235e7d6d039d1cde2cf8d4a8abf8941af9ef0880c77d48cb2502d80d9a824",
+    "bytes": 38185
+  },
+  {
+    "file": "test/tools/build_toolchain.c",
+    "blob": "cec9ab7a3a2bdc5872b00282022d52aff146f658",
+    "sha256": "25d922d94a725160590f707b2200fb9ba855c2fbf170965b30f45ce26f71a3d1",
+    "bytes": 31137
+  },
+  {
+    "file": "test/tools/desktop_dependencies.c",
+    "blob": "ef961ffe4b5d34b0e7b3bfc5e4bc776012724607",
+    "sha256": "0ef2b5910c26b8246596967b4d99dc7864f5696258442d186f8942e3f060d5e0",
+    "bytes": 10781
+  },
+  {
+    "file": "test/tools/main.c",
+    "blob": "4e5c101471dbd57d129f73693b523944dd75988f",
+    "sha256": "f20bf6d1124c076751883232f0a9aa1c775e9da3f93f8cb89575d107db9124e8",
+    "bytes": 61133
+  },
+  {
+    "file": "test/tools/policy_worker.c",
+    "blob": "93a7911d9ae84f78e49925cebf30b9e10155ff93",
+    "sha256": "79c7474028cb301a0271ec6861118747a047fb5d42bbaf99072e32ae9a7369eb",
+    "bytes": 15463
+  },
+  {
+    "file": "test/tools/test_policy.c",
+    "blob": "e731f5508569100faffb616ff8938a1f6fa27b4a",
+    "sha256": "12b2dbd3f8892e637dc03de0ef2a5241ca45fa8758bbfb597e8fd35103f2a75d",
+    "bytes": 35644
+  },
+  {
+    "file": "test/tools/third_party_publish.c",
+    "blob": "2c918ea1db78e42150c71f82262544e0e9e5d8b3",
+    "sha256": "4ea91df3bf1bfd90b021d92e013c7b0a0c444245549038933871af3cd5ff1c2b",
+    "bytes": 31955
+  },
+  {
+    "file": "third_party/README.md",
+    "blob": "2b6e0f617517895ee0725ff248f633085addfe6b",
+    "sha256": "98f8e0e6416b9cd8da6ea85c6a389bdf352f3b4fbb32c9c0cb8e934854b04b85",
+    "bytes": 7100
+  },
+  {
+    "file": "third_party/archives.tsv",
+    "blob": "853d2420f4f20a299847765b30fe977e1f373612",
+    "sha256": "89e07fbe4c155d65ad8ebbb5468dc05a242e86b2061574881fecbd1146cab7b5",
+    "bytes": 1059
+  },
+  {
+    "file": "tools/check_publish_pins.sh",
+    "blob": "f5f0c2e13039520761d1c720984f31c50cf9c6e0",
+    "sha256": "f3059ff576c071cd920f917784bc4f1413c2a3b6f4225ae31769e6b6c9e53586",
+    "bytes": 787
+  },
+  {
+    "file": "tools/compiler/runtime.json",
+    "blob": "310b278064aa0b54f3ee1e203f059aae907acb99",
+    "sha256": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+    "bytes": 883
+  },
+  {
+    "file": "tools/graph/engine/Targets.chibi",
+    "blob": "bc6368ae32729ae213ab7b496d5c2ae5485802bc",
+    "sha256": "39b21289d058c27c31ee8fc7d26aa468ffd40ce02d219e3d2df04560a2aebaf6",
+    "bytes": 226486
+  },
+  {
+    "file": "tools/publish_third_party.py",
+    "blob": "46fa7bc997a022de5f3e6864058f436ad01da52f",
+    "sha256": "06d20f9585d51787d6c7832729d1af3aafdbfb4b5196f5a3a2e9a61ee0d15f6b",
+    "bytes": 16358
+  },
+  {
+    "file": "tools/test_policy.py",
+    "blob": "d41a71e866d10be137fdf628336a4a0d5c02019b",
+    "sha256": "0bad42e3fc69ca7d1de5b5ebb4d5503f4922dc07af9f1c663761aea309dbe87b",
+    "bytes": 66830
+  },
+  {
+    "file": "tools/toolchain/Graph.chibi",
+    "blob": "31a54d3a5579dd129fa48638e017978c45125d69",
+    "sha256": "8e62bd311c5418b5d83696232729cc8ef50cc1c428c4f8e3bf9e7b6f37fa4f0c",
+    "bytes": 8877
+  },
+  {
+    "file": "tools/toolchain/SDK.chibi",
+    "blob": "cc10e63620ad9266431ff2440f59220f9cd80ac0",
+    "sha256": "55f8ea258d0dded1ad91fd46075d5e4f3a49028031a40b0fed09361dd2647655",
+    "bytes": 12212
+  }
+]

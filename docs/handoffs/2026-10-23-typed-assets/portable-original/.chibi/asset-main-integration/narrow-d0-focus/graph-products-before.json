@@ -1,0 +1,26 @@
+{
+  "build-release/sdk/chibi-build-host": {
+    "bytes": 1731344,
+    "sha256": "9b981f73c40351eb33f48089740c306468aaa6053f4a538f08d22536aadab42b"
+  },
+  "build-release/sdk/chibi-build-host.chibi-record": {
+    "bytes": 8838,
+    "sha256": "ce389df83184cd92f35ebf9b27297d06fe98973622cee29e8a49efef748a26fa"
+  },
+  "build-release/sdk/chibi-compiler-host": {
+    "bytes": 1132704,
+    "sha256": "05f5386937219cab8116e26276037d478b92e55c67f5c607f532a9b6c896b5c2"
+  },
+  "build-release/sdk/chibi-compiler-host.chibi-record": {
+    "bytes": 7197,
+    "sha256": "e06c9256851cebfb6446ccbad3b04557315cf9631199fdeb62bc25997e557753"
+  },
+  "build-release/test/tools/test_tools": {
+    "bytes": 45214472,
+    "sha256": "298362c675d2ee8ed3436a5950951a02f92123b40a0672d634b26f80ce35125a"
+  },
+  "build-release/test/tools/test_tools.chibi-record": {
+    "bytes": 133913,
+    "sha256": "67a00480498a670b1f02d50a303fe13a6deb823eb61dbe19cc9a66c686d6e1d5"
+  }
+}

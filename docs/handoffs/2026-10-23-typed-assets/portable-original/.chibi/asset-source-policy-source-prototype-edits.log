@@ -1,0 +1,17 @@
+prototype source edit: Runtime handles cannot be authored as entity references
+prototype source edit: Overlapping prototype component operations
+prototype source edit: Prototype edit requires a finite native scalar value
+prototype source edit: Prototype edit nominal type does not match its native layout
+prototype source edit: Prototype reference must resolve to a declared prototype
+prototype source edit: line 2, column 36: Expected }
+Running: source_edit_replaces_only_the_normalized_value_span (OK) (2.580373 secs)
+Running: source_edit_sparse_component_keeps_other_base_fields_live (OK) (3.779435 secs)
+Running: source_edit_nested_axis_obeys_existing_whole_record_semantics (OK) (7.339194 secs)
+Running: source_edit_add_uses_explicit_creation_payload_and_local_remove (OK) (4.253916 secs)
+Running: source_edit_inherited_remove_preserves_children_links_and_behavior_order (OK) (4.658766 secs)
+Running: source_edit_behavior_splices_and_inherited_detach (OK) (7.975629 secs)
+Running: source_edit_typed_batch_and_null_symbolic_link (OK) (6.421417 secs)
+Running: source_edit_batch_rejections_have_no_partial_result (OK) (2.049644 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 90
+Test command wall time: 64.400s; includes in-test fixture setup; external configuration/build excluded.

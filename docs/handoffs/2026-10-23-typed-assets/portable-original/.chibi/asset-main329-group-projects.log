@@ -1,0 +1,17 @@
+Running: mesh_tangents_follow_texture_directions (OK) (0.000070 secs)
+Running: mesh_tangents_hold_at_any_scale (OK) (0.000010 secs)
+Running: mesh_files_prepare_once_from_mounted_content (OK) (0.001040 secs)
+Running: mesh_files_come_from_drawn_meshes_and_mesh_colliders (OK) (0.000131 secs)
+Running: mesh_files_refuse_invalid_triangles (OK) (0.000314 secs)
+Running: mesh_files_refuse_unreadable_files (OK) (0.001371 secs)
+Running: mesh_files_hold_the_largest_bake (OK) (0.347917 secs)
+Running: model_exports_write_indexed_meshes (OK) (1.263779 secs)
+Running: mesh_pick_trees_last_until_the_catalog_changes (OK) (0.000010 secs)
+Running: meshes_near_the_float_limit_pick (OK) (0.000004 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 9971
+(FAILED: test/authoring/model_import.c (566): !strcmp(error, "content/prototypes/Late.chibi already exists"))
+(FAILED: test/authoring/model_import.c (642): strstr(error, "Cannot read content/events/Broken.chibi: line ") && strstr(error, "column "))
+Test command wall time: 349.286s; includes in-test fixture setup; external configuration/build excluded.
+
+Projects group INTERRUPTED explicitly by owner after known model-import failures; exit 130; incomplete. Not a passing group and not stopped by a timing policy. Read-only busy-process sample: .chibi/asset-main329-model-import-sample.txt.

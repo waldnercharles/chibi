@@ -1,0 +1,1056 @@
+{
+  "state": "refreshed source-only integration preparation; held ancestry unapplied",
+  "eligibility": {
+    "allowed": false,
+    "holds": [
+      "Full CI ancestry remains held until coordinator explicitly clears it",
+      "Hosted checks reported green by parent do not themselves release import hold",
+      "Wait for actual eligible coordinator/main commit before applying anything",
+      "CLI/project_compile/SDK owner reservations remain"
+    ],
+    "linux_web_status": "reported green externally; this source-only task neither executed nor independently retrieved hosted checks"
+  },
+  "references": {
+    "base": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "held_tip": "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17",
+    "held_tip_tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+    "held_validation_merge": "c88680df14431367433ab6be5004bb3ddd408da7",
+    "held_validation_tree": "93a59313a1231d2a8ed0f4fca2642d3ba6713ec6",
+    "held_validation_parents": [
+      "8c5a6e6f0c5437f8f0a06d25c2e311fa1031f977",
+      "025d3fbb97a9f205e765410d6bda8780a31a4408"
+    ],
+    "manifest_only_child": "dc9e0dc26497bf1ae44b174916196375122df9e5",
+    "typed_index_tree": "aa8d23d61dc4fec6e56598a0472c05a6ac7122b2",
+    "typed_HEAD": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "typed_merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "prior_comparison_typed_tree": "e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+    "comparison_uses_pinned_tree_not_mutating_index": true
+  },
+  "comparison": "Compared held delta from base with local staged/worktree files. Text conflict labels are source overlap assessments, not results of an attempted merge. No merge/import applied.",
+  "held_changed_files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/paired-studio.yml",
+    ".github/workflows/publish.yml",
+    ".github/workflows/third-party.yml",
+    ".gitignore",
+    "PLAN.md",
+    "cmake/tests/desktop_dependencies/consumer/CMakeLists.txt",
+    "cmake/tests/desktop_dependencies/modules/FindOpenGL.cmake",
+    "cmake/tests/desktop_dependencies/producer/CMakeLists.txt",
+    "docs/design/graph-sdk-packaging.md",
+    "docs/self-hosting-build.md",
+    "docs/testing.md",
+    "docs/toolchain-inventory.md",
+    "sdk/vendor_dependencies.cmake",
+    "src/assets/project_migrate.c",
+    "src/authoring/source_intelligence.c",
+    "src/host/build_catalog.c",
+    "src/host/build_io.c",
+    "src/host/build_io.h",
+    "test/fixtures/third_party_publish/gh",
+    "test/language/constant_scalar_chibi.c",
+    "test/language/format.c",
+    "test/language/navigation.c",
+    "test/language/program.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/build_process.c",
+    "test/tools/build_sdk.c",
+    "test/tools/build_toolchain.c",
+    "test/tools/desktop_dependencies.c",
+    "test/tools/main.c",
+    "test/tools/policy_worker.c",
+    "test/tools/test_policy.c",
+    "test/tools/third_party_publish.c",
+    "third_party/README.md",
+    "third_party/archives.tsv",
+    "tools/check_publish_pins.sh",
+    "tools/compiler/runtime.json",
+    "tools/graph/engine/Targets.chibi",
+    "tools/publish_third_party.py",
+    "tools/test_policy.py",
+    "tools/toolchain/Graph.chibi",
+    "tools/toolchain/SDK.chibi"
+  ],
+  "both_sides_changed_from_base": [
+    ".gitignore",
+    "PLAN.md",
+    "docs/self-hosting-build.md",
+    "docs/testing.md",
+    "docs/toolchain-inventory.md",
+    "src/assets/project_migrate.c",
+    "test/language/navigation.c",
+    "test/language/program.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/build_process.c",
+    "test/tools/main.c",
+    "test/tools/test_policy.c",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "adaptations": [
+    {
+      "files": [
+        "sdk/CMakeLists.txt",
+        "sdk/asset_documents.cmake",
+        "cmake/verify_source_snapshot.cmake",
+        "sdk/asset_compiler_resource.cmake"
+      ],
+      "location": "typed SDK CMake lines42-50; asset_documents lines4-22,41-50",
+      "classification": "preserve typed-only ownership",
+      "required_before_integration": "Held SDK slice does not edit these files. Preserve typed preflight before FIRST install rule: recovery installs fail before prefix mutation, normal source hashes AND added/deleted-file inventory are checked, artifact/resource checksums and target variant remain checked, default recovery OFF. Keep host-only runtime independent of asset resources. New compiler-tools installer is a separate private-tools distribution, not a replacement public-SDK install guard."
+    },
+    {
+      "files": [
+        "sdk/CMakeLists.txt",
+        "tools/graph/engine/Targets.chibi",
+        "tools/package_sdk.py"
+      ],
+      "location": "typed compiler_host STATIC/exported block and graph ObjectLibrary/LinkedObjects; held Targets changes ONLY test_tools Files at held lines867,874",
+      "classification": "overlapping target inventory; topology must stay typed",
+      "required_before_integration": "Retain STATIC Chibi::compiler_host export and ordinary archive linking; bootstrap remains in compiler_host, CLI only compiler_main; sha256 has ONE implementation owner chibi_support, compiler_host links chibi_support explicitly; build_host remains private OBJECT. Do not take a held whole-file Targets/CMake baseline (its ancestor had OBJECT compiler_host and retired asset_text/asset_kdl). Apply only incoming build_sdk.c and third_party_publish.c test source additions. Retain host-only/Emscripten gates, asset_documents, support binary cache, current test registrations and installed/runtime-only source filters. Preserve the newer aa8d sdk/contracts.cmake compiler_host support dependency too; the earlier e96 duplicate SHA ownership must not return."
+    },
+    {
+      "files": [
+        "sdk/source_authoring.cmake",
+        "src/authoring/source_package_files.c",
+        "src/authoring/source_package_io.h",
+        "src/authoring/source_package_snapshot.c"
+      ],
+      "location": "protocol8 split already present on both ancestry lines; no incoming delta from base",
+      "classification": "already included; no incoming hunk",
+      "required_before_integration": "Keep source_package_files generic filesystem reader plus public source_package_io.h and snapshot adapter split. Existing minimal build_host source_files/IO-header wiring must remain; do not reintroduce source compiler/authoring/parser link dependencies."
+    },
+    {
+      "files": [
+        "tools/toolchain/SDK.chibi",
+        "test/tools/build_sdk.c"
+      ],
+      "location": "held SDK Entries line181; held build_sdk distribution_source lines308,341 and notices list821",
+      "classification": "new code needs migration adaptation",
+      "required_before_integration": "Remove ckdl notice entry and matching fixture directory/input/expected notice; third_party/ckdl is deleted and must remain absent. Retain fmt/yyjson and exact linked tree_sitter/sljit notices. Otherwise every CompilerTools invocation fails required distribution-input checks before packaging. Reuse exact independently reviewed adapter a78d8d0e86c9c51501b666343ae0da50e67e11348a1c9d864704feeb33b6cbd0: four unconditional line deletions, no optional compatibility branch."
+    },
+    {
+      "files": [
+        "tools/toolchain/SDK.chibi",
+        "tools/graph/asset_compiler/Stage.chibi"
+      ],
+      "location": "held SDK CompilerTools SameTree checks lines260-264 and Prepare lines203-223; typed Stage.Current lines7-35",
+      "classification": "distribution boundary requiring explicit integration scope",
+      "required_before_integration": "SDK.chibi compares full compiler/core trees but does NOT call typed asset snapshot freshness/product checks. Its compiler-tools-only payload includes tools/compiler/asset_compiler/bootstrap by recursive copy. Keep it explicitly private-tools-only and preserve public-SDK guards; if this route is to promise usable compiled-asset resources, add the existing authored Current/inventory/hash preflight before reserving/publishing, with full inputs available. Do not silently treat SameTree as equivalent to strict compiled-asset freshness. Installed StageOne execution/full public SDK remain separate gates."
+    },
+    {
+      "files": [
+        "tools/toolchain/SDK.chibi",
+        "tools/toolchain/StageOne.chibi",
+        "tools/toolchain/Graph.chibi"
+      ],
+      "location": "SDK Entries lines167-172, Prepare bootstrap invocation211-219; typed StageOne.Recovered digest lines47-53",
+      "classification": "clean addition plus preserve typed source",
+      "required_before_integration": "Stage current typed StageOne verbatim: retain removal of bootstrap.kdl digest and its existing stage-one compile/assembly semantics. Held tree has NO StageOne delta from base, so never overwrite typed file. Keep SDK/Graph/StageOne staged as authored sources; use typed no-KDL compiler host for --bootstrap validation. Preserve explicit graph profile option without replacing typed Engine asset staging/prerequisites. This held slice does not establish installed StageOne execution."
+    },
+    {
+      "files": [
+        "tools/toolchain/Graph.chibi",
+        "tools/graph/engine/Engine.chibi"
+      ],
+      "location": "held Graph Libraries explicit profile setup lines96-165; typed Engine imports asset_compiler and Build lines893-904",
+      "classification": "mostly clean application; retain typed staging",
+      "required_before_integration": "Accept only explicit profile/no-toolchain discovery setup. Keep typed Engine Current/Stage paths, staging compiler-host prerequisite and unchanged-embed behavior. New SDK/Graph files are outside current asset snapshot inventory directories; importing this slice alone does not justify modifying 19 compiler-source/37 asset-source generations."
+    },
+    {
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/paired-studio.yml"
+      ],
+      "location": "held ci receipt lines303-304; paired-studio receipt182-183",
+      "classification": "clean workflow hunks with required path adaptation",
+      "required_before_integration": "Change BOTH source/opened starter manifest receipt paths from project.kdl to project.chibi (four literals). Keep SHA-pinned pair, dirty-source refusal, SDK manifest/build ID binding, native/Web source+format equality and cloned startup project. Require a Studio SHA containing paired compiled-assets/descriptor changes, not an unrelated current Studio main. Linux/Web validation remains HELD; do not claim workflow source as execution evidence."
+    },
+    {
+      "files": [
+        "src/assets/project_migrate.c",
+        "test/language/program.c"
+      ],
+      "location": "held move_literal guard5707-5709 and program_version_28_after_entry_moves_into_function_bodies fixture8369ff/8408ff",
+      "classification": "definite modify/delete and obsolete fixture semantic conflict",
+      "required_before_integration": "Resolve project_migrate.c modify/delete by KEEPING DELETED. Do not resurrect its empty-literal fix or retired version28 migration test additions. Typed branch removed historical migration APIs/cases; executable active-source fixtures stay current grammar."
+    },
+    {
+      "files": [
+        "test/tools/CMakeLists.txt",
+        "test/tools/main.c",
+        "tools/test_policy.py",
+        "tools/graph/engine/Targets.chibi"
+      ],
+      "location": "held CMake add sources94/110; main build-sdk branch544ff and process-files636ff; policy TOOLS93ff/137ff/147",
+      "classification": "overlapping source/selector lists",
+      "required_before_integration": "Merge build_sdk/third_party_publish source registrations and existing-dispatcher routes additively; keep typed asset-cache/browser/source-prototype/execution-scope/model-import-sources/format routes and minimal asset_documents consumer linkage. No new executable harness. Preserve source-vs-installed SDK guards and Windows rejection for build-sdk. Do not import a full ancestor file over current registrations."
+    },
+    {
+      "files": [
+        "test/tools/build_process.c"
+      ],
+      "location": "held primitive_options976-986, primitive_prepared990ff, directory publication2176ff, files-only suite2334ff",
+      "classification": "overlapping fixture lifecycle and deadline semantics",
+      "required_before_integration": "Combine new private reserve/publish capability exclusion assertions, directory publication regression, and files-only dispatcher with current host tests. Preserve typed Stage/Generate unchanged-embed regression and execution-scope/format routes. Incoming120-second functional fixture deadline is still finite; preserve owner revocation of arbitrary normal-work caps and assess individual limits by actual operation contract rather than blindly taking raised defaults. Keep intentional cancellation/deadline witnesses meaningful."
+    },
+    {
+      "files": [
+        "src/host/build_catalog.c",
+        "src/host/build_io.c",
+        "src/host/build_io.h"
+      ],
+      "location": "held reserve/publish bindings build_catalog114ff, natives939/940, build_io93ff",
+      "classification": "new source seam; reserved owner",
+      "required_before_integration": "Retain narrow exclusive-directory reserve and no-replace atomic publication bindings. Merge against current protocol8 source path, prepared compiler/cancellation and typed writer integration without broadening game catalogs. Reserved source owners must apply/review their files. New native catalog entries affect build-program target descriptors at invocation; do not reuse old prepared build programs without matching catalog identities."
+    },
+    {
+      "files": [
+        "tools/test_policy.py",
+        "test/tools/test_policy.c",
+        "test/tools/policy_worker.c"
+      ],
+      "location": "held PROCESS_INSPECTION_SECONDS and process_children timeout; delayed policy-ps fixture; added cases",
+      "classification": "overlapping test policy; operation-specific bound",
+      "required_before_integration": "Merge process-inspection-only5-second stuck-probe bound and cleanup evidence with current default-unlimited test ownership semantics; this is not a test/global wall-clock ceiling. Preserve existing current policy routes. Coordinate overlapping test_policy fixture strings rather than replacing wholefile."
+    },
+    {
+      "files": [
+        "sdk/vendor_dependencies.cmake",
+        "cmake/tests/desktop_dependencies/consumer/CMakeLists.txt",
+        "cmake/tests/desktop_dependencies/modules/FindOpenGL.cmake",
+        "cmake/tests/desktop_dependencies/producer/CMakeLists.txt",
+        "test/tools/desktop_dependencies.c"
+      ],
+      "location": "held OpenGL imported-target/absolute-role normalization and matching fixture",
+      "classification": "likely clean source application; held platform gate",
+      "required_before_integration": "No typed overlap detected. Retain relocation-safe dependency role mapping/imported-target recreation and current pinned prebuilt vendor ownership. Actual Linux acceptance remains pending; macOS source review does not validate Linux link behavior."
+    },
+    {
+      "files": [
+        ".github/workflows/publish.yml",
+        ".github/workflows/third-party.yml",
+        "third_party/archives.tsv",
+        "tools/publish_third_party.py",
+        "tools/check_publish_pins.sh",
+        "test/tools/third_party_publish.c",
+        "test/fixtures/third_party_publish/gh"
+      ],
+      "location": "publication preflight and nine pinned archives; held publish workflow path filters",
+      "classification": "likely clean source application; held eligibility",
+      "required_before_integration": "Retain source/pins ownership, immutable retry artifacts, serialized tag publication, release-pin refusal and public Studio checkout. No dispatch/network/push authorized. Confirm exact Linux/Web archive provenance and eligible ancestry before import; keep retired ckdl outside payload/tests despite older upstream tree. Child dc9e0dc changes ONLY runtime.json and supplies no additional SDK or Linux/Web source validation."
+    },
+    {
+      "files": [
+        "tools/compiler/runtime.json"
+      ],
+      "location": "dc9e0dc manifest-only child; tag compiler-runtime-2026-10-22.2, source5c28191/tree94ebca0",
+      "classification": "separate manifest-only eligibility decision",
+      "required_before_integration": "Review pinned runtime receipt with compiler owner; retain exact released hashes/provenance if adopted. It is an ABI20 runtime manifest, not generated typed compiler/facade resources and not permission to replace current compiler bootstrap or 19/37 source snapshots. No artifact generation in this map. Current typed BootstrapContract stays [5,2]; this runtime manifest must never overwrite that authored contract or the checked typed seed."
+    },
+    {
+      "files": [
+        "PLAN.md",
+        "docs/self-hosting-build.md",
+        "docs/toolchain-inventory.md",
+        "docs/testing.md",
+        "docs/design/graph-sdk-packaging.md"
+      ],
+      "location": "overlapping M6/current checkpoint and test/SDK evidence additions",
+      "classification": "overlapping documentation and evidence scope",
+      "required_before_integration": "Merge factual private compiler-tools slice as HELD pending exact Linux/Web combination; keep typed full migration, zero-KDL and strict resource guard history. Do not relabel historical macOS checks as combined typed-candidate acceptance, and do not restore old global timing policy from ancestor docs. Public SDK, installed StageOne and platform coverage retain explicit open gates."
+    },
+    {
+      "files": [
+        "test/language/constant_scalar_chibi.c",
+        "test/language/format.c"
+      ],
+      "location": "held TEXT macro null expression repair and second format cleanup",
+      "classification": "likely clean supporting source application",
+      "required_before_integration": "No typed overlap detected for these files. Preserve narrow null-safe test macro and fixture cleanup. These are supporting validated source changes, not a reason to revive program migration fixtures."
+    },
+    {
+      "files": [
+        ".github/workflows/ci.yml",
+        ".gitignore"
+      ],
+      "location": "8f9dbf5e ci graph-sdk-linux lines366ff; .gitignore root build-sdk-tests entry",
+      "classification": "latest Linux harness adaptation; incoming ci clean, ignore list overlap",
+      "required_before_integration": "Retain new graph Release host build, hash both hosts plus .chibi-record files, build ONLY C harness with GRAPH_BUILD= in build-sdk-tests, verify four identities unchanged, dispatch build-sdk using explicit harness/graph paths. Keep /build-sdk-tests/ ignore additively with typed scratch/build ignores. Do not claim Linux graph test-driver support from a CMake harness; do not let harness relink shipped graph tools. Existing source-clean checks remain."
+    },
+    {
+      "files": [
+        "src/authoring/source_intelligence.c",
+        "test/language/navigation.c"
+      ],
+      "location": "8f9dbf5e append lines160-176; added hover detail cases near373 and navigation dispatcher",
+      "classification": "fresh native append fix plus navigation fixture overlap",
+      "required_before_integration": "Apply append empty-text early return and asetlen BEFORE truncation-marker memcpy. Preserve both new ownership/truncation regressions and typed navigation external-project fixtures/range builder using compiled .chibi sources. Typed navigation changes are near external_project (original783ff) while incoming new cases are near373 plus dispatcher, so combine hunks without restoring any .kdl fixtures. Generic C authoring fix is outside compiler/facade input sets; no generated resources needed."
+    },
+    {
+      "files": [
+        "docs/design/graph-sdk-packaging.md",
+        "docs/self-hosting-build.md"
+      ],
+      "location": "8f9dbf5e corrected Linux recipe/docs",
+      "classification": "latest documentation deltas; self-hosting doc overlap",
+      "required_before_integration": "Merge corrected Linux separate-harness recipe and identity checks, retaining exact historical evidence scope and typed resource/zero-KDL guards. Published hosted green evidence can be appended by owner with actual receipts, but this map cannot mark ancestry eligible. Do not overwrite typed status with the older pending-language/platform checkpoint."
+    }
+  ],
+  "generation_freeze": {
+    "compiler_source_count": 19,
+    "compiler_input_intersection": [],
+    "compiler_bootstrap_contract": [
+      5,
+      2
+    ],
+    "compiler_artifact_sha256": "03d7bced2fb9fae810d16faf14b934b6c51a271b6c494f8df02157dc4642497c",
+    "assets": {
+      "native64": {
+        "count": 37,
+        "incoming_intersection": [],
+        "manifest_blob": "3c4dbd8a6330575b22672b22fc15d4187cf33ed9",
+        "artifact_blob": "f607a212193b76db768777c7830e4c85b2bdba99",
+        "artifact_sha256": "a0db49cc71069f47fba735939ce051bfa767e7c31e0fd9d5afaf497abdfe1588",
+        "resource_sha256": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d"
+      },
+      "wasm32": {
+        "count": 37,
+        "incoming_intersection": [],
+        "manifest_blob": "211e7f394d0cfbdecbbb59c8bc7ea44e4138b083",
+        "artifact_blob": "eaa098d11847ca4ae18ac69e58ef56a340f8523f",
+        "artifact_sha256": "d6fae3796fac76e955c15a92a9902e05285296876868e45c72074efcb9b3c422",
+        "resource_sha256": "59a44d32fadfcfce1c26db7d336785f87aa9a82372ec771748c9d18829fc360d"
+      }
+    },
+    "resource_generation_required_for_incoming_delta": false,
+    "reason": "No incoming changed file belongs to current compiler source list or native/Wasm asset sources.sha256. New SDK.chibi/Graph.chibi and Targets are outside inventory directories; build catalog changes affect freshly compiled build-program descriptors only. No target-layout/runtime format implementation changes are in this held delta. Preserve current shipped 19/37/37 products byte-for-byte.",
+    "modified": false
+  },
+  "later_checks_only_after_eligibility": [
+    "Independent review of resolved source seams",
+    "Narrow compiler-tools package/relocation and host file publication cases",
+    "Strict recovery install refusal-before-prefix-mutation and full asset inventory/source/product verification",
+    "Actual Linux SDK and serial Web SDK paired Studio build/startup receipts using project.chibi",
+    "Installed StageOne remains a separate proof, not supplied by staging it"
+  ],
+  "actions_taken": [
+    "Read local git objects and pinned-tree source only",
+    "Verified exact held tree3d0b4c54, typed treeaa8d23d and no-ckdl adapter SHA",
+    "Refreshed this one ignored JSON map"
+  ],
+  "actions_not_taken": [
+    "No fetch/network",
+    "No branch/index/source mutation",
+    "No patch application/import",
+    "No commit",
+    "No builds/tests",
+    "No compiler/resource generation"
+  ],
+  "format": 2,
+  "latest_six_changed_files": [
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "docs/design/graph-sdk-packaging.md",
+    "docs/self-hosting-build.md",
+    "src/authoring/source_intelligence.c",
+    "test/language/navigation.c"
+  ],
+  "reviewed_future_adapter": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/self-hosted-build-programs/chibi/.chibi/sdk-packaging/typed-no-ckdl.patch",
+    "actual_sha256": "a78d8d0e86c9c51501b666343ae0da50e67e11348a1c9d864704feeb33b6cbd0",
+    "required_sha256": "a78d8d0e86c9c51501b666343ae0da50e67e11348a1c9d864704feeb33b6cbd0",
+    "scope": "four deleted ckdl lines in SDK.chibi/build_sdk.c",
+    "root_source_review": "reported clear by parent; source patch examined here; no application",
+    "base_compatible": true
+  },
+  "required_four_receipt_replacements": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "held_line": 303,
+      "old": "studio/projects/starter/project.kdl",
+      "new": "studio/projects/starter/project.chibi"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "held_line": 304,
+      "old": "studio-sdk-project/project.kdl",
+      "new": "studio-sdk-project/project.chibi"
+    },
+    {
+      "file": ".github/workflows/paired-studio.yml",
+      "held_line": 182,
+      "old": "studio/projects/starter/project.kdl",
+      "new": "studio/projects/starter/project.chibi"
+    },
+    {
+      "file": ".github/workflows/paired-studio.yml",
+      "held_line": 183,
+      "old": "startup-project/project.kdl",
+      "new": "startup-project/project.chibi"
+    }
+  ],
+  "source_patch_review_scope": {
+    "all_incoming_files_count": 42,
+    "items": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "incoming_blob": "c172b851db6e81bb0d69f0c70eeb03be4b900ad4",
+        "typed_blob": "71e3991af09f8d427c6d9dad1a9512ef750c1e72",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -4,0 +5,5 @@ on:",
+          "@@ -57 +61,0 @@ jobs:",
+          "@@ -74,0 +79,2 @@ jobs:",
+          "@@ -163,9 +168,0 @@ jobs:",
+          "@@ -175 +171,0 @@ jobs:",
+          "@@ -205,4 +201 @@ jobs:",
+          "@@ -210,0 +204,3 @@ jobs:",
+          "@@ -213,8 +209,4 @@ jobs:",
+          "@@ -224,2 +216,18 @@ jobs:",
+          "@@ -238,0 +247,12 @@ jobs:",
+          "@@ -240 +260 @@ jobs:",
+          "@@ -243,0 +264 @@ jobs:",
+          "@@ -245,2 +266,48 @@ jobs:",
+          "@@ -260,0 +328,61 @@ jobs:"
+        ],
+        "adaptation_entries": [
+          7,
+          18
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": ".github/workflows/paired-studio.yml",
+        "incoming_blob": "843c21b02937f3b2992c3e54b540a089bda8cd77",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,225 @@"
+        ],
+        "adaptation_entries": [
+          7
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": ".github/workflows/publish.yml",
+        "incoming_blob": "e70f2f40a4f8a51f60c1ab1c13d6ae4dc745ab8a",
+        "typed_blob": "6cf6bee4a436443eccd2bea47507b13beea2f556",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -13,0 +14 @@ on:",
+          "@@ -16,0 +18,5 @@ on:",
+          "@@ -70,0 +77,3 @@ jobs:"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": ".github/workflows/third-party.yml",
+        "incoming_blob": "afa8d4ef0866f590d13f2000a1d49d0ae14799f6",
+        "typed_blob": "173cfc6bb79ad21c6b16a408600b8e5f7ac752ec",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -5,0 +6,2 @@ name: Third-party archives",
+          "@@ -11,0 +14,6 @@ on:",
+          "@@ -20,0 +29,13 @@ jobs:",
+          "@@ -21,0 +43 @@ jobs:",
+          "@@ -76,0 +99 @@ jobs:",
+          "@@ -113,0 +137,4 @@ jobs:",
+          "@@ -121,0 +149,2 @@ jobs:",
+          "@@ -124,0 +154,2 @@ jobs:",
+          "@@ -130,24 +161 @@ jobs:"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": ".gitignore",
+        "incoming_blob": "ab78f2ed72ef4d57ff48f939c2e469de1b565a63",
+        "typed_blob": "295116f876bff148ee162b639630c2826bbc8fa9",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -3,0 +4 @@ build-sdk/"
+        ],
+        "adaptation_entries": [
+          18
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "PLAN.md",
+        "incoming_blob": "aa60aab60acf3cf80c5920aa7b2ac89bc74761b9",
+        "typed_blob": "c63c6106d77282bf21b7b802230362d6dc2870ce",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -735,0 +736,12 @@ separate gate; the native runtime itself is still an explicit prebuilt input.",
+          "@@ -1215,0 +1228,16 @@ project policy called by allowed dependencies belongs in `.chibi`."
+        ],
+        "adaptation_entries": [
+          16
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "cmake/tests/desktop_dependencies/consumer/CMakeLists.txt",
+        "incoming_blob": "0c77b5a6da8443afb7f8d2b9436b24b9e4867383",
+        "typed_blob": "d533844c9e94b4d8ae713e7d20b0ee9239639e56",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -6 +6 @@ endif()",
+          "@@ -84,3 +84,8 @@ inspect(Chibi::vendor_fixture_sdk)"
+        ],
+        "adaptation_entries": [
+          13
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "cmake/tests/desktop_dependencies/modules/FindOpenGL.cmake",
+        "incoming_blob": "11f7639a794da3af6fc2c7ab2243df3651b368ff",
+        "typed_blob": "518a64f2ccc3f880d8514206a8ee251c72db2053",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -11 +11 @@ foreach(role GL OpenGL GLX)"
+        ],
+        "adaptation_entries": [
+          13
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "cmake/tests/desktop_dependencies/producer/CMakeLists.txt",
+        "incoming_blob": "fabed2c4218896ac3d9b214381ae8811144d0da0",
+        "typed_blob": "c87624826084f24daf265d9baabf566338661841",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -6 +6 @@ endif()",
+          "@@ -65 +65 @@ endif()",
+          "@@ -67,0 +68,7 @@ if(CASE MATCHES \"^(opengl|unowned)$\")"
+        ],
+        "adaptation_entries": [
+          13
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "docs/design/graph-sdk-packaging.md",
+        "incoming_blob": "2774457e12dcb9da16476e023059becceaf94026",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,146 @@"
+        ],
+        "adaptation_entries": [
+          16,
+          20
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "docs/self-hosting-build.md",
+        "incoming_blob": "006bee95759d5c7ddcfb86826b097b77b7fc9355",
+        "typed_blob": "099e915fb56e2d2d70febfc1824f61e86afd83f6",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -858,0 +859,78 @@ execute stage one and stage two and build/link a checked game."
+        ],
+        "adaptation_entries": [
+          16,
+          20
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "docs/testing.md",
+        "incoming_blob": "b60a294e610511f1275bba89df582671f1e01bae",
+        "typed_blob": "c678de029ab5009e288d7933208fd63dc5bb1630",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -1256 +1256,4 @@ Exceeding an explicit timeout fails the run. The runner verifies cleanup",
+          "@@ -3041,2 +3044,4 @@ Parent C++ activation follows actual scheduler/render targets, leaving pure C SD",
+          "@@ -3097,0 +3103,84 @@ unimplemented here."
+        ],
+        "adaptation_entries": [
+          16
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "docs/toolchain-inventory.md",
+        "incoming_blob": "e65493c472a52d95c358c6299c8b2904eb73f049",
+        "typed_blob": "9d22a57e246fee9d639d8669d5de02014d88eead",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -57 +57 @@ make the compiler self-hosted.",
+          "@@ -99 +99 @@ lacks:"
+        ],
+        "adaptation_entries": [
+          16
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "sdk/vendor_dependencies.cmake",
+        "incoming_blob": "a58b2250f76e993416076bf0613f901bfe81c596",
+        "typed_blob": "c60da0ae1625cafbb2eb02f770bbe6512d10f463",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -11 +11 @@ file(WRITE \"${CHIBI_VENDOR_DEPENDENCY_CONFIG}\" \"include(CMakeFindDependencyMacro",
+          "@@ -19,2 +19,7 @@ function(chibi_vendor_opengl dependency output)",
+          "@@ -23 +27,0 @@ function(chibi_vendor_opengl dependency output)",
+          "@@ -32 +36,2 @@ function(chibi_vendor_opengl dependency output)",
+          "@@ -35 +39,0 @@ function(chibi_vendor_opengl dependency output)"
+        ],
+        "adaptation_entries": [
+          13
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "src/assets/project_migrate.c",
+        "incoming_blob": "f90671535d1b3f0291b92b08db9b14416c4d5b83",
+        "typed_blob": null,
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -5706,0 +5707,3 @@ static void move_literal(entry_body_rewrite *out, const char *text, int length)"
+        ],
+        "adaptation_entries": [
+          8
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "src/authoring/source_intelligence.c",
+        "incoming_blob": "cc1dd378bfa12eca9c6bb1d6601f0d6f967ce998",
+        "typed_blob": "5935e0ee19671f8692d52da7067b6ff31c3d0426",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -162,0 +163,3 @@ static void append(char **out, const char *text)",
+          "@@ -169,2 +171,0 @@ static void append(char **out, const char *text)",
+          "@@ -171,0 +173 @@ static void append(char **out, const char *text)"
+        ],
+        "adaptation_entries": [
+          19
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "src/host/build_catalog.c",
+        "incoming_blob": "824057646b5bf33d163b984471f50349f75fc9f0",
+        "typed_blob": "8efae6a76f8f8e9c010e589b20278277a376b3b7",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -116,0 +117,14 @@ static const char *build_make_directory(void *service, const pin_value *argument",
+          "@@ -392,39 +406,41 @@ static const script_catalog_parameter array_result = {"
+        ],
+        "adaptation_entries": [
+          11
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "src/host/build_io.c",
+        "incoming_blob": "31715c70917265fbd45e6e8f3f6a5de781e78798",
+        "typed_blob": "b1fa3aaaff699964945a6bc34f8e39b91e1bba04",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -95,0 +96,27 @@ bool build_io_mkdir(const char *root, const char *path)"
+        ],
+        "adaptation_entries": [
+          11
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "src/host/build_io.h",
+        "incoming_blob": "4a56df7a787b1cbda9999c4adc3541662a7c9358",
+        "typed_blob": "c17e2cf26ea176842b1400940cc05adfb651a9b9",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -15,0 +16,6 @@ bool build_io_mkdir(const char *root, const char *path);",
+          "@@ -43,2 +49,3 @@ bool build_io_write("
+        ],
+        "adaptation_entries": [
+          11
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/fixtures/third_party_publish/gh",
+        "incoming_blob": "20f833b6a19e4cede3d20be411b742541a9440ee",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,63 @@"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/language/constant_scalar_chibi.c",
+        "incoming_blob": "3254876f1723419aecdf0b07c01154b99aa89395",
+        "typed_blob": "66d12160e9834483eb73cd23d42a70b360b9dfa0",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -56,4 +56,6 @@ typedef struct"
+        ],
+        "adaptation_entries": [
+          17
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/language/format.c",
+        "incoming_blob": "41b657d2f42ad7e67877e15f14672df299292f08",
+        "typed_blob": "a0988c353cd7c71e2441aa8a93259738685318bb",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -125,0 +126 @@ TEST_CASE(source_format_keeps_named_payload_fields)"
+        ],
+        "adaptation_entries": [
+          17
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/language/navigation.c",
+        "incoming_blob": "579ac92f5243348965332ee351c9c76617397f18",
+        "typed_blob": "91a256e798ea2441e7b005e51bdebe7e49b58ac5",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -374,0 +375,60 @@ static const authoring_completion *completion(const char *name)",
+          "@@ -1785,0 +1846,2 @@ void test_language_navigation()"
+        ],
+        "adaptation_entries": [
+          19
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/language/program.c",
+        "incoming_blob": "a3bcbf9e7f06978bd941e5bead01f1eea8a2d94e",
+        "typed_blob": "fae7218d09bd6d84d60768ec4c635a9da748fdee",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -8368,0 +8369,13 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)",
+          "@@ -8394,0 +8408,10 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)"
+        ],
+        "adaptation_entries": [
+          8
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/CMakeLists.txt",
+        "incoming_blob": "c802087b9619af78b601f5ddca1d21ed325c40b5",
+        "typed_blob": "ee1fdfc2536c9c656e7a4ff803f1df9d4939e2e3",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -94 +94 @@ target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEB",
+          "@@ -110 +110 @@ if(TARGET chibi_build_host)"
+        ],
+        "adaptation_entries": [
+          9
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/build_process.c",
+        "incoming_blob": "1ed9fe78974a99d7d901dcfc37f1ac7e3119d804",
+        "typed_blob": "abb65a59b514b5a252bae065c05206ec4634090b",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -376,0 +377,2 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)",
+          "@@ -973,0 +976,3 @@ static chibi_build_options primitive_options(const char *text, behavior_backend",
+          "@@ -981 +986 @@ static chibi_build_options primitive_options(const char *text, behavior_backend",
+          "@@ -984,0 +990,7 @@ static chibi_build_options primitive_options(const char *text, behavior_backend",
+          "@@ -1103 +1115,5 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)",
+          "@@ -1171 +1186,0 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)",
+          "@@ -1172,0 +1188 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)",
+          "@@ -1175 +1191,7 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)",
+          "@@ -1435,0 +1458,2 @@ TEST_CASE(private_started_steps_run_together)",
+          "@@ -1438,2 +1462,11 @@ TEST_CASE(private_started_steps_run_together)",
+          "@@ -1501 +1534,2 @@ TEST_CASE(private_unwaited_and_late_steps_stop)",
+          "@@ -1504 +1538 @@ TEST_CASE(private_unwaited_and_late_steps_stop)",
+          "@@ -1511 +1545 @@ TEST_CASE(private_unwaited_and_late_steps_stop)",
+          "@@ -1673,0 +1708,9 @@ TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files)",
+          "@@ -1794,5 +1837,19 @@ TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)",
+          "@@ -2118,0 +2176,85 @@ TEST_CASE(private_copies_renames_and_removals_leave_whole_files)",
+          "@@ -2192 +2334 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)",
+          "@@ -2224,0 +2367,6 @@ void test_tool_build_process(const char *worker, const char *host)",
+          "@@ -2265,0 +2414 @@ void test_tool_build_process(const char *worker, const char *host)",
+          "@@ -2267,0 +2417 @@ void test_tool_build_process(const char *worker, const char *host)",
+          "@@ -2290,0 +2441,9 @@ void test_tool_build_process(const char *worker, const char *host)"
+        ],
+        "adaptation_entries": [
+          10
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/build_sdk.c",
+        "incoming_blob": "08de8ea8d82eb882c192ec4bd0fa54310ef5d9b2",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,1045 @@"
+        ],
+        "adaptation_entries": [
+          3
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/build_toolchain.c",
+        "incoming_blob": "cec9ab7a3a2bdc5872b00282022d52aff146f658",
+        "typed_blob": "a1d77808d822f8fea65a37bfa2d82f33836267e9",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -17,0 +18 @@ static char suite[256], root[512], program_path[1024];",
+          "@@ -71,0 +73,19 @@ static int trace_count(const char *kind)",
+          "@@ -84,2 +104,10 @@ static void reset_fixture(const char *name, int backend)",
+          "@@ -697,0 +726 @@ void test_build_toolchain(const char *worker, const char *host)"
+        ],
+        "adaptation_entries": [],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/desktop_dependencies.c",
+        "incoming_blob": "ef961ffe4b5d34b0e7b3bfc5e4bc776012724607",
+        "typed_blob": "9c52874333235972aebfdaa7797978083d921788",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -18,0 +19,11 @@ static void path(char *out, const char *base, const char *name)",
+          "@@ -28,2 +39,4 @@ static int configure(const char *name)",
+          "@@ -50,2 +63,5 @@ static bool relocated(const char *name)",
+          "@@ -89 +104,0 @@ TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)",
+          "@@ -91,5 +106,3 @@ TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)",
+          "@@ -122,0 +136,151 @@ TEST_CASE(tooling_languages_follow_native_packages)",
+          "@@ -130,0 +295,4 @@ void test_tool_desktop_dependencies()"
+        ],
+        "adaptation_entries": [
+          13
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/main.c",
+        "incoming_blob": "483c027707e2d458945bb2e356dabbf25c0ed449",
+        "typed_blob": "e21b73e7a7057984a1501ffff5e0cb289c4707f1",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -55,0 +56 @@ void test_tool_build_process(const char *worker, const char *host);",
+          "@@ -63,0 +65,3 @@ void test_build_graph_resources(const char *host, const char *cmake_build);",
+          "@@ -65,0 +70 @@ void test_tool_desktop_dependencies();",
+          "@@ -538,0 +544,12 @@ int main(int argc, char **argv)",
+          "@@ -619 +636,2 @@ int main(int argc, char **argv)",
+          "@@ -623 +641,5 @@ int main(int argc, char **argv)",
+          "@@ -964,0 +987 @@ int main(int argc, char **argv)",
+          "@@ -1148,3 +1171,3 @@ int main(int argc, char **argv)",
+          "@@ -1175 +1198,2 @@ int main(int argc, char **argv)",
+          "@@ -1542,0 +1567,2 @@ int main(int argc, char **argv)",
+          "@@ -1583,0 +1610,2 @@ int main(int argc, char **argv)"
+        ],
+        "adaptation_entries": [
+          9
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/policy_worker.c",
+        "incoming_blob": "93a7911d9ae84f78e49925cebf30b9e10155ff93",
+        "typed_blob": "c1d1f17b276e8767ec0311509400c08408f29c27",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -336,0 +337,9 @@ int main(int argc, char **argv)"
+        ],
+        "adaptation_entries": [
+          12
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/test_policy.c",
+        "incoming_blob": "5ea5fd6d895abe6d64522f62c3c27453ac572032",
+        "typed_blob": "ed5a9839733dbd59baa3ca61fbcf09d176049f29",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -43,0 +44,10 @@ static const char driver_setup",
+          "@@ -128,0 +139,6 @@ static const char driver_source[] =",
+          "@@ -760,0 +777,32 @@ TEST_CASE(unavailable_discovery_refuses_before_launch)",
+          "@@ -826,0 +875,2 @@ void test_tool_test_policy()"
+        ],
+        "adaptation_entries": [
+          12
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "test/tools/third_party_publish.c",
+        "incoming_blob": "2c918ea1db78e42150c71f82262544e0e9e5d8b3",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,862 @@"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "third_party/README.md",
+        "incoming_blob": "2b6e0f617517895ee0725ff248f633085addfe6b",
+        "typed_blob": "5be32797b3d098e8ddebf8bd8b2dfbad71c22085",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -47,5 +47,8 @@ runs it for every target and variant, uploads the archives to a new release",
+          "@@ -54,0 +58,11 @@ change its commit or patches in `CMakeLists.txt` and run that workflow."
+        ],
+        "adaptation_entries": [],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "third_party/archives.tsv",
+        "incoming_blob": "853d2420f4f20a299847765b30fe977e1f373612",
+        "typed_blob": "374f40968e9bfd0f46e82be25262231554a5899d",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -3,6 +3,9 @@"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/check_publish_pins.sh",
+        "incoming_blob": "f5f0c2e13039520761d1c720984f31c50cf9c6e0",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,23 @@"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/compiler/runtime.json",
+        "incoming_blob": "310b278064aa0b54f3ee1e203f059aae907acb99",
+        "typed_blob": "9d480532e6888080f44ef190ea4d31ce81b57097",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -4,4 +4,4 @@",
+          "@@ -11,2 +11,2 @@",
+          "@@ -16,2 +16,2 @@",
+          "@@ -21,2 +21,2 @@"
+        ],
+        "adaptation_entries": [
+          15
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/graph/engine/Targets.chibi",
+        "incoming_blob": "29017657fba4af80bdd1d937743bc889faf9fa8b",
+        "typed_blob": "f02d936f33bc1b876c721a0306c2e755a4392df2",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -867 +867,2 @@ Files :: (target: string) -> string[] {",
+          "@@ -873 +874 @@ Files :: (target: string) -> string[] {"
+        ],
+        "adaptation_entries": [
+          1,
+          9
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/publish_third_party.py",
+        "incoming_blob": "46fa7bc997a022de5f3e6864058f436ad01da52f",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,328 @@"
+        ],
+        "adaptation_entries": [
+          14
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/test_policy.py",
+        "incoming_blob": "a5ba66b85fa65cd9e5ef989cd4d2354d86483eb3",
+        "typed_blob": "4dd56c1e7eef16488c49b77224d6cd9bc39834f0",
+        "both_sides_changed": true,
+        "incoming_hunks": [
+          "@@ -22,0 +23,3 @@ PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'",
+          "@@ -89,0 +93,4 @@ TOOLS = {",
+          "@@ -129,0 +137,5 @@ TOOLS = {",
+          "@@ -134,0 +147 @@ TOOLS = {",
+          "@@ -553 +566 @@ def process_children():",
+          "@@ -588 +601 @@ def cleanup_reader(subreaper):"
+        ],
+        "adaptation_entries": [
+          9,
+          12
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/toolchain/Graph.chibi",
+        "incoming_blob": "31a54d3a5579dd129fa48638e017978c45125d69",
+        "typed_blob": "b4ef4f4581cc77e87f261f476236a91ba706fc5a",
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -9 +9 @@ import strings \"core:strings\"",
+          "@@ -17 +17,4 @@ import strings \"core:strings\"",
+          "@@ -96 +99,11 @@ Libraries :: () -> int {",
+          "@@ -103 +116,7 @@ Libraries :: () -> int {",
+          "@@ -104,0 +124,9 @@ Libraries :: () -> int {",
+          "@@ -107 +135 @@ Libraries :: () -> int {",
+          "@@ -117 +145 @@ Libraries :: () -> int {",
+          "@@ -119 +147 @@ Libraries :: () -> int {",
+          "@@ -123 +151 @@ Libraries :: () -> int {",
+          "@@ -126,2 +154,2 @@ Libraries :: () -> int {"
+        ],
+        "adaptation_entries": [
+          5,
+          6
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      },
+      {
+        "file": "tools/toolchain/SDK.chibi",
+        "incoming_blob": "98f8baaf668cb27af71da79e07eda3979da2e23a",
+        "typed_blob": null,
+        "both_sides_changed": false,
+        "incoming_hunks": [
+          "@@ -0,0 +1,304 @@"
+        ],
+        "adaptation_entries": [
+          3,
+          4,
+          5
+        ],
+        "review": "changed-file/hunk integration assessment; retain typed source where no incoming delta applies"
+      }
+    ],
+    "excluded": "No claim of executed behavior, hosted evidence verification, or full security re-review of previously reviewed publication helper; this is source integration/seam assessment."
+  },
+  "resolved_candidate": {
+    "created": false,
+    "reason": "Held eligibility and reserved owner hunks make a fully resolved candidate premature. This map covers all42 incoming files without applying held source or creating a misleading resolved patch. No active or temporary index mutation."
+  }
+}

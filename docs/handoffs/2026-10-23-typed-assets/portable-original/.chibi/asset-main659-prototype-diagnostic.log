@@ -1,0 +1,6 @@
+Nested scene depth 256 (1633281 source bytes): line 1, column 1: Package source byte limit exceeded
+Nested scene depth 257 (1645828 source bytes): line 1, column 1: Package source byte limit exceeded
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/prototype.c (456): scene && acount(scene->entities) == SCENE_DEPTH_MAX)
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/prototype.c (1284): document && document->read > 32 * 1024 * 1024)
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/source_assets.c (479): !authoring_prototype_source_read(invalid_references[i], NULL, error, sizeof error))
+Test command wall time: 357.642s; includes in-test fixture setup; external configuration/build excluded.

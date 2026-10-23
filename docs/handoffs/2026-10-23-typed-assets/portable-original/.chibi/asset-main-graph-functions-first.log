@@ -1,0 +1,22 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: asset_documents_keep_authored_surfaces (OK) (0.803706 secs)
+Running: function_calls_mirror_their_signatures (OK) (0.535335 secs)
+Running: function_signature_edits_reach_every_call (OK) (0.509551 secs)
+Running: purity_toggles_execution_pins_on_calls (OK) (0.000008 secs)
+Running: material_functions_stay_pure (OK) (0.000001 secs)
+Running: variables_duplicate_and_own_their_defaults (OK) (0.000005 secs)
+Running: macro_signature_edits_reach_every_call (OK) (0.580055 secs)
+Running: input_defaults_reach_calls_that_kept_them (OK) (0.000005 secs)
+Running: promoted_outputs_run_after_a_free_then (OK) (0.000005 secs)
+Running: moved_function_pins_move_on_returns_and_calls (OK) (0.029332 secs)
+Running: moved_macro_pins_move_on_calls (OK) (0.000008 secs)
+Running: branches_collapse_to_macros_and_expand_back (OK) (1.127951 secs)
+Running: pure_calls_expand_into_their_calculations (OK) (0.000151 secs)
+Running: executable_calls_expand_into_their_body (OK) (0.000065 secs)
+Running: calls_that_cannot_expand_keep_their_call (OK) (0.000002 secs)
+Running: library_problems_show_once_under_the_library (OK) (0.000127 secs)
+Running: calls_into_missing_libraries_are_one_error (OK) (0.000013 secs)
+Running: validation_compiles_with_the_libraries_called (OK) (0.000022 secs)
+===============================================================
+Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 182
+Test command wall time: 3.993s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,20 @@
+{
+  "native64": {
+    "asset_compiler.chibip": "1dedea839e7d9d8e84c2ebe7f74f71e9b8a05b6d20ea7deaff02c55be2d0b02f",
+    "manifest.json": "25fb7ac069bc6fc1031dcbb3df1d602e7c731abfbf87e007d1896aae5d48f5e0",
+    "sources.sha256": "08b59432130f95416db8c209b813a01d240e9a67032b419ceff448778d11dc9b",
+    "target.json": "19311c9d539e70c84d8a851cae5f1747c29e4cbb567c4d87f86b3ae7fd01ad11",
+    "artifact_identical": true,
+    "target_identical": true,
+    "all_source_hashes_current": true
+  },
+  "wasm32": {
+    "asset_compiler.chibip": "fd14178f100dec8736192ba54425ad7c5561b8234862a6a00332caa2daabfbe9",
+    "manifest.json": "28cbcd75723772fb90f0cf7bfb1908c3e96a8eccf9915e7eaa3331152090c498",
+    "sources.sha256": "08b59432130f95416db8c209b813a01d240e9a67032b419ceff448778d11dc9b",
+    "target.json": "b6340e46ce1f478cfedc8c09d1d2e85462beb405f70ecadec80364adf8436654",
+    "artifact_identical": true,
+    "target_identical": true,
+    "all_source_hashes_current": true
+  }
+}

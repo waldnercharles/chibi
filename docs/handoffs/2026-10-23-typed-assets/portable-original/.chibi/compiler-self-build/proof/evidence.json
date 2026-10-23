@@ -1,0 +1,299 @@
+{
+  "revision": null,
+  "runner_os": null,
+  "runner_arch": null,
+  "deadline_seconds": 59,
+  "stages": [
+    {
+      "stage": "stage1",
+      "input_compiler_sha256": "88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178",
+      "input_manifest_sha256": "a6b9f220afa81ca34b9e27ba7ceac0314eb94b0df658791d0dc270eb815ea57e",
+      "output_bytes": 11539354,
+      "output_compiler_sha256": "88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178",
+      "version": 5,
+      "minimum": 2
+    },
+    {
+      "stage": "stage2",
+      "input_compiler_sha256": "88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178",
+      "input_manifest_sha256": "98808699f666e107ce3c4e3cb571eab3565b475c865a0d72afa05d5fa899f1ea",
+      "output_bytes": 11539354,
+      "output_compiler_sha256": "88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178",
+      "version": 5,
+      "minimum": 2
+    }
+  ],
+  "invocations": [
+    {
+      "name": "stage1",
+      "arguments": [
+        "--artifact",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/tools/compiler/bootstrap/compiler.chibip",
+        "--entry",
+        "0x140a9546d9e8c296",
+        "--input",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/compile.json",
+        "--backend",
+        "sljit",
+        "--budget",
+        "2000000000",
+        "--timeout-ms",
+        "58704",
+        "--output-artifact",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/stage1/compiler.chibip"
+      ],
+      "child_environment": {
+        "CC": "unavailable-in-self-build",
+        "CXX": "unavailable-in-self-build",
+        "PATH": "",
+        "TEMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMPDIR": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof"
+      },
+      "timeout": false,
+      "exit_code": 0,
+      "elapsed_total_seconds": 5.0169933
+    },
+    {
+      "name": "stage1-contract",
+      "arguments": [
+        "--artifact",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/stage1/compiler.chibip",
+        "--entry",
+        "0x3e6062160494dc34",
+        "--input",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/contract.json",
+        "--backend",
+        "bytecode",
+        "--budget",
+        "10000",
+        "--timeout-ms",
+        "53974"
+      ],
+      "child_environment": {
+        "CC": "unavailable-in-self-build",
+        "CXX": "unavailable-in-self-build",
+        "PATH": "",
+        "TEMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMPDIR": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof"
+      },
+      "timeout": false,
+      "exit_code": 0,
+      "elapsed_total_seconds": 5.2006398
+    },
+    {
+      "name": "stage2",
+      "arguments": [
+        "--artifact",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/stage1/compiler.chibip",
+        "--entry",
+        "0x140a9546d9e8c296",
+        "--input",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/compile.json",
+        "--backend",
+        "sljit",
+        "--budget",
+        "2000000000",
+        "--timeout-ms",
+        "53780",
+        "--output-artifact",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/stage2/compiler.chibip"
+      ],
+      "child_environment": {
+        "CC": "unavailable-in-self-build",
+        "CXX": "unavailable-in-self-build",
+        "PATH": "",
+        "TEMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMPDIR": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof"
+      },
+      "timeout": false,
+      "exit_code": 0,
+      "elapsed_total_seconds": 8.8319255
+    },
+    {
+      "name": "stage2-contract",
+      "arguments": [
+        "--artifact",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/stage2/compiler.chibip",
+        "--entry",
+        "0x3e6062160494dc34",
+        "--input",
+        "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof/contract.json",
+        "--backend",
+        "bytecode",
+        "--budget",
+        "10000",
+        "--timeout-ms",
+        "50161"
+      ],
+      "child_environment": {
+        "CC": "unavailable-in-self-build",
+        "CXX": "unavailable-in-self-build",
+        "PATH": "",
+        "TEMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMP": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof",
+        "TMPDIR": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/compiler-self-build/proof"
+      },
+      "timeout": false,
+      "exit_code": 0,
+      "elapsed_total_seconds": 9.003971
+    }
+  ],
+  "source_files": [
+    {
+      "path": "package_compiler/Compile.chibi",
+      "bytes": 91644,
+      "sha256": "dc44001e5ab79307148b17350b8478c192c4f5fee02c9e6889af8a7f59b90ba3",
+      "seed_sha256": "dc44001e5ab79307148b17350b8478c192c4f5fee02c9e6889af8a7f59b90ba3"
+    },
+    {
+      "path": "package_compiler/Body.chibi",
+      "bytes": 118852,
+      "sha256": "a58205f873d220bee74385e3418a87ef4f960df9eb451905deb396a8baec0556",
+      "seed_sha256": "a58205f873d220bee74385e3418a87ef4f960df9eb451905deb396a8baec0556"
+    },
+    {
+      "path": "package_compiler/Steps.chibi",
+      "bytes": 184836,
+      "sha256": "60499d8b125436be7943b2ba257cac8214babf06f98620084d7354eb1d90a2cf",
+      "seed_sha256": "60499d8b125436be7943b2ba257cac8214babf06f98620084d7354eb1d90a2cf"
+    },
+    {
+      "path": "package_compiler/Maps.chibi",
+      "bytes": 26455,
+      "sha256": "2d9728c9f814557a7d0b3938918e82954b7346cca5fcfcecd8426b9f7a105864",
+      "seed_sha256": "2d9728c9f814557a7d0b3938918e82954b7346cca5fcfcecd8426b9f7a105864"
+    },
+    {
+      "path": "package_compiler/References.chibi",
+      "bytes": 25045,
+      "sha256": "eb8f4548f5675a05f7335a758c11f4e2fda76462b7cdad2f0eaeae9cc41a7cde",
+      "seed_sha256": "eb8f4548f5675a05f7335a758c11f4e2fda76462b7cdad2f0eaeae9cc41a7cde"
+    },
+    {
+      "path": "package_compiler/Tree.chibi",
+      "bytes": 2578,
+      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+      "seed_sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+    },
+    {
+      "path": "package_compiler/Number.chibi",
+      "bytes": 15715,
+      "sha256": "3624ec837dfb7c0442600bfe2a8945a8079d39c7cc8c6ef213cb23f5d7f3f7f3",
+      "seed_sha256": "3624ec837dfb7c0442600bfe2a8945a8079d39c7cc8c6ef213cb23f5d7f3f7f3"
+    },
+    {
+      "path": "package_compiler/Behavior.chibi",
+      "bytes": 21806,
+      "sha256": "6e814a9a7797a9b5307595550d693a77d54126ed704e9a863a9661475fade3d1",
+      "seed_sha256": "6e814a9a7797a9b5307595550d693a77d54126ed704e9a863a9661475fade3d1"
+    },
+    {
+      "path": "syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 2282,
+      "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+      "seed_sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "bytes": 15843,
+      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471",
+      "seed_sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
+    },
+    {
+      "path": "source_snapshot/Snapshot.chibi",
+      "bytes": 15884,
+      "sha256": "64ddb8a19fedc78b0920db46e8ad6415d9de85700adb04388186014c934ec41f",
+      "seed_sha256": "64ddb8a19fedc78b0920db46e8ad6415d9de85700adb04388186014c934ec41f"
+    },
+    {
+      "path": "compiler_syntax/Syntax.chibi",
+      "bytes": 1529,
+      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+      "seed_sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+    },
+    {
+      "path": "package_routes/Routes.chibi",
+      "bytes": 7736,
+      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+      "seed_sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+    },
+    {
+      "path": "package_syntax/Extract.chibi",
+      "bytes": 4276,
+      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+      "seed_sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+    },
+    {
+      "path": "package_graph/Graph.chibi",
+      "bytes": 13271,
+      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+      "seed_sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+    },
+    {
+      "path": "package_paths/Paths.chibi",
+      "bytes": 2274,
+      "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+      "seed_sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+    },
+    {
+      "path": "lexical_binding/Binding.chibi",
+      "bytes": 8697,
+      "sha256": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450",
+      "seed_sha256": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450"
+    },
+    {
+      "path": "prepared_writer/Writer.chibi",
+      "bytes": 26338,
+      "sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281",
+      "seed_sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
+    },
+    {
+      "path": "package_compiler/Bootstrap.chibi",
+      "bytes": 393,
+      "sha256": "19f9c1a2a4f690bba38fafc536c2770c38d7a0eb82d281d16c320e2a16fef8da",
+      "seed_sha256": "19f9c1a2a4f690bba38fafc536c2770c38d7a0eb82d281d16c320e2a16fef8da"
+    }
+  ],
+  "native_configure_seconds": null,
+  "native_build_seconds": null,
+  "runtime_sha256": "24ba34921691b5542714c426b943b4e0dd642a337b487ebce70fe957f699e811",
+  "platform": "macos-arm64",
+  "runtime_source_revision": "65da1206bd6fb228c4cc22ce9822ac54314c87bb",
+  "runtime_source_tree": "30692e802874e003de603e93c82f7de369ed962b",
+  "runtime_release": "waldnercharles/chibi/compiler-runtime-2026-10-22",
+  "seed_manifest_sha256": "a6b9f220afa81ca34b9e27ba7ceac0314eb94b0df658791d0dc270eb815ea57e",
+  "input_files": [
+    "chibi-compiler-host",
+    "packages/core/strings/Strings.chibi",
+    "tools/compiler/bootstrap/bootstrap.json",
+    "tools/compiler/bootstrap/compiler.chibip",
+    "tools/compiler/compiler_syntax/Syntax.chibi",
+    "tools/compiler/lexical_binding/Binding.chibi",
+    "tools/compiler/package_compiler/Behavior.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Bootstrap.chibi",
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Maps.chibi",
+    "tools/compiler/package_compiler/Number.chibi",
+    "tools/compiler/package_compiler/References.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/compiler/package_compiler/Tree.chibi",
+    "tools/compiler/package_graph/Graph.chibi",
+    "tools/compiler/package_paths/Paths.chibi",
+    "tools/compiler/package_routes/Routes.chibi",
+    "tools/compiler/package_syntax/Extract.chibi",
+    "tools/compiler/prepared_writer/Writer.chibi",
+    "tools/compiler/runtime.json",
+    "tools/compiler/source_snapshot/Snapshot.chibi",
+    "tools/compiler/syntax_diagnostics/Diagnostics.chibi"
+  ],
+  "target_validation": "Pinned runtime has no independent target-query interface; manifest target is used and output-artifact validates actual prepared ABI/native catalog",
+  "request_sha256": "56613039c3abc681c8946da1b4230e891a98d9c2dfbb0a89f6ee4cd8c2d4051b",
+  "compiler_bytes": 11539354,
+  "compiler_sha256": "88fd8c8647eaa62ba354cd4d5cf3731ddae4e538e1f066d5279092f4e8ba1178",
+  "proof_seconds": 9.0133459,
+  "proof_timeout": false
+}

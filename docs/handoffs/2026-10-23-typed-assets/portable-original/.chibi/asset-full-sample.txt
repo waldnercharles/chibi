@@ -1,0 +1,230 @@
+Analysis of sampling chibi-compiler-host (pid 12845) every 1 millisecond
+Process:         chibi-compiler-host [12845]
+Path:            /Users/USER/*/chibi-compiler-host
+Load Address:    0x10425c000
+Identifier:      chibi-compiler-host
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  Python [12835]
+Target Type:     live task
+
+Date/Time:       2026-10-21 18:58:20.096 -0600
+Launch Time:     2026-10-21 18:57:46.346 -0600
+OS Version:      macOS 26.7.1 (25G241)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         208.0M
+Physical footprint (peak):  208.0M
+Idle exit:                  untracked
+----
+
+Call graph:
+    710 Thread_65660406   DispatchQueue_1: com.apple.main-thread  (serial)
+      710 start  (in dyld) + 6992  [0x18377c4e4]
+        710 main  (in chibi-compiler-host) + 4860  [0x10425dd9c]
+          710 compiler_host_invoke  (in chibi-compiler-host) + 168  [0x104271a70]  compiler_host.c:672
+            710 invoke  (in chibi-compiler-host) + 2856  [0x104272650]  compiler_host.c:597
+              710 behavior_function_run  (in chibi-compiler-host) + 104  [0x10435f458]  runner.c:172
+                706 behavior_function_run_calls  (in chibi-compiler-host) + 608  [0x1042f96ec]  call.c:490
+                + 702 frame_new  (in chibi-compiler-host) + 1780  [0x1042fa688]  call.c:342
+                + ! 702 pin_value_snapshot_to_arena  (in chibi-compiler-host) + 40  [0x1043920b8]  array.c:511
+                + !   702 snapshot_value  (in chibi-compiler-host) + 544  [0x104392314]  array.c:486
+                + !     701 pin_array_snapshot_to_arena  (in chibi-compiler-host) + 184  [0x104393850]  array.c:768
+                + !     : 701 pin_array_snapshot_copy  (in chibi-compiler-host) + 560  [0x104393200]  array.c:660
+                + !     :   701 pin_array_snapshot_items  (in chibi-compiler-host) + 148  [0x104392fb8]  array.c:711
+                + !     :     619 snapshot_items  (in chibi-compiler-host) + 392  [0x104393424]  array.c:697
+                + !     :     | 485 snapshot_record  (in chibi-compiler-host) + 220  [0x104394850]  array.c:453
+                + !     :     | + 476 pin_struct_snapshot_fields  (in chibi-compiler-host) + 44  [0x104391db4]  array.c:436
+                + !     :     | + ! 236 snapshot_fields  (in chibi-compiler-host) + 472  [0x104391fc0]  array.c:419
+                + !     :     | + ! : 119 arena_string  (in chibi-compiler-host) + 108  [0x104392634]  array.c:182
+                + !     :     | + ! : | 112 _platform_memmove  (in libsystem_platform.dylib) + 420,444,...  [0x183b51504,0x183b5151c,...]
+                + !     :     | + ! : | 4 DYLD-STUB$$__memcpy_chk  (in chibi-compiler-host) + 4  [0x1043be650]
+                + !     :     | + ! : | 2 DYLD-STUB$$mkdtempat_np  (in libsystem_c.dylib) + 12  [0x183a4ecac]
+                + !     :     | + ! : | 1 __memcpy_chk  (in libsystem_c.dylib) + 0  [0x1839dab64]
+                + !     :     | + ! : 51 arena_string  (in chibi-compiler-host) + 52  [0x1043925fc]  array.c:179
+                + !     :     | + ! : | 47 _platform_strlen  (in libsystem_platform.dylib) + 48,56  [0x183b4eaf0,0x183b4eaf8]
+                + !     :     | + ! : | 4 DYLD-STUB$$strlen  (in chibi-compiler-host) + 4  [0x1043be9a4]
+                + !     :     | + ! : 33 arena_string  (in chibi-compiler-host) + 72  [0x104392610]  array.c:180
+                + !     :     | + ! : | 12 arena_alloc  (in chibi-compiler-host) + 244,268,...  [0x10427bac8,0x10427bae0,...]  arena.c:274
+                + !     :     | + ! : | 7 arena_alloc  (in chibi-compiler-host) + 528  [0x10427bbe4]  arena.c:285
+                + !     :     | + ! : | 3 arena_alloc  (in chibi-compiler-host) + 336  [0x10427bb24]  arena.c:276
+                + !     :     | + ! : | 2 arena_alloc  (in chibi-compiler-host) + 12  [0x10427b9e0]  arena.c:262
+                + !     :     | + ! : | 2 arena_alloc  (in chibi-compiler-host) + 24  [0x10427b9ec]  arena.c:263
+                + !     :     | + ! : | 2 arena_alloc  (in chibi-compiler-host) + 176  [0x10427ba84]  arena.c:272
+                + !     :     | + ! : | 2 arena_alloc  (in chibi-compiler-host) + 216,220  [0x10427baac,0x10427bab0]  arena.c:273
+                + !     :     | + ! : | 2 arena_alloc  (in chibi-compiler-host) + 352  [0x10427bb34]  arena.c:277
+                + !     :     | + ! : | 1 arena_alloc  (in chibi-compiler-host) + 64  [0x10427ba14]  arena.c:266
+                + !     :     | + ! : 18 arena_string  (in chibi-compiler-host) + 120  [0x104392640]  array.c:183
+                + !     :     | + ! : | 9 pin_copy_record  (in chibi-compiler-host) + 24,0  [0x104392e00,0x104392de8]  copy_internal.h:22
+                + !     :     | + ! : | 5 pin_copy_record  (in chibi-compiler-host) + 304  [0x104392f18]  copy_internal.h:45
+                + !     :     | + ! : | 2 pin_copy_record  (in chibi-compiler-host) + 32  [0x104392e08]  copy_internal.h:22
+                + !     :     | + ! : | + 2 _tlv_get_addr  (in libdyld.dylib) + 12  [0x183744394]
+                + !     :     | + ! : | 2 pin_copy_record  (in chibi-compiler-host) + 48  [0x104392e18]  copy_internal.h:24
+                + !     :     | + ! : 7 arena_string  (in chibi-compiler-host) + 140,136  [0x104392654,0x104392650]  array.c:186
+                + !     :     | + ! : 5 arena_string  (in chibi-compiler-host) + 24  [0x1043925e0]  array.c:176
+                + !     :     | + ! : 2 arena_string  (in chibi-compiler-host) + 12  [0x1043925d4]  array.c:175
+                + !     :     | + ! : 1 arena_string  (in chibi-compiler-host) + 96  [0x104392628]  array.c:182
+                + !     :     | + ! 68 snapshot_fields  (in chibi-compiler-host) + 164,200,...  [0x104391e8c,0x104391eb0,...]  array.c:404
+                + !     :     | + ! 66 snapshot_fields  (in chibi-compiler-host) + 112,104,...  [0x104391e58,0x104391e50,...]  array.c:402
+                + !     :     | + ! 40 snapshot_fields  (in chibi-compiler-host) + 404  [0x104391f7c]  array.c:414
+                + !     :     | + ! : 21 value_string  (in chibi-compiler-host) + 20  [0x104393c84]  array.c:21
+                + !     :     | + ! : 19 value_string  (in chibi-compiler-host) + 52  [0x104393ca4]  array.c:0
+                + !     :     | + ! 29 snapshot_fields  (in chibi-compiler-host) + 256  [0x104391ee8]  array.c:408
+                + !     :     | + ! 16 snapshot_fields  (in chibi-compiler-host) + 404  [0x104391f7c]  array.c:414
+                + !     :     | + ! 14 snapshot_fields  (in chibi-compiler-host) + 488  [0x104391fd0]  array.c:420
+                + !     :     | + ! 4 snapshot_fields  (in chibi-compiler-host) + 668,664  [0x104392084,0x104392080]  array.c:432
+                + !     :     | + ! 2 snapshot_fields  (in chibi-compiler-host) + 28,56  [0x104391e04,0x104391e20]  array.c:399
+                + !     :     | + ! 1 snapshot_fields  (in chibi-compiler-host) + 24  [0x104391e00]  array.c:398
+                + !     :     | + 5 pin_struct_snapshot_fields  (in chibi-compiler-host) + 76  [0x104391dd4]  array.c:438
+                + !     :     | + ! 2 pin_arena_trace_struct  (in chibi-compiler-host) + 48  [0x104398d38]  trace.c:71
+                + !     :     | + ! : 1 arena_set_trace  (in chibi-compiler-host) + 32  [0x10427c148]  arena.c:325
+                + !     :     | + ! : 1 arena_set_trace  (in chibi-compiler-host) + 160  [0x10427c1c8]  arena.c:332
+                + !     :     | + ! 2 pin_arena_trace_struct  (in chibi-compiler-host) + 48  [0x104398d38]  trace.c:72
+                + !     :     | + ! 1 arena_set_trace  (in chibi-compiler-host) + 168  [0x10427c1d0]  arena.c:332
+                + !     :     | + 2 pin_struct_snapshot_fields  (in chibi-compiler-host) + 20  [0x104391d9c]  array.c:435
+                + !     :     | + 2 pin_struct_snapshot_fields  (in chibi-compiler-host) + 84  [0x104391ddc]  array.c:440
+                + !     :     | 83 snapshot_record  (in chibi-compiler-host) + 84  [0x1043947c8]  array.c:444
+                + !     :     | + 49 pin_record_current  (in chibi-compiler-host) + 76,84,...  [0x104398614,0x10439861c,...]  record.c:310
+                + !     :     | + 23 pin_record_current  (in chibi-compiler-host) + 32,16  [0x1043985e8,0x1043985d8]  record.c:308
+                + !     :     | + 8 pin_record_current  (in chibi-compiler-host) + 188,180  [0x104398684,0x10439867c]  record.c:315
+                + !     :     | + 2 pin_record_current  (in chibi-compiler-host) + 160  [0x104398668]  record.c:0
+                + !     :     | + 1 pin_record_current  (in chibi-compiler-host) + 48  [0x1043985f8]  record.c:309
+                + !     :     | 18 snapshot_record  (in chibi-compiler-host) + 184  [0x10439482c]  array.c:451
+                + !     :     | + 13 _platform_memmove  (in libsystem_platform.dylib) + 428,460  [0x183b5150c,0x183b5152c]
+                + !     :     | + 2 DYLD-STUB$$__memcpy_chk  (in chibi-compiler-host) + 0,4  [0x1043be64c,0x1043be650]
+                + !     :     | + 2 DYLD-STUB$$mkdtempat_np  (in libsystem_c.dylib) + 12  [0x183a4ecac]
+                + !     :     | + 1 __memcpy_chk  (in libsystem_c.dylib) + 0  [0x1839dab64]
+                + !     :     | 14 snapshot_record  (in chibi-compiler-host) + 144  [0x104394804]  array.c:450
+                + !     :     | + 7 arena_alloc  (in chibi-compiler-host) + 244,268  [0x10427bac8,0x10427bae0]  arena.c:274
+                + !     :     | + 3 arena_alloc  (in chibi-compiler-host) + 64  [0x10427ba14]  arena.c:266
+                + !     :     | + 1 arena_alloc  (in chibi-compiler-host) + 16  [0x10427b9e4]  arena.c:262
+                + !     :     | + 1 arena_alloc  (in chibi-compiler-host) + 176  [0x10427ba84]  arena.c:272
+                + !     :     | + 1 arena_alloc  (in chibi-compiler-host) + 336  [0x10427bb24]  arena.c:276
+                + !     :     | + 1 arena_alloc  (in chibi-compiler-host) + 528  [0x10427bbe4]  arena.c:285
+                + !     :     | 11 snapshot_record  (in chibi-compiler-host) + 200  [0x10439483c]  array.c:452
+                + !     :     | + 4 pin_copy_record  (in chibi-compiler-host) + 24  [0x104392e00]  copy_internal.h:22
+                + !     :     | + 3 pin_copy_record  (in chibi-compiler-host) + 32  [0x104392e08]  copy_internal.h:22
+                + !     :     | + ! 3 _tlv_get_addr  (in libdyld.dylib) + 12  [0x183744394]
+                + !     :     | + 3 pin_copy_record  (in chibi-compiler-host) + 304  [0x104392f18]  copy_internal.h:45
+                + !     :     | + 1 pin_copy_record  (in chibi-compiler-host) + 48  [0x104392e18]  copy_internal.h:24
+                + !     :     | 3 snapshot_record  (in chibi-compiler-host) + 44,84  [0x1043947a0,0x1043947c8]  array.c:444
+                + !     :     | 2 snapshot_record  (in chibi-compiler-host) + 108  [0x1043947e0]  array.c:447
+                + !     :     | 1 snapshot_record  (in chibi-compiler-host) + 20  [0x104394788]  array.c:443
+                + !     :     | 1 snapshot_record  (in chibi-compiler-host) + 128  [0x1043947f4]  array.c:450
+                + !     :     | 1 snapshot_record  (in chibi-compiler-host) + 172  [0x104394820]  array.c:451
+                + !     :     27 snapshot_items  (in chibi-compiler-host) + 300  [0x1043933c8]  array.c:690
+                + !     :     | 23 _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib) + 0,36,...  [0x183b52730,0x183b52754,...]
+                + !     :     | 3 DYLD-STUB$$_platform_strcmp  (in libsystem_platform.dylib) + 8  [0x183b55914]
+                + !     :     | 1 DYLD-STUB$$strcmp  (in chibi-compiler-host) + 4  [0x1043be998]
+                + !     :     17 snapshot_items  (in chibi-compiler-host) + 340  [0x1043933f0]  array.c:693
+                + !     :     | 15 _platform_memmove  (in libsystem_platform.dylib) + 428,460,...  [0x183b5150c,0x183b5152c,...]
+                + !     :     | 2 DYLD-STUB$$memcpy  (in chibi-compiler-host) + 4  [0x1043be854]
+                + !     :     12 snapshot_items  (in chibi-compiler-host) + 440  [0x104393454]  array.c:700
+                + !     :     | 10 _platform_memmove  (in libsystem_platform.dylib) + 428,460,...  [0x183b5150c,0x183b5152c,...]
+                + !     :     | 2 DYLD-STUB$$memcpy  (in chibi-compiler-host) + 4  [0x1043be854]
+                + !     :     11 snapshot_items  (in chibi-compiler-host) + 372  [0x104393410]  array.c:696
+                + !     :     | 7 pin_copy_record  (in chibi-compiler-host) + 24  [0x104392e00]  copy_internal.h:22
+                + !     :     | 4 pin_copy_record  (in chibi-compiler-host) + 304  [0x104392f18]  copy_internal.h:45
+                + !     :     5 snapshot_items  (in chibi-compiler-host) + 96,104  [0x1043932fc,0x104393304]  array.c:677
+                + !     :     3 snapshot_items  (in chibi-compiler-host) + 232,252  [0x104393384,0x104393398]  array.c:689
+                + !     :     3 snapshot_items  (in chibi-compiler-host) + 392  [0x104393424]  array.c:697
+                + !     :     2 snapshot_items  (in chibi-compiler-host) + 164  [0x104393340]  array.c:683
+                + !     :     1 snapshot_items  (in chibi-compiler-host) + 48  [0x1043932cc]  array.c:675
+                + !     :     1 snapshot_items  (in chibi-compiler-host) + 268  [0x1043933a8]  array.c:690
+                + !     1 pin_array_snapshot_to_arena  (in chibi-compiler-host) + 128  [0x104393818]  array.c:764
+                + !       1 snapshot_like  (in chibi-compiler-host) + 820  [0x104392a0c]  array.c:595
+                + !         1 __bzero  (in libsystem_platform.dylib) + 68  [0x183b51074]
+                + 2 frame_new  (in chibi-compiler-host) + 624  [0x1042fa204]  call.c:286
+                + ! 1 behavior_function_prepare_data  (in chibi-compiler-host) + 1232  [0x10430d750]  host.c:108
+                + ! : 1 xcalloc  (in chibi-compiler-host) + 120  [0x10427ca50]  xalloc.c:38
+                + ! :   1 _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib) + 308  [0x183969070]
+                + ! 1 behavior_function_prepare_data  (in chibi-compiler-host) + 480  [0x10430d460]  host.c:97
+                + 1 frame_new  (in chibi-compiler-host) + 1548  [0x1042fa5a0]  call.c:327
+                + 1 frame_new  (in chibi-compiler-host) + 2068  [0x1042fa7a8]  call.c:362
+                +   1 behavior_function_activation_init  (in chibi-compiler-host) + 376  [0x104366194]  suspend.c:198
+                +     1 xcalloc  (in chibi-compiler-host) + 120  [0x10427ca50]  xalloc.c:38
+                +       1 _xzm_malloc_large_huge  (in libsystem_malloc.dylib) + 464  [0x183963458]
+                +         1 xzm_segment_group_alloc_chunk  (in libsystem_malloc.dylib) + 1260  [0x18394c8e8]
+                +           1 _xzm_segment_group_clear_chunk  (in libsystem_malloc.dylib) + 44  [0x18394c3a8]
+                +             1 madvise  (in libsystem_kernel.dylib) + 8  [0x183b069b0]
+                4 behavior_function_run_calls  (in chibi-compiler-host) + 1320  [0x1042f99b4]  call.c:513
+                  3 frame_retire  (in chibi-compiler-host) + 268  [0x1042fadb0]  call.c:141
+                  ! 3 trim_spares  (in chibi-compiler-host) + 252  [0x1042faf24]  call.c:118
+                  !   2 frame_free  (in chibi-compiler-host) + 80  [0x1042f9380]  call.c:59
+                  !   : 2 arena_free  (in chibi-compiler-host) + 100  [0x10427be54]  arena.c:303
+                  !   :   1 _free  (in libsystem_malloc.dylib) + 0  [0x183973cd0]
+                  !   :   1 xzm_segment_group_free_chunk  (in libsystem_malloc.dylib) + 860  [0x18394d49c]
+                  !   :     1 _xzm_segment_group_span_mark_free  (in libsystem_malloc.dylib) + 28  [0x18394db90]
+                  !   1 frame_free  (in chibi-compiler-host) + 56  [0x1042f9368]  call.c:57
+                  !     1 behavior_function_free_data  (in chibi-compiler-host) + 64  [0x10430cad4]  host.c:32
+                  1 frame_retire  (in chibi-compiler-host) + 44  [0x1042facd0]  call.c:125
+                    1 behavior_function_reset_host  (in chibi-compiler-host) + 1460  [0x10430f5fc]  host.c:214
+                      1 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x183b51414]
+
+Total number in stack (recursive counted multiple, when >=5):
+        5       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x183b51360]
+
+Sort by top of stack, same collapsed (when >= 5):
+        snapshot_fields  (in chibi-compiler-host)        200
+        _platform_memmove  (in libsystem_platform.dylib)        151
+        pin_record_current  (in chibi-compiler-host)        83
+        _platform_strlen  (in libsystem_platform.dylib)        47
+        arena_alloc  (in chibi-compiler-host)        47
+        value_string  (in chibi-compiler-host)        40
+        pin_copy_record  (in chibi-compiler-host)        35
+        _platform_strcmp$VARIANT$Base  (in libsystem_platform.dylib)        23
+        arena_string  (in chibi-compiler-host)        15
+        snapshot_items  (in chibi-compiler-host)        15
+        snapshot_record  (in chibi-compiler-host)        8
+        DYLD-STUB$$__memcpy_chk  (in chibi-compiler-host)        6
+        _tlv_get_addr  (in libdyld.dylib)        5
+
+Binary Images:
+       0x10425c000 -        0x10440bddb +chibi-compiler-host (0) <09FCCE0B-A1C7-3E7D-8DFE-5A0CFC36D19A> /Users/*/chibi-compiler-host
+       0x1836d4000 -        0x183726b4b  libobjc.A.dylib (951.7) <1D62B376-2303-376A-B993-9432A2004EB6> /usr/lib/libobjc.A.dylib
+       0x183727000 -        0x18375bd58  libdyld.dylib (1387) <70073E6E-4CDD-314F-BBDF-EC7FF6CE2DFC> /usr/lib/system/libdyld.dylib
+       0x18375c000 -        0x18380f4ff  dyld (1.0.0 - 1387) <0263B88E-0B22-3B33-BBC0-483BE879B513> /usr/lib/dyld
+       0x183810000 -        0x183813228  libsystem_blocks.dylib (96) <B33F1440-9364-38E4-AF85-8A21BFF24324> /usr/lib/system/libsystem_blocks.dylib
+       0x183814000 -        0x18386855f  libxpc.dylib (3102.160.5) <E26A36A6-4B8F-321C-AE17-54353F9EEE84> /usr/lib/system/libxpc.dylib
+       0x183869000 -        0x1838899ff  libsystem_trace.dylib (1861.160.4) <314A8A89-4715-32B9-ABC2-B3087149C8B7> /usr/lib/system/libsystem_trace.dylib
+       0x18388a000 -        0x1839385f7  libcorecrypto.dylib (1922.160.10) <057A41E9-2A2E-39CD-B198-387734EED870> /usr/lib/system/libcorecrypto.dylib
+       0x183939000 -        0x183989257  libsystem_malloc.dylib (812.160.5) <B7ED74D2-5A24-3F39-9296-EE5688FF4B63> /usr/lib/system/libsystem_malloc.dylib
+       0x18398a000 -        0x1839d123f  libdispatch.dylib (1542.160.2) <80E75F3F-333F-38A8-A3DD-6279FCDB771B> /usr/lib/system/libdispatch.dylib
+       0x1839d2000 -        0x1839d4ffb  libsystem_featureflags.dylib (103) <5725BCFE-07F3-3629-9B44-551A435E2DE2> /usr/lib/system/libsystem_featureflags.dylib
+       0x1839d5000 -        0x183a561e7  libsystem_c.dylib (1752.160.4) <3498CA79-EF40-3587-AD44-75187CEE7D95> /usr/lib/system/libsystem_c.dylib
+       0x183a57000 -        0x183ae7ae7  libc++.1.dylib (2100.43) <32327062-C3A2-389E-ABFE-68A9942422E3> /usr/lib/libc++.1.dylib
+       0x183ae8000 -        0x183b0275f  libc++abi.dylib (2100.43) <CCDE1614-20B7-354C-B201-99C5C4CC589D> /usr/lib/libc++abi.dylib
+       0x183b03000 -        0x183b402f7  libsystem_kernel.dylib (12377.161.15.700.19) <EE805B14-29F2-360D-9A2C-3221A1211833> /usr/lib/system/libsystem_kernel.dylib
+       0x183b41000 -        0x183b4db3b  libsystem_pthread.dylib (539.100.4) <A58BEABD-7AC0-35F8-BCFF-E4FFBD79E938> /usr/lib/system/libsystem_pthread.dylib
+       0x183b4e000 -        0x183b56963  libsystem_platform.dylib (375.120.2) <3AF14164-15FE-3623-9EE3-46DE29FD5B5A> /usr/lib/system/libsystem_platform.dylib
+       0x183b57000 -        0x183b866eb  libsystem_info.dylib (600) <0037F576-2C50-36F0-9F36-6CB7A049D5B1> /usr/lib/system/libsystem_info.dylib
+       0x187b27000 -        0x187b30e5f  libsystem_darwin.dylib (1752.160.4) <B808D04B-2798-36C9-96F6-35534BDFCF11> /usr/lib/system/libsystem_darwin.dylib
+       0x187f92000 -        0x187fa41b6  libsystem_notify.dylib (348.160.3) <922BDCF4-CD33-3EEB-BC56-9DCAE54F8F65> /usr/lib/system/libsystem_notify.dylib
+       0x18a263000 -        0x18a27df7b  libsystem_networkextension.dylib (2226.161.1.700.2) <83F224A4-40C4-3106-A97B-788D1D961DCB> /usr/lib/system/libsystem_networkextension.dylib
+       0x18a300000 -        0x18a317fdf  libsystem_asl.dylib (406) <FF6BE113-1093-3D23-8A55-E0A5B327CA8E> /usr/lib/system/libsystem_asl.dylib
+       0x18beb9000 -        0x18bec1387  libsystem_symptoms.dylib (2169.160.3.701.1) <7F0D4E31-268A-3EBB-8A2C-30CCC771A5A5> /usr/lib/system/libsystem_symptoms.dylib
+       0x19015e000 -        0x190196373  libsystem_containermanager.dylib (725.160.3.701.2) <118BC21E-B17D-32A2-9B65-16256131974F> /usr/lib/system/libsystem_containermanager.dylib
+       0x191570000 -        0x1915745d7  libsystem_configuration.dylib (1405.160.3.701.3) <7725D903-1D37-33E7-82AF-2260661C81A8> /usr/lib/system/libsystem_configuration.dylib
+       0x191575000 -        0x19157b99f  libsystem_sandbox.dylib (2680.160.6.700.3) <7B54AAA3-EB32-3853-8F0E-EB956EC957A1> /usr/lib/system/libsystem_sandbox.dylib
+       0x192bd0000 -        0x192bd31fb  libquarantine.dylib (196.160.2.700.3) <45146171-F0C1-3104-AE01-6AAD841A70B5> /usr/lib/system/libquarantine.dylib
+       0x19336f000 -        0x193375d03  libsystem_coreservices.dylib (191.5.1) <BF51842C-BC69-3725-9EB2-7A52804963F8> /usr/lib/system/libsystem_coreservices.dylib
+       0x1938fe000 -        0x19393ba77  libsystem_m.dylib (3312.100.1) <A2858495-5B01-3D11-955D-FF6F25E88A6E> /usr/lib/system/libsystem_m.dylib
+       0x19393d000 -        0x193940527  libmacho.dylib (1387) <95DEC6C1-4480-3303-8A52-9AFC3D8C9219> /usr/lib/system/libmacho.dylib
+       0x19395a000 -        0x1939673a7  libcommonCrypto.dylib (600035) <EBA6E4D0-4DD2-33BB-BF95-48A58591AAAD> /usr/lib/system/libcommonCrypto.dylib
+       0x193968000 -        0x193971ca3  libunwind.dylib (2100.2) <201827AE-90B0-38B1-9729-50455B607293> /usr/lib/system/libunwind.dylib
+       0x19397a000 -        0x193984c1f  libcopyfile.dylib (240.160.2.702.1) <BA7266A8-BF4B-32BF-A323-F4B2EBCDC0B0> /usr/lib/system/libcopyfile.dylib
+       0x193985000 -        0x193988987  libcompiler_rt.dylib (103.3) <9EE26D98-97BF-3BE0-B6BE-425284AB2D24> /usr/lib/system/libcompiler_rt.dylib
+       0x193989000 -        0x19398d78b  libsystem_collections.dylib (1752.160.4) <34CEFA68-1E15-32F2-A5B1-97C0170A77C5> /usr/lib/system/libsystem_collections.dylib
+       0x19398e000 -        0x1939914cf  libsystem_secinit.dylib (168.100.7) <B6B286B6-6E08-3578-8AFC-E4C55697C760> /usr/lib/system/libsystem_secinit.dylib
+       0x193992000 -        0x193994bf7  libremovefile.dylib (85.100.6) <33530415-3DB6-3556-A59A-24C22681D632> /usr/lib/system/libremovefile.dylib
+       0x193995000 -        0x193995f27  libkeymgr.dylib (31) <AD45B9EE-CE2B-3E1F-B96B-15F7F9FA3712> /usr/lib/system/libkeymgr.dylib
+       0x193996000 -        0x19399ee3f  libsystem_dnssd.dylib (2881.160.4.700.1) <71833E65-58B3-3C06-A4F3-D69D476CCC3C> /usr/lib/system/libsystem_dnssd.dylib
+       0x19399f000 -        0x1939a409b  libcache.dylib (95) <A13AF0DC-5928-38BE-97FF-E04C29EF96AF> /usr/lib/system/libcache.dylib
+       0x1939a5000 -        0x1939a6ce3  libSystem.B.dylib (1356) <E9E4C9A6-16BB-392C-96AA-07797764E2A1> /usr/lib/libSystem.B.dylib
+       0x28767d000 -        0x287684349  libRosetta.dylib (367.9) <3DBB2990-262D-3776-8FAC-B88C0373DCF0> /usr/lib/libRosetta.dylib
+       0x289290000 -        0x289293a4b  libsystem_darwindirectory.dylib (122) <6246210A-5279-391D-8F58-E62A87CAB309> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x289294000 -        0x28929e39b  libsystem_eligibility.dylib (319.160.17) <85C0486B-60BE-3E10-ABBF-DD74341B7376> /usr/lib/system/libsystem_eligibility.dylib
+       0x28929f000 -        0x2892a688b  libsystem_sanitizers.dylib (26.1) <A8C4F7FC-3443-35F7-B306-068D06237ED0> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2892a7000 -        0x2892a7bbf  libsystem_trial.dylib (474.2.18.2.1) <83FF8DEB-1153-35BA-99C3-2AEF9B7559CD> /usr/lib/system/libsystem_trial.dylib

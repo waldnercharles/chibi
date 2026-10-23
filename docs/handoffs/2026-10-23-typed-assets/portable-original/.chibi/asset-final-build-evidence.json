@@ -1,0 +1,50 @@
+{
+  "source_asset_sha256": "5ca83dd74bc600bbd754e36c9b733a31f48036c6298c00d3d44f2300fabe537e",
+  "sdks": {
+    "debug": {
+      "package_id": "60ca0af147227a0e71f8b3ffcd12b8fca02d16be83b1e922a3d49535680bd41b",
+      "prefix": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk",
+      "asset_source_objects_current": [
+        "build-sdk/CMakeFiles/chibi_asset_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/assets/asset_source.c.o"
+      ],
+      "obsolete_paths": [],
+      "obsolete_metadata_symbols": []
+    },
+    "release": {
+      "package_id": "c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325",
+      "prefix": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release",
+      "asset_source_objects_current": [
+        "build-sdk-release/CMakeFiles/chibi_asset_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/assets/asset_source.c.o"
+      ],
+      "obsolete_paths": [],
+      "obsolete_metadata_symbols": []
+    },
+    "web": {
+      "package_id": "ade4f33742460f11730a5f538e735268d55bdf25f54d646308f08b78a90a8fba",
+      "prefix": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/web-sdk",
+      "asset_source_objects_current": [
+        "build-web-sdk/CMakeFiles/chibi_asset_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/src/assets/asset_source.c.o"
+      ],
+      "obsolete_paths": [],
+      "obsolete_metadata_symbols": []
+    }
+  },
+  "studio_binaries": {
+    "build-studio/bin/chibi-dev": "a1a29c9c5bb76d3c0422763ab973e5e9adc796089d0983ecdca6cf8877955bdd",
+    "build-studio/bin/studio-acceptance": "b02eadc05dfe8c2f85794ca5353123989c819d82dc5014ca4b51c86036456ad7",
+    "build-studio-release/bin/chibi-dev": "e02bc7f52cf56cbfa8169da7c33da70c2ffea4956d18d8670b0f807f54acdacc",
+    "build-studio-release/bin/studio-acceptance": "c1eec95e9a49ee37e7d4549012b8efd85eb32ac29a12aa4309b7fd63c582121f"
+  },
+  "tests_run": false,
+  "final_public_consumers": {
+    "sdk_package_id": "60ca0af147227a0e71f8b3ffcd12b8fca02d16be83b1e922a3d49535680bd41b",
+    "installed": "compiled OBJECT library",
+    "apfs_relocated": "compiled OBJECT library",
+    "executions": 0,
+    "logs": [
+      ".chibi/asset-final-sdk-consumer-installed.log",
+      ".chibi/asset-final-sdk-consumer-relocated.log"
+    ],
+    "scratch_removed": true
+  }
+}

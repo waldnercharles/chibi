@@ -1,0 +1,14 @@
+{
+  "src/editor/collab/actions_scene.c": "84b707ed8fcd2f8bfee268f7abfcaefa4901b623dd18145bbd8056eb7d15fc62",
+  "src/editor/documents/scene_document.c": "a18990e6ce3b1d21938b87c313727ced8a27783a052dfda075b22ef63a0a4c93",
+  "src/editor/documents/scene_history.c": "2b5e14d03044efc83a899822a0dac42ea8e075d399836a5d850be14d86a18907",
+  "src/editor/studio/studio_find.c": "9366966a1463f75bfca13b2f2e1e0d78c809a10b807b1c262090d6a5fb529f2b",
+  "src/editor/studio/studio_graph_values.c": "aed1e130ec496cc67081afdcf96bd32377b0263b7d6d63d44c7e9018b12296db",
+  "src/editor/studio/studio_member_properties.c": "c50a653a9d0edd5104de6b7caf5b79e28778a45d83fe950c92e1f176cef8da9d",
+  "src/editor/studio/studio_node_calls.c": "f331c2da6f087ce1bcfdad479e7cf66efe1a82fee47edc6e6f5214a472d78082",
+  "src/editor/studio/studio_prototype_actions.c": "9d89e3f6a3ef79b3eb86736955ba72121c68a72aa66cae9a3de9bf2b154bcbee",
+  "src/editor/workspace/scene_asset_drop.c": "cf0c060b37ea4f3090532cc827d2ef58c328fa4fdf2b66caad3fbb92a9fd1dbd",
+  "src/editor/workspace/scene_authoring.c": "5fdab9447ba5e29881b1602c82ddd9d29a0c92670cbff75cd1f992b0476dabe8",
+  "src/editor/workspace/scene_authoring.h": "804e77a297fb2e41778064a29791088396e07b589deccff94311851bf01eae35",
+  "src/editor/workspace/scene_gizmo.c": "128367824fe5d58942de1202669503f142eb44038fbc67bf1e04ba30d3441357"
+}

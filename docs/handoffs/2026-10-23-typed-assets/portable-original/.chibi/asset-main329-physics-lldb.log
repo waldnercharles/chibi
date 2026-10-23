@@ -1,0 +1,24 @@
+(lldb) target create "build-release/test/tools/test_tools"
+Current executable set to '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/test/tools/test_tools' (arm64).
+(lldb) settings set -- target.run-args  "--physics"
+(lldb) run
+Running: physics_task_pool_runs_every_range (OK) (0.002808 secs)
+Running: physics_rotated_terrain_is_refused (OK) (0.000411 secs)
+Running: physics_authored_motion (OK) (0.000367 secs)
+Running: physics_pushes_divide_by_mass (OK) (0.000032 secs)
+Running: physics_gravity_pulls_bodies_and_fluids (OK) (0.000246 secs)
+Running: physics_hinges_and_sliders_keep_to_their_axis (OK) (0.000246 secs)
+Running: physics_welds_and_distances_hold_bodies (OK) (0.000281 secs)
+Running: physics_joints_follow_their_components (OK) (0.000165 secs)
+Running: physics_joined_bodies_touch_only_with_collide (OK) (0.000024 secs)
+Running: physics_joints_need_two_bodies_and_sound_values (OK) (0.000045 secs)
+Process 80724 launched: '/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/test/tools/test_tools' (arm64)
+Process 80724 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=1, address=0x7)
+       frame #0: 0x0000000100052940 test_tools`physics_joints_name_their_other_by_path + 784
+test_tools`physics_joints_name_their_other_by_path:
+->  0x100052940 <+784>: stur   w8, [x0, #0x7]
+    0x100052944 <+788>: mov    w8, #0x7265               ; =29285 
+    0x100052948 <+792>: sturh  w8, [x0, #0xb]
+    0x10005294c <+796>: add    x1, sp, #0x38
+Target 0: (test_tools) stopped.

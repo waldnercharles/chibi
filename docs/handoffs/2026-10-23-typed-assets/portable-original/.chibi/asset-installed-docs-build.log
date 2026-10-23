@@ -1,0 +1,10 @@
+docs/code-language.md:101: link to runtime-authoring.md#authored-prototypes-and-relationships is not published; written as text
+Wrote index.html
+Wrote language.html
+Wrote testing.html
+Wrote packages.html
+Wrote examples.html
+Wrote faq.html
+Wrote grammar.html
+Wrote toolchain.html
+Test command wall time: 50.511s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

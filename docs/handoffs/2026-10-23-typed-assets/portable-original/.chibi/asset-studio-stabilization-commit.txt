@@ -1,0 +1,12 @@
+Preserve compiled asset source and persist disposable browser code caches
+
+Keep generic asset refreshes in the source merge path so external helper and
+comment edits survive. Preserve UInt parameter identity through Properties.
+Mount the optional browser cache separately from project persistence, bound
+startup restore, and prevent late callbacks from replacing current records.
+
+Add a focused editor-model contract for parameter/override/Reset edits,
+history, save/reload and external source conflicts. The exact Release route
+passed 73 assertions in 12.145 seconds with disk caching disabled. Real browser
+cache checks passed through the engine dispatcher; native and Web builds pass.
+Cold full Studio startup remains held after Debug and Release timeouts.

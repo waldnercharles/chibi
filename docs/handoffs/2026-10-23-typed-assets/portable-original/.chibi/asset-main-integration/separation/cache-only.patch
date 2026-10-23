@@ -1,0 +1,588 @@
+--- a/src/authoring/asset_compiler_host.c
++++ b/src/authoring/asset_compiler_host.c
+@@ -105,26 +105,61 @@
+     metadata_attach(source, root, NULL);
+ }
+ 
++typedef struct host_lease
++{
++    compiler_host *host;
++    size_t references, charge;
++} host_lease;
++/* Detached active leases remain charged until the last invocation returns. */
++static _Thread_local size_t asset_cache_bytes;
++static _Thread_local uint64_t cache_generation;
++static host_lease *host_new(compiler_host *host)
++{
++    if (!host) {
++        return NULL;
++    }
++    host_lease *lease = xcalloc(1, sizeof *lease);
++    lease->host = host;
++    lease->references = 1;
++    return lease;
++}
++static host_lease *host_retain(host_lease *lease)
++{
++    if (lease) {
++        lease->references++;
++    }
++    return lease;
++}
++static void host_release(host_lease *lease)
++{
++    if (lease && !--lease->references) {
++        asset_cache_bytes -= lease->charge;
++        compiler_host_free(lease->host);
++        free(lease);
++    }
++}
+ typedef struct
+ {
+     char *path, *source;
+     unsigned char *bytes;
++    host_lease *decoded;
+     size_t length, charge;
+     uint64_t entry, used;
+ } compiled_asset;
+ static _Thread_local struct
+ {
+     asset_compiler_options snapshot;
+-    compiler_host *compiler;
++    host_lease *compiler;
+     char compiler_sha[65];
+     compiled_asset assets[ASSET_CACHE_ENTRIES];
+-    size_t bytes;
+     uint64_t clock;
+     asset_compiler_cache_stats stats;
+ } cache;
+ asset_compiler_cache_stats asset_source_cache_stats()
+ {
+-    return cache.stats;
++    asset_compiler_cache_stats stats = cache.stats;
++    stats.resident_bytes = asset_cache_bytes;
++    return stats;
+ }
+ static void cache_count(uint64_t *counter)
+ {
+@@ -136,7 +171,8 @@
+ static const asset_compiler_options *defaults;
+ static void clear_asset(compiled_asset *asset)
+ {
+-    cache.bytes -= asset->charge;
++    asset_cache_bytes -= asset->charge;
++    host_release(asset->decoded);
+     free(asset->path);
+     free(asset->source);
+     free(asset->bytes);
+@@ -144,10 +180,11 @@
+ }
+ void asset_source_release_thread()
+ {
++    cache_generation++;
+     for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+         clear_asset(&cache.assets[i]);
+     }
+-    compiler_host_free(cache.compiler);
++    host_release(cache.compiler);
+     memset(&cache, 0, sizeof cache);
+ }
+ void asset_source_set_default(const asset_compiler_options *options)
+@@ -176,42 +213,65 @@
+     }
+     return NULL;
+ }
+-static bool keep_asset(const char *source, const char *path, unsigned char *bytes, size_t length, uint64_t entry)
++static int oldest_asset()
++{
++    int oldest = -1;
++    for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
++        if (cache.assets[i].bytes &&
++            (oldest < 0 || cache.assets[i].used < cache.assets[oldest].used)) {
++            oldest = i;
++        }
++    }
++    return oldest;
++}
++static bool keep_asset(
++    const char *source,
++    const char *path,
++    unsigned char *bytes,
++    size_t length,
++    uint64_t entry,
++    host_lease *host
++)
+ {
+     size_t key_bytes = strlen(source) + strlen(path) + 2;
+-    if (length > ASSET_CACHE_BYTES || key_bytes > ASSET_CACHE_BYTES - length) {
++    size_t decoded = compiler_host_storage_bytes(host->host);
++    if (decoded > ASSET_CACHE_BYTES - sizeof *host) {
+         return false;
+     }
++    decoded += sizeof *host;
++    if (length > ASSET_CACHE_BYTES || key_bytes > ASSET_CACHE_BYTES - length ||
++        decoded > ASSET_CACHE_BYTES - length - key_bytes) {
++        return false;
++    }
+     size_t charge = length + key_bytes;
+-    while (charge > ASSET_CACHE_BYTES - cache.bytes) {
+-        int oldest = -1;
+-        for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+-            if (cache.assets[i].bytes &&
+-                (oldest < 0 || cache.assets[i].used < cache.assets[oldest].used)) {
+-                oldest = i;
+-            }
++    while (charge + decoded > ASSET_CACHE_BYTES - asset_cache_bytes) {
++        int oldest = oldest_asset();
++        if (oldest < 0) {
++            return false;
+         }
+         clear_asset(&cache.assets[oldest]);
+     }
+-    int oldest = 0;
++    int slot = -1;
+     for (int i = 0; i < ASSET_CACHE_ENTRIES; i++) {
+         if (!cache.assets[i].bytes) {
+-            oldest = i;
++            slot = i;
+             break;
+         }
+-        if (cache.assets[i].used < cache.assets[oldest].used) {
+-            oldest = i;
+-        }
+-    }
+-    clear_asset(&cache.assets[oldest]);
+-    cache.assets[oldest] = (compiled_asset){ .source = xstrdup(source),
+-                                             .path = xstrdup(path),
+-                                             .bytes = bytes,
+-                                             .length = length,
+-                                             .charge = charge,
+-                                             .entry = entry,
+-                                             .used = ++cache.clock };
+-    cache.bytes += charge;
++    }
++    if (slot < 0) {
++        slot = oldest_asset();
++        clear_asset(&cache.assets[slot]);
++    }
++    host->charge = decoded;
++    asset_cache_bytes += charge + decoded;
++    cache.assets[slot] = (compiled_asset){ .source = xstrdup(source),
++                                           .path = xstrdup(path),
++                                           .bytes = bytes,
++                                           .decoded = host_retain(host),
++                                           .length = length,
++                                           .charge = charge,
++                                           .entry = entry,
++                                           .used = ++cache.clock };
+     return true;
+ }
+ static void failure(asset_compiler_diagnostic *diagnostic, const char *message)
+@@ -455,7 +515,7 @@
+ {
+     return effective_options(NULL);
+ }
+-static compiler_host *compiler_for(const asset_compiler_options *options, asset_compiler_diagnostic *diagnostic)
++static host_lease *compiler_for(const asset_compiler_options *options, asset_compiler_diagnostic *diagnostic)
+ {
+     if (!options || !options->compiler || !options->compiler_length) {
+         failure(diagnostic, "The packaged Chibi asset compiler is unavailable");
+@@ -467,15 +527,15 @@
+         sha256_hex(options->compiler, options->compiler_length, cache.compiler_sha);
+     }
+     if (!cache.compiler) {
+-        cache.compiler = compiler_host_load(
++        cache.compiler = host_new(compiler_host_load(
+             options->compiler,
+             options->compiler_length,
+             BEHAVIOR_BYTECODE,
+             diagnostic->message,
+             sizeof diagnostic->message
+-        );
+-    }
+-    return cache.compiler;
++        ));
++    }
++    return host_retain(cache.compiler);
+ }
+ static char *request(
+     const char *source,
+@@ -753,6 +813,11 @@
+         return NULL;
+     }
+     options = effective_options(options);
++    asset_compiler_options invocation_options;
++    if (options) {
++        invocation_options = *options;
++        options = &invocation_options;
++    }
+     if (!options || !options->compiler || !options->compiler_length) {
+         failure(diagnostic, "The packaged Chibi asset compiler is unavailable");
+         return NULL;
+@@ -767,9 +832,10 @@
+     if (!json) {
+         return NULL;
+     }
+-    compiler_host *compiler = compiler_for(options, diagnostic);
++    host_lease *compiler = compiler_for(options, diagnostic);
++    uint64_t generation = cache_generation;
+     compiler_host_bytes compiled = { 0 };
+-    compiler_host *asset = NULL;
++    host_lease *asset = NULL;
+     compiler_host_bytes result = { 0 };
+     unsigned char *bytes = NULL;
+     bool owned_bytes = true;
+@@ -786,10 +852,12 @@
+     compiled_asset *cached = find_asset(source, path);
+     uint64_t entry = cached ? cached->entry : 0;
+     size_t length = cached ? cached->length : 0;
+-    bool from_cache = cached != NULL;
++    bool memory_hit = cached != NULL;
++    bool from_cache = memory_hit;
+     if (cached) {
+         bytes = cached->bytes;
+         owned_bytes = false;
++        asset = host_retain(cached->decoded);
+     } else if (compiler && directory) {
+         key = persistent_key(json, request_length, options);
+         compiler_host_bytes stored = { 0 };
+@@ -823,7 +891,7 @@
+         behavior_execution_scope_begin(&compilation);
+         cache_count(&cache.stats.compile_attempts);
+         bool compiled_ok = compiler_host_invoke_bytes(
+-            compiler,
++            compiler->host,
+             compiler_host_entry("project:asset_compiler:1:CompileBytes:callable"),
+             json,
+             request_length,
+@@ -850,31 +918,35 @@
+         failure(diagnostic, "Asset evaluation cancelled");
+         goto done;
+     }
+-    asset = compiler_host_load_values(
+-        bytes,
+-        length,
+-        BEHAVIOR_BYTECODE,
+-        diagnostic->message,
+-        sizeof diagnostic->message
+-    );
+-    if (asset && !compiler_host_accepts_byte_entry(
+-                     asset,
+-                     entry,
+-                     0,
+-                     diagnostic->message,
+-                     sizeof diagnostic->message
+-                 )) {
+-        compiler_host_free(asset);
+-        asset = NULL;
++    if (!asset) {
++        cache_count(&cache.stats.preparation_attempts);
++        asset = host_new(compiler_host_load_values(
++            bytes,
++            length,
++            BEHAVIOR_BYTECODE,
++            diagnostic->message,
++            sizeof diagnostic->message
++        ));
++        if (asset && !compiler_host_accepts_byte_entry(
++                         asset->host,
++                         entry,
++                         0,
++                         diagnostic->message,
++                         sizeof diagnostic->message
++                     )) {
++            host_release(asset);
++            asset = NULL;
++        }
+     }
+     if (!asset && from_cache) {
+         if (owned_bytes) {
+             free(bytes);
+         }
+-        if (cached) {
++        if (memory_hit && generation == cache_generation) {
+             clear_asset(cached);
+-            cached = NULL;
+-        }
++        }
++        cached = NULL;
++        memory_hit = false;
+         if (!key && directory) {
+             key = persistent_key(json, request_length, options);
+         }
+@@ -891,19 +963,23 @@
+         goto done;
+     }
+     if (from_cache) {
+-        cache_count(cached ? &cache.stats.memory_hits : &cache.stats.persistent_hits);
+-    }
+-    if (!cached && keep_asset(source, path, bytes, length, entry)) {
++        cache_count(memory_hit ? &cache.stats.memory_hits : &cache.stats.persistent_hits);
++    }
++    if (!memory_hit && generation == cache_generation &&
++        keep_asset(source, path, bytes, length, entry, asset)) {
+         owned_bytes = false;
+     }
+-    persistent_publish(directory, key, publication, publication_length, options);
++    if (generation == cache_generation) {
++        persistent_publish(directory, key, publication, publication_length, options);
++    }
+     behavior_execution_scope execution = { .remaining = evaluation_budget,
+                                            .cancelled = options->cancelled,
+                                            .user = options->user,
+                                            .pure = true };
++    cache_count(&cache.stats.evaluations);
+     behavior_execution_scope_begin(&execution);
+     bool invoked = compiler_host_invoke_bytes(
+-        asset,
++        asset->host,
+         entry,
+         "[]",
+         2,
+@@ -931,7 +1007,8 @@
+     }
+     free(compiled.bytes);
+     free(result.bytes);
+-    compiler_host_free(asset);
++    host_release(asset);
++    host_release(compiler);
+     if (doc) {
+         metadata_attach(source, av_doc_root(doc), options);
+     }
+@@ -947,13 +1024,19 @@
+ {
+     *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+     options = effective_options(options);
+-    compiler_host *host = compiler_for(options, diagnostic);
++    asset_compiler_options invocation_options;
++    if (options) {
++        invocation_options = *options;
++        options = &invocation_options;
++    }
++    host_lease *host = compiler_for(options, diagnostic);
+     if (!host) {
+         return NULL;
+     }
+     char *json = av_json_write(arguments);
+     if (!json) {
+         failure(diagnostic, "Asset facade arguments cannot be encoded");
++        host_release(host);
+         return NULL;
+     }
+     uint64_t budget = options->compile_budget ? options->compile_budget
+@@ -965,7 +1048,7 @@
+     compiler_host_result result = { 0 };
+     behavior_execution_scope_begin(&scope);
+     bool ok = compiler_host_invoke(
+-        host,
++        host->host,
+         compiler_host_entry(entry),
+         json,
+         strlen(json),
+@@ -983,6 +1066,7 @@
+         );
+     }
+     free(result.json);
++    host_release(host);
+     return doc;
+ }
+ 
+@@ -1101,13 +1185,19 @@
+ {
+     *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
+     options = effective_options(options);
+-    compiler_host *host = compiler_for(options, diagnostic);
++    asset_compiler_options invocation_options;
++    if (options) {
++        invocation_options = *options;
++        options = &invocation_options;
++    }
++    host_lease *host = compiler_for(options, diagnostic);
+     if (!host) {
+         return NULL;
+     }
+     char *json = av_json_write(arguments);
+     if (!json) {
+         failure(diagnostic, "Asset facade arguments cannot be encoded");
++        host_release(host);
+         return NULL;
+     }
+     uint64_t budget = options->compile_budget ? options->compile_budget
+@@ -1119,7 +1209,7 @@
+     compiler_host_bytes result = { 0 };
+     behavior_execution_scope_begin(&scope);
+     bool ok = compiler_host_invoke_bytes(
+-        host,
++        host->host,
+         compiler_host_entry(entry),
+         json,
+         strlen(json),
+@@ -1142,6 +1232,7 @@
+         );
+     }
+     free(result.bytes);
++    host_release(host);
+     return text;
+ }
+ av_doc *asset_source_invoke_document(
+--- a/src/authoring/asset_compiler_host.h
++++ b/src/authoring/asset_compiler_host.h
+@@ -39,11 +39,17 @@
+ typedef struct
+ {
+     uint64_t memory_hits, persistent_hits, compile_attempts;
++    uint64_t preparation_attempts, evaluations;
++    size_t resident_bytes; /* Includes decoded leases detached during an invocation. */
+ } asset_compiler_cache_stats;
+ /* Hits count validated prepared-code reuse; attempts count CompileBytes calls.
++ * Preparation counts decoded asset loads; every Build attempt increments evaluations.
+  * Reading statistics does not change execution or enable runtime observers. */
+ asset_compiler_cache_stats asset_source_cache_stats();
+ /* Releases this thread's compiler/memory cache and resets its statistics.
++ * Active invocations retain leased hosts until they return. Their decoded
++ * storage remains charged; options and immutable source snapshots are borrowed
++ * for the whole invocation and must remain valid across cancellation callbacks.
+  * Persistent storage remains available to subsequent calls and processes. */
+ void asset_source_release_thread();
+ /* Generated SDK resource adapter, target-compatible and immutable. */
+--- a/test/authoring/asset_source.c
++++ b/test/authoring/asset_source.c
+@@ -552,6 +552,20 @@
+                             "1))) }\n";
+ static const char *cache_helper = "package cache_fixture\npub Value :: () -> "
+                                   "int { return 7 }\n";
++/* Use the same nested union/array aggregate shape as game:assets.Value. */
++static const char *cache_mutating_source =
++    "package asset\nimport data \"game:assets\"\n"
++    "Row :: union { Seed(values: int[]) }\n"
++    "SeedRow :: () -> Row { return Row.Seed([1, 2]) }\n"
++    "First :: (row: Row) -> int {\n"
++    " switch row { case .Seed(values): return values[0]; } return 0;\n}\n"
++    "pub Build :: () -> byte[] {\n"
++    " original := SeedRow(); answer: int = 0;\n"
++    " switch original { case .Seed(values): changed := values; "
++    "changed[0] += 6; answer = changed[0]; }\n"
++    " assert(First(original) == 1); i: int = 0;\n"
++    " while (i < 200) { i += 1; }\n"
++    " return data.Encode(data.Value.Int(int64(answer)))\n}\n";
+ static char cache_directory[256];
+ static asset_source_library *cache_libraries;
+ static unsigned char *cache_bad_compiler;
+@@ -612,7 +626,8 @@
+     bool valid = limited && cache_value(cache_source, &options, 7);
+     asset_compiler_cache_stats stats = asset_source_cache_stats();
+     valid &= stats.compile_attempts == 0 && stats.persistent_hits == 1 &&
+-             stats.memory_hits == 1;
++             stats.memory_hits == 1 && stats.preparation_attempts == 1 &&
++             stats.evaluations == 2;
+     cache_cleanup();
+     return valid ? 0 : 1;
+ }
+@@ -626,6 +641,42 @@
+     }
+     int *remaining = user;
+     return --*remaining <= 0;
++}
++
++typedef struct
++{
++    uint64_t evaluations;
++    int polls;
++    bool fired, held, release, nested_ok;
++    asset_compiler_options nested;
++} cache_callback;
++
++static bool cache_cancel_evaluation(void *user)
++{
++    cache_callback *callback = user;
++    if (asset_source_cache_stats().evaluations <= callback->evaluations) {
++        return false;
++    }
++    return ++callback->polls == 128;
++}
++
++static bool cache_reenter_evaluation(void *user)
++{
++    cache_callback *callback = user;
++    if (callback->fired ||
++        asset_source_cache_stats().evaluations <= callback->evaluations ||
++        ++callback->polls < 128) {
++        return false;
++    }
++    callback->fired = true;
++    if (callback->release) {
++        asset_source_release_thread();
++    } else {
++        callback->nested_ok = cache_value(cache_source, &callback->nested, 9);
++    }
++    size_t resident = asset_source_cache_stats().resident_bytes;
++    callback->held = resident > 0 && resident <= 128u * 1024u * 1024u;
++    return false;
+ }
+ 
+ TEST_CASE(asset_cache_reuses_invalidates_and_recovers)
+@@ -753,6 +804,64 @@
+         asset_source_cache_stats().persistent_hits == 1 &&
+         !asset_source_cache_stats().compile_attempts
+     );
++    /* Decode once, but reevaluate on every read with fresh nested values. */
++    asset_source_release_thread();
++    options.cache_directory = "";
++    REQUIRE(cache_value(cache_mutating_source, &options, 7));
++    stats = asset_source_cache_stats();
++    REQUIRE(stats.preparation_attempts == 1 && stats.evaluations == 1);
++    REQUIRE(stats.resident_bytes > 0 && stats.resident_bytes <= 128u * 1024u * 1024u);
++    REQUIRE(cache_value(cache_mutating_source, &options, 7));
++    options.evaluation_budget = 1;
++    rejected = asset_source_read(cache_mutating_source, NULL, &options, &failed);
++    limited = !rejected && strstr(failed.message, "budget");
++    av_doc_free(rejected);
++    REQUIRE(limited);
++    options.evaluation_budget = 0;
++    cache_callback callback = { .evaluations = asset_source_cache_stats().evaluations };
++    options.cancelled = cache_cancel_evaluation;
++    options.user = &callback;
++    rejected = asset_source_read(cache_mutating_source, NULL, &options, &failed);
++    cancelled = !rejected && strstr(failed.message, "cancelled");
++    av_doc_free(rejected);
++    REQUIRE(cancelled && callback.polls == 128);
++    options.cancelled = NULL;
++    options.user = NULL;
++    REQUIRE(cache_value(cache_mutating_source, &options, 7));
++    stats = asset_source_cache_stats();
++    REQUIRE(stats.preparation_attempts == 1 && stats.evaluations == 5);
++
++    /* Thread release detaches the cache, while this invocation owns its lease. */
++    callback = (cache_callback){ .evaluations = stats.evaluations, .release = true };
++    options.cancelled = cache_reenter_evaluation;
++    options.user = &callback;
++    REQUIRE(cache_value(cache_mutating_source, &options, 7));
++    REQUIRE(callback.fired && callback.held);
++    REQUIRE(asset_source_cache_stats().resident_bytes == 0);
++    options.cancelled = NULL;
++    options.user = NULL;
++    REQUIRE(cache_value(cache_mutating_source, &options, 7));
++    REQUIRE(asset_source_cache_stats().preparation_attempts == 1);
++
++    /* A nested read replaces the immutable library snapshot during Build. */
++    changed = xcalloc((size_t)options.library_count, sizeof *changed);
++    memcpy(changed, cache_libraries, (size_t)options.library_count * sizeof *changed);
++    changed[options.library_count - 1]
++        .source = "package cache_fixture\npub Value :: () -> int { return 9 "
++                  "}\n";
++    callback = (cache_callback){ .evaluations = asset_source_cache_stats().evaluations,
++                                 .nested = options };
++    callback.nested.libraries = changed;
++    options.cancelled = cache_reenter_evaluation;
++    options.user = &callback;
++    bool survived = cache_value(cache_mutating_source, &options, 7);
++    free(changed);
++    REQUIRE(survived && callback.fired && callback.nested_ok && callback.held);
++    options.cancelled = NULL;
++    options.user = NULL;
++    REQUIRE(cache_value(cache_mutating_source, &options, 7));
++    asset_source_release_thread();
++    REQUIRE(asset_source_cache_stats().resident_bytes == 0);
+     return true;
+ }
+ 

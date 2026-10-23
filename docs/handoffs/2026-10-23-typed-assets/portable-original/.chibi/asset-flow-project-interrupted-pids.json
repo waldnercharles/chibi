@@ -1,0 +1,22 @@
+{
+  "64103": {
+    "ppid": 64050,
+    "pgid": 64050,
+    "command": "/opt/homebrew/Cellar/python@3.13/3.13.16_1/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python tools/test_policy.py tool prototype-expansion"
+  },
+  "64138": {
+    "ppid": 64103,
+    "pgid": 64138,
+    "command": "/opt/homebrew/Cellar/python@3.13/3.13.16_1/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/tools/test_policy.py _supervise [[\"/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/test/tools/test_tools\", \"--prototype-expansion\", \"/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/bin/chibi_ctl\"]]"
+  },
+  "64193": {
+    "ppid": 64138,
+    "pgid": 64138,
+    "command": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/test/tools/test_tools --prototype-expansion /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/bin/chibi_ctl"
+  },
+  "64749": {
+    "ppid": 64193,
+    "pgid": 64749,
+    "command": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-release/bin/chibi_ctl --project-root game"
+  }
+}

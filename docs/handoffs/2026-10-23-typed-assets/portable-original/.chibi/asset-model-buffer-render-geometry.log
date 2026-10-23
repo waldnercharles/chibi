@@ -1,0 +1,11 @@
+Running: stroked_player (OK) (0.000014 secs)
+Running: capsules (OK) (0.000001 secs)
+Running: legacy_shapes (OK) (0.000000 secs)
+Running: invalid_geometry (OK) (0.000001 secs)
+Running: rotated_geometry (OK) (0.000001 secs)
+Running: projected_relief_rejects_nonfinite_values (OK) (0.000004 secs)
+Running: mesh_surfaces_bound_bank_pick_and_compound (OK) (0.933815 secs)
+Running: primitive_vertices_have_unit_normals (OK) (0.000009 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 832
+Test command wall time: 1.321s; includes in-test fixture setup; external configuration/build excluded.

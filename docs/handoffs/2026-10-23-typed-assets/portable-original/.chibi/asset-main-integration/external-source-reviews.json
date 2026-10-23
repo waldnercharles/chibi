@@ -1,0 +1,60 @@
+{
+  "prepared_host": {
+    "patch": "/tmp/chibi-selfhost-installed-route-20261022/candidate.patch",
+    "patch_sha256": "ab9de0ed5972c52dc48613c0d5cc868afde8407fc979bbf6dc5e0bf77f51afbe",
+    "base": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "review": "root CLI/contract review plus compiler_prereqs host/linker/ownership and build_removal full regression/context review clear",
+    "state": "source-only; no import, builds, tests or runtime eligibility"
+  },
+  "native_graph_bridge": {
+    "patch": "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi/.chibi/game-support/bridge-checkpoint/source.patch",
+    "patch_sha256": "e086aed94e63c302fd94a44a41444f3fd302cfb8bc15c040dc9e9511085e5715",
+    "base": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "review": "asset_evaluator project assembly; source_editing catalog/projection ownership; prototype_regressions full tests and typed overlap clear",
+    "adaptations": [
+      "Preserve typed .chibi scene discovery",
+      "Preserve typed parameter Build modules and three MaterialIslands.chibi paths",
+      "Preserve SeamStudy.chibi and environment sampling fallback",
+      "Apply narrow hunks; donor full files still contain retired readers/paths"
+    ],
+    "coverage_limits": [
+      "No direct specialization-request case",
+      "Invalid analysis case not after earlier valid library",
+      "Positive assembly verifies initial material results, not later executable ticks"
+    ],
+    "remaining_native_dependency": "Existing script_analyze_document(_requested) for graph projection remains; not executable lowering and not a claim that all authoring policy is Chibi-owned",
+    "state": "source-only; no import, builds, tests or rich compiler eligibility"
+  },
+  "active_generation": {
+    "candidate": "frozen e96f395b2a62f29c3a79858fc02f8ba594b2d866",
+    "rich_joined": false,
+    "reason": "complete eligible rich source unavailable at generation decision",
+    "state": "completed and independently verified",
+    "audited_staged_tree": "041c011c04da3393e77b742ab35e837cefdf86a0",
+    "current_docs_tree": "2b63ff9322987a92b40e36c69ca251e0c1c08094",
+    "receipt": "combined-generation-checkpoint.json"
+  },
+  "rich_compiler": {
+    "base": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "immutable_tree": "b029a6f59d1ff2f8185541538c90c1930a0e3cce",
+    "patch_sha256": "8e24028fde54b093ca41f3dcea4b51a5424bcc633de734ec859fd2cf51a0ee9b",
+    "frozen_blob_count": 28,
+    "review": "All frozen blob hashes and patch SHA verified; compiler_prereqs Body/Steps, asset_evaluator catalog/compiler/CLI/StageOne and prototype_regressions test review complete",
+    "integration_gates": [
+      "Preserve catalog-independent language assert in pure typed asset/compiler facades that have no assertion native row; rich alias binding still needs exact linked identity and source shadowing",
+      "Preserve Bootstrap.chibi, ordinary typed resource-only Build modules, strict UInt constructor cases and existing quota fixtures",
+      "Known named Append item side-effect order and debug parity remain unresolved",
+      "Required groups, regenerated resources, installed project/default route proof and coordinator eligibility remain pending"
+    ],
+    "findings": [
+      {
+        "priority": "P2",
+        "area": "test/language/package_compiler_chibi.c:6665-6805",
+        "description": "libraries_alike executes only playing=true; library resolution cases use false. Same-signature lexical int/char/number functions can select the wrong callee without failing metadata counts. Add fixed runtime results or resolved-call identity plus execution before claiming runtime resolution parity.",
+        "classification": "test-oracle gap; product failure not demonstrated",
+        "relayed_to": "compiler owner and coordinator"
+      }
+    ],
+    "state": "source review only; no import, resource generation, runtime eligibility or main readiness"
+  }
+}

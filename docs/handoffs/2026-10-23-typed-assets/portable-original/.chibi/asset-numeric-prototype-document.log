@@ -1,0 +1,4 @@
+Nested scene depth 256 (107597 source bytes): scene document requires version 1, name, and entities
+Nested scene depth 257 (107866 source bytes): scene document requires version 1, name, and entities
+(FAILED: test/language/prototype.c (456): scene && acount(scene->entities) == SCENE_DEPTH_MAX)
+Test command wall time: 87.273s; includes in-test fixture setup; external configuration/build excluded.

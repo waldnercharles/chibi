@@ -1,0 +1,17 @@
+{
+  "src/authoring/asset_compiler_host.c": {
+    "checkpoint_sha256": "66aacea27ed7d07799ad511ebb91bfb802437debbffbb0f16777ec4708c2c20b",
+    "working_sha256": "bc1ae2394d5c4b12c484e02731325e2b8ae55d47372ecd4e16344940793424fe"
+  },
+  "src/authoring/asset_compiler_host.h": {
+    "checkpoint_sha256": "8d9426ddb69a93dbe145b6a70ea8b47c79d5281e5b57cf4b423a588e0e0d242d",
+    "working_sha256": "ffec05aed097d8b974d8e8c126f5d0d1ec2e74bafc492c3a97884be40ad8f143"
+  },
+  "test/authoring/asset_source.c": {
+    "checkpoint_sha256": "657679beb4b878cd532afa30223af49b149d7e422cea2994e3aa36cebe8771ad",
+    "working_sha256": "ad0cd74d913c1d67fc53a20055f6a0ae2a0d786a66d7e12acd3a6735e0f5f63c"
+  },
+  "cache-only.patch_sha256": "a259cf4ba6abe78ecbb558f5a3410b2461e151692ee00776060ffcbfbcc4a9f3",
+  "base_head": "a504d8e59aa593035229cc3a150da814077e8010",
+  "replay_exact": true
+}

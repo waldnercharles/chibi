@@ -1,0 +1,29 @@
+{
+  "base_source_tree": "258953e107c129597f6cc072af2b25f80aa9bb31",
+  "applied_commit": "3dd03160d89510e8a7f579affb8e51a77fe075a7",
+  "landed_merge": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+  "exact_replay": true,
+  "preserved_scoped_jit_declarations": true,
+  "files": [
+    {
+      "path": "docs/testing.md",
+      "sha256": "a98a6fb05a2e8dd7f636ec9342efa085df7c48bcca8f780aca5f4a5cf62d8ccb"
+    },
+    {
+      "path": "src/execution/definition.h",
+      "sha256": "120b15ea4cc6b812d6aa03b2f73766897063c8b171ec0e84db2738323e0c0030"
+    },
+    {
+      "path": "src/execution/function_builder.c",
+      "sha256": "4d8d8baf4f4b1c8b72a452d03ff44bc78966def136c63556190163a6c710a76a"
+    },
+    {
+      "path": "src/execution/prepared_record.c",
+      "sha256": "bc7034a3d758be9ee3ef1630123d532e9d7726f4a81527a2d31cc4dd515df170"
+    },
+    {
+      "path": "test/language/record_prepared_runtime.c",
+      "sha256": "87fd30cdf3a43547de0fc18fca3d097ec30e93912392b06db462d12a50c7d25a"
+    }
+  ]
+}

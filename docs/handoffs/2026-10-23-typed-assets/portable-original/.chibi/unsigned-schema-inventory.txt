@@ -1,0 +1,108 @@
+src/assets/scene_document.c:332:    if (av_is_uint(value)) {
+src/assets/scene_document.c:333:        uint64_t number = av_get_uint(value);
+src/assets/scene_document.c:356:        if (field->color && av_is_uint(value) && av_get_uint(value) <= UINT32_MAX) {
+src/assets/scene_document.c:357:            av_obj_set(doc, object, field->name, av_color(doc, (uint32_t)av_get_uint(value)));
+src/assets/scene_document.c:609:    if (!av_is_uint(version) || av_get_uint(version) != 1 || !av_is_str(name) ||
+src/authoring/asset_compiler_host.c:333:                if (av_is_uint(value) && av_get_uint(value) <= INT64_MAX) {
+src/authoring/asset_compiler_host.c:334:                    replacement = av_sint(document, (int64_t)av_get_uint(value));
+src/authoring/asset_compiler_host.c:342:                } else if (!av_is_uint(value)) {
+src/authoring/asset_compiler_host.c:660:    av_arr_append(values, av_sint(args, bytes[0]));
+src/authoring/asset_compiler_host.c:723:            av_get_uint(index) >= (uint64_t)count ||
+src/authoring/asset_compiler_host.c:1028:        av_arr_append(values[0], av_sint(doc, type));
+src/authoring/asset_compiler_host.c:1029:        av_arr_append(values[1], av_sint(doc, item.parent));
+src/authoring/asset_compiler_host.c:1032:        av_arr_append(values[4], av_sint(doc, type == AV_SINT ? av_get_sint(item.value) : 0));
+src/authoring/asset_compiler_host.c:1033:        av_arr_append(values[5], av_uint(doc, type == AV_UINT ? av_get_uint(item.value) : 0));
+src/authoring/parts_prepare.c:113:        av_obj_add_int(doc, object, "primitive", part->primitive);
+src/authoring/source_asset_metadata.c:42:                if (kind == 2 && av_is_uint(value) &&
+src/authoring/source_asset_metadata.c:43:                    av_get_uint(value) <= (uint64_t)INT64_MAX) {
+src/authoring/source_asset_metadata.c:44:                    av_obj_set(result, root, key, av_sint(result, (int64_t)av_get_uint(value)));
+src/graph/document/serialize_implied.c:107:    return graph_node_by_id(g, av_get_uint(av_obj_get(node_obj, "id")));
+src/graph/document/serialize.c:39:    if (!v || !av_is_uint(v) || av_get_uint(v) == 0) {
+src/graph/document/serialize.c:43:    *out = av_get_uint(v);
+src/graph/document/serialize.c:161:    if (split && av_is_uint(split)) {
+src/graph/document/serialize.c:162:        p->split_parent = av_get_uint(split);
+src/graph/document/serialize.c:167:        (!output || !av_is_uint(field_source) || !av_get_uint(field_source) ||
+src/graph/document/serialize.c:173:        p->field_source = av_get_uint(field_source);
+src/graph/document/serialize.c:179:        p->declaration_id = av_get_uint(declaration);
+src/graph/document/serialize.c:183:    if (flags && av_is_uint(flags)) {
+src/graph/document/serialize.c:184:        p->flags = (unsigned)av_get_uint(flags);
+src/graph/document/serialize.c:224:            if (!variable && (!av_is_uint(id) || !av_get_uint(id))) {
+src/graph/document/serialize.c:228:            binding.variable_id = variable ? variable->id : av_get_uint(id);
+src/graph/document/serialize.c:263:            if (!local && (!av_is_uint(local_id) || !av_get_uint(local_id))) {
+src/graph/document/serialize.c:267:            binding.local_id = local ? local->id : av_get_uint(local_id);
+src/graph/document/serialize.c:271:            av_value *event_node_id = av_is_uint(from)
+src/graph/document/serialize.c:280:            } else if (!av_is_uint(event_node_id) || !av_get_uint(event_node_id) || !av_is_uint(event_pin_id) || !av_get_uint(event_pin_id)) {
+src/graph/document/serialize.c:284:                binding.event_node_id = av_get_uint(event_node_id);
+src/graph/document/serialize.c:285:                binding.event_pin_id = av_get_uint(event_pin_id);
+src/graph/document/serialize.c:357:        if (!av_is_obj(v) && !av_is_uint(v)) {
+src/graph/document/serialize.c:378:        if (read_id(av_is_uint(v) ? v : av_obj_get(v, "id"), &id, "pin.id")) {
+src/graph/document/serialize.c:589:            .color = (uint32_t)av_get_uint(av_obj_get(value, "color")),
+src/graph/document/serialize.c:725:        if (refid && av_is_uint(refid)) {
+src/graph/document/serialize.c:726:            n->reference_id = av_get_uint(refid);
+src/graph/document/serialize.c:1072:    if (!av_is_uint(version) || av_get_uint(version) != GRAPH_SCHEMA_VERSION) {
+src/graph/document/serialize.c:1089:    if (!counter || !av_is_uint(counter) || av_get_uint(counter) == 0) {
+src/graph/document/serialize.c:1093:    requested_counter = av_get_uint(counter);
+src/graph/document/serialize.c:1110:        if (!av_is_uint(binding_owner) || !av_get_uint(binding_owner)) {
+src/graph/document/serialize.c:1114:        g->clipboard_owner_id = av_get_uint(binding_owner);
+src/graph/document/serialize.c:1334:    if (entry_value && av_is_uint(entry_value)) {
+src/graph/document/serialize.c:1335:        g->entry_id = av_get_uint(entry_value);
+src/graph/document/serialize.c:1337:    if (return_value && av_is_uint(return_value)) {
+src/graph/document/serialize.c:1338:        g->return_id = av_get_uint(return_value);
+src/graph/document/serialize.c:1495:    if (!av_is_uint(version) || av_get_uint(version) != GRAPH_SCHEMA_VERSION) {
+src/graph/document/serialize.c:1513:    if (!counter || !av_is_uint(counter) || av_get_uint(counter) == 0) {
+src/graph/document/serialize.c:1517:    requested_counter = av_get_uint(counter);
+src/graph/document/serialize.c:1605:                if (!av_is_uint(av_obj_get(value, fields[i]))) {
+src/graph/document/serialize.c:1611:                .kind = av_get_uint(av_obj_get(value, "kind")),
+src/graph/document/serialize.c:1612:                .graph_id = av_get_uint(av_obj_get(value, "graph_id")),
+src/graph/document/serialize.c:1613:                .event_id = av_get_uint(av_obj_get(value, "event_id")),
+src/graph/document/serialize.c:1614:                .source_node_id = av_get_uint(av_obj_get(value, "source_node_id")),
+src/graph/document/serialize.c:1615:                .source_pin_id = av_get_uint(av_obj_get(value, "source_pin_id")),
+src/graph/document/serialize.c:1616:                .statement_node_id = av_get_uint(av_obj_get(value, "statement_node_id")),
+src/graph/document/serialize.c:1617:                .value_node_id = av_get_uint(av_obj_get(value, "value_node_id")),
+src/graph/document/serialize.c:1618:                .value_pin_id = av_get_uint(av_obj_get(value, "value_pin_id")),
+src/assets/physics_settings.c:22:            if (!av_is_int(value) || av_get_sint(value) < 0 || av_get_uint(value) > 32) {
+src/assets/physics_settings.c:62:        av_obj_add_int(doc, object, "workers", settings.workers);
+src/assets/physics_settings.c:65:        av_obj_add_int(doc, object, "substeps", settings.substeps);
+src/graph/document/serialize_write.c:172:        av_obj_set(doc, o, "container", av_sint(doc, p->container));
+src/graph/document/serialize_write.c:186:        av_obj_set(doc, o, "group", av_sint(doc, p->group));
+src/graph/document/serialize_write.c:371:        av_obj_set(doc, o, "order", av_sint(doc, e->exec_order));
+src/graph/document/serialize_write.c:708:        av_obj_set(doc, o, "container", av_sint(doc, v->container));
+src/graph/document/serialize_write.c:771:        av_obj_set(doc, obj, "expression_mode", av_sint(doc, g->expression_mode));
+src/graph/document/serialize_write.c:780:        av_obj_set(doc, obj, "call_depth_limit", av_sint(doc, g->call_depth_limit));
+src/graph/document/serialize_write.c:897:        uint64_t local_id = av_get_uint(av_obj_get(binding, "local_id"));
+src/graph/document/serialize_write.c:898:        uint64_t variable_id = av_get_uint(av_obj_get(binding, "variable_id"));
+src/graph/document/serialize_write.c:939:        const graph *g = behavior_asset_find_graph(asset, av_get_uint(av_obj_get(written, "id")));
+src/graph/document/serialize_write.c:944:            const node *n = graph_node_by_id(g, av_get_uint(av_obj_get(value, "id")));
+src/assets/input_map.c:81:        (controller && (!av_is_uint(controller) ||
+src/assets/input_map.c:82:                        av_get_uint(controller) >= INPUT_CONTROLLER_MAX))) {
+src/assets/input_map.c:88:    out->controller = controller ? (int)av_get_uint(controller) : 0;
+src/assets/input_map.c:163:            av_obj_add_int(document, action, "controller", map[i].controller);
+src/authoring/source_prototype_edit.c:540:    av_arr_append(args, av_sint(request, kind));
+src/authoring/source_prototype_edit.c:542:    av_arr_append(args, av_sint(request, signed_value));
+src/assets/project.c:84:    av_obj_add_int(doc, root, "version", CHIBI_PROJECT_VERSION);
+src/assets/project.c:98:    av_obj_add_int(doc, root, "version", 1);
+src/graph/document/serialize_local.c:28:        if (!av_is_uint(id) || !av_get_uint(id) || av_get_uint(id) >= INT_MAX ||
+src/graph/document/serialize_local.c:29:            (!reference && (!av_is_uint(source) || !av_get_uint(source) ||
+src/graph/document/serialize_local.c:30:                            !av_is_uint(pin) || !av_get_uint(pin))) ||
+src/graph/document/serialize_local.c:35:        graph_local local = { .id = av_get_uint(id),
+src/graph/document/serialize_local.c:37:                              .source_id = av_get_uint(source),
+src/graph/document/serialize_local.c:38:                              .source_pin_id = av_get_uint(pin) };
+src/assets/prototype.c:275:    if (av_is_uint(value) && av_get_uint(value) <= INT64_MAX) {
+src/assets/prototype.c:276:        *out = (int64_t)av_get_uint(value);
+src/assets/prototype.c:284:    if (av_is_uint(value)) {
+src/assets/prototype.c:285:        *out = av_get_uint(value);
+src/assets/prototype.c:461:    if (result && field->range_contract && (av_is_sint(json) || av_is_uint(json))) {
+src/assets/prototype.c:1233:        case PIN_I8: return av_sint(doc, value.i8);
+src/assets/prototype.c:1234:        case PIN_I16: return av_sint(doc, value.i16);
+src/assets/prototype.c:1235:        case PIN_I32: return av_sint(doc, value.i);
+src/assets/prototype.c:1236:        case PIN_I64: return av_sint(doc, value.i64);
+src/assets/prototype.c:1239:            return label ? av_str(doc, label) : av_sint(doc, value.e);
+src/assets/scenario_document.c:154:    if (!av_is_uint(frame) || av_get_uint(frame) >= (uint64_t)frames) {
+src/assets/scenario_document.c:157:    *out = (input_keyframe){ .step = (int)av_get_uint(frame) };
+src/assets/scenario_document.c:192:    if (!av_is_uint(frames) || !av_get_uint(frames) ||
+src/assets/scenario_document.c:193:        av_get_uint(frames) > SCENARIO_FRAMES_MAX) {
+src/assets/scenario_document.c:196:    if (seed && (!av_is_uint(seed) || av_get_uint(seed) > UINT32_MAX)) {
+src/assets/scenario_document.c:206:    out->frames = (int)av_get_uint(frames);
+src/assets/scenario_document.c:207:    out->seed = seed ? (unsigned)av_get_uint(seed) : 0;
+src/assets/scenario_document.c:261:    av_obj_add_int(doc, value, "frame", key->step);
+src/assets/scenario_document.c:318:    av_obj_add_int(doc, root, "frames", document->frames);

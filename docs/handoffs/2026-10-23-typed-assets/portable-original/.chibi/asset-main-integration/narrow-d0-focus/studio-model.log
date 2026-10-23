@@ -1,0 +1,21 @@
+RmlUi info: Loaded font face 'Inter' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Inter' [bold] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Noto Sans' [bold] from 'memory'.
+RmlUi info: Loaded font face 'InterNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=500] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [weight=600] from 'memory'.
+RmlUi info: Loaded font face 'Geist' [bold] from 'memory'.
+RmlUi info: Loaded font face 'GeistNumeric' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Symbols' [regular] from 'memory'.
+RmlUi info: Loaded font face 'Inconsolata' [regular] from 'memory'.
+RmlUi info: Loaded font face 'JetBrains Mono' [regular] from 'memory'.
+Running: compiled_asset_edit_model 
+Compiled asset model: frames=0 renders=0 files=2 actors=0 checkpoints=10 checkpoint_restores=4 properties_edits=3 nul_view_actors=1 nul_rows=2 stale_checks=4 collab_byte_roundtrips=3 collab_budget_refusals=1 history_byte_cases=3 history_rejection_cases=3 history_worlds=6 history_undo_attempts=6 history_redo=3 source_undo=2 source_redo=2 saved=2 save_rejected=1 reload=1 disk_refreshes=2 attempts=9 memory_hits=39 persistent_hits=0
+(OK)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 261

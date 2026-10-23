@@ -1,0 +1,19 @@
+Stabilize compiled assets with persistent prepared-code caching
+
+Integrate engine main at cb4cc339d, including result-location construction,
+current build graph targets and SDK packaging changes.
+
+Keep cache identity/admission/retention in Chibi and native storage bounded,
+atomic and optional. Reevaluate Build under current limits on every load.
+Validate decoded output before recursive construction, align writer depth
+boundaries, and repair the source highlighter's plain-array ownership.
+
+Regenerate compiler resources with complete input inventories, enforce strict
+build/install freshness, and keep recovery installations unavailable.
+
+Validation: native/Release/Web SDK and Studio builds, relocated consumers,
+compiler self-compilation parity, 127 tooling cases, 63 semantic cases, focused
+cache and transport cases, real browser persistence/blocked-restore cases, and
+the companion Studio model contract. Exact timings and identities are in the
+asset plan. Full cold Studio startup and migrated aggregates remain held under
+the unchanged 60-second supervisor. This is a local checkpoint.

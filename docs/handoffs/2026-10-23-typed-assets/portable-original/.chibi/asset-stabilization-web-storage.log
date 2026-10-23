@@ -1,0 +1,24 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/tools/web_storage.c (405): yyjson_get_bool(field("createdAfter")))
+Running: published_source_opens_instead_of_starter (OK) (0.006511 secs)
+Running: reopening_a_revision_preserves_edits_without_redownloading (OK) (0.001795 secs)
+Running: new_revision_retains_the_previous_workspace (OK) (0.001185 secs)
+Running: explicit_workspace_overrides_published_default (OK) (0.001424 secs)
+Running: explicit_sample_overrides_published_default (OK) (0.001183 secs)
+Running: new_project_overrides_published_default (OK) (0.001411 secs)
+Running: invalid_manifest_stops_startup (OK) (0.001179 secs)
+Running: workspace_without_marker_is_preserved (OK) (0.001486 secs)
+Running: failed_import_is_removed (OK) (0.001290 secs)
+Running: checksum_failure_stops_startup (OK) (0.001648 secs)
+Running: download_failure_stops_startup (OK) (0.001391 secs)
+Running: archive_cannot_escape_its_workspace (OK) (0.001205 secs)
+Running: saved_document_warns_before_unload_until_persistence_completes (OK) (0.003304 secs)
+Running: save_during_persistence_waits_for_the_newer_contents (OK) (0.000995 secs)
+Running: save_after_flush_completion_starts_a_new_flush_before_opening (OK) (0.000898 secs)
+Running: failed_persistence_warns_until_a_successful_retry (OK) (0.000811 secs)
+Running: created_project_failure_keeps_storage_retry_after_inline_error 
+Running: imported_project_failure_keeps_storage_retry (OK) (0.000791 secs)
+Running: browser_export_does_not_require_native_process_apis (OK) (0.004496 secs)
+===============================================================
+Summary: Passed: 18 Failed: 1 Total: 19 Suites: 0 Asserts: 95
+Test command wall time: 2.952s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

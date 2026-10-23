@@ -1,0 +1,6 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: scoped_native_matches_canonical_vm (OK) (0.000341 secs)
+Running: scoped_native_shared_budget_and_pure_fallback (OK) (0.000021 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 120
+Test command wall time: 0.905s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

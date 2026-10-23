@@ -1,0 +1,46 @@
+Applied patch to '.github/workflows/ci.yml' cleanly.
+Falling back to direct application...
+Applied patch to '.github/workflows/publish.yml' cleanly.
+Applied patch to '.github/workflows/third-party.yml' cleanly.
+Applied patch to '.gitignore' with conflicts.
+Applied patch to 'PLAN.md' cleanly.
+Applied patch to 'cmake/tests/desktop_dependencies/consumer/CMakeLists.txt' cleanly.
+Applied patch to 'cmake/tests/desktop_dependencies/modules/FindOpenGL.cmake' cleanly.
+Applied patch to 'cmake/tests/desktop_dependencies/producer/CMakeLists.txt' cleanly.
+Falling back to direct application...
+Applied patch to 'docs/self-hosting-build.md' cleanly.
+Applied patch to 'docs/testing.md' with conflicts.
+Applied patch to 'docs/toolchain-inventory.md' cleanly.
+Applied patch to 'sdk/vendor_dependencies.cmake' cleanly.
+Applied patch to 'src/authoring/source_intelligence.c' cleanly.
+Applied patch to 'src/host/build_catalog.c' cleanly.
+Applied patch to 'src/host/build_io.c' cleanly.
+Applied patch to 'src/host/build_io.h' cleanly.
+Falling back to direct application...
+Applied patch to 'test/language/constant_scalar_chibi.c' cleanly.
+Applied patch to 'test/language/format.c' cleanly.
+Applied patch to 'test/language/navigation.c' cleanly.
+Applied patch to 'test/language/program.c' with conflicts.
+Applied patch to 'test/tools/CMakeLists.txt' with conflicts.
+Applied patch to 'test/tools/build_process.c' cleanly.
+Falling back to direct application...
+Applied patch to 'test/tools/build_toolchain.c' cleanly.
+Applied patch to 'test/tools/desktop_dependencies.c' cleanly.
+Applied patch to 'test/tools/main.c' with conflicts.
+Applied patch to 'test/tools/policy_worker.c' cleanly.
+Applied patch to 'test/tools/test_policy.c' cleanly.
+Falling back to direct application...
+Applied patch to 'third_party/README.md' cleanly.
+Applied patch to 'third_party/archives.tsv' cleanly.
+Falling back to direct application...
+Applied patch to 'tools/compiler/runtime.json' cleanly.
+Applied patch to 'tools/graph/engine/Targets.chibi' cleanly.
+Falling back to direct application...
+Applied patch to 'tools/test_policy.py' cleanly.
+Applied patch to 'tools/toolchain/Graph.chibi' cleanly.
+Falling back to direct application...
+U .gitignore
+U docs/testing.md
+U test/language/program.c
+U test/tools/CMakeLists.txt
+U test/tools/main.c

@@ -1,0 +1,9 @@
+{
+  "removed_remaining_generated_files": [
+    ".chibi/asset-main-integration/studio-controls/graph-type-name/libstudio.a",
+    ".chibi/asset-main-integration/studio-controls/graph-type-name/actions_graph.c.o",
+    ".chibi/asset-main-integration/studio-controls/bin/studio-acceptance-graph-type-name"
+  ],
+  "prior_expected_red_artifacts": "Runner retired each after its expected failure; receipts retain source/command/binary hashes",
+  "retained": "Source overlays, plan, runner, review, logs and receipts only; no scratch control executable/archive/object remains"
+}

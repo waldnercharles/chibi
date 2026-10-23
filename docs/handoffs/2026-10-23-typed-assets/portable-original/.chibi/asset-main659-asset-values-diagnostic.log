@@ -1,0 +1,61 @@
+Canonical source mismatch:
+first:
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("object", data.Object([
+                data.Field.Named("label", data.Value.Text("hello")),
+                data.Field.Named("empty", data.List([])),
+                data.Field.Named("children", data.List([
+                    data.Object([
+                        data.Field.Named("id", data.Value.Int(1))
+                    ]),
+                    data.Object([
+                        data.Field.Named("id", data.Value.Int(2))
+                    ])
+                ]))
+            ])),
+            data.Field.Named("maximum", data.Value.UInt(18446744073709551615)),
+            data.Field.Named("minimum", data.Value.Int(-9223372036854775808)),
+            data.Field.Named("precise", data.Value.Real(0.12345678901234568)),
+            data.Field.Named("flag", data.Value.Bool(true)),
+            data.Field.Named("missing", data.Value.Null)
+        ])
+    )
+}
+
+second:
+package asset
+
+import data "game:assets"
+
+pub Build :: () -> byte[] {
+    return data.Encode(
+        data.Object([
+            data.Field.Named("object", data.Object([
+                data.Field.Named("label", data.Value.Text("hello")),
+                data.Field.Named("empty", data.List([])),
+                data.Field.Named("children", data.List([
+                    data.Object([
+                        data.Field.Named("id", data.Value.UInt(1))
+                    ]),
+                    data.Object([
+                        data.Field.Named("id", data.Value.UInt(2))
+                    ])
+                ]))
+            ])),
+            data.Field.Named("maximum", data.Value.UInt(18446744073709551615)),
+            data.Field.Named("minimum", data.Value.Int(-9223372036854775808)),
+            data.Field.Named("precise", data.Value.Real(0.12345678901234568)),
+            data.Field.Named("flag", data.Value.Bool(true)),
+            data.Field.Named("missing", data.Value.Null)
+        ])
+    )
+}
+
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/support/asset_document.c (102): again && !strcmp(text, again))
+Test command wall time: 6.245s; includes in-test fixture setup; external configuration/build excluded.

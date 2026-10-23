@@ -1,0 +1,72 @@
+{
+  "state": "final source-only handoff map; required engine checks pending CI owner slot",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "frozen_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+    "production_sdk_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "sdk_fixture_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+    "ci_application_tree": "f854194089e27e3ebbc987aaf213aa74dd1793bb",
+    "actual_main_ancestry_merge": "not performed; forecast only"
+  },
+  "studio": {
+    "commit": "466e2cc3545927261cf68f88d54caed0093f7cc4",
+    "tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+    "working_tree": "clean",
+    "publication": "not pushed; remote lookup422",
+    "postcommit_build_metadata_currency": "unexecuted; earlier tested tree equals commit tree"
+  },
+  "sdk": {
+    "build_id": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+    "configuration": "native compiler/desktop Release, sanitizersOFF/recoveryOFF",
+    "proof_scope": "Studio12/163 +model1/261, GraphSDK8/202; selected separate invocations, not broad or hosted finalpair"
+  },
+  "receipts": {
+    "native_focus": {
+      "path": ".chibi/asset-main-integration/narrow-d0-focus/receipt.json",
+      "sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461"
+    },
+    "studio_native_binding": {
+      "path": ".chibi/asset-main-integration/narrow-d0-focus/studio-native-binding.json",
+      "sha256": "f1d8ba6afbf0f391dd68340aee0f515900d4e523b62344aed3b5b4a60f3e5b9c"
+    },
+    "studio_local_checkpoint": {
+      "path": ".chibi/asset-main-integration/narrow-d0-focus/studio-local-merge-checkpoint.json",
+      "sha256": "cb53d4d7c5c9eeaecf3a4e705fb9c939c81d5384cc4040e5640eba4f0cfaf2e5"
+    },
+    "ci_source_application": {
+      "path": ".chibi/asset-main-integration/ci-compatibility-applied/receipt.json",
+      "sha256": "b03f4c3e51bea85717ef3b364a96e3617caf85df937dc8003c46b82aed0b84ba"
+    },
+    "ci_independent_review": {
+      "path": ".chibi/asset-main-integration/ci-compatibility-review/review.json",
+      "sha256": "ccf9e45b14deff0f87314e3f76a1cf44e23ea4b617aca1261144dd20d7d31bcf"
+    },
+    "docs_refresh": {
+      "path": ".chibi/asset-main-integration/post-focus-docs/receipt.json",
+      "sha256": "6c5989bd5ffdb5803f23b245138d1245c2ce4a75e5592d8e6cb87719f6826dc6"
+    },
+    "final_source_audit": {
+      "path": ".chibi/asset-main-integration/post-focus-source-audit.json",
+      "sha256": "87bd34616b5b302f9034ce86299dd1965cc9fe46ca31b9cb0f9a150c3c975ec7"
+    },
+    "ancestry_forecast": {
+      "path": ".chibi/asset-main-integration/post-focus-ancestry-forecast/ancestry-forecast.json",
+      "sha256": "287272d2df7cfc4dc88830ef2d0995909e3f0c83f35fa95c4b5df93f540154a3"
+    },
+    "normal_studio_pin_proposal": {
+      "path": ".chibi/asset-main-integration/studio-ci-binding/receipt.json",
+      "sha256": "c8ca9ade3b9565614e070e337dd90c46b7e32ba123ad7b47709c3d27cbc6efa9"
+    }
+  },
+  "execution": "local heavy slot released; CI required5 awaits coordinator-controlled slot, no source edits during exact runner",
+  "next_gates": [
+    "required exact9fa engine checks and addressed failures",
+    "eligible local engine checkpoint then ordinary main ancestry with exact tested resolved tree",
+    "actual clean source/SDK/build metadata currency",
+    "generic hosted no-native-toolchain proof with exact pinnedbytes; matching native producer/release/pin proof remains separate",
+    "published immutable Studio binding and remaining cold/native/Web/platform acceptance"
+  ],
+  "rich32": "not imported; separate runtime/storage hold",
+  "publication": "none from this chat"
+}

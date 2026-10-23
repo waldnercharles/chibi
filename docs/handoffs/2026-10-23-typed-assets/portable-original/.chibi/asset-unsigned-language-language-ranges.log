@@ -1,0 +1,10 @@
+Running: proven_intervals_remove_repeated_clamps_and_checks (OK) (0.000180 secs)
+Running: range_clamps_preserve_unordered_and_signed_zero_selection (OK) (0.000041 secs)
+Running: interval_arithmetic_keeps_ieee_rounding_and_overflow (OK) (0.000033 secs)
+Running: exact_integer_comparisons_avoid_number_round_trips (OK) (0.000089 secs)
+Running: reassigned_integer_operands_do_not_change_previous_numbers (OK) (0.000265 secs)
+Running: control_joins_discard_path_specific_intervals (OK) (0.000023 secs)
+Running: opaque_calls_end_numeric_proofs (OK) (0.000031 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 1254
+Test command wall time: 0.106s; includes in-test fixture setup; external configuration/build excluded.

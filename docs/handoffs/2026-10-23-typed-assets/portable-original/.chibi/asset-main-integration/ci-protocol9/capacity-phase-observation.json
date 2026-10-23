@@ -1,0 +1,11 @@
+{
+  "state": "read-only filesystem phase observation; not a test verdict",
+  "observed_utc": "2026-10-23T06:33:20.620613+00:00",
+  "capacity_fixtures": [
+    {
+      "graph_source_files": 1022,
+      "graph0_exists": true,
+      "imported_prototype_exists": false
+    }
+  ]
+}

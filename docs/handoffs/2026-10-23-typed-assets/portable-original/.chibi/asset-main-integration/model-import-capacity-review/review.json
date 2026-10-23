@@ -1,0 +1,38 @@
+{
+  "status": "read-only workload review; no failure or nontermination established; current CI run remains active",
+  "observed_utc": "2026-10-23T06:22:40.799224+00:00",
+  "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "source_hashes": {
+    "src/assets/model_import.c": "b85553d8bed8a5dbb8fd40ee84d9d5ccbea54cfe5540d5b70972d721d99a3ea3",
+    "test/authoring/model_import.c": "bc0a982c82564de32874851b0381ff4af96b4e6f9f86518e403679f0a6aac769",
+    "src/authoring/asset_compiler_host.c": "bc1ae2394d5c4b12c484e02731325e2b8ae55d47372ecd4e16344940793424fe",
+    "tools/compiler/asset_compiler/Cache.chibi": "c88471bfcc6a08b004e5b03f02b3012aa70524edb46456e1b4fc94004969d5c2",
+    "tools/test_policy.py": "0bad42e3fc69ca7d1de5b5ebb4d5503f4922dc07af9f1c663761aea309dbe87b"
+  },
+  "oracle": {
+    "first_import": {
+      "native_documents": 1022,
+      "prototype_documents": 1,
+      "incoming_materials": 3,
+      "expected": "refuse 1025 graphs; zero written outputs"
+    },
+    "second_import": {
+      "native_documents": 1021,
+      "prototype_documents": 1,
+      "incoming_materials": 3,
+      "expected": "accept exactly 1024 graphs after deleting Graph0"
+    },
+    "semantic_document_reads_across_two_imports": 2045,
+    "distribution": "six native graph folders; prototype excluded from native count but included in namespace scan",
+    "fixture_minimality": "name-only authored modules; distinct names; no safe count reduction preserves near-full existing-catalog boundary"
+  },
+  "production_trace": {
+    "scan": "model_import.c undeclared reads every regular candidate once per import, declared_name -> asset_document_read -> asset_source_read compiled Build evaluation",
+    "repeated_scan": "no nested or unintended rescan found; second import is a separate changed-filesystem boundary check",
+    "memory_cache": "128 entries / 128 MiB; cannot retain entire distinct-document pass",
+    "persistent_cache": "CI owner confirmed actual required invocation inherits enabled/default persistent cache with CHIBI_ASSET_CACHE_DIR unset; authored bounds 1024 entries /256 MiB. Second-pass full recompilation is not established.",
+    "metadata": "successful reads attach authored Build source metadata; no lexical-only shortcut may replace computed declared-name semantics"
+  },
+  "decision": "no source or fixture change justified solely by duration; preserve full contract and active run; any actual failure or material optimization requires separate reviewed evidence",
+  "execution": "no builds/tests, no source/index/profile/limit edits"
+}

@@ -1,0 +1,12 @@
+Running: activation_cache_rebinds_owner_and_preserves_reentrant_work ACTIVATION_CACHE backend=BYTECODE retained_bytes=11808 limit=65536
+ACTIVATION_CACHE backend=SLJIT retained_bytes=10560 limit=65536
+(OK) (0.001078 secs)
+Running: activation_cache_releases_managed_calls_and_failed_runs (OK) (0.000552 secs)
+Running: activation_cache_reuses_completed_payloads_with_bounded_retention (OK) (0.000371 secs)
+Running: activation_cache_reuses_helper_frames_across_many_calls (OK) (0.000933 secs)
+Running: activation_cache_reuses_large_frames_within_a_run (OK) (0.151034 secs)
+Running: activation_cache_keeps_waits_and_inspection_independent (OK) (0.000475 secs)
+Running: activation_cache_does_not_retain_oversized_argument_banks (OK) (0.000679 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 186
+Test command wall time: 0.260s; includes in-test fixture setup; external configuration/build excluded.

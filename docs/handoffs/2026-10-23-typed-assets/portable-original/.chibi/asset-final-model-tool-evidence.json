@@ -1,0 +1,16 @@
+{
+  "command": "/opt/homebrew/bin/python3.13 tools/test_policy.py tool compiled-asset-edit-model",
+  "status": 0,
+  "configuration": "Release",
+  "persistent_cache": "disabled by named policy route",
+  "sdk": "c2ee63a58e93f69bfba286adec0a000ccf2a654d65a96d6cc849b702b3645325",
+  "binary_sha256": "fa7aaa3879e8bcc6e4ea678fad04f3df49824190e752076985303c5f979fa7b3",
+  "fixture_sha256": "2b0749937fc3cf77bc407e0d9fb48624047c2bbe5c5487b5ff80d8f91355e21a",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-final-model-tool.log",
+  "assertions": 73,
+  "wall_seconds": 12.145,
+  "compile_attempts": 8,
+  "memory_hits": 39,
+  "persistent_hits": 0,
+  "coverage": "CPU editor model only; no startup or render; named policy exact pins enforced"
+}

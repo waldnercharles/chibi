@@ -1,0 +1,10 @@
+{
+  "state": "prepared only; failing original focused family retained",
+  "base_engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "failure": "7/8 passed; final case reaches installed Graph commands-only result then stale hardcoded five-source assertion fails at build_sdk.c940; archive mismatch earlier belongs expected negative case",
+  "source_evidence": "Current chibi_support adds binary_cache.c and sha256.c to original five sources; Graph packaged/relocated/bootstrap proved before listed assertion",
+  "proposal": "Assert nonempty support-source commands rooted in caller engine directory, requested explicit /usr/bin/false compiler in each command, and actual file_io command; no brittle total count",
+  "patch_sha256": "813e7980a607a2a3386cd45fb74e7c4e4ed61403b53748d160beb014aedb194a",
+  "product_changes": "none; C fixture oracle only; compiler/resources/SDK/source production unchanged",
+  "runtime_validation": "not run; proposal not active"
+}

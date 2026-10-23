@@ -1,0 +1,16 @@
+Running: real_browser_persists_restores_and_survives_storage_failure Browser cache phase 1:
+Running: cold_session_publishes_real_cache_records (OK) (0.003710 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 11
+Browser cache phase 2:
+Running: reloaded_session_restores_removes_and_repairs_records (OK) (0.000385 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 8
+Browser cache phase 3:
+Running: real_indexeddb_version_failure_preserves_memory_cache (OK) (0.000300 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 5
+(OK) (0.031172 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 4
+Test command wall time: 5.354s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

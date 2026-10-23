@@ -1,0 +1,77 @@
+syntax 1:34: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:58: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:33: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Expected identifier
+syntax 1:40: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:67: Unexpected syntax
+Corpus syntax errors: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/projects/studio/content/behaviors/OutlinerRows.chibi
+  14:8 Unexpected syntax
+  22:21 Unexpected syntax
+  23:9 Unexpected syntax
+  23:21 Unexpected syntax
+  24:5 Unexpected syntax
+  33:9 Unexpected syntax
+  34:57 Unexpected syntax
+  35:26 Unexpected syntax
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/test/language/syntax.c (848): failures == 0)
+Running: language_declarations_actions_and_bindings (OK) (0.000625 secs)
+Running: language_handlers_name_payload_fields (OK) (0.000354 secs)
+Running: language_systems_name_their_step (OK) (0.000019 secs)
+Running: language_retained_binding_syntax (OK) (0.000054 secs)
+Running: language_unified_declarations_and_generic_map_shapes (OK) (0.000103 secs)
+Running: language_authored_asset_declarations (OK) (0.000026 secs)
+Running: language_obsolete_symbol_spellings_rejected (OK) (0.000584 secs)
+Running: language_retained_bindings_reject_prefixes_and_value_types (OK) (0.000251 secs)
+Running: language_keywords_are_contextual_data_member_names (OK) (0.000091 secs)
+Running: language_not_callable_and_unary_spellings_disambiguate (OK) (0.000057 secs)
+Running: language_callable_types_entries_and_results (OK) (0.000086 secs)
+Running: language_system_queries_and_control_flow (OK) (0.000079 secs)
+Running: language_nested_typed_records_and_explicit_labels (OK) (0.000065 secs)
+Running: language_definitions_unions_and_type_patterns (OK) (0.000061 secs)
+Running: language_query_header_and_cancel_deadline (OK) (0.000025 secs)
+Running: language_query_generators_preserve_authored_order (OK) (0.000021 secs)
+Running: language_obsolete_declaration_tokens_rejected (OK) (0.000116 secs)
+Running: language_expressions_precedence_and_continuation (OK) (0.000158 secs)
+Running: language_invalid_source_has_positioned_diagnostics (OK) (0.000193 secs)
+Running: language_incremental_snapshot_matches_fresh (OK) (0.000075 secs)
+Running: language_incremental_errors_match_fresh (OK) (0.000048 secs)
+Running: language_retained_corpus Retained syntax corpus: 1 files, 3733 bytes, 1 failures
+
+===============================================================
+Summary: Passed: 21 Failed: 1 Total: 22 Suites: 0 Asserts: 243
+Test command wall time: 0.440s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

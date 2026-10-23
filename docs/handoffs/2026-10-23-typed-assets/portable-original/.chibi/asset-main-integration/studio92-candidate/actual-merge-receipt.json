@@ -1,0 +1,24 @@
+{
+  "head": "521b666a62406fabae8e1d23bad00765717b3635",
+  "head_tree": "19c1bbfb599f7c8a6a0ba92e063b37e60c078524",
+  "merge_head": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+  "staged_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+  "candidate_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+  "delta_paths": [
+    "tests/acceptance/README.md",
+    "tests/acceptance/main.c",
+    "tests/acceptance/sdk_values.h"
+  ],
+  "production_extraction_delta": [],
+  "unstaged_paths": [],
+  "unmerged_entries": [],
+  "extraction_audit": {
+    "files": 476,
+    "consumer_hashes": 258,
+    "source_hashes": 218,
+    "mismatches": []
+  },
+  "retired_reader_matches": [],
+  "graph_sha256": "233e86db49b97f118894ccc13d6f5ec8559e71a4953b65d9b760d7e2d5da8ec8",
+  "validation": "Source-only merge reconciliation; no commit, build, test, application launch, stash, abort, or push."
+}

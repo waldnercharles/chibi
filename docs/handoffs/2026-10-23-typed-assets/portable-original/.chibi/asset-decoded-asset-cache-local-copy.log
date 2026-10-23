@@ -1,0 +1,5 @@
+Running: asset_cache_reuses_invalidates_and_recovers (OK) (8.192403 secs)
+Running: asset_cache_backend_and_retention (OK) (0.377432 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 60
+Test command wall time: 10.692s; includes in-test fixture setup; external configuration/build excluded.

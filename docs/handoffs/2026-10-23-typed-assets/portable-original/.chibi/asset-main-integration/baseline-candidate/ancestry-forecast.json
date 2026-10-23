@@ -1,0 +1,271 @@
+{
+  "state": "source-only ordinary ancestry merge forecast; no commit created or active merge attempted",
+  "future_first_commit": {
+    "tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "parents": [
+      "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "fa1b7b2bb297eacbbed6aec6f03c4260355db97c"
+    ],
+    "commit_object_created": false
+  },
+  "future_second_parent": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "main_tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+  "actual_future_merge_base": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "merge_base_proof": {
+    "merge_base_30cd_d0": "b93472018544ae27e84a8277035bc3116e31ff47",
+    "merge_base_fa1b_d0": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "b934_is_ancestor_of_fa1b": true,
+    "deduction": "A future commit has exactly the union of its two parents ancestry plus itself. fa1b subsumes the30cd/d0 common ancestor and is therefore the unique maximal common ancestor with d0."
+  },
+  "method": "Separate GIT_INDEX_FILE read-tree of base/0b5/d0; classify equal/base-equal stages; per-file merge-file for19 nontrivial paths; inspect every differing region; resolve ninefiles by exact reviewed typed adaptation. This does not simulate ort rename heuristics; actual Git conflict presentation may differ, while final tree equality remains mandatory.",
+  "trivial_stage_paths": 309,
+  "nontrivial_file_merges": 19,
+  "clean_content_merges": 10,
+  "conflict_files": 9,
+  "conflict_regions": 11,
+  "file_results": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "86be12daca12afc39b4deaa054286b6c0357d8e4",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep two project.chibi starter receipts; all other eligible CI/Linux harness changes are already present.",
+      "base_blob": "71e3991af09f8d427c6d9dad1a9512ef750c1e72",
+      "typed_blob": "86be12daca12afc39b4deaa054286b6c0357d8e4",
+      "main_blob": "c172b851db6e81bb0d69f0c70eeb03be4b900ad4"
+    },
+    {
+      "file": ".github/workflows/paired-studio.yml",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "aa8c4ac0ff2edc4c792b2fd80186ca06e1d73a55",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Add/add file: same paired workflow apart from two reviewed project.chibi receipts; keep those adapted literals.",
+      "base_blob": null,
+      "typed_blob": "aa8c4ac0ff2edc4c792b2fd80186ca06e1d73a55",
+      "main_blob": "843c21b02937f3b2992c3e54b540a089bda8cd77"
+    },
+    {
+      "file": ".gitignore",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "25262ff239daceea59e9d8813767ca3a4cf47692",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep reviewed build-sdk-release ignore and blank separator alongside incoming build-sdk-tests ignore already present.",
+      "base_blob": "c63d4d3996c556f87cb6b9986f0f896fe470ba34",
+      "typed_blob": "25262ff239daceea59e9d8813767ca3a4cf47692",
+      "main_blob": "ab78f2ed72ef4d57ff48f939c2e469de1b565a63"
+    },
+    {
+      "file": "PLAN.md",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "67f98c2adcc15b2c2626213b958e9e1e5583e874",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "15557f0dd68aa7efa502390569095dff86e47623",
+      "typed_blob": "67f98c2adcc15b2c2626213b958e9e1e5583e874",
+      "main_blob": "aa60aab60acf3cf80c5920aa7b2ac89bc74761b9"
+    },
+    {
+      "file": "docs/self-hosting-build.md",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "1b0dff6468a50f58dba6f9792b8de6e616a83417",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "f3621627bdebcdd23c23a1b66636d269eeb8cd77",
+      "typed_blob": "1b0dff6468a50f58dba6f9792b8de6e616a83417",
+      "main_blob": "006bee95759d5c7ddcfb86826b097b77b7fc9355"
+    },
+    {
+      "file": "docs/testing.md",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "a7271153f1541e8395c0d46cdf7e2526be3c750b",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep typed prototype workload section plus incoming third-party/paired SDK sections already present; deletion of typed section would lose reviewed coverage documentation.",
+      "base_blob": "41cceb5e1b597fa99053dfecff991ebf50126b2a",
+      "typed_blob": "a7271153f1541e8395c0d46cdf7e2526be3c750b",
+      "main_blob": "b60a294e610511f1275bba89df582671f1e01bae"
+    },
+    {
+      "file": "docs/toolchain-inventory.md",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "74591c5239e40b255c619639de18f74e20bf7333",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "c198b338d6f32c055c6c968ecb1c655e561d7e3c",
+      "typed_blob": "74591c5239e40b255c619639de18f74e20bf7333",
+      "main_blob": "e65493c472a52d95c358c6299c8b2904eb73f049"
+    },
+    {
+      "file": "src/assets/project_migrate.c",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": null,
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep deleted: incoming empty-literal guard fixes only retired parser/migration implementation.",
+      "base_blob": "0461a2019c036d3a6c08d54b4723b37e1de9b830",
+      "typed_blob": null,
+      "main_blob": "f90671535d1b3f0291b92b08db9b14416c4d5b83"
+    },
+    {
+      "file": "src/execution/definition.h",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "1dd4564589ab52b9fad8b9fab05144b1f7daeee4",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "fed214dbbf9d5a6e43b40fa4a3081365d15d24e6",
+      "typed_blob": "1dd4564589ab52b9fad8b9fab05144b1f7daeee4",
+      "main_blob": "023155e448f8e4ebf737aca0c697f4f39636886f"
+    },
+    {
+      "file": "test/language/navigation.c",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "c148bd7db53ae42d21ba84921ed7f0d07cb069f0",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "38cc0d4a43157c8e84634043f527c2125f841278",
+      "typed_blob": "c148bd7db53ae42d21ba84921ed7f0d07cb069f0",
+      "main_blob": "579ac92f5243348965332ee351c9c76617397f18"
+    },
+    {
+      "file": "test/language/program.c",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "fae7218d09bd6d84d60768ec4c635a9da748fdee",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep retired historical migration cases absent; incoming version28 migration fixture changes do not apply.",
+      "base_blob": "ba22da0d2e68b3cbfe7ad3a2d483ee6b0c46db19",
+      "typed_blob": "fae7218d09bd6d84d60768ec4c635a9da748fdee",
+      "main_blob": "a3bcbf9e7f06978bd941e5bead01f1eea8a2d94e"
+    },
+    {
+      "file": "test/tools/CMakeLists.txt",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "ad8c63664ecae1e0a55eb308373d2d39f32847c7",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep asset_cache_browser.c in unioned test sources; incoming build_sdk/third_party_publish additions are already included.",
+      "base_blob": "be90d3f3b6b747ec491e9b0475323e3127db602e",
+      "typed_blob": "ad8c63664ecae1e0a55eb308373d2d39f32847c7",
+      "main_blob": "c802087b9619af78b601f5ddca1d21ed325c40b5"
+    },
+    {
+      "file": "test/tools/build_process.c",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "c69499e37b5e5c22e9a269cebd6011e4554fbf0e",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "3c603d19971e20b34ae3184d8634377e2fc91803",
+      "typed_blob": "c69499e37b5e5c22e9a269cebd6011e4554fbf0e",
+      "main_blob": "1ed9fe78974a99d7d901dcfc37f1ac7e3119d804"
+    },
+    {
+      "file": "test/tools/build_sdk.c",
+      "three_way_conflict_regions": 3,
+      "classification": "resolved conflict",
+      "result_blob": "0e92e895994d7f8f9ffcd7ed8e12a0d52be3a429",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep reviewed four-line adapter effect (three fixture/notice removals here) and clang22 array formatting; no ckdl dependency.",
+      "base_blob": null,
+      "typed_blob": "0e92e895994d7f8f9ffcd7ed8e12a0d52be3a429",
+      "main_blob": "08de8ea8d82eb882c192ec4bd0fa54310ef5d9b2"
+    },
+    {
+      "file": "test/tools/main.c",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "430647ca6363bc8ba8de94ebc781759e79c24e00",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "4c71ab65843608638a7540289547e268f6dbcf51",
+      "typed_blob": "430647ca6363bc8ba8de94ebc781759e79c24e00",
+      "main_blob": "483c027707e2d458945bb2e356dabbf25c0ed449"
+    },
+    {
+      "file": "test/tools/test_policy.c",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "e731f5508569100faffb616ff8938a1f6fa27b4a",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "5fc50cc6f100f9fc8d6e0a5e77bebf047b52d5b4",
+      "typed_blob": "e731f5508569100faffb616ff8938a1f6fa27b4a",
+      "main_blob": "5ea5fd6d895abe6d64522f62c3c27453ac572032"
+    },
+    {
+      "file": "tools/graph/engine/Targets.chibi",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "bc6368ae32729ae213ab7b496d5c2ae5485802bc",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "73a2b6502c27fd43198302121b505c1a3651d911",
+      "typed_blob": "bc6368ae32729ae213ab7b496d5c2ae5485802bc",
+      "main_blob": "29017657fba4af80bdd1d937743bc889faf9fa8b"
+    },
+    {
+      "file": "tools/test_policy.py",
+      "three_way_conflict_regions": 0,
+      "classification": "clean content merge",
+      "result_blob": "d41a71e866d10be137fdf628336a4a0d5c02019b",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Clean three-way merge reproduces reviewed0b5 content exactly; no additional main delta is missing.",
+      "base_blob": "a2331df54e717fcfec171a5f96e1004daf078e67",
+      "typed_blob": "d41a71e866d10be137fdf628336a4a0d5c02019b",
+      "main_blob": "a5ba66b85fa65cd9e5ef989cd4d2354d86483eb3"
+    },
+    {
+      "file": "tools/toolchain/SDK.chibi",
+      "three_way_conflict_regions": 1,
+      "classification": "resolved conflict",
+      "result_blob": "cc10e63620ad9266431ff2440f59220f9cd80ac0",
+      "result_exactly_matches_checked_tree": true,
+      "resolution": "Keep missing ckdl notice Entry per exact reviewed adapter; all other SDK source already matches main.",
+      "base_blob": null,
+      "typed_blob": "cc10e63620ad9266431ff2440f59220f9cd80ac0",
+      "main_blob": "98f8baaf668cb27af71da79e07eda3979da2e23a"
+    }
+  ],
+  "forecast_resolved_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "equals_checked_source_tree": true,
+  "missing_eligible_main_deltas": [],
+  "source_modification_required_now": false,
+  "no_new_compiler_or_resource_generation": true,
+  "protected_inputs": "Current19 compiler/native37/Wasm37 and Bootstrap[5,2] remain part of exact0b5 tree; no replacement tree or pin repair fabricated.",
+  "known_future_no_C_gate": "Existing .2 runtime pin remains unchanged; matching native host release pending separately. Never restore bootstrap.kdl.",
+  "invalidation": "Any source/index/resource or formatting change after0b5 invalidates this exact-tree forecast and requires refresh against the new checked tree. A moved eligible main target also invalidates the base/file comparison.",
+  "eventual_execution_plan": [
+    "Finish all approved source validation against final frozen tree.",
+    "Create the genuine pending merge commit with actual30cd+fa1b parents and the checked tree; no abort/reset/rewritten merge metadata.",
+    "Perform ordinary merge of the pinned eligible main commit d0de4a84.",
+    "Resolve actual conflicts per per-file map; do not globally choose ours. Preserve deleted migrator and already-reviewed adapters.",
+    "Compare final merged index/tree byte-exactly with tested frozen tree before creating the genuine ancestry merge commit. If unequal, stop for source review/needed validation."
+  ],
+  "active_state_at_forecast_end": {
+    "HEAD": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "MERGE_HEAD": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c"
+  },
+  "preserved_old_scratch": [
+    "candidate.tree",
+    "candidate.patch",
+    "receipt.json",
+    "resolutions.json",
+    "source-hashes.json",
+    "inputs.json"
+  ],
+  "execution": {
+    "builds": [],
+    "tests": [],
+    "generation": [],
+    "commit_objects": [],
+    "active_index_or_worktree_writes": false
+  }
+}

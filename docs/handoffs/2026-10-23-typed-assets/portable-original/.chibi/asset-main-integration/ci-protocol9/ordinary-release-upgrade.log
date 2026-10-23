@@ -1,0 +1,8 @@
+configure-native: running (log: .chibi/logs/1792733435374696000-79704-configure-native.log)
+configure-native: ok (5.4s; log: .chibi/logs/1792733435374696000-79704-configure-native.log)
+build: running (log: .chibi/logs/1792733440829750000-80070-build.log)
+build: ok (4.9s; log: .chibi/logs/1792733440829750000-80070-build.log)
+third-party: running (log: .chibi/logs/1792733445894335000-80661-third-party.log)
+third-party: ok (1.0s; log: .chibi/logs/1792733445894335000-80661-third-party.log)
+graph: running (log: .chibi/logs/1792733446960272000-80667-graph.log)
+graph: ok (7.8s; log: .chibi/logs/1792733446960272000-80667-graph.log)

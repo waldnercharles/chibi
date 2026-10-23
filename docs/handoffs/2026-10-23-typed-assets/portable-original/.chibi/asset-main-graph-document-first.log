@@ -1,0 +1,18 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: node_comments_fold_save_and_reload (OK) (0.798903 secs)
+Running: comment_lines_round_trip_through_asset_documents (OK) (0.517990 secs)
+Running: non_string_comments_are_rejected (OK) (0.456517 secs)
+Running: comment_frames_keep_title_color_and_bounds (OK) (0.497753 secs)
+Running: input_lookup_follows_edits (OK) (0.490663 secs)
+Running: concurrent_first_readers_share_the_index (OK) (0.000489 secs)
+Running: pasted_edges_index_each_copy (OK) (0.522703 secs)
+Running: exec_lookup_follows_edits (OK) (0.000006 secs)
+Running: invalid_exec_fan_out_stays_inspectable (OK) (0.000002 secs)
+Running: descriptors_carry_reflected_types_and_policy (OK) (0.000060 secs)
+Running: ids_and_instance_pins_stay_stable (OK) (0.479277 secs)
+Running: authored_defaults_and_literals_save (OK) (0.524006 secs)
+Running: real_inputs_convert_between_widths (OK) (0.000003 secs)
+Running: data_edges_replace_remove_and_fan_out (OK) (0.000004 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 252
+Test command wall time: 4.657s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

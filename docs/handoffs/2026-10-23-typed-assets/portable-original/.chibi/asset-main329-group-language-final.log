@@ -1,0 +1,1328 @@
+Running: scoped_native_matches_canonical_vm (OK) (0.000362 secs)
+Running: scoped_native_shared_budget_and_pure_fallback (OK) (0.000021 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 120
+syntax 1:34: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:58: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:33: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:32: Expected identifier
+syntax 1:40: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:67: Unexpected syntax
+Running: language_declarations_actions_and_bindings (OK) (0.000379 secs)
+Running: language_handlers_name_payload_fields (OK) (0.000216 secs)
+Running: language_systems_name_their_step (OK) (0.000017 secs)
+Running: language_retained_binding_syntax (OK) (0.000038 secs)
+Running: language_unified_declarations_and_generic_map_shapes (OK) (0.000104 secs)
+Running: language_authored_asset_declarations (OK) (0.000026 secs)
+Running: language_obsolete_symbol_spellings_rejected (OK) (0.000514 secs)
+Running: language_retained_bindings_reject_prefixes_and_value_types (OK) (0.000254 secs)
+Running: language_keywords_are_contextual_data_member_names (OK) (0.000072 secs)
+Running: language_not_callable_and_unary_spellings_disambiguate (OK) (0.000048 secs)
+Running: language_callable_types_entries_and_results (OK) (0.000081 secs)
+Running: language_system_queries_and_control_flow (OK) (0.000073 secs)
+Running: language_nested_typed_records_and_explicit_labels (OK) (0.000064 secs)
+Running: language_definitions_unions_and_type_patterns (OK) (0.000060 secs)
+Running: language_query_header_and_cancel_deadline (OK) (0.000023 secs)
+Running: language_query_generators_preserve_authored_order (OK) (0.000021 secs)
+Running: language_obsolete_declaration_tokens_rejected (OK) (0.000096 secs)
+Running: language_expressions_precedence_and_continuation (OK) (0.000166 secs)
+Running: language_invalid_source_has_positioned_diagnostics (OK) (0.000178 secs)
+Running: language_incremental_snapshot_matches_fresh (OK) (0.000067 secs)
+Running: language_incremental_errors_match_fresh (OK) (0.000035 secs)
+Running: language_retained_corpus Retained syntax corpus: 312 files, 706379 bytes, 0 failures
+(OK) (0.071713 secs)
+===============================================================
+Summary: Passed: 22 Failed: 0 Total: 22 Suites: 0 Asserts: 1487
+semantic 1:90: Non-exhaustive switch: a union alternative is missing
+semantic 1:132: Unreachable duplicate union pattern
+semantic 1:1: 'value' requires a default value
+semantic 1:1: Expected a value expression
+semantic 1:70: Missing return
+semantic 1:68: Union result 'Result' requires a value on every return path
+semantic 1:72: A nonoptional union requires one of its alternatives
+semantic 1:74: Optional union requires a presence guard before switching
+semantic 1:107: Optional union requires a presence guard before switching
+semantic 1:109: Missing return
+semantic 1:21: Recursive owned union payloads are not supported
+semantic 1:21: Recursive owned union payloads are not supported
+semantic 1:35: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:24: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:23: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:31: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:37: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:57: Missing return
+semantic 1:23: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:23: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:79: 'Cancelled' is reserved for the cancellation singleton
+semantic 1:98: Non-exhaustive switch: a union alternative is missing
+semantic 1:122: Non-exhaustive switch: a union alternative is missing
+semantic 1:118: Operation has no compatible typed operands
+semantic 1:130: Unknown value 'num_result'
+semantic 1:108: Operation has no compatible typed operands
+semantic 1:89: Pattern bindings require a matching if or while condition
+semantic 1:79: Nested functions require enclosing locals to be passed as parameters
+semantic 1:62: Incompatible types: expected double?, got int?
+semantic 1:61: Incompatible types: expected double?, got int
+semantic 1:76: Await requires a capability call
+semantic 1:71: Incompatible types: expected bool, got task
+semantic 1:47: Constant initializer requires compile-time values and operators
+semantic 1:52: Constant initializer requires compile-time values and operators
+semantic 1:49: Assignment requires a writable value
+semantic 1:29: Cyclic value dependency involving 'A'
+semantic 1:37: Constant initializer requires compile-time values and operators
+semantic 1:29: Constant initializer requires compile-time values and operators
+semantic 1:47: Incompatible types: expected int, got double; convert with int(value)
+semantic 1:56: Numeric literal has a fraction, which int cannot hold
+semantic 1:32: Expected identifier
+semantic 1:32: Unexpected syntax
+semantic 1:32: Unknown type ''
+semantic 1:43: Expected identifier
+semantic 1:44: Unexpected syntax
+semantic 1:43: Compile-time evaluation: requires a terminating authored procedure and constant arguments
+semantic 1:43: Type expression must construct a compile-time type
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals
+semantic 1:87: Pass system invocation locals as parameters across callable boundaries
+semantic 1:49: Pass system invocation locals as parameters across callable boundaries
+semantic 1:50: Optional component requires a presence guard before member access
+semantic 1:101: Optional component requires a presence guard before member access
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:52: Incompatible types: expected int, got string
+semantic 1:56: Incompatible types: expected int, got int?
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:46: ?? requires an optional value on its left
+semantic 1:41: Reduction requires a writable scalar numeric component field
+semantic 1:51: Reduction requires a writable scalar numeric component field
+semantic 1:47: Reduction requires a writable scalar numeric component field
+semantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:48: Reduction requires a writable scalar numeric component field
+semantic 1:57: Optional component requires a presence guard before member access
+semantic 1:38: Reduction requires a synchronous system body
+semantic 1:55: Reduction requires a synchronous system body
+semantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:56: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:60: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:64: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:72: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:83: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:122: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:95: Reduction producer cannot read or write component 'Position' outside reductions
+semantic 1:50: Reduction producer cannot call an opaque component accessor
+semantic 1:55: Reduction producer cannot call an opaque component accessor
+semantic 1:40: Reduction requires a synchronous system body without tasks
+semantic 1:70: Reduction requires a synchronous system body without tasks
+semantic 1:74: A component cannot mix ordered and unordered reductions in one system
+semantic 1:67: A component cannot mix ordered and unordered reductions in one system
+semantic: Units differ: u = s
+semantic: Units differ: u = s
+semantic 1:37: A component cannot be both a parameter and excluded
+semantic 1:35: Unknown query relationship 'target'
+semantic 1:52: Optional component requires a presence guard before member access
+semantic 1:42: Assignment requires a writable value
+semantic 1:49: Assignment requires a writable value
+semantic 1:37: Numeric literal is outside the range of int8
+semantic 1:26: Range bounds descend; count down with for <
+semantic 1:37: Range bounds descend; for < takes the low bound first, as in for < i in 0..10
+semantic 1:37: for < reverses only ranges and arrays
+semantic 1:56: for < reverses only ranges and arrays
+semantic 1:62: Missing return
+semantic 1:55: Missing return
+semantic 1:83: Missing return
+semantic 1:88: Missing return
+semantic 1:67: Missing return
+semantic 1:67: Missing return
+semantic 1:100: Missing return
+semantic 1:55: Missing return
+semantic 1:39: Unknown event 'Begin'
+semantic 1:55: Missing return
+semantic 1:70: Union result 'value' requires a value on every return path
+semantic 1:62: Missing return
+semantic 1:35: Numeric literal is outside the range of int8
+semantic 1:36: Numeric literal is outside the range of int64
+semantic 1:37: Numeric literal is outside the range of int64
+semantic 1:37: Numeric literal is outside the range of uint64
+semantic 1:38: Numeric literal is outside the range of uint64
+semantic 1:29: Character literal is outside the range of byte
+semantic 1:41: A character literal holds exactly one character
+semantic 1:41: A character literal holds exactly one character
+semantic 1:41: Invalid character literal
+semantic 1:41: Invalid character literal
+semantic 1:43: Incompatible types: expected string, got char
+semantic 1:43: A character literal needs an integer or char type
+semantic 1:48: Incompatible types: expected byte, got char; convert with byte(value)
+semantic 1:47: Incompatible types: expected char, got int; convert with char(value)
+semantic 1:47: char converts only with char(value)
+semantic 1:41: Constant does not fit in char
+semantic 1:56: Incompatible types: expected char, got int; convert with char(value)
+semantic 1:50: char converts from an integer
+semantic 1:128: Incompatible types: expected struct, got struct
+semantic 1:55: Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)
+semantic 1:52: A conversion argument may only be named wrap or clamp
+semantic 1:48: wrap and clamp convert between integer types
+semantic 1:40: wrap and clamp convert between integer types
+semantic 1:47: Conversion takes one value
+semantic 1:46: cast<T>(value) was removed; write T(value)
+semantic 1:47: Incompatible types: expected byte, got int; convert with byte(value)
+semantic 1:61: int64 and uint64 operands need an explicit conversion, such as int64(value)
+semantic 1:30: Numeric literal is outside the range of byte
+semantic 1:40: VectorAdd returns a new value and changes nothing; assign its result
+semantic 1:84: sum returns a new value and changes nothing; assign its result
+semantic 1:24: Binding dependency cycle
+semantic 1:95: This call has several results; return the ones you need by name, as in return(Hit: r.Hit, Distance: r.Distance)
+semantic 1:38: Unexpected syntax
+semantic 1:51: Expected }
+semantic 1:35: Unexpected syntax
+semantic 1:29: Type 'struct' requires a type argument
+semantic 1:29: Type 'struct' requires a type argument
+semantic 1:1: 'value' requires a default value
+semantic 1:1: Expected a value expression
+semantic 1:1: Expected behavior, library or system
+semantic 1:1: Source has no executable declaration
+semantic: Units differ: u += u/s
+semantic: Units differ: u = rad
+semantic: Units differ: u/s < u
+semantic: Units differ: u + s
+semantic: Units differ: *= would turn u into u·s
+semantic: Units differ: u = u/s²
+semantic: Units differ: u = 1
+semantic: Units differ: u = rad
+semantic: Units differ: u/s + u
+semantic: Units differ: m³ = kg
+semantic: Units differ: u = u/s^4
+semantic: Units differ: u/s = 1/s
+semantic: Units differ: u % u/s
+semantic: Units differ: u %= u/s
+semantic: Units differ: u = u/s
+semantic: Units differ: u = u/s
+semantic: Units differ: u = s
+semantic 1:112: Incompatible result tuple shape
+semantic: Units differ: u fallback u/s
+Running: language_unions_share_patterns_and_require_exhaustive_switches (OK) (0.001284 secs)
+Running: language_cancelled_builtin_cannot_be_shadowed (OK) (0.000238 secs)
+Running: language_switch_exhaustiveness_respects_narrowed_tags (OK) (0.000232 secs)
+Running: language_type_patterns_narrow_and_invalidate (OK) (0.000790 secs)
+Running: language_constants_reject_runtime_dependencies_and_writes (OK) (0.000119 secs)
+Running: language_shadowing_resolves_nearest_declaration (OK) (0.000033 secs)
+Running: language_pub_marks_only_package_declarations (OK) (0.000096 secs)
+Running: language_literals_are_typed_by_spelling (OK) (0.000149 secs)
+Running: language_authored_map_method_names_preserve_callable_identity (OK) (0.000045 secs)
+Running: language_retained_bindings_preserve_owner_and_value_type (OK) (0.000069 secs)
+Running: language_system_retention_rejects_non_system_owners_and_tasks (OK) (0.000189 secs)
+Running: language_system_invocation_locals_cross_calls_only_as_arguments (OK) (0.000103 secs)
+Running: language_optional_component_requires_presence_guard (OK) (0.000070 secs)
+Running: language_coalesce_types_its_operands (OK) (0.000192 secs)
+Running: language_reductions_resolve_stored_fields_and_membership (OK) (0.000088 secs)
+Running: language_reductions_require_system_component_fields (OK) (0.000119 secs)
+Running: language_reduction_producers_reject_conflicting_component_values (OK) (0.000376 secs)
+Running: language_reduction_producers_cannot_suspend_or_start_tasks (OK) (0.000045 secs)
+Running: language_unordered_reductions_require_unbounded_isolated_components (OK) (0.000114 secs)
+Running: language_reductions_check_contribution_units (OK) (0.000062 secs)
+Running: language_query_header_resolves_boolean_filters_and_sources (OK) (0.000223 secs)
+Running: language_query_joins_and_filters_share_source_rules (OK) (0.000237 secs)
+Running: language_query_generators_bind_rows_and_pure_value_filters (OK) (0.000089 secs)
+Running: language_query_filters_reject_effects_and_unbound_variables (OK) (0.000450 secs)
+Running: language_derived_component_is_read_only (OK) (0.000060 secs)
+Running: language_numeric_literal_storage_limits (OK) (0.000021 secs)
+Running: language_loops_reverse_explicitly (OK) (0.000126 secs)
+Running: language_functions_with_results_must_return (OK) (0.000504 secs)
+Running: language_hex_literal_fills_integer_storage (OK) (0.000115 secs)
+Running: language_character_literals_take_their_type_from_context (OK) (0.000289 secs)
+Running: language_char_widens_to_int_and_narrows_explicitly (OK) (0.000566 secs)
+Running: language_numeric_conversions_check_modes_and_constants (OK) (0.000302 secs)
+Running: language_integers_widen_implicitly_and_narrow_explicitly (OK) (0.000176 secs)
+Running: language_vector_operator_resolves_catalog_identity (OK) (0.000018 secs)
+Running: language_call_chains_infer_effects_and_purity (OK) (0.000047 secs)
+Running: language_owned_record_and_index_writes_stay_pure (OK) (0.000097 secs)
+Running: language_external_record_and_index_writes_are_effects (OK) (0.000170 secs)
+Running: language_discarded_pure_result_rejected (OK) (0.000112 secs)
+Running: language_binding_cycle_rejected (OK) (0.000054 secs)
+Running: language_inferred_return_of_several_results_is_rejected (OK) (0.000081 secs)
+Running: language_invalid_source_retains_bounded_diagnostics (OK) (0.000138 secs)
+Running: language_component_declares_measured_fields (OK) (0.000117 secs)
+Running: language_component_rejects_invalid_fields (OK) (0.000048 secs)
+Running: language_units_combine_through_arithmetic (OK) (0.000238 secs)
+Running: language_units_reject_mismatch (OK) (0.000178 secs)
+Running: language_units_check_struct_field_initializers (OK) (0.000099 secs)
+Running: language_units_check_empty_struct_defaults (OK) (0.000069 secs)
+Running: language_units_check_bindings (OK) (0.000041 secs)
+Running: language_units_skip_invalid_sources (OK) (0.000073 secs)
+Running: language_units_check_all_fallback_values (OK) (0.000060 secs)
+Running: language_units_follow_constant_and_state_initializers (OK) (0.000146 secs)
+Running: language_units_check_callable_contracsignature units: Units differ: u = s
+signature units: Units differ: u argument s
+signature units: Units differ: u = s
+signature units: Units differ: u argument u/s
+signature units: Units differ: u = s
+signature units: Units differ: u default s
+signature units: Units differ: u default s
+signature units: Units differ: u = s
+signature units: Invalid unit 'u^0'
+signature units: A measured signature requires a numeric storage type
+signature units: Unknown type 'flaot'
+signature units: Incompatible types: expected struct, got struct
+signature units: Units differ: u = s
+signature units: Units differ: s = u
+package 2:1: Unknown attribute '@bench'
+package 2:7: Duplicate attribute '@test'
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:1: A @test function takes no parameters and returns nothing
+package 2:15: @test needs a package-level function
+semantic 1:21: @test needs a package-level function
+package 4:1: Duplicate declaration 'Same'
+package 2:1: Previous declaration 'Same' is here
+package 4:1: Duplicate declaration 'Same'
+package 2:1: Previous declaration 'Same' is here
+symbol reference: Symbol references use identifiers, not string names
+symbol reference: Incompatible types: expected name, got string
+symbol reference: Unknown component reference 'Enemy'
+symbol reference: Unknown prototype reference 'Health'
+symbol reference: Incompatible types: expected uint64, got int
+symbol reference: Symbol references use identifiers, not string names
+symbol reference: A relationship argument must name a relationship symbol
+symbol reference: Unknown relationship reference 'Targets'
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: A nonoptional symbol reference must name a declared symbol
+symbol reference: Incompatible types: expected name, got string
+ts (OK) (0.000238 secs)
+Running: language_units_reject_callable_mismatches (OK) (0.000504 secs)
+Running: language_units_follow_native_signatures_and_task_results (OK) (0.000196 secs)
+Running: language_units_reject_malformed_metadata_and_overflow (OK) (0.000228 secs)
+Running: language_test_attribute_marks_package_functions (OK) (0.000212 secs)
+Running: effects_infer_recursive_and_transitive_callables (OK) (0.000177 secs)
+Running: effects_indexed_writes_follow_retained_and_reference_roots (OK) (0.000081 secs)
+Running: effects_query_checks_inferred_helpers_and_retained_reads (OK) (0.000107 secs)
+Running: effects_component_await_is_synchronous_but_host_await_is_not (OK) (0.000064 secs)
+Running: effects_imports_publish_transitive_effects_before_query_analysis (OK) (0.281046 secs)
+Running: symbol_references_infer_and_pass_through_typed_parameters (OK) (0.000173 secs)
+Running: symbol_references_reject_strings_numbers_and_wrong_categories (OK) (0.000284 secs)
+===============================================================
+Summary: Passed: 63 Failed: 0 Total: 63 Suites: 0 Asserts: 824
+Running: wasm_backend_is_unavailable_on_native (OK) (0.000003 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 1
+Running: execution_prepared_identity_includes_instruction_schema (OK) (0.000095 secs)
+Running: execution_union_extraction_checks_dynamic_payload_type (OK) (0.000039 secs)
+Running: execution_intrinsics_build_in_result_storage (OK) (0.000013 secs)
+Running: execution_branches_state_and_host_calls (OK) (0.000032 secs)
+Running: execution_source_inspection_is_lazy_and_preserves_resume (OK) (0.000040 secs)
+Running: execution_costs_verify_intrinsics_and_follow_recursive_calls (OK) (0.000017 secs)
+Running: execution_costs_include_managed_scalar_result_and_state_escape (OK) (0.000017 secs)
+Running: execution_finished_definition_owns_producer_strings (OK) (0.000045 secs)
+Running: execution_string_equality_and_iteration_use_full_bytes (OK) (0.000017 secs)
+Running: execution_native_string_fields_validate_before_publication (OK) (0.000005 secs)
+Running: execution_verifier_rejects_invalid_lowering (OK) (0.000007 secs)
+Running: execution_budget_limits_checked_back_edges (OK) (0.000012 secs)
+Running: execution_verifier_rejects_invalid_banks_and_metadata (OK) (0.000013 secs)
+Running: execution_verifier_rejects_invalid_saved_aggregate_roots (OK) (0.000004 secs)
+Running: execution_saved_aggregate_roots_keep_only_live_shapes (OK) (0.000069 secs)
+Running: execution_verifier_rejects_signature_and_local_type_mismatches (OK) (0.000007 secs)
+Running: execution_linked_function_returns_checked_value (OK) (0.000035 secs)
+Running: execution_reused_helper_resets_host_bank_and_rebinds_service (OK) (0.000056 secs)
+Running: execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers (OK) (0.000012 secs)
+Running: execution_integer_bitwise_preserves_width_and_valid_shifts (OK) (0.000141 secs)
+Running: execution_integer_shift_rejects_out_of_range_counts (OK) (0.000188 secs)
+Running: execution_fast_shift_preserves_failure_and_prior_store (OK) (0.000130 secs)
+Running: execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands (OK) (0.000003 secs)
+Running: execution_print_string_is_synchronous_and_preserves_context (OK) (0.000018 secs)
+Running: execution_numeric_address_bits_do_not_retain_saved_storage (OK) (0.000025 secs)
+Running: execution_unary_numeric_operands_ignore_unrelated_address_slot (OK) (0.000014 secs)
+Running: execution_synchronous_action_owns_outcomes_and_validates_selection (OK) (0.000011 secs)
+Running: execution_decoded_suspensions_charge_exact_live_sets (OK) (0.001838 secs)
+Running: execution_numeric_casts_apply_exact_wrap_and_clamp (OK) (0.000449 secs)
+===============================================================
+Summary: Passed: 29 Failed: 0 Total: 29 Suites: 0 Asserts: 3757
+program semantic: append changes the array; call it as a statement on a name
+program semantic: Incompatible types: expected double, got int
+program semantic: append changes the array; call it as a statement on a name
+program semantic: Incompatible types: expected double, got int
+program semantic: Incompatible types: expected double, got int
+program semantic: Unknown callable 'xs.array_add'
+program semantic: Unknown callable 'xs.ArrayAdd'
+Running: program_descriptor_field_observers_compare_all_bytes (OK) (0.000182 secs)
+Running: program_reduction_updates_preserve_clock_and_event_order (OK) (0.002030 secs)
+Running: program_reduction_query_rows_count_filtered_candidates (OK) (0.000162 secs)
+Running: program_pattern_bindings_share_and_spellings (OK) (0.001273 secs)
+Running: program_switches_use_narrowed_union_tags (OK) (0.000500 secs)
+Running: program_general_unions_construct_match_and_extract (OK) (0.001525 secs)
+Running: program_union_arrays_keep_owned_writable_values (OK) (0.001233 secs)
+Running: program_failed_call_stacks_unwind_at_once (OK) (0.000272 secs)
+Running: program_module_finish_preserves_failure_and_consumes_success (OK) (0.000002 secs)
+Running: program_typed_event_changes_state_on_vm_and_sljit (OK) (0.000164 secs)
+Running: program_handlers_name_payload_fields (OK) (0.000660 secs)
+Running: program_occurrences_survive_whitespace_and_follow_the_source (OK) (0.000168 secs)
+Running: program_nested_typed_records_preserve_explicit_labels (OK) (0.000393 secs)
+Running: program_int_to_float_compare_and_cast_run_on_vm_and_sljit (OK) (0.000150 secs)
+Running: program_systems_name_their_step (OK) (0.000418 secs)
+Running: program_query_owner_snapshots_preserve_parallel_effects (OK) (0.000192 secs)
+Running: program_system_membership_exit_cancels_pending_work (OK) (0.000179 secs)
+Running: program_query_sources_resolve_current_targets_and_nearest_ancestors (OK) (0.000421 secs)
+Running: program_query_required_path_keeps_one_instance_per_root (OK) (0.000133 secs)
+Running: program_query_joins_filter_targets_and_refresh_across_suspension (OK) (0.000411 secs)
+Running: program_query_optional_joins_preserve_missing_target_exclusions (OK) (0.000168 secs)
+Running: program_relationship_loops_stream_targets_explicitly (OK) (0.000417 secs)
+Running: program_query_chained_variables_filter_values_and_keep_event_tuples (OK) (0.001356 secs)
+Running: program_query_rows_keep_locals_and_cancel_removed_tuple (OK) (0.000231 secs)
+Running: program_query_changed_preserves_busy_published_writes (OK) (0.000443 secs)
+Running: program_query_admission_is_frozen_before_row_writes (OK) (0.000134 secs)
+Running: program_query_value_filters_preserve_short_circuit_failure_order (OK) (0.000443 secs)
+Running: program_query_predicates_reuse_bounded_scratch_and_fresh_values (OK) (0.000941 secs)
+Running: program_component_binding_runs_and_source_cycle_is_rejected (OK) (0.000399 secs)
+Running: program_imported_library_preserves_owner_namespace_and_reader_after_replace (OK) (0.000588 secs)
+Running: program_system_shared_state_survives_membership_and_is_registration_owned (OK) (0.000162 secs)
+Running: program_managed_state_survives_overwrite_and_multiple_resumes (OK) (0.000309 secs)
+Running: program_result_tuple_copies_survive_mutation_loop_and_resume (OK) (0.000634 secs)
+Running: program_array_literals_are_fresh_copies (OK) (0.001160 secs)
+Running: program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes (OK) (0.002440 secs)
+Running: program_completed_payloads_are_released_without_marking (OK) (0.001492 secs)
+Running: program_temporary_payloads_preserve_roots_across_collection (OK) (0.003431 secs)
+Running: program_sibling_timer_actions_complete_independently_and_cancel_on_detach (OK) (0.000230 secs)
+Running: program_failure_snapshot_owns_outlined_source_diagnostics (OK) (0.000126 secs)
+Running: program_assert_fails_with_its_message_or_condition (OK) (0.000728 secs)
+Running: program_assert_binds_names_and_keeps_helpers_pure (OK) (0.000302 secs)
+Running: program_integer_conversions_check_wrap_and_clamp (OK) (0.000488 secs)
+Running: program_loops_count_half_open_and_in_reverse (OK) (0.000952 secs)
+Running: program_char_conversions_and_arithmetic_stay_unicode_scalars (OK) (0.000711 secs)
+Running: program_char_compares_with_ints_and_steps_below_surrogates (OK) (0.000561 secs)
+Running: program_local_array_survives_collection_mid_build (OK) (0.000581 secs)
+Running: program_local_array_store_checks_its_range (OK) (0.000281 secs)
+Running: program_array_methods_change_their_array (OK) (0.000647program semantic: Await this task to read 'a'
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+program semantic: Incompatible types: expected double, got union
+program semantic: This task can hold tasks of other functions; await it only to wait
+ secs)
+Running: program_integer_and_nominal_enum_literals_preserve_exact_bits (OK) (0.000235 secs)
+Running: program_concrete_assignments_preserve_name_byte_and_handle_storage (OK) (0.000258 secs)
+Running: program_source_float_width_conversion_preserves_native_input (OK) (0.000123 secs)
+Running: program_state_actions_demand_inputs_route_and_preserve_per_owner_state (OK) (0.001713 secs)
+Running: program_retrigger_evaluates_each_duration_once (OK) (0.000261 secs)
+Running: program_debugger_steps_without_replaying_and_retains_owned_watches (OK) (0.000378 secs)
+Running: program_task_runs_to_first_suspension_then_beside_caller (OK) (0.000440 secs)
+Running: program_task_cancel_cascades_and_wakes_awaiters (OK) (0.000628 secs)
+Running: program_task_cancelling_itself_stops_at_once (OK) (0.000821 secs)
+Running: program_task_owns_tasks_started_by_its_continuations (OK) (0.000406 secs)
+Running: program_task_continuation_cancels_but_cannot_await_its_task (OK) (0.001071 secs)
+Running: program_task_slots_are_reused_without_reviving_old_handles (OK) (0.000834 secs)
+Running: program_task_deadlines_use_start_time_and_do_not_cancel_waiters (OK) (0.000539 secs)
+Running: program_task_copies_retain_results_and_unobserved_results_are_reclaimed (OK) (0.000655 secs)
+Running: program_task_handle_survives_in_a_detached_capture (OK) (0.000412 secs)
+Running: program_task_handles_survive_in_suspended_array_values (OK) (0.001798 secs)
+Running: program_task_scope_exits_drop_only_unobserved_handles (OK) (0.000725 secs)
+Running: program_native_nested_collections_retain_task_handles (OK) (0.000424 secs)
+Running: program_task_cancellation_is_distinct_from_zero_false_and_empty_text (OK) (0.001295 secs)
+Running: program_task_waiters_receive_independent_success_snapshots (OK) (0.000446 secs)
+Running: program_task_result_snapshot_outlives_the_last_handle (OK) (0.000286 secs)
+Running: program_task_await_copies_large_payload_once (OK) (0.000656 secs)
+Running: program_task_collection_indexes_handles_across_many_owners (OK) (0.004857 secs)
+Running: program_task_results_keep_nested_task_handles_alive (OK) (0.000501 secs)
+Running: program_prepared_tasks_preserve_cancellation_union_and_deadlines (OK) (0.000745 secs)
+Running: program_task_stops_with_owner_and_does_not_block_events (OK) (0.000196 secs)
+Running: program_many_tasks_collect_in_linear_mark_work (OK) (0.002215 secs)
+Running: program_task_semantics_reject_invalid_uses (OK) (0.000191 secs)
+Running: program_handler_payloads_do_not_hide_parameters (OK) (0.000229 secs)
+Running: program_nested_functions_wait_for_themselves (OK) (0.000188 secs)
+Running: program_input_map_validates_actions (OK) (7.619713 secs)
+Running: program_scene_children_are_referenced (OK) (0.028708 secs)
+Running: program_input_actions_read_through_typed_names (OK) (0.112402 secs)
+Running: program_scene_bindings_are_typed_names_before_play (OK) (0.068033 secs)
+Running: program_constant_definitions_execute (OK) (0.000841 secs)
+Running: program_single_result_call_fields_read_the_result (OK) (0.000388 secs)
+Running: program_results_are_inferred_from_returns (OK) (0.001518 secs)
+Running: program_task_with_several_results_awaits_a_tuple (OK) (0.000766 secs)
+Running: program_library_call_starts_a_task (OK) (0.000684 secs)
+Running: program_library_task_writes_the_callers_state (OK) (0.000230 secs)
+Running: program_task_keeps_state_and_component_references (OK) (0.000471 secs)
+Running: program_nested_calls_number_indexes_and_mixed_clamp (OK) (0.001124 secs)
+Running: program_returns_convert_to_their_result_type (OK) (0.000566 secs)
+Running: program_yield_resumes_on_the_next_update_without_time (OK) (0.000154 secs)
+Running: program_task_state_awaits_its_function_results (OK) (0.003445 secs)
+Running: program_task_handles_belong_to_their_instance (OK) (0.000129 secs)
+Running: program_component_paths_test_presence (OK) (0.000538 secs)
+Running: program_branch_completes_inside_action_continuation (OK) (0.000894 secs)
+Running: program_parameters_defaults_and_contextual_words (OK) (0.000666 secs)
+Running: program_task_shares_boxed_locals (OK) (0.001220 secs)
+Running: program_detached_string_capture_retention_audit capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=32 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=2 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=32 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=1 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=writer-cancelled writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=2 shape=string phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=2 shape=string phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=writer-cancelled writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=1 shape=string phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=3334 activation_capacity=3334
+capture backend=1 shape=string phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=2 shape=string phase=owner-detach instances=0 activations=0 payload=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=480 activation_capacity=480
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=5241 activation_capacity=9473
+capture backend=1 shape=string phase=owner-detach instances=0 activations=0 payload=0
+(OK) (0.003488 secs)
+Running: program_detached_array_capture_retention_audit capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=2 shape=array-element phase=overwrite writes=32 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=writer-complete writes=32 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=2 shape=array-element phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=1 shape=array-element phase=overwrite writes=32 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=writer-complete writes=32 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=1 shape=array-element phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=2 shape=array-element phase=writer-cancelled writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=2 shape=array-element phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=2 shape=array-element phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=1 shape=array-element phase=writer-cancelled writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=1 shape=array-element phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=5377 activation_capacity=5377
+capture backend=1 shape=array-element phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=2 shape=array-element phase=owner-detach instances=0 activations=0 payload=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=480 activation_capacity=480
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=9439 activation_capacity=15185
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1915 current_snapshot=1210 activation_payload=13710 activation_capacity=15545
+capture backend=1 shape=array-element phase=owner-detach instances=0 activations=0 payload=0
+(OK) (0.005961 secs)
+Running: program_attached_string_capture_retention_control capture backend=2 shape=string phase=start writes=0 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=2707 activation_capacity=2707
+capture backend=2 shape=string phase=overwrite writes=8 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=13287
+capture backend=2 shape=string phase=overwrite writes=16 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=2 shape=string phase=overwrite writes=32 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=2 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=4392 activation_capacity=4392
+capture backend=2 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=2707 activation_capacity=2707
+capture backend=1 shape=string phase=overwrite writes=8 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=13287
+capture backend=1 shape=string phase=overwrite writes=16 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=1 shape=string phase=overwrite writes=32 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11700 activation_capacity=14345
+capture backend=1 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=553 current_snapshot=529 activation_payload=4392 activation_capacity=4392
+capture backend=1 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+(OK) (0.001388 secs)
+Running: program_descendant_capture_keeps_inspector_snapshots_across_shrink (OK) (0.000579 secs)
+Running: program_detached_capture_preserves_task_handles_until_replaced (OK) (0.000549 secs)
+Running: program_assignments_and_reference_writes_do_not_allocate (OK) (0.000838 secs)
+Running: program_component_scalar_reference_writes_do_not_copy_rows (OK) (0.001203 secs)
+Running: program_repeated_helpers_have_bounded_allocations (OK) (0.000343 secs)
+Running: program_reused_helpers_reset_locals_and_preserve_nested_calls (OK) (0.000817 secs)
+Running: program_reused_helpers_keep_managed_results_and_resume_fresh_locals (OK) (0.000924 secs)
+Running: retention_helpers_keep_owner_state_and_copy_plain_values (OK) (0.000479 secs)
+Running: retention_system_owner_survives_row_exit_and_registration_isolation (OK) (0.000297 secs)
+Running: retention_helper_identity_preserves_values_until_restart (OK) (0.000364 secs)
+Running: capture_whole_value_shrink_preserves_escaped_and_self_values capture-write success=1 previous_backing=8513 final_backing=8513 xalloc_calls=5 xalloc_requested=33468
+capture-write success=1 previous_backing=8513 final_backing=280 xalloc_calls=3 xalloc_requested=8793
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000023 secs)
+Running: capture_paths_survive_root_replacement_and_fail_atomically capture-write success=1 previous_backing=24955 final_backing=280 xalloc_calls=4 xalloc_requested=25235
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=1 previous_backing=280 final_backing=8513 xalloc_calls=5 xalloc_requested=33468
+capture-write success=1 previous_backing=8513 final_backing=280 xalloc_calls=3 xalloc_requested=8793
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=280 final_backing=24955 xalloc_calls=6 xalloc_requested=49910
+capture-write success=0 previous_backing=24955 final_backing=24955 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000008 secs)
+Running: capture_nested_scalar_writes_retain_only_current_managed_root capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+capture-write success=1 previous_backing=24907 final_backing=24907 xalloc_calls=6 xalloc_requested=49814
+(OK) (0.000044 secs)
+Running: capture_references_refuse_another_type capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000002 secs)
+Running: capture_element_writes_keep_the_item_type capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+(OK) (0.000002 secs)
+Running: capture_unnamed_union_references_read_and_write capture-write success=1 previous_backing=280 final_backing=280 xalloc_calls=2 xalloc_requested=560
+capture-write success=0 previous_backing=280 final_backing=280 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000002 secs)
+Running: query_binding_direct_matches_host_values_and_failures (OK) (0.000353 secs)
+Running: query_binding_rejects_invalid_immediates_and_types (OK) (0.000003 secs)
+Running: query_binding_unused_load_preserves_branches_and_budget (OK) (0.000019 secs)
+Running: query_binding_preserves_live_integer_slots (OK) (0.000027 secs)
+Running: query_binding_prepared_roundtrip_preserves_errors_and_values (OK) (0.000046 secs)
+Running: query_binding_predicate_requires_bound_variables_transitively (OK) (0.000006 secs)
+Running: query_binding_dispatch_has_bounded_measurements QUERY_BINDING path=direct_query_variable backend=vm trial=0 reads=512 us_per_read=0.062500 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=1 reads=512 us_per_read=0.066406 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=2 reads=512 us_per_read=0.060547 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=3 reads=512 us_per_read=0.058594 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=4 reads=512 us_per_read=0.058594 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=0 reads=512 us_per_read=0.011719 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=1 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=2 reads=512 us_per_read=0.011718 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=3 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=4 reads=512 us_per_read=0.013672 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.000202 secs)
+Running: query_change_versions_saturate (OK) (0.000002 secs)
+Running: query_predicates_roundtrip_with_services_effects_and_preflight (OK) (0.000078 secs)
+Running: query_binding_publication_and_prepared_reader_reject_forged_bound_masks (OK) (0.000049 secs)
+Running: query_binding_authored_join_lowers_without_host_banks (OK) (0.000046 secs)
+Running: query_binding_order_is_checked_before_publication (OK) (0.000032 secs)
+Running: query_predicate_purity_is_rechecked_after_native_linking (OK) (0.000023 secs)
+Running: query_predicate_purity_follows_each_outlined_callee (OK) (0.000020 secs)
+Running: query_predicate_context_cannot_be_recovered_through_bank_aliases (OK) (0.000007 secs)
+===============================================================
+Summary: Passed: 132 Failed: 0 Total: 132 Suites: 0 Asserts: 11273
+Running: unchanged_sources_reuse_analysis_and_executables_after_old_collection_dies (OK) (0.300356 secs)
+Running: display_edits_reuse_sources_with_independently_owned_catalogs (OK) (0.002419 secs)
+Running: body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources (OK) (0.015207 secs)
+Running: binding_generations_and_backends_are_required_cache_inputs (OK) (0.002973 secs)
+Running: catalog_defaults_effects_units_layouts_and_relationships_invalidate_reuse (OK) (0.007192 secs)
+Running: signature_units_cross_libraries_and_invalidate_same_layout_callers (OK) (0.002496 secs)
+Running: native_signature_unit_snapshots_own_metadata (OK) (0.001921 secs)
+Running: native_definitions_preserve_signature_units (OK) (0.000006 secs)
+Running: invalid_edits_and_document_moves_preserve_previous_generations (OK) (0.002267 secs)
+Running: native_binding_tables_supply_nonrepeating_generation_keys (OK) (0.001889 secs)
+Running: struct_defaults_use_frozen_values_and_actual_snapshot_layout (OK) (0.005277 secs)
+Running: default_comparison_storage_is_bounded (OK) (0.001606 secs)
+Running: struct_default_keys_keep_opaque_bytes_and_do_not_read_malformed_fields (OK) (0.006434 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 235
+Running: proven_intervals_remove_repeated_clamps_and_checks (OK) (0.000158 secs)
+Running: range_clamps_preserve_unordered_and_signed_zero_selection (OK) (0.000033 secs)
+Running: interval_arithmetic_keeps_ieee_rounding_and_overflow (OK) (0.000034 secs)
+Running: exact_integer_comparisons_avoid_number_round_trips (OK) (0.000106 secs)
+Running: reassigned_integer_operands_do_not_change_previous_numbers (OK) (0.000297 secs)
+Running: control_joins_discard_path_specific_intervals (OK) (0.000025 secs)
+Running: opaque_calls_end_numeric_proofs (OK) (0.000036 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 1254
+Running: scalar_unions_remove_nonescaping_payloads_snapshots_and_tag_checks (OK) (0.000175 secs)
+Running: scalar_unions_keep_escaping_and_managed_payloads_owned (OK) (0.000123 secs)
+Running: scalar_unions_preserve_failed_extraction_contracts (OK) (0.000023 secs)
+Running: scalar_unions_optimize_control_joins_but_keep_waits_owned (OK) (0.000061 secs)
+Running: scalar_unions_reject_forged_intrinsic_identity (OK) (0.000022 secs)
+Running: scalar_unions_keep_values_used_by_a_loop (OK) (0.000036 secs)
+Running: scalar_unions_preserve_payload_before_secondary_slot_overwrite (OK) (0.000020 secs)
+Running: scalar_unions_optimize_authored_local_patterns (OK) (0.000304 secs)
+Running: scalar_unions_restore_payload_when_leaving_source_inspection (OK) (0.000054 secs)
+Running: scalar_unions_follow_local_aliases_through_diamonds (OK) (0.000046 secs)
+Running: scalar_unions_keep_distinct_incoming_values_materialized (OK) (0.000036 secs)
+Running: scalar_unions_remove_nested_snapshots_and_keep_escaping_dependencies (OK) (0.000106 secs)
+Running: scalar_unions_cross_isolated_calls_without_removing_effects_or_errors (OK) (0.000027 secs)
+Running: scalar_unions_keep_nested_managed_payload_snapshots (OK) (0.000028 secs)
+Running: scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback (OK) (0.000129 secs)
+Running: scalar_component_properties_use_proven_native_access_metadata SCALAR_READ path=snapshot field=signed_value canonical_hosts=2 runtime_hosts=2 make=1 field=0 read=1 descriptors=3 primitive_bank_values=12 result_bank_values=2 bank_values=14 bank_value_bytes=560 writes=0
+SCALAR_READ_COLD path=snapshot field=signed_value backend=BYTECODE inspected=0 alloc_calls=12 requested_bytes=3600 arena_blocks=1 bank_allocs=1 vm_allocs=1 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=signed_value backend=SLJIT inspected=0 alloc_calls=10 requested_bytes=2744 arena_blocks=1 bank_allocs=1 vm_allocs=0 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=signed_value backend=BYTECODE inspected=1 alloc_calls=12 requested_bytes=3600 arena_blocks=1 bank_allocs=1 vm_allocs=1 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=BYTECODE inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=signed_value backend=SLJIT inspected=1 alloc_calls=10 requested_bytes=2744 arena_blocks=1 bank_allocs=1 vm_allocs=0 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=signed_value backend=SLJIT inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide canonical_hosts=2 runtime_hosts=2 make=1 field=0 read=1 descriptors=3 primitive_bank_values=12 result_bank_values=2 bank_values=14 bank_value_bytes=560 writes=0
+SCALAR_READ_COLD path=snapshot field=wide backend=BYTECODE inspected=0 alloc_calls=12 requested_bytes=3600 arena_blocks=1 bank_allocs=1 vm_allocs=1 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=wide backend=SLJIT inspected=0 alloc_calls=10 requested_bytes=2744 arena_blocks=1 bank_allocs=1 vm_allocs=0 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=wide backend=BYTECODE inspected=1 alloc_calls=12 requested_bytes=3600 arena_blocks=1 bank_allocs=1 vm_allocs=1 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=BYTECODE inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=wide backend=SLJIT inspected=1 alloc_calls=10 requested_bytes=2744 arena_blocks=1 bank_allocs=1 vm_allocs=0 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=wide backend=SLJIT inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single canonical_hosts=2 runtime_hosts=2 make=1 field=0 read=1 descriptors=3 primitive_bank_values=12 result_bank_values=2 bank_values=14 bank_value_bytes=560 writes=0
+SCALAR_READ_COLD path=snapshot field=single backend=BYTECODE inspected=0 alloc_calls=12 requested_bytes=3600 arena_blocks=1 bank_allocs=1 vm_allocs=1 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=single backend=SLJIT inspected=0 alloc_calls=10 requested_bytes=2744 arena_blocks=1 bank_allocs=1 vm_allocs=0 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=single backend=BYTECODE inspected=1 alloc_calls=12 requested_bytes=3600 arena_blocks=1 bank_allocs=1 vm_allocs=1 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000005000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000003000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=BYTECODE inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000004000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=snapshot field=single backend=SLJIT inspected=1 alloc_calls=10 requested_bytes=2744 arena_blocks=1 bank_allocs=1 vm_allocs=0 host_bytes=2296 arena_bytes=200
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=snapshot field=single backend=SLJIT inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2296 arena_bytes=200 arena_capacity=256 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value canonical_hosts=0 runtime_hosts=0 make=0 field=0 read=0 descriptors=1 primitive_bank_values=0 result_bank_values=2 bank_values=2 bank_value_bytes=80 writes=1
+SCALAR_READ_COLD path=native-metadata field=signed_value backend=BYTECODE inspected=0 alloc_calls=8 requested_bytes=2712 arena_blocks=0 bank_allocs=1 vm_allocs=1 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=signed_value backend=SLJIT inspected=0 alloc_calls=6 requested_bytes=2256 arena_blocks=0 bank_allocs=1 vm_allocs=0 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=signed_value backend=BYTECODE inspected=1 alloc_calls=8 requested_bytes=2712 arena_blocks=0 bank_allocs=1 vm_allocs=1 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=BYTECODE inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=signed_value backend=SLJIT inspected=1 alloc_calls=6 requested_bytes=2256 arena_blocks=0 bank_allocs=1 vm_allocs=0 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=signed_value backend=SLJIT inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide canonical_hosts=0 runtime_hosts=0 make=0 field=0 read=0 descriptors=1 primitive_bank_values=0 result_bank_values=2 bank_values=2 bank_value_bytes=80 writes=1
+SCALAR_READ_COLD path=native-metadata field=wide backend=BYTECODE inspected=0 alloc_calls=8 requested_bytes=2712 arena_blocks=0 bank_allocs=1 vm_allocs=1 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=wide backend=SLJIT inspected=0 alloc_calls=6 requested_bytes=2256 arena_blocks=0 bank_allocs=1 vm_allocs=0 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=wide backend=BYTECODE inspected=1 alloc_calls=8 requested_bytes=2712 arena_blocks=0 bank_allocs=1 vm_allocs=1 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=BYTECODE inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=wide backend=SLJIT inspected=1 alloc_calls=6 requested_bytes=2256 arena_blocks=0 bank_allocs=1 vm_allocs=0 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=wide backend=SLJIT inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single canonical_hosts=0 runtime_hosts=0 make=0 field=0 read=0 descriptors=1 primitive_bank_values=0 result_bank_values=2 bank_values=2 bank_value_bytes=80 writes=1
+SCALAR_READ_COLD path=native-metadata field=single backend=BYTECODE inspected=0 alloc_calls=8 requested_bytes=2712 arena_blocks=0 bank_allocs=1 vm_allocs=1 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=single backend=SLJIT inspected=0 alloc_calls=6 requested_bytes=2256 arena_blocks=0 bank_allocs=1 vm_allocs=0 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=0 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=0 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=0 trial=2 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=0 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=0 trial=4 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=single backend=BYTECODE inspected=1 alloc_calls=8 requested_bytes=2712 arena_blocks=0 bank_allocs=1 vm_allocs=1 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=BYTECODE inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000002000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ_COLD path=native-metadata field=single backend=SLJIT inspected=1 alloc_calls=6 requested_bytes=2256 arena_blocks=0 bank_allocs=1 vm_allocs=0 host_bytes=2168 arena_bytes=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=1 trial=0 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=1 trial=1 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=1 trial=2 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=1 trial=3 calls=8 assertion_inclusive_seconds=0.000000000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+SCALAR_READ path=native-metadata field=single backend=SLJIT inspected=1 trial=4 calls=8 assertion_inclusive_seconds=0.000001000 host_bytes=2168 arena_bytes=0 arena_capacity=0 alloc_calls=0 requested_bytes=0 arena_blocks=0 bank_allocs=0 vm_allocs=0
+(OK) (0.000903 secs)
+Running: scalar_component_reads_preserve_failures_and_same_context_recovery SCALAR_READ_FAILURE path=snapshot cases=9 modes=4 status=-106 reason=4 frame=0 source=27 stack=-1 pin=0 steps=3 asset=Baseline span=49:64 line=1 column=50
+SCALAR_READ_FAILURE path=native-metadata cases=9 modes=4 status=-106 reason=4 frame=0 source=16 stack=-1 pin=0 steps=3 asset=Baseline span=49:77 line=1 column=50
+(OK) (0.000187 secs)
+Running: scalar_component_reads_keep_managed_root_debug_snapshots SCALAR_READ_MANAGED path=snapshot backend=BYTECODE inspected=0 root_captures=0 runtime_hosts=2 bank_values=14 arena_bytes=201
+SCALAR_READ_MANAGED path=snapshot backend=SLJIT inspected=0 root_captures=0 runtime_hosts=2 bank_values=14 arena_bytes=201
+SCALAR_READ_MANAGED path=snapshot backend=BYTECODE inspected=1 root_captures=1 runtime_hosts=2 bank_values=14 arena_bytes=201
+SCALAR_READ_MANAGED path=snapshot backend=SLJIT inspected=1 root_captures=1 runtime_hosts=2 bank_values=14 arena_bytes=201
+SCALAR_READ_MANAGED path=native-metadata backend=BYTECODE inspected=0 root_captures=0 runtime_hosts=0 bank_values=2 arena_bytes=0
+SCALAR_READ_MANAGED path=native-metadata backend=SLJIT inspected=0 root_captures=0 runtime_hosts=0 bank_values=2 arena_bytes=0
+SCALAR_READ_MANAGED path=native-metadata backend=BYTECODE inspected=1 root_captures=0 runtime_hosts=0 bank_values=2 arena_bytes=0
+SCALAR_READ_MANAGED path=native-metadata backend=SLJIT inspected=1 root_captures=0 runtime_hosts=0 bank_values=2 arena_bytes=0
+(OK) (0.000127 secs)
+Running: scalar_component_reads_copy_all_widths_and_preserve_live_registers (OK) (0.000567 secs)
+Running: scalar_component_reads_compose_with_query_variables_and_live_values (OK) (0.000025 secs)
+Running: scalar_component_reads_reject_invalid_bindings_types_bounds_and_provenance (OK) (0.000014 secs)
+Running: scalar_component_reads_retain_unused_failures_short_circuit_and_budget (OK) (0.000022 secs)
+Running: scalar_component_reads_reacquire_after_writes_and_world_changes (OK) (0.000026 secs)
+Running: scalar_component_reads_keep_unproven_and_managed_fields_generic (OK) (0.000151 secs)
+Running: scalar_component_reads_evaluate_explicit_entity_once (OK) (0.000078 secs)
+Running: scalar_component_properties_keep_explicit_aggregate_snapshots (OK) (0.000104 secs)
+Running: scalar_component_reads_keep_copied_values_across_source_inspection (OK) (0.000020 secs)
+===============================================================
+Summary: Passed: 27 Failed: 0 Total: 27 Suites: 0 Asserts: 9909
+Running: component_write_keeps_scalar_ranges_versions_and_managed_siblings (OK) (0.001007 secs)
+Running: component_write_preserves_ordinary_and_compound_reference_writes (OK) (0.000305 secs)
+Running: component_write_preserves_managed_field_publication (OK) (0.000180 secs)
+Running: component_write_failure_does_not_publish_results_or_undo_callback_effects (OK) (0.000182 secs)
+Running: component_assignment_keeps_explicit_rhs_and_property_results (OK) (0.000468 secs)
+Running: component_write_evaluates_owner_then_rhs_then_revalidates_current_storage (OK) (0.000790 secs)
+Running: component_write_keeps_unproven_and_root_returning_setters_generic (OK) (0.000465 secs)
+Running: component_private_write_call_preserves_used_scalar_and_root_results (OK) (0.000705 secs)
+Running: component_write_ir_stack_cells_precede_locals (OK) (0.000002 secs)
+Running: component_write_ir_no_result_register_operands_preserve_stack_locals (OK) (0.000089 secs)
+Running: component_write_ir_all_widths_exact_bits_and_live_values (OK) (0.000057 secs)
+Running: component_write_ir_failure_checks_and_same_context_recovery (OK) (0.000032 secs)
+Running: component_write_ir_verifier_rejects_invalid_metadata_and_provenance (OK) (0.000018 secs)
+Running: component_write_ir_write_is_live_and_invalidates_reads (OK) (0.000020 secs)
+Running: component_write_ir_prepared_effects_preflight_and_schema (OK) (0.000112 secs)
+===============================================================
+Summary: Passed: 15 Failed: 0 Total: 15 Suites: 0 Asserts: 3344
+Running: scalar_authored_call_benchmark BENCH backend=BYTECODE helper=0 loop=100 dispatches=200 trials=5 module_bytes=89640 publish_ms=0.015000
+BENCH trial=0 seconds=0.004402000 ns_per_loop=220.100 us_per_dispatch=22.010
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.004483000 ns_per_loop=224.150 us_per_dispatch=22.415
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.004304000 ns_per_loop=215.200 us_per_dispatch=21.520
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.004451000 ns_per_loop=222.550 us_per_dispatch=22.255
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.004306000 ns_per_loop=215.300 us_per_dispatch=21.530
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH backend=BYTECODE helper=1 loop=100 dispatches=200 trials=5 module_bytes=87368 publish_ms=0.014000
+BENCH trial=0 seconds=0.009251000 ns_per_loop=462.550 us_per_dispatch=46.255
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.009205000 ns_per_loop=460.250 us_per_dispatch=46.025
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.009264000 ns_per_loop=463.200 us_per_dispatch=46.320
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.009308000 ns_per_loop=465.400 us_per_dispatch=46.540
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.009239000 ns_per_loop=461.950 us_per_dispatch=46.195
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH backend=SLJIT helper=0 loop=100 dispatches=200 trials=5 module_bytes=89640 publish_ms=0.075000
+BENCH trial=0 seconds=0.000104000 ns_per_loop=5.200 us_per_dispatch=0.520
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.000102000 ns_per_loop=5.100 us_per_dispatch=0.510
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.000102000 ns_per_loop=5.100 us_per_dispatch=0.510
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.000102000 ns_per_loop=5.100 us_per_dispatch=0.510
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.000102000 ns_per_loop=5.100 us_per_dispatch=0.510
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH backend=SLJIT helper=1 loop=100 dispatches=200 trials=5 module_bytes=87368 publish_ms=0.035000
+BENCH trial=0 seconds=0.002085000 ns_per_loop=104.250 us_per_dispatch=10.425
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=1 seconds=0.001956000 ns_per_loop=97.800 us_per_dispatch=9.780
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=2 seconds=0.001985000 ns_per_loop=99.250 us_per_dispatch=9.925
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=3 seconds=0.001953000 ns_per_loop=97.650 us_per_dispatch=9.765
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+BENCH trial=4 seconds=0.002000000 ns_per_loop=100.000 us_per_dispatch=10.000
+ALLOC calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.079896 secs)
+Running: record_row_snapshot_benchmark BENCH record_rows fields=24 rows=256 copies=200 trial=0 ns_per_row=102.188
+BENCH record_rows fields=24 rows=256 copies=200 trial=1 ns_per_row=100.459
+BENCH record_rows fields=24 rows=256 copies=200 trial=2 ns_per_row=100.400
+BENCH record_rows fields=24 rows=256 copies=200 trial=3 ns_per_row=101.650
+BENCH record_rows fields=24 rows=256 copies=200 trial=4 ns_per_row=101.182
+(OK) (0.051747 secs)
+Running: text_slice_benchmark BENCH text bytes=131072 reads=4096 trial=0 ns_per_read=1199.463
+BENCH text bytes=131072 reads=4096 trial=1 ns_per_read=1175.171
+BENCH text bytes=131072 reads=4096 trial=2 ns_per_read=1210.449
+BENCH text bytes=131072 reads=4096 trial=3 ns_per_read=1213.135
+BENCH text bytes=131072 reads=4096 trial=4 ns_per_read=1222.778
+(OK) (0.049018 secs)
+Running: byte_array_build_benchmark BENCH bytes pieces=4096 piece=16 trial=0 ns_per_byte=11.353
+BENCH bytes pieces=4096 piece=16 trial=1 ns_per_byte=10.757
+BENCH bytes pieces=4096 piece=16 trial=2 ns_per_byte=10.849
+BENCH bytes pieces=4096 piece=16 trial=3 ns_per_byte=10.864
+BENCH bytes pieces=4096 piece=16 trial=4 ns_per_byte=10.849
+(OK) (0.003588 secs)
+Running: data_reset_benchmark BENCH reset cells=200 trial=0 ns_per_reset=86.155
+BENCH reset cells=200 trial=1 ns_per_reset=83.065
+BENCH reset cells=200 trial=2 ns_per_reset=83.735
+BENCH reset cells=200 trial=3 ns_per_reset=83.900
+BENCH reset cells=200 trial=4 ns_per_reset=81.560
+(OK) (0.083302 secs)
+===============================================================
+Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 647202
+Running: synchronous_activation_benchmark ACTIVATION backend=BYTECODE workload=system owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=6 requested_bytes=1704 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000664000 ns_per_root_activation=207.500 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000641000 ns_per_root_activation=200.312 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000639000 ns_per_root_activation=199.687 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000638000 ns_per_root_activation=199.375 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000637000 ns_per_root_activation=199.063 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=BYTECODE workload=event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=5 requested_bytes=1576 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000689000 ns_per_root_activation=215.313 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000720000 ns_per_root_activation=225.000 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000674000 ns_per_root_activation=210.625 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000679000 ns_per_root_activation=212.188 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000677000 ns_per_root_activation=211.563 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=BYTECODE workload=helper-event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=21 requested_bytes=7632 arena_blocks=2
+ACTIVATION trial=0 seconds=0.001873000 ns_per_root_activation=585.313 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.001780000 ns_per_root_activation=556.250 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.001660000 ns_per_root_activation=518.750 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.001662000 ns_per_root_activation=519.375 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.001661000 ns_per_root_activation=519.062 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=SLJIT workload=system owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=4 requested_bytes=1528 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000433000 ns_per_root_activation=135.312 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000429000 ns_per_root_activation=134.063 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000432000 ns_per_root_activation=135.000 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000428000 ns_per_root_activation=133.750 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000465000 ns_per_root_activation=145.313 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=SLJIT workload=event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=3 requested_bytes=1400 arena_blocks=1
+ACTIVATION trial=0 seconds=0.000510000 ns_per_root_activation=159.375 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000491000 ns_per_root_activation=153.438 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000509000 ns_per_root_activation=159.062 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000509000 ns_per_root_activation=159.062 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000507000 ns_per_root_activation=158.438 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION backend=SLJIT workload=helper-event owners=32 iterations=100 trials=5
+ACTIVATION warmup_xalloc_calls=17 requested_bytes=6840 arena_blocks=2
+ACTIVATION trial=0 seconds=0.000872000 ns_per_root_activation=272.500 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=1 seconds=0.000876000 ns_per_root_activation=273.750 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=2 seconds=0.000872000 ns_per_root_activation=272.500 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=3 seconds=0.000875000 ns_per_root_activation=273.438 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+ACTIVATION trial=4 seconds=0.000879000 ns_per_root_activation=274.688 xalloc_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.025657 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 78
+Running: binding_schedule_benchmark BINDING_BENCH backend=BYTECODE mode=stable owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000177000 us_per_maintenance=14.750
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000177000 us_per_maintenance=14.750
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000177000 us_per_maintenance=14.750
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000176000 us_per_maintenance=14.667
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000174000 us_per_maintenance=14.500
+ALLOC calls=1824 requested_bytes=665184 arena_blocks=480
+BINDING_BENCH backend=BYTECODE mode=membership-churn owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000222000 us_per_maintenance=18.500
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000211000 us_per_maintenance=17.583
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000213000 us_per_maintenance=17.750
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000211000 us_per_maintenance=17.583
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000210000 us_per_maintenance=17.500
+ALLOC calls=1950 requested_bytes=689472 arena_blocks=480
+BINDING_BENCH backend=SLJIT mode=stable owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000114000 us_per_maintenance=9.500
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000114000 us_per_maintenance=9.500
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000114000 us_per_maintenance=9.500
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000115000 us_per_maintenance=9.583
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000115000 us_per_maintenance=9.583
+ALLOC calls=1536 requested_bytes=523104 arena_blocks=480
+BINDING_BENCH backend=SLJIT mode=membership-churn owners=8 bindings_per_owner=3 maintenance=12 trials=5
+BINDING_BENCH trial=0 seconds=0.000156000 us_per_maintenance=13.000
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=1 seconds=0.000156000 us_per_maintenance=13.000
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=2 seconds=0.000156000 us_per_maintenance=13.000
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=3 seconds=0.000156000 us_per_maintenance=13.000
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+BINDING_BENCH trial=4 seconds=0.000156000 us_per_maintenance=13.000
+ALLOC calls=1662 requested_bytes=546912 arena_blocks=480
+(OK) (0.004448 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 728
+Running: borrow_authored_collection_benchmark BORROW backend=BYTECODE helpers=0 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=71112
+BORROW trial=0 seconds=0.000034000 us_per_dispatch=1.063 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000031000 us_per_dispatch=0.969 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000032000 us_per_dispatch=1.000 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000032000 us_per_dispatch=1.000 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000032000 us_per_dispatch=1.000 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=0 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=71112
+BORROW trial=0 seconds=0.001526000 us_per_dispatch=47.687 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.001530000 us_per_dispatch=47.813 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.001529000 us_per_dispatch=47.781 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.001535000 us_per_dispatch=47.969 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.001546000 us_per_dispatch=48.312 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=1 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=102968
+BORROW trial=0 seconds=0.000050000 us_per_dispatch=1.562 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000048000 us_per_dispatch=1.500 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000048000 us_per_dispatch=1.500 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000047000 us_per_dispatch=1.469 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000047000 us_per_dispatch=1.469 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=1 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=102968
+BORROW trial=0 seconds=0.001606000 us_per_dispatch=50.187 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.001601000 us_per_dispatch=50.031 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.001602000 us_per_dispatch=50.062 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.001602000 us_per_dispatch=50.063 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.001604000 us_per_dispatch=50.125 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=2 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=136248
+BORROW trial=0 seconds=0.000060000 us_per_dispatch=1.875 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000060000 us_per_dispatch=1.875 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000061000 us_per_dispatch=1.906 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000060000 us_per_dispatch=1.875 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000060000 us_per_dispatch=1.875 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=BYTECODE helpers=2 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=136248
+BORROW trial=0 seconds=0.001580000 us_per_dispatch=49.375 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.001653000 us_per_dispatch=51.656 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.001593000 us_per_dispatch=49.781 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.001693000 us_per_dispatch=52.906 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.001531000 us_per_dispatch=47.844 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=0 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=71112
+BORROW trial=0 seconds=0.000007000 us_per_dispatch=0.219 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000007000 us_per_dispatch=0.219 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000007000 us_per_dispatch=0.219 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000007000 us_per_dispatch=0.219 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000007000 us_per_dispatch=0.219 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=0 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=71112
+BORROW trial=0 seconds=0.000018000 us_per_dispatch=0.563 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000018000 us_per_dispatch=0.562 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000019000 us_per_dispatch=0.594 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000018000 us_per_dispatch=0.562 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000018000 us_per_dispatch=0.562 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=1 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=102968
+BORROW trial=0 seconds=0.000012000 us_per_dispatch=0.375 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000012000 us_per_dispatch=0.375 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000012000 us_per_dispatch=0.375 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000012000 us_per_dispatch=0.375 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000012000 us_per_dispatch=0.375 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=1 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=102968
+BORROW trial=0 seconds=0.000024000 us_per_dispatch=0.750 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000023000 us_per_dispatch=0.719 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000043000 us_per_dispatch=1.344 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000031000 us_per_dispatch=0.969 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000025000 us_per_dispatch=0.781 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=2 items=1 dispatches=32 trials=5 element_visits=32 expected=1 module_bytes=136248
+BORROW trial=0 seconds=0.000018000 us_per_dispatch=0.562 checksum=33 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000017000 us_per_dispatch=0.531 checksum=65 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000017000 us_per_dispatch=0.531 checksum=97 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000017000 us_per_dispatch=0.531 checksum=129 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000017000 us_per_dispatch=0.531 checksum=161 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW backend=SLJIT helpers=2 items=128 dispatches=32 trials=5 element_visits=4096 expected=8256 module_bytes=136248
+BORROW trial=0 seconds=0.000029000 us_per_dispatch=0.906 checksum=272448 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=1 seconds=0.000028000 us_per_dispatch=0.875 checksum=536640 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=2 seconds=0.000028000 us_per_dispatch=0.875 checksum=800832 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=3 seconds=0.000029000 us_per_dispatch=0.906 checksum=1065024 alloc_calls=0 requested_bytes=0 arena_blocks=0
+BORROW trial=4 seconds=0.000028000 us_per_dispatch=0.875 checksum=1329216 alloc_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.027808 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 252
+Running: incremental_preparation_benchmark INCREMENTAL mode=unchanged trial=0 sources=4 reused=4 prepare_ms=0.608000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=1 sources=4 reused=4 prepare_ms=0.622000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=2 sources=4 reused=4 prepare_ms=0.853000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=3 sources=4 reused=4 prepare_ms=0.625000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=unchanged trial=4 sources=4 reused=4 prepare_ms=0.581000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=body trial=0 sources=4 reused=1 prepare_ms=0.694000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=1 sources=4 reused=1 prepare_ms=0.854000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=2 sources=4 reused=1 prepare_ms=0.705000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=3 sources=4 reused=1 prepare_ms=0.635000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=body trial=4 sources=4 reused=1 prepare_ms=0.619000 xalloc_calls=2074 requested_bytes=1292749 arena_blocks=210
+INCREMENTAL mode=presentation trial=0 sources=4 reused=4 prepare_ms=0.541000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=1 sources=4 reused=4 prepare_ms=0.537000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=2 sources=4 reused=4 prepare_ms=0.532000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=3 sources=4 reused=4 prepare_ms=0.536000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+INCREMENTAL mode=presentation trial=4 sources=4 reused=4 prepare_ms=0.533000 xalloc_calls=1614 requested_bytes=1056419 arena_blocks=186
+(OK) (0.298291 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 159
+Running: binding_schedule_tracks_program_and_owner_lifetimes (OK) (0.001287 secs)
+Running: binding_schedule_preserves_order_and_rejects_cycles_before_writes (OK) (0.000810 secs)
+Running: binding_schedule_rechecks_query_gates_and_uses_bounded_fallback (OK) (0.004925 secs)
+Running: binding_schedule_keeps_dynamic_target_dependencies (OK) (0.000603 secs)
+Running: binding_schedule_snapshots_managed_evaluator_results (OK) (0.000512 secs)
+===============================================================
+Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 5668
+Running: borrow_infers_call_scoped_views_through_forwarded_helpers (OK) (0.001077 secs)
+Running: borrow_call_callbacks_keep_their_owned_argument_snapshots (OK) (0.000343 secs)
+Running: borrow_call_contract_rejects_escape_mutation_suspend_and_recursion (OK) (0.000705 secs)
+Running: borrow_helper_pause_and_wait_retain_arguments_before_resuming (OK) (0.000101 secs)
+Running: borrow_helper_mutation_and_opaque_calls_remain_owning (OK) (0.000072 secs)
+Running: borrow_call_guards_program_state_headers_before_commit (OK) (0.000183 secs)
+Running: borrow_authored_readonly_loop_keeps_scalar_writes (OK) (0.000304 secs)
+Running: borrow_guard_preserves_null_empty_mixed_headers_and_errors (OK) (0.000060 secs)
+Running: borrow_guards_scalar_banks_aliasing_array_storage (OK) (0.000153 secs)
+Running: borrow_rejects_mutation_identity_headers_escape_and_opaque_calls (OK) (0.000121 secs)
+Running: borrow_preserves_ownership_across_debug_and_real_suspension (OK) (0.000048 secs)
+Running: borrow_flags_cannot_enter_canonical_or_prepared_code (OK) (0.000240 secs)
+Running: borrow_argument_sharing_rejects_writes_through_caller_storage (OK) (0.000171 secs)
+Running: borrow_argument_sharing_tracks_derived_and_selected_addresses (OK) (0.000014 secs)
+Running: borrow_verifier_rejects_cell_header_rewrites (OK) (0.000003 secs)
+Running: borrow_argument_sharing_copies_after_unplaced_header_writes (OK) (0.000011 secs)
+Running: borrow_call_rejects_result_header_rewrites (OK) (0.000023 secs)
+Running: borrow_argument_sharing_tracks_reference_kinds (OK) (0.000014 secs)
+Running: borrow_argument_sharing_passes_string_tables_without_copies (OK) (0.000947 secs)
+Running: borrow_argument_sharing_allows_own_record_field_writes (OK) (0.000456 secs)
+Running: borrow_argument_sharing_copies_around_reference_writes (OK) (0.000194 secs)
+Running: borrow_built_results_move_only_when_unchanged_elsewhere (OK) (0.000033 secs)
+Running: borrow_shared_argument_returned_is_copied (OK) (0.000014 secs)
+Running: borrow_result_reached_through_argument_builds_nothing (OK) (0.000011 secs)
+Running: borrow_aliased_results_stay_independent (OK) (0.000007 secs)
+Running: borrow_update_after_union_keep_builds_nothing (OK) (0.000015 secs)
+===============================================================
+Summary: Passed: 26 Failed: 0 Total: 26 Suites: 0 Asserts: 829
+Running: activation_cache_rebinds_owner_and_preserves_reentrant_work ACTIVATION_CACHE backend=BYTECODE retained_bytes=11808 limit=65536
+ACTIVATION_CACHE backend=SLJIT retained_bytes=10560 limit=65536
+(OK) (0.000992 secs)
+Running: activation_cache_releases_managed_calls_and_failed_runs (OK) (0.000468 secs)
+Running: activation_cache_reuses_completed_payloads_with_bounded_retention (OK) (0.000352 secs)
+Running: activation_cache_reuses_helper_frames_across_many_calls (OK) (0.000854 secs)
+Running: activation_cache_reuses_large_frames_within_a_run (OK) (0.131705 secs)
+Running: activation_cache_keeps_waits_and_inspection_independent (OK) (0.000316 secs)
+Running: activation_cache_does_not_retain_oversized_argument_banks (OK) (0.000613 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 186
+Running: reductions_prepared_ordered_fold_preserves_storage_and_clamps (OK) (0.001647 secs)
+Running: reductions_unordered_opt_in_regroups_contributions (OK) (0.000320 secs)
+Running: reductions_min_max_preserve_candidate_nan_and_signed_zero (OK) (0.000249 secs)
+Running: reductions_failures_and_discard_do_not_publish_partial_results (OK) (0.000397 secs)
+Running: reductions_scalar_helper_closure_streams_and_preserves_fallbacks (OK) (0.001497 secs)
+Running: reductions_mixed_public_ir_preserves_serial_failure_owner (OK) (0.000090 secs)
+Running: reductions_effects_include_component_payload_reads (OK) (0.000093 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 450
+Running: headless_canonical_module_runs_without_game_services (OK) (0.000758 secs)
+Running: headless_prepared_artifact_retires_producer_and_file (OK) (0.000601 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 130
+Running: source_format_keeps_named_payload_fields (OK) (0.000295 secs)
+Running: source_format_spaces_typed_constant_colons (OK) (0.000066 secs)
+Running: source_format_spaces_reverse_and_half_open_loops (OK) (0.000133 secs)
+Running: source_format_keeps_attributes_on_their_line (OK) (0.000058 secs)
+Running: source_format_spaces_pub_and_aligns_after_it (OK) (0.000232 secs)
+Running: source_format_spaces_variant_patterns (OK) (0.000326 secs)
+Running: source_format_aligns_bracket_continuations (OK) (0.000632 secs)
+Running: source_format_aligns_operator_continuations (OK) (0.000204 secs)
+Running: source_format_hugs_struct_braces (OK) (0.000158 secs)
+Running: source_format_options_preserve_defaults (OK) (0.000176 secs)
+Running: source_format_generic_types_maps_and_reference_iteration (OK) (0.000808 secs)
+Running: source_format_authored_prototypes_and_relationships (OK) (0.000290 secs)
+Running: source_format_configures_indentation (OK) (0.000360 secs)
+Running: source_format_reflows_lists_and_records (OK) (0.000222 secs)
+Running: source_format_reflows_parameters_calls_and_binary (OK) (0.000249 secs)
+Running: source_format_width_is_byte_based_and_bounded (OK) (0.000269 secs)
+Running: source_format_reflow_preserves_comments (OK) (0.000167 secs)
+Running: source_format_maps_insertions_deletions_and_empty_draft (OK) (0.000078 secs)
+Running: source_format_rejects_options_and_drafts_atomically (OK) (0.000028 secs)
+Running: source_format_preserves_package_separators (OK) (0.000508 secs)
+Running: source_format_block_layout (OK) (0.000071 secs)
+Running: source_format_reductions (OK) (0.000159 secs)
+Running: source_format_component_measures (OK) (0.000145 secs)
+Running: source_format_measured_signatures (OK) (0.000222 secs)
+Running: source_format_preserves_comments_and_literals (OK) (0.000112 secs)
+Running: source_format_preserves_expression_structure (OK) (0.000380 secs)
+Running: source_format_system_types_and_control_flow (OK) (0.000747 secs)
+Running: source_format_switch_arm_indentation (OK) (0.000285 secs)
+Running: source_format_query_header_words (OK) (0.000239 secs)
+Running: source_format_query_generators_and_value_filters (OK) (0.000208 secs)
+Running: source_format_incomplete_source_is_unchanged (OK) (0.004906 secs)
+Running: source_format_keeps_else_and_arrow_spacing (OK) (0.000199 secs)
+Running: source_minimize_drops_redundant_text (OK) (0.003668 secs)
+Running: source_minimize_treats_character_literals_as_literals (OK) (0.000281 secs)
+Running: source_minimize_reaches_a_fixed_point (OK) (0.000885 secs)
+Running: source_minimize_preserves_wrapper_comments (OK) (0.002219 secs)
+Running: source_minimize_preserves_declaration_and_argument_comments (OK) (0.002584 secs)
+Running: source_minimize_preserves_cast_and_storage_comments (OK) (0.000796 secs)
+Running: source_minimize_distinguishes_comments_from_strings (OK) (0.000400 secs)
+Running: source_format_options_compose_with_comment_preserving_minimizer (OK) (0.000345 secs)
+Running: source_format_and_minimize_remain_separate (OK) (0.001243 secs)
+Running: source_minimize_keeps_named_payload_fields (OK) (0.000241 secs)
+Running: source_minimize_drops_repeated_result_lists (OK) (0.000842 secs)
+Running: source_minimize_keeps_argument_order (OK) (0.000526 secs)
+Running: source_minimize_keeps_invalid_source (OK) (0.000030 secs)
+Running: source_minimize_keeps_mixed_grouping_and_tight_ranges (OK) (0.000616 secs)
+Running: source_minimize_preserves_accessor_and_operator_comments (OK) (0.000050 secs)
+Running: source_minimize_spells_accessors_as_paths_and_operators (OK) (0.003219 secs)
+Running: source_migration_normalizes_generated_calls_and_library_owner (OK) (0.000620 secs)
+Running: source_migration_preserves_deferred_setter_actions_and_results (OK) (0.003349 secs)
+Running: source_canonical_is_idempotent_for_compact_property_helpers (OK) (0.001631 secs)
+Running: source_migration_commutes_stable_self_with_deferred_receiver (OK) (0.002254 secs)
+Running: source_minimize_keeps_generic_component_calls (OK) (0.000030 secs)
+Running: source_minimize_elides_only_redundant_root_state_tokens (OK) (0.001491 secs)
+Running: source_format_preserves_state_tokens_and_minimizer_keeps_invalid_source (OK) (0.000076 secs)
+Running: source_format_and_minimize_preserve_retained_lifetimes (OK) (0.001513 secs)
+Running: language_retained_corpus Retained formatter corpus: 312 files, 706379 bytes, 0 failures
+(OK) (5.864476 secs)
+===============================================================
+Summary: Passed: 57 Failed: 0 Total: 57 Suites: 0 Asserts: 6119
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Name cannot be represented at every reference
+rename: Rename would collide with or capture another declaration
+rename: Name cannot be represented at every reference
+rename: Target has no editable source declaration
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+navigation: Unknown callable 'missing'
+rename: Rename requires a complete valid project index
+rename: Rename would collide with or capture another declaration
+rename: Target has no editable source declaration
+rename: Target has no editable source declaration
+navigation: Unexpected syntax
+navigation: Unknown value 'sco'
+navigation: Unexpected syntax
+navigation: Unexpected syntax
+navigation: Unexpected syntax
+navigation: Unknown value 'sco'
+navigation: Unexpected syntax
+navigation: Unknown value 'Shared'
+navigation: Unknown reflected member 'Mul'
+navigation: Unknown reflected member 'Mul'
+(FAILED: test/language/navigation.c (997): edited && !strcmp(edited, "Spark :: prototype"))
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented by valid source syntax
+(FAILED: test/language/navigation.c (1195): plan_rename(spark->target, "BrightSpark"))
+rename: Name cannot be represented by valid source syntax
+(FAILED: test/language/navigation.c (1223): plan_rename(spark->target, "BrightSpark"))
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented by valid source syntax
+(FAILED: test/language/navigation.c (1242): plan_rename(spark->target, "BrightSpark"))
+rename: Name cannot be represented at every reference
+rename: Rename would collide with or capture another declaration
+rename: Target has no editable source declaration
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Name cannot be represented at every reference
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Rename would collide with or capture another declaration
+rename: Name cannot be represented by valid source syntax
+(FAILED: test/language/navigation.c (1696): plan_rename(level->target, "World"))
+Running: navigation_resolves_shadowed_identity (OK) (0.000443 secs)
+Running: rename_rejects_capture_in_both_directions (OK) (0.000154 secs)
+Running: rename_cross_file_callable_parameters_results_and_program (OK) (0.000272 secs)
+Running: rename_preserves_quoted_names_and_escapes (OK) (0.000104 secs)
+Running: navigation_tracks_native_field_access_roles (OK) (0.000061 secs)
+Running: rename_rejects_collisions_and_invalid_project_drafts (OK) (0.000183 secs)
+Running: rename_rejects_capture_before_hoisted_declaration (OK) (0.000033 secs)
+Running: rename_groups_event_alias_handlers (OK) (0.000032 secs)
+Running: intelligence_completes_listed_payload_fields (OK) (0.000076 secs)
+Running: intelligence_scope_identity_and_owned_outputs (OK) (0.000089 secs)
+Running: intelligence_signatures_and_semantic_highlights (OK) (0.000125 secs)
+Running: intelligence_presents_character_literals_and_char (OK) (0.000113 secs)
+Running: intelligence_describes_retained_storage_and_owner (OK) (0.000114 secs)
+Running: library_signatures_infer_results_from_returns (OK) (0.000304 secs)
+Running: rename_implicit_results_cannot_edit_return_type_or_expression (OK) (0.000063 secs)
+Running: intelligence_recovers_reflected_members_and_rejects_comments (OK) (0.000158 secs)
+Running: intelligence_ranks_typed_visible_symbols_and_recovers_library_members (OK) (0.000856 secs)
+Running: intelligence_prototype_arguments_use_declared_reference_context (OK) (0.000232 secs)
+Running: navigation_resolves_external_definitions_and_selected_references 
+Running: navigation_follows_prototype_names_into_spawn 
+Running: prototype_reference_flow_reports_typed_alias_origins_without_duplicate_navigation 
+Running: prototype_rename_skips_omitted_defaults 
+Running: rename_external_declaration_uses_exact_source_and_catalog_identity (OK) (0.000199 secs)
+Running: rename_declared_events_preserves_exact_rml_tokens (OK) (0.000054 secs)
+Running: navigation_connects_input_actions_to_the_input_map (OK) (0.887970 secs)
+Running: rename_input_action_edits_the_input_map_and_scripts (OK) (0.019032 secs)
+Running: navigation_connects_scene_globals_and_completes_typed_bindings (OK) (0.000047 secs)
+Running: rename_scene_global_updates_all_binders_and_qualified_uses 
+Running: catalog_publishes_union_payloads_from_later_libraries (OK) (0.000795 secs)
+Running: catalog_preserves_signature_only_union_and_task_exports (OK) (0.000913 secs)
+Running: catalog_preserves_invalid_behavior_diagnostics (OK) (0.000318 secs)
+Running: catalog_owns_union_variant_names_fields_and_literals (OK) (0.000113 secs)
+Running: catalog_rejects_duplicate_exported_union_names (OK) (0.000340 secs)
+Running: intelligence_templates_hide_specializations_and_preserve_owned_definitions (OK) (0.000533 secs)
+===============================================================
+Summary: Passed: 29 Failed: 5 Total: 34 Suites: 0 Asserts: 364
+Test command wall time: 18.297s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,25 @@
+{
+  "reviewer": "/root/review_publication",
+  "status": "source review clear; execution pending",
+  "created_utc": "2026-10-23T05:18:30.168774+00:00",
+  "base_tree": "9fa28696afbd513529541f5f87b14b0b2f9ae2b4",
+  "candidate_tree": "822d66a4cbbaa9c0530efd1ece270a6890d4a40f",
+  "patch_sha256": "561262936180df57abd1a13952d1e17755b06e11d2e821ddc917dd43dadcf4eb",
+  "author_receipt_sha256": "83b965e6b90ce0573647178819ed79329e6fb8f8e6dfd5b244908b5d9c3421ab",
+  "checks": {
+    "base_and_candidate_all_five_blobs_match_receipt_and_git_trees": true,
+    "candidate_minus_base_exact_declared_five_files": true,
+    "temporary_index_diff_exact_declared_five_files": true,
+    "live_index_equal_frozen_base": true,
+    "make_and_header_protocol9_consistent": true,
+    "stage_zero_fresh_host_override_unchanged": true,
+    "old6_missing_nonprobing_current_cases_preserved": true,
+    "policy_worker_protocol8_response_is_zero_exit_and_8_newline": true,
+    "original_gate_routes_old8_to_authored_but_regression_requires_recovery": "source reasoning only; not executed",
+    "no_additional_active_gate_consumers_found": true,
+    "new_comments_docs_limit_protocol9_to_compiled_bootstrap_compatibility": true,
+    "prepared_artifact_support_explicitly_not_inferred": true
+  },
+  "findings": [],
+  "execution": "No build, native run, test, dispatch, publication, live source edit, or staging performed. Red/green regression execution remains pending."
+}

@@ -1,0 +1,15 @@
+{
+  "state": "local ordinary Studio merge completed after narrow runtime proof",
+  "commit": "466e2cc3545927261cf68f88d54caed0093f7cc4",
+  "tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+  "parents": [
+    "521b666a62406fabae8e1d23bad00765717b3635",
+    "df050886dd7721db63b40fdf5435f1cb20ceeb34"
+  ],
+  "subject": "Merge main SDK value checks into compiled asset editing",
+  "tested_tree_matches": true,
+  "working_tree": "clean",
+  "native_sdk_build_id": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+  "proof": "studio-native-binding.json + sealed receipt.json",
+  "publication": "not pushed; no main landing or hosted proof"
+}

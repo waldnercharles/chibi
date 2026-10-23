@@ -1,0 +1,253 @@
+{
+  "repo": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio",
+  "base": "305053fc6d8db4ba9a73c50f09f474c6fde1c1eb",
+  "current_tree": "a7ebaed0a999bd97a38b9f9676f02f824beac9ed",
+  "incoming": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+  "initial_merge_tree": "6353232dde526cb3ead9db0964b5e994f01c6450",
+  "conflicts": [
+    "EXTRACTION.json",
+    "src/editor/collab/actions_graph.c",
+    "src/editor/collab/actions_scene.c",
+    "src/editor/documents/scene_history.c",
+    "src/editor/documents/scene_prototype_actions.c",
+    "src/editor/documents/scene_prototypes.c",
+    "src/editor/studio/studio_graph_properties.c",
+    "src/editor/studio/studio_graph_values.c",
+    "src/editor/studio/studio_node_calls.c",
+    "src/editor/studio/studio_properties.c",
+    "src/editor/studio/studio_properties_view.c",
+    "src/editor/workspace/scene_asset_drop.c",
+    "src/editor/workspace/scene_authoring.c",
+    "src/editor/workspace/scene_authoring.h",
+    "src/editor/workspace/scene_gizmo.c",
+    "src/editor/workspace/scene_runtime.c",
+    "tests/acceptance/main.c",
+    "tests/acceptance/outliner_row_policies.h",
+    "tests/acceptance/prototype_source.h",
+    "tests/acceptance/prototype_source_authority.h",
+    "tests/acceptance/scene_move.h"
+  ],
+  "initial_ours_resolution_tree": null,
+  "result_tree": "fcc7edb14bfd4855c151e2e832a42b0ca39ab06f",
+  "resolutions": [
+    {
+      "path": "EXTRACTION.json",
+      "result_blob": "ab6808f14bf3956d109eb17e7c7150bbd7d6fd4c",
+      "sha256": "8fa8d6697c329631850041be506636ddb6dae63f0f50223bb8f289a995ecdfce",
+      "current_blob": "ab6808f14bf3956d109eb17e7c7150bbd7d6fd4c",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/collab/actions_graph.c",
+      "result_blob": "27250e8ed53afd9895427dfb8d7c3b028629c510",
+      "sha256": "bb8114d3599024adeed36865ab166d9cc5fabcfabebac3ac63fbba0f41367d9c",
+      "current_blob": "27250e8ed53afd9895427dfb8d7c3b028629c510",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/collab/actions_scene.c",
+      "result_blob": "4b50a15a7225c656f2447bc78a76f0e464c5bb84",
+      "sha256": "84b707ed8fcd2f8bfee268f7abfcaefa4901b623dd18145bbd8056eb7d15fc62",
+      "current_blob": "4b50a15a7225c656f2447bc78a76f0e464c5bb84",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/documents/scene_history.c",
+      "result_blob": "b568d3e3199bfffa47d154f9d8934155d4ee8058",
+      "sha256": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+      "current_blob": "b568d3e3199bfffa47d154f9d8934155d4ee8058",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/documents/scene_prototype_actions.c",
+      "result_blob": "67576f8398c9ce658aae4b4af7e7d96ac99007d1",
+      "sha256": "c17e6b67d5caa72a1f9c478760603f1af9c7cf4cdb0b3323e9c207b09d8931a1",
+      "current_blob": "67576f8398c9ce658aae4b4af7e7d96ac99007d1",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/documents/scene_prototypes.c",
+      "result_blob": "7a385085a6cde3af04bcaf5b9a7e7126165177bf",
+      "sha256": "63398a562fab1c2a03aaee3c293b23d63d40e9db80a100e4732d7cbdd0fb90f9",
+      "current_blob": "7a385085a6cde3af04bcaf5b9a7e7126165177bf",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/studio/studio_graph_properties.c",
+      "result_blob": "7e1a1e38245a133fc662b60ea72ee05b193bf9a4",
+      "sha256": "125b7e9370e4901bd7eeb55b79be4072e98a4dd77d98354aca59bc60e539e731",
+      "current_blob": "7e1a1e38245a133fc662b60ea72ee05b193bf9a4",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/studio/studio_graph_values.c",
+      "result_blob": "6ede428c75bec7d85342ec3fac63185cf33e0c6c",
+      "sha256": "aed1e130ec496cc67081afdcf96bd32377b0263b7d6d63d44c7e9018b12296db",
+      "current_blob": "6ede428c75bec7d85342ec3fac63185cf33e0c6c",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/studio/studio_node_calls.c",
+      "result_blob": "53d359617d2980e591b431e95e4321def5efb780",
+      "sha256": "f331c2da6f087ce1bcfdad479e7cf66efe1a82fee47edc6e6f5214a472d78082",
+      "current_blob": "53d359617d2980e591b431e95e4321def5efb780",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/studio/studio_properties.c",
+      "result_blob": "ee573286158edb5d7329d760f75076a15ff79e18",
+      "sha256": "6ce2e7e5516c15f0ea663d063875bbde6647b294450330e85e86e02ccadf53b8",
+      "current_blob": "ee573286158edb5d7329d760f75076a15ff79e18",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/studio/studio_properties_view.c",
+      "result_blob": "bf966266c67f36c3a5c3de5edb26fddc3731137e",
+      "sha256": "dc2db3a40cec99b97397cd2bc2c5611ef1c1c610d0cad62309c2101e0ba8a2d6",
+      "current_blob": "bf966266c67f36c3a5c3de5edb26fddc3731137e",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/workspace/scene_asset_drop.c",
+      "result_blob": "19d5bf1f420e27ff659cc2ea83354fa16c490575",
+      "sha256": "cf0c060b37ea4f3090532cc827d2ef58c328fa4fdf2b66caad3fbb92a9fd1dbd",
+      "current_blob": "19d5bf1f420e27ff659cc2ea83354fa16c490575",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/workspace/scene_authoring.c",
+      "result_blob": "01fbb370218d899ab29ff7b45258ae72f8e99565",
+      "sha256": "5fdab9447ba5e29881b1602c82ddd9d29a0c92670cbff75cd1f992b0476dabe8",
+      "current_blob": "01fbb370218d899ab29ff7b45258ae72f8e99565",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/workspace/scene_authoring.h",
+      "result_blob": "e0f61fb69bc663a415f86e289e4b3f5701acb8e5",
+      "sha256": "804e77a297fb2e41778064a29791088396e07b589deccff94311851bf01eae35",
+      "current_blob": "e0f61fb69bc663a415f86e289e4b3f5701acb8e5",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/workspace/scene_gizmo.c",
+      "result_blob": "a80ca14868142eef359b5dee7934ba98325c2e31",
+      "sha256": "128367824fe5d58942de1202669503f142eb44038fbc67bf1e04ba30d3441357",
+      "current_blob": "a80ca14868142eef359b5dee7934ba98325c2e31",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "src/editor/workspace/scene_runtime.c",
+      "result_blob": "2ff27a6834c1f56879937a86b199f748c08c5ba2",
+      "sha256": "55bc025c77fe8cd2687281150eba8968260fd279157cac2617e35752fcb88a23",
+      "current_blob": "2ff27a6834c1f56879937a86b199f748c08c5ba2",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "tests/acceptance/README.md",
+      "result_blob": "03020ce6b094c7d8701382f23229f2e1c75369c6",
+      "sha256": "14f34cf78c4097a810e21df34f267e89c4212dcb153bdd8ae443fa1f1846632c",
+      "current_blob": "2a12cd81af08b08d1103ef769025a5b90075799d",
+      "same_as_current": false,
+      "resolution": "automatic README union"
+    },
+    {
+      "path": "tests/acceptance/compiled_asset_edit.h",
+      "result_blob": "9216ca617bfa4734c52f118f1b4ecbd20236e70f",
+      "sha256": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835",
+      "current_blob": "9216ca617bfa4734c52f118f1b4ecbd20236e70f",
+      "same_as_current": true,
+      "resolution": "preserve staged local file"
+    },
+    {
+      "path": "tests/acceptance/compiled_asset_history.h",
+      "result_blob": "5be0b8ad5fa68d54a5b2beed4c314698457aa63f",
+      "sha256": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526",
+      "current_blob": "5be0b8ad5fa68d54a5b2beed4c314698457aa63f",
+      "same_as_current": true,
+      "resolution": "preserve staged local file"
+    },
+    {
+      "path": "tests/acceptance/main.c",
+      "result_blob": "bf251846d6dd79a6f9f253569489cff17f30f23a",
+      "sha256": "c80fbaca38e1260a4c11eeb5d91a7d4b271b3dd2e9a015541bd9f3d07f714f72",
+      "current_blob": "2e07c21332807961b7979f1e381b23c372bf0a8b",
+      "same_as_current": false,
+      "resolution": "merge dispatcher SDK route into typed main"
+    },
+    {
+      "path": "tests/acceptance/outliner_row_policies.h",
+      "result_blob": "5f3f9e224278d2c430799f433ccac3ff26c548c7",
+      "sha256": "25c7c7704315fb242a10ad12922435a082aa534e9238a15e8f54f24e0a8159e0",
+      "current_blob": "5f3f9e224278d2c430799f433ccac3ff26c548c7",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "tests/acceptance/prototype_source.h",
+      "result_blob": "a0534c5408a9ac1484ee4b3892adbb45b9173dc5",
+      "sha256": "d914900e87dd7f5a401e1e43d1398ba693b02885c3cf85164b63e43fc260031f",
+      "current_blob": "a0534c5408a9ac1484ee4b3892adbb45b9173dc5",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "tests/acceptance/prototype_source_authority.h",
+      "result_blob": "815b5c3d52e9b6b8f9aa5158b96e11fa19b981d0",
+      "sha256": "5bdf63f6d0630825edd5245e69a786c1b6bbc3cd62d6d3e052fdf2bc4600464d",
+      "current_blob": "815b5c3d52e9b6b8f9aa5158b96e11fa19b981d0",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "tests/acceptance/scene_move.h",
+      "result_blob": "6e77b7016b013b048d34d9a6acf771d275f77ff4",
+      "sha256": "a6c9630561b72170c453af9f4bd2fd904b961742779b2eeb7f27295607c9bc0a",
+      "current_blob": "6e77b7016b013b048d34d9a6acf771d275f77ff4",
+      "same_as_current": true,
+      "resolution": "retain typed compiled-source implementation and owned-arena fixes"
+    },
+    {
+      "path": "tests/acceptance/sdk_values.h",
+      "result_blob": "2532f4e5adde5422d7988ed323e5cc52c2f9ceb5",
+      "sha256": "86742a4b8c1243c6bfd77507eff33f110d1c7dad40a32254d0a5246f67df3566",
+      "current_blob": null,
+      "same_as_current": false,
+      "resolution": "retain new eligible SDK coverage"
+    }
+  ],
+  "extraction_audit": {
+    "files": 476,
+    "consumer_hashes": 258,
+    "source_hashes": 218,
+    "mismatches": []
+  },
+  "changed_from_current": [
+    "tests/acceptance/README.md",
+    "tests/acceptance/main.c",
+    "tests/acceptance/sdk_values.h"
+  ],
+  "validation": "source-only; no build, test, application launch, merge, commit or active-index edits",
+  "active_index_after": "a7ebaed0a999bd97a38b9f9676f02f824beac9ed",
+  "active_index_unchanged": true,
+  "retired_wiring_audit": "No .kdl path, ckdl, SOURCE_TEXT_KDL, support/asset_text.h or asset_text_read/write matches in result tree. new_asset_text is the existing new-asset constructor name, not a retired reader.",
+  "historical_result_tree": "536ea9d201ed933fa572d9d86337266038bd8c89",
+  "historical_current_tree": "e3abb80930dbed185d915a8f289f24791f51a865",
+  "refresh": "Only current README changed after model261 passed6.152s on SDKc676; automatic incoming README union preserves this evidence. All production and extraction bytes unchanged.",
+  "model_evidence": "Parent reports model261 PASS6.152s SDKc676 in focused-model-result.json; no run by this agent."
+}

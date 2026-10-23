@@ -1,0 +1,10 @@
+Running: typed_prototype_helpers_and_parameter_recomputation (OK) (2.401367 secs)
+Running: typed_prototype_override_reset_preserves_formula (OK) (1.551577 secs)
+Running: typed_prototype_parameter_type_refusal_is_atomic (OK) (0.515504 secs)
+Running: typed_prototype_rejects_unavailable_capabilities_and_maps_errors (OK) (1.667090 secs)
+Running: typed_prototype_budget_and_cancellation_bound_runtime (OK) (1.483566 secs)
+Running: typed_prototype_metadata_never_executes_helpers (OK) (0.031299 secs)
+Running: typed_prototype_native_record_override_preserves_resolved_siblings (OK) (2.839275 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 130
+Test command wall time: 10.655s; includes in-test fixture setup; external configuration/build excluded.

@@ -1,0 +1,9 @@
+{"selector": "--asset-transport", "artifact": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/tools/compiler/asset_compiler/bootstrap/native64/asset_compiler.chibip", "sha256": "d95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b", "binary_sha256": "6bad97d19340701926f0ad2577147ea89403a85d97670bee172b0456d1647c45", "configuration": "Debug; sanitizers OFF; CHIBI_ENABLE_SJLIT ON; in-tree SDK", "cache": "CHIBI_ASSET_CACHE_DIR empty", "python": "3.13.16 (main, Sep 30 2026, 18:57:20) [Clang 21.0.0 (clang-2100.3.34.2)]"}
+(FAILED: ../test/authoring/asset_source.c (171): transport_document)
+Running: asset_transport_checks_raw_build_depth 
+Running: asset_transport_rejects_escaped_nul (OK) (8.084844 secs)
+Running: asset_transport_writer_matches_read_depth (OK) (33.271482 secs)
+===============================================================
+Summary: Passed: 2 Failed: 1 Total: 3 Suites: 0 Asserts: 12
+Test command wall time: 49.134s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+exit: 1

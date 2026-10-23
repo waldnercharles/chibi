@@ -1,0 +1,7 @@
+Running: ui_source_public_edit_preserves_markup_meaning (OK) (0.000899 secs)
+Running: ui_document_public_update_keeps_last_valid_snapshot (OK) (0.000038 secs)
+Running: prepared_ui_records_own_resources_and_reject_partial_input (OK) (0.000070 secs)
+Running: prepared_ui_dependencies_use_owned_syntax_facts (OK) (0.000167 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 53
+Test command wall time: 1.283s; includes in-test fixture setup; external configuration/build excluded.

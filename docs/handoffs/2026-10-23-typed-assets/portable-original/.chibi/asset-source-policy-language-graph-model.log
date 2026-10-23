@@ -1,0 +1,5 @@
+Running: graph_model_owns_nested_values_and_artifact_lifetimes (OK) (0.000281 secs)
+Running: graph_model_topology_revisions_and_guards_are_explicit (OK) (0.000012 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 25
+Test command wall time: 0.428s; includes in-test fixture setup; external configuration/build excluded.

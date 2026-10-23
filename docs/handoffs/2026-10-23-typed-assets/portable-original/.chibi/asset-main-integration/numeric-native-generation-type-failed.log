@@ -1,0 +1,8 @@
+compiler-host bytecode=0 sljit=18966601 wasm=0 fallback=0 overflow=0
+the compiler entry returned no bytes
+asset compiler generation failed: the compiler entry returned no bytes
+
+compiler-host bytecode=0 sljit=20588363 wasm=0 fallback=0 overflow=0
+[{"tag":11863471359730548737,"values":[{"start":4813,"end":4828,"line":121,"column":23,"document":22,"message":"uint64 and int operands need an explicit conversion, such as uint64(value)"}]}]
+
+[{"tag":11863471359730548737,"values":[{"start":4813,"end":4828,"line":121,"column":23,"document":22,"message":"uint64 and int operands need an explicit conversion, such as uint64(value)"}]}]

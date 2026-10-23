@@ -1,0 +1,388 @@
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      studio_sha:
+        description: 'Optional exact Studio SHA for additional native/Web SDK verification'
+        required: false
+        type: string
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CC: clang-18
+  CXX: clang++-18
+  # Builds download their pinned third-party archive from this repository's
+  # releases (third_party/archives.tsv) with the GitHub CLI.
+  GH_TOKEN: ${{ github.token }}
+  # Native builds and players need a runtime directory and a silent audio device.
+  XDG_RUNTIME_DIR: /tmp/chibi-runtime
+  SDL_AUDIODRIVER: dummy
+
+jobs:
+  native:
+    name: Engine build and native tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Verify installed and archived license notices
+        run: python3 test/tools/package_licenses.py
+      - name: Build chibi_ctl and the test drivers (ASan and UBSan)
+        run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Build chibi, chibi-compile and chibi-player
+        run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      # validate-project runs chibi_ctl dozens of times, and published-docs and
+      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT=/usr/lib/llvm-18
+      # After make build, whose build/reflect the reflection identity cases run.
+      - name: Tooling and process integrations
+        run: make test-tools TOOLS_C_COMPILER=clang-18
+      - name: Native selectors
+        run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Material selectors
+        run: make test-materials LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Project selectors
+        run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Language selectors
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+        run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
+
+  native-macos:
+    name: Engine build and native tests (macOS)
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      XDG_RUNTIME_DIR: /tmp/chibi-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          brew install llvm
+          LLVM="$(brew --prefix llvm)"
+          echo "LLVM=$LLVM" >> "$GITHUB_ENV"
+          echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Build chibi_ctl and the test drivers (ASan and UBSan)
+        run: make test-build LIBCLANG_ROOT="$LLVM"
+      - name: Build chibi, chibi-compile and chibi-player
+        run: make build LIBCLANG_ROOT="$LLVM"
+      # validate-project runs chibi_ctl dozens of times, and published-docs and
+      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
+      # After make build, whose build/reflect the reflection identity cases run.
+      - name: Tooling and process integrations
+        run: make test-tools TOOLS_C_COMPILER="$CC"
+      - name: Native selectors
+        run: make test-native LIBCLANG_ROOT="$LLVM"
+      - name: Material selectors
+        run: make test-materials LIBCLANG_ROOT="$LLVM"
+      - name: Project selectors
+        run: make test-projects LIBCLANG_ROOT="$LLVM"
+      - name: Language selectors
+        run: make test-language-all LIBCLANG_ROOT="$LLVM"
+
+  windows:
+    name: Engine build and compile smoke test (Windows)
+    # Paused: third_party/archives.tsv has no Windows archive until the build
+    # host runs on Windows.
+    if: false
+    runs-on: windows-2022
+    timeout-minutes: 45
+    # The Windows port is new; keep this row advisory until it has passed once.
+    continue-on-error: true
+    steps:
+      # No later step needs the token on disk.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # No third-party actions run beside the checkouts, and CMake and Ninja are
+      # pinned by hash in .github/build-tools.txt.
+      - name: Set up MSVC, CMake, Ninja and LLVM
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV }
+          }
+          python -m venv "$env:RUNNER_TEMP\cmake"
+          & "$env:RUNNER_TEMP\cmake\Scripts\pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          "$env:RUNNER_TEMP\cmake\Scripts" >> $env:GITHUB_PATH
+          "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DLIBCLANG_ROOT="C:/Program Files/LLVM"
+      - name: Build the SDK tools
+        run: cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
+      - name: Compile a project
+        run: build/sdk/chibi-compile.exe --project-root "$PWD/test/fixtures/studio" --output "$env:RUNNER_TEMP/game.chibip"
+
+  studio-windows:
+    name: Studio build (Windows)
+    # Paused with the Windows engine build above.
+    if: false
+    runs-on: windows-2022
+    timeout-minutes: 45
+    # Studio on Windows is new; keep this row advisory until it has passed once.
+    continue-on-error: true
+    steps:
+      # No later step needs the token on disk.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: waldnercharles/chibi-studio
+          path: chibi-studio
+          persist-credentials: false
+      # No third-party actions run beside the checkouts, and CMake and Ninja are
+      # pinned by hash in .github/build-tools.txt.
+      - name: Set up MSVC, CMake, Ninja and LLVM
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV }
+          }
+          python -m venv "$env:RUNNER_TEMP\cmake"
+          & "$env:RUNNER_TEMP\cmake\Scripts\pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          "$env:RUNNER_TEMP\cmake\Scripts" >> $env:GITHUB_PATH
+          "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+      - name: Configure the engine
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DLIBCLANG_ROOT="C:/Program Files/LLVM"
+      - name: Build the engine
+        run: cmake --build build
+      - name: Install the SDK
+        run: cmake --install build --prefix "$env:RUNNER_TEMP/sdk"
+      # The SDK pins its C runtime, so Studio must use the engine's build type.
+      - name: Configure Studio against the installed SDK
+        run: cmake -S chibi-studio -B build-studio -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$env:RUNNER_TEMP/sdk"
+      # The runner has no GPU for SDL_GPU, so this job only builds Studio.
+      - name: Build Studio
+        run: cmake --build build-studio --target chibi-studio
+
+  studio:
+    name: Studio build and startup
+    # Studio is public; the read-only workflow token can check it out for every PR.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: engine
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: waldnercharles/chibi-studio
+          path: studio
+          persist-credentials: false
+      - name: Record clean engine and Studio sources
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          test -z "$(git -C "$GITHUB_WORKSPACE/studio" status --porcelain --untracked-files=normal)"
+          mkdir -p "$RUNNER_TEMP/studio-sdk-evidence"
+          python3 - <<'PY_SOURCE'
+          import json, os, subprocess
+          from pathlib import Path
+          def source(path):
+              def git(*args):
+                  return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
+              return {'revision': git('rev-parse', 'HEAD'), 'tree': git('rev-parse', 'HEAD^{tree}'), 'dirty': False}
+          record = {'engine': source(Path.cwd()), 'studio': source(Path(os.environ['GITHUB_WORKSPACE']) / 'studio')}
+          (Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence/sources.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY_SOURCE
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev xvfb \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Package the SDK
+        run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Verify clean packaged SDK identity
+        run: |
+          python3 - <<'PY_SDK'
+          import os, shutil
+          from pathlib import Path
+          from tools.package_sdk import previous_package
+          prefix = Path('dist/sdk')
+          package = previous_package(prefix, 'sdk')
+          if package['source']['revision'] != os.environ['GITHUB_SHA'] or package['source']['dirty']:
+              raise SystemExit('SDK does not identify the clean engine candidate')
+          shutil.copyfile(prefix / 'share/chibi/package.json', Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence/package.json')
+          PY_SDK
+      - name: Build Studio against the packaged SDK
+        run: make studio-build STUDIO_SOURCE="$GITHUB_WORKSPACE/studio" STUDIO_SDK_PREFIX=dist/sdk
+      - name: Two hidden Studio frames
+        shell: bash
+        run: |
+          cp -a --reflink=auto "$GITHUB_WORKSPACE/studio/projects/starter" "$RUNNER_TEMP/studio-sdk-project"
+          xvfb-run -a build-studio/bin/chibi-dev \
+            --project-root "$RUNNER_TEMP/studio-sdk-project" --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee "$RUNNER_TEMP/studio-sdk-evidence/studio.log"
+          ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' "$RUNNER_TEMP/studio-sdk-evidence/studio.log"
+
+      - name: Verify Studio consumed the packaged SDK
+        run: |
+          python3 - <<'PY_BINDING'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          from tools.package_sdk import previous_package
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence'
+          sources = json.loads((evidence / 'sources.json').read_text())
+          for name, path in [('engine', Path.cwd()), ('studio', Path(os.environ['GITHUB_WORKSPACE']) / 'studio')]:
+              def git(*args):
+                  return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
+              if (git('rev-parse', 'HEAD') != sources[name]['revision']
+                      or git('rev-parse', 'HEAD^{tree}') != sources[name]['tree']
+                      or git('status', '--porcelain', '--untracked-files=normal')):
+                  raise SystemExit(f'Source changed: {name}')
+          prefix = Path('dist/sdk').resolve()
+          package = previous_package(prefix, 'sdk')
+          manifest = prefix / 'share/chibi/package.json'
+          manifest_hash = hashlib.sha256(manifest.read_bytes()).hexdigest()
+          cache = {}
+          for line in Path('build-studio/CMakeCache.txt').read_text().splitlines():
+              if ':' in line and '=' in line and not line.startswith(('#', '//')):
+                  key, value = line.split('=', 1)
+                  cache[key.split(':', 1)[0]] = value
+          expected = {'Chibi_DIR': str(prefix / 'lib/cmake/Chibi'),
+                      'CHIBI_STUDIO_SDK_BUILD_ID': package['build_id'],
+                      'CHIBI_STUDIO_SDK_MANIFEST_SHA256': manifest_hash}
+          if any(cache.get(key) != value for key, value in expected.items()):
+              raise SystemExit('Studio consumed a different SDK')
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          startup_project = {
+              'source': 'studio/projects/starter',
+              'copy': str(Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-project'),
+              'source_manifest_sha256': digest(Path(os.environ['GITHUB_WORKSPACE']) / 'studio/projects/starter/project.chibi'),
+              'opened_manifest_sha256': digest(Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-project/project.chibi')}
+          receipt = dict(expected, startup_project=startup_project)
+          (evidence / 'consumer.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY_BINDING
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio-sdk-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/studio-sdk-evidence
+          if-no-files-found: ignore
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: |
+          python3 -m venv /tmp/clang-format
+          /tmp/clang-format/bin/pip install --only-binary=:all: clang-format==22.1.0
+          echo '/tmp/clang-format/bin' >> "$GITHUB_PATH"
+      - name: Check format
+        run: sh tools/clang-format.sh --check
+
+  paired-studio:
+    if: github.event_name == 'workflow_dispatch' && inputs.studio_sha != ''
+    name: Paired Studio SDK verification
+    uses: ./.github/workflows/paired-studio.yml
+    with:
+      studio_sha: ${{ inputs.studio_sha }}
+
+  graph-sdk-linux:
+    name: Graph SDK packaging and relocation (Linux)
+    runs-on: ubuntu-24.04
+    env:
+      LIBCLANG_ROOT: /usr/lib/llvm-18
+      NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+      JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify clean source candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+      - name: Install graph build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev ccache python3-venv \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv "$RUNNER_TEMP/graph-sdk-build-tools"
+          "$RUNNER_TEMP/graph-sdk-build-tools/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
+          install -d -m 700 "$XDG_RUNTIME_DIR"
+      - name: Build Release graph compiler and build hosts
+        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+      - name: Record Release graph tool identities
+        run: |
+          sha256sum \
+            build-release/sdk/chibi-build-host \
+            build-release/sdk/chibi-build-host.chibi-record \
+            build-release/sdk/chibi-compiler-host \
+            build-release/sdk/chibi-compiler-host.chibi-record \
+            > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+          cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+      - name: Build CMake SDK test harness with the Release graph host
+        run: make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+      - name: Verify Release graph tools survived the harness build unchanged
+        run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+      - name: Verify graph SDK packaging and relocation
+        run: |
+          CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
+          CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+          CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
+            python3 tools/test_policy.py tool build-sdk
+      - name: Verify sources remain unchanged
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"

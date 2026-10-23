@@ -1,0 +1,7 @@
+asset cache read: element assignment needs a local array
+(FAILED: test/authoring/asset_source.c (810): cache_value(cache_mutating_source, &options, 7))
+Running: asset_cache_reuses_invalidates_and_recovers 
+Running: asset_cache_backend_and_retention (OK) (0.328000 secs)
+===============================================================
+Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 45
+Test command wall time: 6.916s; includes in-test fixture setup; external configuration/build excluded.

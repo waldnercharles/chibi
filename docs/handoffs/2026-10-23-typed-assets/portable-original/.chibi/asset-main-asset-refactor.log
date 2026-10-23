@@ -1,0 +1,6 @@
+Running: prototype_children_follow_a_rename (OK) (3.993774 secs)
+Running: qualified_shader_bindings_resolve_functions (OK) (0.000006 secs)
+Running: qualified_shader_bindings_follow_library_and_function_renames (OK) (5.667229 secs)
+Running: qualified_shader_bindings_reject_stale_refactors (OK) (0.503532 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 41

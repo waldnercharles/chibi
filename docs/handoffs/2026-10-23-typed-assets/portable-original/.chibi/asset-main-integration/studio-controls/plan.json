@@ -1,0 +1,120 @@
+{
+  "state": "prepared only; runner has not been executed or syntax-checked",
+  "source_tree": "a7ebaed0a999bd97a38b9f9676f02f824beac9ed",
+  "earlier_source_equivalent_tree": "e3abb80930dbed185d915a8f289f24791f51a865",
+  "baseline_result": {
+    "expected_assertions": 261,
+    "state": "passed",
+    "cases": 1,
+    "assertions": 261,
+    "wall_seconds": 6.152,
+    "cache": {
+      "compile_attempts": 9,
+      "memory_hits": 39,
+      "persistent_hits": 0
+    },
+    "frames": 0,
+    "renders": 0,
+    "log": "focused-studio-model.log",
+    "log_sha256": "f3bc817ddb8dc20600aac811f1f9edfb12c1898ad2c0126f084fcf225109b2d6"
+  },
+  "sdk": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release",
+    "build_id": "c676e3cc48e8a3fb2110d57477d5d83875a0ac8b337d4e549129eeb3caf274d9",
+    "source": {
+      "dirty": true,
+      "revision": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "snapshot_sha256": "48c80da1d7e1d605965c0f14a4e8e08458b3d7f2fa658c83ae025775a8057931"
+    },
+    "package_sha256": "126aba47d13c1901c0364fbd6ee47605f3b3f1cfda7d872a3a9d9cb2a0cfe2f5",
+    "recovery": "OFF",
+    "configuration": "Release / sanitizers OFF / native desktop compiler ON",
+    "log": "focused-native-sdk-package.log"
+  },
+  "baseline_binary_sha256": "71d45f066d17fcf686906a71fde7e625bfaa3f2eb854a1d78c33139267903344",
+  "required_hashes": {
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/src/editor/collab/actions_graph.c": "bb8114d3599024adeed36865ab166d9cc5fabcfabebac3ac63fbba0f41367d9c",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/src/editor/documents/scene_history.c": "5d2547d607865a31cfb8ac13d7ba1f6202a85c57d6ccc44d490e01530f872534",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_edit.h": "c175e0a1162cb77b8bdaa1fabe50230f5ba455b6101d735ee869d4054bff0835",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/tests/acceptance/compiled_asset_history.h": "70aa441d5a4fc5cf86e15d26685ed31bbfa66dc1d73fb99a6a2015733c28d526",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-studio-release/bin/studio-acceptance": "71d45f066d17fcf686906a71fde7e625bfaa3f2eb854a1d78c33139267903344",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-studio-release/libstudio.a": "4271be2c325fcbdf75ed3834afc5d14b753b0c07615ecb75a825370f17636598",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-studio-release/compile_commands.json": "2d0bc421250e0a135fb1b33eee5d996054cf6a591c2c7403cb4021eb8bcdae33",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-studio-release/build.ninja": "e44072e3c4034558a2d7c2c55ef93ff1b15949c77a0ef0ea74db75707e3cba33",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-studio-release/CMakeFiles/studio-acceptance.dir/tests/acceptance/main.c.o": "29add0ee6c32bf803cc284b7500f632b05858cdb27f494a339ce200260476369",
+    "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/share/chibi/package.json": "126aba47d13c1901c0364fbd6ee47605f3b3f1cfda7d872a3a9d9cb2a0cfe2f5",
+    "/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23": "e45f3dd745396c892a8d62e5725e6ec2d58bf9159248b4f379efda6f7c66d838"
+  },
+  "controls": [
+    {
+      "id": "graph-codec-failure",
+      "source": "src/editor/collab/actions_graph.c",
+      "before": "        yyjson_mut_val *payload = av_to_json(doc, av_obj_get(data, \"data\"));\n        bool valid = payload && yyjson_mut_obj_add_val(doc, item, \"data\", payload);\n        av_doc_free(native);\n        return valid;",
+      "after": "        yyjson_mut_obj_add_val(doc, item, \"data\", av_to_json(doc, av_obj_get(data, \"data\")));\n        av_doc_free(native);\n        return true;",
+      "expected_failure_tokens": [
+        "!compiled_collab_action"
+      ],
+      "contract": "A refused byte document must refuse the actual graph command producer without mutating the destination."
+    },
+    {
+      "id": "graph-type-name",
+      "source": "src/editor/collab/actions_graph.c",
+      "before": "            decoded.type_name = type_name;\n",
+      "after": "",
+      "expected_failure_tokens": [
+        "default_value.type_name"
+      ],
+      "contract": "Decoded declared nominal metadata must survive all temporary JSON/arena storage."
+    },
+    {
+      "id": "history-byte-decoder",
+      "source": "src/editor/documents/scene_history.c",
+      "before": "    if (out->type == PIN_STR) {\n        return history_read_typed_value(PIN_STR, out->type_name, value, out);\n    }",
+      "after": "    if (out->type == PIN_STR) {\n        if (!av_is_str(value)) { return false; }\n        pin_value text;\n        if (pin_value_text(NULL, &text, av_get_str(value), av_get_len(value))) {\n            return false;\n        }\n        out->text = text.text;\n        return true;\n    }",
+      "expected_failure_tokens": [
+        "compiled_history_keeps_non_utf8_bytes",
+        "scene_history_restore_checkpoint"
+      ],
+      "contract": "The typed history decoder must accept the shared byte envelope, not only JSON string values."
+    },
+    {
+      "id": "checkpoint-before",
+      "source": "src/editor/documents/scene_history.c",
+      "before": "            if (!field_value_valid(type, stored->before) ||\n                !field_value_valid(type, stored->after)) {",
+      "after": "            pin_value expected = { .type = type->type, .type_name = type->type_name };\n            if (!same_type(expected, stored->before) ||\n                !field_value_valid(type, stored->after)) {",
+      "expected_failure_tokens": [
+        "!scene_history_restore_checkpoint",
+        "compiled_checkpoint_rejects_native_nul_before"
+      ],
+      "contract": "Reject native C-string NUL on checkpoint before while preserving the previous history and world."
+    },
+    {
+      "id": "checkpoint-after",
+      "source": "src/editor/documents/scene_history.c",
+      "before": "            if (!field_value_valid(type, stored->before) ||\n                !field_value_valid(type, stored->after)) {",
+      "after": "            pin_value expected = { .type = type->type, .type_name = type->type_name };\n            if (!field_value_valid(type, stored->before) ||\n                !same_type(expected, stored->after)) {",
+      "expected_failure_tokens": [
+        "!scene_history_restore_checkpoint",
+        "compiled_checkpoint_rejects_native_nul_after"
+      ],
+      "contract": "Reject native C-string NUL on checkpoint after while preserving the previous history and world."
+    },
+    {
+      "id": "field-batch-preflight",
+      "source": "src/editor/documents/scene_history.c",
+      "before": "        if (!field_value_valid(type, field->before) ||\n            !field_value_valid(type, field->after)) {",
+      "after": "        pin_value expected = { .type = type->type, .type_name = type->type_name };\n        if (!same_type(expected, field->before) || !same_type(expected, field->after)) {",
+      "expected_failure_tokens": [
+        "Transform_get_const(compiled_history.world, entity)->x == 20",
+        "compiled_history_preflights_the_complete_field_batch"
+      ],
+      "contract": "The later unrepresentable native string must be rejected before the preceding numeric field changes."
+    }
+  ],
+  "execution_gate": "Only after parent explicitly releases lane/authorizes execution. No source/header test weakening, no SDK changes. Each negative result must match expected assertion; compiler/link/setup failures are not evidence.",
+  "compiler": {
+    "path": "/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23",
+    "sha256": "e45f3dd745396c892a8d62e5725e6ec2d58bf9159248b4f379efda6f7c66d838"
+  },
+  "baseline_sdk_package_verified": true
+}

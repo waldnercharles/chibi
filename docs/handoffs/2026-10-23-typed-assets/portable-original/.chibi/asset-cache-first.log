@@ -1,0 +1,4 @@
+{"selector": "--asset-cache", "artifact": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/tools/compiler/asset_compiler/bootstrap/native64/asset_compiler.chibip", "sha256": "d95808272982083af57b84c38108725334ab4ec54d2144bbd269f97a8f2d975b", "binary_sha256": "6bad97d19340701926f0ad2577147ea89403a85d97670bee172b0456d1647c45", "configuration": "Debug; sanitizers OFF; CHIBI_ENABLE_SJLIT ON; in-tree SDK", "cache": "private mkdtemp fixture", "python": "3.13.16 (main, Sep 30 2026, 18:57:20) [Clang 21.0.0 (clang-2100.3.34.2)]"}
+Assertion failed: (process && argv && argv[0] && cwd && logpath), function chibi_process_start, file process.c, line 471.
+Running: asset_cache_reuses_invalidates_and_recovers Test command wall time: 5.743s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+exit: 134

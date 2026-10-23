@@ -1,0 +1,4 @@
+compiler-host bytecode=491 sljit=0 wasm=0 fallback=0 overflow=0
+Test command wall time: 0.155s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.
+artifact_bytes 722629 schemas True
+{"name":"Enemy","parameters":{"level":3,"enabled":true},"components":{"Sample":{"position":{"x":1.0},"label":"Guard"},"Health":{"current":90,"maximum":200}},"overrides":{"Sample":{"position":{"x":1.0}},"Health":{"current":90}}}

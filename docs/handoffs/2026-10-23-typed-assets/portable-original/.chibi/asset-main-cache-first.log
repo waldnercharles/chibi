@@ -1,0 +1,6 @@
+TEMPORARY TEST QUARANTINE: full native/render and unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.
+Running: asset_cache_reuses_invalidates_and_recovers (OK) (3.361017 secs)
+Running: asset_cache_backend_and_retention (OK) (0.251406 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 44
+Test command wall time: 5.081s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded.

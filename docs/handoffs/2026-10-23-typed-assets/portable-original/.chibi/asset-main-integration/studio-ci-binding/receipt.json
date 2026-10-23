@@ -1,0 +1,111 @@
+{
+  "recorded_utc": "2026-10-23T05:01:25.232423+00:00",
+  "status": "prepared-only; preferred actual tested merge commit is unavailable remotely",
+  "engine": {
+    "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+    "head_tree": "753410c60cdd9f426934c7372b433f288de624fe",
+    "staged_tree_at_review": "f854194089e27e3ebbc987aaf213aa74dd1793bb",
+    "workflow_staged_blob": "86be12daca12afc39b4deaa054286b6c0357d8e4",
+    "workflow_sha256": "708a280956f48f32edb21aba70a81b19dc68fbbb74a51d9f6c2c35371d67e0df"
+  },
+  "studio": {
+    "preferred_commit": "466e2cc3545927261cf68f88d54caed0093f7cc4",
+    "preferred_commit_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+    "parents": [
+      "521b666a62406fabae8e1d23bad00765717b3635",
+      "df050886dd7721db63b40fdf5435f1cb20ceeb34"
+    ],
+    "clean": true,
+    "local_commit_provenance": "commit 466e2cc3545927261cf68f88d54caed0093f7cc4\nMerge: 521b666 df05088\nAuthor:     Charles Waldner <cwaldner@bamboohr.com>\nAuthorDate: Thu Oct 22 22:58:54 2026 -0600\nCommit:     Charles Waldner <cwaldner@bamboohr.com>\nCommitDate: Thu Oct 22 22:58:54 2026 -0600\n\n    Merge main SDK value checks into compiled asset editing\n",
+    "source_equivalence": "Committed tree exactly equals the sealed narrow-pass Studio tree335262. Production/build/assets equal historical521 checkpoint.",
+    "historical_minimal_compatible_alternative": "521b666a62406fabae8e1d23bad00765717b3635",
+    "production_asset_build_deltas_from_521": [],
+    "projects_version": 33,
+    "acceptance_default": "OFF"
+  },
+  "sealed_native_evidence": {
+    "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/narrow-d0-focus/receipt.json",
+    "receipt_sha256": "bac49fae024dba9ba0634516c82e3903fdc8d543c7adaa027b6fabd877b0d461",
+    "sdk_build_id": "68e625a9c39975180f01590d5a8d4a5ff58c1266dc276cf7a1072a232eae97ad",
+    "sdk_source": {
+      "dirty": true,
+      "revision": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+      "snapshot_sha256": "a8e7033a3475110498bd5de2193c0ff039efb3d57d0b6cea43656c296ec64f3e"
+    },
+    "package_engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+    "execution_engine_tree": "966dbaccf829cdbb53d2a2988080a38d46aa4a74",
+    "engine_tree_delta": [
+      "test/tools/build_sdk.c"
+    ],
+    "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7",
+    "checks": [
+      {
+        "label": "studio-sdk-values",
+        "argv": [
+          "build-studio-release/bin/studio-acceptance",
+          "--sdk-values"
+        ],
+        "started_utc": "2026-10-23T04:46:52.301532+00:00",
+        "state": "passed",
+        "log": "studio-sdk-values.log",
+        "exit_code": 0,
+        "elapsed_seconds": 0.963,
+        "completed_utc": "2026-10-23T04:46:53.265324+00:00",
+        "log_sha256": "5190095bc0c4c27dcd504f2afd88349b638a25ad0f1c926a87786c18f30480b4",
+        "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+        "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+      },
+      {
+        "label": "studio-model",
+        "argv": [
+          "build-studio-release/bin/studio-acceptance",
+          "--compiled-asset-edit-model"
+        ],
+        "started_utc": "2026-10-23T04:46:58.598453+00:00",
+        "state": "passed",
+        "log": "studio-model.log",
+        "exit_code": 0,
+        "elapsed_seconds": 5.189,
+        "completed_utc": "2026-10-23T04:47:03.787951+00:00",
+        "log_sha256": "e62fa8ef335a82a6e66f0e779f7efd62332c01f13a7b0580569804d274ab8a15",
+        "engine_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+        "studio_tree": "3352628508469dbce5db9c24bf0b7df027f124e7"
+      }
+    ],
+    "scope": "native renderer-free SDK values12cases163asserts and model1case261asserts; not final cold/Web/Linux hosted CI proof"
+  },
+  "publication": {
+    "command": [
+      "gh",
+      "api",
+      "repos/waldnercharles/chibi-studio/commits/466e2cc3545927261cf68f88d54caed0093f7cc4",
+      "--jq",
+      "{sha: .sha, tree: .commit.tree.sha, html_url: .html_url}"
+    ],
+    "returncode": 1,
+    "stdout": "{\"message\":\"No commit found for SHA: 466e2cc3545927261cf68f88d54caed0093f7cc4\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"422\"}",
+    "stderr": "gh: No commit found for SHA: 466e2cc3545927261cf68f88d54caed0093f7cc4 (HTTP 422)\n",
+    "remote_main": "df050886dd7721db63b40fdf5435f1cb20ceeb34",
+    "published_now": false
+  },
+  "patch": {
+    "path": "ci-pin-tested-studio-after-publication.patch",
+    "sha256": "7c35ce8bbfb9b31e59f474e6804dbd99bedf4a71b27404d1d6510f7e51c80d9f",
+    "target": ".github/workflows/ci.yml",
+    "job": "studio",
+    "scope": "one exact Studio checkout ref; no selectors, paused Windows job or optional paired workflow changed"
+  },
+  "dependencies": [
+    "Review and publish actual Studio merge466e2cc; recheck GitHub resolves exact commit/tree335262 before applying checkout pin.",
+    "Publish reviewed clean engine candidate and regenerated compiler/asset resources before requiring normal CI SDK source equality to github.sha.",
+    "Existing521 remains a historical compatibility alternative only; prefer exact committed466 which includes eligible PR92 and matches sealed tested Studio tree.",
+    "The Linux normal job remains unvalidated here; native narrow pass does not establish final cold/Web/hosted-platform acceptance."
+  ],
+  "non_actions": [
+    "no active source/index/merge metadata mutation",
+    "no build/test/generation",
+    "no push/publish",
+    "no application launch",
+    "no CI owner compiler file edits"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "ordinary-release-upgrade",
+  "tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "argv": [
+    "make",
+    "build-release",
+    "BUILD_TARGET=chibi-build-host test_tools",
+    "JOBS=4"
+  ],
+  "status": "passed",
+  "started_utc": "2026-10-23T05:30:35.143063+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/ordinary-release-upgrade.log",
+  "python": "Python 3.13.16",
+  "jobs": "4 only via Make argument; no global -j",
+  "pid": 79693,
+  "exit_code": 0,
+  "elapsed_seconds": 19.637,
+  "completed_utc": "2026-10-23T05:30:54.797032+00:00",
+  "log_sha256": "8c3f8efa13bd81675c8618ca3f52f83ca97a98c04a83a1dd4d4e72a3edbc8e01",
+  "source_currency": "unchanged"
+}

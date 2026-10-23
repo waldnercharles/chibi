@@ -1,0 +1,24 @@
+{
+  "name": "red-driver-build",
+  "tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "argv": [
+    "make",
+    "build-release",
+    "JOBS=4",
+    "BUILD_TARGET=test_tools",
+    "BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host"
+  ],
+  "status": "passed",
+  "started_utc": "2026-10-23T05:29:04.103358+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/red-driver-build.log",
+  "python": "Python 3.13.16",
+  "jobs": "4 only via Make argument; no global -j",
+  "pid": 76622,
+  "exit_code": 0,
+  "elapsed_seconds": 9.89,
+  "completed_utc": "2026-10-23T05:29:14.007315+00:00",
+  "log_sha256": "0bea87efa86f70c3d23f80b7196c577e0caf70add8cc7b4a904a223e699fae73",
+  "source_currency": "unchanged"
+}

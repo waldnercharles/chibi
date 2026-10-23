@@ -1,0 +1,7 @@
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/src/editor/collab/actions_graph.c:149:13: warning: enumeration values 'PIN_TASK' and 'PIN_UNION' not handled in switch [-Wswitch]
+  149 |     switch (value->type) {
+      |             ^~~~~~~~~~~
+/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/src/editor/collab/actions_graph.c:256:13: warning: enumeration values 'PIN_TASK' and 'PIN_UNION' not handled in switch [-Wswitch]
+  256 |     switch (value.type) {
+      |             ^~~~~~~~~~
+2 warnings generated.

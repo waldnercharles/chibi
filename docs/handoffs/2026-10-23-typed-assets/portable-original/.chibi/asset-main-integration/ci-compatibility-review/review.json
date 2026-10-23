@@ -1,0 +1,96 @@
+{
+  "review": "independent source-only CI compatibility review",
+  "result": "clear; no actionable changed-code finding",
+  "base_tree": "0b5c20a7222a9d171bfcbe35570c184a78f4c8d1",
+  "patch": "/Users/cwaldner/Personal/chibi/.worktrees/ci-sdk-linux-repairs/chibi/.chibi/ci-recovery/typed-host-compatibility/ci-compatibility.patch",
+  "patch_sha256": "aeaa4e46ded85875499d9230087cfef451cf0a4a6264c1e3776b0deac4f9f453",
+  "findings": [],
+  "file_hashes": {
+    ".github/scripts/compiler-self-build.ps1": {
+      "base_sha256": "60af9ae7dcd63ed926d8530db70520c5731e8dbf47848fd785000d9f2259b764",
+      "candidate_sha256": "d2fec74de71b546f8ca72b2efb342e5278b6af06569c094fb8ed5a1f2eb41ad4"
+    },
+    ".github/workflows/compiler-runtime-seed.yml": {
+      "base_sha256": "5eb2bb4c04c536a6982ed831e0f0a695d639b2aecf02ee098659d8818e35372e",
+      "candidate_sha256": "6d199150afa5c02d96acb1171c03364fe11e33457efcad06a1b6a2486fe1162b"
+    },
+    ".github/workflows/compiler-recovery.yml": {
+      "base_sha256": "60d42ec076ed0e87bf86331eb8587a8762898f142793e4125107b0a74c59178d",
+      "candidate_sha256": "2f2cbafa00201194ae8d29ca74f9514d21148b4ad0993c4148e4be1616605ff1"
+    }
+  },
+  "source_identity_checks": {
+    ".github/scripts/compiler-self-build.ps1 base hash": true,
+    ".github/scripts/compiler-self-build.ps1 candidate hash": true,
+    ".github/workflows/compiler-runtime-seed.yml base hash": true,
+    ".github/workflows/compiler-runtime-seed.yml candidate hash": true,
+    ".github/workflows/compiler-recovery.yml base hash": true,
+    ".github/workflows/compiler-recovery.yml candidate hash": true,
+    ".github/scripts/compiler-self-build.ps1 observed hash at0b5": true,
+    ".github/workflows/compiler-recovery.yml observed hash at0b5": true,
+    ".github/workflows/compiler-runtime-seed.yml observed hash at0b5": true,
+    "src/toolchain/compiler_bootstrap.c observed hash at0b5": true,
+    "src/toolchain/compiler_bootstrap.h observed hash at0b5": true,
+    "src/toolchain/compiler_main.c observed hash at0b5": true,
+    "src/toolchain/compiler_target.c observed hash at0b5": true,
+    "src/toolchain/compiler_host.c observed hash at0b5": true,
+    "sdk/CMakeLists.txt observed hash at0b5": true,
+    "tools/compiler/runtime.json observed hash at0b5": true,
+    "tools/compiler/package_compiler/Bootstrap.chibi observed hash at0b5": true,
+    "tools/compiler/bootstrap/bootstrap.json observed hash at0b5": true,
+    "tools/compiler/bootstrap/compiler.chibip observed hash at0b5": true,
+    "test/tools/compiler_bootstrap.c observed hash at0b5": true,
+    "docs/self-hosting-build.md observed hash at0b5": true,
+    "exact patch hash": true,
+    "runtime pin unchanged": true,
+    "selector byte-identical": true,
+    "Prepare body byte-identical": true,
+    "consumer no QueryTarget or NativeRecovery flags": true,
+    "producer QueryTarget and NativeRecovery flags": true,
+    "no bootstrap.kdl restored": true
+  },
+  "contract_assessment": [
+    {
+      "area": "generic CLI",
+      "source": ".github/scripts/compiler-self-build.ps1:265-275",
+      "assessment": "Artifact compile and BootstrapContract calls now provide positive per-invocation timeout, matching compiler_main required timeout/budget/backend/entry/input contract."
+    },
+    {
+      "area": "producer-only native routes",
+      "source": ".github/scripts/compiler-self-build.ps1:214-225,306-317; compiler-runtime-seed.yml:101-111",
+      "assessment": "Actual six-part target query deep-compares complete manifest target. Native bootstrap/recover uses supported exclusive native flags without rejected artifact timeout; parent supervises it and compares its bytes to proven stage2 and seed when matching sources."
+    },
+    {
+      "area": "consumer separation",
+      "source": "compiler-recovery.yml:74-77",
+      "assessment": "Consumer remains download-only pinned .2, generic artifact/contract execution, no native setup/replacement or unsupported target/native calls. Existing .2 pin is byte-exact; new-native-policy compatibility remains a separate release/pin gate."
+    },
+    {
+      "area": "pure selected inputs",
+      "source": "compiler-self-build.ps1:33-78,116-143",
+      "assessment": "Manifest selector, complete selected package membership, source copying and native-source refusal unchanged. Current immutable bootstrap has19 sources and compiled BootstrapContract[5,2]; no asset wrappers or KDL copied."
+    },
+    {
+      "area": "supervision and failures",
+      "source": "compiler-self-build.ps1:154-204,329-335",
+      "assessment": "Parent tracks each child, drains stdout/stderr concurrently, kills process tree on caller timeout/finally, records nonzero/timed-out failure and elapsed values. Per-operation policy does not change compiler instruction budgets or introduce suite admission."
+    },
+    {
+      "area": "source/output ownership",
+      "source": "compiler-runtime-seed.yml:36-52,85-132",
+      "assessment": "Native build/proof outputs under RUNNER_TEMP; exact clean revision/tree recorded before/after. Host-only Release config and asset recovery OFF retained. Prepare/Prove use explicit repository identity."
+    },
+    {
+      "area": "receipts and aggregate failure",
+      "source": "compiler-runtime-seed.yml:135-181,237-304",
+      "assessment": "Actual runtime binary size/hash bound to proved isolated host; target raw digest, source/platform/build identities, stage1/stage2/native outputs compared; matrix failure is rejected. Retained native receipts do not imply consumer no-C success."
+    }
+  ],
+  "limitations": [
+    "No execution, builds, tests, workflow lint, PowerShell parsing, native host calls, downloads, dispatch, provisioning, or publication performed by this review.",
+    "Existing receipt claims of actionlint/other prior static checks were read as owner evidence and were not rerun.",
+    "Patch is unapplied; current0b5 source remains frozen. Any reconciliation/source identity change requires review of its actual final diff.",
+    "A matching new native runtime release and atomic real pin/consumer target-query enablement remain future authorized gates; this review supplies no release bytes or eligibility claim."
+  ],
+  "active_changes": false
+}

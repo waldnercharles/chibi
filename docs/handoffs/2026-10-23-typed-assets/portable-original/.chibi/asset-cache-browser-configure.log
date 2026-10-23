@@ -1,0 +1,4 @@
+emcmake: cmake -S test/tools -B build-web-cache-browser -DChibi_DIR=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/web-sdk/lib/cmake/Chibi -DCHIBI_TEST_ASSET_CACHE_ADAPTER=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi-studio/web/asset_cache.js -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/opt/homebrew/Cellar/emscripten/6.0.9/libexec/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CROSSCOMPILING_EMULATOR=/opt/homebrew/opt/node/bin/node in directory /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi
+-- Configuring done (1.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/build-web-cache-browser

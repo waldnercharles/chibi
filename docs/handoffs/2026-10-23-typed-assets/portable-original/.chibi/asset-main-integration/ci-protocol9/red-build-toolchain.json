@@ -1,0 +1,26 @@
+{
+  "name": "red-build-toolchain",
+  "tree": "e9fc4c4d8caf3f1bca79a22b9038d31adbd5a362",
+  "head": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "merge_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "argv": [
+    "env",
+    "CHIBI_TOOLS_BUILD_DIR=build-release/test/tools",
+    "CHIBI_BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/dist/sdk-release/libexec/chibi/chibi-build-host",
+    "python3",
+    "tools/test_policy.py",
+    "tool",
+    "build-toolchain"
+  ],
+  "status": "failed",
+  "started_utc": "2026-10-23T05:29:19.309847+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/typed-assets/chibi/.chibi/asset-main-integration/ci-protocol9/red-build-toolchain.log",
+  "python": "Python 3.13.16",
+  "jobs": "4 only via Make argument; no global -j",
+  "pid": 77103,
+  "exit_code": 1,
+  "elapsed_seconds": 33.178,
+  "completed_utc": "2026-10-23T05:29:52.502118+00:00",
+  "log_sha256": "3cbcd82d33f0b6f130b150690264c3b81e8f1cd21e085663a71274531b1c6b81",
+  "source_currency": "unchanged"
+}

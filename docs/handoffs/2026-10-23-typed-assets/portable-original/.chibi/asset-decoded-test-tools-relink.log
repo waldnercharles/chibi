@@ -1,0 +1,55 @@
+[  3%] Built target chibi_support
+[  3%] Built target chibi_fmt
+[  3%] Built target chibi_json
+[  3%] Built target chibi_asset_compiler_freshness
+[  3%] Built target policy_worker
+[  3%] Built target benchmark_trials
+[  6%] Built target chibi_types
+[  6%] Built target chibi_ui_document_values
+[  8%] Built target chibi_text_search
+[  8%] Built target chibi_asset_values
+[ 10%] Built target chibi_language_syntax
+[ 11%] Built target chibi_capabilities
+[ 13%] Built target chibi_ecs
+[ 15%] Built target chibi_events
+[ 16%] Built target chibi_asset_json
+[ 20%] Built target chibi_shader_runtime
+[ 21%] Built target chibi_value_document
+[ 23%] Built target chibi_text_source
+[ 33%] Built target chibi_language
+[ 35%] Built target chibi_native_capabilities
+[ 36%] Built target chibi_image_catalog
+[ 55%] Built target chibi_execution
+[ 55%] Built target chibi_reference_index
+[ 55%] Built target chibi_ui_document
+[ 58%] Built target chibi_sdk_contracts
+[ 58%] Built target chibi_shader_bake_consumer
+[ 60%] Built target chibi_array_capabilities
+[ 60%] Built target chibi_text_capabilities
+[ 61%] Built target chibi_behavior_runtime
+[ 61%] Built target chibi_image_preparation
+[ 61%] Built target chibi_compiler
+[ 63%] Built target chibi_ui_document_consumer
+[ 63%] Built target chibi_native_prepared
+[ 65%] Built target chibi_scene_runtime
+[ 66%] Built target chibi_prepared_consumer
+[ 66%] Built target chibi_record_consumer
+[ 66%] Built target chibi_image_preparation_consumer
+[ 68%] Built target chibi_compiler_host
+[ 68%] Built target chibi_scene_consumer
+[ 68%] Built target chibi_asset_documents
+[ 68%] Built target chibi-compiler-host
+[ 70%] Built target chibi_input_map
+[ 71%] Built target chibi_scene_document
+[ 71%] Built target chibi_project_document
+[ 75%] Built target chibi_authoring
+[ 76%] Built target chibi_asset_values_consumer
+[ 78%] Built target chibi_prototype_document
+[ 78%] Built target chibi_project_document_consumer
+[ 83%] Built target chibi_source_catalog
+[ 85%] Built target chibi_build_host
+[ 86%] Built target chibi-build-host
+[ 86%] Building C object CMakeFiles/test_tools.dir/controller.c.o
+[ 88%] Linking C executable test_tools
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_array_capabilities.a', 'sdk/libchibi_asset_documents.a', 'sdk/libchibi_asset_json.a', 'sdk/libchibi_authoring.a', 'sdk/libchibi_behavior_runtime.a', 'sdk/libchibi_compiler_host.a', 'sdk/libchibi_execution.a', 'sdk/libchibi_fmt.a', 'sdk/libchibi_scene_runtime.a', 'sdk/libchibi_shader_runtime.a', 'sdk/libchibi_text_source.a', 'sdk/libchibi_ui_document.a', 'sdk/libchibi_value_document.a'
+[100%] Built target test_tools

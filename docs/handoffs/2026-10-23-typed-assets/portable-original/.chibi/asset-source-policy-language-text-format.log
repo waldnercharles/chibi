@@ -1,0 +1,6 @@
+Running: native_text_formats_scalar_families_and_owns_results (OK) (0.000210 secs)
+Running: native_text_rejects_unsafe_modifiers_and_bounds_placeholder_indices (OK) (0.000078 secs)
+Running: native_text_formats_maps_with_their_entry_counts (OK) (0.000002 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 45
+Test command wall time: 0.453s; includes in-test fixture setup; external configuration/build excluded.

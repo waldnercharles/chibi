@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-23",
+  "status": "independently source-reviewed; root exact-patch review pending; unexecuted; not imported or adopted",
+  "baseline": {
+    "warm_full_patch_sha256": "7936ed238acb008383b710f6e08a66b515598fdcb9f1618a16af3bc79ea95a8a",
+    "warm_manifest_sha256": "a898671b9e0b379d1e4ce3c5f65df0b78089e434e0daaf3650e53ddb1b639765",
+    "frozen_sdk_index_tree": "47bbe00d73b04644a6951fc9e4ee81038cfd380c",
+    "typed_source_tree": "6ef6b76e5c7e83b328e2973cc15c42fc79804043"
+  },
+  "files": {
+    "tools/toolchain/SDK.chibi": {
+      "before_sha256": "d66e0de1e0d84579d250bad9a83bb482c3472bc00cd1cd448028262b4fb4a3b7",
+      "after_sha256": "dd68b7dca55788f1491f4383f59e113dc890959a7af8d3e5aa400729f84f13ee",
+      "bytes": 40945
+    },
+    "test/tools/build_sdk.c": {
+      "before_sha256": "6820476e16e84083558dffa430a1e3881f622d7c25d61e5e345bd40810684dfd",
+      "after_sha256": "8da8f2e7cc069a1561ba913698c54f9b022c2a5185e3f4f5d35d5f2fa04c94ac",
+      "bytes": 70967
+    }
+  },
+  "patch_sha256": "5313d58493d88c60b1aff73eca7d3a257a9ceccb8964123b251be5bf6c1f2b04",
+  "extracted_review_source_sha256": "53eefb3f0b9af956e012d57ea3630508c95049f02b8a7c66c5d49a69730f5aee",
+  "review": {
+    "agent": "sdk_review",
+    "result": "no material findings",
+    "scope": "SDK parent-observed prepared normal pair proof, generated-source isolation, C strict witness controls and restoration"
+  },
+  "source_checks": [
+    "patch applies to exact warm two-file baseline with whitespace=error",
+    "C fixture clang-format 22.1.8 dry-run passed by sdk_tests",
+    "reviewed warm patch and manifest bytes unchanged",
+    "frozen SDK own index tree unchanged and no unstaged tracked changes"
+  ],
+  "wire": {
+    "witness": "CHIBI-PROJECT-HOST/2",
+    "metadata_rows": 10,
+    "ordered_passed_check_rows": [
+      "prepared-load",
+      "prepared-without-source",
+      "prepared-entry-selection",
+      "reserve-directory",
+      "publish-directory",
+      "publish-pair"
+    ],
+    "receipt": "CHIBI-PROJECT-PREPARE/1",
+    "receipt_scalars": 16,
+    "policy_outputs": 4,
+    "inspect": "CHIBI-INSPECT/1"
+  },
+  "external_dependencies": {
+    "native": {
+      "reservation": 941,
+      "signature": "build.publish_pair(source0:string,destination0:string,source1:string,destination1:string)->int",
+      "effect": "HOST",
+      "c_string": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "implementation_source_sha256": null,
+      "status": "compiler/Project owner; implementation and ABI source review pending"
+    },
+    "project": {
+      "source_sha256": null,
+      "status": "corrected pair publication and strict HOST/2 reader pending; historical f798 is ineligible"
+    }
+  },
+  "execution_gates": [
+    "native admission, exclusive-move, cancellation and deterministic fault/rollback status 1/2/3 cases",
+    "actual prepared normal pair status 0 proof across 00/10/01/11",
+    "actual native/selfhost strict Inspect mutation controls",
+    "installed and relocated full SDK, compiler and asset checks"
+  ],
+  "not_performed": [
+    "build",
+    "compile",
+    "export",
+    "runtime test",
+    "policy preparation or generated runtime witness",
+    "source import",
+    "artifact freeze",
+    "provision",
+    "publication",
+    "default change"
+  ]
+}

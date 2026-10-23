@@ -1,0 +1,15 @@
+{
+  "warm_full_patch_sha256": "7936ed238acb008383b710f6e08a66b515598fdcb9f1618a16af3bc79ea95a8a",
+  "warm_manifest_sha256": "a898671b9e0b379d1e4ce3c5f65df0b78089e434e0daaf3650e53ddb1b639765",
+  "files": {
+    "tools/toolchain/SDK.chibi": {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-warm/after/tools/toolchain/SDK.chibi",
+      "sha256": "d66e0de1e0d84579d250bad9a83bb482c3472bc00cd1cd448028262b4fb4a3b7"
+    },
+    "test/tools/build_sdk.c": {
+      "source": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-warm/after/test/tools/build_sdk.c",
+      "sha256": "6820476e16e84083558dffa430a1e3881f622d7c25d61e5e345bd40810684dfd"
+    }
+  },
+  "dependency": "Corrected Project HOST/2 reader/pair policy and actual unique native binding source/hash pending. No f798 artifact freeze."
+}

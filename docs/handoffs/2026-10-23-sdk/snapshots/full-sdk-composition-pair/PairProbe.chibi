@@ -1,0 +1,14 @@
+package pair_probe
+import strings "core:strings"
+Verify :: () -> int {
+    for (name in ["00", "10", "01", "11"]) {
+        root := strings.Join([build.root(), "/", name, "/"], "");
+        if (build.publish_pair(strings.Join([root, "source0"], ""),
+                               strings.Join([root, "destination0"], ""),
+                               strings.Join([root, "source1"], ""),
+                               strings.Join([root, "destination1"], "")) != 0) {
+            return 1;
+        }
+    }
+    return 0;
+}

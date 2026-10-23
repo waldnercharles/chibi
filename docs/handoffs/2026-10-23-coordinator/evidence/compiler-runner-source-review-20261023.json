@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-23",
+  "status": "source clear; unrun; CI retains execution ownership",
+  "root": "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-behavior-state/chibi",
+  "candidate_tree": "1a59410022d128108e7744cf2b5641047a44d713",
+  "runners": {
+    "measure-v3/run_profile.py": {
+      "sha256": "bb057adf6e87264d371a6fee87bea60b4b6f376a83281aa1ae65465ee33c2288",
+      "preserved_before_sha256": "476ea97d8bcebe4876b0736ef4363475b95aafe372f23c1becb896faf122e5bf"
+    },
+    "ordinary-host/run_build.py": {
+      "sha256": "5edd1edb062107fcf907bf78895616c5128f96bf98fd893868af33a1be92753a",
+      "preserved_before_sha256": "25b84b4d1a655c86b290116bc88cca1e7d3fa2252cb5cc887d0c566895b78c78"
+    }
+  },
+  "review": "Root and independent helper confirm cancellation is recorded during Popen construction and PID capture, then honored after child ownership. Pending cancellation is checked before launch. Exclusive log/receipt ownership and exact successful-profile prerequisite remain unchanged.",
+  "checks": "Both old/new hashes, exact narrow diffs, AST,32source hashes, exact index tree, no unstaged tracked diff and absence of execution outputs verified. No runner or child process launched.",
+  "gates": "Explicit CI release; source/runner/host identities rechecked at dispatch; one v3 load measurement first. Ordinary host build requires actual successful exact-v3 profile/log receipt."
+}

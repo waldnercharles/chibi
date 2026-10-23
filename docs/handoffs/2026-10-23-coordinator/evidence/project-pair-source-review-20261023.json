@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-23",
+  "status": "source review clear; ignored mixed-base candidate; unexecuted and not imported",
+  "scratch": "/Users/cwaldner/Personal/chibi/.worktrees/selfhost-project-policy/chibi/.chibi/project-policy/pair-transport-draft",
+  "manifest_sha256": "2b69b9426b491f0da95ddb760276f4b7738260cc6269786ec2814006323d162f",
+  "source_patch_sha256": "6f4d0366a30154aab6621ca25f11783cfc509d33d18de42b7bc8d8f53f85299b",
+  "import_patch_sha256": "d7dd840339ed8326fa3cf2cefaa79f336ec66eaa40ab18e48ee4ec230cbea385",
+  "Project_sha256": "522b76cadc40f8e2ccb9ca730f5c336f6cb98286cb2b18681ac101ae5b4129ce",
+  "identity_checks": "All16 final hashes/bytes/line counts,21 source32/typed6ef/warm baselines, separate f798 live and historical fixture, receipts and full reconstruction through both patch routes verified by root. Private reconstructed basemaps were discarded; live sources were untouched.",
+  "root_review": "Project sidecar protection, pre/post reservation guards, post-child identity, no authored cleanup after attempted publication, strict HOST2/941 agreement; actual CMake/Targets/private-header/Engine staging and test registration; meaningful full historical-policy and caller regressions.",
+  "independent_review": "Root helper source-clear on shared kernel/header, strict raw adapter, native writer and deterministic fault assertions. SDK owner composition source review also clear. No actionable defect found.",
+  "contract": "One shared private prepare/execute/result kernel. Both backups and diagnostic storage precede mutation. Distinguish owned placeholders from old bytes. Raw final/restoration moves exclude replacement; native mode preserves platform behavior. Status0 committed/clean;1 prior bytes and absence restored;2 restoration incomplete with recovery retained;3 committed housekeeping warning without rollback.",
+  "mixed_base_limit": "Prepared source32 host protocol8 and typed6ef protocol9 are not an eligible combined tree. Final combined runtime/bootstrap/generated identities require separate review.",
+  "pending": [
+    "C compilation,16 cases and required repository groups",
+    "Actual prepared941, strict HOST2 controls, installed/relocated SDK proof",
+    "Actual native/selfhost Terrain binary/sidecar/export parity",
+    "Darwin/Linux integration and Windows/Web native compatibility",
+    "Controlled cancellation during commit and real occupied-target restoration; current cancellation cases cover pre-entry",
+    "Case-insensitive alias proof is filesystem-dependent; no crash, atomic-pair reader, writer-lock or fsync guarantee"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-23",
+  "status": "final formatted source review clear; unexecuted and not imported",
+  "scratch": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-pair-header-formatted",
+  "patch_sha256": "51c42e4a10788ebc8ba18621d6c823806120517cac0f3c83f6eb675cb0c3d9ec",
+  "manifest_sha256": "fbfb7add5e36802062030aea1374453112d68ab918204f622899cc28cb4c2c15",
+  "SDK_sha256": "dd68b7dca55788f1491f4383f59e113dc890959a7af8d3e5aa400729f84f13ee",
+  "C_sha256": "8b7fc47e5a04f601a9bb83b4b359d70009f34f66e97f7e29161e4c65a003e757",
+  "dependency": "Reviewed warm7936ed238acb008383b710f6e08a66b515598fdcb9f1618a16af3bc79ea95a8a / manifesta898671b9e0b379d1e4ce3c5f65df0b78089e434e0daaf3650e53ddb1b639765",
+  "review": [
+    "Root inspected complete generated-source proof, export and isolated prepared invocation, witness producer and C inventory/Inspect fixtures",
+    "Independent root helper found confounded HOST1/missing-row control in original5313; hold assigned before adoption",
+    "Exact header-only successor55c4 fixes solely that control; independent helper confirmed finding closed",
+    "Final51c4 differs from header successor only by clang-format22 case0 collapse; SDK unchanged",
+    "Root reconstructed final bytes from all three full/correction/formatting patches and matched exact old/new hashes",
+    "Predecessor freezes remain unchanged; SDK index remains47bbe with no unstaged tracked diff"
+  ],
+  "contract": "HOST/2 contains ten ordered metadata plus six ordered actual checks. PREPARE/1 and Inspect wire remain unchanged. New native941 appears only in generated pair probe source, preserving legacy SDK.Verify effects. Source is removed before same hash-bound isolated-host artifact-only execution. Parent independently observes all four old-output presence combinations, final bytes/types, source consumption and no leftovers.",
+  "format": "SDK owner reports exact final C clang-format22.1.8 dry-run Werror passed; root inspected formatting-only delta without repeating the passed check.",
+  "pending": [
+    "Native941 implementation source, ABI/admission and deterministic error/rollback proof",
+    "Corrected Project pair publisher and strict HOST/2 reader source hash",
+    "Eligible integrated source and required repository validation",
+    "Actual prepared witness generation, native/selfhost mutation controls, installed/relocated full SDK and consumer proof"
+  ],
+  "execution": "No build, export, runtime test, witness generation, live import, provisioning, publication or default change"
+}

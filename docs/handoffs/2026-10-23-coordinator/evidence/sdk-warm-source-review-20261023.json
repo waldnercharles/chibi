@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-23",
+  "status": "source review clear; mixed-base ignored draft; execution and adoption pending",
+  "scratch": "/Users/cwaldner/Personal/chibi/.worktrees/project-sdk-policy/chibi/.chibi/full-sdk-composition-warm",
+  "patch_sha256": "7936ed238acb008383b710f6e08a66b515598fdcb9f1618a16af3bc79ea95a8a",
+  "manifest_sha256": "a898671b9e0b379d1e4ce3c5f65df0b78089e434e0daaf3650e53ddb1b639765",
+  "minimal_patch_sha256": "2442c3553d1d7260ad7cc73666e8f714bd804ce68a7c4c6dab022652d99abd2b",
+  "root_checks": [
+    "All six after-file hashes and byte counts match manifest",
+    "All exact mixed Git baselines and four minimal predecessor bases match",
+    "Both full and minimal patches apply-check on exact ignored baselines",
+    "Held predecessor patch and manifest remain unchanged",
+    "ProjectTools index remains47bbe00d73b04644a6951fc9e4ee81038cfd380c",
+    "Contract, coverage and compiler payload receipt hashes match",
+    "Python full-stage preparation preserves preexisting file map, permits exactly six additions, verifies without mutation and rechecks bytes before publication",
+    "Authored installed-role and owned-inventory checks remain separate from full package identity"
+  ],
+  "independent_review": {
+    "owner": "/root/audit_graph_host_selection",
+    "result": "clear; no actionable defect found",
+    "scope": "CMake/Graph exact-four exclusion before inspection; selected parent and leaf guards; filtered cache admission and selected regular-file copy; strict fresh stage; C fixture ownership and semantic oracle; preserved47bbe cases and6ef semantic profile oracle"
+  },
+  "pending": [
+    "Corrected Project binary/resources sidecar publication source and actual private binding",
+    "Separate HOST/2 prepared-pair capability witness and strict reader agreement",
+    "Eligible integrated compiler/typed/prepared-host source candidate",
+    "Ordinary warm CMake/Graph execution and C SDK cases",
+    "Installed and relocated bootstrap, capability, full package and native asset consumer proof",
+    "Repository required validation before code commit or landing"
+  ],
+  "execution": "No build, test, export, provisioning, publication or live source import performed by this review"
+}

@@ -1,0 +1,56 @@
+{
+  "kind": "WIP coordination-record checkpoint",
+  "date": "2026-10-23",
+  "repository": "https://github.com/waldnercharles/chibi.git",
+  "branch": "codex/chibi-coordinator-handoff-20261023",
+  "base_commit": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "own_implementation_paths_changed": [],
+  "builds_or_tests_run_for_checkpoint": [],
+  "acceptance": "not granted; preserve all failed/unrun/hold status",
+  "files": {
+    "README.md": {
+      "bytes": 11009,
+      "sha256": "c345d50f1ac187174e3f9f99169194f6386b62d9d1fab21d1ba0db3aa022e8d6"
+    },
+    "evidence/compiler-runner-source-review-20261023.json": {
+      "bytes": 1405,
+      "sha256": "6057554ab5fbe741de610cfeb2cccfd846b8810fcca33e5f9143aa34a9232737"
+    },
+    "evidence/project-pair-source-review-20261023.json": {
+      "bytes": 2594,
+      "sha256": "17fb9bbcef4a96562ac84bac4a1ff5a14c319b6456dd875d021ed77bb76b82d8"
+    },
+    "evidence/required-test-materials.json": {
+      "bytes": 1122,
+      "sha256": "e9559f23b7ef0b55993ca12deb248d10daa694bccc09314b6eda4f4c4a701e65"
+    },
+    "evidence/required-test-native.json": {
+      "bytes": 1286,
+      "sha256": "a4b1fbb340edcace99318c109cc05dd46e6457a33a550c3d7f9dcc3a38479540"
+    },
+    "evidence/required-test-projects.json": {
+      "bytes": 808,
+      "sha256": "22b306d370abe1b80124e4dc4fcb9fc3fcb0d43e24886b7bc24e598c2f533e09"
+    },
+    "evidence/sdk-pair-source-review-20261023.json": {
+      "bytes": 2577,
+      "sha256": "8465c473ac21bf935ec547f7c22dd2b8c89d73e2bd2bbffba495de2378379fb3"
+    },
+    "evidence/sdk-warm-source-review-20261023.json": {
+      "bytes": 2227,
+      "sha256": "29c90056508d0fa19f987edfe5d8f680b462bd34d411244963aede6e91541094"
+    },
+    "lanes.md": {
+      "bytes": 14799,
+      "sha256": "8f3a67712c83fb4698b7a1c1fbe4a91dd0f0b945003700b43878207457b3093a"
+    },
+    "live-inventory.json": {
+      "bytes": 82629,
+      "sha256": "2b307cae31603709580d6e958e6299a39f46bb5effb1ff1a99e31720c42a46f4"
+    },
+    "workspace-plan.snapshot.md": {
+      "bytes": 39307,
+      "sha256": "56a3e8ffe30ed65e35407811712d6606abedae357d3a10e8fc9876e02099e1f2"
+    }
+  }
+}

@@ -17,6 +17,7 @@
 #include "types/union.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -242,10 +243,53 @@ uint64_t program_owning_task(const execution_activation *a)
     }
     return a->task;
 }
-static int start_task(behavior_function_context *ctx, int index)
+static void add_target(execution_activation *a, ecs_component_cell *cell)
 {
+    for (int i = 0; i < a->task_target_count; i++) {
+        if (a->task_targets[i] == cell) {
+            return;
+        }
+    }
+    if (cell) {
+        ecs_component_cell_retain(cell);
+        ecs_component_cell_retain_storage(cell, &a->payload);
+    }
+    a->task_targets[a->task_target_count++] = cell;
+}
+static void release_targets(execution_activation *a)
+{
+    for (int i = 0; i < a->task_target_count; i++) {
+        if (a->task_targets[i]) {
+            ecs_component_cell_release_storage(a->task_targets[i], &a->payload);
+        }
+    }
+    a->task_targets = NULL;
+    a->task_target_count = 0;
+}
+int program_task_start_bound(
+    behavior_function_context *ctx,
+    int index,
+    ecs_component_cell *const *targets,
+    int target_count
+)
+{
+    if (target_count < 0 || (target_count && !targets)) {
+        ctx->error_message = "task lifetime targets are invalid";
+        return FLOW_ERR_ARGUMENT;
+    }
     execution_activation *caller = ctx->inspection_user;
+    if (!program_task_check(caller, ctx->now)) {
+        return FLOW_SUSPENDED_RESULT;
+    }
     execution_instance *instance = caller->instance;
+    execution_task *own = find(instance, program_owning_task(caller));
+    execution_activation *owner = own ? own->activation : NULL;
+    int inherited = owner ? owner->task_target_count : 0;
+    if (target_count > INT_MAX - inherited ||
+        (size_t)(target_count + inherited) > SIZE_MAX / sizeof *targets) {
+        ctx->error_message = "too many task lifetime targets";
+        return FLOW_ERR_ARGUMENT;
+    }
     const behavior_function *function = caller->function;
     behavior_function_active_context(&caller->context, &function);
     const behavior_function_invocation *call = &function->calls[index];
@@ -263,6 +307,16 @@ static int start_task(behavior_function_context *ctx, int index)
         return FLOW_ERR_ARGUMENT;
     }
     capture_references(a, call);
+    int capacity = inherited + target_count;
+    if (capacity) {
+        a->task_targets = arena_alloc(&a->storage, (size_t)capacity * sizeof *a->task_targets);
+        for (int i = 0; i < inherited; i++) {
+            add_target(a, owner->task_targets[i]);
+        }
+        for (int i = 0; i < target_count; i++) {
+            add_target(a, targets[i]);
+        }
+    }
     /* An outcome continuation runs on behalf of the task that owns it. */
     execution_task *t = task_new(instance),
                    *parent = find(instance, program_owning_task(caller));
@@ -285,6 +339,10 @@ static int start_task(behavior_function_context *ctx, int index)
         return FLOW_SUSPENDED_RESULT;
     }
     return status < 0 ? status : FLOW_OK;
+}
+static int start_task(behavior_function_context *ctx, int index)
+{
+    return program_task_start_bound(ctx, index, NULL, 0);
 }
 void program_bind_tasks(behavior_function_context *ctx)
 {
@@ -325,6 +383,7 @@ static void deliver(const execution_task *t, task_waiter waiter)
 }
 void program_task_finished(execution_activation *a, bool cancelled)
 {
+    release_targets(a);
     execution_instance *instance = a->instance;
     execution_task *t = find(instance, a->task);
     if (!t || t->activation != a) {
@@ -377,13 +436,53 @@ static void cancel(execution_instance *instance, uint64_t handle)
 bool program_task_due(const execution_activation *a, double now)
 {
     execution_task *t = find(a->instance, program_owning_task(a));
-    return t && t->activation && t->timed && t->deadline <= now;
+    if (!t || !t->activation) {
+        return false;
+    }
+    for (int i = 0; i < t->activation->task_target_count; i++) {
+        ecs_component_cell *cell = t->activation->task_targets[i];
+        if (!ecs_component_cell_alive(cell)) {
+            return true;
+        }
+        uint64_t entity, layout;
+        ecs_component_id component;
+        /* Check cell liveness first: its world can already have been freed. */
+        if (!ecs_component_cell_target(
+                cell,
+                ecs_world_execution(a->instance->program->world),
+                &entity,
+                &component,
+                &layout
+            )) {
+            return true;
+        }
+    }
+    return t->timed && t->deadline <= now;
+}
+bool program_task_check(execution_activation *a, double now)
+{
+    uint64_t owner = program_owning_task(a);
+    if (!owner || a->finished) {
+        return true;
+    }
+    if (program_task_due(a, now)) {
+        cancel(a->instance, owner);
+    }
+    execution_task *t = find(a->instance, owner);
+    if (t && t->activation && !t->activation->stopping) {
+        return true;
+    }
+    a->stopping = true;
+    if (!a->running && !a->finished) {
+        program_activation_cancel(a);
+    }
+    return false;
 }
 void program_tasks_tick(execution_instance *instance, double now)
 {
     for (int i = 0; i < acount(instance->tasks); i++) {
         execution_task *t = &instance->tasks[i];
-        if (t->activation && t->timed && t->deadline <= now) {
+        if (t->activation && program_task_due(t->activation, now)) {
             cancel(instance, handle_of(instance, t));
         }
     }

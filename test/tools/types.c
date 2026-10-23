@@ -1024,15 +1024,18 @@ TEST_CASE(types_document_array_collection_retains_split_payloads)
         );
         pin_array *array = value.ptr;
         REQUIRE(array && pin_array_valid(array));
+        const void *payload = array->stride ? array->data : (void *)array->items;
         arena_collection collection;
         arena *arenas[] = { &snapshots };
         arena_collect_begin(&collection, arenas, 1);
         pin_value_trace(&value, arena_collect_mark, &collection);
         arena_collect_end(&collection);
         REQUIRE(arena_contains(&snapshots, array));
+        REQUIRE(arena_contains(&snapshots, payload));
         pin_value item = pin_array_get(array, 0);
         if (strings) {
             REQUIRE(arena_contains(&snapshots, item.text));
+            REQUIRE(arena_contains(&snapshots, pin_text(item).bytes));
             REQUIRE(!strcmp(pin_text(item).bytes, "owned"));
         } else {
             REQUIRE(item.i == 17);

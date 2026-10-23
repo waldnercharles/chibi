@@ -177,10 +177,13 @@ These counts describe coverage and do not record a pass.
   10,000-instruction per-call budget.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `language-record-prepared`: seven cases, adding a four-byte wire roundtrip,
-  budget failure, metadata rejection and invalid field markers. A native-field
-  size check uses an 81-byte stack string and a nearly exhausted logical budget
-  with a hash sink; it allocates no large output buffer.
+- `language-record-prepared`: eleven cases, including a four-byte wire roundtrip,
+  budget failure, metadata rejection and invalid field markers. Shared-layout
+  validation uses one 128-field record and 256 headers under the default work
+  limit; tiny decoded definitions check distinct invalid layouts, later headers,
+  retries and native catalog replacement. A native-field size check uses an
+  81-byte stack string and a nearly exhausted logical budget with a hash sink;
+  it allocates no large output buffer.
 - `build-process`: thirty-seven cases. The new helper case adds seven operations
   on at most seven bytes and no processes. Existing invocation and child limits
   remain unchanged; binary-output and file assertions replace text rejection.

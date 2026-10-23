@@ -605,7 +605,8 @@ PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int
         pending = slice(pending, 0, length(pending) - 1);
         node := forest[at];
         if (node.start >= start && node.end <= finish) {
-            if (node.kind == "call_expression") { return true; }
+            if (node.kind == "call_expression" || node.kind == "await_expression" ||
+                node.kind == "yield_statement") { return true; }
             if (node.kind == "assignment") {
                 target := Unparenthesized(forest, StatementTarget(forest, at));
                 if (aliases || (Is(forest, target, "identifier") && Text(forest, text, target) == name)) { return true; }
@@ -640,7 +641,10 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
             if (Is(forest, parent, "while_statement")) { consequence = Field(forest, parent, "body"); }
             truth := consequence >= 0 && forest[walked_child].start >= forest[consequence].start &&
                      forest[walked_child].end <= forest[consequence].end;
-            if (PointerGuard(forest, text, condition, binding.name, truth) &&
+            alternative := Field(forest, parent, "alternative");
+            false_branch := alternative >= 0 && forest[walked_child].start >= forest[alternative].start &&
+                            forest[walked_child].end <= forest[alternative].end;
+            if ((truth || false_branch) && PointerGuard(forest, text, condition, binding.name, truth) &&
                 (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
                 return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
                                             binding.name, aliased);

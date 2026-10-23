@@ -96,6 +96,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script
         { "value_size", (int)sizeof(pin_value) },
         { "payload_offset", (int)offsetof(pin_value, d) },
         { "results_offset", (int)offsetof(behavior_function_context, results) },
+        { "error_status_offset", (int)offsetof(behavior_function_context, error_status) },
         { "type_offset", (int)offsetof(pin_value, type) },
         { "container_offset", (int)offsetof(pin_value, container) },
         { "name_offset", (int)offsetof(pin_value, type_name) },

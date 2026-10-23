@@ -161,7 +161,7 @@ pub CheckFunctions :: () -> int {
 }
 
 pub FunctionRejections :: () -> string[] {
-    return [
+    cases: string[] = [
         "package p\nF :: () { return 1; }",
         "package p\nF :: () -> int {}",
         "package p\nF :: () -> int { return; }",
@@ -193,6 +193,15 @@ pub FunctionRejections :: () -> string[] {
         "package p\nF :: (x: int,) -> int { return x;",
         "package p\nF :: () -> int { return 1; } /*tail"
     ];
+    // A newline after return ends a bare return, even when a contextual
+    // result name made the tokenizer classify the body as a literal.
+    for (gap in ["\n", "\r", "\r\n", " /*line\nbreak*/ ", " /*line\rbreak*/ ",
+                 " /*line\r\nbreak*/ ", " // line\n", " /*before*/\n", "\n/*after*/ "]) {
+        for (atom in ["1", "true", "not", "\"é\"", "nil"]) {
+            cases.append(format_text("package p\nF :: () -> not {{ return{}{}; }}", gap, atom));
+        }
+    }
+    return cases;
 }
 
 // Rejections expose a byte position even after multibyte text; never a tree.

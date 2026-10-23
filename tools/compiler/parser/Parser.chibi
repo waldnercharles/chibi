@@ -136,6 +136,7 @@ pub Parse :: (text: string) -> Result {
             body: int = -1;
             returned: int = -1;
             value_end: int = -1;
+            return_keyword_end: int = -1;
             index: int = 0;
             while (index < length(tokens)) {
                 token := names[tokens[index]];
@@ -287,6 +288,18 @@ pub Parse :: (text: string) -> Result {
                 } else if (phase == ConstantValue || phase == ReturnValue) {
                     after_literal = End;
                     if (phase == ReturnValue) {
+                        // Every atom in this slice starts a new statement
+                        // after CR/LF. The keyword's automatic end can be
+                        // absent in the tokenizer's coarse literal context.
+                        // Revisit continuation rules before adding expressions.
+                        at := return_keyword_end;
+                        while (at < start) {
+                            if (bytes[at] == 10 || bytes[at] == 13) {
+                                return Reject("unsupported", "Return atom follows an automatic statement end",
+                                              start, end, row, column);
+                            }
+                            at += 1;
+                        }
                         after_literal = ReturnEnd;
                         value_end = end;
                     }
@@ -416,6 +429,7 @@ pub Parse :: (text: string) -> Result {
                     phase = ReturnWord;
                 } else if (phase == ReturnWord) {
                     parent = returned;
+                    return_keyword_end = end;
                     phase = ReturnValue;
                 } else if (phase == ReturnEnd) {
                     if (token != ";") {

@@ -71,7 +71,11 @@ parser repairs only the known return/body boundary: missing implicit return
 ends before `}` and its preceding comments, and a synthetic post-body terminator
 is discarded. Real semicolons are never discarded. A real return semicolon
 after a line break rejects rather than accepting an empty statement.
-This is private bounded syntax handling, not a token rewriting layer or API.
+CR/LF between the return keyword and its atom also ends a bare return, even
+inside a block comment. The atom-only subset rejects that split rather than
+merging a second expression statement into the return; continuation exclusions
+must be revisited before compound expressions are admitted. This is private
+bounded syntax handling, not a token rewriting layer or API.
 
 Comments after a simple parameter type belong to its parameter list, and after
 a result type to the function. Comments after a body belong to the function
@@ -88,7 +92,7 @@ fail-closed diagnostics or full accepted-fact parity, including UTF-8 truncation
 `CheckAccepted` and `CheckRejected` return zero on success and a one-based failing
 case otherwise; `Parity(text)` returns the first mismatch class/node offset.
 `Check` combines the foundation sets (negative failures add 100; prefix failures
-add 200). `FunctionCases` adds 26 accepted cases, `FunctionRejections` adds 30
+add 200). `FunctionCases` adds 26 accepted cases, `FunctionRejections` adds 75
 unsupported/malformed cases, and `CheckFunctionPrefixes` checks every byte
 prefix of a UTF-8 function with contextual names and a trailing comment.
 Their failures add 400, 500 and 600 respectively. These pure entry points
@@ -110,14 +114,18 @@ record/container representation changes. Do not grow a generic parser framework.
 
 ## Function-slice WIP evidence
 
-The first bounded function checkpoint compiles six authored sources using the
+The corrected bounded function checkpoint compiles six authored sources using the
 unchanged `fa1b7b2` compiler seed
 `41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e`
-and the host below. `Check` returns `[0]` on both bytecode and SLJIT, with 254,679
+and the host below. `Check` returns `[0]` on both bytecode and SLJIT, with 301,047
 selected-backend calls and zero fallback/overflow. The fixture SHA256 is
-`241be56e0718e0f3460f99f6b0aad52a1a45c645823920def909d7fa28c59892`.
-Independent full-fact/property review and additional negative controls remain
-pending; this is an early WIP source checkpoint, not a production parser switch.
+`73a6d1cf100a01de9ef746f09ebe43bd10395a8cf89c29f79e12a7e5bba41879`.
+A first WIP missed the cross-product of contextual result `not` and newline
+before the return atom. Forty-five CR/LF/comment/atom regressions failed at case
+31 on both backends before the narrow guard, and pass after it. This supersedes
+the earlier passing aggregate: it was insufficient to establish the boundary.
+Independent review of the corrected head remains pending; this is a WIP source
+checkpoint, not a production parser switch.
 
 ## Historical foundation checkpoint evidence
 

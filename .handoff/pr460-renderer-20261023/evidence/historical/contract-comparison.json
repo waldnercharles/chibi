@@ -1,0 +1,14 @@
+{
+  "changed_files": [
+    "/tmp/chibi-integration-20261022/pr460/driver/test/tools/test_tools",
+    "/tmp/chibi-integration-20261022/pr460/dependency-build/cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o",
+    "/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_cute.a"
+  ],
+  "only_guard_source_difference": true,
+  "same_cute_compile_command": true,
+  "same_test_instrumentation": true,
+  "same_test_object": true,
+  "same_other_vendor_archives": true,
+  "scope": "Darwin scratch nonnull diagnostic; not Linux glibc proof"
+}

@@ -1,0 +1,13 @@
+{
+  "command": [
+    "make",
+    "check-format"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi",
+  "started": "2026-10-22T22:29:12.042260+00:00",
+  "elapsed_seconds": 93.044007459,
+  "exit_code": 0,
+  "environment": {
+    "MallocNanoZone": "0"
+  }
+}

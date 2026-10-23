@@ -1,0 +1,27 @@
+{
+  "scope": "Static checks only; runner code, synthetic outcome tests, builds, downloads, packages and GPU commands were not executed",
+  "results": [
+    {
+      "name": "actionlint",
+      "command": "/opt/homebrew/bin/actionlint .github/workflows/cute-zero-uniforms-linux.yml",
+      "result": {
+        "chunk_id": "ab4470",
+        "wall_time_seconds": 0.773080417,
+        "exit_code": 0,
+        "original_token_count": 0,
+        "output": ""
+      }
+    },
+    {
+      "name": "python-ast",
+      "command": "python3 - <<'PY'\nimport ast\nfrom pathlib import Path\npath = Path('tools/validate_cute_zero_uniforms_linux.py')\nast.parse(path.read_text(), filename=str(path))\nprint('Python AST parsed; runner code was not executed.')\nPY",
+      "result": {
+        "chunk_id": "5951f6",
+        "wall_time_seconds": 0.000010792,
+        "exit_code": 0,
+        "original_token_count": 13,
+        "output": "Python AST parsed; runner code was not executed.\n"
+      }
+    }
+  ]
+}

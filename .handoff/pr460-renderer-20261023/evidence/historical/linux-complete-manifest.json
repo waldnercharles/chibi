@@ -1,0 +1,107 @@
+{
+  "tree": "3f9ea39c2fccad0c5550c2fca64ce0b06dc9210e",
+  "head": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "prior_tree": "3c8deefa3063f6294db7121dfda6e8bcb6b0e52e",
+  "staged_paths": [
+    ".github/workflows/cute-zero-uniforms-linux.yml",
+    "docs/cute-framework-patches/README.md",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md",
+    "docs/cute-framework-patches/linux-draw-validation.md",
+    "docs/testing.md",
+    "test/execution_selectors.h",
+    "test/render/draw_uniforms.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/main.c",
+    "third_party/CMakeLists.txt",
+    "third_party/README.md",
+    "third_party/cute_framework/draw-zero-uniforms.patch",
+    "tools/agent.py",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py",
+    "tools/validate_cute_zero_uniforms_linux.py"
+  ],
+  "new_file_sha256": {
+    ".github/workflows/cute-zero-uniforms-linux.yml": "b3a158d9803865c71d6eb420cb613a16d68e96a5fca6b49e12c2bb7150128ac0",
+    "tools/validate_cute_zero_uniforms_linux.py": "0d958f7d6d0ca7c898daed5179f5cdbb9e5e6fad041adacdaefb7f7f7092093d",
+    "docs/cute-framework-patches/linux-draw-validation.md": "4448bb82b1be16c79d7ef68aef629c987b88f2f128a5594bfd153362226c6aad"
+  },
+  "files": {
+    ".github/workflows/cute-zero-uniforms-linux.yml": {
+      "git_blob": "61b49ac5964bec94feeee688ef62e83a9b57f1e2",
+      "sha256": "b3a158d9803865c71d6eb420cb613a16d68e96a5fca6b49e12c2bb7150128ac0"
+    },
+    "docs/cute-framework-patches/README.md": {
+      "git_blob": "3cabfe89a09a52390cf6a6e53ad5ab08bfd17616",
+      "sha256": "bbaba04dcf77f44bf6a509e72abd5d86c6c3f30dcea2ddbdb8bddf8d1eccd692"
+    },
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md": {
+      "git_blob": "f77442134953b94f38d27a4ce33ab29aff608774",
+      "sha256": "eff27cd58ec7fc4822b9f9ec883046a3e4f058540c419af87df7687b73d5a326"
+    },
+    "docs/cute-framework-patches/linux-draw-validation.md": {
+      "git_blob": "209faca731e8652480bdda21f67e2315b54c159c",
+      "sha256": "4448bb82b1be16c79d7ef68aef629c987b88f2f128a5594bfd153362226c6aad"
+    },
+    "docs/testing.md": {
+      "git_blob": "baf5c07c671253b7fd0a76a27885001d02a3084c",
+      "sha256": "3beecc11a0791bb6d423d309ed165ec1a8162b9296f76c33a585e206aa16d84e"
+    },
+    "test/execution_selectors.h": {
+      "git_blob": "01e2d6a3d49b946bd3d73bc3cfed56fe56c47f08",
+      "sha256": "5cf1252be2ed647c19bbf3dcbe829f2a64e261ea1358e05177eaee0b14752619"
+    },
+    "test/render/draw_uniforms.c": {
+      "git_blob": "19b173a607592c2932bbcd42fc3a629e61cac4ce",
+      "sha256": "0185276a320e96f3b89143280bef0944fd3f19d67624092076d032f0815bd92d"
+    },
+    "test/tools/CMakeLists.txt": {
+      "git_blob": "b8aeeaf189899d3cf9f54845d3e04fcc721ecea1",
+      "sha256": "4d745c652120e548bc8e2abe67d213d6c0508ea00a09dccb89b31b7c019b1e99"
+    },
+    "test/tools/main.c": {
+      "git_blob": "bbbe68f7e850db9ef3531b7abe35068e1f304f97",
+      "sha256": "a79d83bb8ef10e34fd5e7458c4089becf7f1f93c779d4a915689d5d9f84ef4f9"
+    },
+    "third_party/CMakeLists.txt": {
+      "git_blob": "5cf86e93d46844437eab0c57b8d1f243e048f724",
+      "sha256": "9a3e1d53af72176c725c1a2e7321013a1adb133d565657820953a28ec65964ca"
+    },
+    "third_party/README.md": {
+      "git_blob": "f7d40cb986a6fd20a0515e015d9c5584b1f1b91d",
+      "sha256": "d0a11c00f256f6ff7f6fb5a7470d8045509ce3f79f1662e280d106c045249c9f"
+    },
+    "third_party/cute_framework/draw-zero-uniforms.patch": {
+      "git_blob": "806181d572a59cbeccd069f8cc76d194f4189919",
+      "sha256": "ebaedd6bb02f5daaa481062a6e6e663f40e0fcee562975afeecb55caabfcf7d2"
+    },
+    "tools/agent.py": {
+      "git_blob": "29897d9f4fe65cf0f84fdd870dfb9d5108bfce77",
+      "sha256": "4b48bb277668236d1f483407a25ec5d2563675cff4d8af0925996ddc4c6cbaf7"
+    },
+    "tools/graph/engine/Targets.chibi": {
+      "git_blob": "e2404f4ae9b4aafbc9ee9c239e7b033751496eb7",
+      "sha256": "bdb7e3ee09984f7bfec04fb79a45560da6e0d175e7662969e700d7924ea89f81"
+    },
+    "tools/test_policy.py": {
+      "git_blob": "8b567013d87da7b5ac90287f9d9e334a1c67c241",
+      "sha256": "88e8bfefbe8d1c9eae3f0de0b7d46f6da2c60343057820f753294040425d538f"
+    },
+    "tools/validate_cute_zero_uniforms_linux.py": {
+      "git_blob": "b3bc0efd98d686478163a9b961b5e1000c144962",
+      "sha256": "0d958f7d6d0ca7c898daed5179f5cdbb9e5e6fad041adacdaefb7f7f7092093d"
+    }
+  },
+  "full_patch_sha256": "9fc886e4005f00d345052248fe2fa8e0b5437daf53f2b705a05ad56fd611b08e",
+  "full_patch": "linux-complete-candidate.diff",
+  "source_review": "linux-root-source-review.json",
+  "static": "actionlint and AST parse passed; no runtime execution",
+  "not_run": [
+    "required groups",
+    "Linux red/green",
+    "builds",
+    "GPU",
+    "workflow dispatch",
+    "publication"
+  ],
+  "commit_created": false
+}

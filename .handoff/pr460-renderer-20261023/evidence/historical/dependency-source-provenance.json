@@ -1,0 +1,80 @@
+[
+  {
+    "name": "sljit",
+    "pin": "a0020dd49a21020434ff838fc308626c48cd8f05",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/sljit/39bc1be9cd6dab0efe768c50a355a27ccfb05d19807db7255b96855c07f8f957/sljit-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/sljit"
+  },
+  {
+    "name": "tree_sitter",
+    "pin": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/tree_sitter/2ef2d21109f0317a545deb7614f0e3837e6f2962aea926c57b173e72706db75b/tree_sitter-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter"
+  },
+  {
+    "name": "cute_framework",
+    "pin": "96e6034aa6bc44665856ee480962a9ddab0b87cc",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/cute_framework/1835dc731b944b31d22f93cc348905ce217e94f58251089494e2a52415884fc5/cute_framework-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework"
+  },
+  {
+    "name": "sdl3",
+    "pin": "a962f40bbba175e9716557a25d5d7965f134a3d3",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/sdl3/219d4541c9965e815fa07d58fb150704f5420d9084e603bfbb10b947ccdf2dc9/sdl3-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3"
+  },
+  {
+    "name": "s2n_tls",
+    "pin": "1c9844722d9cc3beca5551c0f9bfed8aabbc22ed",
+    "origin": "/tmp/tp-thread/_deps/chibi_s2n_tls-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/s2n_tls"
+  },
+  {
+    "name": "physfs",
+    "pin": "9d18d36b5a5207b72f473f05e1b2834e347d8144",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/physfs/c1225232ee0b0618a5d78ceebaa513b425caf971b28358b7283d81ee6e6b057d/physfs-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/physfs"
+  },
+  {
+    "name": "box2d",
+    "pin": "8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/box2d/461bdc2928209f612651b94742350b9bc4413711f457e54ced239029e7af654c/box2d-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d"
+  },
+  {
+    "name": "box3d",
+    "pin": "8441b4a06d6d09dcfb0b0f704df4d847d1437b92",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/box3d/8653aab95898636fd931607e5b29f95652c5b88aa0abdaeb53d9e5bbb7686e02/box3d-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d"
+  },
+  {
+    "name": "freetype",
+    "pin": "0a0221a1347e2f1e07c395263540026e9a0aa7c7",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/freetype/f0b5d44c068a8dde1dcc7e98356b22d66b40cc12815e7aae34355cf0b6febb81/freetype-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/freetype"
+  },
+  {
+    "name": "rmlui",
+    "pin": "ba95ffe8bfb6370efb2cdcca927eaad4710c5413",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/rmlui/96ff86120c62a637734c0159d45c17ad94befd0d41c806e2e3bf16d99491b398/rmlui-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/rmlui"
+  },
+  {
+    "name": "enkits",
+    "pin": "4cba61a045d8e759bd35e5d85691bf9f7271f822",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/enkits/1cd5c6311a8ac239e95062212a117dd039c212aeb59935cbdb995b93c6b4b203/enkits-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/enkits"
+  },
+  {
+    "name": "tree_sitter_css",
+    "pin": "dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/tree_sitter_css/01eab29cf60cf856f23d448fa37caa38c8bb77919a615818558dea653c1f3377/tree_sitter_css-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter_css"
+  },
+  {
+    "name": "tree_sitter_html",
+    "pin": "5a5ca8551a179998360b4a4ca2c0f366a35acc03",
+    "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/tree_sitter_html/1b3ec62a6da3856662d2561d74d722f6ab42e9ee4009ab79303d72e4dbf0b3e4/tree_sitter_html-src",
+    "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter_html"
+  }
+]

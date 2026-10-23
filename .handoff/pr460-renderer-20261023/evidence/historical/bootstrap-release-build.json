@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/tmp/chibi-integration-20261022/pr460/bootstrap-release",
+    "--target",
+    "chibi-build-host",
+    "--parallel",
+    "2"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi",
+  "started": "2026-10-22T22:34:58.740173+00:00",
+  "elapsed_seconds": 87.691375959,
+  "exit_code": 0,
+  "environment": {
+    "MallocNanoZone": "0"
+  }
+}

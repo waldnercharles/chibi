@@ -1,0 +1,121 @@
+{
+  "phase": "contract-green",
+  "head": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "tree": "619e6552f79cb64abf23aa60e11e72bf60606e51",
+  "files": {
+    "/tmp/chibi-integration-20261022/pr460/driver/test/tools/test_tools": "a454b817a1cb0cd6093b683b9815090f33d7d5f733e8ee983cabf681e6d1af7e",
+    "/tmp/chibi-integration-20261022/pr460/driver/objects/chibi_render_consumer/test/render/draw_uniforms.c.o": "b46e3b2ab86955b07fde853a33c598779fb4a9e78ca72659ab14816af44e25fd",
+    "/tmp/chibi-integration-20261022/pr460/bootstrap/sdk/chibi-build-host": "1853b7eebffa72f95a3a3e46f88776c9f2359094ea56d374af89f7f1ab7eb831",
+    "/tmp/chibi-integration-20261022/pr460/bootstrap-release/sdk/chibi-build-host": "e28018f360e56f7dd34bb99797fe3b888ca1ca413a3cdf5d8a757dc83c1bbd01",
+    "/tmp/chibi-integration-20261022/pr460/dependency-build/cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o": "1d50dbf4f0760f2c3459270923797404094ac056ec968afc514ccf833d40297b",
+    "/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp": "bec1e159dd728c6e73dbcb43aadfb24803d7dbbcfcaf01fd097a9c0e661f79b3",
+    "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi/test/render/draw_uniforms.c": "0185276a320e96f3b89143280bef0944fd3f19d67624092076d032f0815bd92d",
+    "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi/third_party/cute_framework/draw-zero-uniforms.patch": "ebaedd6bb02f5daaa481062a6e6e663f40e0fcee562975afeecb55caabfcf7d2",
+    "/opt/homebrew/opt/llvm/bin/clang": "e45f3dd745396c892a8d62e5725e6ec2d58bf9159248b4f379efda6f7c66d838",
+    "/opt/homebrew/opt/llvm/bin/clang++": "e45f3dd745396c892a8d62e5725e6ec2d58bf9159248b4f379efda6f7c66d838",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_SDL3_static.a": "b45ee69951962a451af29aff79592db5f08b82d332b25938cc7c2cd2c16b3d06",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_box2d.a": "749f32d38c65f641a6cc6b8ce56ce663c809bd7c01a79abb148fefe4568f2d92",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_box3d.a": "66414f8458e701c7dd37f08437db0fa4fd212b2dff2c8b783c0199107d75d626",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_cute.a": "e0b8842ecd18a015491a3e7bfbf58b8ba6b22747ed3945ab81f606ce51222ef7",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_enkits.a": "0b042ebe53fc6d1dd92b1cb50adddf8127fc1e52c818bd5598074a1c01b9ed28",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_freetype.a": "737964ea86eb283160b4224685f558edb5ff06536640b99b53351a85f01d09f9",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_physfs_static.a": "6dc39fdaf89c54f2c2fe9409dd5326ea5c9e968d23bcba7d2f99eb9172e2bb8c",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_rmlui_core.a": "08766548ecfc526a54e824e3ac6a649f6e4ca9dbdfce40dcd94bb9e6f76abfe2",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_sljit.a": "0cc8a788e97a6291d3aa55c1dd0faf49584608e4d67370db76ac84cb0857feea",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_tree_sitter.a": "747d5ec8f31357e79a4b0942a2d7a77bbe8a0ee6357915261e35f358f4630a66",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a": "c6f79f6a8fbc1dfe920ceafa17ea04151728107d376efc68f39d5927101473eb",
+    "/tmp/chibi-integration-20261022/pr460/dependencies/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a": "c4922c4fa19d4b363cebd5b90f35db1d6d616000d12d1df87a9305a8354602f2"
+  },
+  "cute_draw_commands": [
+    {
+      "directory": "/tmp/chibi-integration-20261022/pr460/dependency-build",
+      "command": "/opt/homebrew/opt/llvm/bin/clang++ -DCF_EXPORT -DCF_RUNTIME_SHADER_COMPILATION -DCF_STATIC -DIMGUI_USE_WCHAR32 -DImDrawIdx=\"unsigned int\" -Dunsafe_yyjson_equals=cf_unsafe_yyjson_equals -Dunsafe_yyjson_mut_equals=cf_unsafe_yyjson_mut_equals -Dunsafe_yyjson_mut_ptr_getx=cf_unsafe_yyjson_mut_ptr_getx -Dunsafe_yyjson_mut_ptr_putx=cf_unsafe_yyjson_mut_ptr_putx -Dunsafe_yyjson_mut_ptr_removex=cf_unsafe_yyjson_mut_ptr_removex -Dunsafe_yyjson_mut_ptr_replacex=cf_unsafe_yyjson_mut_ptr_replacex -Dunsafe_yyjson_ptr_getx=cf_unsafe_yyjson_ptr_getx -Dunsafe_yyjson_str_pool_grow=cf_unsafe_yyjson_str_pool_grow -Dunsafe_yyjson_val_pool_grow=cf_unsafe_yyjson_val_pool_grow -Dyyjson_alc_pool_init=cf_yyjson_alc_pool_init -Dyyjson_doc_mut_copy=cf_yyjson_doc_mut_copy -Dyyjson_merge_patch=cf_yyjson_merge_patch -Dyyjson_mut_doc_free=cf_yyjson_mut_doc_free -Dyyjson_mut_doc_imut_copy=cf_yyjson_mut_doc_imut_copy -Dyyjson_mut_doc_mut_copy=cf_yyjson_mut_doc_mut_copy -Dyyjson_mut_doc_new=cf_yyjson_mut_doc_new -Dyyjson_mut_doc_set_str_pool_size=cf_yyjson_mut_doc_set_str_pool_size -Dyyjson_mut_doc_set_val_pool_size=cf_yyjson_mut_doc_set_val_pool_size -Dyyjson_mut_merge_patch=cf_yyjson_mut_merge_patch -Dyyjson_mut_patch=cf_yyjson_mut_patch -Dyyjson_mut_val_imut_copy=cf_yyjson_mut_val_imut_copy -Dyyjson_mut_val_mut_copy=cf_yyjson_mut_val_mut_copy -Dyyjson_mut_val_write_file=cf_yyjson_mut_val_write_file -Dyyjson_mut_val_write_fp=cf_yyjson_mut_val_write_fp -Dyyjson_mut_val_write_opts=cf_yyjson_mut_val_write_opts -Dyyjson_mut_write_file=cf_yyjson_mut_write_file -Dyyjson_mut_write_fp=cf_yyjson_mut_write_fp -Dyyjson_mut_write_opts=cf_yyjson_mut_write_opts -Dyyjson_patch=cf_yyjson_patch -Dyyjson_read_file=cf_yyjson_read_file -Dyyjson_read_fp=cf_yyjson_read_fp -Dyyjson_read_number=cf_yyjson_read_number -Dyyjson_read_opts=cf_yyjson_read_opts -Dyyjson_val_mut_copy=cf_yyjson_val_mut_copy -Dyyjson_val_write_file=cf_yyjson_val_write_file -Dyyjson_val_write_fp=cf_yyjson_val_write_fp -Dyyjson_val_write_opts=cf_yyjson_val_write_opts -Dyyjson_version=cf_yyjson_version -Dyyjson_write_file=cf_yyjson_write_file -Dyyjson_write_fp=cf_yyjson_write_fp -Dyyjson_write_opts=cf_yyjson_write_opts -I/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src -I/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries -I/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/test -I/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include -I/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui -I/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/include -I/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/include -I/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/tools -I/tmp/chibi-integration-20261022/pr460/dependency-sources/physfs/src -I/tmp/chibi-integration-20261022/pr460/dependency-build/_deps/sdl3-build/include-revision -I/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/include -F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks -O3 -DNDEBUG -std=gnu++20 -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -fsanitize=address,undefined -fno-omit-frame-pointer -Wno-elaborated-enum-base -include /tmp/chibi-integration-20261022/pr460/memcmp_nonnull.h @cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o.modmap -o cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o -c /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp",
+      "file": "/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp",
+      "output": "/tmp/chibi-integration-20261022/pr460/dependency-build/cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o"
+    }
+  ],
+  "test_instrumentation": {
+    "/tmp/chibi-integration-20261022/pr460/memcmp_nonnull.h": "71c94185754660c10440bf45c7706964244ee8083f5d23ddcbb03e90dc06dc6e",
+    "/tmp/chibi-integration-20261022/pr460/contract-instrumentation.cmake": "0a71179b44a253328d4cfbca24616ea44ffdd336a65ba2b92535deed106f8664"
+  },
+  "source_provenance": [
+    {
+      "name": "sljit",
+      "pin": "a0020dd49a21020434ff838fc308626c48cd8f05",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/sljit/39bc1be9cd6dab0efe768c50a355a27ccfb05d19807db7255b96855c07f8f957/sljit-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/sljit"
+    },
+    {
+      "name": "tree_sitter",
+      "pin": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/tree_sitter/2ef2d21109f0317a545deb7614f0e3837e6f2962aea926c57b173e72706db75b/tree_sitter-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter"
+    },
+    {
+      "name": "cute_framework",
+      "pin": "96e6034aa6bc44665856ee480962a9ddab0b87cc",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/cute_framework/1835dc731b944b31d22f93cc348905ce217e94f58251089494e2a52415884fc5/cute_framework-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework"
+    },
+    {
+      "name": "sdl3",
+      "pin": "a962f40bbba175e9716557a25d5d7965f134a3d3",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/sdl3/219d4541c9965e815fa07d58fb150704f5420d9084e603bfbb10b947ccdf2dc9/sdl3-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3"
+    },
+    {
+      "name": "s2n_tls",
+      "pin": "1c9844722d9cc3beca5551c0f9bfed8aabbc22ed",
+      "origin": "/tmp/tp-thread/_deps/chibi_s2n_tls-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/s2n_tls"
+    },
+    {
+      "name": "physfs",
+      "pin": "9d18d36b5a5207b72f473f05e1b2834e347d8144",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/physfs/c1225232ee0b0618a5d78ceebaa513b425caf971b28358b7283d81ee6e6b057d/physfs-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/physfs"
+    },
+    {
+      "name": "box2d",
+      "pin": "8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/box2d/461bdc2928209f612651b94742350b9bc4413711f457e54ced239029e7af654c/box2d-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d"
+    },
+    {
+      "name": "box3d",
+      "pin": "8441b4a06d6d09dcfb0b0f704df4d847d1437b92",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/box3d/8653aab95898636fd931607e5b29f95652c5b88aa0abdaeb53d9e5bbb7686e02/box3d-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d"
+    },
+    {
+      "name": "freetype",
+      "pin": "0a0221a1347e2f1e07c395263540026e9a0aa7c7",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/freetype/f0b5d44c068a8dde1dcc7e98356b22d66b40cc12815e7aae34355cf0b6febb81/freetype-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/freetype"
+    },
+    {
+      "name": "rmlui",
+      "pin": "ba95ffe8bfb6370efb2cdcca927eaad4710c5413",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/rmlui/96ff86120c62a637734c0159d45c17ad94befd0d41c806e2e3bf16d99491b398/rmlui-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/rmlui"
+    },
+    {
+      "name": "enkits",
+      "pin": "4cba61a045d8e759bd35e5d85691bf9f7271f822",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/enkits/1cd5c6311a8ac239e95062212a117dd039c212aeb59935cbdb995b93c6b4b203/enkits-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/enkits"
+    },
+    {
+      "name": "tree_sitter_css",
+      "pin": "dda5cfc5722c429eaba1c910ca32c2c0c5bb1a3f",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/tree_sitter_css/01eab29cf60cf856f23d448fa37caa38c8bb77919a615818558dea653c1f3377/tree_sitter_css-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter_css"
+    },
+    {
+      "name": "tree_sitter_html",
+      "pin": "5a5ca8551a179998360b4a4ca2c0f366a35acc03",
+      "origin": "/Users/cwaldner/.cache/chibi-fetchcontent/sources/tree_sitter_html/1b3ec62a6da3856662d2561d74d722f6ab42e9ee4009ab79303d72e4dbf0b3e4/tree_sitter_html-src",
+      "destination": "/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter_html"
+    }
+  ]
+}

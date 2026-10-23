@@ -1,0 +1,478 @@
+[0/2] Re-checking globbed directories...
+[1/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/gpu/SDL_shaders_gpu.c.o
+[2/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/ngage/SDL_render_ngage.c.o
+[3/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/gpu/SDL_render_gpu.c.o
+[4/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/opengl/SDL_shaders_gl.c.o
+[5/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/opengl/SDL_render_gl.c.o
+[6/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/opengles2/SDL_shaders_gles2.c.o
+[7/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/opengles2/SDL_render_gles2.c.o
+[8/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/ps2/SDL_render_ps2.c.o
+[9/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/psp/SDL_render_psp.c.o
+[10/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_blendline.c.o
+[11/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_blendpoint.c.o
+[12/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_drawline.c.o
+[13/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_drawpoint.c.o
+[14/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_render_sw.c.o
+[15/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_blendfillrect.c.o
+[16/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/vitagxm/SDL_render_vita_gxm.c.o
+[17/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/vitagxm/SDL_render_vita_gxm_memory.c.o
+[18/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/software/SDL_triangle.c.o
+[19/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/vitagxm/SDL_render_vita_gxm_tools.c.o
+[20/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/vulkan/SDL_shaders_vulkan.c.o
+[21/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/sensor/SDL_sensor.c.o
+[22/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_crc16.c.o
+[23/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_crc32.c.o
+[24/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/vulkan/SDL_render_vulkan.c.o
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:158:1: warning: variable 'vkGetPhysicalDeviceFeatures2KHR' set but not used [-Wunused-but-set-global]
+  158 | VULKAN_FUNCTIONS()
+      | ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:145:39: note: expanded from macro 'VULKAN_FUNCTIONS'
+  145 |     VULKAN_OPTIONAL_INSTANCE_FUNCTION(vkGetPhysicalDeviceFeatures2KHR)              \
+      |                                       ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:158:1: warning: variable 'vkGetPhysicalDeviceFormatProperties2KHR' set but not used [-Wunused-but-set-global]
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:146:39: note: expanded from macro 'VULKAN_FUNCTIONS'
+  146 |     VULKAN_OPTIONAL_INSTANCE_FUNCTION(vkGetPhysicalDeviceFormatProperties2KHR)      \
+      |                                       ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:158:1: warning: variable 'vkGetPhysicalDeviceImageFormatProperties2KHR' set but not used [-Wunused-but-set-global]
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:147:39: note: expanded from macro 'VULKAN_FUNCTIONS'
+  147 |     VULKAN_OPTIONAL_INSTANCE_FUNCTION(vkGetPhysicalDeviceImageFormatProperties2KHR) \
+      |                                       ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:158:1: warning: variable 'vkGetPhysicalDeviceMemoryProperties2KHR' set but not used [-Wunused-but-set-global]
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:148:39: note: expanded from macro 'VULKAN_FUNCTIONS'
+  148 |     VULKAN_OPTIONAL_INSTANCE_FUNCTION(vkGetPhysicalDeviceMemoryProperties2KHR)      \
+      |                                       ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:158:1: warning: variable 'vkGetPhysicalDeviceProperties2KHR' set but not used [-Wunused-but-set-global]
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/render/vulkan/SDL_render_vulkan.c:149:39: note: expanded from macro 'VULKAN_FUNCTIONS'
+  149 |     VULKAN_OPTIONAL_INSTANCE_FUNCTION(vkGetPhysicalDeviceProperties2KHR)            \
+      |                                       ^
+5 warnings generated.
+[25/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_getenv.c.o
+[26/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_malloc.c.o
+[27/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_iconv.c.o
+[28/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_memcpy.c.o
+[29/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_memmove.c.o
+[30/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_memset.c.o
+[31/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_mslibc.c.o
+[32/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_murmur3.c.o
+[33/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_random.c.o
+[34/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_qsort.c.o
+[35/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_stdlib.c.o
+[36/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_strtokr.c.o
+[37/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_string.c.o
+[38/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/SDL_thread.c.o
+[39/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/storage/SDL_storage.c.o
+[40/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/time/SDL_time.c.o
+[41/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/timer/SDL_timer.c.o
+[42/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit.c.o
+[43/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_RLEaccel.c.o
+[44/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_0.c.o
+[45/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_1.c.o
+[46/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_N.c.o
+[47/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_auto.c.o
+[48/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_copy.c.o
+[49/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_slow.c.o
+[50/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_bmp.c.o
+[51/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_clipboard.c.o
+[52/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_A.c.o
+[53/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_egl.c.o
+[54/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_fillrect.c.o
+[55/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_rect.c.o
+[56/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_pixels.c.o
+[57/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_rotate.c.o
+[58/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_stretch.c.o
+[59/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_surface.c.o
+[60/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_video.c.o
+[61/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_video_unsupported.c.o
+[62/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_vulkan_utils.c.o
+[63/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_stb.c.o
+[64/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/yuv2rgb/yuv_rgb_lsx.c.o
+[65/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/yuv2rgb/yuv_rgb_sse.c.o
+[66/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/SDL_yuv.c.o
+[67/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/dummy/SDL_dummyaudio.c.o
+[68/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/disk/SDL_diskaudio.c.o
+[69/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/camera/dummy/SDL_camera_dummy.c.o
+[70/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/loadso/dlopen/SDL_sysloadso.c.o
+[71/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/yuv2rgb/yuv_rgb_std.c.o
+[72/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/dummy/SDL_nullevents.c.o
+[73/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/dummy/SDL_nullframebuffer.c.o
+[74/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/virtual/SDL_virtualjoystick.c.o
+[75/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/dummy/SDL_nullvideo.c.o
+[76/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/misc/macos/SDL_sysurl.m.o
+[77/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/camera/coremedia/SDL_camera_coremedia.m.o
+[78/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/coreaudio/SDL_coreaudio.m.o
+[79/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_8bitdo.c.o
+[80/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_combined.c.o
+[81/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_flydigi.c.o
+[82/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_gamecube.c.o
+[83/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_lg4ff.c.o
+[84/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_gip.c.o
+[85/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_luna.c.o
+[86/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_ps3.c.o
+[87/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_ps4.c.o
+[88/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_ps5.c.o
+[89/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_rumble.c.o
+[90/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_shield.c.o
+[91/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_sinput.c.o
+[92/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_stadia.c.o
+[93/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steam_hori.c.o
+[94/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steam.c.o
+[95/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steam_triton.c.o
+[96/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steamdeck.c.o
+[97/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_switch2.c.o
+[98/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_switch.c.o
+[99/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_xbox360.c.o
+[100/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_wii.c.o
+[101/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_xbox360w.c.o
+[102/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_xboxone.c.o
+[103/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_zuiki.c.o
+[104/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_report_descriptor.c.o
+[105/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/haptic/hidapi/SDL_hidapihaptic.c.o
+[106/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapijoystick.c.o
+[107/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/haptic/hidapi/SDL_hidapihaptic_lg4ff.c.o
+[108/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/darwin/SDL_iokitjoystick.c.o
+[109/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/apple/SDL_mfijoystick.m.o
+[110/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/power/macos/SDL_syspower.c.o
+[111/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/haptic/darwin/SDL_syshaptic.c.o
+[112/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/time/unix/SDL_systime.c.o
+[113/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/locale/macos/SDL_syslocale.m.o
+[114/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/timer/unix/SDL_systimer.c.o
+[115/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/filesystem/cocoa/SDL_sysfilesystem.m.o
+[116/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/storage/generic/SDL_genericstorage.c.o
+[117/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/storage/steam/SDL_steamstorage.c.o
+[118/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/filesystem/posix/SDL_sysfsops.c.o
+[119/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoaevents.m.o
+[120/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoaclipboard.m.o
+[121/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoamessagebox.m.o
+[122/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoakeyboard.m.o
+[123/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoametalview.m.o
+[124/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoamodes.m.o
+[125/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoamouse.m.o
+[126/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoaopengl.m.o
+[127/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoapen.m.o
+[128/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoaopengles.m.o
+[129/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoashape.m.o
+[130/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoavideo.m.o
+[131/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoavulkan.m.o
+[132/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/cocoa/SDL_cocoawindow.m.o
+[133/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/metal/SDL_render_metal.m.o
+[134/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/tray/cocoa/SDL_tray.m.o
+[135/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_systhread.c.o
+[136/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/gpu/metal/SDL_gpu_metal.m.o
+[137/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_sysmutex.c.o
+[138/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_syscond.c.o
+[139/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_sysrwlock.c.o
+[140/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_systls.c.o
+[141/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_syssem.c.o
+[142/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/dialog/SDL_dialog.c.o
+[143/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/dialog/SDL_dialog_utils.c.o
+[144/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/process/SDL_process.c.o
+[145/297] Building OBJC object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/dialog/cocoa/SDL_cocoadialog.m.o
+[146/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/process/posix/SDL_posixprocess.c.o
+[147/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenevents.c.o
+[148/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenframebuffer.c.o
+[149/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenopengles.c.o
+[150/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenvideo.c.o
+[151/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenwindow.c.o
+[152/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenvulkan.c.o
+[153/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/tray/SDL_tray_utils.c.o
+[154/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/sensor/dummy/SDL_dummysensor.c.o
+[155/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/main/generic/SDL_sysmain_callbacks.c.o
+[156/297] Linking C static library _deps/sdl3-build/libSDL_uclibc.a
+[157/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_app.cpp.o
+[158/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_binding.cpp.o
+[159/297] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/gpu/vulkan/SDL_gpu_vulkan.c.o
+[160/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_ckit.cpp.o
+[161/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_clipboard.cpp.o
+[162/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_multithreading.cpp.o
+[163/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_file_system.cpp.o
+[164/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_input.cpp.o
+[165/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_time.cpp.o
+[166/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_version.cpp.o
+[167/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_json.cpp.o
+[168/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_base64.cpp.o
+[169/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_audio.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_audio.cpp:335:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/stb/stb_vorbis.c:1357:75: warning: pointer comparison always evaluates to false [-Wtautological-compare]
+ 1357 |       if (f->stream_start + loc >= f->stream_end || f->stream_start + loc < f->stream_start) {
+      |                                                                           ^
+1 warning generated.
+[170/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_math3d.cpp.o
+[171/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_math.cpp.o
+[172/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_physics.cpp.o
+[173/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_draw3d.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw3d.cpp:13:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:426:12: warning: first argument in call to 'memset' is a pointer to non-trivially copyable type 'Cute::Array<int>' [-Wnontrivial-memcall]
+  426 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:306:46: note: in instantiation of member function 'Cute::Map<Cute::Array<int>>::insert' requested here
+  306 |         T* add(uint64_t key, const T& val) { return insert(key, val); }
+      |                                                     ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw3d.cpp:2343:13: note: in instantiation of member function 'Cute::Map<Cute::Array<int>>::add' requested here
+ 2343 |                                 buckets.add(h, fresh);
+      |                                         ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:426:12: note: explicitly cast the pointer to silence this warning
+  426 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+      |                   (void*)
+1 warning generated.
+[174/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_image.cpp.o
+[175/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp:18:
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/internal/cute_app_internal.h:16:
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_custom_sprite.h:13:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:414:12: warning: first argument in call to 'memset' is a pointer to non-trivially copyable type 'CF_ParsedTextState' [-Wnontrivial-memcall]
+  414 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp:4490:40: note: in instantiation of member function 'Cute::Map<CF_ParsedTextState>::insert' requested here
+ 4490 |                 text_state = app->parsed_text_states.insert(text_hash);
+      |                                                      ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:414:12: note: explicitly cast the pointer to silence this warning
+  414 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+      |                   (void*)
+1 warning generated.
+[176/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_video.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_video.cpp:25:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_h264.h:1903:44: warning: operator '>>' has lower precedence than '+'; '+' will be evaluated first [-Wshift-op-parentheses]
+ 1903 |                                 ch_clamp_u8((66 * r + 129 * g + 25 * b + 128 >> 8) + 16);
+      |                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~ ~~
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_h264.h:1903:44: note: place parentheses around the '+' expression to silence this warning
+ 1903 |                                 ch_clamp_u8((66 * r + 129 * g + 25 * b + 128 >> 8) + 16);
+      |                                                                        ^
+      |                                              (                              )
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_h264.h:1921:45: warning: operator '>>' has lower precedence than '+'; '+' will be evaluated first [-Wshift-op-parentheses]
+ 1921 |                                 ch_clamp_u8((-38 * r - 74 * g + 112 * b + 128 >> 8) + 128);
+      |                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~ ~~
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_h264.h:1921:45: note: place parentheses around the '+' expression to silence this warning
+ 1921 |                                 ch_clamp_u8((-38 * r - 74 * g + 112 * b + 128 >> 8) + 128);
+      |                                                                         ^
+      |                                              (                               )
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_h264.h:1923:44: warning: operator '>>' has lower precedence than '+'; '+' will be evaluated first [-Wshift-op-parentheses]
+ 1923 |                                 ch_clamp_u8((112 * r - 94 * g - 18 * b + 128 >> 8) + 128);
+      |                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~ ~~
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_h264.h:1923:44: note: place parentheses around the '+' expression to silence this warning
+ 1923 |                                 ch_clamp_u8((112 * r - 94 * g - 18 * b + 128 >> 8) + 128);
+      |                                                                        ^
+      |                                              (                              )
+3 warnings generated.
+[177/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_model.cpp.o
+[178/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_graphics.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics.cpp:14:
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/internal/cute_app_internal.h:16:
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_custom_sprite.h:13:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:414:12: warning: first argument in call to 'memset' is a pointer to non-trivially copyable type 'CF_ShaderDirCache' [-Wnontrivial-memcall]
+  414 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:323:48: note: in instantiation of member function 'Cute::Map<CF_ShaderDirCache>::insert' requested here
+  323 |         template <typename P> T* add(P* key) { return insert((uint64_t)(uintptr_t)key); }
+      |                                                       ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics.cpp:109:42: note: in instantiation of function template specialization 'Cute::Map<CF_ShaderDirCache>::add<const char>' requested here
+  109 |                 if (!cache) cache = s_shader_dir_cache.add(vkey);
+      |                                                        ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:414:12: note: explicitly cast the pointer to silence this warning
+  414 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+      |                   (void*)
+1 warning generated.
+[179/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_graphics_sdlgpu.cpp.o
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:1404:12: warning: first argument in call to 'memset' is a pointer to non-trivially copyable type 'CF_ShaderInternal' [-Wnontrivial-memcall]
+ 1404 |         CF_MEMSET(shader_internal, 0, sizeof(*shader_internal));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:1404:12: note: explicitly cast the pointer to silence this warning
+ 1404 |         CF_MEMSET(shader_internal, 0, sizeof(*shader_internal));
+      |                   ^
+      |                   (void*)
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:1425:12: warning: first argument in call to 'memcpy' is a pointer to non-trivially copyable type 'CF_ShaderInternal' [-Wnontrivial-memcall]
+ 1425 |         CF_MEMCPY(pa, pb, sizeof(tmp));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:1425:12: note: explicitly cast the pointer to silence this warning
+ 1425 |         CF_MEMCPY(pa, pb, sizeof(tmp));
+      |                   ^
+      |                   (void*)
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:1426:12: warning: first argument in call to 'memcpy' is a pointer to non-trivially copyable type 'CF_ShaderInternal' [-Wnontrivial-memcall]
+ 1426 |         CF_MEMCPY(pb, tmp, sizeof(tmp));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:1426:12: note: explicitly cast the pointer to silence this warning
+ 1426 |         CF_MEMCPY(pb, tmp, sizeof(tmp));
+      |                   ^
+      |                   (void*)
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:2785:12: warning: first argument in call to 'memset' is a pointer to non-trivially copyable type 'CF_ComputeShaderInternal' [-Wnontrivial-memcall]
+ 2785 |         CF_MEMSET(cs, 0, sizeof(*cs));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:2785:12: note: explicitly cast the pointer to silence this warning
+ 2785 |         CF_MEMSET(cs, 0, sizeof(*cs));
+      |                   ^
+      |                   (void*)
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:2890:12: warning: first argument in call to 'memcpy' is a pointer to non-trivially copyable type 'CF_ComputeShaderInternal' [-Wnontrivial-memcall]
+ 2890 |         CF_MEMCPY(pa, pb, sizeof(tmp));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:2890:12: note: explicitly cast the pointer to silence this warning
+ 2890 |         CF_MEMCPY(pa, pb, sizeof(tmp));
+      |                   ^
+      |                   (void*)
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:2891:12: warning: first argument in call to 'memcpy' is a pointer to non-trivially copyable type 'CF_ComputeShaderInternal' [-Wnontrivial-memcall]
+ 2891 |         CF_MEMCPY(pb, tmp, sizeof(tmp));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp:2891:12: note: explicitly cast the pointer to silence this warning
+ 2891 |         CF_MEMCPY(pb, tmp, sizeof(tmp));
+      |                   ^
+      |                   (void*)
+6 warnings generated.
+[180/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_graphics_glad.cpp.o
+[181/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_graphics_gles.cpp.o
+[182/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_custom_sprite.cpp.o
+[183/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_aseprite_cache.cpp.o
+[184/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_https.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_https.cpp:26:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:719:6: warning: 'OSAtomicDecrement32' is deprecated: first deprecated in macOS 10.12 - Use std::atomic_fetch_sub_explicit(std::memory_order_relaxed) from <atomic> instead [-Wdeprecated-declarations]
+  719 |         if (OSAtomicDecrement32(&ctx->refcount) == 0) {
+      |             ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/libkern/OSAtomicDeprecated.h:192:9: note: 'OSAtomicDecrement32' has been explicitly marked deprecated here
+  192 | int32_t OSAtomicDecrement32( volatile int32_t *__theValue );
+      |         ^
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_https.cpp:26:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:762:3: warning: 'OSAtomicIncrement32' is deprecated: first deprecated in macOS 10.12 - Use std::atomic_fetch_add_explicit(std::memory_order_relaxed) from <atomic> instead [-Wdeprecated-declarations]
+  762 |                 OSAtomicIncrement32(&ctx->refcount);
+      |                 ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/libkern/OSAtomicDeprecated.h:173:9: note: 'OSAtomicIncrement32' has been explicitly marked deprecated here
+  173 | int32_t OSAtomicIncrement32( volatile int32_t *__theValue );
+      |         ^
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_https.cpp:26:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:1027:23: warning: comparison of different enumeration types ('nw_error_domain_t' and 'TLS_State') is deprecated [-Wdeprecated-enum-compare]
+ 1027 |                                 } else if (domain == TLS_STATE_INVALID_SOCKET) {
+      |                                            ~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:1027:23: warning: result of comparison of constant 'TLS_STATE_INVALID_SOCKET' (-2) with expression of type 'nw_error_domain_t' is always false [-Wtautological-constant-out-of-range-compare]
+ 1027 |                                 } else if (domain == TLS_STATE_INVALID_SOCKET) {
+      |                                            ~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~~~~
+4 warnings generated.
+[185/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_joypad.cpp.o
+[186/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_symbol.cpp.o
+[187/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_crash.cpp.o
+[188/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_coroutine.cpp.o
+[189/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_sprite.cpp.o
+[190/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_guid.cpp.o
+[191/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_alloc.cpp.o
+[192/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_result.cpp.o
+[193/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_noise.cpp.o
+[194/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_imgui.cpp.o
+[195/297] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_networking.cpp.o
+[196/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/imgui.cpp.o
+[197/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/imgui_demo.cpp.o
+[198/297] Building C object cute_framework/CMakeFiles/cute.dir/src/internal/yyjson.c.o
+[199/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/imgui_draw.cpp.o
+[200/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/imgui_tables.cpp.o
+[201/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/backends/imgui_impl_sdl3.cpp.o
+[202/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/dcimgui.cpp.o
+[203/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/dcimgui_internal.cpp.o
+[204/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/backends/imgui_impl_sdlgpu3.cpp.o
+[205/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/imgui_widgets.cpp.o
+[206/297] Building CXX object cute_framework/CMakeFiles/cute.dir/libraries/imgui/backends/imgui_impl_opengl3.cpp.o
+[207/297] Building OBJC object cute_framework/CMakeFiles/cute.dir/src/internal/cute_tls.m.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/internal/cute_tls.m:27:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:719:6: warning: 'OSAtomicDecrement32' is deprecated: first deprecated in macOS 10.12 - Use atomic_fetch_sub_explicit(memory_order_relaxed) from <stdatomic.h> instead [-Wdeprecated-declarations]
+  719 |         if (OSAtomicDecrement32(&ctx->refcount) == 0) {
+      |             ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/libkern/OSAtomicDeprecated.h:192:9: note: 'OSAtomicDecrement32' has been explicitly marked deprecated here
+  192 | int32_t OSAtomicDecrement32( volatile int32_t *__theValue );
+      |         ^
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/internal/cute_tls.m:27:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:762:3: warning: 'OSAtomicIncrement32' is deprecated: first deprecated in macOS 10.12 - Use atomic_fetch_add_explicit(memory_order_relaxed) from <stdatomic.h> instead [-Wdeprecated-declarations]
+  762 |                 OSAtomicIncrement32(&ctx->refcount);
+      |                 ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/libkern/OSAtomicDeprecated.h:173:9: note: 'OSAtomicIncrement32' has been explicitly marked deprecated here
+  173 | int32_t OSAtomicIncrement32( volatile int32_t *__theValue );
+      |         ^
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/internal/cute_tls.m:27:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/cute/cute_tls.h:1027:23: warning: comparison of different enumeration types ('nw_error_domain_t' and 'enum TLS_State') [-Wenum-compare]
+ 1027 |                                 } else if (domain == TLS_STATE_INVALID_SOCKET) {
+      |                                            ~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~~~~
+3 warnings generated.
+[208/297] Building C object cute_framework/CMakeFiles/cute.dir/libraries/glad/glad.c.o
+[209/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/aabb.c.o
+[210/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/arena_allocator.c.o
+[211/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/array.c.o
+[212/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/bitset.c.o
+[213/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/body.c.o
+[214/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/broad_phase.c.o
+[215/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/constraint_graph.c.o
+[216/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/contact.c.o
+[217/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/contact_solver.c.o
+[218/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/core.c.o
+[219/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/distance.c.o
+[220/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/distance_joint.c.o
+[221/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/dynamic_tree.c.o
+[222/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/geometry.c.o
+[223/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/hull.c.o
+[224/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/id_pool.c.o
+[225/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/island.c.o
+[226/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/joint.c.o
+[227/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/manifold.c.o
+[228/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/math_functions.c.o
+[229/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/motor_joint.c.o
+[230/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/mouse_joint.c.o
+[231/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/mover.c.o
+[232/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/prismatic_joint.c.o
+[233/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/revolute_joint.c.o
+[234/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/sensor.c.o
+[235/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/shape.c.o
+[236/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/solver.c.o
+[237/297] Building CXX object cute_framework/CMakeFiles/cute.dir/tools/cute_shader.cpp.o
+[238/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/table.c.o
+[239/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/solver_set.c.o
+[240/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/timer.c.o
+[241/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/types.c.o
+[242/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/weld_joint.c.o
+[243/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/wheel_joint.c.o
+[244/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/aabb.c.o
+[245/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/arena_allocator.c.o
+[246/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/bitset.c.o
+[247/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/block_allocator.c.o
+[248/297] Building C object cute_framework/CMakeFiles/cute-box2d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box2d/src/world.c.o
+[249/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/broad_phase.c.o
+[250/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/capsule.c.o
+[251/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/body.c.o
+[252/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/constraint_graph.c.o
+[253/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/compound.c.o
+[254/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/contact.c.o
+[255/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/convex_manifold.c.o
+[256/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/core.c.o
+[257/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/contact_solver.c.o
+[258/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/distance.c.o
+[259/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/distance_joint.c.o
+[260/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/dynamic_tree.c.o
+[261/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/height_field.c.o
+[262/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/id_pool.c.o
+[263/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/island.c.o
+[264/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/hull.c.o
+[265/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/manifold.c.o
+[266/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/joint.c.o
+[267/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/math_functions.c.o
+[268/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/mesh_contact.c.o
+[269/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/mesh.c.o
+[270/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/motor_joint.c.o
+[271/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/mover.c.o
+[272/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/parallel_for.c.o
+[273/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/parallel_joint.c.o
+[274/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/prismatic_joint.c.o
+[275/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/physics_world.c.o
+[276/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/recording.c.o
+[277/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/revolute_joint.c.o
+[278/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/scheduler.c.o
+[279/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/sensor.c.o
+[280/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/recording_replay.c.o
+[281/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/simd.c.o
+[282/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/shape.c.o
+[283/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/solver_set.c.o
+[284/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/solver.c.o
+[285/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/sphere.c.o
+[286/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/table.c.o
+[287/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/spherical_joint.c.o
+[288/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/timer.c.o
+[289/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/types.c.o
+[290/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/triangle_manifold.c.o
+[291/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/weld_joint.c.o
+[292/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/wheel_joint.c.o
+[293/297] Building C object cute_framework/CMakeFiles/cute-box3d.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/box3d/src/world_snapshot.c.o
+[294/297] Linking C static library _deps/physfs-build/libphysfs.a
+[295/297] Linking C static library _deps/sdl3-build/libSDL3.a
+[296/297] Linking CXX static library cute_framework/libcute.a

@@ -1,0 +1,9 @@
+{
+  "name": "pr460-renderer-adab-pre-d0-20261022",
+  "stash": "8cdaec87f2a3767677dd6d2427b0f7ae0b7aeef0",
+  "tree": "adabdc085fa2d78f7f7a9977e0adeec1a353853f",
+  "original_head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "previous_backup_stash": "556d4e4711715e9c9f748f4dea4652738f573eb6",
+  "all_previous_stashes_retained": true,
+  "clean_before_fast_forward": true
+}

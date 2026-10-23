@@ -1,0 +1,23 @@
+Auto-merging test/tools/main.c
+Auto-merging tools/test_policy.py
+On branch codex/recover-pr460-20261022
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	new file:   docs/cute-framework-patches/cute-draw-zero-uniforms.md
+	new file:   test/render/draw_uniforms.c
+	new file:   third_party/cute_framework/draw-zero-uniforms.patch
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   docs/cute-framework-patches/README.md
+	modified:   docs/testing.md
+	modified:   test/execution_selectors.h
+	modified:   test/tools/CMakeLists.txt
+	modified:   test/tools/main.c
+	modified:   third_party/CMakeLists.txt
+	modified:   third_party/README.md
+	modified:   tools/agent.py
+	modified:   tools/graph/engine/Targets.chibi
+	modified:   tools/test_policy.py
+

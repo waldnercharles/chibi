@@ -1,0 +1,121 @@
+{
+  "base": "d0de4a84ecf50badcab661411470bdf6f3da5fa2",
+  "base_tree": "3d0b4c546201728d27ceffcf602215bd9f9a0f98",
+  "fa1_is_ancestor": true,
+  "live_candidate_unchanged": {
+    "head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+    "tree": "adabdc085fa2d78f7f7a9977e0adeec1a353853f",
+    "index_sha256": "20475f457aad58f48b66ed878004adc35aa123563bfffedc291f4c6c8c7e10a3",
+    "stash": "2da26b8c24a4d9d214e0786ed30b3b40a424ad6a",
+    "status": "M  docs/cute-framework-patches/README.md\u0000A  docs/cute-framework-patches/cute-draw-zero-uniforms.md\u0000M  docs/testing.md\u0000M  test/execution_selectors.h\u0000A  test/render/draw_uniforms.c\u0000M  test/tools/CMakeLists.txt\u0000M  test/tools/main.c\u0000M  third_party/CMakeLists.txt\u0000M  third_party/README.md\u0000A  third_party/cute_framework/draw-zero-uniforms.patch\u0000M  tools/agent.py\u0000M  tools/graph/engine/Targets.chibi\u0000M  tools/test_policy.py\u0000"
+  },
+  "scratch_index": "/tmp/chibi-integration-20261022/pr460/d0-assessment.index",
+  "unmodified_repair_tree_on_d0": "92b30ef6b685b018d4e129dd44fcfec6af47e585",
+  "prospective_tree": "3c8deefa3063f6294db7121dfda6e8bcb6b0e52e",
+  "prospective_patch": "/tmp/chibi-integration-20261022/pr460/d0-repair-source.diff",
+  "prospective_patch_sha256": "dd934f4efe304047fa18049f524c2cf60850752cc1019e46d712f2bcada3549e",
+  "extra_source_change": "patch note base label fa1 -> d0; no other owned source content change intended",
+  "apply_exit": 0,
+  "unexecuted": [
+    "all builds/tests/Graph-CMake parity checks",
+    "Linux glibc controlled red/green",
+    "matching guard-containing immutable archive publication/pins",
+    "typed clay integration and visual acceptance"
+  ],
+  "scratch_only": true,
+  "committed": false,
+  "applied_to_worktree": false,
+  "non_doc_patch_additions_deletions_identical": {
+    "docs/cute-framework-patches/README.md": true,
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md": false,
+    "docs/testing.md": true,
+    "test/execution_selectors.h": true,
+    "test/render/draw_uniforms.c": true,
+    "test/tools/CMakeLists.txt": true,
+    "test/tools/main.c": true,
+    "third_party/CMakeLists.txt": true,
+    "third_party/README.md": true,
+    "third_party/cute_framework/draw-zero-uniforms.patch": true,
+    "tools/agent.py": true,
+    "tools/graph/engine/Targets.chibi": true,
+    "tools/test_policy.py": true
+  },
+  "ancestors": {
+    "fa1": {
+      "revision": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+      "ancestor_of_d0": true
+    },
+    "typed_migration310": {
+      "revision": "31098151bd5c0f3042f74996d678c0b784f3f25f",
+      "ancestor_of_d0": false
+    },
+    "published_clay_aa7": {
+      "revision": "aa7b4fcabe62fb91ee90d8e80800724a9c30e6e4",
+      "ancestor_of_d0": false
+    },
+    "baseline_pin_commit": {
+      "revision": "3c9db9b8b8c9103d35c8f82bfc21f2bf5b113e98",
+      "ancestor_of_d0": true
+    },
+    "runtime_source": {
+      "revision": "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+      "ancestor_of_d0": true
+    },
+    "graph_sdk_source": {
+      "revision": "8c5a6e6f0c5437f8f0a06d25c2e311fa1031f977",
+      "ancestor_of_d0": true
+    }
+  },
+  "owned_paths": [
+    "docs/cute-framework-patches/README.md",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md",
+    "docs/testing.md",
+    "test/execution_selectors.h",
+    "test/render/draw_uniforms.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/main.c",
+    "third_party/CMakeLists.txt",
+    "third_party/README.md",
+    "third_party/cute_framework/draw-zero-uniforms.patch",
+    "tools/agent.py",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "prospective_file_sha256": {
+    "docs/cute-framework-patches/README.md": "bbaba04dcf77f44bf6a509e72abd5d86c6c3f30dcea2ddbdb8bddf8d1eccd692",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md": "eff27cd58ec7fc4822b9f9ec883046a3e4f058540c419af87df7687b73d5a326",
+    "docs/testing.md": "3beecc11a0791bb6d423d309ed165ec1a8162b9296f76c33a585e206aa16d84e",
+    "test/execution_selectors.h": "5cf1252be2ed647c19bbf3dcbe829f2a64e261ea1358e05177eaee0b14752619",
+    "test/render/draw_uniforms.c": "0185276a320e96f3b89143280bef0944fd3f19d67624092076d032f0815bd92d",
+    "test/tools/CMakeLists.txt": "4d745c652120e548bc8e2abe67d213d6c0508ea00a09dccb89b31b7c019b1e99",
+    "test/tools/main.c": "a79d83bb8ef10e34fd5e7458c4089becf7f1f93c779d4a915689d5d9f84ef4f9",
+    "third_party/CMakeLists.txt": "9a3e1d53af72176c725c1a2e7321013a1adb133d565657820953a28ec65964ca",
+    "third_party/README.md": "d0a11c00f256f6ff7f6fb5a7470d8045509ce3f79f1662e280d106c045249c9f",
+    "third_party/cute_framework/draw-zero-uniforms.patch": "ebaedd6bb02f5daaa481062a6e6e663f40e0fcee562975afeecb55caabfcf7d2",
+    "tools/agent.py": "4b48bb277668236d1f483407a25ec5d2563675cff4d8af0925996ddc4c6cbaf7",
+    "tools/graph/engine/Targets.chibi": "bdb7e3ee09984f7bfec04fb79a45560da6e0d175e7662969e700d7924ea89f81",
+    "tools/test_policy.py": "88e8bfefbe8d1c9eae3f0de0b7d46f6da2c60343057820f753294040425d538f"
+  },
+  "d0_reference_sha256": {
+    ".github/workflows/third-party.yml": "80c9aa104c8e322bcd6df8ff5be7baabc34a38075f31717a0079cc771005a408",
+    ".github/workflows/ci.yml": "7860caa066990c084434499b749cb0af702c66183c781b3a64421fe16ce1f91d",
+    ".github/workflows/publish.yml": "508800a83854b2801eccb33ff72ade2709a3e854de93d9aaa130d53ea6077b6c",
+    "third_party/CMakeLists.txt": "4695c7c24d74fbb9ac904521443fdd72ef2e87534289b1d231844ef81e219857",
+    "third_party/archives.tsv": "89e07fbe4c155d65ad8ebbb5468dc05a242e86b2061574881fecbd1146cab7b5",
+    "third_party/README.md": "98f8e0e6416b9cd8da6ea85c6a389bdf352f3b4fbb32c9c0cb8e934854b04b85",
+    "tools/compiler/runtime.json": "36d9837ca1d77e0eea66ceb96d0783bcff3f34baecf4db383370cacbb1eccb09",
+    "tools/publish_third_party.py": "06d20f9585d51787d6c7832729d1af3aafdbfb4b5196f5a3a2e9a61ee0d15f6b",
+    "tools/check_publish_pins.sh": "f3059ff576c071cd920f917784bc4f1413c2a3b6f4225ae31769e6b6c9e53586",
+    "sdk/vendor_dependencies.cmake": "42d6a746c71d1234933054947439e63a82013abec5f1e1cbfac40af249be8f33",
+    "tools/graph/engine/Targets.chibi": "d6a80c80801e264de0e4fb13fa8f2b686975a9c1370d1c695137497ff65158a8",
+    "test/tools/CMakeLists.txt": "52b578b0355c0735803b0c8887e7ce93b67bccd948937348bc47dc2cee1cfbd4",
+    "docs/testing.md": "1ce0aef19f236dfcd274e03e198d4aa4b31d37ddcc4dd555cbac0fec6d1a3dce",
+    "AGENTS.md": "ffc688984c449ef5b819edf3829ab3d0a555c808b5b291f6dfc410872b963072"
+  },
+  "held_clay_paths_absent": true,
+  "ordinary_main_merge_parents": [
+    "5c28191b3ea53afa232c34e37b14fd9b01024aef",
+    "8f9dbf5e8edb68269c820bc99baf84bf18bc9c17"
+  ],
+  "scope": "scratch-only source assessment; no commit exists for prospective tree; no publication eligibility"
+}

@@ -1,0 +1,20 @@
+{
+  "command": [
+    "sh",
+    "tools/configure_native.sh",
+    "/tmp/chibi-integration-20261022/pr460/bootstrap-release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
+    "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCHIBI_ENABLE_SANITIZERS=OFF",
+    "-DCHIBI_ENABLE_WARNINGS=ON",
+    "-DCHIBI_ENABLE_CCACHE=ON"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi",
+  "started": "2026-10-22T22:34:18.012255+00:00",
+  "elapsed_seconds": 18.365504583,
+  "exit_code": 0,
+  "environment": {
+    "MallocNanoZone": "0"
+  }
+}

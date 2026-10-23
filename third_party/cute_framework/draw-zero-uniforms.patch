@@ -1,0 +1,11 @@
+--- a/src/cute_draw.cpp
++++ b/src/cute_draw.cpp
+@@ -5872,7 +5872,7 @@
+ 			same = false;
+ 		} else if (next->u.name != cmd->u.name) {
+ 			same = false;
+-		} else if (CF_MEMCMP(next->u.data, cmd->u.data, next->u.size)) {
++		} else if (next->u.size && CF_MEMCMP(next->u.data, cmd->u.data, next->u.size)) {
+ 			same = false;
+ 		} else if (!(
+ 			next->alpha_discard == cmd->alpha_discard &&

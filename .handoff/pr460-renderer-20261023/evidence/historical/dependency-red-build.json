@@ -1,0 +1,16 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/tmp/chibi-integration-20261022/pr460/dependency-build",
+    "--parallel",
+    "1"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi",
+  "started": "2026-10-22T22:30:55.397170+00:00",
+  "elapsed_seconds": 355.317858333,
+  "exit_code": 130,
+  "environment": {
+    "MallocNanoZone": "0"
+  }
+}

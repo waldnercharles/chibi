@@ -1,0 +1,19 @@
+[0/2] Re-checking globbed directories...
+[1/53] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp for CXX dependencies
+[2/53] Generating CXX dyndep file cute_framework/CMakeFiles/cute.dir/CXX.dd
+[3/5] Building CXX object cute_framework/CMakeFiles/cute.dir/src/cute_draw.cpp.o
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp:18:
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/internal/cute_app_internal.h:16:
+In file included from /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_custom_sprite.h:13:
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:414:12: warning: first argument in call to 'memset' is a pointer to non-trivially copyable type 'CF_ParsedTextState' [-Wnontrivial-memcall]
+  414 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp:4490:40: note: in instantiation of member function 'Cute::Map<CF_ParsedTextState>::insert' requested here
+ 4490 |                 text_state = app->parsed_text_states.insert(text_hash);
+      |                                                      ^
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/include/cute_map.h:414:12: note: explicitly cast the pointer to silence this warning
+  414 |         CF_MEMSET(&dummy, 0, sizeof(T));
+      |                   ^
+      |                   (void*)
+1 warning generated.
+[4/5] Linking CXX static library cute_framework/libcute.a

@@ -1,0 +1,227 @@
+[0/2] Re-checking globbed directories...
+[1/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_app.cpp for CXX dependencies
+[2/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_binding.cpp for CXX dependencies
+[3/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_ckit.cpp for CXX dependencies
+[4/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_audio.cpp for CXX dependencies
+[5/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_clipboard.cpp for CXX dependencies
+[6/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_multithreading.cpp for CXX dependencies
+[7/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_file_system.cpp for CXX dependencies
+[8/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_input.cpp for CXX dependencies
+[9/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_time.cpp for CXX dependencies
+[10/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_version.cpp for CXX dependencies
+[11/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_json.cpp for CXX dependencies
+[12/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_base64.cpp for CXX dependencies
+[13/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_math.cpp for CXX dependencies
+[14/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_math3d.cpp for CXX dependencies
+[15/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_physics.cpp for CXX dependencies
+[16/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp for CXX dependencies
+[17/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw3d.cpp for CXX dependencies
+[18/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_image.cpp for CXX dependencies
+[19/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_video.cpp for CXX dependencies
+[20/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_model.cpp for CXX dependencies
+[21/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics.cpp for CXX dependencies
+[22/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_sdlgpu.cpp for CXX dependencies
+[23/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_gles.cpp for CXX dependencies
+[24/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_graphics_glad.cpp for CXX dependencies
+[25/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_aseprite_cache.cpp for CXX dependencies
+[26/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_custom_sprite.cpp for CXX dependencies
+[27/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_https.cpp for CXX dependencies
+[28/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_crash.cpp for CXX dependencies
+[29/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_joypad.cpp for CXX dependencies
+[30/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_symbol.cpp for CXX dependencies
+[31/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_sprite.cpp for CXX dependencies
+[32/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_coroutine.cpp for CXX dependencies
+[33/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_networking.cpp for CXX dependencies
+[34/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_guid.cpp for CXX dependencies
+[35/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_alloc.cpp for CXX dependencies
+[36/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_result.cpp for CXX dependencies
+[37/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_noise.cpp for CXX dependencies
+[38/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_imgui.cpp for CXX dependencies
+[39/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/imgui.cpp for CXX dependencies
+[40/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/imgui_demo.cpp for CXX dependencies
+[41/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/imgui_draw.cpp for CXX dependencies
+[42/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/imgui_tables.cpp for CXX dependencies
+[43/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/imgui_widgets.cpp for CXX dependencies
+[44/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/backends/imgui_impl_sdl3.cpp for CXX dependencies
+[45/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/dcimgui.cpp for CXX dependencies
+[46/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/dcimgui_internal.cpp for CXX dependencies
+[47/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/backends/imgui_impl_sdlgpu3.cpp for CXX dependencies
+[48/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/libraries/imgui/backends/imgui_impl_opengl3.cpp for CXX dependencies
+[49/811] Scanning /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/tools/cute_shader.cpp for CXX dependencies
+[50/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_atan2.c.o
+[51/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_exp.c.o
+[52/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_fmod.c.o
+[53/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_log.c.o
+[54/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_log10.c.o
+[55/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_pow.c.o
+[56/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_rem_pio2.c.o
+[57/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/e_sqrt.c.o
+[58/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/k_cos.c.o
+[59/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/k_rem_pio2.c.o
+[60/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/k_sin.c.o
+[61/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/k_tan.c.o
+[62/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_atan.c.o
+[63/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_copysign.c.o
+[64/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_cos.c.o
+[65/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_fabs.c.o
+[66/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_floor.c.o
+[67/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_isinf.c.o
+[68/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_isinff.c.o
+[69/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_isnan.c.o
+[70/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_isnanf.c.o
+[71/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_modf.c.o
+[72/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_scalbn.c.o
+[73/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_sin.c.o
+[74/811] Building C object _deps/sdl3-build/CMakeFiles/SDL_uclibc.dir/src/libm/s_tan.c.o
+[75/811] Building C object freetype/CMakeFiles/freetype.dir/src/autofit/autofit.c.o
+[76/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftbase.c.o
+[77/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftbbox.c.o
+[78/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftbdf.c.o
+[79/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftbitmap.c.o
+[80/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftcid.c.o
+[81/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftfstype.c.o
+[82/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftgasp.c.o
+[83/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftglyph.c.o
+[84/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftgxval.c.o
+[85/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftinit.c.o
+[86/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftmm.c.o
+[87/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftotval.c.o
+[88/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftpatent.c.o
+[89/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftpfr.c.o
+[90/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftstroke.c.o
+[91/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftsynth.c.o
+[92/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/fttype1.c.o
+[93/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftwinfnt.c.o
+[94/811] Building C object freetype/CMakeFiles/freetype.dir/src/bdf/bdf.c.o
+[95/811] Building C object freetype/CMakeFiles/freetype.dir/src/bzip2/ftbzip2.c.o
+[96/811] Building C object freetype/CMakeFiles/freetype.dir/src/cache/ftcache.c.o
+[97/811] Building C object freetype/CMakeFiles/freetype.dir/src/cff/cff.c.o
+[98/811] Building C object freetype/CMakeFiles/freetype.dir/src/cid/type1cid.c.o
+[99/811] Building C object freetype/CMakeFiles/freetype.dir/src/gzip/ftgzip.c.o
+[100/811] Building C object freetype/CMakeFiles/freetype.dir/src/lzw/ftlzw.c.o
+[101/811] Building C object freetype/CMakeFiles/freetype.dir/src/pcf/pcf.c.o
+[102/811] Building C object freetype/CMakeFiles/freetype.dir/src/pfr/pfr.c.o
+[103/811] Building C object freetype/CMakeFiles/freetype.dir/src/psaux/psaux.c.o
+[104/811] Building C object freetype/CMakeFiles/freetype.dir/src/pshinter/pshinter.c.o
+[105/811] Building C object freetype/CMakeFiles/freetype.dir/src/psnames/psnames.c.o
+[106/811] Building C object freetype/CMakeFiles/freetype.dir/src/raster/raster.c.o
+[107/811] Building C object freetype/CMakeFiles/freetype.dir/src/sdf/sdf.c.o
+[108/811] Building C object freetype/CMakeFiles/freetype.dir/src/sfnt/sfnt.c.o
+[109/811] Building C object freetype/CMakeFiles/freetype.dir/src/smooth/smooth.c.o
+[110/811] Building C object freetype/CMakeFiles/freetype.dir/src/svg/svg.c.o
+[111/811] Building C object freetype/CMakeFiles/freetype.dir/src/truetype/truetype.c.o
+[112/811] Building C object freetype/CMakeFiles/freetype.dir/src/type1/type1.c.o
+[113/811] Building C object freetype/CMakeFiles/freetype.dir/src/type42/type42.c.o
+[114/811] Building C object freetype/CMakeFiles/freetype.dir/src/winfonts/winfnt.c.o
+[115/811] Building C object freetype/CMakeFiles/freetype.dir/builds/unix/ftsystem.c.o
+[116/811] Building C object freetype/CMakeFiles/freetype.dir/src/base/ftdebug.c.o
+[117/811] Building C object CMakeFiles/tree_sitter.dir/tmp/chibi-integration-20261022/pr460/dependency-sources/tree_sitter/lib/src/lib.c.o
+[118/811] Generating CXX dyndep file cute_framework/CMakeFiles/cute.dir/CXX.dd
+[119/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs.c.o
+[120/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_byteorder.c.o
+[121/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_unicode.c.o
+[122/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_posix.c.o
+[123/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_unix.c.o
+[124/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_windows.c.o
+[125/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_ogc.c.o
+[126/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_os2.c.o
+[127/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_qnx.c.o
+[128/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_android.c.o
+[129/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_libretro.c.o
+[130/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_playdate.c.o
+[131/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_dir.c.o
+[132/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_unpacked.c.o
+[133/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_grp.c.o
+[134/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_hog.c.o
+[135/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_7z.c.o
+[136/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_mvl.c.o
+[137/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_qpak.c.o
+[138/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_wad.c.o
+[139/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_csm.c.o
+[140/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_zip.c.o
+[141/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_slb.c.o
+[142/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_iso9660.c.o
+[143/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_vdf.c.o
+[144/811] Building C object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_archiver_lec3d.c.o
+[145/811] Building OBJC object _deps/physfs-build/CMakeFiles/physfs-static.dir/src/physfs_platform_apple.m.o
+[146/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL.c.o
+[147/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_assert.c.o
+[148/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_error.c.o
+[149/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_guid.c.o
+[150/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_hashtable.c.o
+[151/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_hints.c.o
+[152/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_list.c.o
+[153/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_log.c.o
+[154/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_properties.c.o
+[155/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/SDL_utils.c.o
+[156/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/atomic/SDL_atomic.c.o
+[157/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/atomic/SDL_spinlock.c.o
+[158/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_audio.c.o
+[159/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_audiocvt.c.o
+[160/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_audiodev.c.o
+[161/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_audioqueue.c.o
+[162/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_audioresample.c.o
+[163/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_audiotypecvt.c.o
+[164/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_mixer.c.o
+[165/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/audio/SDL_wave.c.o
+[166/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/camera/SDL_camera.c.o
+[167/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/core/SDL_core_unsupported.c.o
+[168/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/cpuinfo/SDL_cpuinfo.c.o
+[169/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/dynapi/SDL_dynapi.c.o
+[170/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_categories.c.o
+[171/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_clipboardevents.c.o
+[172/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_displayevents.c.o
+[173/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_dropevents.c.o
+[174/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_events.c.o
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/events/SDL_events.c:119:15: warning: variable 'SDL_last_event_id' set but not used [-Wunused-but-set-global]
+  119 | static Uint32 SDL_last_event_id = 0;
+      |               ^
+1 warning generated.
+[175/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_eventwatch.c.o
+[176/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_keyboard.c.o
+[177/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_keymap.c.o
+[178/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_keysym_to_keycode.c.o
+[179/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_keysym_to_scancode.c.o
+[180/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_mouse.c.o
+[181/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_pen.c.o
+[182/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_quit.c.o
+[183/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_scancode_tables.c.o
+[184/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_touch.c.o
+[185/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/SDL_windowevents.c.o
+[186/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/events/imKStoUCS.c.o
+[187/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/filesystem/SDL_filesystem.c.o
+[188/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/gpu/SDL_gpu.c.o
+[189/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/haptic/SDL_haptic.c.o
+[190/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/hidapi/SDL_hidapi.c.o
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/hidapi/SDL_hidapi.c:879:13: warning: variable 'use_libusb_gamecube' set but not used [-Wunused-but-set-global]
+  879 | static bool use_libusb_gamecube = true;
+      |             ^
+1 warning generated.
+[191/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/io/SDL_asyncio.c.o
+[192/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/io/SDL_iostream.c.o
+[193/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/io/generic/SDL_asyncio_generic.c.o
+[194/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/SDL_gamepad.c.o
+/tmp/chibi-integration-20261022/pr460/dependency-sources/sdl3/src/joystick/SDL_gamepad.c:126:26: warning: variable 's_pXInputMapping' set but not used [-Wunused-but-set-global]
+  126 | static GamepadMapping_t *s_pXInputMapping SDL_GUARDED_BY(SDL_joystick_lock) = NULL;
+      |                          ^
+1 warning generated.
+[195/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/SDL_joystick.c.o
+[196/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/SDL_steam_virtual_gamepad.c.o
+[197/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/joystick/controller_type.c.o
+[198/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/locale/SDL_locale.c.o
+[199/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/main/SDL_main_callbacks.c.o
+[200/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/main/SDL_runapp.c.o
+[201/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/misc/SDL_libusb.c.o
+[202/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/misc/SDL_url.c.o
+[203/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/power/SDL_power.c.o
+[204/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/SDL_render.c.o
+[205/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/SDL_render_unsupported.c.o
+[206/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/SDL_yuv_sw.c.o
+[207/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/direct3d/SDL_render_d3d.c.o
+[208/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/direct3d/SDL_shaders_d3d.c.o
+[209/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/direct3d11/SDL_render_d3d11.c.o
+[210/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/direct3d11/SDL_shaders_d3d11.c.o
+[211/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/direct3d12/SDL_render_d3d12.c.o
+[212/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/direct3d12/SDL_shaders_d3d12.c.o
+[213/811] Building C object _deps/sdl3-build/CMakeFiles/SDL3-static.dir/src/render/gpu/SDL_pipeline_gpu.c.o
+ninja: build stopped: interrupted by user.

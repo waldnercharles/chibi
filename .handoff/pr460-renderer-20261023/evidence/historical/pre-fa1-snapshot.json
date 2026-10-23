@@ -1,0 +1,36 @@
+{
+  "head": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "tree": "619e6552f79cb64abf23aa60e11e72bf60606e51",
+  "owned_paths": [
+    "docs/cute-framework-patches/README.md",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md",
+    "docs/testing.md",
+    "test/execution_selectors.h",
+    "test/render/draw_uniforms.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/main.c",
+    "third_party/CMakeLists.txt",
+    "third_party/README.md",
+    "third_party/cute_framework/draw-zero-uniforms.patch",
+    "tools/agent.py",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "patch_sha256": "bc6efd85fdc3d24ea31490de1e9597d7251857f3b7ff811ce89770508839552d",
+  "tree_archive_sha256": "3635949565b8ad1751a283a8a405f71a27273b642ab167ef4b7c66cc20cce612",
+  "file_sha256": {
+    "docs/cute-framework-patches/README.md": "bbaba04dcf77f44bf6a509e72abd5d86c6c3f30dcea2ddbdb8bddf8d1eccd692",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md": "44935779bc9ee43208270830bd8b3ef2cfbd59f427c0f1cfffe8ab59a914a290",
+    "docs/testing.md": "b5e1feae94e7836a4a16955447efff543cfdc0031c6fcacbfa056749bc8d4afa",
+    "test/execution_selectors.h": "5cf1252be2ed647c19bbf3dcbe829f2a64e261ea1358e05177eaee0b14752619",
+    "test/render/draw_uniforms.c": "0185276a320e96f3b89143280bef0944fd3f19d67624092076d032f0815bd92d",
+    "test/tools/CMakeLists.txt": "5973dced3a4739150315e529a8b06f86015d23d5897ba71a1183887a9cef4d4e",
+    "test/tools/main.c": "a07ae10699e9b46fa0b9b1b6bcd1f5d5a1bf4dba41dd84fe0b44267f3c64ae74",
+    "third_party/CMakeLists.txt": "9a3e1d53af72176c725c1a2e7321013a1adb133d565657820953a28ec65964ca",
+    "third_party/README.md": "41e472bfa98b7e5c13f08cd0b2605587e27f9a5c48b82b1860804704a2caa878",
+    "third_party/cute_framework/draw-zero-uniforms.patch": "ebaedd6bb02f5daaa481062a6e6e663f40e0fcee562975afeecb55caabfcf7d2",
+    "tools/agent.py": "4b48bb277668236d1f483407a25ec5d2563675cff4d8af0925996ddc4c6cbaf7",
+    "tools/graph/engine/Targets.chibi": "dc7aaa0961a96f6d28347fc71146ba7dedeffa28457467b6370b93b3d25a9cb6",
+    "tools/test_policy.py": "a5adb364e35215bfc4d9280851504784077d1c47a2a3b9c9b3e6ebcf630e088d"
+  }
+}

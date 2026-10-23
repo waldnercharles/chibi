@@ -1,0 +1,12 @@
+/tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp:5875:24: runtime error: null pointer passed as argument 1, which is declared to never be null
+/tmp/chibi-integration-20261022/pr460/memcmp_nonnull.h:11:63: note: nonnull attribute specified here
+    #0 0x000104c9833c in s_process_command(CF_Canvas, CF_Command*, CF_Command*, bool&)+0x40c4 (test_tools:arm64+0x10439833c)
+    #1 0x000104c93290 in cf_render_layers_to+0x1b48 (test_tools:arm64+0x104393290)
+    #2 0x000100c7c378 in adjacent_draw_commands_without_uniforms draw_uniforms.c:28
+    #3 0x000101028b04 in pu_run_test pico_unit.h:319
+    #4 0x000100c7bcb0 in test_render_draw_uniforms draw_uniforms.c:85
+    #5 0x00010103d08c in main main.c:1406
+    #6 0x00018377c4e0 in start+0x1b4c (dyld:arm64e+0x204e0)
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior /tmp/chibi-integration-20261022/pr460/dependency-sources/cute_framework/src/cute_draw.cpp:5875:24 
+Running: adjacent_draw_commands_without_uniforms FAIL: [Errno 1] Operation not permitted

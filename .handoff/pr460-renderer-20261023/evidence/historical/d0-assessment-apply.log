@@ -1,0 +1,13 @@
+Applied patch to 'docs/cute-framework-patches/README.md' cleanly.
+Falling back to direct application...
+Applied patch to 'docs/testing.md' cleanly.
+Applied patch to 'test/execution_selectors.h' cleanly.
+Falling back to direct application...
+Applied patch to 'test/tools/CMakeLists.txt' cleanly.
+Applied patch to 'test/tools/main.c' cleanly.
+Applied patch to 'third_party/CMakeLists.txt' cleanly.
+Applied patch to 'third_party/README.md' cleanly.
+Falling back to direct application...
+Applied patch to 'tools/agent.py' cleanly.
+Applied patch to 'tools/graph/engine/Targets.chibi' cleanly.
+Applied patch to 'tools/test_policy.py' cleanly.

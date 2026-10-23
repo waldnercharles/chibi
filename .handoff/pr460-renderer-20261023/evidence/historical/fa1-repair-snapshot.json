@@ -1,0 +1,66 @@
+{
+  "head": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "tree": "adabdc085fa2d78f7f7a9977e0adeec1a353853f",
+  "branch": "codex/recover-pr460-20261022",
+  "owned_paths": [
+    "docs/cute-framework-patches/README.md",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md",
+    "docs/testing.md",
+    "test/execution_selectors.h",
+    "test/render/draw_uniforms.c",
+    "test/tools/CMakeLists.txt",
+    "test/tools/main.c",
+    "third_party/CMakeLists.txt",
+    "third_party/README.md",
+    "third_party/cute_framework/draw-zero-uniforms.patch",
+    "tools/agent.py",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "diff_path": "/tmp/chibi-integration-20261022/pr460/fa1-repair-source.diff",
+  "diff_sha256": "10f7d3477f4ddbadd01abc63a49ad192f7e1a2a245ba12759e1091efbb495281",
+  "tree_archive_path": "/tmp/chibi-integration-20261022/pr460/fa1-repair-tree.tar",
+  "tree_archive_sha256": "5ce784d45b69668bd07a3b0a5061ef38b3baadbdaf069604b6d1cc22a833abdb",
+  "file_sha256": {
+    "docs/cute-framework-patches/README.md": "bbaba04dcf77f44bf6a509e72abd5d86c6c3f30dcea2ddbdb8bddf8d1eccd692",
+    "docs/cute-framework-patches/cute-draw-zero-uniforms.md": "98ac6271260e2f2c93d7e4a43585a260569f9696182fe98866a537ce2ae5ac5f",
+    "docs/testing.md": "73553379b8eef5c723a1df68444b89b9fc1072defff7a30088b58fda4e40d4e8",
+    "test/execution_selectors.h": "5cf1252be2ed647c19bbf3dcbe829f2a64e261ea1358e05177eaee0b14752619",
+    "test/render/draw_uniforms.c": "0185276a320e96f3b89143280bef0944fd3f19d67624092076d032f0815bd92d",
+    "test/tools/CMakeLists.txt": "5973dced3a4739150315e529a8b06f86015d23d5897ba71a1183887a9cef4d4e",
+    "test/tools/main.c": "1c4712cfe0fea37234a9e56a11064863f1ff64c2ea8e81755d7cfe8ce2cdcbb8",
+    "third_party/CMakeLists.txt": "9a3e1d53af72176c725c1a2e7321013a1adb133d565657820953a28ec65964ca",
+    "third_party/README.md": "41e472bfa98b7e5c13f08cd0b2605587e27f9a5c48b82b1860804704a2caa878",
+    "third_party/cute_framework/draw-zero-uniforms.patch": "ebaedd6bb02f5daaa481062a6e6e663f40e0fcee562975afeecb55caabfcf7d2",
+    "tools/agent.py": "4b48bb277668236d1f483407a25ec5d2563675cff4d8af0925996ddc4c6cbaf7",
+    "tools/graph/engine/Targets.chibi": "dc7aaa0961a96f6d28347fc71146ba7dedeffa28457467b6370b93b3d25a9cb6",
+    "tools/test_policy.py": "50da66c65dd8a4017ac10ff44837ab76ab89eb43b43054154bd9e40e65996257"
+  },
+  "old_source_snapshot": "/tmp/chibi-integration-20261022/pr460/pre-fa1-snapshot.json",
+  "backup_stash": "556d4e4711715e9c9f748f4dea4652738f573eb6",
+  "source_review": "pending independent parent review",
+  "checks_run": [
+    "git diff --check HEAD",
+    "git diff --cached --check",
+    "all non-documentation patch additions/deletions identical to independently reviewed bc6efd85fdc3d24ea31490de1e9597d7251857f3b7ff811ce89770508839552d"
+  ],
+  "new_builds_or_tests_run": [],
+  "unexecuted": [
+    "exact fa1 candidate builds and behavior checks",
+    "real Linux/glibc null-argument red/green",
+    "matching published archives and immutable pins",
+    "typed clay fixture conversion and visual acceptance"
+  ],
+  "previous_validation_scope": {
+    "head": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+    "tree": "619e6552f79cb64abf23aa60e11e72bf60606e51",
+    "ordinary_guarded_macos": "one case, five assertions; native and supervisor succeeded; no forced declaration",
+    "contract_red": "test-only nonnull declaration; intended cute_draw.cpp:5875 diagnostic; separate supervisor EPERM exit 2; native exit unknown",
+    "contract_green": "same test object/options/header/other archives; only guard source difference; one case, five assertions; native and supervisor succeeded"
+  },
+  "holds": [
+    "no new broad builds/tests until coordinator resource clearance",
+    "no commit/push/publication without parent checkpoint",
+    "no held feature source imported"
+  ]
+}

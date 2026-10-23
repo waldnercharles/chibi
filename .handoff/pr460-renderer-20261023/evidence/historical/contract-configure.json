@@ -1,0 +1,17 @@
+{
+  "command": [
+    "cmake",
+    "-S",
+    "third_party",
+    "-B",
+    "/tmp/chibi-integration-20261022/pr460/dependency-build",
+    "-DCMAKE_PROJECT_INCLUDE=/tmp/chibi-integration-20261022/pr460/contract-instrumentation.cmake"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi",
+  "started": "2026-10-22T22:47:22.603394+00:00",
+  "elapsed_seconds": 5.412329458,
+  "exit_code": 0,
+  "environment": {
+    "MallocNanoZone": "0"
+  }
+}

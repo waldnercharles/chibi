@@ -1,0 +1,15 @@
+{
+  "docs/cute-framework-patches/README.md": true,
+  "docs/cute-framework-patches/cute-draw-zero-uniforms.md": false,
+  "docs/testing.md": false,
+  "test/execution_selectors.h": true,
+  "test/render/draw_uniforms.c": true,
+  "test/tools/CMakeLists.txt": true,
+  "test/tools/main.c": true,
+  "third_party/CMakeLists.txt": true,
+  "third_party/README.md": true,
+  "third_party/cute_framework/draw-zero-uniforms.patch": true,
+  "tools/agent.py": true,
+  "tools/graph/engine/Targets.chibi": true,
+  "tools/test_policy.py": true
+}

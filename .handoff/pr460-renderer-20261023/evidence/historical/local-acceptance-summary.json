@@ -1,0 +1,39 @@
+{
+  "source_tree": "619e6552f79cb64abf23aa60e11e72bf60606e51",
+  "base": "1bc97b7305ee91102d3ee035e4852aa5341df31c",
+  "ordinary_unguarded_macos": {
+    "native": "1 case, 5 assertions pass",
+    "log": "normal-draw-direct.log",
+    "annotation_override": false
+  },
+  "annotated_unguarded_macos": {
+    "native_result": "intended null-argument diagnostic at cute_draw.cpp:5875 s_process_command from C drawing fixture",
+    "native_exit": null,
+    "supervisor_exit": 2,
+    "cleanup_result": "EPERM reported; no remaining owned processes found",
+    "log": "contract-red-draw.log",
+    "annotation_override": true
+  },
+  "annotated_guarded_macos": {
+    "native": "1 case, 5 assertions pass",
+    "supervisor_exit": 0,
+    "cleanup_result": "no failure",
+    "log": "contract-green-draw.log",
+    "annotation_override": true
+  },
+  "ordinary_guarded_macos": {
+    "native": "1 case, 5 assertions pass",
+    "supervisor_exit": 0,
+    "cleanup_result": "no failure",
+    "log": "normal-green-draw.log",
+    "annotation_override": false
+  },
+  "comparison": "contract-comparison.json",
+  "unexecuted": [
+    "Linux/glibc real-header reproduction",
+    "current-main combined required groups",
+    "clay typed asset conversion and visual acceptance",
+    "final source+archive publication/merge"
+  ],
+  "live_state": "all root processes complete; private Cute source/prefix and driver guarded with ordinary no-header build; final source integration delegated"
+}

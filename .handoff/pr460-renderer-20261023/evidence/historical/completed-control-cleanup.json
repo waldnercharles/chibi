@@ -1,0 +1,20 @@
+{
+  "removed_generated_control_copies": [
+    {
+      "file": "normal-test_tools",
+      "bytes": 194624312,
+      "sha256": "058b92c26da3f045593b12d5b02205e81866237cd3c301e73aa75831728811a5"
+    },
+    {
+      "file": "normal-libchibi_vendor_cute.a",
+      "bytes": 48925504,
+      "sha256": "c3e1be52837257365f937b2fce7f549bd7c7e343e43c80177fca4e2682428aa2"
+    },
+    {
+      "file": "normal-cute_draw.cpp.o",
+      "bytes": 2852072,
+      "sha256": "932c8e8745af33af246171ff27c09767bbd9d4e7a32b714557c13cd5640765a3"
+    }
+  ],
+  "retained": "source, logs, compiler/object/library/binary hash receipts, symbols, active guarded driver/dependency builds for next validation"
+}

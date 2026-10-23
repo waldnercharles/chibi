@@ -1,0 +1,26 @@
+{
+  "revision": "a504d8e59aa593035229cc3a150da814077e8010",
+  "files": {
+    "packages/game/assets/Assets.chibi": "eeae58d35da26f26fe38479d288237925c3cb6601cfd8785b99e47a808f49151",
+    "packages/game/assets/Schemas.chibi": "d8c5b53ec671831061aaa21cc1fb05cdfc00136c06662ea8a34a4470d8956ef2",
+    "test/fixtures/content/materials/PulseRing.chibi": "ac362fd048098affdf6de2d75430489830f7bcb593a26455af7784bdc8c54048",
+    "test/fixtures/scene3d/content/scenes/Room.chibi": "82a5ce9d17df44e47d4dec6c1309f0fb8b30a17760c138b7bcb212a144255638",
+    "test/fixtures/terrain-lab/content/input.chibi": "017c68c8d86b93b4b0ce807d6e303c0d1c89de812af29ea192ed5318c5d5c0e2",
+    "test/fixtures/terrain-lab/project.chibi": "1c09bd5ef0818949aa81a95daa52df4ccb884d52931faae009b6c76f4da079db",
+    "test/fixtures/content/prototypes/Player.chibi": "129ca28b793a476d872286fda863b546e5f273101404a0d6339a0a486eebebe9",
+    "test/fixtures/content/prototypes/ShaderGradient.chibi": "f766c66278147e106a3e3df244d5b412d5c6256b023b990709fa632c7015be6f",
+    "test/fixtures/feature-coverage/content/systems/Cool.chibi": "ae96750c029d996708fa918399f62f9a4aab24cf3d72b68cf6f5f27deaced849",
+    "test/fixtures/feature-coverage/content/behaviors/InputProbe.chibi": "a56ad6532eec2bb812235cbbb9a2f1072184ae11e954a7d7363228d16b662b71",
+    "src/assets/scene_document.c": "6432dc12c85dccb5d719e1d282665201a66da9114795fe86ed706465e8a13c7a",
+    "src/assets/project.c": "725b25a1b4bd00d21810326c514707df658d9c0945c6da47a7d983bca4bddf66",
+    "src/assets/prototype.c": "155ea39237c24b34e83cc73d1f84fcf770de3728a5f15f33a34ee609cd4585a1",
+    "src/support/asset_value.c": "16e682d0aec031bba8e51ce322d7bcdeb6fed9a0832f7ddb8e6039738684956c",
+    "src/render/shader_parameters.h": "442bfc6b1be6a987acd6c72414a1dd43f943813e6c721ba06f9fea5db02ba591",
+    "src/authoring/source_catalog.c": "81b2ef6b76d081869d7e4b140739ef9d3ef49c52a499faa9b34c696e5336e16c",
+    "src/runtime/engine_input.c": "9e6d571a994703de6410eb400d81e75b8c896ce7d3024338bcab7fe357191647",
+    "test/tools/CMakeLists.txt": "a4ec455c55866638f76367d1e7bf13747a1115094a3aa84837df624738217e70",
+    "tools/graph/engine/Targets.chibi": "54ebe2d994d24db14e53b66fa805d5eb532988c33e5dab507d78920062312e36",
+    "tools/test_policy.py": "05f0f401405e8b274829c4e67dcd69b7dbf5d0eca0fb74082775feaf05c3c757",
+    "tools/agent.py": "7a10742e005a6e2d28825b43ed4b079f952f9cd7897909e66b1cc96cbbe792bc"
+  }
+}

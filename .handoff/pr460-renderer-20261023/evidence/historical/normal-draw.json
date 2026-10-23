@@ -1,0 +1,17 @@
+{
+  "command": [
+    "make",
+    "agent-gpu-test",
+    "BUILD_DIR=/tmp/chibi-integration-20261022/pr460/driver",
+    "AGENT_SELECTOR=--draw-uniforms"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/recover-pr460/chibi",
+  "started": "2026-10-22T22:47:45.474426+00:00",
+  "elapsed_seconds": 6.939180374999999,
+  "exit_code": 0,
+  "environment": {
+    "MallocNanoZone": "0",
+    "ASAN_OPTIONS": "abort_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+  }
+}

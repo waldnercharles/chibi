@@ -1,0 +1,152 @@
+[0/2] Re-checking globbed directories...
+[1/151] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/xalloc.c.o
+[2/151] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/text_edit.c.o
+[3/151] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/file_io.c.o
+[4/151] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/arena.c.o
+[5/151] Building C object sdk/CMakeFiles/chibi_support.dir/__/src/support/rcss_map.c.o
+[6/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/catalog.c.o
+[7/151] Linking C static library sdk/libchibi_support.a
+[8/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/text.c.o
+[9/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/type.c.o
+[10/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/array.c.o
+[11/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/copy.c.o
+[12/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/record.c.o
+[13/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/map.c.o
+[14/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/trace.c.o
+[15/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/union.c.o
+[16/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/value_format.c.o
+[17/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/index.c.o
+[18/151] Building C object sdk/CMakeFiles/chibi_types.dir/__/src/types/value_wire.c.o
+[19/151] Linking C static library sdk/libchibi_types.a
+[20/151] Building C object sdk/CMakeFiles/chibi_ecs.dir/__/src/ecs/hierarchy.c.o
+[21/151] Building C object sdk/CMakeFiles/chibi_ecs.dir/__/src/ecs/relationship.c.o
+[22/151] Building C object sdk/CMakeFiles/chibi_ecs.dir/__/src/ecs/component_catalog.c.o
+[23/151] Building C object sdk/CMakeFiles/chibi_ecs.dir/__/src/ecs/ecs.c.o
+[24/151] Building C object sdk/CMakeFiles/chibi_capabilities.dir/__/src/capabilities/catalog.c.o
+[25/151] Building C object sdk/CMakeFiles/chibi_capabilities.dir/__/src/capabilities/catalog_values.c.o
+[26/151] Building C object sdk/CMakeFiles/chibi_capabilities.dir/__/src/capabilities/catalog_snapshot.c.o
+[27/151] Building C object sdk/CMakeFiles/chibi_events.dir/__/src/runtime/events.c.o
+[28/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/artifact.c.o
+[29/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/backend.c.o
+[30/151] Building C object sdk/CMakeFiles/chibi_capabilities.dir/__/src/capabilities/definition.c.o
+[31/151] Building C object sdk/CMakeFiles/chibi_ecs.dir/__/src/ecs/query.c.o
+[32/151] Linking C static library sdk/libchibi_ecs.a
+[33/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/borrow.c.o
+[34/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/component.c.o
+[35/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/call.c.o
+[36/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/ecs_reader.c.o
+[37/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/c.c.o
+[38/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/fusion.c.o
+[39/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/function.c.o
+[40/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/host.c.o
+[41/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/inputs.c.o
+[42/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/map_intrinsics.c.o
+[43/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/intrinsics.c.o
+[44/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_component.c.o
+[45/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_host_call.c.o
+[46/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/function_builder.c.o
+[47/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit.c.o
+[48/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_suspend.c.o
+[49/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_integer.c.o
+[50/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_memory.c.o
+[51/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_registers.c.o
+[52/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_watch.c.o
+[53/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/log.c.o
+[54/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/jit_system.c.o
+[55/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/machine.c.o
+[56/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/opt.c.o
+[57/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/module.c.o
+[58/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/parallel.c.o
+[59/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/module_effects.c.o
+[60/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/preparation_budget.c.o
+[61/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared_record.c.o
+[62/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared.c.o
+[63/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/prepared_function.c.o
+[64/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_activation.c.o
+[65/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_observers.c.o
+[66/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_inspection.c.o
+[67/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_commands.c.o
+[68/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_bindings.c.o
+[69/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program.c.o
+[70/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_locals.c.o
+[71/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_tasks.c.o
+[72/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/range_opt.c.o
+[73/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_preflight.c.o
+[74/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/program_storage.c.o
+[75/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/runner.c.o
+[76/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/request.c.o
+[77/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/reads.c.o
+[78/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/scalar_lowering_plan.c.o
+[79/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/source_debug.c.o
+[80/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/state.c.o
+[81/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/scalarize.c.o
+[82/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/time.c.o
+[83/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/storage.c.o
+[84/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/suspend.c.o
+[85/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/vm.c.o
+[86/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/update_jit.c.o
+[87/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/wasm_jit.c.o
+[88/151] Building C object sdk/CMakeFiles/chibi_execution.dir/__/src/execution/wasm_emit.c.o
+[89/151] Building C object sdk/CMakeFiles/chibi_asset_values.dir/__/src/support/asset_value.c.o
+[90/151] Building C object sdk/CMakeFiles/chibi_native_capabilities.dir/__/src/runtime/native_definitions.c.o
+[91/151] Building C object sdk/CMakeFiles/chibi_native_capabilities.dir/__/src/runtime/type_definitions.c.o
+[92/151] Linking C static library sdk/libchibi_capabilities.a
+[93/151] Linking C static library sdk/libchibi_events.a
+[94/151] Building C object sdk/CMakeFiles/chibi_native_capabilities.dir/__/src/runtime/native_capabilities.c.o
+[95/151] Building C object sdk/CMakeFiles/chibi_fmt.dir/__/third_party/fmt/fmt.c.o
+[96/151] Linking C static library sdk/libchibi_execution.a
+[97/151] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/event_catalog.c.o
+[98/151] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/source_profile.c.o
+[99/151] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/source.c.o
+[100/151] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/package.c.o
+[101/151] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/module_set.c.o
+[102/151] Building C object sdk/CMakeFiles/chibi_behavior_runtime.dir/__/src/runtime/behaviors/source_publication.c.o
+[103/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/bigint.c.o
+[104/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/compat.c.o
+[105/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/emitter.c.o
+[106/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/str.c.o
+[107/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/tokenizer.c.o
+[108/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/parser.c.o
+[109/151] Building C object sdk/CMakeFiles/chibi_asset_kdl.dir/__/third_party/ckdl/src/utf8.c.o
+[110/151] Linking C static library sdk/libchibi_asset_values.a
+[111/151] Linking C static library sdk/libchibi_native_capabilities.a
+[112/151] Building C object sdk/CMakeFiles/chibi_value_document.dir/__/src/types/value_document.c.o
+[113/151] Building C object sdk/CMakeFiles/chibi_array_capabilities.dir/__/src/runtime/arrays.c.o
+[114/151] Building C object sdk/CMakeFiles/chibi_value_document.dir/__/src/types/value_document_read.c.o
+[115/151] Building C object sdk/CMakeFiles/chibi_array_capabilities.dir/__/src/runtime/arrays_definition.c.o
+[116/151] Building C object sdk/CMakeFiles/chibi_text_capabilities.dir/__/src/runtime/text_definition.c.o
+[117/151] Linking C static library sdk/libchibi_fmt.a
+[118/151] Building C object sdk/CMakeFiles/chibi_text_capabilities.dir/__/src/runtime/text_format.c.o
+[119/151] Linking C static library sdk/libchibi_behavior_runtime.a
+[120/151] Linking C static library sdk/libchibi_asset_kdl.a
+[121/151] Building C object sdk/CMakeFiles/chibi_native_prepared.dir/__/src/runtime/native_prepared.c.o
+[122/151] Building C object sdk/CMakeFiles/chibi_asset_json.dir/__/src/support/asset_json.c.o
+[123/151] Building C object sdk/CMakeFiles/chibi_asset_text.dir/__/src/support/asset_text.c.o
+[124/151] Building C object sdk/language/CMakeFiles/chibi_language_syntax.dir/syntax.c.o
+[125/151] Building C object sdk/language/CMakeFiles/chibi_language_syntax.dir/src/scanner.c.o
+[126/151] Linking C static library sdk/libchibi_value_document.a
+[127/151] Linking C static library sdk/libchibi_array_capabilities.a
+[128/151] Linking C static library sdk/libchibi_text_capabilities.a
+[129/151] Building C object sdk/language/CMakeFiles/chibi_language_syntax.dir/src/parser.c.o
+[130/151] Linking C static library sdk/libchibi_native_prepared.a
+[131/151] Linking C static library sdk/libchibi_asset_text.a
+[132/151] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_catalog.c.o
+[133/151] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_values.c.o
+[134/151] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_host.c.o
+[135/151] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/authoring/source_package_files.c.o
+[136/151] Building C object sdk/CMakeFiles/chibi_build_host.dir/__/src/host/build_io.c.o
+[137/151] Building C object sdk/CMakeFiles/chibi-build-host.dir/__/src/host/build_main.c.o
+[138/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_artifact.c.o
+[139/151] Building C object sdk/CMakeFiles/chibi-build-host.dir/__/src/host/process.c.o
+[140/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_json.c.o
+[141/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_host.c.o
+[142/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_syntax.c.o
+[143/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/support/sha256.c.o
+[144/151] Linking C static library sdk/language/libchibi_language_syntax.a
+[145/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_bootstrap.c.o
+[146/151] Building C object sdk/CMakeFiles/chibi_compiler_host.dir/__/src/toolchain/compiler_target.c.o
+[147/151] Building C object sdk/CMakeFiles/chibi_json.dir/__/third_party/yyjson/yyjson.c.o
+[148/151] Linking C static library sdk/libchibi_json.a
+[149/151] Linking C static library sdk/libchibi_asset_json.a
+[150/151] Linking C executable sdk/chibi-build-host
+ld: warning: ignoring duplicate libraries: 'sdk/libchibi_support.a'

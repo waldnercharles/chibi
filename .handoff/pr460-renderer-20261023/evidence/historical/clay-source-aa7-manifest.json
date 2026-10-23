@@ -1,0 +1,97 @@
+{
+  "revision": "aa7b4fcabe62fb91ee90d8e80800724a9c30e6e4",
+  "files": {
+    "docs/clay-sdf-baseline.md": {
+      "sha256": "c9fe11097972367ffbdcd96c819333fa819c41dfbe5b53cbe6d94616ae81a36a",
+      "lines": 134
+    },
+    "docs/clay-sdf-field-contract.md": {
+      "sha256": "3ccb9879515663e758a90b4be2691ef3ac476520822af4024c727d0919857bfc",
+      "lines": 316
+    },
+    "docs/clay-sdf-scene3d-bridge.md": {
+      "sha256": "61d8a1f56aa73aff23b19ef2f8caa3784578ec442ea919e9dd1aa9e3a36e8113",
+      "lines": 333
+    },
+    "test/fixtures/clay-lab/README.md": {
+      "sha256": "9d818e0ec1cc0a7adda5cc9495c5896b31ad536a6ee02f92ab5f966c6772ff1c",
+      "lines": 142
+    },
+    "test/fixtures/clay-lab/content/behaviors/ClayControls.chibi": {
+      "sha256": "9944a7e8d10695d071b5f2f05561da63eee6d41228f61abd4aa72730e00953ca",
+      "lines": 43
+    },
+    "test/fixtures/clay-lab/content/components/ClaySettings.chibi": {
+      "sha256": "545a1304560245030691400de151c621ed3cd15a9cefcea3c35460f26a3f17a0",
+      "lines": 11
+    },
+    "test/fixtures/clay-lab/content/input.kdl": {
+      "sha256": "9e0b9932f54958cd0ac9f0b306857c2ec894de9db0da3ece3625057aedba3a71",
+      "lines": 15
+    },
+    "test/fixtures/clay-lab/content/materials/ClaySurface.kdl": {
+      "sha256": "d2e7f16368ee9b3ca4613544efcf71a1fe2f297e9099acfd69a4f7f2509eeeeb",
+      "lines": 121
+    },
+    "test/fixtures/clay-lab/content/models/ClayBlock.kdl": {
+      "sha256": "56833bd862f68d896f3af4e3760fefed43e3979b556e91888f991a356ca9960c",
+      "lines": 29
+    },
+    "test/fixtures/clay-lab/content/models/ClayCapsule.kdl": {
+      "sha256": "1a7974cd4d82fe1a3abfea0bb0d4f6c4084f5c4a738b70ec24e587890f8e37bc",
+      "lines": 24
+    },
+    "test/fixtures/clay-lab/content/models/ClaySculpt.kdl": {
+      "sha256": "9dd1cc85abe7a2263c6037563b7f7aef8344365aea8211bc231e694376f916e0",
+      "lines": 99
+    },
+    "test/fixtures/clay-lab/content/models/ClaySphere.kdl": {
+      "sha256": "6b84a172acf12a871a3287d7c55a53235c32be4f77b98c695499935a93e01299",
+      "lines": 24
+    },
+    "test/fixtures/clay-lab/content/prototypes/ClayLamp.chibi": {
+      "sha256": "b533fc5f9e7384a7c45a91b67919bdb07d6633bee71dd31acaf20a1b09a46be3",
+      "lines": 20
+    },
+    "test/fixtures/clay-lab/content/prototypes/ClayNeutral.chibi": {
+      "sha256": "7e912734e2fe8d4fba1bd828252913bd8287109249c25ddb605bd27369683420",
+      "lines": 40
+    },
+    "test/fixtures/clay-lab/content/prototypes/ClayStage.chibi": {
+      "sha256": "92089cc84c5833bf5a0744b76da27c12d7544c8bb0dbf551ae4e32a352b08f65",
+      "lines": 28
+    },
+    "test/fixtures/clay-lab/content/prototypes/ClayTerracotta.chibi": {
+      "sha256": "36e48c7a0757d97f62959a6639d9ba976d1b6b4bee8670f43c472c79d7aa3a80",
+      "lines": 6
+    },
+    "test/fixtures/clay-lab/content/prototypes/ClayView.chibi": {
+      "sha256": "4213680808d5ccd80226b925d8f401408f3bac72583e286a1b9501f583722495",
+      "lines": 17
+    },
+    "test/fixtures/clay-lab/content/scenes/MaterialLab.kdl": {
+      "sha256": "0f40f3764aa2f99b419002df4eb558a1d4557707abe952e7e488ac3ff5d03c43",
+      "lines": 75
+    },
+    "test/fixtures/clay-lab/content/systems/ApplyClay.chibi": {
+      "sha256": "606c3ca26ba86dd8d11dbeff3d37ff7108a0480da6f95e95b003d3c6499e4bd1",
+      "lines": 14
+    },
+    "test/fixtures/clay-lab/preview.json": {
+      "sha256": "31da0a3b862a2c39464c6bfe5e0446cc32b766acb99c99206959fcd153569798",
+      "lines": 1
+    },
+    "test/fixtures/clay-lab/project.kdl": {
+      "sha256": "1a0cb98468864065567938df810980b437294ac08deb9bfb2f48ab87d3ce5a2e",
+      "lines": 4
+    },
+    "test/tools/clay_fields.c": {
+      "sha256": "dbd4e8816c9d4dc475ac4817d4e204ed2318d8ca8fe7769efded383cdc5adcd4",
+      "lines": 278
+    },
+    "test/tools/clay_lab.c": {
+      "sha256": "ecc5338be666eb3c8c370d87da3625485bc8b3f0983e04327010d64071853bc8",
+      "lines": 439
+    }
+  }
+}

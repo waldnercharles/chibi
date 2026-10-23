@@ -1,0 +1,14 @@
+{
+  "source_review": "No remaining actionable findings after workflow context, preprocessing cwd and explicit provenance fixes. Original13 renderer files match reviewed3c8 byte-for-byte.",
+  "static_checks": [
+    "actionlint new workflow passed",
+    "Python AST parse passed",
+    "original13 renderer source blobs preserved"
+  ],
+  "runtime": "Not run; no package installation, downloads, builds, GPU or Linux checks",
+  "new_file_sha256": {
+    ".github/workflows/cute-zero-uniforms-linux.yml": "b3a158d9803865c71d6eb420cb613a16d68e96a5fca6b49e12c2bb7150128ac0",
+    "tools/validate_cute_zero_uniforms_linux.py": "0d958f7d6d0ca7c898daed5179f5cdbb9e5e6fad041adacdaefb7f7f7092093d",
+    "docs/cute-framework-patches/linux-draw-validation.md": "4448bb82b1be16c79d7ef68aef629c987b88f2f128a5594bfd153362226c6aad"
+  }
+}

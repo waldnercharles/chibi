@@ -1,0 +1,20 @@
+{
+  "plan": "/tmp/chibi-integration-20261022/pr460/clay-typed-conversion-plan.md",
+  "sha256": "a627cd2a0254af384646bb50c824a6af8cd0b26a1c43b69261b60dd912392312",
+  "published_clay_revision": "aa7b4fcabe62fb91ee90d8e80800724a9c30e6e4",
+  "typed_contract_revision": "31098151bd5c0f3042f74996d678c0b784f3f25f",
+  "optional_cache_not_required": "30cd287d1b86250d13b42c3716a94d747fa87a9b",
+  "candidate_head_unchanged": "fa1b7b2bb297eacbbed6aec6f03c4260355db97c",
+  "candidate_staged_tree_unchanged": "adabdc085fa2d78f7f7a9977e0adeec1a353853f",
+  "candidate_staged_diff_sha256": "10f7d3477f4ddbadd01abc63a49ad192f7e1a2a245ba12759e1091efbb495281",
+  "new_builds_tests_gpu_commands": [],
+  "scratch_only": true,
+  "conversion_implemented": false,
+  "current_constructor_defect_claim": false,
+  "material_owner_contract_review": "source contract confirmed at 310; no build/visual pass; final combined checkpoint required",
+  "original_applyclay_sha256": "606c3ca26ba86dd8d11dbeff3d37ff7108a0480da6f95e95b003d3c6499e4bd1",
+  "original_setter_calls": {
+    "set_shape_parameter": 1,
+    "set_material_parameter": 4
+  }
+}

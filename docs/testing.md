@@ -2421,6 +2421,20 @@ GPU check that needs the render-enabled tools of the main build: run
 9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
 tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
 backend has one, so there a failure means Cute's tile shaders did not load.
+`draw-uniforms` draws two circles in separate layers of a hidden 32 x 32 app,
+then reads back both colors and the transparent background. The layers force
+adjacent Cute commands without uniform payloads. Run it like `interior-border`
+with `AGENT_SELECTOR=--draw-uniforms`. Its null-argument regression requires
+Cute itself to be built with ASan and UBSan and a libc declaration that marks
+the `memcmp` pointer arguments nonnull, as on Linux/glibc. Verify the Cute draw
+object's nonnull instrumentation; driver flags alone are insufficient. The
+examined Darwin SDK has no such declaration, so its ordinary sanitizer run
+establishes pixel rendering, not this null-argument check. Use the same test
+against unpatched and patched archives, retaining full native logs and
+separate native and supervisor results. A cleanup failure must not stand in
+for the intended sanitizer failure. See the
+[patch note](cute-framework-patches/cute-draw-zero-uniforms.md) for the dated
+macOS evidence, diagnostic scope and pending Linux and archive requirements.
 `viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. A press above

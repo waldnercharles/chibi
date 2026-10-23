@@ -1,0 +1,11 @@
+{
+  "revision": "31098151bd5c0f3042f74996d678c0b784f3f25f",
+  "files": {
+    "packages/game/assets/Assets.chibi": "d0e39e177a1277ef2bb26ee889a35e55a3cacf9d0f93e6024e2754b40cbe1208",
+    "packages/game/assets/Schemas.chibi": "21e8b423d978d11b7b6c98e40de9152f8a80c91eb5ab61a0cc32ffdea5beeea3",
+    "tools/compiler/asset_source/Write.chibi": "9bc6f31670619be74c4b63f4a5636ccbb552dfd6fc257efc3803a05c4ad1b1ab",
+    "src/authoring/asset_compiler_host.c": "66aacea27ed7d07799ad511ebb91bfb802437debbffbb0f16777ec4708c2c20b",
+    "test/tools/fixture_format.c": "14ad8f2b1bd7af1e125966c7ab6d824e574721c701321c3b38669df449cfad63",
+    "docs/typed-assets/PLAN.md": "96e7e2d4729f9e2c3da756ce7d7baf0baf10c80971526ae14fe285ea7eab12dd"
+  }
+}

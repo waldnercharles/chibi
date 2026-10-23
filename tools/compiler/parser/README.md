@@ -124,8 +124,17 @@ A first WIP missed the cross-product of contextual result `not` and newline
 before the return atom. Forty-five CR/LF/comment/atom regressions failed at case
 31 on both backends before the narrow guard, and pass after it. This supersedes
 the earlier passing aggregate: it was insufficient to establish the boundary.
-Independent review of the corrected head remains pending; this is a WIP source
-checkpoint, not a production parser switch.
+Independent review of the exact parser and fixture bytes published at
+[`d2b52c92722712ada5c11415da2f498180924268`](https://github.com/waldnercharles/chibi/commit/d2b52c92722712ada5c11415da2f498180924268)
+passed 1,443 cases per backend: 572 base cases, 11 wide/trivia cases and 860
+return-gap cases. Accepted inputs matched every raw syntax fact; rejections
+were atomic with valid diagnostics. A separate replay of the 72 former false
+acceptances confirmed they now reject on both backends. The independent rebuild
+also reproduced the fixture hash and `Check` result above, with zero fallback
+or overflow throughout. This is bounded Linux x64 evidence, not a complete
+grammar/recovery proof, production parser switch or three-OS validation. The
+corrected checkpoint has not established current-main integration or a separate
+PowerShell workflow/CI run; those gates remain outstanding.
 
 ## Historical foundation checkpoint evidence
 

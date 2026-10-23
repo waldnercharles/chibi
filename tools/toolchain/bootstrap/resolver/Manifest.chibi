@@ -1,0 +1,315 @@
+package resolver
+
+import strings "core:strings"
+
+// Decoded manifest values, not a second JSON implementation. The transport must
+// reject duplicate/unknown keys, preserve integers exactly and bound input size.
+pub Digest :: struct {
+    bytes: int64;
+    sha256: string;
+}
+pub File :: struct {
+    path: string;
+    bytes: int64;
+    sha256: string;
+    executable: bool;
+}
+pub Platform :: struct {
+    name: string;
+    archive: string;
+    archive_bytes: int64;
+    archive_sha256: string;
+    executable: string;
+    native_abi: int;
+    prepared_format: int;
+    bootstrap_version: int;
+    first: int;
+    count: int;
+}
+pub Generation :: struct {
+    format: int;
+    kind: string;
+    id: string;
+    repository: string;
+    source_revision: string;
+    source_tree: string;
+    validated: bool;
+}
+pub Compatibility :: struct {
+    platform: string;
+    native_abi: int;
+    prepared_format: int;
+    bootstrap_minimum: int;
+    bootstrap_maximum: int;
+}
+pub Snapshot :: struct {
+    generation: string;
+    repository: string;
+    source_revision: string;
+    source_tree: string;
+    manifest_sha256: string;
+    local_path: string;
+    development: bool;
+}
+// Scalar records plus union array payloads match the current compiler's record
+// contract. This private representation is not a proposed public stdlib API.
+pub Manifest :: union {
+    Contents(generation: Generation, platforms: Platform[], files: File[])
+}
+pub Resolution :: union {
+    Resolved(snapshot: Snapshot, platform: Platform, files: File[]) | Rejected(error: string)
+}
+
+Hex :: (text: string, count: int) -> bool {
+    if (strings.ByteLength(text) != count) {
+        return false;
+    }
+    for (byte in strings.Bytes(text)) {
+        if (!((byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Portable archive-relative regular-file names. Lexical validation alone does
+// not authorize extraction: the adapter must reject links and directory escapes.
+RelativeFile :: (path: string) -> bool {
+    if (!PathText(path) || strings.HasPrefix(path, "/") || strings.Contains(path, "\\") ||
+        strings.Contains(path, ":")) {
+        return false;
+    }
+    for (part in strings.Split(path, "/")) {
+        if (part == "" || part == "." || part == "..") {
+            return false;
+        }
+    }
+    return true;
+}
+
+ValidFile :: (file: File) -> bool {
+    return RelativeFile(file.path) && file.bytes > 0 && Hex(file.sha256, 64);
+}
+
+FileIndex :: (files: File[], path: string) -> int {
+    for (i in 0..<length(files)) {
+        if (files[i].path == path) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+PlatformError :: (platform: Platform, files: File[]) -> string {
+    if (platform.name != "linux-x64" && platform.name != "macos-arm64" && platform.name != "windows-x64") {
+        return "unsupported bootstrap platform";
+    }
+    if (platform.archive != "" &&
+        (!RelativeFile(platform.archive) || platform.archive_bytes < 1 || !Hex(platform.archive_sha256, 64) || strings.Contains(platform.archive, "/"))) {
+        return "package archive requires a filename, positive size and lowercase SHA-256";
+    }
+    if (platform.archive == "" &&
+        (platform.archive_bytes != 0 || platform.archive_sha256 != "")) {
+        return "an unpacked local package must omit the complete archive descriptor";
+    }
+    if (platform.native_abi < 1 || platform.prepared_format < 1 || platform.bootstrap_version < 1) {
+        return "package has no complete ABI and format identity";
+    }
+    if (length(files) == 0 || length(files) > 4096) {
+        return "package requires a bounded complete file inventory";
+    }
+    for (i in 0..<length(files)) {
+        if (!ValidFile(files[i])) {
+            return "package inventory has an invalid path, size or SHA-256";
+        }
+        for (j in 0..<i) {
+            if (files[j].path == files[i].path) {
+                return "package inventory repeats a path";
+            }
+        }
+    }
+    executable := FileIndex(files, platform.executable);
+    if (executable < 0 || !files[executable].executable) {
+        return "package is missing its executable or executable mode";
+    }
+    // These are the current installed build-host resource entry points. The
+    // existing bootstrap loader also verifies every transitive compiler source.
+    for (path in ["share/chibi/compiler/bootstrap.kdl",
+                  "share/chibi/compiler/bootstrap/bootstrap.json",
+                  "share/chibi/compiler/bootstrap/compiler.chibip",
+                  "share/chibi/compiler/package_compiler/Compile.chibi",
+                  "share/chibi/core/strings/Strings.chibi"]) {
+        if (FileIndex(files, path) < 0) {
+            return format_text("package is missing required resource {}", path);
+        }
+    }
+    return "";
+}
+
+// Every platform is validated before one is chosen: a latest channel cannot
+// publish a partially complete matrix. A subset is allowed only by the channel's
+// separate support policy; this module does not silently manufacture platforms.
+GenerationPartsError :: (generation: Generation, platforms: Platform[], files: File[]) -> string {
+    if (generation.format != 1 || generation.kind != "chibi-toolchain") {
+        return "not a supported complete toolchain generation";
+    }
+    if (!GenerationName(generation.id) || generation.repository != "waldnercharles/chibi" ||
+        !Hex(generation.source_revision, 40) || !Hex(generation.source_tree, 40)) {
+        return "generation has no immutable repository/source identity";
+    }
+    if (length(platforms) == 0 || length(platforms) > 3) {
+        return "generation requires a bounded platform matrix";
+    }
+    next := 0;
+    for (i in 0..<length(platforms)) {
+        platform := platforms[i];
+        if (platform.first != next || platform.count < 1 || platform.count > 4096 ||
+            platform.count > length(files) - next) {
+            return "platform inventory spans must cover the file list exactly once";
+        }
+        next += platform.count;
+        error := PlatformError(platform, slice(files, platform.first, platform.count));
+        if (error != "") {
+            return error;
+        }
+        for (j in 0..<i) {
+            if (platforms[j].name == platforms[i].name) {
+                return "generation repeats a platform";
+            }
+            if (platforms[i].archive != "" &&
+                platforms[j].archive == platforms[i].archive) {
+                return "generation repeats an archive filename";
+            }
+        }
+    }
+    if (next != length(files)) {
+        return "generation has unclaimed inventory files";
+    }
+    return "";
+}
+
+pub GenerationError :: (manifest: Manifest) -> string {
+    switch manifest {
+        case .Contents(generation, platforms, files):
+            return GenerationPartsError(generation, platforms, files);
+    }
+}
+
+// Call with the one manifest already fetched by the invocation coordinator.
+// This function cannot refetch latest or choose a fallback. The returned owned
+// value is the complete selected package identity passed to downstream work.
+// Local metadata cannot promote itself: local selections are development inputs.
+// Reproduction from a published receipt uses the explicit version selection.
+pub Resolve :: (selection: Selection, manifest: Manifest, manifest_sha256: string,
+                required: Compatibility) -> Resolution {
+    switch manifest {
+        case .Contents(generation, platforms, files):
+            return ResolveParts(selection, generation, platforms, files, manifest_sha256, required);
+    }
+}
+
+ResolveParts :: (selection: Selection, generation: Generation, platforms: Platform[], files: File[],
+                 manifest_sha256: string, required: Compatibility) -> Resolution {
+    if (selection.error != "" ||
+        (selection.kind != "latest" && selection.kind != "version" && selection.kind != "local")) {
+        return Resolution.Rejected("cannot resolve an invalid selection");
+    }
+    if ((selection.kind == "latest" && selection.value != "") ||
+        (selection.kind == "version" && !GenerationName(selection.value)) ||
+        (selection.kind == "local" && !PathText(selection.value))) {
+        return Resolution.Rejected("selection does not match its kind");
+    }
+    error := GenerationPartsError(generation, platforms, files);
+    if (error != "") {
+        return Resolution.Rejected(error);
+    }
+    if (!Hex(manifest_sha256, 64)) {
+        return Resolution.Rejected("resolved manifest requires its exact SHA-256");
+    }
+    if (selection.kind == "version" && selection.value != generation.id) {
+        return Resolution.Rejected("version override resolved a different generation; no fallback is allowed");
+    }
+    if (selection.kind != "local" && !generation.validated) {
+        return Resolution.Rejected("published selection requires a validated generation");
+    }
+    if (selection.kind != "local") {
+        for (platform in platforms) {
+            if (platform.archive == "") {
+                return Resolution.Rejected("published generation is missing a platform archive");
+            }
+        }
+    }
+    if (required.native_abi < 1 || required.prepared_format < 1 || required.bootstrap_minimum < 1 ||
+        required.bootstrap_maximum < required.bootstrap_minimum) {
+        return Resolution.Rejected("invalid consumer ABI requirements");
+    }
+    for (platform in platforms) {
+        if (platform.name != required.platform) {
+            continue;
+        }
+        if (platform.native_abi != required.native_abi || platform.prepared_format != required.prepared_format ||
+            platform.bootstrap_version < required.bootstrap_minimum || platform.bootstrap_version > required.bootstrap_maximum) {
+            return Resolution.Rejected("selected package is incompatible with the consumer ABI or formats");
+        }
+        local_path := "";
+        if (selection.kind == "local") {
+            local_path = selection.value;
+        }
+        return Resolution.Resolved({generation: generation.id, repository: generation.repository,
+                                    source_revision: generation.source_revision, source_tree: generation.source_tree,
+                                    manifest_sha256: manifest_sha256, local_path: local_path,
+                                    development: selection.kind == "local"}, platform, slice(files, platform.first, platform.count));
+    }
+    return Resolution.Rejected("generation has no package for the requested platform; no fallback is allowed");
+}
+
+// Check actual downloaded archive bytes before extracting or executing it.
+// A local unpacked package instead supplies its complete observed inventory.
+pub DownloadError :: (platform: Platform, observed: Digest) -> string {
+    if (platform.archive == "") {
+        return "unpacked local selection has no archive; verify its complete inventory";
+    }
+    if (observed.bytes != platform.archive_bytes || observed.sha256 != platform.archive_sha256) {
+        return "download differs from the resolved size or SHA-256";
+    }
+    return "";
+}
+
+// The adapter hashes actual regular files after safe extraction (or for local
+// selection). Extra, missing, reordered, or changed files cannot go unnoticed;
+// order itself is not significant. It inspects ABI only after byte verification.
+pub InventoryError :: (expected: File[], observed: File[]) -> string {
+    if (length(observed) != length(expected)) {
+        return "package inventory is incomplete or contains unexpected files";
+    }
+    for (file in expected) {
+        index := FileIndex(observed, file.path);
+        if (index < 0) {
+            return format_text("package is missing required file {}", file.path);
+        }
+        actual := observed[index];
+        if (actual.bytes != file.bytes || actual.sha256 != file.sha256 ||
+            actual.executable != file.executable) {
+            return format_text("package file differs from resolved bytes or mode: {}", file.path);
+        }
+    }
+    return "";
+}
+
+// Observed values come from the verified host/bootstrap loader, not a second
+// copy of manifest fields. Compiler completeness is verified by that loader.
+pub RuntimeError :: (platform: Platform, observed: Compatibility, compiler_complete: bool, build_capable: bool) -> string {
+    if (observed.platform != platform.name || observed.native_abi != platform.native_abi ||
+        observed.prepared_format != platform.prepared_format ||
+        observed.bootstrap_minimum > platform.bootstrap_version || observed.bootstrap_minimum < 1 ||
+        observed.bootstrap_maximum < platform.bootstrap_version) {
+        return "verified executable reports a different platform, ABI or bootstrap capability";
+    }
+    if (!build_capable) {
+        return "verified executable does not provide the required build services";
+    }
+    if (!compiler_complete) {
+        return "package compiler/core/bootstrap resources are incomplete or inconsistent";
+    }
+    return "";
+}

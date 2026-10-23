@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      studio_sha:
+        description: 'Optional exact Studio SHA for additional native/Web SDK verification'
+        required: false
+        type: string
   pull_request:
     branches: [main]
     paths-ignore:
@@ -54,7 +59,6 @@ jobs:
         run: python3 test/tools/package_licenses.py
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
-      # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
       # validate-project runs chibi_ctl dozens of times, and published-docs and
@@ -72,6 +76,8 @@ jobs:
       - name: Project selectors
         run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Language selectors
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
         run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
 
   native-macos:
@@ -160,19 +166,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Require Studio checkout access
-        env:
-          TOKEN: ${{ secrets.CHIBI_STUDIO_TOKEN }}
-        shell: bash
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Add a CHIBI_STUDIO_TOKEN secret that can read waldnercharles/chibi-studio."
-            exit 1
-          fi
       - uses: actions/checkout@v4
         with:
           repository: waldnercharles/chibi-studio
-          token: ${{ secrets.CHIBI_STUDIO_TOKEN }}
           path: chibi-studio
           persist-credentials: false
       # No third-party actions run beside the checkouts, and CMake and Ninja are
@@ -202,27 +198,39 @@ jobs:
 
   studio:
     name: Studio build and startup
-    # Pull requests from forks and Dependabot get no secrets, so they can't check out Studio.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    # Studio is public; the read-only workflow token can check it out for every PR.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
-      - name: Require Studio checkout access
-        env:
-          TOKEN: ${{ secrets.CHIBI_STUDIO_TOKEN }}
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Add a CHIBI_STUDIO_TOKEN secret that can read waldnercharles/chibi-studio."
-            exit 1
-          fi
+        with:
+          ref: ${{ github.sha }}
+          path: engine
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: waldnercharles/chibi-studio
-          token: ${{ secrets.CHIBI_STUDIO_TOKEN }}
-          path: chibi-studio
+          path: studio
+          persist-credentials: false
+      - name: Record clean engine and Studio sources
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          test -z "$(git -C "$GITHUB_WORKSPACE/studio" status --porcelain --untracked-files=normal)"
+          mkdir -p "$RUNNER_TEMP/studio-sdk-evidence"
+          python3 - <<'PY_SOURCE'
+          import json, os, subprocess
+          from pathlib import Path
+          def source(path):
+              def git(*args):
+                  return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
+              return {'revision': git('rev-parse', 'HEAD'), 'tree': git('rev-parse', 'HEAD^{tree}'), 'dirty': False}
+          record = {'engine': source(Path.cwd()), 'studio': source(Path(os.environ['GITHUB_WORKSPACE']) / 'studio')}
+          (Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence/sources.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY_SOURCE
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -236,14 +244,73 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
       - name: Package the SDK
         run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Verify clean packaged SDK identity
+        run: |
+          python3 - <<'PY_SDK'
+          import os, shutil
+          from pathlib import Path
+          from tools.package_sdk import previous_package
+          prefix = Path('dist/sdk')
+          package = previous_package(prefix, 'sdk')
+          if package['source']['revision'] != os.environ['GITHUB_SHA'] or package['source']['dirty']:
+              raise SystemExit('SDK does not identify the clean engine candidate')
+          shutil.copyfile(prefix / 'share/chibi/package.json', Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence/package.json')
+          PY_SDK
       - name: Build Studio against the packaged SDK
-        run: make studio-build STUDIO_SOURCE="$PWD/chibi-studio" STUDIO_SDK_PREFIX=dist/sdk
+        run: make studio-build STUDIO_SOURCE="$GITHUB_WORKSPACE/studio" STUDIO_SDK_PREFIX=dist/sdk
       - name: Two hidden Studio frames
         shell: bash
         run: |
+          cp -a --reflink=auto "$GITHUB_WORKSPACE/studio/projects/starter" "$RUNNER_TEMP/studio-sdk-project"
           xvfb-run -a build-studio/bin/chibi-dev \
-            --project-root chibi-studio/projects/starter --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee studio.log
-          ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' studio.log
+            --project-root "$RUNNER_TEMP/studio-sdk-project" --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee "$RUNNER_TEMP/studio-sdk-evidence/studio.log"
+          ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' "$RUNNER_TEMP/studio-sdk-evidence/studio.log"
+
+      - name: Verify Studio consumed the packaged SDK
+        run: |
+          python3 - <<'PY_BINDING'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          from tools.package_sdk import previous_package
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence'
+          sources = json.loads((evidence / 'sources.json').read_text())
+          for name, path in [('engine', Path.cwd()), ('studio', Path(os.environ['GITHUB_WORKSPACE']) / 'studio')]:
+              def git(*args):
+                  return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
+              if (git('rev-parse', 'HEAD') != sources[name]['revision']
+                      or git('rev-parse', 'HEAD^{tree}') != sources[name]['tree']
+                      or git('status', '--porcelain', '--untracked-files=normal')):
+                  raise SystemExit(f'Source changed: {name}')
+          prefix = Path('dist/sdk').resolve()
+          package = previous_package(prefix, 'sdk')
+          manifest = prefix / 'share/chibi/package.json'
+          manifest_hash = hashlib.sha256(manifest.read_bytes()).hexdigest()
+          cache = {}
+          for line in Path('build-studio/CMakeCache.txt').read_text().splitlines():
+              if ':' in line and '=' in line and not line.startswith(('#', '//')):
+                  key, value = line.split('=', 1)
+                  cache[key.split(':', 1)[0]] = value
+          expected = {'Chibi_DIR': str(prefix / 'lib/cmake/Chibi'),
+                      'CHIBI_STUDIO_SDK_BUILD_ID': package['build_id'],
+                      'CHIBI_STUDIO_SDK_MANIFEST_SHA256': manifest_hash}
+          if any(cache.get(key) != value for key, value in expected.items()):
+              raise SystemExit('Studio consumed a different SDK')
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          startup_project = {
+              'source': 'studio/projects/starter',
+              'copy': str(Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-project'),
+              'source_manifest_sha256': digest(Path(os.environ['GITHUB_WORKSPACE']) / 'studio/projects/starter/project.kdl'),
+              'opened_manifest_sha256': digest(Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-project/project.kdl')}
+          receipt = dict(expected, startup_project=startup_project)
+          (evidence / 'consumer.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY_BINDING
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio-sdk-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/studio-sdk-evidence
+          if-no-files-found: ignore
 
   format:
     name: clang-format
@@ -258,3 +325,49 @@ jobs:
           echo '/tmp/clang-format/bin' >> "$GITHUB_PATH"
       - name: Check format
         run: sh tools/clang-format.sh --check
+
+  paired-studio:
+    if: github.event_name == 'workflow_dispatch' && inputs.studio_sha != ''
+    name: Paired Studio SDK verification
+    uses: ./.github/workflows/paired-studio.yml
+    with:
+      studio_sha: ${{ inputs.studio_sha }}
+
+  graph-sdk-linux:
+    name: Graph SDK packaging and relocation (Linux)
+    runs-on: ubuntu-24.04
+    env:
+      LIBCLANG_ROOT: /usr/lib/llvm-18
+      NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+      JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify clean source candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+      - name: Install graph build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev ccache python3-venv \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv "$RUNNER_TEMP/graph-sdk-build-tools"
+          "$RUNNER_TEMP/graph-sdk-build-tools/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
+          install -d -m 700 "$XDG_RUNTIME_DIR"
+      - name: Build Release graph compiler and build hosts
+        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+      - name: Build graph test drivers with the Release host
+        run: make test-build GRAPH_BUILD=1 BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+      - name: Verify graph SDK packaging and relocation
+        run: CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" python3 tools/test_policy.py tool build-sdk
+      - name: Verify sources remain unchanged
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"

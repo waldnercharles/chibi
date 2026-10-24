@@ -38,3 +38,137 @@ Default standalone language build reached asset generation and failed with `Prep
 A default-on `CHIBI_SDK_BUILD_ASSET_COMPILER_HOST` option permits a source/bootstrap-test configuration to omit that circular generation dependency. This worktree uses `cmake -S test/language -B build-language -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF`, then normal `make language-build JOBS=2`; configuration/build passed in 1.4s/8.0s after reusable dependencies were built. Default behavior, archive ownership and source-only asset generation are unchanged; the asset-host gate is explicitly unrun/pending here and must be restored for full validation after compatible scratch generation.
 
 Changed C fixtures compile with warnings as errors. Imported floating fixtures needed explicit designated `constant` initializers; no warning suppression was added. Their failure loop now releases host/result after each invocation. A syntax-only x86_64 Mac-header compilation with the native test guard enabled passes, but this is not Linux execution or a Linux build claim. Typed-floating constant implementation has not started at this source-composition checkpoint.
+
+## Corrective source checkpoint after parent review
+
+The asset-host option above was NEW in 2920296, in `sdk/CMakeLists.txt` only.
+It was not a pre-existing supported acceptance configuration. This corrective
+checkpoint removes both its declaration and gate, restoring that file exactly
+to main220dc. The OFF build and test logs remain historical diagnostic evidence;
+they do not establish full integration acceptance. The cached option is removed
+with `cmake -S test/language -B build-language -U CHIBI_SDK_BUILD_ASSET_COMPILER_HOST`.
+Existing `chibi-build-host`, `chibi-compiler-host`, `semantic.c.o` and
+`package_compiler_chibi.c.o` targets build with two jobs and warnings enabled.
+No replacement production switch or Graph/CMake asymmetry is introduced.
+
+The uncommitted typed-constant implementation is now removed from the active
+source tree and retained locally, unapplied, for review:
+`.chibi/m2-integration/typed-float-review.patch`, SHA-256
+`3a528233425246e2c6ab3d252596f5d3eaacbec7f7a9cfbfd15e92dc2d1d214c`.
+It applies to 2920296 and contains exactly Compile.chibi (137 changed lines)
+and Number.chibi (44 additions), 178 insertions/3 deletions total. Full local
+source snapshots are retained alongside it. It has not been published or
+expanded after the review hold. No generation has been run.
+
+The exact design is the ordinary FoldConstant extension described above:
+primitive floating declaration admission; waiting/private named constants;
+contextual literals; unary sign; explicit scalar conversion; existing integer
+FoldConstant before integer-to-floating conversion. ConstantExpression remains
+integer-only. Number.FloatingBits converts represented bits and delegates finite
+normal double narrowing to existing FloatFromDouble; it handles zero, overflow,
+infinity/NaN classification and float-subnormal widening separately. No new
+constant AST walker, binary-floating evaluator, Scalar special case or ABI is
+introduced. The latest integer-operand range correction in this patch has not
+been executed. This remains a proposal, not accepted source.
+
+### Literal fixture contract
+
+`float_conversion_cases.h` retains the original `[16777216.0]` positive oracle,
+all prior fixtures, and adds these independent fixed expectations:
+
+| Source boundary | Fixed expected result |
+| --- | --- |
+| double16777219 narrowed to float | 16777220.0 (upper even neighbour) |
+| double-16777217 narrowed to float | -16777216.0 |
+| forward reference from double to a float1.5 constant | 1.5 |
+| named float1.5 in ordinary body addition | 3.0 |
+| explicit double1e300 narrowing | positive infinity classification |
+| unary negative of named float zero, then widening | negative-zero classification |
+| exact decimal2^-149 stored as float, then widened | exact double2^-149 |
+| exact decimal2^-150 explicitly narrowed | positive zero (even tie) |
+
+These cases make no floating binary-expression constant-initializer claim.
+Infinity/zero predicates run in ordinary function bodies. Existing C-fed packed
+conversion tests separately retain fixed hexadecimal/subnormal/boundary values,
+both signed infinities and NaN classification. No expected result is computed
+by a production cast or by either compiler.
+
+The two constant narrowing negatives now require their actual intended semantic
+boundary. A named double assigned to a float constant must reach the ordinary
+constant conversion error at the reference `Wide`, line3 column17, using the
+existing `a constant of another type needs a conversion` category. Returning a
+named double from a float function must reach existing return-type checking at
+line3 column40, `returned value differs from the result type`. Stage zero still
+pins its independent incompatible-type diagnostic at3:17/3:47. These categories
+follow the approved explicit-narrowing requirement and existing semantic owners;
+unsupported-type, unrelated-error or acceptance results cannot satisfy them.
+
+The original wrong-production controls remain preserved unchanged at float
+handoff e436d48b, under `docs/evidence/float-conversion/`: broad admission,
+zero-instead-of-widening emission and unrelated-error mutations. They are
+historical receipts, not new-head mutation runs. New fixture execution and fresh
+mutations are pending a compatible, reviewed scratch artifact and test driver.
+Only fixture object compilation is claimed for this corrective checkpoint.
+
+### Exact artifact identity, not substitution
+
+Both artifacts use outer `CHIBICLO` version1 and contain12 modules. Their inner
+prepared headers are unsigned LEB128 encoded; the prepared version is not the
+outer closure version or bootstrap.json's version5. Every module was decoded
+read-only using the on-disk row lengths and header encoding. Full offsets,
+headers and identities are in [artifact-identities.json](evidence/m2-integration/artifact-identities.json).
+
+| Git snapshot, same path `tools/compiler/bootstrap/compiler.chibip` | Bytes | SHA-256 | Inner prepared version |
+| --- | ---: | --- | ---: |
+| main220dc, merge2920296 and current worktree | 12644080 | d2fd2b2d9aacd7add71b4c70ce04a74ca72159a17e3220b1102020b8bd3414f7 | 20 |
+| M2ab8c4a58 | 13390570 | 58d17229e51162cc713a09ff8330911b6d3f210ff9b12e91619ed9da7af77c06 | 21 |
+
+For core:strings at byte68, the first four encoded header fields are
+`c5a4c1caa4a892a4431408a0d182d6f1b4db8f9701` on main and
+`c5a4c1caa4a892a4431508a0d182d6f1b4db8f9701` on M2. They decode to
+magic0x4348494249505245, version20/21, pointer width8 and
+ABI0x971f6da71ac0a8a0. Equal ABI fields do not make different prepared schemas
+compatible. Current runtime source requires prepared21.
+
+The normal merge would have carried M2's changed artifact. Before committing
+2920296, I explicitly restored both `compiler.chibip` and `bootstrap.json` from
+main to honor the artifact-publication hold. Thus 2920296 preserves main's bytes;
+it is not an untouched automatic merge result. There has been no hash relabel,
+new artifact substitution or claim that the preserved seed matches M2 source.
+
+[Before implementation](evidence/m2-integration/typed-constant-before.txt) records
+ordinary conversion tests passing and typed constants red as unsupported. The
+[initial local probe](evidence/m2-integration/typed-constant-initial-probe.txt)
+accepted the original rounding positive but remained red because negative
+categories were then pending. Both used the earlier diagnostic-only asset-OFF
+configuration; neither represents this corrected candidate or final acceptance.
+The source patch's latest integer-range correction and new fixtures remain
+unexecuted. PR688, including d9032490, remains separate and unapplied. The known
+blocker is version compatibility, with no capacity-failure evidence.
+
+### Review findings on the held local patch
+
+A fresh read-only reviewer found two blockers. First, existing
+EvaluateConversion calls FoldConstant then ExactStored; permitting floating
+FoldConstant results would let `uint64(Wide)` reinterpret the bits of
+`Wide: double : 1.5` as4609434218613702656. Integer constant conversion needs
+an explicit floating-operand rejection before that path, plus ordinary/wrap
+negative controls. This is not permission to implement float-to-integer folding.
+Second, conversion-operand inference does not recursively peel unary signs and
+parentheses, so `double(-(1.5))` incorrectly selects an integer fold. The existing
+inference helper needs a bounded correction with nested-sign/parenthesis cases.
+Neither correction has been made while the proposal is held.
+
+Reviewer also requests constant negative overflow, near-maximum rounding into
+infinity, and a separately authored-only unsupported binary-initializer control.
+The shared stagezero/stageone table cannot assume equal acceptance for forms
+that stagezero supports but this bounded authored compiler deliberately does
+not yet implement. These remain review tasks, not silently broadened semantics.
+
+After removal of the option, normal `make language-build JOBS=2` was rerun and
+exited2 at the required authored asset generation, with the same precise
+`Prepared module core:strings: unknown prepared format version; rebuild prepared code`
+diagnostic. This confirms the normal gate is restored. It is a known version
+block, not denial or uncertain execution, and no capacity workaround was tried.
+A compatible scratch artifact, full driver execution and recovery remain
+pending parent source review and explicit generation authorization.

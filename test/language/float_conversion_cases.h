@@ -70,7 +70,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected float, got double; convert "
                       "with float(value)",
                       3,
-                      17 } },
+                      17 },
+      .stage_one = { "a constant of another type needs a conversion", 3, 17 } },
     { "implicit-narrow-typed-constant-return",
       "package facts\nWide: double : 16777217.0;\npub Fold :: (value: double) "
       "-> float { return Wide; }\n",
@@ -81,7 +82,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected float, got double; convert "
                       "with float(value)",
                       3,
-                      47 } },
+                      47 },
+      .stage_one = { "returned value differs from the result type", 3, 40 } },
     { "explicit-narrow-declaration",
       "package facts\npub Fold :: (value: double) -> float { result: float = "
       "float(value); return result; }\n",
@@ -212,6 +214,76 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       true,
       "[1.5]",
       "[16777216.0]",
+      .constant = true },
+    /* Fixed literal answers: two halfway parities, source dependencies,
+     * signed zero, overflow and exact powers of two. No production cast
+     * computes an expected value. Body arithmetic exercises ordinary lowering. */
+    { "constant-round-even-upper",
+      "package facts\nValue: float : float(double(16777219.0));\npub Fold :: "
+      "(unused: float) -> float { return Value; }\n",
+      true,
+      "[1.5]",
+      "[16777220.0]",
+      .constant = true },
+    { "constant-round-even-negative",
+      "package facts\nValue: float : float(double(-16777217.0));\npub Fold :: "
+      "(unused: float) -> float { return Value; }\n",
+      true,
+      "[1.5]",
+      "[-16777216.0]",
+      .constant = true },
+    { "constant-forward-widen",
+      "package facts\nWide: double : Narrow;\nNarrow: float : 1.5;\npub Fold "
+      ":: (unused: float) -> double { return Wide; }\n",
+      true,
+      "[1.5]",
+      "[1.5]",
+      .constant = true },
+    { "constant-named-body-arithmetic",
+      "package facts\nValue: float : 1.5;\npub Fold :: (unused: float) -> "
+      "float { return Value + Value; }\n",
+      true,
+      "[1.5]",
+      "[3.0]",
+      .constant = true },
+    { "constant-explicit-overflow",
+      "package facts\nWide: double : 1e300;\nValue: float : float(Wide);\npub "
+      "Fold :: (unused: float) -> bool { return Value > 0.0 && Value == Value "
+      "+ Value; }\n",
+      true,
+      "[1.5]",
+      "[true]",
+      .constant = true },
+    { "constant-negative-zero-alias",
+      "package facts\nZero: float : 0.0;\nNegative: float : -Zero;\nWide: "
+      "double : Negative;\npub Fold :: (unused: float) -> bool { return Wide "
+      "== 0.0 && 1.0 / Wide < 0.0; }\n",
+      true,
+      "[1.5]",
+      "[true]",
+      .constant = true },
+    { "constant-subnormal-widen",
+      "package facts\nTiny: float : "
+      "1."
+      "401298464324817070923729583289916131280261941876515771757068283889791082"
+      "68586060148663818836212158203125e-45;\nWide: double : Tiny;\npub Fold "
+      ":: (unused: float) -> bool { return Wide == "
+      "1."
+      "401298464324817070923729583289916131280261941876515771757068283889791082"
+      "68586060148663818836212158203125e-45; }\n",
+      true,
+      "[1.5]",
+      "[true]",
+      .constant = true },
+    { "constant-subnormal-tie-zero",
+      "package facts\nValue: float : "
+      "float(double(7."
+      "006492321624085354618647916449580656401309709382578858785341419448955413"
+      "42930300743319094181060791015625e-46));\npub Fold :: (unused: float) -> "
+      "bool { return Value == 0.0 && 1.0 / Value > 0.0; }\n",
+      true,
+      "[1.5]",
+      "[true]",
       .constant = true },
 };
 #endif

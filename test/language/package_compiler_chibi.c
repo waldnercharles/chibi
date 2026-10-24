@@ -217,6 +217,22 @@ static const sample samples[] = {
       .message = "Constant shift count is outside the type",
       .line = 2,
       .column = 12 },
+    { .name = "comparisons of untyped literals",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Guard :: () -> int {\n"
+                "    if (7 < 3) { return 1; }\n"
+                "    return 2;\n"
+                "}\n"
+                "Wide :: () -> bool { return 3000000000 > 2; }\n"
+                "Mixed :: () -> bool { return 2.5 > 2; }\n"
+                "Negative :: () -> bool { return -1 < 0; }\n"
+                "Same :: () -> bool { return 7 == 7; }",
+      .calls = { { .function = "Guard", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Mixed", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Same", .arguments = "[]", .expected = "[true]" } } },
     { .name = "private imported function",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"

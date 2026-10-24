@@ -191,7 +191,7 @@ These focused results do not constitute full-suite, Studio or fidelity acceptanc
 
 ## Verification
 
-Use focused C selectors under the existing 60-second supervisor. Check geometry
+Use focused C selectors through the production supervisor. Check geometry
 bounds, normals, holes, neighboring chunks, cut/reset revisions and unchanged
 cache reuse. Use a second non-basalt specimen for the generic component. Check
 forward/rear spotlight energy, intact/cut blockers and nonabsorbing rear walls
@@ -230,8 +230,7 @@ The non-basalt PlanarSurfaces fixture formats and executes four CPU frames.
 Voidweaver validates, compiles and has matched native Metal on/off/cut captures;
 its collision/traversal/reset batch retains the expected 712-cell breach.
 See the game's `docs/engine-surface-pass.md` for exact artifact identities,
-images and remaining visual/performance limits. Full native/render suites are
-quarantined, not passed; no Studio, browser or packaged SDK acceptance ran.
+images and remaining visual/performance limits. Full native/render suites were not run; no Studio, browser or packaged SDK acceptance ran.
 
 Initial failures were resolved: Metal does not accept the translated numeric
 `mix` with a boolean vector; equivalent numeric boundary arithmetic compiles.

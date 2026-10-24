@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 
-from test_policy import admitted, NOTICE, run_commands, DEADLINE, TOOLS
+from test_policy import run_commands, timeout_deadline, TOOLS
 
 ROOT = Path(__file__).resolve().parents[1]
 CPU = re.findall(r'CHIBI_CPU_SELECTOR\("([^"]+)"\)',
@@ -23,7 +23,7 @@ GPU = re.findall(r'CHIBI_GPU_SELECTOR\("([^"]+)"\)',
                  (ROOT / 'test/execution_selectors.h').read_text())
 START = time.monotonic()
 HEALTH = None
-NEXT = 'make test-policy-inventory'
+NEXT = 'make test-list'
 CPU_SELECTORS = {
     '--player-url': 'player-url',
     '--player-clock': 'player-clock',
@@ -59,6 +59,8 @@ CPU_SELECTORS = {
     '--render-geometry': 'render-geometry',
     '--shader-graphs': 'shader-graphs',
     '--shader-bake': 'shader-bake',
+    '--shader-source-debug': 'shader-source-debug',
+    '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',
     '--terrain-seams': 'terrain-seams',
@@ -131,7 +133,7 @@ def selector_command(selector, mappings):
 
 def runnable_selectors(classified, mappings):
     return [selector for selector in classified
-            if admitted([selector]) and selector_command(selector, mappings)]
+            if selector_command(selector, mappings)]
 
 
 def studio_resource_preflight(build, resources=None):
@@ -285,11 +287,10 @@ def report(status, reason, **extra):
     value = dict(ok=status == 'passed', status=status, reason=reason,
                  coverage='focused-iteration', full_verification=False,
                  elapsed_seconds=round(time.monotonic() - START, 3), capabilities=HEALTH,
-                 quarantined_checks=['full-native', 'render'],
                  next_command=NEXT)
     value.update(extra)
     print(json.dumps(value), flush=True)
-    print(f'Agent iteration: {status} ({reason}); full native/render coverage disabled, not passed.', file=sys.stderr)
+    print(f'Agent iteration: {status} ({reason}); coverage is limited to the selected check.', file=sys.stderr)
     return 0 if status == 'passed' else 2
 
 
@@ -306,12 +307,11 @@ def startup_health():
 
 def test_plan(purpose, health):
     """A small purpose-based plan; discovery never authorizes a full suite."""
-    plan = dict(purpose=purpose, capabilities=health, full_verification=False,
-                quarantined_checks=['full-native', 'render'])
+    plan = dict(purpose=purpose, capabilities=health, full_verification=False)
     if purpose == 'logic':
         if '--source-edit' not in runnable_selectors(CPU, CPU_SELECTORS):
             return dict(plan, commands=[], status='blocked', gpu_startup=False,
-                        reason='source_edit_policy_route_unavailable')
+                        reason='source_edit_command_unavailable')
         return dict(plan, commands=['make agent-test AGENT_SELECTOR=--source-edit'],
                     gpu_startup=False, reason='logic_change_selects_CPU_source_assertions')
     if health.get('status') != 'enumerated' or not health.get('devices'):
@@ -320,16 +320,13 @@ def test_plan(purpose, health):
         return dict(plan, commands=['python3 tools/agent.py mp4 REQUEST.json --frames 60 --output OUTPUT.mp4'],
                     requires_explicit_mp4_request=True, warmup='set gpu_warmup_frames for the scene',
                     output_frames=60, render_seconds=120, gpu_startup=True)
-    return dict(plan, commands=['make test-policy-inventory'], status='blocked',
-                quarantine=NOTICE,
-                gpu_startup=True, render_seconds=60, reference_resolution='unchanged',
+    return dict(plan, commands=['make agent-gpu-test AGENT_SELECTOR=--scene3d'],
+                gpu_startup=True, reference_resolution='unchanged',
                 preview_size=[320, 180] if health.get('acceleration') == 'hardware' else [96, 64],
                 reason='purposeful_GPU_assertions_on_' + health.get('acceleration', 'unknown') + '_renderer')
 
 
 def run(command, timeout, env=None, request=None, rss_mib=None):
-    if DEADLINE in os.environ:
-        timeout = min(timeout, max(0, float(os.environ[DEADLINE]) - time.monotonic()))
     # A file avoids pipe deadlocks and keeps arbitrary child logs out of JSON stdout.
     with tempfile.TemporaryFile(mode='w+') as log, tempfile.TemporaryFile(mode='w+') as source:
         if request is not None:
@@ -388,6 +385,7 @@ def main():
     add_parser(sub)
     for action in ['test', 'gpu-test']:
         test = sub.add_parser(action)
+        test.add_argument('--timeout', type=float, help='Optional positive timeout in seconds')
         test.add_argument('selector', help='Pass -- before the native --selector')
     for action in ['preview', 'mp4']:
         render = sub.add_parser(action)
@@ -397,11 +395,11 @@ def main():
         if action == 'mp4':
             render.add_argument('--frames', type=int, default=60, help='3..180 output frames at 60 fps (max 3 seconds)')
     args = parser.parse_args()
+    if args.action in ('test', 'gpu-test'):
+        timeout_deadline(args.timeout)
     if args.action == 'validation-plan':
         return validation_plan(args, ROOT, runnable_selectors(CPU, CPU_SELECTORS),
                                runnable_selectors(GPU, GPU_SELECTORS))
-    if args.action in ['test', 'gpu-test'] and not admitted([args.selector]):
-        return report('blocked', NOTICE, selector=args.selector)
     if args.action in ['doctor', 'plan', 'gpu-test', 'preview', 'mp4']:
         HEALTH = startup_health()
     if args.action == 'doctor':
@@ -415,10 +413,7 @@ def main():
         print(json.dumps(dict(cpu_selectors=runnable_selectors(CPU, CPU_SELECTORS),
                               opt_in_gpu_selectors=runnable_selectors(GPU, GPU_SELECTORS),
                               unavailable_selectors=[s for s in CPU + GPU
-                                                     if not admitted([s]) or not
-                                                     selector_command(s, CPU_SELECTORS if s in CPU else GPU_SELECTORS)],
-                              temporary_quarantine=NOTICE,
-                              other_selectors='temporarily quarantined; hardware opt-in cannot authorize them',
+                                                     if not selector_command(s, CPU_SELECTORS if s in CPU else GPU_SELECTORS)],
                               authoring_workloads=dict(
                                   cpu=['asset inspection/edit/validation', 'preview_field', 'run_scenario', 'profile_scenario (simulation)'],
                                   bounded_gpu=['preview_shader', 'preview_scene'],
@@ -443,7 +438,7 @@ def main():
         mappings = CPU_SELECTORS if args.action == 'test' else GPU_SELECTORS
         command = selector_command(args.selector, mappings)
         if not command:
-            return report('blocked', 'selector_has_no_migrated_policy_route', selector=args.selector)
+            return report('blocked', 'selector_has_no_command', selector=args.selector)
         env['CHIBI_EXECUTION_PROFILE'] = 'iteration' if args.action == 'test' else 'gpu-check'
         preflight = None
         if args.selector in STUDIO_SELECTORS:
@@ -469,20 +464,18 @@ def main():
                 env['CHIBI_THUMBNAIL_CACHE'] = str(project_copy / '.acceptance-thumbnails')
                 command = [str(acceptance_binary), STUDIO_ACCEPTANCE[args.selector][0], '--project-root', str(project_copy)]
             with tempfile.TemporaryFile(mode='w+') as log:
-                code = run_commands([command],
-                                    max(.001, 60 - (time.monotonic() - START)), env, log)
+                code = run_commands([command], seconds=args.timeout, env=env, output=log)
                 if code:
                     log.seek(0)
                     raise RuntimeError(f'child_exit_{code}: {log.read()[-4000:]}')
                 if args.selector in STUDIO_SELECTORS:
                     log.seek(0)
                     execution_evidence = studio_acceptance_output(args.selector, log.read())
-        reason = ('admitted_studio_acceptance_completed' if args.selector in STUDIO_SELECTORS else
+        reason = ('studio_acceptance_completed' if args.selector in STUDIO_SELECTORS else
                   'selected_assertions_passed')
         return report('passed', reason,
                       selector=args.selector, artifact_preflight=preflight,
-                      execution_evidence=execution_evidence,
-                      skipped=[dict(check='full-native/render', reason='temporary_60_second_quarantine')])
+                      execution_evidence=execution_evidence)
     if not Path('/proc/self/status').exists():
         return report('blocked', 'render_RSS_budget_requires_Linux_proc_use_hardware_profile_on_other_hosts')
     request = json.loads(args.request.read_text())

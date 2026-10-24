@@ -51,18 +51,25 @@ import:
 - parameter defaults that are integer, bool or string literals, `(name:
   string = "you", count: int = 1)`: a call that omits trailing arguments
   passes their defaults, as stage zero does. A floating default is rejected;
-- `assert(condition, "message")`, where the target links the core pack's
-  `assert`, as a game does: the call fails when the condition is false, with
+- Unqualified `assert(condition, "message")` is a checked language intrinsic,
+  even when the target has no native `assert` capability. An authored callable
+  of that name takes precedence; qualified calls resolve normally. The intrinsic
+  fails when the condition is false, with
   "Assertion failed: " and the message, or the condition's source when there
   is none or it is empty, as stage zero's `ASSERT` does. Its arguments may be
   named `condition` and `message`; the message must be a string literal.
   `Target`'s `assert_failure` is that failure's kind. Stage zero compiles an
   assert without a condition to one that always fails; stage one refuses it;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
-  is a local, zero until the body sets it; `return (a, b)` gives each its
-  value, and `return` or the body's end returns them. A call's `.name` reads
-  one, directly or through a local, as for a native's several results. A
-  named result is a number or a bool;
+  is a writable binding initialized as its type requires. `return (a, b)`
+  assigns each value in order, then returns them; a bare `return` returns
+  their current values. A single named result also accepts `return value`
+  and its call yields that value directly. A call's `.name` reads a named
+  result, directly or through a local. The projection has the declared result
+  type, with checked numeric conversion when a local widened the value.
+  A named result may be a number, bool
+  or struct; structs use owned, typed storage and retain their field bytes
+  when returned to the caller;
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
@@ -202,9 +209,15 @@ against (`docs/testing.md#game-equivalence`). Events, components and the
 fields of game types match their names as the catalog matches them: exactly,
 else loosely, ignoring case, spaces, underscores and hyphens.
 
-A behavior may hold integer and floating states with literal initial values,
+A behavior may hold integer, floating, boolean, string and entity state,
 member procedures, and `on` handlers of the game's events with scalar
-payloads. A
+payloads. State types may be inferred from boolean, string and numeric literals.
+An entity state may omit its default and starts empty; the other supported
+scalar states require a default. Entity values retain their nominal type through
+`self`, component fields and keyed scene globals; a different handle type cannot
+be assigned or compared as an entity. A typed `null` default gives the type's zero
+value. Strings preserve all bytes, including embedded NUL, and assignments keep
+an instance-owned copy after the handler returns. A
 member procedure is a function the behavior's handlers call; stage zero
 names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
 event's payload, one parameter per field in payload order. As in stage zero,
@@ -415,7 +428,7 @@ x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
 ## Test
 
 Four groups of samples each have two selectors, one for each backend the
-compiler runs on, each under its own 60 s ceiling. The bytecode selector also
+compiler runs on. The bytecode selector also
 compares each module with stage zero's. Times are from macOS arm64, Debug +
 ASan/UBSan, 2026-10-20, at a load average of about 3. About 33 s of each is
 stage zero preparing stage one:

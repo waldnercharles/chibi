@@ -175,7 +175,9 @@ TEST_CASE(sampled_sdf_models)
     invalid.parameter = -20;
     REQUIRE(!shader_volume_validate(&invalid, &image, &error));
     float rejected;
-    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected));
+    error = (shader_error){ 0 };
+    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected, &error));
+    REQUIRE(error.node == invalid.source_id && strstr(error.message, "metadata"));
     shader_graph part_distance, part_hit;
     shader_graph_init(&part_distance);
     shader_graph_init(&part_hit);

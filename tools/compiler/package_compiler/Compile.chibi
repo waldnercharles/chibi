@@ -79,6 +79,7 @@ Ops :: struct {
     select: int;
     variable: int;
     store: int;
+    store_value: int;
     owner: int;
     convert: int;
     source_point: int;
@@ -199,6 +200,18 @@ TypeMember :: struct {
 pub Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
 }
+// Package assembly also returns the effects of its callables, so importers
+// reuse their summaries without compiling a dependency's bodies again.
+Assembly :: union {
+    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[], effects: int[])
+}
+EffectCall :: struct {
+    caller: int;
+    callee: int;
+}
+// The target catalog's READ, WRITE, STRUCTURAL, HOST, SUSPEND, RANDOM and
+// INVOCATION_READ bits.
+NativeEffectsMask: int : 127;
 // A package constant: an integer literal of an integer type, its 64 bits,
 // sign-extended for signed types.
 ConstDecl :: struct {
@@ -278,7 +291,8 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
-            store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
+            store: Ordinal(names, "STORE"), store_value: Ordinal(names, "STORE_VALUE"),
+            owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
             source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
             debug: debug};
 }
@@ -289,7 +303,7 @@ Complete :: (ops: Ops) -> bool {
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
-                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point,
+                   ops.select, ops.variable, ops.store, ops.store_value, ops.owner, ops.convert, ops.source_point,
                    ops.source_watch];
     for (op in used) {
         if (op < 0) {
@@ -1089,7 +1103,7 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
     return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
 }
 // The signature of the function `member` named `name`, its params numbered
-// from `first`. A named result is a scalar.
+// from `first`. A named result is a scalar or a single record.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], types: TypeDecl[],
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     added: Param[] = [];
@@ -1153,12 +1167,13 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                 return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
             }
             declared := ReadType(forest, text, types, aliases, package, Field(forest, named, "type"));
-            if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == PointerStorage ||
-                Pointer(declared.storage, declared.container)) {
+            if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == UnionStorage ||
+                declared.storage == PointerStorage || declared.container != 0) {
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
-            param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
+            param: Param = {name: result_name, storage: declared.storage, container: declared.container,
+                            record: declared.record,
                             has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
                             reference: false, node: Field(forest, named, "name")};
             added.append(param);
@@ -1309,7 +1324,7 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
          callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], ops: Ops,
+         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], native_effects: int[], ops: Ops,
          target: Target, abi: uint64) -> Result {
     // Each package's identity and module ID, and the fingerprint of its module.
     package_names: string[] = [];
@@ -1322,14 +1337,16 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     data: byte[] = [];
     starts := resize([int(0)], length(packages));
     lengths := resize([int(0)], length(packages));
+    effects := resize([int(0)], length(callables));
     for (package in order) {
         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
                         package_ids, fingerprints,
                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
-                        natives, ports, identities, ops, target, abi, Game.Package) {
+                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package) {
             case .Rejected(diagnostic):
                 return Result.Rejected(diagnostic);
-            case .Compiled(module, bytes):
+            case .Compiled(module, bytes, summaries):
+                effects = summaries;
                 // Only an importer reads a fingerprint, and none imports the root.
                 if (package != root) {
                     fingerprints[package] = writer.Fingerprint(bytes);
@@ -1419,7 +1436,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
-             identities: uint64[], ops: Ops, target: Target, abi: uint64, game: Game) -> Result {
+             identities: uint64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
+             abi: uint64, game: Game) -> Assembly {
     identity := package_names[package];
     module := package_ids[package];
     // A behavior's states, the event each of its functions handles, the
@@ -1443,7 +1461,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             game_events = declared_events;
             game_fields = payloads;
             owner_type = entity;
-            behaving = BehaviorNames(declared_states, globals);
+            behaving = BehaviorNames(declared_states, globals, TypeWithId(types, owner_type));
             aggregates = operators;
             record_makes = makes;
             make_fields = made_fields;
@@ -1465,6 +1483,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     references: writer.Reference[] = [];
     components: writer.Component[] = [];
     entries: writer.Entry[] = [];
+    effects: int[] = [];
+    for (summary in callable_effects) {
+        effects.append(summary);
+    }
+    effect_calls: EffectCall[] = [];
     requirements: writer.Requirement[] = [];
     fields: writer.Field[] = [];
     // Each record's layout and each variant's tag, as indices into `wide`, for
@@ -1583,9 +1606,10 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                            mutated, built, ops, target);
         switch tables {
             case .Failed(diagnostic):
-                return Result.Rejected(diagnostic);
+                return Assembly.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
-                          body_points, body_watches):
+                          body_points, body_watches, body_effects):
+                direct_effects := body_effects;
                 base := length(spans);
                 // Argument defaults and kinds.
                 spans.append(Range(length(values), callable.count));
@@ -1617,7 +1641,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 at = 0;
                 while (at < callable.results) {
                     named := params[callable.first + callable.count + at];
-                    values.append(ScalarValue(named.storage, 0));
+                    values.append(Header(named.storage, named.container, named.record, types, layouts));
                     at += 1;
                 }
                 spans.append(Range(length(ints), result_count));
@@ -1629,7 +1653,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 // A behavior's states are each function's variables.
                 spans.append(Range(length(values), length(kept_states)));
                 for (kept in kept_states) {
-                    values.append(ScalarValue(kept.storage, length(wide)));
+                    values.append(StateValue(kept, types, layouts, length(wide)));
                     wide.append(kept.bits);
                 }
                 spans.append(Range(length(ints), length(body_slots)));
@@ -1727,6 +1751,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     capability := length(wide);
                     host_abi := abi_one;
                     if (host.linked >= 0) {
+                        direct_effects = direct_effects | native_effects[host.linked];
                         wide.append(identities[2 * host.linked]);
                         wide.append(identities[2 * host.linked + 1]);
                         host_abi = capability + 1;
@@ -1740,6 +1765,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 }
                 spans.append(Range(length(calls), length(body_calls)));
                 for (invocation in body_calls) {
+                    effect_call: EffectCall = {caller: index, callee: invocation.callee};
+                    effect_calls.append(effect_call);
                     callee := callables[invocation.callee];
                     if (callee.package == package) {
                         references.append(Own(invocation.callee - first_own));
@@ -1768,6 +1795,10 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 spans.append(Range(0, 0));
                 written := ComponentsOf(body_cells, body_hosts, true);
                 reached := Distinct(ComponentsOf(body_cells, body_hosts, false));
+                effects[index] = direct_effects;
+                if (owner_type != 0) {
+                    effects[index] = effects[index] | Effects(ops, body_code, length(reached) != 0, length(written) != 0);
+                }
                 spans.append(Range(length(components), length(reached)));
                 for (component_id in reached) {
                     reached_row: writer.Component = {id: length(wide), binding: false};
@@ -1827,7 +1858,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                                                    forest[callable.node].start, HandlerFunction)));
                     wide.append(handled_event.id);
                     wide.append(handled_event.abi);
-                    wide.append(uint64(Effects(ops, body_code, length(reached) != 0, length(written) != 0)));
+                    wide.append(uint64(0));
                     row: writer.Entry = {id: length(wide) - 4, kind: HandlerFunction, entry_name: "", has_entry: false,
                                          event_id: length(wide) - 3, event_abi: length(wide) - 2,
                                          event_name: handled_event.name, has_event_name: true, continuation_wait: false,
@@ -1854,6 +1885,27 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 }
         }
         index += 1;
+    }
+    // A local cycle reaches a fixed point; imported callees already carry
+    // the summaries computed when their dependency modules were assembled.
+    changed := true;
+    while (changed) {
+        changed = false;
+        for (called in effect_calls) {
+            combined := effects[called.caller] | effects[called.callee];
+            if (combined != effects[called.caller]) {
+                effects[called.caller] = combined;
+                changed = true;
+            }
+        }
+    }
+    at_entry: int = 0;
+    while (at_entry < length(entries)) {
+        declared := entries[at_entry];
+        wide.append(uint64(effects[first_own + at_entry]));
+        declared.effects = length(wide) - 1;
+        entries[at_entry] = declared;
+        at_entry += 1;
     }
     // The events the handlers take, each once, in the order they first do.
     event_declarations: writer.Event[] = [];
@@ -1883,17 +1935,17 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     }
     states: writer.State[] = [];
     for (kept in kept_states) {
-        values.append(ScalarValue(kept.storage, length(wide)));
+        values.append(StateValue(kept, types, layouts, length(wide)));
         wide.append(kept.bits);
         wide.append(kept.id);
         row: writer.State = {id: length(wide) - 1, initial: length(values) - 1, shared: false, contains_tasks: false};
         states.append(row);
     }
     layouts_table: writer.ResultLayout[] = [];
-    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
-                                                                     fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
-                                                                     locals, parameters, frames, sources, layouts_table, data, hosts, calls,
-                                                                     references, components, points, watches, states, entries)));
+    return Assembly.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
+                                                                       fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
+                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, calls,
+                                                                       references, components, points, watches, states, entries)), effects);
 }
 
 // `paths` and `sources` are the files of every package, `paths[0]` one of the
@@ -1904,8 +1956,22 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
                 ports: Port[], identities: uint64[]) -> Result {
+    return CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                              names, natives, ports, identities, resize([int(0)], length(natives)));
+}
+// The complete target catalog supplies one effect mask per native, in the
+// same order as natives and identities. Compile retains the bootstrap's
+// stable signature for its verified pure-native catalog.
+pub CompileWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                           sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
+                           ports: Port[], identities: uint64[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, debug);
-    complete := length(identities) == 2 * length(natives);
+    complete := length(identities) == 2 * length(natives) && length(native_effects) == length(natives);
+    for (effect in native_effects) {
+        if (effect < 0 || effect > NativeEffectsMask) {
+            complete = false;
+        }
+    }
     for (native_row in natives) {
         if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
             native_row.first + native_row.parameters + native_row.results > length(ports)) {
@@ -1949,7 +2015,7 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
                             return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
-                                        callables, params, types, members, constants, natives, ports, identities, ops, target,
+                                        callables, params, types, members, constants, natives, ports, identities, native_effects, ops, target,
                                         abi);
                     }
             }
@@ -1962,6 +2028,17 @@ pub CompileClosure :: (project: string, collection_names: string[], collection_p
                        natives: Native[], ports: Port[], identities: uint64[]) -> byte[] {
     switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi, names, natives,
                    ports, identities) {
+        case .Rejected(diagnostic):
+            return [];
+        case .Compiled(module, bytes):
+            return bytes;
+    }
+}
+pub CompileClosureWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                                  sources: string[], debug: bool, target: Target, abi: uint64, names: string[],
+                                  natives: Native[], ports: Port[], identities: uint64[], native_effects: int[]) -> byte[] {
+    switch CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                              names, natives, ports, identities, native_effects) {
         case .Rejected(diagnostic):
             return [];
         case .Compiled(module, bytes):

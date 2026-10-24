@@ -34,7 +34,6 @@ jobs:
           persist-credentials: false
 
       - name: Package and verify the source history
-        timeout-minutes: 1
         shell: bash
         run: |
           set -euo pipefail

@@ -50,6 +50,10 @@ CHIBI_CPU_SELECTOR("--arena")
 /* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
 CHIBI_CPU_SELECTOR("--shader-graphs")
 CHIBI_CPU_SELECTOR("--shader-bake")
+/* Owned CPU intermediate/source snapshots; no device, files or resolver IO. */
+CHIBI_CPU_SELECTOR("--shader-source-debug")
+/* Authored provenance policy on two CPU backends, supplied tables only. */
+CHIBI_CPU_SELECTOR("--shader-source-chibi")
 CHIBI_CPU_SELECTOR("--material-bake")
 CHIBI_CPU_SELECTOR("--environment-authoring")
 CHIBI_CPU_SELECTOR("--terrain-seams")
@@ -62,8 +66,7 @@ CHIBI_CPU_SELECTOR("--terrain-storage")
 CHIBI_CPU_SELECTOR("--terrain-storage-commands")
 CHIBI_CPU_SELECTOR("--terrain-playable")
 
-/* Explicit opt-in checks against installed products; each runs under the
- * shared 60-second supervisor. */
+/* Explicit opt-in checks against installed products. */
 CHIBI_GPU_SELECTOR("--studio-source-edit")
 CHIBI_GPU_SELECTOR("--studio-graph-visibility")
 CHIBI_GPU_SELECTOR("--studio-scene-move")

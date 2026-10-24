@@ -1,5 +1,139 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Coordinated named struct results, 2026-10-22
+
+The next local setup slice extends the ABI20 authored compiler's existing
+named-result protocol to structs. Terrain Lab requires a named `CF_V2` result
+that returns an ordinary expression and is consumed directly. The cutover owner
+approved this scope; the managed-pointer owner reserves pointer recognition and
+requires pointer named results to remain rejected. No ABI21 code or independent
+bootstrap regeneration belongs in this slice.
+
+Native semantic/lowering behavior and the existing runtime result contract are
+the source of truth. Named record bindings need typed, owned zero storage before
+field writes; returned headers must preserve the nominal record and reach the
+correct result ordinal. Reuse the existing snapshot, result-cell and caller
+storage protocol. A singleton result works as its ordinary value while keeping
+the named projection valid. Explicit named return values are assigned in order
+before publication, as the native compiler does. Do not change native defaults
+or missing-return semantics based on assumptions.
+
+Changes span `Compile.chibi` signature/result headers, `Body.chibi` prologue and
+result bindings, and `Steps.chibi` returns, caller cells and projections.
+`test/language/package_compiler_chibi.c` owns native differential regressions for
+single scalar and record results, bare record returns and field mutation,
+multiple result projections, sequential assignment, nested string bytes and
+caller/callee copy independence. The singleton and record samples both fail on
+the current compiler before implementation. Keep helper source provenance
+explicit rather than overloading the nominal record index.
+
+After implementation, verify package and behavior results, debugger points and
+watches on VM and the platform compiled backend; then self-compilation,
+source-only recovery, formatting, independent review and the five required Make
+groups. Probe Terrain Lab again to identify its next actual blocker. Keep the
+installed default unchanged until the combined compiler and SDK support the
+representative projects. No project version migration is required.
+
+The named-result implementation passes package, struct and owned-string
+differential checks on VM and SLJIT. Singleton projections follow declaration
+initializers through lexical aliases, matching native semantic analysis, without
+adding provenance to every compiler value or name. A widened local's projection
+converts to the declared result type using the existing checked conversion.
+The same repair in native lowering resolves its physical/declared watch-type
+mismatch; valid boundaries succeed and out-of-range values fail on both paths.
+PR #660 is merged and supplies member-procedure effect propagation. The combined
+behavior fixture then exposed a separate source-semantic rule: the native
+compiler marks member access on a component-typed local as READ, even though the
+local access creates no ECS component dependency. Preserve that semantic flag
+separately from actual reached/written component tables and feed it into the
+existing effect fixed point. A private work directive collects these flags in
+the body summary without enlarging emitted instructions or changing runtime
+validation accounting. Bare typed result construction remains pure.
+
+The independently reviewed empty-project route is included in this candidate.
+`--stage-one-input` reports the exact executable-source count after writing its
+input; zero sources select explicit `--resources-only` assembly before compiler
+recovery. Assembly rescans and rejects any executable source, preserving prior
+output on failure. Empty closures remain invalid. The focused C integration
+compares artifact/resource bytes and CPU traces with native preparation while
+the behavior compiler is unavailable.
+
+The compiler owner approved regeneration of the combined ABI20 bootstrap after
+source freeze. Required Make groups, all focused compiler selectors, independent
+review and recovery with the checksum-pinned runtime gate this checkpoint;
+three-platform pinned-runtime CI gates landing. Rich game native catalogs follow
+in a separate coordinated increment. The installed default remains unchanged.
+
+The frozen checkpoint passes `make test-native test-materials test-projects
+test-language-all test-tools`: 1,561 cases and 1,568,825 assertions, no failures,
+in 865.3 seconds including configuration and builds. All thirteen focused
+compiler selectors pass (14 cases, 111,175 assertions, 188.653 seconds under
+concurrent workloads). The explicit empty-route integration passes 3 cases /
+20 assertions in 21.7 seconds including its supervisor; `make check-format`
+passes in 80.3 seconds. Bootstrap generation passes in 133.9 seconds including
+configuration and builds. The exact pinned macOS runtime, with no native
+sources and an empty child PATH, recovers byte-identical stages of 12,098,990
+bytes, SHA256
+`41905e8bc4afc3998cf48097a98d6c1ca0ce89ff2de6a6dadcffb6fb06f1c71e`.
+Its initial two-stage proof took 34.792 seconds under concurrent workloads.
+Three-platform CI is still pending; these local results do not establish Linux
+or Windows recovery, or a full self-hosted game/default cutover.
+
+## Coordinated entity expression metadata, 2026-10-22
+
+Terrain Lab now reaches `terrain = globals.Terrain` and rejects it because the
+state binding drops its declared entity record while the keyed global keeps it.
+Native entities are nominal handles. Preserve that identity in retained-state
+and `self` bindings and in native/ordinary field-read values; keep exact type
+comparison and native result headers unchanged. Verify global assignment,
+comparison with `self`, null/zero reset and rejection of a distinct handle type
+through the existing behavior differential dispatcher, including source watches.
+
+This is a narrow ABI20 producer/binding repair in the named/entity slice. Rich
+nominal native-port catalogs, native result buffers and provenance belong to
+the next coordinated compiler increment. Keep the pure bootstrap Port/target
+JSON and its twelve-argument exports unchanged; regenerate only the matching
+combined compiler artifact after validation.
+
+## Coordinated behavior-state support, 2026-10-22
+
+The local setup chat owns authored behavior state for bool, entity and string,
+including literal inference, valid defaults, nominal identity and retained string
+ownership. The compiler cutover chat owns CLI/default selection, build-program
+compilation and SDK wiring. The managed-pointer chat owns its unmerged ABI21
+changes; this increment remains on ABI20 and does not consume that branch.
+
+Implementation is limited to `package_compiler/Behavior.chibi`, its state default
+emission in `Compile.chibi`, and state assignment, entity literal/equality and
+floating literal coercion paths in `Steps.chibi`. `Body.chibi` includes null
+expressions in its debugger dispatch.
+`test/language/package_compiler_chibi.c` compares declarations, debugger metadata
+and runtime state against the native compiler on VM and SLJIT. Empty-project
+handling must agree with the cutover owner's resource-only assembly contract;
+the existing nonempty compiler-closure format must not change implicitly.
+
+Verification starts with failing behavior regressions, then the affected
+compiler behavior/package checks, self-compilation and current compiler recovery.
+Use byte-preserving string comparisons and verify state after handler return and
+later invocations. Bootstrap regeneration belongs to the coordinated compiler
+candidate. Main checkouts and the installed native default stay usable until
+the completed cutover is validated. No changes in this slice require a project
+version migration.
+
+The macOS checks passed all five required Make groups: native, materials,
+projects, language and tooling (1,561 cases, 1,568,825 assertions). Independent
+review is clear. The canonical compiler sources recover outside the checkout
+with an empty PATH and unavailable C/C++ compilers; the two compiler stages
+reproduce 11,740,548 bytes with SHA-256
+`14db7d8be677859cbd451cbbee7e225114cf65e6abaaf462a03e8bd88a21076a`.
+This slice does not establish Linux, Windows or combined SDK/Studio coverage.
+
+Terrain Lab now passes its state declarations and next rejects
+`DigPoint :: () -> (Point: CF_V2)` at `behaviors/Explorer.chibi:26:24` because
+named struct results are not supported. The cutover owner retains this follow-up
+and combined-candidate validation. The local default is not changed by this
+slice, and the checked-in bootstrap is untouched.
+
 ## How to execute this plan
 
 This is the active implementation plan for the `chibi` repository. A request to
@@ -178,8 +312,8 @@ Track language friction and discuss each package's semantics before porting it.
   changing or deleting Python, shell, Make, CMake, packaging, reflection, test
   supervision, browser, or release code. Every deletion must satisfy the caller
   and equivalence gate recorded there.
-- Read [`docs/testing.md`](docs/testing.md) before adding or running checks. Full
-  native, render, Studio, and other quarantined suites are disabled, not passed.
+- Read [`docs/testing.md`](docs/testing.md) before adding or running checks.
+  Select coverage from the affected contracts and report what actually ran.
 - Read the current language architecture and contracts before compiler work:
   [`docs/code-language.md`](docs/code-language.md),
   [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
@@ -198,7 +332,7 @@ rebase of unpublished commits. Never import an open branch merely to pre-resolve
 a possible conflict.
 
 Before publication, repeat that check, reconcile any landed overlap, review the
-complete combined diff, and run affected admitted checks on the exact candidate.
+complete combined diff, and run affected selected checks on the exact candidate.
 Attribute old results to the tree that produced them. Rerun a passing check only
 when integration or later edits changed the contract it covers.
 
@@ -327,15 +461,13 @@ Required behavior:
 
 - Preserve every argv element, including empty strings and shell metacharacters.
 - Set an explicit working directory and an allowlisted environment without
-  mutating the parent process. Preserve supervision metadata such as
-  `CHIBI_TEST_DEADLINE` when present.
+  mutating the parent process. Preserve process ownership and cancellation.
 - Bound captured stdout/stderr and report truncation.
 - Return normal child exits as `0..255` and signal termination as a negative
   signal number. Spawn failure, timeout, cancellation, invalid input, and host
   failure are capability errors with stable diagnostics, not invented exit codes.
-- Apply one inherited deadline, then cancel and reap the complete process group.
-  The test host uses the inherited shared deadline. An unsupervised invocation
-  requires the finite `--timeout-ms` budget.
+- Apply the caller's explicit operation deadline, then cancel and reap the
+  complete process group. The CLI requires a positive `--timeout-ms` argument.
 - Retain all borrowed Chibi values for the full child lifetime and release them
   on success, failure, timeout, and cancellation.
 - Reject the build capabilities when an ordinary game program requests them.
@@ -351,8 +483,7 @@ Completion criteria:
 - Linux and macOS implement and run the real-process cases. Windows keeps the
   stage-zero path until equivalent start, poll, stop, timeout, and process-tree
   behavior exists; record that gap and do not select the new host on Windows.
-- Build the exact candidate separately. Each admitted execution command shares
-  its inherited 60-second deadline. Changed C is formatted with clang-format 22,
+- Build the exact candidate separately. Changed C is formatted with clang-format 22,
   and an independent review finds no unresolved correctness or lifetime issue.
 
 ### M2. Drive the existing build from Chibi
@@ -503,7 +634,7 @@ million/sixteen million; effects retains 34 requests, 68 calls and ten parses
 at 500,000; record members retains 26 requests, 52 calls, 32 parses and four
 runtime JSON decodes at 500,000. All arguments are inherited/reset per activation,
 not whole-call or aggregate instruction ceilings. Each route remains outside
-aggregates under one unchanged production 60-second deadline. Hosted run
+aggregates. Hosted run
 39138442670 at source `ec13962865b093bbeb2693a46ec6dc22fac6e498` passed
 union members, record members, unit analysis and type relations, with execution
 identity, expected pico summaries and production deadlines verified. Effects
@@ -512,15 +643,13 @@ admitted complete three-source C syntax diagnostic reproduced one error in the
 Effects local declaration named `unordered`; Diagnostics and CoreStrings parsed
 cleanly. The local and its sole use are now named `isUnordered`, preserving
 reduction logic and all fixtures. Corrected-source syntax passed all three
-complete-source cases and nine assertions in 0.072 seconds under the unchanged
-production 60-second supervisor. That earlier run's sanitized status SHA-256 is
+complete-source cases and nine assertions in 0.072 seconds. That earlier run's sanitized status SHA-256 is
 `6139c665be643f00f75827871fbb5b93c514f35d2d1888fb75a9fcc2fd56da86`.
 The corrected source `b57ac78c53c170139d8f807158c076f971a2202b` subsequently
 passed all five complete semantic selectors in
 [run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564):
 union 3 cases, effects 4, records 5, unit analysis 3 and type relations 4.
-Execution identity, exact pico summaries and each separate production 60-second
-deadline passed. Configuration took 3s and build 15s; integer-second execution
+Execution identity and exact pico summaries were verified. Configuration took 3s and build 15s; integer-second execution
 times were 7s, 1s, 1s, 3s and 0s respectively. PR #444 merged at
 `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb`; its tree exactly matches tested tree
 `09d520fe2a5723226126b0879faaee390e87b7b9`. The sanitized status SHA-256 is
@@ -528,7 +657,7 @@ times were 7s, 1s, 1s, 3s and 0s respectively. PR #444 merged at
 This evidence belongs to that semantic tree. The transport integration rebuilds
 shared frontend and language-driver archives and still needs its own strict
 product-link audit, both full transport selectors and all five complete semantic
-selectors, independently admitted with separate unchanged 60-second deadlines.
+selectors, with independent review of the combined contracts.
 No raw hosted diagnostics or source contents are exported.
 Those compiler-only results do not replace the native adapter build or tests.
 Complete authored semantic analysis, lowering, artifact production, stage one
@@ -597,7 +726,29 @@ supported host configuration. The Linux x86_64 and Windows x64 runs wait for
 CI or a bigger host (owner decision, 2026-10-20); macOS arm64 and Wasm pass. Keep an explicit stage-zero recovery invocation
 until the clean-checkout artifact recovery test passes.
 
+The 2026-10-22 compiler self-build CI removes native runtime construction from
+the normal proof. It starts from a checksummed runtime binary recorded in
+`tools/compiler/runtime.json` and the checked-in compiler artifact, compiles
+the current compiler sources, and executes the resulting compiler to compile
+them again. No C compiler or CMake is installed or invoked by that workflow;
+native runtime-seed construction is a separate manual recovery operation.
+This proves compiler-artifact self-reproduction on the supported native hosts.
+The final installed build/link and checked-game acceptance above remains a
+separate gate; the native runtime itself is still an explicit prebuilt input.
+
 ### M6. Replace the internal build graph
+
+Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
+installs graph-built private hosts and their complete compiler/core/bootstrap,
+authored build programs, graph packages and matching dependency notices into a
+fresh relocatable prefix. Private directory reservation and publication refuse
+existing paths. The graph's explicit profile emits commands without toolchain
+discovery. This working slice now includes main `5c28191b3e` and its ABI20
+compiler resources; it does not regenerate the bootstrap. The macOS packaging,
+host, graph parity and five required groups pass. The reviewed source trees,
+format-only refresh, binary identities, reserved files, Linux recipe and
+remaining full-SDK/platform gates are in
+[`docs/design/graph-sdk-packaging.md`](docs/design/graph-sdk-packaging.md).
 
 Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
 the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an
@@ -776,10 +927,35 @@ small path joins remain collectable. Invalid target names now fail before
 profile discovery or writes. No new native capability or protocol change is
 needed. A sanitizer test-driver rebuild passed in 247 s on a partially
 built tree. The native, materials, projects, language and tooling groups passed
-under their separate production 60-second deadlines, as did compile/link
+along with compile/link
 command parity and the expanded target/parser regression. Current clean-build
 and focused validation evidence is tracked in PR #655. Full native/render/Studio
-and other quarantined coverage remain disabled, not passed.
+coverage was not established by these focused results.
+
+The 2026-10-22 build-program compiler cutover removes C semantic preparation
+from the private build host. Protocol 8 loads an owned compiler generation from
+the validated bootstrap and current compiler/core sources, then uses
+`CompileClosureWithEffects` and the runtime-only native linker for Build and
+Graph programs. Matching source hashes load directly; changed sources recover a
+fixed point in memory without writing an SDK cache. Build-tree and installed
+layouts carry the full compiler/bootstrap and core inputs, with explicit
+checkout overrides for Make invocations. The stable twelve-argument pure
+bootstrap exports remain; thirteen-argument effects-aware exports carry the
+private catalog's real native effects through authored compilation.
+
+Validation passed for actual Graph native compilation, 970 compile-command and
+thirteen link-command parity, relocated read-only SDK loading, corrupt-seed
+refusal, qualified native calls, inferred numeric locals and native effects.
+The five required Make groups passed 1,561 cases and 1,568,825 assertions. An
+isolated compiler/core-only recovery with an empty tool PATH reproduced the
+refreshed 11,856,792-byte compiler, SHA-256
+`2fcbdbaf6b999d87b119a8e6195752dc2b5aca18016e9349b9f6ae1a5bfa2b37`.
+Publication also requires committed-source recovery and hosted cross-platform
+validation. Public game compilation has not switched: StageOne's C catalog export
+and assembly, declared components, libraries, systems and projections still need
+their owning cutovers. Native build-host construction, SDK, other native-platform,
+Wasm, Studio and parity/recovery CMake paths remain. This change does not complete
+the final installed build/link and checked-game acceptance gate.
 
 Next: packaging the SDK from the graph's build, the browser builds and Linux
 (which needs a Linux archive the owner approves).
@@ -1054,11 +1230,26 @@ project policy called by allowed dependencies belongs in `.chibi`.
 
 ## Current checkpoint
 
+Graph compiler-tools work is in progress on
+`codex/graph-sdk-packaging-20261022`, based on main `5c28191b3e`. The patch is
+validated on macOS: SDK 8 cases / 205 assertions, host 44 / 7,005,
+toolchain 11 / 165, graph 3 / 1,004, all five required groups and formatting.
+Three guard-removal controls each fail the intended case. Full execution used
+tree `77493ea3dbf675f3640b607b00cd16ed924ee9c1`; a diagnostic-only whitespace
+refresh used `84ca3290f833dafb4ad1bc3605700c4698c30791` and reran the affected
+host check plus formatting. Final ledger updates leave that tested product and
+test source unchanged.
+Next action: run the explicit Linux graph/relocation recipe on the eligible
+combined dependency candidate. Full SDK libraries/headers/exports, installed
+StageOne execution and Windows, browser and Studio acceptance remain open.
+See the M6 packaging slice above.
+
+### Prior compiler checkpoint
+
 Last verified checkpoint: 2026-10-19, the #420 integration of `main` at
 `07eb2abaa` into `codex/toolchain-cleanup-20261017` at `f6633ace1`, verified
 locally on macOS arm64 (Homebrew Clang 23, Debug, ASan/UBSan; Release for the
-bootstrap checks). Each command ran once under its own production 60-second
-deadline:
+bootstrap checks). Each command ran once:
 
 | Check | Result |
 | --- | --- |
@@ -1137,7 +1328,7 @@ over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
 | Host symbols (`nm -a`) | No `execution_prepared_write`, `semantic_*`, `lower_*` or `authoring_packages_prepare`. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Each selector ran once under its own unchanged production 60-second deadline.
+Each selector ran once.
 The hosted Linux ELF audit (`.github/scripts/transport-boundary-audit.py`) was not
 run; its archive closure and all 19 pinned source inventories match this build's
 File API/compile database, and the writer exclusion holds on Darwin's dead-strip
@@ -1149,8 +1340,7 @@ preparation and built in Studio run `39112128113` (configure 3s, build 17s).
 For both bytecode and SLJIT attempts, the independent C witnesses passed before
 the authored calls exposed the intended zero-ID mismatch and recursive
 callable-depth failure. Each focused
-selector completed in about 1s under its own unchanged 60-second production
-supervisor. Verified sanitized status evidence SHA256:
+selector completed in about 1s. Verified sanitized status evidence SHA256:
 `d4ec88911f4523f3231d0332fb12cb03e97c1e9386c5cb411fc58dc15c647313`.
 The expected-red job remains failed; this records the regression, not a pass.
 
@@ -1169,8 +1359,8 @@ differential in hosted run `39112565011`: 25 raw and four analyzed requests,
 58 authored attempts across both backends, and owned results surviving
 input/package teardown. Configuration took 5s, build 14s and the single
 production-supervised execution 2s. Its sanitized evidence hash is recorded
-above; the merged tree exactly matches that tested source tree. Budget arguments
-and the single 60-second deadline remain unchanged. The supplied instruction
+above; the merged tree exactly matches that tested source tree. Instruction-budget arguments
+remain unchanged. The supplied instruction
 budget is inherited/reset per activation, not a whole-call work ceiling.
 
 The independently reviewed additive type-relations component passed its first
@@ -1197,8 +1387,7 @@ standalone tooling parent that consumes scheduler/render C++ targets now
 activates CXX through a narrow production include, leaving pure C consumers
 alone. On macOS, `language-semantic` (42 cases), `language-incremental` (13),
 `unit-fixtures` (2), `language-unit-analysis-chibi` (3) and the eight-case
-`desktop-dependencies` route pass, each under its own production 60-second
-deadline, as do the five CI aggregates. The desktop OpenGL case previously
+`desktop-dependencies` route pass, as do the five CI aggregates. The desktop OpenGL case previously
 expected Linux relocation on every host; it now asserts that other hosts reject
 the same absolute paths as unowned. The earlier hosted Linux build failure was
 never classified and Linux remains unmeasured for this adapter.
@@ -1216,8 +1405,7 @@ Project format 25 migrates `cast<T>` sources and their sidecars; Studio's
 `projects/studio` uses `cast<` and upgrades when opened. The authored scalar
 folder mirrors the mode matrix. Unsigned ordered comparison and subtraction are
 still unsupported by the verifier and backends. On macOS the five CI aggregates,
-the Wasm group and 40 focused language and tool selectors pass, each under its
-own 60-second deadline; Linux is unmeasured.
+the Wasm group and 40 focused language and tool selectors pass; Linux is unmeasured.
 
 The bounded authored package compiler (PR #449,
 `tools/compiler/bounded_compiler`) now runs. Stage zero prepares its 18-file
@@ -1463,8 +1651,7 @@ The bootstrap also requires an explicit final return after the infinite loop.
 | `make test-tools` | 125 cases / 27,270 assertions, 26.627s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Every execution route uses one production 60-second ceiling. The callable route
-has 30 calls at two million instructions, 31 parses and four private JSON calls.
+The callable route has 30 calls at two million instructions, 31 parses and four private JSON calls.
 Its header source is below 64 KiB; seven dependencies are below 48 KiB each.
 Inputs are below 512 bytes/256 nodes/depth 32. Output caps are ten symbols, two
 scopes, three functions, two defaults, one body and four uses/diagnostics; this
@@ -1520,7 +1707,7 @@ host. Remaining
 semantic analysis, lowering, authored artifact construction, scanner ownership
 and stage-one/stage-two equivalence still need implementation and validation.
 Full-size scalar evaluation
-exhaustion remains unadmitted. No compiler implementation or stage-zero recovery
+exhaustion was not tested at this checkpoint. No compiler implementation or stage-zero recovery
 path is deleted.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
@@ -1528,8 +1715,7 @@ remains open, conflicted and explicitly held at
 `c541133b689c620a377982ee339c017b6d12b263`. Neither branch was imported.
 M3's installed Linux/macOS evidence remains in its committed checkpoint. This
 checkpoint does not establish a new installed-SDK or Linux claim.
-Full native/render/Studio, browser/device and other quarantined suites
-remain disabled, not passed.
+Full native/render/Studio and browser/device suites were not run at this checkpoint.
 
 ### M5 snapshot-to-reader composition
 
@@ -1539,6 +1725,6 @@ package-local/global document maps in graph-member order, which is sorted by
 path. It consumes the snapshot's raw flags and syntax root without reparsing or
 resolving names. `language-snapshot-reader-chibi` passes 3 cases / 61,885
 assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
-assertions in 6.6s on macOS, each under its own production 60-second deadline.
+assertions in 6.6s on macOS.
 It does not implement header composition, semantic phases, exports, lowering,
 artifact output or `Checked`, and makes no M5/self-hosting completion claim.

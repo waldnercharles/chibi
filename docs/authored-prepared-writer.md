@@ -62,7 +62,7 @@ keywords, so the model uses `entry_name`, `owner_type`, `component_index`,
 `tool language-prepared-writer-chibi` prepares the writer with
 `core:strings`, `syntax_diagnostics`, `package_paths` and a sample package that
 uses records, unions, arrays, imports, wide integers and floats. Its two cases
-pass with 1,026 assertions in 24.1 s under the 60-second supervisor (macOS
+pass with 1,026 assertions in 24.1 s under the production supervisor (macOS
 arm64, 2026-10-20):
 - Every module's stage-zero plan is marshalled into the model and written on
   both compiler backends, then compared byte for byte with

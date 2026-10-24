@@ -11,6 +11,7 @@
 #include "types/record.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1065,13 +1066,168 @@ static const char *verify_instruction(const behavior_function *f, int pc)
 #undef CHECK
     return NULL;
 }
-static bool value_type_valid(pin_value value)
+/* Both the prepared reader and this verifier build the same non-evicting
+ * pointer table. It owns no descriptors and never survives a verification
+ * attempt or a change to the current native type catalog. */
+static size_t record_headers(const behavior_function *f, behavior_record_check *checks, size_t *visited)
+{
+    const pin_value *banks[] = { f->argument_defaults,
+                                 f->result_defaults,
+                                 f->variable_defaults,
+                                 f->command_arguments,
+                                 f->command_results };
+    size_t count = 0;
+    *visited = 0;
+#define HEADER(value)                                                          \
+    do {                                                                       \
+        if (*visited == SIZE_MAX) return SIZE_MAX;                             \
+        (*visited)++;                                                          \
+        if ((value).record) {                                                  \
+            if (count == INT_MAX) return SIZE_MAX;                             \
+            if (checks) checks[count].record = (value).record;                 \
+            count++;                                                           \
+        }                                                                      \
+    } while (0)
+    for (int b = 0; b < 5; b++) {
+        for (int i = 0; i < acount(banks[b]); i++) {
+            HEADER(banks[b][i]);
+        }
+    }
+    for (int i = 0; i < acount(f->data_values); i++) {
+        HEADER(f->data_values[i].initial);
+    }
+    for (int i = 0; i < acount(f->value_roots); i++) {
+        HEADER(f->value_roots[i].shape);
+    }
+    for (int i = 0; i < acount(f->source_watches); i++) {
+        HEADER(f->source_watches[i].initial);
+    }
+#undef HEADER
+    return count;
+}
+size_t behavior_function_record_check_budget(const behavior_function *f, size_t *bytes)
+{
+    size_t visited;
+    size_t count = record_headers(f, NULL, &visited);
+    *bytes = SIZE_MAX;
+    if (count == SIZE_MAX || count > SIZE_MAX / sizeof(behavior_record_check)) {
+        return SIZE_MAX;
+    }
+    *bytes = count * sizeof(behavior_record_check);
+    size_t levels = 2;
+    for (size_t n = count; n > 1; n /= 2) {
+        levels++;
+    }
+    /* Two table constructions (preflight and verification): counting/filling,
+     * zeroing, bounded heap sorting and compaction. Binary lookups include
+     * metadata, intrinsic schema checks, and the watch diagnostic rescan.
+     * Every intrinsic currently checks at most one of its declared data headers.
+     * Unknown future headers still validate normally, without adding a proof. */
+    if (visited > SIZE_MAX / 4 || *bytes > SIZE_MAX / 2 ||
+        count > SIZE_MAX / (8 * levels + 4)) {
+        return SIZE_MAX;
+    }
+    size_t work = 4 * visited;
+    size_t construction = 2 * *bytes + count * (8 * levels + 4);
+    if (construction < 2 * *bytes || construction > SIZE_MAX - work) {
+        return SIZE_MAX;
+    }
+    work += construction;
+    size_t watches = (size_t)acount(f->source_watches),
+           hosts = (size_t)acount(f->host_calls);
+    if (count > (SIZE_MAX - hosts) / 2 || watches > (SIZE_MAX - hosts - 2 * count) / 2) {
+        return SIZE_MAX;
+    }
+    size_t lookups = 2 * count + 2 * watches + hosts;
+    if (lookups > (SIZE_MAX - work) / levels) {
+        return SIZE_MAX;
+    }
+    return work + lookups * levels;
+}
+static void record_sift(behavior_record_check *checks, int at, int count)
+{
+    while (at < count / 2) {
+        int child = 2 * at + 1;
+        if (child + 1 < count && (uintptr_t)checks[child].record <
+                                     (uintptr_t)checks[child + 1].record) {
+            child++;
+        }
+        if ((uintptr_t)checks[at].record >= (uintptr_t)checks[child].record) {
+            return;
+        }
+        behavior_record_check swap = checks[at];
+        checks[at] = checks[child];
+        checks[child] = swap;
+        at = child;
+    }
+}
+behavior_record_check *behavior_function_record_checks(const behavior_function *f, size_t bytes, int *count)
+{
+    *count = 0;
+    if (!bytes) {
+        return NULL;
+    }
+    behavior_record_check *checks = xcalloc(1, bytes);
+    size_t visited;
+    size_t headers = record_headers(f, checks, &visited);
+    assert(headers <= INT_MAX && headers * sizeof *checks == bytes);
+    int n = (int)headers;
+    for (int at = n / 2; at > 0;) {
+        record_sift(checks, --at, n);
+    }
+    for (int end = n; end > 1;) {
+        behavior_record_check swap = checks[0];
+        checks[0] = checks[--end];
+        checks[end] = swap;
+        record_sift(checks, 0, end);
+    }
+    for (int i = 0; i < n; i++) {
+        if (!*count || checks[i].record != checks[*count - 1].record) {
+            checks[(*count)++] = checks[i];
+        }
+    }
+    return checks;
+}
+int behavior_record_check_find(const behavior_record_check *checks, int count, const pin_record *record)
+{
+    int first = 0, end = count;
+    while (first < end) {
+        int middle = first + (end - first) / 2;
+        if ((uintptr_t)checks[middle].record < (uintptr_t)record) {
+            first = middle + 1;
+        } else {
+            end = middle;
+        }
+    }
+    return first < count && checks[first].record == record ? first : -1;
+}
+typedef struct
+{
+    behavior_record_check *checks;
+    int count;
+} record_validation;
+static bool record_valid(record_validation *records, const pin_record *record)
+{
+    int at = behavior_record_check_find(records->checks, records->count, record);
+    if (at >= 0 && records->checks[at].seen) {
+        return true;
+    }
+    if (!pin_record_valid(record)) {
+        return false;
+    }
+    if (at >= 0) {
+        records->checks[at].seen = true;
+    }
+    return true;
+}
+static bool value_type_valid(record_validation *records, pin_value value)
 {
     if (value.container < PIN_CONTAINER_SINGLE || value.container > PIN_CONTAINER_MAP ||
         (!scalar_type(value.type) && value.type != PIN_STRUCT && value.type != PIN_UNION)) {
         return false;
     }
-    if (value.record && (value.type != PIN_STRUCT || !pin_record_valid(value.record))) {
+    if (value.record &&
+        (value.type != PIN_STRUCT || !record_valid(records, value.record))) {
         return false;
     }
     /* Nested collections carry each element's complete header, including its
@@ -1090,7 +1246,11 @@ static bool map_bank(pin_value value)
 }
 /* Intrinsic callbacks consume physical value banks, not authored signatures.
  * Validate their ABI before a producer or decoded definition can execute them. */
-static bool intrinsic_schema(const behavior_function *f, const behavior_function_host_call *host)
+static bool intrinsic_schema(
+    record_validation *records,
+    const behavior_function *f,
+    const behavior_function_host_call *host
+)
 {
     uint64_t id = execution_intrinsic_id(host->call);
     if (!id) {
@@ -1126,7 +1286,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             if (count < 3 || !(count & 1) || !map_bank(output) ||
                 !same_type(values[0].initial, output) ||
                 !pin_map_key_supported(values[1].initial) ||
-                !value_type_valid(values[2].initial)) {
+                !value_type_valid(records, values[2].initial)) {
                 return false;
             }
             for (int i = 3; i < count; i += 2) {
@@ -1141,7 +1301,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                     (count == 3 && same_type(values[2].initial, output))) &&
                    map_bank(values[0].initial) &&
                    pin_map_key_supported(values[1].initial) &&
-                   value_type_valid(output);
+                   value_type_valid(records, output);
         case EXECUTION_INTRINSIC_MAP_HAS:
             return count == 2 && map_bank(values[0].initial) &&
                    pin_map_key_supported(values[1].initial) && OUTPUT(PIN_BOOL);
@@ -1151,10 +1311,10 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    same_type(values[0].initial, output);
         case EXECUTION_INTRINSIC_MAP_ITEM:
             return count == 3 && map_bank(values[0].initial) && INPUT(1, PIN_I32) &&
-                   INPUT(2, PIN_BOOL) && value_type_valid(output);
+                   INPUT(2, PIN_BOOL) && value_type_valid(records, output);
         case EXECUTION_INTRINSIC_REFERENCE_KEY:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
-                   value_type_valid(values[1].initial) &&
+                   value_type_valid(records, values[1].initial) &&
                    pin_map_key_supported(values[2].initial) &&
                    OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_SNAPSHOT:
@@ -1198,7 +1358,8 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                 if (count > 1 && output.type_name &&
                     !strncmp(output.type_name, "__collection_", 13)) {
                     element = values[1].initial;
-                    if (element.type != output.type || !value_type_valid(element)) {
+                    if (element.type != output.type ||
+                        !value_type_valid(records, element)) {
                         return false;
                     }
                 }
@@ -1726,7 +1887,7 @@ static bool source_point_valid(behavior_source_point point)
            point.line >= 0 && point.column >= 0 && point.kind >= 0 &&
            point.kind < BEHAVIOR_SOURCE_KIND_COUNT;
 }
-static const char *source_watch_error(const behavior_source_watch *watch)
+static const char *source_watch_error(record_validation *records, const behavior_source_watch *watch)
 {
     if (!source_point_valid(watch->origin)) {
         return "origin";
@@ -1734,12 +1895,12 @@ static const char *source_watch_error(const behavior_source_watch *watch)
     if (watch->ordinal < 0) {
         return "ordinal";
     }
-    if (!value_type_valid(watch->initial)) {
+    if (!value_type_valid(records, watch->initial)) {
         return "value header";
     }
     return NULL;
 }
-static const char *verify_value_roots(const behavior_function *f)
+static const char *verify_value_roots(record_validation *records, const behavior_function *f)
 {
     if (!acount(f->value_roots)) {
         return NULL;
@@ -1755,7 +1916,7 @@ static const char *verify_value_roots(const behavior_function *f)
             (slot ? f->slots[root->index] : f->locals[root->index].initial.type) !=
                 BF_POINTER_TYPE ||
             behavior_function_kind(f, root->bank, root->index) != BEHAVIOR_ADDRESS ||
-            !value_type_valid(root->shape) || root->shape.ptr ||
+            !value_type_valid(records, root->shape) || root->shape.ptr ||
             (root->shape.container == PIN_CONTAINER_SINGLE &&
              root->shape.type != PIN_STRUCT)) {
             error = "invalid saved aggregate root metadata";
@@ -1771,7 +1932,7 @@ static const char *verify_value_roots(const behavior_function *f)
     free(seen);
     return error;
 }
-static const char *verify_metadata(const behavior_function *f)
+static const char *verify_metadata(record_validation *records, const behavior_function *f)
 {
     if (f->argument_count != acount(f->argument_defaults) ||
         f->result_count != acount(f->result_defaults) ||
@@ -1782,7 +1943,7 @@ static const char *verify_metadata(const behavior_function *f)
     if (kind_error) {
         return kind_error;
     }
-    const char *root_error = verify_value_roots(f);
+    const char *root_error = verify_value_roots(records, f);
     if (root_error) {
         return root_error;
     }
@@ -1793,7 +1954,7 @@ static const char *verify_metadata(const behavior_function *f)
     }
     for (int i = 0; i < acount(f->source_watches); i++) {
         const behavior_source_watch *watch = &f->source_watches[i];
-        if (source_watch_error(watch)) {
+        if (source_watch_error(records, watch)) {
             return "invalid source watch metadata";
         }
     }
@@ -1838,7 +1999,7 @@ static const char *verify_metadata(const behavior_function *f)
                      acount(f->command_results) };
     for (int bank = 0; bank < 5; bank++) {
         for (int i = 0; i < counts[bank]; i++) {
-            if (!value_type_valid(banks[bank][i])) {
+            if (!value_type_valid(records, banks[bank][i])) {
                 return "invalid signature or command value type";
             }
         }
@@ -1865,7 +2026,7 @@ static const char *verify_metadata(const behavior_function *f)
         }
     }
     for (int i = 0; i < acount(f->data_values); i++) {
-        if (!value_type_valid(f->data_values[i].initial)) {
+        if (!value_type_valid(records, f->data_values[i].initial)) {
             return "invalid host value type";
         }
         const behavior_function_data_value *v = &f->data_values[i];
@@ -1894,7 +2055,7 @@ static const char *verify_metadata(const behavior_function *f)
         } else if (host->outcome_count || host->outcomes) {
             return "nonaction capability has action outcomes";
         }
-        if (!intrinsic_schema(f, host)) {
+        if (!intrinsic_schema(records, f, host)) {
             return "invalid intrinsic host value schema";
         }
         if (!intrinsic_kinds(f, host)) {
@@ -2171,12 +2332,20 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
             return NULL;
         }
     }
-    const char *metadata_error = verify_metadata(f);
+    size_t record_bytes;
+    size_t record_work = behavior_function_record_check_budget(f, &record_bytes);
+    if (record_work == SIZE_MAX || (b->decoded && record_bytes > b->arena_budget)) {
+        snprintf(error, size, "record validation scratch exceeds preparation budget");
+        return NULL;
+    }
+    record_validation records = { 0 };
+    records.checks = behavior_function_record_checks(f, record_bytes, &records.count);
+    const char *metadata_error = verify_metadata(&records, f);
     if (metadata_error) {
         snprintf(error, size, "%s", metadata_error);
         for (int i = 0; i < acount(f->source_watches); i++) {
             const behavior_source_watch *watch = &f->source_watches[i];
-            const char *reason = source_watch_error(watch);
+            const char *reason = source_watch_error(&records, watch);
             if (!reason) {
                 continue;
             }
@@ -2197,8 +2366,10 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
             );
             break;
         }
+        free(records.checks);
         return NULL;
     }
+    free(records.checks);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const char *reason = verify_instruction(f, pc);
         if (reason) {

@@ -30,8 +30,8 @@
  * private raw parser is interposed only for work counting.
  * One fixed corpus, two compiler backends, four compiler/target combinations;
  * no timing loops, subprocesses, runtime files, network, rendering or GPU.
- * One production shared 60-second deadline bounds the run. Context budgets
- * reset in child activations and are not an aggregate instruction ceiling.
+ * Context budgets reset in child activations and are not an aggregate
+ * instruction ceiling.
  * See docs/bounded-authored-compiler.md. */
 enum
 {

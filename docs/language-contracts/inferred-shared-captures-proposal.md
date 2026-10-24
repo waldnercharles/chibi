@@ -672,10 +672,10 @@ index-generation access or supported owned values rather than a captured raw
 and registration lifecycle. Neither consumer supplies evidence of a speedup
 until measured against the actual native workload.
 
-## 8. Bounded C/pico_unit regression and admission plan
+## 8. C/pico_unit regression plan
 
 No parser generation, build, runtime test, benchmark or production change ran for
-this proposal. The following cases are **planned, not admitted or passed**.
+this proposal. The following cases are **planned, not implemented or passed**.
 Use the existing `test/language` executable and a focused `--closures` dispatcher
 if the existing owner selector cannot keep this group independently meaningful;
 no new linked executable per probe, Python/Node test suite or new supervisor.
@@ -736,8 +736,8 @@ that does not turn the assertions into JavaScript tests.
 Keep fixtures in memory with fixed small bounds (for example two owners, three
 loop iterations, at most 32 repeated replacements and one 8 KiB managed value),
 no rendering, filesystem/network, sleeps, project clones or long soak. These are
-illustrative workload bounds proposed for review, not fixed admitted cases,
-measured runtimes or a new product cap. Before admission, instantiate each case
+illustrative workload bounds proposed for review, not fixed cases, measured
+runtimes or a new product cap. Before running them, instantiate each case
 with fixed input sizes, graph bounds, budget/exhaustion inputs and a precise
 oracle. Attach each case to its source contract and exact backend; run reference
 bytecode, actual SLJIT and actual Wasm. A native build of a Wasm-named selector is not Wasm
@@ -745,10 +745,9 @@ execution. Add necessary prepared-schema compatibility/failure cases when the
 actual callable encoding is designed; unknown/incompatible layouts must reject
 before publication, and source effects/escape proofs must be reverified.
 
-Before any new execution, independently review/admit the bounded selector under
-[the unchanged policy](../testing.md#temporary-60-second-policy), measure it through
-the existing shared 60-second production supervisor, and keep build/configure
-costs separate. Do not bypass quarantines or recreate aggregates in pieces.
+Independently review the selector's workload and oracle using the
+[testing instructions](../testing.md), execute the selected checks, and keep
+build/configure costs separate.
 Unavailable affected-backend/publication coverage blocks a completion claim.
 Existing capture-compaction cases in `test/language/capture.c`, reached from
 `--program`, remain required regression evidence, not substitutes for these new
@@ -770,12 +769,12 @@ needed merely to express the examples in this document.
 Proper capture-cycle reclamation is a required separate implementation PR. Its
 staged entry must remain open even if an initial closure PR rejects cycles;
 reference-counted acyclic behavior is not completion of the user's requirement.
-The collector/mechanism design and actual test admission remain unselected.
+The collector/mechanism design and actual test cases remain unselected.
 
 The roadmap README and L10 decision/scope/acceptance text now record the selected
 shared-binding direction, requested optional syntax/inferred results and required
-separate cycle work. Its immutable source
-plan remains historical; L12's detailed owned-callable scope still needs
+separate cycle work. Its curated source
+plan retains the historical planning snapshot; L12's detailed owned-callable scope still needs
 reconciliation before that conditional consumer is implemented. No package is
 marked complete by this document update. No source format version bump is
 justified by a proposal or unused additive syntax. Actual prepared payload changes need their own
@@ -785,7 +784,7 @@ version/compatibility decision.
 exact engine base, inspected source fingerprints, prior document snapshots,
 the exact selected-direction exchange and byte-for-byte research-copy provenance.
 Only source/document checks are recorded. No remote writes, publication, runtime
-implementation or test admission accompany these files.
+implementation or test execution accompany these files.
 
 [grammar]: https://github.com/waldnercharles/chibi/blob/dd0b2048116dc8f1ecc17603b19ac8a3c4bd84ce/src/language/grammar.js#L279-L312
 [names]: https://github.com/waldnercharles/chibi/blob/dd0b2048116dc8f1ecc17603b19ac8a3c4bd84ce/src/language/semantic_expression.c#L540-L565

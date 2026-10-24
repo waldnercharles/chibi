@@ -107,7 +107,7 @@ The following are proposed conclusions drawn from the comparison and the checked
 - Nonescaping fast path versus owned escape produce identical observations, including reentry and failure behavior.
 - Suspension/resume, owner destruction, reload invalidation/pinning, cancellation, and cleanup after failed construction.
 - Closure copy/assignment/drop, self-referential environments, independently retained snapshots, and bounded reclamation.
-- Exact bytecode, native JIT, and Wasm results under the project's normal admission/test controls; benchmarks on the real sort/filter consumer and a retained UI callback consumer.
+- Exact bytecode, native JIT, and Wasm results under the project's normal test controls; benchmarks on the real sort/filter consumer and a retained UI callback consumer.
 
 ## Existing Chibi proposal reviewed
 

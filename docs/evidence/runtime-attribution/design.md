@@ -4,8 +4,8 @@ Status: source investigation and proposed admission only, 2026-10-15. No runtime
 product, test, build, policy or authored-source changes; no test/build execution.
 Revised after independent runtime-contract review of design SHA-256
 `9952dc9bf9e6a85f87ded7ba65adf7816f45b8de3089875dae9fa0adf8d1ff88`.
-Implementation and first measurement still require independent scope/design/admission
-review. This is a narrow B04/L14 prerequisite, not completion of either package.
+Implementation and first measurement still require independent scope, design
+and workload review. This is a narrow B04/L14 prerequisite, not completion of either package.
 
 ## Exact evidence boundary
 
@@ -22,7 +22,7 @@ review. This is a narrow B04/L14 prerequisite, not completion of either package.
 - Package table: `docs/studio-migration-roadmap/packages.tsv`, Git blob
   `1ab347dad54e0ac2bc548430da4de9aab3a03f25`; B04 and L14.
 - Test supervisor: `tools/test_policy.py`, Git blob
-  `5e0dcd98bb544c493fb959103d22342139505c76`; unchanged hard 60 seconds.
+  `5e0dcd98bb544c493fb959103d22342139505c76`.
 - `sources.tsv` records exact Git blobs and SHA-256 hashes of inspected contracts.
   Line references below refer to this engine commit. Permanent source links use
   `https://github.com/waldnercharles/chibi/blob/f1bfe133afbf214de679ca3da9a12c08b6511788/`.
@@ -324,7 +324,7 @@ retained text is not semantic-live text. The restored-field fixture should
 explicitly show unique strings remaining until world teardown, not fail because
 an unimplemented reclamation policy was assumed.
 
-## Fixed C fixture and admission proposal
+## Fixed C fixture and validation proposal
 
 Use `test/language/main.c`'s existing dispatcher with one new
 `--runtime-attribution` selector and one C file, pico_unit. Reuse current parse,
@@ -335,7 +335,7 @@ private include rules are the precedent for the artifact control.
 
 Six finite cases below form the revised proposed envelope. Source-level formulas
 are frozen here; an eventual C implementation and its exact invocation/build
-manifest still require independent review/admission before execution. No test
+manifest still require independent review before execution. No test
 or runtime implementation is included in this documents-only revision.
 
 ### Case 1: exact copy-site specimens
@@ -589,12 +589,12 @@ no new product configuration surface and no overhead result before measurement.
 
 An implementation that omits a listed consumer, records a different operation,
 adds a hook, introduces another execution path or changes these bounds must
-return for design/admission reconciliation before running. Do not manufacture
+return for design/workload reconciliation before running. Do not manufacture
 coverage through private APIs or expose new author-visible behavior.
 
 First measurements must use the unchanged production supervisor, proposed routes
 `tool language-runtime-attribution` and `tool wasm-runtime-attribution` once
-reviewed and admitted. Native means real SLJIT plus BYTECODE; serial Wasm means
+reviewed. Native means real SLJIT plus BYTECODE; serial Wasm means
 Node-hosted generated Wasm plus BYTECODE, not browser or pthread coverage.
 Configuration/build timing is separate. Build fresh from the exact reviewed
 candidate and record compiler, flags, sanitizer state, SDK/source provenance,
@@ -617,8 +617,8 @@ by the coordinator under current policy; no missing required check is waived.
   entry counts; `artifact.h`/`function.c` for unchanged named inspection states.
 - `src/ecs/ecs.h` and `ecs.c` for read-only intern-table inspection only.
 - `test/language/main.c`, `CMakeLists.txt`, one new fixture; reviewed additions to
-  `tools/test_policy.py` routes/groups and `docs/testing.md`, without changing
-  the 60-second supervisor/quarantine. No existing selector removed.
+  `tools/test_policy.py` routes/groups and `docs/testing.md`. No existing selector
+  removed.
 
 All public additions are additive diagnostic C APIs. Do not change existing
 `xalloc_stats`, arena, execution_memory_usage, source_profile_row,

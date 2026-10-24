@@ -5709,6 +5709,9 @@ typedef struct
 } entry_body_rewrite;
 static void move_literal(entry_body_rewrite *out, const char *text, int length)
 {
+    if (!length) {
+        return;
+    }
     int offset = acount(out->moved);
     asetlen(out->moved, offset + length);
     memcpy(out->moved + offset, text, (size_t)length);

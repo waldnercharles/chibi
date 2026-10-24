@@ -1,0 +1,550 @@
+package llvm_native
+
+import abi "project:native_abi"
+
+// A deliberately bounded, runtime-free scalar backend. This is not the
+// prepared/pin_value ABI: arguments and results are native LLVM values.
+// Slots and locals are private stack storage, never observable pointers.
+pub Instruction :: struct {
+    op: int;
+    type: int;
+    output: int;
+    left: int;
+    right: int;
+    target: int;
+    literal: int;
+}
+// One function of a module: consecutive ranges of the module's parameter,
+// slot, local, code and argument tables, in function order. A call's argument
+// slots are arguments[first_argument + right, + target) of its own function.
+pub Function :: struct {
+    result: int;
+    first_parameter: int;
+    parameters: int;
+    first_slot: int;
+    slots: int;
+    first_local: int;
+    locals: int;
+    first_code: int;
+    code: int;
+    first_argument: int;
+    arguments: int;
+}
+pub Result :: union {
+    Rejected(instruction: int, message: string) | Emitted(text: string)
+}
+
+pub Constant: int : 0;
+pub Argument: int : 1;
+pub Local: int : 2;
+pub Save: int : 3;
+pub Publish: int : 4;
+pub Return: int : 5;
+pub End: int : 6;
+pub Add: int : 7;
+pub Sub: int : 8;
+pub Mul: int : 9;
+pub Div: int : 10;
+pub Mod: int : 11;
+pub Neg: int : 12;
+pub BitAnd: int : 13;
+pub BitOr: int : 14;
+pub BitXor: int : 15;
+pub BitNot: int : 16;
+pub Shl: int : 17;
+pub Shr: int : 18;
+pub Lt: int : 19;
+pub Le: int : 20;
+pub Gt: int : 21;
+pub Ge: int : 22;
+pub Eq: int : 23;
+pub Ne: int : 24;
+pub Branch: int : 25;
+pub Jump: int : 26;
+pub Check: int : 27;
+// output = callee(arguments...): left is the callee's function index, and
+// the argument slots are this function's arguments[right, right + target).
+pub Call: int : 28;
+
+// Module bounds: these are plan bounds, not a source-language acceptance claim.
+MaxFunctions: int : 32;
+MaxParameters: int : 8;
+MaxSlots: int : 128;
+MaxLocals: int : 64;
+MaxCode: int : 256;
+MaxArguments: int : 256;
+
+Index :: (value: int, count: int) -> bool {
+    return value >= 0 && value < count;
+}
+Typed :: (slots: int[], slot: int, type: int) -> bool {
+    return Index(slot, length(slots)) && slots[slot] == type;
+}
+Produces :: (op: int) -> bool {
+    return op <= Local || (op >= Add && op <= Ne) || op == Call;
+}
+Comparison :: (op: int) -> bool {
+    return op >= Lt && op <= Ne;
+}
+Unary :: (op: int) -> bool {
+    return op == Neg || op == BitNot;
+}
+ReadsLeft :: (op: int) -> bool {
+    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne);
+}
+ReadsRight :: (op: int) -> bool {
+    return op >= Add && op <= Ne && !Unary(op);
+}
+// Every scalar slot is single-definition in the shared frontend's code.
+// Check dominance too: an arbitrary branch may not bypass its definition.
+// This check includes every reachable input edge, not just lexical instruction order.
+Dominates :: (code: Instruction[], definition: int, use: int) -> bool {
+    if (definition < 0 || definition >= use) {
+        return false;
+    }
+    seen := resize([false], length(code));
+    pending: int[] = [0];
+    while (length(pending) > 0) {
+        pc := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (pc == definition || seen[pc]) {
+            continue;
+        }
+        if (pc == use) {
+            return false;
+        }
+        seen[pc] = true;
+        op := code[pc].op;
+        if (op == Return || op == End) {
+            continue;
+        }
+        if (op == Jump || op == Branch) {
+            pending.append(code[pc].target);
+        }
+        if (op != Jump && pc + 1 < length(code)) {
+            pending.append(pc + 1);
+        }
+    }
+    return true;
+}
+// values[first, first + count), which the caller has bounded.
+Part :: (values: int[], first: int, count: int) -> int[] {
+    part: int[] = [];
+    for (index in 0..<count) {
+        part.append(values[first + index]);
+    }
+    return part;
+}
+Codes :: (code: Instruction[], first: int, count: int) -> Instruction[] {
+    part: Instruction[] = [];
+    for (index in 0..<count) {
+        part.append(code[first + index]);
+    }
+    return part;
+}
+Bounded :: (count: int, limit: int) -> bool {
+    return count >= 0 && count <= limit;
+}
+// Functions partition every table in order, so no range overlaps another or
+// leaves a row unowned. Each count is bounded before it is summed.
+Layout :: (functions: Function[], parameters: int[], slots: int[], locals: int[], code: Instruction[],
+           arguments: int[]) -> bool {
+    if (length(functions) < 1 || length(functions) > MaxFunctions) {
+        return false;
+    }
+    at: Function = {result: 0, first_parameter: 0, parameters: 0, first_slot: 0, slots: 0, first_local: 0,
+                    locals: 0, first_code: 0, code: 0, first_argument: 0, arguments: 0};
+    for (item in functions) {
+        if (!Bounded(item.parameters, MaxParameters) || !Bounded(item.slots, MaxSlots) ||
+            !Bounded(item.locals, MaxLocals) || item.code < 1 || item.code > MaxCode ||
+            !Bounded(item.arguments, MaxArguments) || item.first_parameter != at.first_parameter ||
+            item.first_slot != at.first_slot || item.first_local != at.first_local ||
+            item.first_code != at.first_code || item.first_argument != at.first_argument) {
+            return false;
+        }
+        at.first_parameter += item.parameters;
+        at.first_slot += item.slots;
+        at.first_local += item.locals;
+        at.first_code += item.code;
+        at.first_argument += item.arguments;
+    }
+    return at.first_parameter == length(parameters) && at.first_slot == length(slots) &&
+           at.first_local == length(locals) && at.first_code == length(code) &&
+           at.first_argument == length(arguments);
+}
+// A call names another function of the module, with its result type and one
+// argument slot of each parameter's type.
+CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
+    if (!Index(item.left, length(functions))) {
+        return false;
+    }
+    callee := functions[item.left];
+    if (item.type != callee.result || item.target != callee.parameters || item.right < 0 ||
+        item.right > length(arguments) - item.target) {
+        return false;
+    }
+    for (index in 0..<item.target) {
+        if (!Typed(slots, arguments[item.right + index], parameters[callee.first_parameter + index])) {
+            return false;
+        }
+    }
+    return true;
+}
+Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
+             module_locals: int[], module_code: Instruction[], module_arguments: int[], main: bool) -> Result {
+    shape := functions[function];
+    parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
+    slots := Part(module_slots, shape.first_slot, shape.slots);
+    locals := Part(module_locals, shape.first_local, shape.locals);
+    code := Codes(module_code, shape.first_code, shape.code);
+    arguments := Part(module_arguments, shape.first_argument, shape.arguments);
+    result := shape.result;
+    if (abi.ScalarType(result) == "" || (main && function == 0 && (length(parameters) != 0 || result != 6))) {
+        return Result.Rejected(-1, "unsupported native scalar signature or table size");
+    }
+    for (type in parameters) {
+        if (abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "unsupported native scalar parameter");
+        }
+    }
+    for (type in slots) {
+        if (abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native scalar slot cannot hold a managed value or pointer");
+        }
+    }
+    for (type in locals) {
+        if (abi.ScalarType(type) == "") {
+            return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
+        }
+    }
+    definitions: int[] = [];
+    for (slot in slots) {
+        definitions.append(int(-1));
+    }
+    base := shape.first_code;
+    pc: int = 0;
+    while (pc < length(code)) {
+        item := code[pc];
+        if (item.op < Constant || item.op > Call) {
+            return Result.Rejected(base + pc, "unsupported native scalar instruction");
+        }
+        if (Produces(item.op)) {
+            output := item.type;
+            if (Comparison(item.op)) {
+                output = 1;
+            }
+            if (!Typed(slots, item.output, output) || definitions[item.output] != -1) {
+                return Result.Rejected(base + pc, "native scalar output has an invalid type or multiple definitions");
+            }
+            definitions[item.output] = pc;
+        }
+        if (item.op == Constant && item.type == 1 && item.literal != 0 && item.literal != 1) {
+            return Result.Rejected(base + pc, "native bool constant is not canonical");
+        }
+        if (item.op == Argument && !Typed(parameters, item.left, item.type)) {
+            return Result.Rejected(base + pc, "native argument type differs from its signature");
+        }
+        if (item.op == Local && !Typed(locals, item.left, item.type)) {
+            return Result.Rejected(base + pc, "native local read has an invalid type");
+        }
+        if (item.op == Save && (!Typed(slots, item.left, item.type) ||
+                                !Typed(locals, item.target, item.type))) {
+            return Result.Rejected(base + pc, "native local write has an invalid type");
+        }
+        if (item.op == Publish && (item.type != result || item.target != 0 ||
+                                   !Typed(slots, item.left, result))) {
+            return Result.Rejected(base + pc, "native return value differs from its signature");
+        }
+        if (item.op >= Add && item.op <= Ne) {
+            if ((item.type != 6 && !(item.type == 1 && (item.op == Eq || item.op == Ne))) ||
+                !Typed(slots, item.left, item.type) ||
+                (ReadsRight(item.op) && !Typed(slots, item.right, item.type))) {
+                return Result.Rejected(base + pc, "native scalar operand type mismatch");
+            }
+        }
+        if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
+            return Result.Rejected(base + pc, "native call differs from its callee's signature");
+        }
+        if ((item.op == Branch || item.op == Jump) && !Index(item.target, length(code))) {
+            return Result.Rejected(base + pc, "native branch target is out of range");
+        }
+        if (item.op == Branch && !Typed(slots, item.left, 1)) {
+            return Result.Rejected(base + pc, "native branch requires bool");
+        }
+        if (pc + 1 == length(code) && item.op != Return && item.op != End && item.op != Jump) {
+            return Result.Rejected(base + pc, "native scalar code falls outside its body");
+        }
+        pc += 1;
+    }
+    pc = 0;
+    while (pc < length(code)) {
+        item := code[pc];
+        if (ReadsLeft(item.op) && !Dominates(code, definitions[item.left], pc)) {
+            return Result.Rejected(base + pc, "native scalar left operand is not defined on every path");
+        }
+        if (ReadsRight(item.op) && !Dominates(code, definitions[item.right], pc)) {
+            return Result.Rejected(base + pc, "native scalar right operand is not defined on every path");
+        }
+        if (item.op == Call) {
+            for (index in 0..<item.target) {
+                if (!Dominates(code, definitions[arguments[item.right + index]], pc)) {
+                    return Result.Rejected(base + pc, "native call argument is not defined on every path");
+                }
+            }
+        }
+        pc += 1;
+    }
+    return Result.Emitted("");
+}
+// Whether some function reaches itself through calls: the transitive closure
+// of the call relation, which the module bounds to MaxFunctions squared.
+Cyclic :: (functions: Function[], code: Instruction[]) -> bool {
+    count := length(functions);
+    reach := resize([false], count * count);
+    for (caller in 0..<count) {
+        for (pc in 0..<functions[caller].code) {
+            item := code[functions[caller].first_code + pc];
+            if (item.op == Call) {
+                reach[caller * count + item.left] = true;
+            }
+        }
+    }
+    for (via in 0..<count) {
+        for (from in 0..<count) {
+            if (reach[from * count + via]) {
+                for (to in 0..<count) {
+                    if (reach[via * count + to]) {
+                        reach[from * count + to] = true;
+                    }
+                }
+            }
+        }
+    }
+    for (index in 0..<count) {
+        if (reach[index * count + index]) {
+            return true;
+        }
+    }
+    return false;
+}
+Operation :: (op: int) -> string {
+    if (op == Add) {
+        return "add";
+    }
+    if (op == Sub) {
+        return "sub";
+    }
+    if (op == Mul) {
+        return "mul";
+    }
+    if (op == Div) {
+        return "sdiv";
+    }
+    if (op == Mod) {
+        return "srem";
+    }
+    if (op == BitAnd) {
+        return "and";
+    }
+    if (op == BitOr) {
+        return "or";
+    }
+    if (op == BitXor) {
+        return "xor";
+    }
+    if (op == Shl) {
+        return "shl";
+    }
+    if (op == Shr) {
+        return "ashr";
+    }
+    if (op == Lt) {
+        return "icmp slt";
+    }
+    if (op == Le) {
+        return "icmp sle";
+    }
+    if (op == Gt) {
+        return "icmp sgt";
+    }
+    if (op == Ge) {
+        return "icmp sge";
+    }
+    if (op == Eq) {
+        return "icmp eq";
+    }
+    return "icmp ne";
+}
+Load :: (name: string, type: int, bank: string, index: int) -> string {
+    return format_text("  %{} = load {}, ptr %{}{}\n", name, abi.ScalarType(type), bank, index);
+}
+Store :: (value: string, type: int, bank: string, index: int) -> string {
+    return format_text("  store {} {}, ptr %{}{}\n", abi.ScalarType(type), value, bank, index);
+}
+// Checks are control flow to llvm.trap, never flags that allow LLVM poison.
+// The trap remains observable even when the arithmetic result is unused.
+CheckArithmetic :: (item: Instruction, pc: int) -> string {
+    if (item.op == Shl || item.op == Shr) {
+        return format_text("  %ok{} = icmp ult i32 %b{}, 32\n  br i1 %ok{}, label %safe{}, label %trap\nsafe{}:\n",
+                           pc, pc, pc, pc, pc);
+    }
+    if (item.op == Div || item.op == Mod) {
+        operands := format_text("  %zero{} = icmp eq i32 %b{}, 0\n  %min{} = icmp eq i32 %a{}, -2147483648\n  %negone{} = icmp eq i32 %b{}, -1\n  %overflow{} = and i1 %min{}, %negone{}\n",
+                                pc, pc, pc, pc, pc, pc, pc, pc, pc);
+        guarded := format_text("  %bad{} = or i1 %zero{}, %overflow{}\n  br i1 %bad{}, label %trap, label %safe{}\nsafe{}:\n",
+                               pc, pc, pc, pc, pc, pc);
+        return format_text("{}{}", operands, guarded);
+    }
+    return "";
+}
+EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
+    out := format_text("p{}:\n", pc);
+    type := abi.ScalarType(item.type);
+    if (item.op == Constant) {
+        out = format_text("{}{}", out, Store(format_text("{}", item.literal), item.type, "s", item.output));
+    } else if (item.op == Argument) {
+        out = format_text("{}{}", out, Store(format_text("%arg{}", item.left), item.type, "s", item.output));
+    } else if (item.op == Local) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "l", item.left));
+        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "s", item.output));
+    } else if (item.op == Save) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "l", item.target));
+    } else if (item.op == Publish) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+        out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
+    } else if (item.op == Return || item.op == End) {
+        out = format_text("{}{}", out, Load(format_text("return{}", pc), result, "result", 0));
+        return format_text("{}{}", out, format_text("  ret {} %return{}\n", abi.ScalarType(result), pc));
+    } else if (item.op == Branch) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), 1, "s", item.left));
+        return format_text("{}{}", out, format_text("  br i1 %a{}, label %p{}, label %p{}\n", pc, item.target, pc + 1));
+    } else if (item.op == Jump) {
+        return format_text("{}{}", out, format_text("  br label %p{}\n", item.target));
+    } else if (item.op == Check) {
+        // CHECKs, not LLVM instructions, consume the caller's positive bound.
+        // Compare before subtracting: exactly N CHECKs may pass a budget N.
+        out = format_text("{}  %remaining{} = load i32, ptr %budget0\n  %available{} = icmp sgt i32 %remaining{}, 0\n  br i1 %available{}, label %budget_ok{}, label %trap\nbudget_ok{}:\n  %next_budget{} = sub i32 %remaining{}, 1\n  store i32 %next_budget{}, ptr %budget0\n",
+                          out, pc, pc, pc, pc, pc, pc, pc, pc, pc);
+    } else {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+        if (Unary(item.op)) {
+            if (item.op == Neg) {
+                out = format_text("{}{}", out, format_text("  %v{} = sub i32 0, %a{}\n", pc, pc));
+            } else {
+                out = format_text("{}{}", out, format_text("  %v{} = xor i32 %a{}, -1\n", pc, pc));
+            }
+        } else {
+            out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
+            out = format_text("{}{}", out, CheckArithmetic(item, pc));
+            out = format_text("{}{}", out, format_text("  %v{} = {} {} %a{}, %b{}\n", pc, Operation(item.op), type, pc, pc));
+        }
+        output := item.type;
+        if (Comparison(item.op)) {
+            output = 1;
+        }
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), output, "s", item.output));
+    }
+    return format_text("{}{}", out, format_text("  br label %p{}\n", pc + 1));
+}
+
+// The entry, function 0, is `chibi_scalar`, or `main` for a zero-argument
+// int entry; every other function is internal to the module.
+Symbol :: (function: int, main: bool) -> string {
+    if (function == 0 && main) {
+        return "main";
+    }
+    if (function == 0) {
+        return "chibi_scalar";
+    }
+    return format_text("chibi_scalar.{}", function);
+}
+// Arguments load in call order, so evaluation order stays visible at O0.
+CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
+                    main: bool) -> string {
+    callee := functions[item.left];
+    out := format_text("p{}:\n", pc);
+    list := "";
+    for (index in 0..<item.target) {
+        type := parameters[callee.first_parameter + index];
+        out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", arguments[item.right + index]));
+        if (index > 0) {
+            list = format_text("{}, ", list);
+        }
+        list = format_text("{}{} %c{}_{}", list, abi.ScalarType(type), pc, index);
+    }
+    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, abi.ScalarType(item.type), Symbol(item.left, main), list);
+    out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
+                 code: Instruction[], arguments: int[], main: bool, step_budget: int) -> string {
+    shape := functions[function];
+    result := shape.result;
+    linkage := "";
+    if (function != 0) {
+        linkage = "internal ";
+    }
+    out := format_text("define {}{} @{}(", linkage, abi.ScalarType(result), Symbol(function, main));
+    for (index in 0..<shape.parameters) {
+        if (index > 0) {
+            out = format_text("{}, ", out);
+        }
+        out = format_text("{}{} %arg{}", out, abi.ScalarType(parameters[shape.first_parameter + index]), index);
+    }
+    out = format_text("{}) {\nentry:\n", out);
+    out = format_text("{}  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", out, step_budget);
+    for (index in 0..<shape.slots) {
+        out = format_text("{}  %s{} = alloca {}\n", out, index, abi.ScalarType(slots[shape.first_slot + index]));
+    }
+    for (index in 0..<shape.locals) {
+        type := locals[shape.first_local + index];
+        out = format_text("{}  %l{} = alloca {}\n", out, index, abi.ScalarType(type));
+        out = format_text("{}{}", out, Store("0", type, "l", index));
+    }
+    out = format_text("{}  %result0 = alloca {}\n", out, abi.ScalarType(result));
+    out = format_text("{}{}", out, Store("0", result, "result", 0));
+    out = format_text("{}  br label %p0\n", out);
+    own := Part(arguments, shape.first_argument, shape.arguments);
+    for (pc in 0..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.op == Call) {
+            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, main));
+        } else {
+            out = format_text("{}{}", out, EmitInstruction(item, pc, result));
+        }
+    }
+    return format_text("{}trap:\n  call void @llvm.trap()\n  unreachable\n}\n", out);
+}
+
+pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+             code: Instruction[], arguments: int[], main: bool, step_budget: int) -> Result {
+    if (step_budget <= 0) {
+        return Result.Rejected(-1, "native CHECK budget must be positive");
+    }
+    if (!abi.Supported(target)) {
+        return Result.Rejected(-1, "unsupported native target");
+    }
+    if (!Layout(functions, parameters, slots, locals, code, arguments)) {
+        return Result.Rejected(-1, "unsupported native scalar signature or table size");
+    }
+    for (function in 0..<length(functions)) {
+        switch Validate(functions, function, parameters, slots, locals, code, arguments, main) {
+            case .Rejected(instruction, message):
+                return Result.Rejected(instruction, message);
+            case .Emitted(text):
+                continue;
+        }
+    }
+    if (Cyclic(functions, code)) {
+        return Result.Rejected(-1, "native call graph is cyclic");
+    }
+    // No host-derived data layout: the explicit LLVM target selects it. No
+    // aggregate, raw pointer or foreign ABI is admitted yet.
+    out := format_text("target triple = \"{}\"\n\ndeclare void @llvm.trap()\n", target.triple);
+    for (function in 0..<length(functions)) {
+        out = format_text("{}\n{}", out, EmitFunction(functions, function, parameters, slots, locals, code,
+                                                      arguments, main, step_budget));
+    }
+    return Result.Emitted(out);
+}

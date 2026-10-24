@@ -22,8 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Eight fixed prepared cases. Bounds are recorded beside the dispatcher before
- * independent admission. No files, frames, worker pools or benchmark loops. */
+/* Twelve fixed prepared cases. The largest validation fixture has 128 fields
+ * and 256 shared headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -89,6 +89,8 @@ static void cleanup()
     free(input);
     free(writer.records);
     free(reader.records);
+    afree(writer.functions);
+    afree(reader.functions);
     afree(writer.wire.data);
     execution_module_plan_free(write_plan);
     execution_module_plan_free(read_plan);
@@ -370,6 +372,226 @@ static bool read_table()
     REQUIRE(!reader.wire.error && read_plan->type_count == 1);
     return true;
 }
+TEST_CASE(record_prepared_shared_headers_fit_default_work)
+{
+    enum
+    {
+        FIELD_COUNT = 128,
+        HEADER_COUNT = 256
+    };
+    char names[FIELD_COUNT][16];
+    type_field shape[FIELD_COUNT] = { 0 };
+    for (int i = 0; i < FIELD_COUNT; i++) {
+        snprintf(names[i], sizeof names[i], "field%03d", i);
+        shape[i] = (type_field){ .name = names[i], .type = PIN_I32 };
+    }
+    const pin_record *record = pin_record_create(&producer, "Rows.Row", 91, shape, FIELD_COUNT);
+    REQUIRE(record);
+    const pin_value header = { .type = PIN_STRUCT,
+                               .type_name = record->type.name,
+                               .record = record };
+    builder = behavior_function_builder_new();
+    for (int i = 0; i < HEADER_COUNT; i++) {
+        behavior_function_builder_values(builder, &header, 1);
+    }
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    decoded_function = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(decoded_function);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    plan = execution_module_plan_new();
+    plan->id = function_id = 1;
+    plan->valid = true;
+    apush(
+        plan->types,
+        ((execution_type_requirement){ .id = record->id,
+                                       .storage = PIN_STRUCT,
+                                       .name = record->type.name,
+                                       .record = record,
+                                       .layout = record->layout,
+                                       .size = record->type.size })
+    );
+    plan->type_count = 1;
+    apush(
+        plan->functions,
+        ((execution_module_function){ .id = function_id,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = decoded_function })
+    );
+    decoded_function = NULL;
+    plan->function_count = 1;
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module && !plan);
+    arena_free(&producer);
+    REQUIRE(encode());
+    /* The wire and all initial header checks fit the default layout-work
+     * bound. Revalidating the same 128-field layout for every final header
+     * used to exhaust it. Neither writer nor reader receives raised bounds. */
+    REQUIRE(decode(BEHAVIOR_BYTECODE));
+    const behavior_function *function = body();
+    REQUIRE(function && acount(function->data_values) == HEADER_COUNT);
+    record = function->data_values[0].initial.record;
+    REQUIRE(record && pin_record_valid(record));
+    REQUIRE(record->type.field_count == FIELD_COUNT && arena_contains(&function->owned, record));
+    for (int i = 0; i < HEADER_COUNT; i++) {
+        pin_value value = function->data_values[i].initial;
+        REQUIRE(value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE);
+        REQUIRE(
+            value.record == record && value.type_name == record->type.name &&
+            !value.ptr
+        );
+    }
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&escaped, &saved, &function->data_values[0].initial)
+    );
+    execution_module_free(module);
+    module = NULL;
+    REQUIRE(saved.record && pin_record_valid(saved.record));
+    REQUIRE(saved.record->type.field_count == FIELD_COUNT);
+    REQUIRE(!strcmp(saved.record->type.fields[FIELD_COUNT - 1].name, names[FIELD_COUNT - 1]));
+    return true;
+}
+/* Exercise the decoded verifier directly: ordinary builder ownership also
+ * validates incoming records and could hide a broken verifier proof cache. */
+static bool decoded_headers(const type_field *shape, int count)
+{
+    assert(!decoded_function);
+    decoded_function = calloc(1, sizeof *decoded_function);
+    REQUIRE(decoded_function);
+    decoded_function->artifact = execution_artifact_new();
+    apush(decoded_function->sources, ((behavior_function_source){ .parent = -1 }));
+    apush(
+        decoded_function->frames,
+        ((behavior_function_frame){ .source = { .parent = -1 }, .stack = -1 })
+    );
+    const pin_record *record = pin_record_create(&decoded_function->owned, "Rows.Row", 91, shape, count);
+    REQUIRE(record);
+    pin_value header = { .type = PIN_STRUCT,
+                         .type_name = record->type.name,
+                         .record = record };
+    for (int i = 0; i < 2; i++) {
+        apush(decoded_function->data_values, ((behavior_function_data_value){ .initial = header }));
+    }
+    apush(decoded_function->instructions, ((behavior_function_instruction){ .op = BF_END }));
+    return true;
+}
+TEST_CASE(record_prepared_proof_keeps_each_header_check)
+{
+    const type_field field = { .name = "value", .type = PIN_I32 };
+    for (int mode = 0; mode < 4; mode++) {
+        REQUIRE(decoded_headers(&field, 1));
+        pin_value *later = &decoded_function->data_values[1].initial;
+        if (mode == 0) {
+            const pin_record *other = pin_record_create(
+                &decoded_function->owned,
+                later->record->type.name,
+                later->record->id,
+                &field,
+                1
+            );
+            REQUIRE(
+                other && other != later->record && pin_record_same(other, later->record)
+            );
+            ((type_field *)other->type.fields)[0].offset++;
+            REQUIRE(!pin_record_valid(other));
+            later->record = other;
+            later->type_name = other->type.name;
+        } else if (mode == 1) {
+            later->type = PIN_I32;
+        } else if (mode == 2) {
+            later->container = (pin_container)(PIN_CONTAINER_MAP + 1);
+        } else {
+            later->type_name = "Rows.Other";
+        }
+        char error[256];
+        REQUIRE(
+            !behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error)
+        );
+        REQUIRE(strstr(error, "invalid host value type") && !decoded_function->frozen);
+        behavior_function_free(decoded_function);
+        decoded_function = NULL;
+    }
+    return true;
+}
+TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry)
+{
+    const type_field field = { .name = "value", .type = PIN_I32 };
+    REQUIRE(decoded_headers(&field, 1));
+    type_field *owned = (type_field *)decoded_function->data_values[0]
+                            .initial.record->type.fields;
+    owned[0].offset++;
+    char error[256];
+    REQUIRE(!behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(strstr(error, "invalid host value type"));
+    owned[0].offset--;
+    pin_value *later = &decoded_function->data_values[1].initial;
+    const char *name = later->type_name;
+    later->type_name = "Rows.Other";
+    REQUIRE(!behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(strstr(error, "invalid host value type"));
+    later->type_name = name;
+    owned[0].offset++;
+    REQUIRE(!behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(strstr(error, "invalid host value type"));
+    owned[0].offset--;
+    REQUIRE(behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(decoded_function->frozen && !*error);
+    return true;
+}
+TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog)
+{
+    static const type_field native_fields[] = {
+        { .name = "value", .type = PIN_I32, .size = sizeof(int32_t) },
+        { .name = "changed", .type = PIN_I32, .size = sizeof(int32_t) }
+    };
+    static const type_desc native_types[] = {
+        { .name = "RecordValidation.Native",
+          .size = sizeof(int32_t),
+          .fields = &native_fields[0],
+          .field_count = 1 },
+        { .name = "RecordValidation.Native",
+          .size = sizeof(int32_t),
+          .fields = &native_fields[1],
+          .field_count = 1 }
+    };
+    static const type_desc *const first[] = { &native_types[0] };
+    static const type_desc *const replacement[] = { &native_types[1] };
+    static const type_catalog_pack packs[] = { { .types = first, .type_count = 1 },
+                                               { .types = replacement,
+                                                 .type_count = 1 } };
+    type_catalog_set_project(&packs[0]);
+    project_set = true;
+    const type_field nested = { .name = "part",
+                                .type = PIN_STRUCT,
+                                .type_name = "RecordValidation.Native" };
+    REQUIRE(decoded_headers(&nested, 1));
+    pin_value *later = &decoded_function->data_values[1].initial;
+    const char *name = later->type_name;
+    const pin_record *record = later->record;
+    REQUIRE(pin_record_valid(record));
+    later->type_name = "Rows.Other";
+    char error[256];
+    REQUIRE(!behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(strstr(error, "invalid host value type"));
+    later->type_name = name;
+    type_catalog_set_project(NULL);
+    project_set = false;
+    type_catalog_set_project(&packs[1]);
+    project_set = true;
+    /* The descriptor pointer and nested size are unchanged. Its old layout
+     * proof must not survive replacing the native catalog between attempts. */
+    REQUIRE(pin_record_current(record) && !pin_record_valid(record));
+    REQUIRE(!behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(strstr(error, "invalid host value type"));
+    type_catalog_set_project(NULL);
+    project_set = false;
+    type_catalog_set_project(&packs[0]);
+    project_set = true;
+    REQUIRE(behavior_function_prepare_definition(decoded_function, SIZE_MAX, error, sizeof error));
+    REQUIRE(decoded_function->frozen && pin_record_valid(record));
+    return true;
+}
 static void collect(arena *a, const void *root)
 {
     arena_collection c;
@@ -648,34 +870,55 @@ TEST_CASE(record_prepared_table_rejections)
         execution_module_plan_free(read_plan);
         read_plan = NULL;
     }
-    REQUIRE(table_image(-1));
-    REQUIRE(read_table());
-    const pin_record *record = read_plan->types[0].record;
-    size_t names = record->bytes - sizeof *record -
-                   (size_t)record->type.field_count * sizeof(type_field);
-    size_t cost = ((size_t)record->type.field_count + 8) *
-                  (names + (size_t)record->type.field_count + 1);
-    behavior_function repeated = { 0 };
-    pin_value header = { .type = PIN_STRUCT,
-                         .type_name = record->type.name,
-                         .record = record };
-    apush(repeated.argument_defaults, header);
-    apush(repeated.argument_defaults, header);
-    apush(reader.functions, &repeated);
-    size_t work_before = reader.record_work;
-    reader.record_work_limit = work_before + 2 * cost + cost / 2;
-    bool within = prepared_records_finalize(&reader);
-    afree(repeated.argument_defaults);
-    afree(reader.functions);
-    REQUIRE(!within && reader.wire.error && strstr(reader.wire.error, "work limit"));
-    REQUIRE(
-        reader.record_work ==
-        work_before + 2 * cost + 2 * (2 * strlen(header.type_name) + 3)
-    );
-    free(reader.records);
-    reader = (prepared_context){ 0 };
-    execution_module_plan_free(read_plan);
-    read_plan = NULL;
+    /* A module requirement and one distinct function layout fit this bound;
+     * a second descriptor must pay for its own validation even when its
+     * nominal identity and layout hash match the first. */
+    for (int mode = 0; mode < 3; mode++) {
+        REQUIRE(table_image(-1));
+        REQUIRE(read_table());
+        const pin_record *record = read_plan->types[0].record;
+        size_t names = record->bytes - sizeof *record -
+                       (size_t)record->type.field_count * sizeof(type_field);
+        size_t cost = ((size_t)record->type.field_count + 8) *
+                      (names + (size_t)record->type.field_count + 1);
+        REQUIRE(decoded_headers(record->type.fields, record->type.field_count));
+        if (mode == 1) {
+            pin_value *later = &decoded_function->data_values[1].initial;
+            const pin_record *other = pin_record_create(
+                &decoded_function->owned,
+                record->type.name,
+                record->id,
+                record->type.fields,
+                record->type.field_count
+            );
+            REQUIRE(
+                other && other != later->record && pin_record_same(other, later->record)
+            );
+            later->record = other;
+            later->type_name = other->type.name;
+        }
+        apush(reader.functions, decoded_function);
+        reader.record_work_limit = reader.record_work + 2 * cost + cost / 2;
+        size_t remaining = 1;
+        if (mode == 2) {
+            reader.wire.storage_budget = &remaining;
+        }
+        bool within = prepared_records_finalize(&reader);
+        if (mode == 1) {
+            REQUIRE(!within && reader.wire.error && strstr(reader.wire.error, "work limit"));
+        } else if (mode == 2) {
+            REQUIRE(!within && reader.wire.error && strstr(reader.wire.error, "storage budget"));
+        } else {
+            REQUIRE(within && !reader.wire.error);
+        }
+        behavior_function_free(decoded_function);
+        decoded_function = NULL;
+        afree(reader.functions);
+        free(reader.records);
+        reader = (prepared_context){ 0 };
+        execution_module_plan_free(read_plan);
+        read_plan = NULL;
+    }
     REQUIRE(table_image(-1));
     pin_value null_row = { .type = PIN_STRUCT,
                            .type_name = write_plan->types[0].name,
@@ -1000,6 +1243,10 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(string_wire_bytes);
     RUN_TEST_CASE(record_prepared_scalar_owners);
     RUN_TEST_CASE(record_prepared_array_owners);
+    RUN_TEST_CASE(record_prepared_shared_headers_fit_default_work);
+    RUN_TEST_CASE(record_prepared_proof_keeps_each_header_check);
+    RUN_TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry);
+    RUN_TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog);
     RUN_TEST_CASE(record_prepared_recursive_codec);
     RUN_TEST_CASE(record_prepared_repeated_headers_charge_hash_work);
     RUN_TEST_CASE(record_prepared_packed_rows_survive_collection);

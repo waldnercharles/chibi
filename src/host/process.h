@@ -45,7 +45,8 @@ typedef struct
     int system_error; /* errno value for spawn/host failure. */
 } chibi_process_capture_result;
 
-/* Same monotonic epoch as the production Python supervisor on each host. */
+/* Same monotonic epoch as the production Python supervisor on each host.
+ * Reads only clock_gettime and is async-signal-safe. Returns -1 on failure. */
 double chibi_process_now();
 
 /* Synchronously run an absolute executable, with explicit cwd and NULL-terminated

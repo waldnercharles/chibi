@@ -25,8 +25,8 @@
  * The two authored generations remain prepared across all 28 constructions.
  * There are 56 Build and 348 query calls, 684 packed files and 590 packed
  * imports. Only the two 256-file Builds receive a 50-million instruction
- * ceiling; every other call receives 100000. The shared production deadline
- * still bounds the entire route. No filesystem or processes are used. */
+ * ceiling; every other call receives 100000. No filesystem or processes are
+ * used. */
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 static native_capabilities *native;
 static authoring_packages *owners[2];

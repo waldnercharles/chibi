@@ -160,15 +160,17 @@ static void append(char **out, const char *text)
 {
     int old = acount(*out);
     size_t length = strlen(text);
+    if (!length) {
+        return;
+    }
     if (length > (size_t)(MAX_DETAIL - old)) {
         if (old < MAX_DETAIL) {
             static const char omitted[] = " [truncated]";
             int keep = old < MAX_DETAIL - (int)sizeof omitted + 1
                          ? old
                          : MAX_DETAIL - (int)sizeof omitted + 1;
-            asetlen(*out, keep);
-            memcpy(*out + keep, omitted, sizeof omitted - 1);
             asetlen(*out, keep + (int)sizeof omitted - 1);
+            memcpy(*out + keep, omitted, sizeof omitted - 1);
         }
         return;
     }

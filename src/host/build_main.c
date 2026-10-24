@@ -1,4 +1,6 @@
 #include "host/build_host.h"
+#include "host/process.h"
+#include "support/file_io.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
 
@@ -8,10 +10,12 @@
 #include <limits.h>
 #include <math.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 /* No game/native type packs are admitted by this private tool host. */
@@ -26,13 +30,91 @@ type_catalog_pack type_catalog_pack_at(int)
 }
 
 static volatile sig_atomic_t cancelled;
+static volatile sig_atomic_t preparing = 1;
+static _Atomic double preparation_deadline;
+
 static void cancel(int signal)
 {
-    cancelled = signal;
+    int saved_errno = errno;
+    if (!preparing) {
+        if (signal != SIGALRM) {
+            cancelled = signal;
+        }
+        errno = saved_errno;
+        return;
+    }
+    if (signal == SIGALRM) {
+        double now = chibi_process_now();
+        if (now >= 0 &&
+            now < atomic_load_explicit(&preparation_deadline, memory_order_relaxed)) {
+            errno = saved_errno;
+            return;
+        }
+        if (now < 0) {
+            write(STDERR_FILENO, "build process host failure\n", sizeof "build process host failure\n" - 1);
+            _exit(1);
+        }
+        write(STDERR_FILENO, "build process timeout\n", sizeof "build process timeout\n" - 1);
+        _exit(1);
+    }
+    write(STDERR_FILENO, "build process cancelled\n", sizeof "build process cancelled\n" - 1);
+    _exit(1);
+}
+
+/* The interval only matters if the wall timer fires before the monotonic
+ * deadline, for example across macOS sleep. No timer APIs run in a handler. */
+static bool preparation_start(double deadline)
+{
+    if (!atomic_is_lock_free(&preparation_deadline)) {
+        return false;
+    }
+    atomic_store_explicit(&preparation_deadline, deadline, memory_order_relaxed);
+    struct sigaction action = { .sa_handler = cancel };
+    sigemptyset(&action.sa_mask);
+    sigaddset(&action.sa_mask, SIGINT);
+    sigaddset(&action.sa_mask, SIGTERM);
+    sigaddset(&action.sa_mask, SIGALRM);
+    if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL) ||
+        sigaction(SIGALRM, &action, NULL) ||
+        sigprocmask(SIG_UNBLOCK, &action.sa_mask, NULL)) {
+        return false;
+    }
+    double now = chibi_process_now();
+    if (now < 0) {
+        return false;
+    }
+    double remaining = deadline > now ? deadline - now : 0;
+    time_t seconds = (time_t)remaining;
+    double fraction = (remaining - seconds) * 1000000;
+    suseconds_t micros = (suseconds_t)fraction;
+    if (fraction > micros) {
+        micros++;
+    }
+    if (micros == 1000000) {
+        seconds++;
+        micros = 0;
+    }
+    if (!seconds && !micros) {
+        micros = 1;
+    }
+    struct itimerval timer = { .it_value = { seconds, micros },
+                               .it_interval = { 0, 1000 } };
+    return setitimer(ITIMER_REAL, &timer, NULL) == 0;
+}
+
+/* No authored function or build child has run when this callback is called. */
+static void preparation_end()
+{
+    struct itimerval timer = { 0 };
+    if (setitimer(ITIMER_REAL, &timer, NULL)) {
+        fprintf(stderr, "build process host failure\n");
+        exit(1);
+    }
+    preparing = 0;
 }
 static int usage()
 {
-    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
+    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
     return 1;
 }
 #define BUILD_SOURCE_LIMIT (1024 * 1024)
@@ -85,6 +167,24 @@ static char *from_root(const char *root, const char *path)
     }
     return out;
 }
+/* Build-tree and installed hosts carry the same compiler inputs beside their
+ * SDK. Resolve from the executable so invocation never depends on the cwd. */
+static char *shared(const char *name)
+{
+    char *bin = file_executable_dir();
+    const char *parents[] = { "..", "../..", "." };
+    char *folder = NULL;
+    for (size_t i = 0; i < sizeof parents / sizeof *parents && !folder; i++) {
+        size_t size = strlen(bin) + strlen(parents[i]) + strlen(name) +
+                      sizeof "/share/chibi//";
+        char *candidate = xmalloc(size);
+        snprintf(candidate, size, "%s/%s/share/chibi/%s", bin, parents[i], name);
+        folder = realpath(candidate, NULL);
+        free(candidate);
+    }
+    free(bin);
+    return folder;
+}
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
@@ -92,6 +192,7 @@ int main(int argc, char **argv)
         return 0;
     }
     const char *root = NULL, *path = NULL, *core = NULL, *entry = NULL;
+    const char *compiler_sources = NULL, *compiler_core = NULL;
     long timeout = 0;
     int arguments_start = argc;
     const char *collections[CHIBI_BUILD_MAX_COLLECTIONS];
@@ -110,6 +211,10 @@ int main(int argc, char **argv)
             path = argv[i + 1];
         } else if (!strcmp(argv[i], "--core") && !core) {
             core = argv[i + 1];
+        } else if (!strcmp(argv[i], "--compiler") && !compiler_sources) {
+            compiler_sources = argv[i + 1];
+        } else if (!strcmp(argv[i], "--compiler-core") && !compiler_core) {
+            compiler_core = argv[i + 1];
         } else if (!strcmp(argv[i], "--collection") && collection_count < CHIBI_BUILD_MAX_COLLECTIONS) {
             const char *equals = strchr(argv[i + 1], '=');
             if (!equals || equals == argv[i + 1] || !equals[1]) {
@@ -129,33 +234,16 @@ int main(int argc, char **argv)
             return usage();
         }
     }
-    if (!root || !path || !entry) {
+    if (!root || !path || !entry || !timeout) {
         return usage();
     }
     /* Budget starts before file IO and preparation, and every child shares it. */
-    double deadline = timeout ? chibi_build_now() + timeout / 1000.0 : INFINITY;
-    const char *inherited = getenv("CHIBI_TEST_DEADLINE");
-    if (inherited) {
-        char *end;
-        double limit = strtod(inherited, &end);
-        if (end == inherited || *end || !isfinite(limit) || limit <= 0) {
-            fprintf(stderr, "invalid inherited build deadline\n");
-            return 1;
-        }
-        if (limit < deadline) {
-            deadline = limit;
-        }
-    }
-    if (!timeout && !inherited) {
-        return usage();
-    }
+    double deadline = chibi_build_now() + timeout / 1000.0;
     if (!isfinite(deadline)) {
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
-    struct sigaction action = { .sa_handler = cancel };
-    sigemptyset(&action.sa_mask);
-    if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL)) {
+    if (!preparation_start(deadline)) {
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
@@ -197,7 +285,20 @@ int main(int argc, char **argv)
         }
         return 1;
     }
+    char *sources = compiler_sources ? realpath(compiler_sources, NULL)
+                                     : shared("compiler");
+    char *compiler_collection = compiler_core ? realpath(compiler_core, NULL)
+                                              : shared("core");
+    char error[256] = "SDK compiler sources and core collection could not be "
+                      "found";
+    chibi_build_compiler
+        *compiler = sources && compiler_collection
+                      ? chibi_build_compiler_load(sources, compiler_collection, error, sizeof error)
+                      : NULL;
+    free(sources);
+    free(compiler_collection);
     chibi_build_options options = {
+        .compiler = compiler,
         .root = root,
         .source_path = source_path,
         .source_text = text,
@@ -210,9 +311,13 @@ int main(int argc, char **argv)
         .backend = BEHAVIOR_BYTECODE,
         .deadline = deadline,
         .cancelled = &cancelled,
+        .prepared = preparation_end,
     };
-    chibi_build_result result;
-    bool success = chibi_build_invoke(&options, &result);
+    chibi_build_result result = { 0 };
+    bool success = compiler && chibi_build_invoke(&options, &result);
+    if (!compiler) {
+        snprintf(result.diagnostic, sizeof result.diagnostic, "%s", error);
+    }
     fwrite(result.stdout_text, 1, result.stdout_size, stdout);
     fwrite(result.stderr_text, 1, result.stderr_size, stderr);
     if (result.stdout_truncated) {
@@ -224,6 +329,7 @@ int main(int argc, char **argv)
     if (!success) {
         fprintf(stderr, "%s\n", result.diagnostic);
     }
+    chibi_build_compiler_free(compiler);
     free(text);
     free(source_path);
     free(core_path);

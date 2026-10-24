@@ -1,18 +1,22 @@
 #include "host/build_host.h"
 
-#include "authoring/native_bindings.h"
-#include "authoring/source_package_files.h"
-#include "authoring/source_package_prepare.h"
+#include "authoring/source_package_io.h"
+#include "execution/function_builder.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
 #include "host/build_values.h"
 #include "host/process.h"
 #include "runtime/arrays_definition.h"
+#include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "toolchain/compiler_artifact.h"
+#include "toolchain/compiler_bootstrap.h"
+#include "toolchain/compiler_host.h"
+#include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/text.h"
 
@@ -24,6 +28,12 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <yyjson.h>
+
+struct chibi_build_compiler
+{
+    compiler_host *host;
+};
 
 #define BUILD_MAX_ARGUMENTS 256
 /* A step's arguments, as many as chibi_process_begin passes: a link names
@@ -34,6 +44,7 @@
 /* Instructions one program may run, as many as a package test: a build graph
  * parses a dependency file per object. The deadline bounds the time. */
 #define BUILD_INSTRUCTION_BUDGET 100000000
+#define BUILD_COMPILE_BUDGET 2000000000u
 
 static const char *const environment_names[] = {
     "PATH",
@@ -43,7 +54,6 @@ static const char *const environment_names[] = {
     "TEMP",
     "SDKROOT",
     "DEVELOPER_DIR",
-    "CHIBI_TEST_DEADLINE",
     "CHIBI_BUILD_WORKER",
     "CC",
     "CXX",
@@ -483,13 +493,35 @@ static void diagnose(chibi_build_result *result, const char *message)
 {
     snprintf(result->diagnostic, sizeof(result->diagnostic), "%s", message);
 }
-/* The program is the one file of the package at its directory; it may import
+chibi_build_compiler *chibi_build_compiler_load(const char *sources, const char *core, char *error, size_t size)
+{
+    if (!sources || !*sources || !core || !*core) {
+        snprintf(error, size, "compiler sources and core collection are required");
+        return NULL;
+    }
+    char *folder = join(sources, "bootstrap");
+    compiler_bootstrap input = { .folder = folder, .compiler = sources, .core = core };
+    compiler_host *host = compiler_bootstrap_load(&input, error, size);
+    free(folder);
+    if (!host) {
+        return NULL;
+    }
+    chibi_build_compiler *compiler = xmalloc(sizeof *compiler);
+    compiler->host = host;
+    return compiler;
+}
+
+void chibi_build_compiler_free(chibi_build_compiler *compiler)
+{
+    if (compiler) {
+        compiler_host_free(compiler->host);
+        free(compiler);
+    }
+}
+
+/* The program is one file of the package at its directory; it may import
  * the packages of its collections, core: among them. */
-static authoring_packages *prepare(
-    const build_host *host,
-    const native_capabilities *native,
-    const script_lower_bindings *bindings
-)
+static char *compile_input(const build_host *host, const native_capabilities *native, size_t *length)
 {
     const chibi_build_options *options = host->options;
     source_package_collection collections[CHIBI_BUILD_MAX_COLLECTIONS + 1];
@@ -519,44 +551,127 @@ static authoring_packages *prepare(
     }
     const char *slash = strrchr(options->source_path, '/');
     char *path = join(host->program_directory, slash ? slash + 1 : options->source_path);
-    apush(
-        files,
-        ((source_package_input){ path, options->source_text, strlen(options->source_text) })
-    );
-    const source_package_snapshot_options snapshot = { .project_root = host->program_directory,
-                                                       .files = files,
-                                                       .file_count = acount(files),
-                                                       .collections = collections,
-                                                       .collection_count = count };
-    authoring_packages *packages = authoring_packages_prepare(
-        source_package_snapshot_new(&snapshot),
-        native_capabilities_catalog(native),
-        bindings,
-        options->backend,
-        NULL
-    );
-    free(path);
-    asetlen(files, acount(files) - 1);
-    source_package_files_free(files);
-    return packages;
-}
-/* The first diagnostic of invalid packages. */
-static const char *invalid(const authoring_packages *packages)
-{
-    const source_package_snapshot_error *error = source_package_snapshot_error_at(
-        authoring_packages_snapshot(packages)
-    );
-    if (error) {
-        return error->diagnostic.message;
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, arguments);
+    yyjson_mut_arr_add_strcpy(doc, arguments, host->program_directory);
+    yyjson_mut_val *names = yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *roots = yyjson_mut_arr_add_arr(doc, arguments);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_strcpy(doc, names, collections[i].name);
+        yyjson_mut_arr_add_strcpy(doc, roots, collections[i].root);
     }
-    for (int i = 0; i < authoring_packages_count(packages); i++) {
-        const authoring_package *package = authoring_packages_at(packages, i);
-        if (package->diagnostic_count) {
-            return package->diagnostics[0].message;
+    yyjson_mut_val *paths = yyjson_mut_arr_add_arr(doc, arguments);
+    yyjson_mut_val *texts = yyjson_mut_arr_add_arr(doc, arguments);
+    /* Compile's first file chooses its root package. The program precedes
+     * collection inputs even when a collection sorts before it on disk. */
+    yyjson_mut_arr_add_strcpy(doc, paths, path);
+    yyjson_mut_arr_add_strcpy(doc, texts, options->source_text);
+    for (int i = 0; i < acount(files); i++) {
+        yyjson_mut_arr_add_strcpy(doc, paths, files[i].path);
+        yyjson_mut_arr_add_strncpy(doc, texts, files[i].text, files[i].size);
+    }
+    yyjson_mut_arr_add_true(doc, arguments);
+    size_t target_length = 0;
+    char *target = compiler_target_json(native_capabilities_catalog(native), &target_length);
+    yyjson_doc *target_doc = yyjson_read(target, target_length, 0);
+    yyjson_val *target_values = yyjson_doc_get_root(target_doc);
+    for (size_t i = 0; i < yyjson_arr_size(target_values); i++) {
+        yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, yyjson_arr_get(target_values, i)));
+    }
+    size_t effects_length = 0;
+    char *effects = compiler_target_effects_json(native_capabilities_catalog(native), &effects_length);
+    yyjson_doc *effects_doc = yyjson_read(effects, effects_length, 0);
+    yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, yyjson_doc_get_root(effects_doc)));
+    char *json = target_doc && effects_doc
+                   ? yyjson_mut_write(doc, YYJSON_WRITE_ALLOW_INVALID_UNICODE, length)
+                   : NULL;
+    yyjson_doc_free(effects_doc);
+    free(effects);
+    yyjson_doc_free(target_doc);
+    free(target);
+    yyjson_mut_doc_free(doc);
+    free(path);
+    source_package_files_free(files);
+    if (!json) {
+        diagnose(host->result, "cannot encode build compiler input");
+    }
+    return json;
+}
+
+static void compile_rejection(build_host *host, const char *json, size_t length)
+{
+    compiler_host_result result = { 0 };
+    bool called = compiler_host_invoke(
+        host->options->compiler->host,
+        compiler_host_entry("project:package_compiler:1:CompileWithEffects:callable"),
+        json,
+        length,
+        BUILD_COMPILE_BUDGET,
+        &result
+    );
+    yyjson_doc *doc = called ? yyjson_read(result.json, result.length, YYJSON_READ_ALLOW_INVALID_UNICODE)
+                             : NULL;
+    yyjson_val *rejected = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
+    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(rejected, "values"), 0);
+    const char *message = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
+    if (message) {
+        diagnose(host->result, message);
+    } else {
+        diagnose(host->result, result.diagnostic[0] ? result.diagnostic : "build source compilation failed");
+    }
+    yyjson_doc_free(doc);
+    free(result.json);
+}
+
+static package_collection *prepare(build_host *host, const native_capabilities *native, uint64_t *root)
+{
+    size_t length = 0;
+    char *json = compile_input(host, native, &length);
+    if (!json) {
+        return NULL;
+    }
+    compiler_host_bytes compiled = { 0 };
+    bool called = compiler_host_invoke_bytes(
+        host->options->compiler->host,
+        compiler_host_entry("project:package_compiler:1:CompileClosureWithEffects:callable"),
+        json,
+        length,
+        BUILD_COMPILE_BUDGET,
+        COMPILER_HOST_MAX_OUTPUT_BYTES,
+        &compiled
+    );
+    const char *failure = build_host_ready(host);
+    if (!called || failure) {
+        diagnose(host->result, failure ? failure : compiled.diagnostic);
+    } else if (!compiled.length) {
+        compile_rejection(host, json, length);
+    }
+    free(json);
+    package_collection *packages = NULL;
+    if (called && !failure && compiled.length) {
+        native_prepared_context context = { .native = native };
+        execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+        linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+        linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
+        size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+        char error[256] = { 0 };
+        packages = compiler_artifact_read(
+            compiled.bytes,
+            compiled.length,
+            &linker,
+            host->options->backend,
+            &remaining,
+            root,
+            error,
+            sizeof error
+        );
+        if (!packages) {
+            diagnose(host->result, error);
         }
     }
-    const char *message = authoring_packages_error(packages);
-    return message ? message : "build source preparation failed";
+    free(compiled.bytes);
+    return packages;
 }
 /* The innermost failure reports, as in a package test: a called function's
  * message does not reach the entry's context. */
@@ -593,6 +708,10 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         (options->backend != BEHAVIOR_BYTECODE && options->backend != BEHAVIOR_SLJIT) ||
         !behavior_backend_available(options->backend)) {
         diagnose(result, "invalid build host options");
+        return false;
+    }
+    if (!options->compiler) {
+        diagnose(result, "build compiler is required");
         return false;
     }
     build_host host = { .options = options,
@@ -640,25 +759,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         host.environment[count] = xmalloc(size);
         snprintf(host.environment[count++], size, "%s=%s", environment_names[i], value);
     }
-    const char *inherited = NULL;
-    for (int i = 0; host.environment[i]; i++) {
-        if (!strncmp(host.environment[i], "CHIBI_TEST_DEADLINE=", 20)) {
-            inherited = host.environment[i] + 20;
-            break;
-        }
-    }
     const char *failure = environment_valid ? NULL : "build environment limit exceeded";
-    if (inherited && !failure) {
-        char *end;
-        double deadline = strtod(inherited, &end);
-        if (end == inherited || *end || !isfinite(deadline) || deadline <= 0) {
-            failure = "invalid inherited build deadline";
-        } else if (deadline < host.deadline) {
-            host.deadline = deadline;
-        }
-    }
     native_capabilities *native = NULL;
-    authoring_packages *packages = NULL;
+    package_collection *packages = NULL;
     char error[256];
     const char *observed = NULL;
     behavior_function_context context = { 0 };
@@ -700,49 +803,45 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         failure = error;
         goto done;
     }
-    const script_lower_bindings bindings = authoring_native_bindings(native);
-    packages = prepare(&host, native, &bindings);
+    uint64_t root = 0;
+    packages = prepare(&host, native, &root);
     if (!packages) {
         goto done;
     }
-    if (!authoring_packages_valid(packages)) {
-        failure = invalid(packages);
+    const execution_module *program = NULL;
+    for (int i = 0; i < package_collection_count(packages); i++) {
+        const execution_module *module = package_collection_module(packages, i);
+        if (execution_module_id(module) == root) {
+            program = module;
+        }
+    }
+    if (!program) {
+        failure = "compiled build root was not found";
         goto done;
     }
-    const authoring_package *program = NULL;
-    for (int i = 0; i < authoring_packages_count(packages); i++) {
-        if (!strcmp(authoring_packages_at(packages, i)->identity, "project:")) {
-            program = authoring_packages_at(packages, i);
-        }
-    }
-    assert(program);
-    uint64_t entry_id = 0;
-    const script_analysis *analysis = program->analysis;
-    for (int i = 0; i < analysis->function_count; i++) {
-        const script_function *function = &analysis->functions[i];
-        if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->symbol < 0 ||
-            strcmp(analysis->symbols[function->symbol].name, options->entry)) {
-            continue;
-        }
-        if (entry_id || function->parameter_count || function->result_count != 1 ||
-            analysis->symbols[function->results[0]].type.storage != PIN_I32 ||
-            analysis->symbols[function->results[0]].type.container !=
-                PIN_CONTAINER_SINGLE) {
-            failure = "build entry must be one zero-argument int function";
-            goto done;
-        }
-        entry_id = analysis->symbols[function->symbol].id;
-    }
+    size_t symbol_size = strlen(options->entry) + sizeof "project::1::callable";
+    char *symbol = xmalloc(symbol_size);
+    snprintf(symbol, symbol_size, "project::1:%s:callable", options->entry);
+    uint64_t entry_id = compiler_host_entry(symbol);
+    free(symbol);
     const behavior_function *entry = NULL;
-    for (int i = 0; i < execution_module_function_count(program->module); i++) {
-        execution_module_function_info
-            info = execution_module_function_at(program->module, i);
+    for (int i = 0; i < execution_module_function_count(program); i++) {
+        execution_module_function_info info = execution_module_function_at(program, i);
         if (info.kind == EXECUTION_FUNCTION_AUTHORED && info.id == entry_id) {
             entry = info.body;
         }
     }
     if (!entry) {
         failure = "build entry was not found";
+        goto done;
+    }
+    int argument_count = 0, result_count = 0;
+    behavior_function_arguments(entry, &argument_count);
+    const pin_value *results = behavior_function_results(entry, &result_count);
+    if (argument_count || result_count != 1 || results[0].type != PIN_I32 ||
+        results[0].container != PIN_CONTAINER_SINGLE ||
+        behavior_function_kind(entry, BEHAVIOR_BANK_RESULT, 0) != BEHAVIOR_VALUE) {
+        failure = "build entry must be one zero-argument int function";
         goto done;
     }
     failure = build_host_ready(&host);
@@ -768,6 +867,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     if (!behavior_function_bind(entry, &context, services, 0)) {
         failure = "build host binding failed";
         goto done;
+    }
+    if (options->prepared) {
+        options->prepared();
     }
     behavior_run_scope scope = { 0 };
     behavior_run_scope_begin(&scope);
@@ -796,7 +898,9 @@ done:
     behavior_function_activation_free(&activation);
     arena_free(&storage);
     afree(services);
-    authoring_packages_free(packages);
+    if (packages) {
+        package_collection_free(packages);
+    }
     native_capabilities_free(native);
     for (int i = 0; i < count; i++) {
         free(host.environment[i]);

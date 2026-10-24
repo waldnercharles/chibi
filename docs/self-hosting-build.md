@@ -23,24 +23,24 @@ fixture and recording host perform no file, process, network, clock, sleep or
 GPU operations and create no ECS entities or frames. The existing pico_unit
 driver and production supervisor retain their normal timing and process control.
 
-The admitted `language-build-workflow` tooling command passed all eight cases
-and 90 assertions under the shared 60-second production deadline. Actual backend
+The `language-build-workflow` tooling command passed all eight cases
+and 90 assertions. Actual backend
 entry counters verify bytecode and SLJIT execution, including failure paths; a
 requested backend label alone is not evidence. The finite run took 0.056 seconds
 on the measured Linux host; this is a test measurement, not a performance claim.
 The exact standalone language target was built separately. Broader native,
 materials, projects, language and tooling groups were not run for this proof;
-unmeasured and quarantined checks are not passed.
+unexecuted checks are not passed.
 
 ## Private process host
 
-Stage zero builds `chibi-build-host` on Linux and macOS. The SDK installs the
-private executable in `libexec/chibi`; its capabilities stay out of ordinary
+The native build produces `chibi-build-host` on Linux and macOS. The SDK installs
+the private executable in `libexec/chibi`; its capabilities stay out of ordinary
 game catalogs and public SDK library exports. Windows retains the
 existing stage-zero path; its equivalent process-tree implementation is pending.
 
 ```text
-chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... --entry NAME --timeout-ms N [-- ARGUMENTS...]
+chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]
 ```
 
 The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
@@ -54,9 +54,14 @@ the text and array natives every host offers, such as `format_text` and
 `length`. Nothing resumes a build program, so waiting or starting a task fails
 it with a diagnostic. Relative source paths resolve from
 the explicit root. The CLI uses bytecode; the private C invocation API also
-supports SLJIT. Tests verify backend entry counters. Source preparation and
-execution share the invocation budget. A supervised invocation may omit
-`--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
+supports SLJIT. Tests verify backend entry counters. The operation deadline
+starts before source I/O and is passed to the build invocation and its children.
+Every CLI invocation supplies a positive `--timeout-ms` argument.
+The CLI's preparation guard also enforces that deadline and handles SIGINT and
+SIGTERM during compiler recovery, loading and program compilation. It exits
+directly while no build child can exist. Before authored execution, the host
+disarms that guard; execution retains the process supervisor's cancellation,
+deadline and child-group cleanup.
 
 Every private native is named under `build.`, as Zig's build API sits under
 `std.Build`: `build.run`, `build.read_file`, `build.join` and so on. The
@@ -75,8 +80,8 @@ environment.
 
 The environment snapshot includes compiler, flags, CMake, SDK, cache-directory,
 ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths,
-the GitHub CLI's `GH_TOKEN` for archive downloads and the inherited test
-deadline. `environment_names` in `build_host.c` owns the explicit allowlist.
+the GitHub CLI's `GH_TOKEN` for archive downloads.
+`environment_names` in `build_host.c` owns the explicit allowlist.
 Missing allowed names read as empty strings; other names are capability errors.
 `build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
@@ -107,9 +112,8 @@ number. Invalid input, spawn failure, timeout, cancellation and host failure
 are capability errors with stable diagnostics. The CLI maps a returned negative
 signal number to the conventional `128 + signal` exit status.
 
-One absolute deadline bounds every child, including the inherited production
-test deadline. The native clock matches Python's supervisor on each platform:
-macOS uptime excludes sleep, while Linux uses `CLOCK_MONOTONIC`. The host kills
+The caller's absolute operation deadline bounds its children. The native clock
+uses macOS uptime excluding sleep or Linux `CLOCK_MONOTONIC`. The host kills
 the complete child process group and reaps its direct child on termination,
 including when a leader exits before its descendants. This is process-group
 cleanup, not containment of children that deliberately create detached sessions.
@@ -117,10 +121,85 @@ cleanup, not containment of children that deliberately create detached sessions.
 `BuildProcessFixture.chibi` runs only the controlled C worker supplied through
 its private environment. The original `BuildWorkflow.chibi` also runs unchanged
 against a disposable worker named `cmake`, testing sequence and failure behavior
-without configuring or building the engine. Compiler self-hosting belongs to
-later milestones.
+without configuring or building the engine. Those original process fixtures are
+separate from the compiler bootstrap and build-program compilation checks.
 
-## Installed stage-zero build program
+## Build-program compiler
+
+The host compiles the build program with an owned Chibi compiler generation.
+It collects source bytes and target facts, invokes the authored package compiler,
+then loads its prepared closure through the runtime-only native linker. This
+replaces `authoring_packages_prepare` and C semantic preparation in the build-host
+path. Native services still provide raw syntax facts, I/O, linking and execution.
+
+Direct or indirect `yield` currently fails during compilation with
+`unsupported syntax 'yield_statement'`. The host retains its runtime suspension
+and task guards as an execution boundary.
+
+Compiler inputs are separate from the build program's imports:
+
+| Option | Meaning |
+| --- | --- |
+| `--compiler DIR` | Compiler sources, including `bootstrap.kdl`, `bootstrap/bootstrap.json` and `bootstrap/compiler.chibip`. |
+| `--compiler-core DIR` | The core collection used to recover that compiler. |
+| `--core DIR` | An optional core collection imported by the build program itself. |
+| `--collection NAME=DIR` | Another collection imported by the build program. |
+
+Explicit compiler paths resolve from the invocation's working directory.
+Without those options, the host searches for `share/chibi/compiler` and
+`share/chibi/core` relative to its executable directory: first `../share/chibi`,
+then `../../share/chibi`, then `./share/chibi`. This covers build-tree, standalone
+SDK and installed `libexec/chibi` layouts without relying on the caller's cwd.
+The SDK and Chibi build graph stage the full compiler/bootstrap tree and core
+sources in those shared directories. Make's Build and Graph invocations pass
+the checkout's `tools/compiler` and `packages/core` explicitly so local edits
+are visible.
+
+`chibi_build_compiler_load` validates the closure checksum, bootstrap version
+contract, full prepared target/native ABI and source completeness. Matching
+source hashes load the recorded closure directly. Changed existing source bytes
+use the self-hosted recovery path: the seed compiles the current compiler, and
+that compiler must reproduce itself in a second compile. Both paths return an
+owned generation without writing an artifact or persistent cache into the SDK.
+The C API borrows it through `chibi_build_options.compiler`; reuse it sequentially
+and reload it after compiler source edits. Release it with
+`chibi_build_compiler_free`.
+
+Build-program compilation invokes `CompileClosureWithEffects`, or
+`CompileWithEffects` for rejection diagnostics. Their first twelve arguments
+match the existing `Compile`/`CompileClosure` bootstrap contract; argument thirteen
+is `native_effects: int[]`, carrying the private build catalog's actual per-native
+effects. The authored compiler derives effects from emitted native calls and
+propagates them through local call chains, recursion and imported summaries before
+writing `Entry.effects`. The twelve-argument wrappers supply zeros for the verified
+pure bootstrap catalog, preserving the ABI used by pinned runtime seeds. The
+`Native` record, target JSON shape and prepared ABI stay unchanged. Build programs
+use the effects-aware entries for process, file and state operations.
+
+This is a build-program compiler cutover. Public project/game compilation
+still needs declared-component, library, system and projection preparation and
+bindings to move. `StageOne.chibi` still uses the C catalog for input export and
+final game assembly. Native runtime construction, SDK/full-engine and Wasm builds, Studio
+consumers and command-parity checks retain their current CMake responsibilities.
+
+`chibi-compile --stage-one-input FILE` writes the unchanged behavior-compiler
+argument array and reports its executable source count on stdout. For zero
+sources, `StageOne.chibi` invokes `chibi-compile --resources-only --output FILE`
+with the project root before recovering or invoking the behavior compiler.
+This mode assembles scenes, prototypes and resources with no supplied modules;
+it rescans the project and refuses any executable source. Nonempty projects
+retain the existing compiler and `--modules FILE` assembly route. Empty compiler
+results and empty `--modules` files remain failures; CHIBICLO still requires a
+root and at least one module.
+
+The `game-equivalence-empty` C dispatcher case builds a disposable resource-only
+project through that route with an unavailable behavior-compiler host. It checks
+zero modules, artifact and resource-manifest equality with native preparation,
+and CPU play traces through frame 30. It also checks that resource-only assembly
+refuses a behavior source while preserving prior output, and that malformed or
+empty module closures cannot produce an artifact.
+
+## Installed build program
 
 `tools/toolchain/Build.chibi` owns native profile selection, compiler and SDK
 precedence, CMake arguments, configuration-cache decisions, process sequencing
@@ -166,7 +245,7 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 7
+Elsewhere `make build` uses this program when its private host reports protocol version 8
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
@@ -174,7 +253,10 @@ natives under `build.`, version 5 runs programs as packages that may import
 `core:`, version 6 has the array methods and the natives `append` and
 `extend` of project version 32, and version 7 has what the macOS graph build
 needs: `build.replace`, `build.byte_list` and steps of up to 1,023
-arguments. A cold build or an older host
+arguments. Version 8 uses the validated Chibi compiler generation to compile
+build programs and adds the separate compiler source/core options above.
+`--protocol-version` reports the version without loading compiler inputs or
+starting a build. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
 path and builds the host for subsequent invocations (on macOS in
 `BUILD_DIR-cmake`, for the one graph run that builds `BUILD_DIR`'s own). `BUILD_HOST` and
@@ -269,6 +351,7 @@ The build graph replaces CMake's internal build graph one target at a time
 
 ```sh
 build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
+  --compiler tools/compiler --compiler-core packages/core \
   --core packages/core --collection graph=tools/graph --entry Libraries \
   --timeout-ms 600000 -- --build "$PWD/build-graph" --profile sanitizer
 ```
@@ -545,7 +628,7 @@ and incompatible native signatures must reject before invocation.
 The existing Linux/Darwin `chibi-compiler-host` has an optional private
 `--output-artifact FILE` mode. Its other arguments remain `--artifact FILE`,
 `--entry HEXID`, `--input FILE`, `--backend bytecode|sljit`, `--budget N` and a
-finite `--timeout-ms N` or inherited `CHIBI_TEST_DEADLINE`. Binary output and
+finite caller-supplied `--timeout-ms N`. Binary output and
 `--batch` are mutually exclusive. `--output-bytes FILE` writes a `byte[]`
 result that is not a compiler, such as stage one's closure of a game's
 modules, without loading it as one, and fails when the entry returns no
@@ -602,14 +685,12 @@ normal process exit. Atomic visibility is not an instantaneous cancellation
 fence around the rename syscall. This mechanism is scoped to Linux and Darwin;
 Windows publication needs separate implementation and validation.
 
-The finite compiler-artifact fixture described in `docs/testing.md` is a
-transport/publication check. Stage zero still prepares and serializes its tiny
-echo artifact. It cannot establish authored serialization or compiler
-self-compilation. Remaining work includes the complete authored package driver,
-semantic/lowering ownership, canonical prepared/container encoding, target and
-native ABI facts, recovery metadata, source-free installed build/link wiring,
-and real stage-one/stage-two compilation from the full compiler source manifest.
-No self-hosting or serializer completion is claimed by this handoff.
+The finite compiler-artifact fixture described in `docs/testing.md` remains a
+transport/publication check: stage zero prepares and serializes its tiny echo
+artifact. Compiler self-reproduction is established separately by the bootstrap
+proof below. Build programs use the compiler-generation path described above;
+public game input export and artifact assembly retain their C catalog path until
+the remaining declaration and native-binding contracts move.
 
 ## Bootstrap artifact
 
@@ -675,6 +756,12 @@ It then compiles the recorded sources from disk with the artifact:
 - If they changed, the compiler it produces must compile them to itself, which
   takes a second compile.
 
+The in-process `compiler_bootstrap_load` API uses the same validation but loads
+matching source hashes directly. Changed sources take the two-compile recovery
+path and return the recovered compiler as an owned host. This API writes no
+files, including when an output path is present in its options; the CLI check
+above still performs the reproduction proof and can write `--recover FILE`.
+
 `make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
 check takes one compile, about 11 s, or two when the sources changed, about
@@ -691,48 +778,59 @@ operating system, so one artifact serves every host with that ABI.
 
 ### Three-platform compiler recovery proof
 
-`.github/workflows/compiler-recovery.yml` runs on every pull request into `main`,
-push to `main` and manual dispatch. Its macOS 15, Ubuntu 24.04 and Windows 2022
-jobs each provision a Release native runtime separately from the compiler proof:
+The `Compiler self-build` workflow in `.github/workflows/compiler-recovery.yml`
+runs on every pull request into `main`, push to `main` and manual dispatch.
+Its macOS 15, Ubuntu 24.04 and Windows 2022 jobs download an existing runtime
+binary from the release pinned in `tools/compiler/runtime.json`. The manifest
+records each binary's filename, byte length and SHA-256, plus the source
+revision, tree and CI run that produced it. Downloaded bytes are checked before
+execution. No job installs or invokes a C compiler or CMake, and none depends
+on a native build job. A missing or incompatible seed fails the job rather
+than silently building a replacement.
 
-```sh
-cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
-cmake --build runtime-build --target chibi-compiler-host
-```
+The runtime binary is an explicit bootstrap input, alongside the checked-in
+Chibi compiler artifact. It executes prepared Chibi code using SLJIT and
+exposes native services, including raw Tree-sitter syntax facts. It excludes
+the C semantic frontend. The authored compiler performs semantic analysis and
+code generation; its output is a prepared `compiler.chibip` artifact executed
+by the same runtime. This proof rebuilds the compiler, retaining the native
+runtime as an external binary dependency.
 
-This SDK mode builds only the native compiler runtime and its pinned
-Tree-sitter and SLJIT dependencies. It needs a platform C compiler and native
-build tools. It excludes the C semantic frontend and desktop third-party
-archives. Building this executable remains a native prerequisite; the authored
-Chibi compiler produces `compiler.chibip`.
-
-The proof copies only that executable, `tools/compiler` and `packages/core`
-into a directory outside the checkout. It rejects native source files there,
-clears the child environment, gives it an empty `PATH` and unavailable `CC`
-and `CXX`, then launches the copied executable directly:
+The proof copies only the runtime executable, `tools/compiler` and
+`packages/core` into a directory outside the checkout. It rejects native source
+files there, clears the child environment, gives it an empty `PATH` and
+unavailable `CC` and `CXX`. After creating the `stage1` output directory,
+it launches the copied executable directly:
 
 ```sh
 ./chibi-compiler-host --bootstrap tools/compiler/bootstrap \
-  --compiler tools/compiler --core packages/core --recover "$PWD/compiler.chibip"
+  --compiler tools/compiler --core packages/core --recover "$PWD/stage1/compiler.chibip"
 ```
 
 On Windows the executable is `chibi-compiler-host.exe`; the workflow passes an
-absolute output path with native separators. The runtime loads and executes
-the checked-in authored compiler artifact, which compiles the current compiler
-sources. Recovery must satisfy the byte comparisons described above.
-The proof invokes no Make target, CMake, build host, Python or C compiler. This
-input and environment isolation does not restrict the runner's filesystem.
+absolute output path with native separators. After this invocation succeeds,
+the workflow copies the original bootstrap manifest beside that exact output,
+updating only its closure length and SHA-256. The inherited revision and source
+hashes continue to identify the original seed's provenance. It then invokes
+the runtime with `--bootstrap stage1` to produce stage two. This second
+process loads and executes the compiler just built, and the outputs must have
+identical hashes. Each invocation also performs the recovery checks above,
+including an internal fixed-point compile when recorded sources changed.
 
-Each proof step has a hard 60-second ceiling, with a 59-second process deadline
-and process-tree termination on timeout. Native configuration and build times
-are recorded separately. Each job uploads the recovered artifact, its SHA-256,
-stdout, stderr and JSON evidence with the runtime digest, input inventory,
-revision, platform, child environment and timings. After all three jobs pass,
-`Compiler recovery across platforms` requires identical recovered compiler
-bytes. A platform that rejects the manifest's target ABI fails its own proof
-before this comparison. Every job is nonadvisory; skipped or failed platform
-proofs cannot satisfy the comparison job.
+Each job uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
+with seed/runtime identities, input inventory, revision, platform, cleared
+environment and timings. The comparison job requires matching compiler bytes
+across all three platforms. Every job is nonadvisory; skipped or failed
+platform proofs cannot satisfy the comparison job. Environment and input
+isolation do not restrict the runner's filesystem.
+
+`.github/workflows/compiler-runtime-seed.yml` is the separate manual recovery
+route for preparing replacement runtime binaries. It uses the source-only SDK
+mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`), a C compiler and CMake, and retains
+the recovery proof and provenance with each binary. Publish a fresh release
+and review new manifest pins when changing the runtime ABI; routine compiler
+self-builds continue to consume the pinned release. The initial runtime seeds
+were produced by the predecessor recovery workflow at the recorded revision.
 
 Rewrite the artifact only when it can no longer recover the compiler:
 - when `minimum` rises past its version;
@@ -755,6 +853,84 @@ The final normal installed workflow remains subject to `PLAN.md`: it must
 compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables
 unavailable, including hidden or renamed equivalents. Explicit platform
 assemblers/linkers, SDKs, native backends and runtime libraries may remain behind
-narrow bindings. Current native tools are stage-zero construction/recovery
-inputs during migration; this transport increment does not satisfy that final
-clean-checkout stage-one/stage-two and checked-game proof.
+narrow bindings. Current native tools remain construction/recovery inputs during
+migration. Final acceptance also requires the installed clean-checkout proof to
+execute stage one and stage two and build/link a checked game.
+
+## Compiler tools from graph outputs
+
+`tools/toolchain/SDK.chibi` owns the first part of graph SDK installation. It
+packages the graph-built private build and compiler hosts into a fresh prefix,
+with the complete compiler/bootstrap/core resources, Build/Graph/SDK/StageOne programs,
+graph packages, the configure signature helper and dependency notices. It
+preserves bootstrap manifests and artifacts byte for byte. Public SDK libraries,
+headers, CMake exports and `package.json` remain with the existing SDK packager.
+StageOne is staged verbatim for the compiler owner's installed CLI integration;
+this increment does not establish an installed StageOne execution route.
+
+Build matching Release tools, then name the same unpacked dependency archive
+that their `.chibi-record` link records name:
+
+```sh
+make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+build-release/sdk/chibi-build-host --root "$PWD" \
+  --source tools/toolchain/SDK.chibi --core packages/core \
+  --entry CompilerTools --timeout-ms 120000 -- \
+  --build "$PWD/build-release" --output "$PWD/dist/compiler-tools" \
+  --third-party /absolute/path/to/the/pinned/archive
+```
+
+The installer rejects output or staging paths inside copied input directories,
+including symlink, dot and case aliases, before creating directories. It also
+rejects invalid directory ancestors, missing or stale graph compiler/core resources and an
+archive that differs from the executable link records. It reserves the sibling
+`OUTPUT.chibi-stage`, copies inputs, checks compiler recovery using the staged
+runtime and resources, and writes `share/chibi/compiler-tools.tsv`. That manifest
+contains relative file paths and their SHA-256 hashes. Publication atomically
+renames the stage and refuses every existing destination. Normal preparation
+failures remove only the stage this invocation reserved. A hard kill or fatal
+host error can leave that stage for inspection; a later invocation refuses to
+claim it. Use a fresh prefix when installing a new generation.
+
+The prefix can move. Build programs use the installed host with explicit source
+and collection paths, while the host discovers its compiler resources relative
+to its executable. For the installed graph, pass
+`--source PREFIX/share/chibi/tools/toolchain/Graph.chibi`,
+`--core PREFIX/share/chibi/core`, and
+`--collection graph=PREFIX/share/chibi/graph`.
+
+`python3 tools/test_policy.py tool build-sdk` runs the C packaging and relocation
+cases against the Release graph tools. Linux graph test-driver compilation and
+linking are not supported by this checkpoint, so build only the C harness with
+the supported CMake route in its own directory:
+
+```sh
+make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
+CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
+  python3 tools/test_policy.py tool build-sdk
+```
+
+The CMake harness must leave both shipped Release hosts and their adjacent
+`.chibi-record` files unchanged. Linux CI records and checks those four SHA-256
+identities around the harness build. The separate CMake build supplies the test
+harness; the compiler tools being packaged and relocated remain Release graph
+outputs.
+`/build-sdk-tests/` is the explicitly ignored generated harness directory.
+
+The test derives the archive location from the Release graph link record;
+`CHIBI_SDK_THIRD_PARTY_DIR` can name it explicitly. `CHIBI_TOOLS_BUILD_DIR` selects
+the harness, while `CHIBI_SDK_GRAPH_BUILD_DIR` and `CHIBI_BUILD_HOST` select
+matching graph outputs. The cases exercise recovery and build-program/graph
+compilation after relocation with an empty tool search path. The graph's
+`--profile explicit` disables discovery and requires its compiler, archiver and
+ranlib to be named; an omitted launcher remains empty. This checkpoint
+has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
+
+The standalone SDK program adds `build.reserve_directory` and
+`build.publish_directory`. These private bindings reserve one fresh directory
+and publish without replacement on macOS and Linux. Normal `Build.chibi` is
+unchanged, so its protocol gate remains version 8. Use the matching newly built
+host to run `SDK.chibi`.

@@ -4,6 +4,10 @@
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+#include "authoring/image_prepare.h"
+#endif
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -1581,9 +1585,55 @@ TEST_CASE(installed_identity_and_doctor)
     return true;
 }
 
+/* Copy the guide's complete project, rather than repairing its version or
+ * filling in missing assets in the test. */
+static bool documented_project(const char *relative)
+{
+    char *guide = tool_read(CHIBI_SOURCE_ROOT "/docs/guide/toolchain.md");
+    if (!guide) {
+        return false;
+    }
+    project(relative, CHIBI_PROJECT_VERSION);
+    char folder[256];
+    snprintf(folder, sizeof folder, "%s/content/prototypes", relative);
+    directory(folder);
+    snprintf(folder, sizeof folder, "%s/content/behaviors", relative);
+    directory(folder);
+    static const char *const files[] = { "project.kdl",
+                                         "content/scenes/Start.kdl",
+                                         "content/prototypes/Player.kdl",
+                                         "content/prototypes/View.kdl",
+                                         "content/input.kdl",
+                                         "content/behaviors/Move.chibi" };
+    bool copied = true;
+    for (size_t i = 0; copied && i < sizeof files / sizeof *files; i++) {
+        char heading[256];
+        snprintf(heading, sizeof heading, "\n### %s\n", files[i]);
+        const char *section = strstr(guide, heading);
+        const char *fence = section ? strstr(section, "\n```") : NULL;
+        const char *begin = fence ? strchr(fence + 4, '\n') : NULL;
+        const char *end = begin ? strstr(++begin, "\n```") : NULL;
+        copied = end != NULL;
+        if (!copied) {
+            fprintf(stderr, "toolchain guide lacks a complete %s example\n", files[i]);
+            break;
+        }
+        size_t size = (size_t)(end - begin) + 1;
+        char *text = xmalloc(size + 1);
+        memcpy(text, begin, size);
+        text[size] = 0;
+        char file[256];
+        snprintf(file, sizeof file, "%s/%s", relative, files[i]);
+        write_file(file, text);
+        free(text);
+    }
+    free(guide);
+    return copied;
+}
+
 TEST_CASE(installed_project_commands)
 {
-    project("installed", CHIBI_PROJECT_VERSION);
+    REQUIRE(documented_project("installed"));
     char game[256], output[256], site[256];
     path(game, "installed");
     path(output, "installed.log");
@@ -1651,7 +1701,7 @@ TEST_CASE(installed_package_commands_and_docs)
     return true;
 }
 
-void test_tool_chibi_cli_installed(const char *binary)
+static void setup_installed(const char *binary)
 {
     strcpy(root, "/tmp/chibi-installed-XXXXXX");
     assert(mkdtemp(root));
@@ -1664,6 +1714,136 @@ void test_tool_chibi_cli_installed(const char *binary)
     strcpy(launcher, program);
     free(program);
     path(log_path, "output.log");
+}
+
+/* The guide's idle game draws one centered 24x24 blue square. Decode the
+ * pixels independently of the player, so a blank or wrong scene cannot pass. */
+static bool documented_frame(const char *relative)
+{
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+    char key[256], error[256];
+    snprintf(key, sizeof key, "content/%s", relative);
+    if (!render_image_mount_content(root, error, sizeof error)) {
+        return false;
+    }
+    render_image_loader loader = render_images_loader();
+    shader_image_view image = { 0 };
+    bool loaded = loader.read(loader.context, key, &image, error, sizeof error);
+    bool matches = loaded && image.width == 320 && image.height == 180;
+    for (int y = 0; matches && y < image.height; y++) {
+        for (int x = 0; matches && x < image.width; x++) {
+            bool square = x >= 148 && x < 172 && y >= 78 && y < 102;
+            const unsigned char *pixel = image.pixels + (y * image.width + x) * 4;
+            matches = abs(pixel[0] - (square ? 91 : 0)) <= 1 &&
+                      abs(pixel[1] - (square ? 110 : 0)) <= 1 &&
+                      abs(pixel[2] - (square ? 225 : 0)) <= 1 && pixel[3] == 255;
+        }
+    }
+    free((void *)image.pixels);
+    loader.clear(loader.context);
+    render_images_set_loader((render_image_loader){ 0 });
+    return matches;
+#else
+    (void)relative;
+    fprintf(stderr, "Export pixel assertions require an image-preparation tooling driver\n");
+    return false;
+#endif
+}
+
+/* A separate selector because these launches need a native graphics context.
+ * Only prerequisites below this test's mkdtemp root are removed. The caller's
+ * installation, source checkout and SDK build tree are never modified. */
+TEST_CASE(installed_export_runs_without_the_project)
+{
+    directory("prerequisites");
+    char prefix[256], sdk[256], cli[256], prerequisites[256];
+    strcpy(prefix, launcher);
+    *strrchr(prefix, '/') = 0;
+    *strrchr(prefix, '/') = 0;
+    path(prerequisites, "prerequisites");
+    path(sdk, "prerequisites/sdk");
+#ifdef __APPLE__
+    const char *clone[] = { "/bin/cp", "-cR", prefix, sdk, NULL };
+#else
+    const char *clone[] = { "/bin/cp", "-R", "--reflink=auto", prefix, sdk, NULL };
+#endif
+    REQUIRE(tool_run_within(clone, root, log_path, 30) == 0);
+    path(cli, "prerequisites/sdk/bin/chibi");
+    REQUIRE(documented_project("prerequisites/documented game"));
+    char game[256], output[256], destination[256], capture[256];
+    path(game, "prerequisites/documented game");
+    path(output, "export.log");
+    const char *check[] = { cli, "check", game, NULL };
+    REQUIRE(tool_run(check, root, output) == 0);
+    REQUIRE(!exists("prerequisites/documented game/.chibi"));
+    path(capture, "before.png");
+    const char *run[] = { cli,           "run",      game,      "--",
+                          "--hidden",    "--frames", "2",       "--fixed-dt",
+                          "0.016666667", "--size",   "320x180", "--capture",
+                          capture,       NULL };
+    REQUIRE(tool_run_within(run, root, output, 30) == 0);
+    REQUIRE(exists("prerequisites/documented game/.chibi/build/game.chibip"));
+    REQUIRE(file_has("export.log", "frames=2 steps=1\n"));
+    REQUIRE(documented_frame("before.png"));
+    path(destination, "exported game");
+    const char *export[] = { cli,         "export",    game, "--output",
+                             destination, "--archive", NULL };
+    REQUIRE(tool_run_within(export, root, output, 30) == 0);
+    directory("relocated");
+    char archive[256], original[256], extracted[256], relocated[256],
+        executable[256], cwd[256];
+#ifdef __APPLE__
+    path(archive, "exported game.app.tar.gz");
+    path(original, "exported game.app");
+    path(extracted, "relocated/exported game.app");
+    path(relocated, "relocated/Renamed.app");
+    path(executable, "relocated/Renamed.app/Contents/MacOS/My Game");
+#else
+    path(archive, "exported game.tar.gz");
+    path(original, "exported game");
+    path(extracted, "relocated/exported game");
+    path(relocated, "relocated/Renamed");
+    path(executable, "relocated/Renamed/My Game");
+#endif
+    path(cwd, "relocated");
+    const char *extract[] = { "tar", "-xzf", archive, "-C", cwd, NULL };
+    REQUIRE(tool_run_within(extract, root, output, 30) == 0);
+    REQUIRE(!rename(extracted, relocated));
+    tool_remove_tree(original);
+    REQUIRE(access(original, F_OK) != 0);
+#ifdef __APPLE__
+    const char *verify[] = { "codesign", "--verify", "--deep",
+                             "--strict", relocated,  NULL };
+    REQUIRE(tool_run(verify, root, output) == 0);
+#endif
+    tool_remove_tree(prerequisites);
+    REQUIRE(!exists("prerequisites"));
+    REQUIRE(access(cli, F_OK) != 0 && access(game, F_OK) != 0);
+    REQUIRE(!exists("prerequisites/documented game/.chibi/build"));
+    directory("unrelated");
+    path(cwd, "unrelated");
+    path(capture, "export.png");
+    const char *play[] = { executable,   "--hidden",    "--frames", "2",
+                           "--fixed-dt", "0.016666667", "--size",   "320x180",
+                           "--capture",  capture,       NULL };
+    REQUIRE(tool_run_within(play, cwd, output, 30) == 0);
+    REQUIRE(file_has("export.log", "frames=2 steps=1\n"));
+    REQUIRE(file_has("export.log", "size=320x180 hidden=true"));
+    REQUIRE(documented_frame("export.png"));
+    return true;
+}
+
+void test_tool_chibi_cli_export(const char *binary)
+{
+    setup_installed(binary);
+    RUN_TEST_CASE(installed_identity_and_doctor);
+    RUN_TEST_CASE(installed_export_runs_without_the_project);
+    tool_remove_tree(root);
+}
+
+void test_tool_chibi_cli_installed(const char *binary)
+{
+    setup_installed(binary);
     RUN_TEST_CASE(installed_identity_and_doctor);
     RUN_TEST_CASE(installed_project_commands);
     RUN_TEST_CASE(installed_package_commands_and_docs);

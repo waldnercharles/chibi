@@ -21,7 +21,7 @@ implemented before the ports that need them.
 - C-string safeguards approved on 2026-10-21: diagnose provably invalid uses
   during compilation and validate unknown values before native effects. New
   public APIs accepting external data expose recoverable errors. The descriptor
-  migration and regressions pass the admitted native, language, Wasm, material,
+  migration and regressions pass the selected native, language, Wasm, material,
   project and tooling checks. Bootstrap publication is recorded below.
 - New text/binary APIs and new public collection names: proposed, awaiting
   semantic review. Approval of the program does not settle these choices.
@@ -166,8 +166,8 @@ import them only when their actual changes are needed and eligible.
 
 ## Verification
 
-Follow [testing policy](testing.md). Test execution has a hard 60-second limit;
-build/configure time is separate. Use the owning C/pico_unit dispatchers:
+Follow the [testing instructions](testing.md) and report build/configure time
+separately. Use the owning C/pico_unit dispatchers:
 `test/language/package_core.c`, `package_imports.c`, `packages.c` and
 `package_compiler_chibi.c`, plus runtime tests where representation changes.
 
@@ -176,16 +176,16 @@ For each selected package or prerequisite:
 - Establish a failing-before regression for a defect, and exercise public
   behavior rather than reproducing implementation details.
 - Compare stage zero and stage one where the package must support both.
-- Run relevant bytecode/compiled-backend cases and the admitted Wasm checks
+- Run relevant bytecode/compiled-backend cases and the Wasm checks
   affected by the contract. Record unavailable required coverage as a gap.
 - Verify installation and an external import for a newly shipped package.
 - Measure representative text/container workloads when complexity or allocation
   is part of the contract; correctness tests alone do not establish performance.
 - Inspect the combined diff and generated documentation before publication.
 
-Library growth already consumes compiler-test budgets. Select bounded,
+Library growth increases compiler-test execution time. Select bounded,
 representative acceptance workloads and retain full-package import coverage
-through admitted checks. Quarantined suites and deferred host bootstrap runs
+through the owning checks. Unrun suites and deferred host bootstrap runs
 remain unverified. This program does not change the toolchain's host acceptance
 requirements.
 
@@ -246,7 +246,7 @@ could be removed and earlier stores delayed past a failure. Its regression
 failed before the optimizer was restricted to proven-valid constant counts.
 
 These focused checks passed on the local candidate under the production
-60-second supervisor:
+supervisor:
 
 | Check | Assertions | Execution time |
 | --- | ---: | ---: |
@@ -273,12 +273,12 @@ contract is version 4, minimum 2. Its regenerated closure is 11,383,423 bytes,
 SHA-256 `2f0a3d0007e528a43d735287998738566fa6941efe373b389db484ad195d3d54`.
 Current-source recovery reproduced those exact bytes in 6.313 s. Generation
 through the documented `bootstrap-artifact` target, including its incremental
-build and self-checks, took 29.089 s under an outer 60-second deadline.
+build and self-checks, took 29.089 s.
 
 At this pre-integration checkpoint, the artifact files were modified locally
 with revision `4a751bd5fb2bb414ec867f089acae9b9736e1d9e-dirty`; no commit, push
 or merge had occurred. The integration evidence below supersedes that status. The historical
-HEAD-export recovery selector, Windows, browser-host execution and quarantined
+HEAD-export recovery selector, Windows, browser-host execution and
 full suites remain unrun. String storage, default checked arithmetic and lexical
 wrapping are still pending; this checkpoint does not claim those prerequisites.
 
@@ -299,11 +299,10 @@ logic. The compiler-test conflict retains all three probe flags: `moves`,
 `aliases` and `same_rejection`.
 
 Native Release and Wasm builds passed. The following production-supervised
-admissions passed on the clean integrated source; each invocation had its own
-60-second ceiling. These are selected affected-contract checks, not a full-suite
+checks passed on the clean integrated source. These are selected affected-contract checks, not a full-suite
 pass.
 
-| Admission | Assertions | Wall time |
+| Check | Assertions | Wall time |
 | --- | ---: | ---: |
 | `language-execution` | 3,685 | 0.398 s |
 | `language-constant-scalar-chibi` | 19,580 | 0.455 s |
@@ -329,7 +328,7 @@ revision metadata changes in the final checkpoint. Recovery reproduced those
 bytes. Formatting with clang-format 22 and whitespace checks passed. Test logs
 remain under `.chibi/odin-package-foundations/integrated-*.log`; generated
 scratch closures were removed after verification. Windows, browser hosts,
-sanitizer configurations and quarantined broader suites were not run for this
+sanitizer configurations and broader suites were not run for this
 integration.
 
 ### String descriptor evidence, 2026-10-21
@@ -351,14 +350,12 @@ conversions leave destination fields unchanged.
 Merge `cb0faa79213ed2959d3f0d4a812eb444cb61a836` integrates main at
 `e20bd6af83b1dd4e3fa48dcd5d1c4769bb818a97`. Native Release and Wasm builds pass.
 The production-supervised `native`, `language`, `wasm`, `materials` and `projects`
-groups and the tooling `short` aggregate pass, each with its own 60-second
-deadline. Focused checks cover record values/documents/prepared decoding, native
+groups and the tooling `short` aggregate pass. Focused checks cover record values/documents/prepared decoding, native
 write atomicity, ECS ownership and observers, core strings, generated C,
 compiler constants/binding/signatures/union members, prepared writing and
-compiler self-compilation. These are admitted checks, not the quarantined full
-suite.
+compiler self-compilation. These are selected checks, not a full-suite pass.
 
-M6 build-graph, reflection and archive admissions pass, including parity for 251
+M6 build-graph, reflection and archive checks pass, including parity for 251
 compile commands across 69 native libraries. The graph check used the same Xcode
 SDK as the configured CMake build through `SDKROOT`; the shell's default
 CommandLineTools SDK otherwise makes that comparison differ. Independent review
@@ -369,7 +366,7 @@ Bootstrap generation and clean-candidate evidence are recorded in the following
 publication checkpoint. Logs remain under `.chibi/odin-package-foundations/`.
 Shared slices follow this checkpoint. Discuss retention behavior, arithmetic
 edge cases and each package's API before assigning further work. Windows,
-browser hosts, sanitizer configurations and quarantined suites remain unverified
+browser hosts, sanitizer configurations and broader suites remain unverified
 for this increment.
 
 ### String bootstrap checkpoint, 2026-10-21
@@ -381,15 +378,15 @@ hashes. Its 11,362,875-byte closure has SHA-256
 
 Self-compilation, production-target parity and sample parity passed 16,038
 assertions in 19.143 seconds under the production supervisor. The complete
-seed-to-artifact generation took 25.198 seconds under one 60-second deadline.
+seed-to-artifact generation took 25.198 seconds.
 Recovery from a clean export of the recorded source reproduced the closure
-under a separate 60-second deadline in 7.023 seconds. The bootstrap target
+in 7.023 seconds. The bootstrap target
 contains production natives only; the C-string probe is explicit in its three
 boundary samples and cannot enter the production seed silently.
 
 Native and Wasm compiler sample checks pass after that target separation. The
 remaining publication checks use the exact clean source/artifact combination,
-with configuration/build time separate from each admitted test deadline. Logs
+with configuration/build time separate from test execution. Logs
 remain in `.chibi/odin-package-foundations/string-*.log` and the group logs in
 the same directory. Generated seed closures and migration scripts are removed;
 ordinary native/Wasm build outputs remain. This branch is a review checkpoint;

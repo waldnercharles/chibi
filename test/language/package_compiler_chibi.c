@@ -18,6 +18,7 @@
 #include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_json.h"
+#include "support/file_io.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
@@ -33,6 +34,7 @@
 #include "types/value_document.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <float.h>
 #include <math.h>
@@ -40,6 +42,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__linux__) && defined(__x86_64__)
+#include "host/process.h"
+
+#include <dlfcn.h>
+#include <limits.h>
+#include <signal.h>
+#include <unistd.h>
+extern char **environ;
+#endif
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
  * package, with the packages it imports, to a closure against the natives the
@@ -66,13 +77,10 @@ typedef struct
     const char *function, *arguments, *expected;
     const char *diagnostic;
 } sample_call;
-/* Each group of samples runs under its own selector, so each selector stays
- * within its time ceiling: unions, constants, patterns and integer types
- * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings,
- * with the samples that link the core pack, whose oracle costs seconds more
- * to prepare, and the moves, reads in place and array methods
- * (IMPORT_SAMPLES, run on the unsanitized Release build); and maps,
- * references, arrays and ranges (COLLECTION_SAMPLES). */
+/* Focused selectors group unions, constants, patterns and integer types
+ * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
+ * methods (IMPORT_SAMPLES, run in Release); and maps, references, arrays and
+ * ranges (COLLECTION_SAMPLES). */
 typedef enum
 {
     BASE_SAMPLES,
@@ -102,7 +110,7 @@ typedef struct
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe;
+        same_rejection, c_string_probe, host_effects;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -119,6 +127,14 @@ static const char *cstring_probe(arena *storage, const pin_value *arguments, int
     result->i = (int)strlen(value);
     return NULL;
 }
+static const char *integer_probe(arena *, const pin_value *arguments, int, pin_value *result)
+{
+    result->i = arguments[0].i;
+    return NULL;
+}
+static const native_parameter_definition INTEGER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_parameter_definition CSTRING_INPUT[] = {
     { .name = "value",
       .kind = NATIVE_PARAMETER_DATA,
@@ -129,28 +145,52 @@ static const native_parameter_definition CSTRING_INPUT[] = {
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
+#define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
+    { .canonical_name = CANONICAL,                                             \
+      .source_name = SOURCE,                                                   \
+      .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
+      .inputs = INPUT,                                                         \
+      .input_count = 1,                                                        \
+      .outputs = CSTRING_OUTPUT,                                               \
+      .output_count = 1,                                                       \
+      .completion_output = -1,                                                 \
+      .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
-    { .canonical_name = "CString Probe",
-      .source_name = "cstring_probe",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = CSTRING_INPUT,
-      .input_count = 1,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
+    PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
+    PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
 };
+#undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
+static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+#define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
+    {                                                                          \
+        .canonical_name = CANONICAL, .implementation = {                       \
+            .call = &CALL,                                                     \
+            .access = &ACCESS                                                  \
+        }                                                                      \
+    }
 static const native_definition_binding CSTRING_BINDINGS[] = {
-    { .canonical_name = "CString Probe",
-      .implementation = { .call = &CSTRING_CALL, .access = &CSTRING_ACCESS } },
+    PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
+    PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
 };
+#undef PROBE_BINDING
 static const native_definition_pack CSTRING_PACK = {
     .definitions = CSTRING_DEFINITIONS,
-    .definition_count = 1,
+    .definition_count = sizeof CSTRING_DEFINITIONS / sizeof *CSTRING_DEFINITIONS,
     .bindings = CSTRING_BINDINGS,
-    .binding_count = 1,
+    .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
     { .name = "typed constant shifts discard bits",
@@ -188,6 +228,22 @@ static const sample samples[] = {
       .message = "Constant shift count is outside the type",
       .line = 2,
       .column = 12 },
+    { .name = "comparisons of untyped literals",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Guard :: () -> int {\n"
+                "    if (7 < 3) { return 1; }\n"
+                "    return 2;\n"
+                "}\n"
+                "Wide :: () -> bool { return 3000000000 > 2; }\n"
+                "Mixed :: () -> bool { return 2.5 > 2; }\n"
+                "Negative :: () -> bool { return -1 < 0; }\n"
+                "Same :: () -> bool { return 7 == 7; }",
+      .calls = { { .function = "Guard", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Mixed", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Same", .arguments = "[]", .expected = "[true]" } } },
     { .name = "private imported function",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
@@ -303,6 +359,110 @@ static const sample samples[] = {
                 "    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * "
                 "1000 + q.high;\n}",
       .calls = { { .function = "Use", .arguments = "[3]", .expected = "[2434]" } } },
+    { .name = "single named result",
+      .source = "package facts\n"
+                "One :: (n: int) -> (value: int) { return n + 1; }\n"
+                "Flag :: () -> (value: bool = false) { value = true; return; "
+                "}\n"
+                "Sequential :: () -> (a: int, b: int) { a = 1; b = 2; return "
+                "(b, a); }\n"
+                "Use :: (n: int) -> int {\n"
+                "    if Flag() { return One(n) * 10 + One(n).value; }\n"
+                "    return 0;\n}\n",
+      .calls = { { .function = "One", .arguments = "[3]", .expected = "[4]" },
+                 { .function = "Sequential", .arguments = "[]", .expected = "[2,2]" },
+                 { .function = "Use", .arguments = "[3]", .expected = "[44]" } } },
+    { .name = "widened named projection",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Tiny :: () -> (value: int8) { return 7; }\n"
+                "Narrow :: (n: int8) -> int { return int(n); }\n"
+                "Use :: () -> int { n: int = Tiny(); return Narrow(n.value); "
+                "}\n"
+                "Alias :: () -> int { n: int = Tiny(); q := n; "
+                "return Narrow(q.value); }\n"
+                "Assigned :: (value: int) -> int { n: int = Tiny(); "
+                "n = value; return Narrow(n.value); }\n"
+                "Converted :: (value: int) -> int { n: int = Tiny(); "
+                "n = value; return int(n.value); }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Alias", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Assigned", .arguments = "[127]", .expected = "[127]" },
+                 { .function = "Assigned", .arguments = "[-128]", .expected = "[-128]" },
+                 { .function = "Assigned", .arguments = "[300]", .diagnostic = "Value does not fit in int8" },
+                 { .function = "Assigned", .arguments = "[-129]", .diagnostic = "Value does not fit in int8" },
+                 { .function = "Converted", .arguments = "[300]", .diagnostic = "Value does not fit in int8" },
+                 { .function = "Converted",
+                   .arguments = "[-129]",
+                   .diagnostic = "Value does not fit in int8" } } },
+    { .name = "named struct results",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Collision :: struct { point: int; }\n"
+                "MakeCollision :: () -> (point: Collision) { return {point: "
+                "7}; }\n"
+                "ReadCollision :: () -> int { return "
+                "MakeCollision().point.point; }\n"
+                "Direct :: (n: int) -> (point: Point) { return {x: n, y: 2}; "
+                "}\n"
+                "Empty :: () -> (point: Point) { return; }\n"
+                "Mutate :: (n: int) -> (point: Point) { point.x = n; point.y = "
+                "2; return; }\n"
+                "Project :: () -> int { p := Direct(7); q := p; return "
+                "q.point.x; }\n"
+                "Other :: () -> (other: Point) { return {x: 9, y: 3}; }\n"
+                "Reassigned :: () -> int { p := Direct(7); p = Other(); "
+                "q := p; return q.point.x; }\n"
+                "LaterShadow :: () -> int { p := Direct(7); q := p; "
+                "if true { p: Point = {x: 99, y: 1}; return q.point.x + "
+                "p.x; } return 0; }\n"
+                "Bump :: (p: ref Point) { p.x += 1; }\n"
+                "ByRef :: () -> int { p := Direct(7); Bump(p); return "
+                "p.point.x; }\n"
+                "Counter :: () -> (value: int) { return 7; }\n"
+                "Increment :: (n: ref int) { n += 1; }\n"
+                "Boxed :: () -> int { n := Counter(); Increment(n); "
+                "return n.value; }\n"
+                "Use :: (n: int) -> int {\n"
+                "    p := Direct(n);\n"
+                "    q := p;\n"
+                "    q.x += 5;\n"
+                "    return p.x * 100 + q.x * 10 + q.y + Empty().x;\n}\n",
+      .calls = { { .function = "Direct", .arguments = "[7]", .expected = "[{\"x\":7,\"y\":2}]" },
+                 { .function = "Empty", .arguments = "[]", .expected = "[{\"x\":0,\"y\":0}]" },
+                 { .function = "Mutate", .arguments = "[7]", .expected = "[{\"x\":7,\"y\":2}]" },
+                 { .function = "Project", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Reassigned", .arguments = "[]", .expected = "[9]" },
+                 { .function = "LaterShadow", .arguments = "[]", .expected = "[106]" },
+                 { .function = "ByRef", .arguments = "[]", .expected = "[8]" },
+                 { .function = "Boxed", .arguments = "[]", .expected = "[8]" },
+                 { .function = "ReadCollision", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Use", .arguments = "[7]", .expected = "[822]" } } },
+    { .name = "named result ownership",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "Keep :: (value: string) -> (note: Note) {\n"
+                "    note.text = value; note.count = 2; return;\n}\n"
+                "Split :: (value: string) -> (note: Note, count: int) {\n"
+                "    note = Keep(value); return (note, note.count);\n}\n"
+                "Use :: () -> string {\n"
+                "    first := Keep(\"a\\u0000b\");\n"
+                "    second := Keep(\"changed\");\n"
+                "    second.text = \"other\";\n"
+                "    return first.text;\n}\n"
+                "Projected :: () -> string {\n"
+                "    pair := Split(\"a\\u0000b\");\n"
+                "    return pair.note.text;\n}\n",
+      .calls = { { .function = "Keep",
+                   .arguments = "[\"a\\u0000b\"]",
+                   .expected = "[{\"text\":\"a\\u0000b\",\"count\":2}]" },
+                 { .function = "Split",
+                   .arguments = "[\"kept\"]",
+                   .expected = "[{\"text\":\"kept\",\"count\":2},2]" },
+                 { .function = "Use", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
+                 { .function = "Projected", .arguments = "[]", .expected = "[\"a\\u0000b\"]" } } },
     { .name = "parameters",
       .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
@@ -1828,12 +1988,33 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of uint64",
       .line = 2,
       .column = 35 },
-    { .name = "untyped local",
-      .source = "package facts\nOne :: () -> int { x := 5; return 1; }",
-      .message = "an untyped number is a double; give the local an integer "
-                 "type",
+    { .name = "inferred numeric locals",
+      .source = "package facts\n"
+                "Bump :: (x: ref int) { x += 1; }\n"
+                "ByReference :: () -> int { x := 0; Bump(x); return x; }\n"
+                "One :: () -> int { x := 5; return x; }\n"
+                "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
+                "xs[x] = 9; return xs[x] + x; }\n"
+                "Negative :: () -> int { x := -1; x += 2; return x; }\n"
+                "Wide :: () -> int64 { x := 2147483648; x += 1; return x; }\n"
+                "Maximum :: () -> uint64 { x := 18446744073709551615; return "
+                "x; }\n"
+                "Decimal :: () -> double { x := 0.5; x += 0.25; return x; }\n"
+                "Exponent :: () -> double { x := 1e3; return x; }",
+      .calls = { { .function = "ByReference", .arguments = "[]", .expected = "[1]" },
+                 { .function = "One", .arguments = "[]", .expected = "[5]" },
+                 { .function = "Index", .arguments = "[]", .expected = "[10]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2147483649]" },
+                 { .function = "Maximum", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[0.75]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1000.0]" } } },
+    { .name = "inferred integer refuses float assignment",
+      .source = "package facts\nOne :: () -> int { x := 0; fraction := 0.5; x "
+                "= fraction; return x; }",
+      .message = "assigned value differs from its local",
       .line = 2,
-      .column = 25 },
+      .column = 45 },
     { .name = "conversion arity",
       .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
                 "}",
@@ -1942,6 +2123,59 @@ static const sample samples[] = {
       .calls = { { .function = "Binary", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
                  { .function = "ReadDefault", .arguments = "[]", .expected = "[\"a\\u0000b\"]" },
                  { .function = "Equal", .arguments = "[]", .expected = "[false]" } } },
+    { .name = "qualified native calls",
+      .c_string_probe = true,
+      .host_effects = true,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Probe :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Caller :: () -> int { return Probe(); }\n"
+                "Recursive :: (n: int) -> int { if (n <= 0) { return Probe(); "
+                "} return Recursive(n - 1); }\n"
+                "ImportedHost :: () -> int { return lib.Through(); }\n"
+                "Length :: () -> int { return native.length(\"four\"); }\n"
+                "Text :: () -> int { return native . overload(\"three\"); }\n"
+                "Integer :: (value: int) -> int { return native . "
+                "overload(value); }",
+      .library = "package lib\npub Through :: () -> int { return "
+                 "native.probe(\"lib\"); }" },
+    { .name = "qualified native import and local precedence",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\n"
+                "Imported :: () -> int { return native.probe(\"seven..\"); }\n"
+                "Local :: () -> int { native: int[] = [1, 2]; "
+                "native.append(3); return length(native); }",
+      .library = "package lib\npub probe :: (value: string) -> int { return "
+                 "99; }",
+      .calls = { { .function = "Imported", .arguments = "[]", .expected = "[99]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "qualified native missing",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return native.absent(); }",
+      .message = "Unknown function 'native.absent'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native ambiguous",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { return "
+                "native.PROBE_ONE(\"x\"); }",
+      .message = "Ambiguous function 'native.PROBE_ONE'",
+      .line = 2,
+      .column = 35 },
+    { .name = "qualified native import missing",
+      .c_string_probe = true,
+      .source = "package facts\nimport native \"project:lib\"\nCall :: () -> "
+                "int { return native.probe(\"x\"); }",
+      .library = "package lib\npub Other :: () -> int { return 0; }",
+      .message = "Unknown function 'probe'",
+      .line = 3,
+      .column = 35 },
+    { .name = "qualified native local shadow",
+      .c_string_probe = true,
+      .source = "package facts\nCall :: () -> int { native: int = 1; return "
+                "native.probe(\"x\"); }",
+      .message = "call needs a function name",
+      .line = 2,
+      .column = 45 },
     { .name = "C-string dynamic boundary compiles", .c_string_probe = true, .source = "package facts\nDynamic :: (value: string) -> int { return cstring_probe(value); }" },
     { .name = "C-string literal boundary",
       .c_string_probe = true,
@@ -1960,21 +2194,35 @@ enum
 {
     SAMPLES = sizeof samples / sizeof *samples
 };
-static compiler_fixture fixture, oracle;
+static compiler_fixture fixture, oracle, consumer, corpus;
 /* The compiler host's natives, and those with the core pack a game links,
  * which declares assert. */
 static native_capabilities *linked[2][2];
 /* Compile's native tables for the host and for a game, per compiler backend,
  * built once from `linked`. */
 static pin_value linked_tables[2][2][2][3];
+static pin_value linked_effects[2][2][2];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
 
+/* Whether a test published its project's types, which cleanup withdraws
+ * after a test that returned early. */
+static bool project_published;
+static void publish_project(const type_catalog_pack *pack)
+{
+    type_catalog_set_project(pack);
+    project_published = pack;
+}
 static void cleanup()
 {
+    if (project_published) {
+        publish_project(NULL);
+    }
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
+    compiler_fixture_free(&consumer);
+    compiler_fixture_free(&corpus);
     for (int game = 0; game < 2; game++) {
         for (int probe = 0; probe < 2; probe++) {
             native_capabilities_free(linked[game][probe]);
@@ -1982,6 +2230,7 @@ static void cleanup()
     }
     memset(linked, 0, sizeof linked);
     memset(linked_tables, 0, sizeof linked_tables);
+    memset(linked_effects, 0, sizeof linked_effects);
     arena_free(&input);
     arena_free(&detached);
     compiler_host_free(host);
@@ -2019,9 +2268,9 @@ static bool put_value(pin_value *row, const char *name, pin_value value)
     REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
-static pin_value row(int b, const char *name)
+static pin_value record_row(const compiler_fixture *f, int b, const char *identity, const char *name)
 {
-    const pin_record *shape = compiler_fixture_record(&fixture, b, PACKAGE, name, &input);
+    const pin_record *shape = compiler_fixture_record(f, b, identity, name, &input);
     assert(shape);
     pin_value v = { .type = PIN_STRUCT,
                     .ptr = arena_alloc(&input, shape->type.size),
@@ -2029,6 +2278,10 @@ static pin_value row(int b, const char *name)
                     .type_name = shape->type.name };
     memset(v.ptr, 0, shape->type.size);
     return v;
+}
+static pin_value row(int b, const char *name)
+{
+    return record_row(&fixture, b, PACKAGE, name);
 }
 static pin_value rows(const pin_value *items, int count, pin_type type, const pin_record *shape)
 {
@@ -2094,7 +2347,7 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         REQUIRE(linked[game][probe]);
     }
     const script_catalog *catalog = native_capabilities_catalog(linked[game][probe]);
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *effects = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
         if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
@@ -2113,6 +2366,7 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
             (pin_value){ .type = PIN_BOOL, .b = c->variadic || c->variadic_optional }
         ));
         apush(functions, function);
+        apush(effects, ((pin_value){ .type = PIN_I32, .i = (int)c->effects }));
         for (int j = 0; j < c->parameter_count + c->result_count; j++) {
             const script_catalog_parameter *declared = j < c->parameter_count
                                                          ? &c->parameters[j]
@@ -2144,10 +2398,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
     );
     out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
     out[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    linked_effects[game][probe][b] = rows(effects, acount(effects), PIN_I32, NULL);
     memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
     afree(functions);
     afree(ports);
     afree(identities);
+    afree(effects);
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
@@ -2157,12 +2413,18 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
-static uint64_t variant_tag(int b, const char *union_name, const char *variant)
+static uint64_t fixture_variant_tag(
+    const compiler_fixture *f,
+    int b,
+    const char *identity,
+    const char *union_name,
+    const char *variant
+)
 {
-    const authoring_package *owner = compiler_fixture_package(&fixture, b, PACKAGE);
+    const authoring_package *owner = compiler_fixture_package(f, b, identity);
     const script_catalog_type *type = script_catalog_type_by_id(
         owner->exports->metadata,
-        compiler_fixture_export(&fixture, b, PACKAGE, union_name)
+        compiler_fixture_export(f, b, identity, union_name)
     );
     for (int i = 0; type && i < type->variant_count; i++) {
         if (!strcmp(type->variants[i].name, variant)) {
@@ -2170,6 +2432,10 @@ static uint64_t variant_tag(int b, const char *union_name, const char *variant)
         }
     }
     return 0;
+}
+static uint64_t variant_tag(int b, const char *union_name, const char *variant)
+{
+    return fixture_variant_tag(&fixture, b, PACKAGE, union_name, variant);
 }
 static uint64_t tag(int b, const char *variant)
 {
@@ -2221,6 +2487,45 @@ static pin_value files(const source_package_input *inputs, int count, bool sourc
     }
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
 }
+/* This host's target, as Compile and CollectScalar take it. */
+static bool target(int b, pin_value *out)
+{
+    const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
+    REQUIRE(record);
+    *out = (pin_value){ .type = PIN_STRUCT,
+                        .ptr = arena_alloc(&input, record->type.size),
+                        .record = record,
+                        .type_name = record->type.name };
+    memset(out->ptr, 0, record->type.size);
+    REQUIRE(put(out, "pointer_storage", BF_POINTER_TYPE));
+    REQUIRE(put(out, "pointer_size", (int)sizeof(void *)));
+    REQUIRE(put(out, "value_size", (int)sizeof(pin_value)));
+    REQUIRE(put(out, "payload_offset", (int)offsetof(pin_value, d)));
+    REQUIRE(put(out, "results_offset", (int)offsetof(behavior_function_context, results)));
+    REQUIRE(put(out, "type_offset", (int)offsetof(pin_value, type)));
+    REQUIRE(put(out, "container_offset", (int)offsetof(pin_value, container)));
+    REQUIRE(put(out, "name_offset", (int)offsetof(pin_value, type_name)));
+    REQUIRE(put(out, "record_offset", (int)offsetof(pin_value, record)));
+    REQUIRE(put(out, "count_offset", (int)offsetof(pin_array, count)));
+    REQUIRE(put(out, "items_offset", (int)offsetof(pin_array, items)));
+    REQUIRE(put(out, "data_offset", (int)offsetof(pin_array, data)));
+    REQUIRE(put(out, "stride_offset", (int)offsetof(pin_array, stride)));
+    REQUIRE(put(out, "map_count_offset", (int)offsetof(pin_map, count)));
+    REQUIRE(put(out, "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
+    REQUIRE(put(out, "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
+    REQUIRE(put(out, "assert_failure", BEHAVIOR_FUNCTION_DATA));
+    return true;
+}
+/* The names of this host's prepared instructions, in their order. */
+static pin_value instruction_names()
+{
+    int instructions = execution_prepared_instruction_count();
+    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
+    for (int i = 0; i < instructions; i++) {
+        names->items[i] = text(execution_prepared_instruction_name(i));
+    }
+    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+}
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
  * links: with `game`, also the core pack a game links. */
@@ -2241,37 +2546,9 @@ static bool arguments_for(
     args[3] = files(inputs, count, false);
     args[4] = files(inputs, count, true);
     args[DEBUG_ARGUMENT] = (pin_value){ .type = PIN_BOOL, .b = true };
-    const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
-    REQUIRE(record);
-    args[6] = (pin_value){ .type = PIN_STRUCT,
-                           .ptr = arena_alloc(&input, record->type.size),
-                           .record = record,
-                           .type_name = record->type.name };
-    memset(args[6].ptr, 0, record->type.size);
-    REQUIRE(put(&args[6], "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(&args[6], "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(&args[6], "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(&args[6], "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(&args[6], "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(put(&args[6], "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(&args[6], "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(&args[6], "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(&args[6], "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(&args[6], "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(&args[6], "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(&args[6], "data_offset", (int)offsetof(pin_array, data)));
-    REQUIRE(put(&args[6], "stride_offset", (int)offsetof(pin_array, stride)));
-    REQUIRE(put(&args[6], "map_count_offset", (int)offsetof(pin_map, count)));
-    REQUIRE(put(&args[6], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(&args[6], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    REQUIRE(put(&args[6], "assert_failure", BEHAVIOR_FUNCTION_DATA));
+    REQUIRE(target(b, &args[6]));
     args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
-    int instructions = execution_prepared_instruction_count();
-    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
-    for (int i = 0; i < instructions; i++) {
-        names->items[i] = text(execution_prepared_instruction_name(i));
-    }
-    args[8] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+    args[8] = instruction_names();
     REQUIRE(natives(b, game, probe, &args[9]));
     return true;
 }
@@ -2284,17 +2561,27 @@ static bool compile(
     int b,
     bool game,
     bool probe,
+    bool effects,
     const source_package_input *inputs,
     int count,
     uintptr_t budget,
     pin_value *out
 )
 {
-    pin_value args[ARGUMENTS];
+    pin_value args[ARGUMENTS + 1];
     REQUIRE(arguments_for(b, game, probe, inputs, count, args));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out)
-    );
+    args[ARGUMENTS] = linked_effects[game][probe][b];
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        effects ? "CompileWithEffects" : "Compile",
+        args,
+        ARGUMENTS + effects,
+        budget,
+        &detached,
+        out
+    ));
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -3116,9 +3403,45 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     }
     return packages;
 }
-/* Each module of stage one's closure has the function and statement points of
- * the stage-zero module with its ID that oracle_closure prepared. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length)
+/* Compare serialized function flags, independently of the runtime's derived
+ * effect summary. Direct, recursive and imported HOST callers must retain it. */
+static bool same_host_effects(const execution_module *expected, const execution_module *actual)
+{
+    bool same = true;
+    int observed = 0;
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const execution_module_function *x = &expected->plan.functions[i];
+        const execution_module_function *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == x->id) {
+                y = &actual->plan.functions[j];
+            }
+        }
+        bool host_call = x->id == function_id("Probe") ||
+                         x->id == function_id("Caller") ||
+                         x->id == function_id("Recursive") ||
+                         x->id == function_id("ImportedHost") ||
+                         x->id == script_catalog_id("package-symbol", "project:lib:1:Through:callable");
+        REQUIRE(!host_call || (x->effects & SCRIPT_EFFECT_HOST));
+        observed += host_call;
+        REQUIRE(y);
+        if (x->effects != y->effects) {
+            fprintf(
+                stderr,
+                "stored function effects %016llx: stage zero=%u stage one=%u\n",
+                (unsigned long long)x->id,
+                x->effects,
+                y->effects
+            );
+        }
+        same &= x->effects == y->effects;
+    }
+    REQUIRE(observed > 0);
+    return same;
+}
+/* Each module retains stage zero's source points, watches and, when supplied,
+ * effects for the target's natives. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
 {
     native_capabilities *native;
     package_collection *packages = read_packages(bytes, length, &native);
@@ -3135,15 +3458,15 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
                          : NULL;
         }
         alike = expected && same_points(expected, module) &&
-                same_watches(expected, module);
+                same_watches(expected, module) &&
+                (!host_effects || same_host_effects(expected, module));
     }
     package_collection_free(packages);
     native_capabilities_free(native);
     return alike;
 }
-/* The samples of `group` compiled by stage one on compiler backend `b`.
- * Stage one compiles slowest on the bytecode backend, so each backend has a
- * selector of its own; only it compares with stage zero's closure. */
+/* Each compiler backend has a focused selector. Bytecode compares source
+ * points with stage zero; both compare explicit target effects. */
 static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
 {
     source_package_input inputs[SAMPLE_INPUTS];
@@ -3189,9 +3512,55 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
     REQUIRE(same);
     return true;
 }
+static bool rejects_malformed_effects()
+{
+    static const source_package_input bad_source = { "facts/Main.chibi", "not source", 10 };
+    pin_value args[ARGUMENTS + 1];
+    REQUIRE(arguments_for(0, false, false, &bad_source, 1, args));
+    const pin_array *declared = linked_effects[0][0][0].ptr;
+    REQUIRE(declared && declared->count > 0);
+    for (int i = 0; i < 3; i++) {
+        int count = i ? declared->count : 0;
+        pin_array *masks = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+        for (int j = 0; j < count; j++) {
+            masks->items[j] = (pin_value){ .type = PIN_I32,
+                                           .i = j      ? 0
+                                              : i == 1 ? -1
+                                                       : 128 };
+        }
+        args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
+                                       .container = PIN_CONTAINER_ARRAY,
+                                       .ptr = masks };
+        pin_value out, message, document;
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            0,
+            PACKAGE,
+            "CompileWithEffects",
+            args,
+            ARGUMENTS + 1,
+            COMPILE_BUDGET,
+            &detached,
+            &out
+        ));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(0, "Rejected"));
+        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(get(&value->values[0], "document", &document));
+        REQUIRE(
+            !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
+            document.i == -1
+        );
+        arena_free(&detached);
+    }
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
+    if (group == BASE_SAMPLES && b == 0) {
+        REQUIRE(rejects_malformed_effects());
+    }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
         if (s->group != group) {
@@ -3200,7 +3569,8 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        bool compiled = compile(b, s->game, s->c_string_probe, inputs, count, COMPILE_BUDGET, &out);
+        bool compiled =
+            compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
         if (!compiled) {
             fprintf(
                 stderr,
@@ -3274,8 +3644,9 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   (b || (oracle_closure(s, &expected, &expected_length) &&
-                          points_like_oracle(bytes, length)));
+                   ((b && !s->host_effects) ||
+                    (oracle_closure(s, &expected, &expected_length) &&
+                     points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
@@ -3334,6 +3705,81 @@ TEST_CASE(package_compiler_omits_debug_info)
         }
         free(bytes);
         REQUIRE(ran);
+    }
+    return true;
+}
+/* Stage zero currently resolves assert through its native catalog, so its
+ * ordinary pure-target oracle cannot model this authored intrinsic contract.
+ * Compile directly with no game/native assertion pack and inspect the emitted
+ * checked instruction before running both execution backends. Existing oracle
+ * samples remain unchanged. */
+TEST_CASE(package_compiler_asserts_without_native_capability)
+{
+    REQUIRE(prepare());
+    const sample cases[] = {
+        { .source = "package facts\n"
+                    "Double :: (n: int) -> int {\n"
+                    "    assert(condition: n > 0, message: \"n is "
+                    "positive\");\n"
+                    "    return n * 2;\n}\n",
+          .calls = { { .function = "Double", .arguments = "[3]", .expected = "[6]" },
+                     { .function = "Double",
+                       .arguments = "[-1]",
+                       .expected = NULL,
+                       .diagnostic = "Assertion failed: n is positive" } } },
+        { .source = "package facts\n"
+                    "assert :: (n: int) -> int { return n + 7; }\n"
+                    "Main :: () -> int { return assert(3); }\n",
+          .calls = { { .function = "Main", .arguments = "[]", .expected = "[10]" } } },
+        { .source = "package facts\n"
+                    "import lib \"project:lib\"\n"
+                    "Main :: () -> int { return lib.assert(3); }\n",
+          .library = "package lib\npub assert :: (n: int) -> int { return n + "
+                     "9; }\n",
+          .calls = { { .function = "Main", .arguments = "[]", .expected = "[12]" } } }
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        source_package_input inputs[SAMPLE_INPUTS];
+        int count = sample_inputs(&cases[i], inputs);
+        for (int b = 0; b < 2; b++) {
+            pin_value out;
+            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
+            arena_free(&detached);
+            native_capabilities *native;
+            package_collection *packages = read_packages(bytes, length, &native);
+            REQUIRE(packages);
+            int checked = 0;
+            for (int p = 0; p < package_collection_count(packages); p++) {
+                const execution_module_plan
+                    *plan = &package_collection_module(packages, p)->plan;
+                for (int f = 0; f < plan->function_count; f++) {
+                    const behavior_function *body = plan->functions[f].body;
+                    for (int op = 0; op < acount(body->instructions); op++) {
+                        if (body->instructions[op].op == BF_ASSERT) {
+                            REQUIRE(body->instructions[op].target == BEHAVIOR_FUNCTION_DATA);
+                            REQUIRE(!acount(body->host_calls));
+                            checked++;
+                        }
+                    }
+                }
+            }
+            package_collection_free(packages);
+            native_capabilities_free(native);
+            REQUIRE(checked == (i == 0));
+            bool ran = true;
+            for (int c = 0; ran && c < CALLS && cases[i].calls[c].function; c++) {
+                for (int backend = 0; ran && backend < 2; backend++) {
+                    ran = run(bytes, length, &cases[i].calls[c], backend);
+                }
+            }
+            free(bytes);
+            REQUIRE(ran);
+        }
     }
     return true;
 }
@@ -3472,14 +3918,17 @@ static bool stage_two_sample(const sample *s)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS + 1], out;
     REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
+    args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
+    int argument_count = ARGUMENTS + s->host_effects;
+    const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
     REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+        compiler_fixture_call(&fixture, 1, PACKAGE, entry_name, args, argument_count, COMPILE_BUDGET, &detached, &out)
     );
     const pin_union *value = out.ptr;
     size_t length, expected_length;
-    char *json = document_json(args, ARGUMENTS, &length);
+    char *json = document_json(args, argument_count, &length);
     bool compiled = value->tag == tag(1, "Compiled");
     unsigned char *expected = compiled
                                 ? closure_bytes(value, &expected_length)
@@ -3490,7 +3939,7 @@ static bool stage_two_sample(const sample *s)
         compiler_host_bytes again = { 0 };
         same = compiler_host_invoke_bytes(
                    host,
-                   script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
+                   script_catalog_id("package-symbol", s->host_effects ? "project:package_compiler:1:CompileClosureWithEffects:callable" : "project:package_compiler:1:CompileClosure:callable"),
                    json,
                    length,
                    SELF_BUDGET,
@@ -3509,7 +3958,12 @@ static bool stage_two_sample(const sample *s)
         }
         free(again.bytes);
     } else {
-        uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
+        uint64_t entry = script_catalog_id(
+            "package-symbol",
+            s->host_effects
+                ? "project:package_compiler:1:CompileWithEffects:callable"
+                : "project:package_compiler:1:Compile:callable"
+        );
         bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
         same = called && result.flow_status == FLOW_OK &&
                result.length == expected_length &&
@@ -3591,7 +4045,7 @@ TEST_CASE(package_compiler_compiles_itself)
     char error[256];
     host = compiler_host_load(stage_two, length, TEST_COMPILED_BACKEND, error, sizeof error);
     if (!host) {
-        fprintf(stderr, "package compiler stage two could not load: %s\n", error);
+        fprintf(stderr, "self-hosted compiler load: %s\n", error);
     }
     REQUIRE(host);
     size_t target_length;
@@ -3678,8 +4132,111 @@ static const char COUNTER[] = "// Behavior state that survives between steps, "
                               "        self.Spot.x = steps\n"
                               "    }\n"
                               "}\n";
+static const char
+    TEXT_STATE[] = "TextState :: behavior {\n"
+                   "    label: string = \"seed\"\n"
+                   "    Copy :: (value: string) -> string { return value; }\n"
+                   "    on Tick :: () {\n"
+                   "        if label == \"seed\" {\n"
+                   "            label = Copy(\"a\\u0000b\")\n"
+                   "            self.Spot.x = 1\n"
+                   "        } else {\n"
+                   "            label = Copy(\"seed\")\n"
+                   "            self.Spot.x = 2\n"
+                   "        }\n"
+                   "    }\n}\n";
 static const behavior_sample behavior_samples[] = {
     { "Counter", COUNTER },
+    { "BoolState",
+      "BoolState :: behavior {\n"
+      "    active: bool = true\n"
+      "    on Tick :: () {\n"
+      "        if active { self.Spot.x = 1; } else { self.Spot.x = 2; }\n"
+      "        active = !active\n"
+      "    }\n}\n" },
+    { "InferredState",
+      "InferredState :: behavior {\n"
+      "    active := false\n"
+      "    count := 1\n"
+      "    angle := 0.5\n"
+      "    hex := 0x1e\n"
+      "    wide := 4294967297\n"
+      "    on Tick :: () {\n"
+      "        active = !active\n"
+      "        count += 1\n"
+      "        angle += 0.5\n"
+      "        if active { self.Spot.x = count; } else { self.Spot.x = angle; "
+      "}\n"
+      "    }\n}\n" },
+    { "EntityState",
+      "EntityState :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        target = self\n"
+      "    }\n}\n" },
+    { "EntityNullState",
+      "EntityNullState :: behavior {\n"
+      "    target: entity = null\n"
+      "    on Tick :: () { target = self; }\n"
+      "}\n" },
+    { "EntityZeroState",
+      "EntityZeroState :: behavior {\n"
+      "    target: entity = 0\n"
+      "    on Tick :: () { target = self; }\n"
+      "}\n" },
+    { "EntitySignedZeroState",
+      "EntitySignedZeroState :: behavior {\n"
+      "    negative: entity = -0\n"
+      "    positive: entity = +0.0\n"
+      "    on Tick :: () {\n"
+      "        negative = self\n"
+      "        positive = self\n"
+      "        negative = -0.0\n"
+      "        positive = +0\n"
+      "    }\n}\n" },
+    { "EntityResetState",
+      "EntityResetState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = self; }\n"
+      "        if ticks == 1 { target = null; }\n"
+      "        if ticks == 2 { target = self; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
+    { "EntityEqualState",
+      "EntityEqualState :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        target = self\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "    }\n}\n" },
+    { "NamedSpot",
+      "NamedSpot :: behavior {\n"
+      "    Ready :: () -> (Result: bool = false) { return self.Spot.w > 0; }\n"
+      "    Read :: () -> (Point: Spot) { Point.x = 3; Point.y = 4; return; }\n"
+      "    Bare :: () -> (Point: Spot) { return; }\n"
+      "    Field :: (value: Spot) -> float { return value.x; }\n"
+      "    Has :: (value: Spot) -> bool { return value.resolved == self; }\n"
+      "    on Tick :: () { if Ready() { self.Spot = Read().Point; } }\n"
+      "}\n" },
+    { "TextState", TEXT_STATE },
+    { "InferredTextState",
+      "InferredTextState :: behavior {\n"
+      "    label := \"a\\u0000b\"\n"
+      "    on Tick :: () {\n"
+      "        if label == \"a\\u0000b\" { self.Spot.x += 1; }\n"
+      "    }\n}\n" },
+    { "ScalarNullState",
+      "ScalarNullState :: behavior {\n"
+      "    active: bool = null\n"
+      "    count: int = null\n"
+      "    label: string = null\n"
+      "    on Tick :: () {\n"
+      "        if !active && label == \"\" { self.Spot.x = count; }\n"
+      "    }\n}\n" },
     { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
     { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
     { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
@@ -3720,6 +4277,32 @@ static const behavior_sample behavior_samples[] = {
       "Steer :: behavior {\n    on Move :: (y: float, x: float) {\n        "
       "self.Spot.x = x - y\n        self.Spot.y = y\n    }\n}\n" },
     { "Lift", "Lift :: behavior {\n    on Move :: (y: float) {\n        self.Spot.y += y\n    }\n}\n" },
+    { "KeyedEntityState",
+      "KeyedEntityState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = globals.Terrain; }\n"
+      "        if ticks == 1 { target = null; }\n"
+      "        if ticks == 2 { target = globals.Terrain; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
+    { "FieldEntityState",
+      "FieldEntityState :: behavior {\n"
+      "    target: entity\n"
+      "    ticks: int = 0\n"
+      "    on Tick :: () {\n"
+      "        if ticks == 0 { target = self.Spot.owner; }\n"
+      "        if ticks == 1 { target = self.Spot.resolved; }\n"
+      "        if ticks == 2 { target = null; }\n"
+      "        if ticks == 3 { target = 0; }\n"
+      "        if target == self { self.Spot.x += 1; }\n"
+      "        if target != self { self.Spot.y += 1; }\n"
+      "        ticks += 1\n"
+      "    }\n}\n" },
 };
 /* Sources stage one rejects, with its message. Where stage zero rejects one
  * too, stage one gives its message at its position. */
@@ -3737,9 +4320,11 @@ static const behavior_rejection behavior_rejections[] = {
       "}\n}\n",
       "Assignment requires a writable value",
       false },
-    { "Named :: behavior {\n    label: string = \"\"\n    on Tick :: () {\n    "
-      "}\n}\n",
-      "state needs a number type",
+    { "Missing :: behavior { flag: bool; }", "'flag' requires a default value", true },
+    { "Missing :: behavior { count: int; }", "'count' requires a default value", true },
+    { "Missing :: behavior { label: string; }", "'label' requires a default value", true },
+    { "Nonzero :: behavior { target: entity = 1; }",
+      "entity default requires null or zero",
       false },
     { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
       "{\n    }\n}\n",
@@ -3769,12 +4354,18 @@ enum
     MOVE = 12,
     OWNER = 30,
     ENTITY = 700,
+    OTHER_HANDLE = 701,
+    SCENE_GLOBALS = 702,
+    GET_TERRAIN = 800,
+    GET_OTHER = 801,
+    GET_RESOLVED = 802,
     BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
 typedef struct
 {
     float x, y, w;
+    uint64_t owner;
 } spot;
 static const type_field spot_fields[] = {
     { .name = "x",
@@ -3792,11 +4383,17 @@ static const type_field spot_fields[] = {
       .type_name = "float",
       .offset = offsetof(spot, w),
       .size = sizeof(float) },
+    { .name = "owner",
+      .type = PIN_HANDLE,
+      .type_name = "ecs.entity",
+      .offset = offsetof(spot, owner),
+      .size = sizeof(uint64_t) },
 };
 static const type_desc spot_type = { .name = "Spot",
                                      .size = sizeof(spot),
                                      .fields = spot_fields,
-                                     .field_count = 3 };
+                                     .field_count = sizeof spot_fields /
+                                                    sizeof *spot_fields };
 static const script_catalog_field spot_members[] = {
     { .id = 811,
       .name = "x",
@@ -3809,6 +4406,14 @@ static const script_catalog_field spot_members[] = {
       .offset = offsetof(spot, y),
       .writable = true },
     { .id = 813, .name = "w", .type = { .storage = PIN_F32 }, .offset = offsetof(spot, w) },
+    { .id = 814,
+      .name = "owner",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .offset = offsetof(spot, owner) },
+    { .id = 815,
+      .name = "resolved",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .read = GET_RESOLVED },
 };
 static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
                                                         .type = { .storage = PIN_F32 } };
@@ -3816,7 +4421,21 @@ static const script_catalog_parameter move_payload[] = {
     { .name = "x", .type = { .storage = PIN_F32 } },
     { .name = "y", .type = { .storage = PIN_F32 } },
 };
-static const script_catalog_capability game_events[] = {
+static const script_catalog_parameter global_key = { .name = "key",
+                                                     .type = { .storage = PIN_STR } };
+static const script_catalog_parameter spot_argument = {
+    .name = "spot",
+    .type = { .storage = PIN_STRUCT, .nominal = SPOT }
+};
+static const script_catalog_parameter terrain_result = {
+    .name = "Value",
+    .type = { .storage = PIN_HANDLE, .nominal = ENTITY }
+};
+static const script_catalog_parameter other_result = {
+    .name = "Value",
+    .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE }
+};
+static const script_catalog_capability game_capabilities[] = {
     { .id = TICK,
       .name = "Tick",
       .kind = SCRIPT_CAPABILITY_EVENT,
@@ -3829,37 +4448,173 @@ static const script_catalog_capability game_events[] = {
       .parameters = move_payload,
       .parameter_count = 2,
       .completion_outcome = -1 },
+    { .id = GET_TERRAIN,
+      .name = "Fixture Terrain",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &global_key,
+      .parameter_count = 1,
+      .results = &terrain_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
+    { .id = GET_OTHER,
+      .name = "Fixture Other",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &global_key,
+      .parameter_count = 1,
+      .results = &other_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
+    { .id = GET_RESOLVED,
+      .name = "Fixture Resolved",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &spot_argument,
+      .parameter_count = 1,
+      .results = &terrain_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
+};
+static const script_catalog_field scene_globals[] = {
+    { .id = 820,
+      .name = "Terrain",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .read = GET_TERRAIN,
+      .read_key = "Terrain" },
+    { .id = 821,
+      .name = "Other",
+      .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE },
+      .read = GET_OTHER,
+      .read_key = "Other" },
 };
 static const script_catalog_global game_globals[] = {
     { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
     { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
+    { .id = OWNER + 2,
+      .name = "globals",
+      .type = { .storage = PIN_FLOW, .nominal = SCENE_GLOBALS, .flags = SCRIPT_TYPE_NAMESPACE } },
 };
-/* The game: the Spot component and the entity type, Tick, Move with two
- * fields, `self` and `pace`, a global stage one cannot read yet. */
+/* The game: Spot, two nominal handle types, and keyed scene globals, with
+ * Tick, Move, `self`, and the unsupported scalar global `pace`. */
 static script_catalog game_catalog()
 {
-    static script_catalog_type types[2];
-    types[0] = (script_catalog_type){ .id = SPOT,
-                                      .name = spot_type.name,
-                                      .type = { .storage = PIN_STRUCT, .nominal = SPOT },
-                                      .fields = spot_members,
-                                      .field_count = 3,
-                                      .size = spot_type.size,
-                                      .layout = type_layout_hash(&spot_type),
-                                      .component_id = SPOT_COMPONENT,
-                                      .component = true };
+    static script_catalog_type types[4];
+    types[0] = (script_catalog_type){
+        .id = SPOT,
+        .name = spot_type.name,
+        .type = { .storage = PIN_STRUCT, .nominal = SPOT },
+        .fields = spot_members,
+        .field_count = sizeof spot_members / sizeof *spot_members,
+        .size = spot_type.size,
+        .layout = type_layout_hash(&spot_type),
+        .component_id = SPOT_COMPONENT,
+        .component = true
+    };
     types[1] = (script_catalog_type){ .id = ENTITY,
                                       .name = "ecs.entity",
                                       .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
                                       .size = sizeof(uint64_t) };
+    types[2] = (script_catalog_type){ .id = OTHER_HANDLE,
+                                      .name = "test.other",
+                                      .type = { .storage = PIN_HANDLE,
+                                                .nominal = OTHER_HANDLE },
+                                      .size = sizeof(uint64_t) };
+    types[3] = (script_catalog_type){ .id = SCENE_GLOBALS,
+                                      .name = "SceneGlobals",
+                                      .type = { .storage = PIN_FLOW,
+                                                .nominal = SCENE_GLOBALS,
+                                                .flags = SCRIPT_TYPE_NAMESPACE },
+                                      .fields = scene_globals,
+                                      .field_count = 2 };
     return (script_catalog){ .types = types,
-                             .type_count = 2,
-                             .capabilities = game_events,
-                             .capability_count = 2,
+                             .type_count = 4,
+                             .capabilities = game_capabilities,
+                             .capability_count = sizeof game_capabilities /
+                                                 sizeof *game_capabilities,
                              .globals = game_globals,
-                             .global_count = 2,
+                             .global_count = sizeof game_globals / sizeof *game_globals,
                              .entity_type = ENTITY,
                              .tick_event = TICK };
+}
+/* The getters preserve the caller's typed result header. Equal payload bits
+ * for the two handle types must never make them assignment-compatible. */
+static const char *keyed_owner(
+    const behavior_function_context *context,
+    const pin_value *arguments,
+    pin_value *out,
+    const char *name,
+    const char *type_name
+)
+{
+    pin_string key = pin_text(arguments[0]);
+    if (key.length != strlen(name) || memcmp(key.bytes, name, key.length)) {
+        return "Unexpected keyed global name";
+    }
+    if (out->type != PIN_HANDLE || out->container != PIN_CONTAINER_SINGLE ||
+        !out->type_name || strcmp(out->type_name, type_name)) {
+        return "Keyed global result lost its nominal type";
+    }
+    out->u64 = context->owner;
+    return NULL;
+}
+static const char *terrain_global(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    return keyed_owner(context, arguments, out, "Terrain", "ecs.entity");
+}
+static const char *other_global(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    return keyed_owner(context, arguments, out, "Other", "test.other");
+}
+static const char *resolved_owner(
+    const behavior_function_context *,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    const pin_value *receiver = &arguments[0];
+    if (receiver->type != PIN_STRUCT ||
+        receiver->container != PIN_CONTAINER_SINGLE || !receiver->ptr ||
+        !receiver->type_name || strcmp(receiver->type_name, "Spot")) {
+        return "Resolved getter requires a Spot";
+    }
+    if (out->type != PIN_HANDLE || out->container != PIN_CONTAINER_SINGLE ||
+        !out->type_name || strcmp(out->type_name, "ecs.entity")) {
+        return "Resolved getter result lost its nominal type";
+    }
+    out->u64 = ((const spot *)receiver->ptr)->owner;
+    return NULL;
+}
+static const node_host_call terrain_call = { .context = terrain_global };
+static const node_host_call other_call = { .context = other_global };
+static const node_host_call resolved_call = { .context = resolved_owner };
+static const node_access global_access = { .flags = NODE_EFFECT_PURE };
+static const node_host_call *global_call(uint64_t id)
+{
+    return id == GET_TERRAIN  ? &terrain_call
+         : id == GET_OTHER    ? &other_call
+         : id == GET_RESOLVED ? &resolved_call
+                              : NULL;
+}
+static bool game_host(void *, uint64_t id, script_lower_host *out)
+{
+    const node_host_call *call = global_call(id);
+    if (!call) {
+        return false;
+    }
+    *out = (script_lower_host){ .call = call, .access = &global_access };
+    return true;
 }
 static bool game_global(void *, uint64_t id, behavior_function_instruction *out)
 {
@@ -3875,7 +4630,7 @@ static execution_module *stage_zero_behavior(const char *source)
     script_catalog catalog = game_catalog();
     script_syntax *syntax = script_parse(source);
     script_analysis *analysis = script_analyze(syntax, &catalog);
-    const script_lower_bindings bindings = { .global = game_global };
+    const script_lower_bindings bindings = { .global = game_global, .host = game_host };
     execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
     char error[256] = { 0 };
     execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
@@ -3907,15 +4662,82 @@ static int type_index(const script_catalog *catalog, uint64_t id)
     }
     return -1;
 }
+/* Behavior targets append these fixture getters after the production host
+ * natives. Package compilation and bootstrap keep their original tables. */
+static bool behavior_natives(int b, pin_value tables[3])
+{
+    script_catalog catalog = game_catalog();
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    pin_array *before[] = { tables[0].ptr, tables[1].ptr, tables[2].ptr };
+    for (int i = 0; i < before[0]->count; i++) {
+        apush(functions, pin_array_get(before[0], i));
+    }
+    for (int i = 0; i < before[1]->count; i++) {
+        apush(ports, pin_array_get(before[1], i));
+    }
+    for (int i = 0; i < before[2]->count; i++) {
+        apush(identities, pin_array_get(before[2], i));
+    }
+    for (int i = 0; i < catalog.capability_count; i++) {
+        const script_catalog_capability *c = &catalog.capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
+            continue;
+        }
+        pin_value function = row(b, "Native");
+        REQUIRE(put_value(&function, "name", text(c->name)));
+        REQUIRE(put(&function, "first", acount(ports)));
+        REQUIRE(put(&function, "parameters", c->parameter_count));
+        REQUIRE(put(&function, "results", c->result_count));
+        REQUIRE(put_value(&function, "variadic", flag(false)));
+        apush(functions, function);
+        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
+            const script_catalog_parameter *declared = j < c->parameter_count
+                                                         ? &c->parameters[j]
+                                                         : &c->results[j - c->parameter_count];
+            pin_value port = row(b, "Port");
+            REQUIRE(put_value(&port, "name", text(declared->name)));
+            REQUIRE(put(&port, "storage", port_storage(declared->type)));
+            REQUIRE(put(&port, "container", (int)declared->type.container));
+            REQUIRE(put_value(&port, "c_string", flag(false)));
+            apush(ports, port);
+        }
+        apush(identities, u64(c->id));
+        apush(identities, u64(script_catalog_capability_abi(&catalog, c)));
+    }
+    tables[0] = rows(functions, acount(functions), PIN_STRUCT, tables[0].record);
+    tables[1] = rows(ports, acount(ports), PIN_STRUCT, tables[1].record);
+    tables[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    afree(functions);
+    afree(ports);
+    afree(identities);
+    return true;
+}
+static int game_native_index(const script_catalog *catalog, uint64_t id, int first)
+{
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
+            continue;
+        }
+        if (c->id == id) {
+            return first;
+        }
+        first++;
+    }
+    return -1;
+}
 /* CompileBehavior's game arguments, as the game target exports them: each
  * event and its payload fields, each type and its fields, the entity type,
  * no operators that combine records, the globals, and no record makes. */
-static bool game_arguments(int b, pin_value *out)
+static bool game_arguments(int b, int first_native, pin_value *out)
 {
     script_catalog catalog = game_catalog();
     pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
     for (int i = 0; i < catalog.capability_count; i++) {
         const script_catalog_capability *c = &catalog.capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_EVENT) {
+            continue;
+        }
         pin_value event = row(b, "GameEvent");
         REQUIRE(put_value(&event, "name", text(c->name)));
         REQUIRE(put_value(&event, "id", u64(c->id)));
@@ -3936,7 +4758,7 @@ static bool game_arguments(int b, pin_value *out)
     for (int i = 0; i < catalog.type_count; i++) {
         const script_catalog_type *t = &catalog.types[i];
         pin_value type = row(b, "GameType");
-        REQUIRE(put_value(&type, "required", flag(true)));
+        REQUIRE(put_value(&type, "required", flag(!(t->type.flags & SCRIPT_TYPE_NAMESPACE))));
         REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
         REQUIRE(put_value(&type, "name", text(t->name)));
         REQUIRE(put_value(&type, "id", u64(t->id)));
@@ -3956,8 +4778,14 @@ static bool game_arguments(int b, pin_value *out)
             REQUIRE(put_value(&field, "c_string", flag(t->fields[j].c_string)));
             REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
             REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
-            REQUIRE(put(&field, "read", -1));
-            REQUIRE(put_value(&field, "read_key", text("")));
+            REQUIRE(
+                put(&field, "read", game_native_index(&catalog, t->fields[j].read, first_native))
+            );
+            REQUIRE(put_value(
+                &field,
+                "read_key",
+                text(t->fields[j].read_key ? t->fields[j].read_key : "")
+            ));
             apush(fields, field);
         }
     }
@@ -3999,7 +4827,9 @@ static bool compile_behavior(int b, const char *identity, const char *source, pi
     args[0] = text(identity);
     args[1] = text(source);
     memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
-    REQUIRE(game_arguments(b, &args[8]));
+    int first_native = ((pin_array *)args[5].ptr)->count;
+    REQUIRE(behavior_natives(b, &args[5]));
+    REQUIRE(game_arguments(b, first_native, &args[8]));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
     );
@@ -4034,6 +4864,21 @@ static bool link_game_event(void *user, uint64_t id, uint64_t abi)
     }
     return false;
 }
+static bool link_game_host(void *user, uint64_t id, execution_prepared_host *out)
+{
+    const node_host_call *call = global_call(id);
+    const script_catalog *catalog = user;
+    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
+    if (!call || !capability) {
+        return false;
+    }
+    *out = (execution_prepared_host){
+        .call = call,
+        .access = &global_access,
+        .abi = script_catalog_capability_abi(catalog, capability)
+    };
+    return true;
+}
 /* The module stage one compiles `source` to on backend `b`, linked against
  * the game. */
 static bool stage_one_behavior(int b, const char *identity, const char *source, execution_module **module)
@@ -4063,10 +4908,18 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
     arena_free(&detached);
     script_catalog catalog = game_catalog();
     execution_prepared_linker linker = { .user = &catalog,
+                                         .host = link_game_host,
                                          .type = link_game_type,
                                          .event = link_game_event };
     char error[256] = { 0 };
-    *module = execution_prepared_read(bytes, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    *module = execution_prepared_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
     if (!*module) {
         fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
     }
@@ -4093,7 +4946,10 @@ static bool play(execution_module *module, player *out)
     out->program = execution_program_new(module, out->world, NULL);
     REQUIRE(out->program);
     out->owner = ecs_world_create_entity(out->world);
-    spot initial = { .w = 9 };
+    spot initial;
+    memset(&initial, 0, sizeof initial);
+    initial.w = 9;
+    initial.owner = ecs_entity_to_u64(out->owner);
     REQUIRE(ecs_world_record_add(out->world, out->owner, SPOT_COMPONENT, &initial, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
     out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
@@ -4135,8 +4991,11 @@ static bool same_declarations(const execution_module *expected, const execution_
     REQUIRE(a->state_count == e->state_count);
     for (int i = 0; i < e->state_count; i++) {
         REQUIRE(a->states[i].id == e->states[i].id);
-        REQUIRE(a->states[i].initial.type == e->states[i].initial.type);
-        REQUIRE(a->states[i].initial.i == e->states[i].initial.i);
+        REQUIRE(pin_value_equal(&a->states[i].initial, &e->states[i].initial));
+        REQUIRE(!strcmp(
+            a->states[i].initial.type_name ? a->states[i].initial.type_name : "",
+            e->states[i].initial.type_name ? e->states[i].initial.type_name : ""
+        ));
     }
     REQUIRE(a->event_count == e->event_count);
     for (int i = 0; i < e->event_count; i++) {
@@ -4158,11 +5017,34 @@ static bool same_declarations(const execution_module *expected, const execution_
     for (int i = 0; i < e->function_count; i++) {
         const execution_module_function *x = &e->functions[i], *y = &a->functions[i];
         REQUIRE(y->id == x->id && y->event == x->event && y->event_abi == x->event_abi);
+        if (y->kind != x->kind || y->effects != x->effects) {
+            fprintf(
+                stderr,
+                "function %d (%s): native kind/effects %d/%u, authored %d/%u\n",
+                i,
+                x->entry ? x->entry : "handler",
+                x->kind,
+                (unsigned)x->effects,
+                y->kind,
+                (unsigned)y->effects
+            );
+        }
         REQUIRE(y->kind == x->kind && y->effects == x->effects);
         REQUIRE(!y->event_name == !x->event_name && !y->entry == !x->entry);
         REQUIRE(!x->event_name || !strcmp(y->event_name, x->event_name));
         REQUIRE(y->body->argument_count == x->body->argument_count);
         REQUIRE(y->body->result_count == x->body->result_count);
+        for (int j = 0; j < x->body->result_count; j++) {
+            const pin_value *wanted = &x->body->result_defaults[j];
+            const pin_value *got = &y->body->result_defaults[j];
+            REQUIRE(got->type == wanted->type && got->container == wanted->container);
+            REQUIRE(!strcmp(
+                got->type_name ? got->type_name : "",
+                wanted->type_name ? wanted->type_name : ""
+            ));
+            REQUIRE(!got->record == !wanted->record);
+            REQUIRE(!got->record || pin_record_same(got->record, wanted->record));
+        }
         REQUIRE(y->body->variable_count == x->body->variable_count);
         REQUIRE(y->body->component_access == x->body->component_access);
         REQUIRE(acount(y->body->components) == acount(x->body->components));
@@ -4204,7 +5086,7 @@ static bool plays_alike(execution_module *expected, execution_module *actual)
                 a.instance,
                 expected->plan.states[i].id
             );
-            alike = kept && held && kept->type == held->type && kept->i == held->i;
+            alike = kept && held && pin_value_equal(kept, held);
         }
         if (!alike) {
             fprintf(
@@ -4300,14 +5182,19 @@ static bool takes_project_identities(int b)
 /* Stage zero's build of stage one passes arguments without copying them to
  * every function but those that run once per compile. One that pushes onto an
  * array argument, or stores a uint64 into a field of a local record, copies
- * every argument on each call, and so does every function that calls it;
- * each took stage one compiling itself past its 60-second ceiling. */
+ * every argument on each call, and so does every function that calls it,
+ * slowing stage one compiling itself. */
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",           "CompileClosure",
-                                 "CompileBehavior",   "CompileBehaviors",
-                                 "BehaviorRejection", "Declare",
+    const char *const once[] = { "Compile",
+                                 "CompileClosure",
+                                 "CompileWithEffects",
+                                 "CompileClosureWithEffects",
+                                 "CompileBehavior",
+                                 "CompileBehaviors",
+                                 "BehaviorRejection",
+                                 "Declare",
                                  "DeclarePackage" };
     const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
                                           ->module->plan;
@@ -4339,14 +5226,14 @@ static bool samples_alike(size_t first, size_t last)
 {
     const type_desc *const reflected[] = { &spot_type };
     const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
-    type_catalog_set_project(&pack);
+    publish_project(&pack);
     bool passed = true;
     for (int b = 0; passed && b < 2; b++) {
         for (size_t i = first; passed && i < last; i++) {
             passed = behaves_alike(b, &behavior_samples[i]);
         }
     }
-    type_catalog_set_project(NULL);
+    publish_project(NULL);
     return passed;
 }
 enum
@@ -4367,21 +5254,1557 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
     const type_desc *const reflected[] = { &spot_type };
     const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
     bool passed = samples_alike(SAMPLE_COUNT / 2, SAMPLE_COUNT);
-    type_catalog_set_project(&pack);
+    publish_project(&pack);
     for (size_t i = 0;
          passed && i < sizeof behavior_rejections / sizeof *behavior_rejections;
          i++) {
         passed = rejects(1, &behavior_rejections[i]);
     }
+    const char *const invalid_entity_defaults[] = {
+        "Invalid :: behavior { target: entity = ~0; }",
+        "Invalid :: behavior { target: entity = !0; }",
+    };
+    for (size_t i = 0; passed && i < sizeof invalid_entity_defaults /
+                                         sizeof *invalid_entity_defaults;
+         i++) {
+        REQUIRE(stage_zero_diagnostic(invalid_entity_defaults[i]).message[0]);
+        for (int b = 0; b < 2; b++) {
+            pin_value out;
+            REQUIRE(compile_behavior(b, "Rejected", invalid_entity_defaults[i], &out));
+            REQUIRE(((pin_union *)out.ptr)->tag == tag(b, "Rejected"));
+            arena_free(&detached);
+        }
+    }
+    const behavior_rejection invalid_keyed_handles[] = {
+        { "Invalid :: behavior { target: entity; on Tick :: () { "
+          "target = globals.Other; } }",
+          "assigned value differs from its local",
+          false },
+        { "Invalid :: behavior { on Tick :: () { "
+          "if self == globals.Other { self.Spot.x = 1; } } }",
+          "operator does not apply to these operands",
+          false },
+    };
+    for (size_t i = 0;
+         passed && i < sizeof invalid_keyed_handles / sizeof *invalid_keyed_handles;
+         i++) {
+        REQUIRE(stage_zero_diagnostic(invalid_keyed_handles[i].source).message[0]);
+        for (int b = 0; b < 2; b++) {
+            REQUIRE(rejects(b, &invalid_keyed_handles[i]));
+        }
+    }
     passed = passed && takes_project_identities(1);
-    type_catalog_set_project(NULL);
+    publish_project(NULL);
     REQUIRE(passed);
     return true;
 }
+/* A temporary string returned by a member call becomes instance-owned state.
+ * Updating one owner must leave another owner's state and bytes independent. */
+TEST_CASE(package_compiler_keeps_text_state_per_owner)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    publish_project(&pack);
+    execution_module *module = NULL;
+    REQUIRE(stage_one_behavior(1, "TextState", TEXT_STATE, &module));
+    player p = { 0 };
+    REQUIRE(play(module, &p));
+    ecs_entity other = ecs_world_create_entity(p.world);
+    spot initial = { .w = 9 };
+    REQUIRE(ecs_world_record_add(p.world, other, SPOT_COMPONENT, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(p.world) == ECS_OK);
+    execution_instance *second = execution_program_attach(p.program, ecs_entity_to_u64(other));
+    REQUIRE(second);
+    uint64_t state = script_catalog_id("symbol", "TextState:1:label");
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int first = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
+    behavior_run_scope_end(&runs);
+    REQUIRE(first == FLOW_OK);
+    const pin_value *first_value = execution_instance_state(p.instance, state);
+    const pin_value *second_value = execution_instance_state(second, state);
+    REQUIRE(first_value && second_value);
+    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "seed", 4 }));
+    behavior_run_scope_begin(&runs);
+    int repeated = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
+    int other_result = execution_instance_dispatch(second, TICK, &delta, 1, 0, 0, 1000);
+    behavior_run_scope_end(&runs);
+    REQUIRE(repeated == FLOW_OK && other_result == FLOW_OK);
+    first_value = execution_instance_state(p.instance, state);
+    second_value = execution_instance_state(second, state);
+    REQUIRE(first_value && second_value);
+    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "seed", 4 }));
+    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(
+        TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
+                                               : runs.counts.sljit_entries > 0
+    );
+    REQUIRE(!runs.counts.overflow && !runs.counts.bytecode_entries);
+    stop(&p);
+    execution_module_free(module);
+    publish_project(NULL);
+    return true;
+}
+/* A row field of CollectScalar's retained result, read through the record
+ * shape the result owns. */
+static pin_value scalar_field(const pin_value *row, const char *name)
+{
+    const type_field *field = pin_type_field_path(pin_value_type(row), name);
+    assert(field);
+    pin_value value;
+    assert(!pin_read_field(&detached, row->ptr, field, &value));
+    return value;
+}
+static bool retained_text(const pin_value *row, const char *name, const char *expected)
+{
+    pin_value value = scalar_field(row, name);
+    REQUIRE(value.type == PIN_STR && arena_contains(&detached, pin_text(value).bytes));
+    REQUIRE(pin_text_equal(pin_text(value), (pin_string){ expected, strlen(expected) }));
+    return true;
+}
+static const char
+    SCALAR_SOURCE[] = "package scalar\n"
+                      "Main :: () -> int { return Pick(7, true); }\n"
+                      "Pick :: (x: int, b: bool) -> int { return x; }\n";
+/* A guarded module as CollectScalar gives it: Pick's guard compares its
+ * parameters and its arm calls Id. */
+static const char GUARD_SOURCE[] = "package scalar\n"
+                                   "Main :: () -> int { return Pick(1, 2); }\n"
+                                   "Pick :: (a: int, b: int) -> int {\n"
+                                   "    if (a < b) { return Id(a); }\n"
+                                   "    return b;\n"
+                                   "}\n"
+                                   "Id :: (x: int) -> int { return x; }\n";
+/* scalar_facts row kinds and types. */
+enum
+{
+    SCALAR_SOURCE_ROW = 0,
+    SCALAR_REJECTION_ROW = 1,
+    SCALAR_DOCUMENT_ROW = 2,
+    SCALAR_FUNCTION_ROW = 3,
+    SCALAR_PARAMETER_ROW = 4,
+    SCALAR_RETURN_ROW = 5,
+    SCALAR_LITERAL_ROW = 6,
+    SCALAR_READ_ROW = 7,
+    SCALAR_CALL_ROW = 8,
+    SCALAR_GUARD_ROW = 9,
+    SCALAR_COMPARE_ROW = 10,
+    SCALAR_INT = 1,
+    SCALAR_BOOL = 2
+};
+/* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
+static const int GUARD_KINDS[] = {
+    SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
+    SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_GUARD_ROW,    SCALAR_READ_ROW,
+    SCALAR_READ_ROW,      SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,      SCALAR_CALL_ROW,     SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_READ_ROW,
+};
+enum
+{
+    GUARD_ROW = 10,
+    GUARD_CONDITION = 11,
+    GUARD_COMPARE = 13,
+    GUARD_ARM = 14,
+    GUARD_ARM_READ = 15,
+    GUARD_FINAL = 17,
+    GUARD_ID_READ = 22,
+    GUARD_ROWS = (int)(sizeof GUARD_KINDS / sizeof *GUARD_KINDS),
+    GUARD_EDITS = 5
+};
+/* One field of one row set to `value`, to `text` when it is set, or to the
+ * same field of row `from` when it is set. */
+typedef struct row_edit
+{
+    int row;
+    const char *field;
+    int value;
+    const char *text;
+    int from;
+} row_edit;
+typedef struct malformed_guard
+{
+    row_edit edits[GUARD_EDITS];
+    const char *message;
+} malformed_guard;
+#define EDIT(r, f, v) { .row = (r), .field = (f), .value = (v), .from = -1 }
+#define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
+static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its int operands",
+                  SEGMENT[] = "invalid scalar return row";
+static const malformed_guard MALFORMED_GUARDS[] = {
+    /* A guard with no condition, and a second guard past the bound. */
+    { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
+    { { EDIT(GUARD_FINAL, "kind", SCALAR_GUARD_ROW) }, LAYOUT },
+    /* A comparison's operator, arity and result. */
+    { { EDIT(GUARD_COMPARE, "value", 0) }, COMPARISON },
+    { { EDIT(GUARD_COMPARE, "value", 7) }, COMPARISON },
+    { { EDIT(GUARD_COMPARE, "count", 1) }, COMPARISON },
+    { { EDIT(GUARD_COMPARE, "type", SCALAR_INT) }, COMPARISON },
+    /* A comparison of a bool. */
+    { { EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
+        EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
+        EDIT(GUARD_CONDITION + 1, "value", 1) },
+      COMPARISON },
+    /* A condition that leaves three ints rather than one bool: the
+     * comparison becomes a read of b. */
+    { { EDIT(GUARD_COMPARE, "kind", SCALAR_READ_ROW),
+        EDIT(GUARD_COMPARE, "type", SCALAR_INT),
+        EDIT(GUARD_COMPARE, "count", 0) },
+      "scalar condition is not one bool" },
+    /* A guard row that carries a type, an arm that ends past its guard, a
+     * condition operand inside the arm and a final return that starts inside
+     * the guard. */
+    { { EDIT(GUARD_ROW, "type", SCALAR_INT) }, SEGMENT },
+    { { COPY(GUARD_ARM, "end", GUARD_FINAL) }, SEGMENT },
+    { { COPY(GUARD_CONDITION, "start", GUARD_ARM_READ),
+        COPY(GUARD_CONDITION, "end", GUARD_ARM_READ),
+        COPY(GUARD_CONDITION, "line", GUARD_ARM_READ),
+        COPY(GUARD_CONDITION, "column", GUARD_ARM_READ) },
+      "invalid scalar operand row" },
+    { { COPY(GUARD_FINAL, "start", GUARD_ROW),
+        COPY(GUARD_FINAL, "line", GUARD_ROW),
+        COPY(GUARD_FINAL, "column", GUARD_ROW) },
+      SEGMENT },
+    /* Id calls Main, so the arm's call closes a cycle. */
+    { { EDIT(GUARD_ID_READ, "kind", SCALAR_CALL_ROW),
+        EDIT(GUARD_ID_READ, "value", 0),
+        { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
+      "scalar module calls are recursive" },
+};
+#undef EDIT
+#undef COPY
+static pin_value *guard_row(const pin_value *rows, int index)
+{
+    return &((const pin_array *)rows->ptr)->items[index];
+}
+static void write_row(const pin_value *rows, int index, const char *name, pin_value value)
+{
+    pin_value *row = guard_row(rows, index);
+    const type_field *field = pin_type_field_path(pin_value_type(row), name);
+    assert(field);
+    assert(!pin_write_field(&detached, row->ptr, field, value));
+}
+static bool validated(int b, pin_value *rows, const char *message)
+{
+    pin_value error, emitted;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
+    );
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
+    );
+    bool valid = pin_text_equal(pin_text(error), (pin_string){ message, strlen(message) });
+    if (!valid) {
+        fprintf(
+            stderr,
+            "scalar_llvm Validate gave \"%.*s\", not \"%s\"\n",
+            (int)pin_text(error).length,
+            pin_text(error).bytes,
+            message
+        );
+    }
+    REQUIRE(valid && !((const pin_array *)emitted.ptr)->count == !!*message);
+    return true;
+}
+/* Each edit applied to the producer's rows, the message Validate gives, and
+ * the rows restored. */
+static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malformed)
+{
+    pin_value saved[GUARD_EDITS];
+    int count = 0;
+    while (count < GUARD_EDITS && malformed->edits[count].field) {
+        const row_edit *edit = &malformed->edits[count];
+        saved[count++] = scalar_field(guard_row(rows, edit->row), edit->field);
+    }
+    for (int i = 0; i < count; i++) {
+        const row_edit *edit = &malformed->edits[i];
+        pin_value value = { .type = PIN_I32, .i = edit->value };
+        if (edit->text) {
+            value = text(edit->text);
+        }
+        if (edit->from >= 0) {
+            value = scalar_field(guard_row(rows, edit->from), edit->field);
+        }
+        write_row(rows, edit->row, edit->field, value);
+    }
+    REQUIRE(validated(b, rows, malformed->message));
+    for (int i = count - 1; i >= 0; i--) {
+        write_row(rows, malformed->edits[i].row, malformed->edits[i].field, saved[i]);
+    }
+    return true;
+}
+/* scalar_llvm accepts the producer's guarded rows, rejects each malformed
+ * variant of them when its layout, comparison, condition, ranges or calls are
+ * not what a producer gives, and emits nothing for it. */
+static bool rejects_malformed_guards(int b, pin_value *rows)
+{
+    REQUIRE(((const pin_array *)rows->ptr)->count == GUARD_ROWS);
+    for (int i = 0; i < GUARD_ROWS; i++) {
+        REQUIRE(scalar_field(guard_row(rows, i), "kind").i == GUARD_KINDS[i]);
+    }
+    REQUIRE(validated(b, rows, ""));
+    for (size_t i = 0; i < sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS; i++) {
+        REQUIRE(rejects_guard(b, rows, &MALFORMED_GUARDS[i]));
+    }
+    REQUIRE(validated(b, rows, ""));
+    return true;
+}
+/* CollectScalar's rows own their shape and strings: they outlive the
+ * producer's packages and inputs, and a consumer prepared afterwards emits
+ * them as LLVM IR that keeps the call, and validates guarded rows. */
+TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
+{
+    REQUIRE(prepare());
+    pin_value produced[2], guarded[2];
+    for (int b = 0; b < 2; b++) {
+        pin_value args[] = { text("/project"),
+                             text("Scalar.chibi"),
+                             text(SCALAR_SOURCE),
+                             { 0 },
+                             instruction_names() };
+        REQUIRE(target(b, &args[3]));
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &produced[b])
+        );
+        args[2] = text(GUARD_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &guarded[b])
+        );
+    }
+    compiler_fixture_free(&fixture);
+    arena_free(&input);
+    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    for (int b = 0; b < 2; b++) {
+        const pin_array *rows = produced[b].ptr;
+        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && arena_contains(&detached, rows));
+        REQUIRE(rows->count == 12 && arena_contains(&detached, rows->record));
+        REQUIRE(retained_text(&rows->items[0], "name", "Scalar.chibi"));
+        REQUIRE(retained_text(&rows->items[0], "text", SCALAR_SOURCE));
+        REQUIRE(retained_text(&rows->items[1], "name", "project:Scalar.chibi"));
+        REQUIRE(retained_text(&rows->items[2], "name", "Main"));
+        REQUIRE(retained_text(&rows->items[6], "name", "Pick"));
+        REQUIRE(scalar_field(&rows->items[6], "value").i == 1);
+        REQUIRE(scalar_field(&rows->items[6], "count").i == 2);
+        REQUIRE(retained_text(&rows->items[7], "name", "Pick"));
+        pin_value emitted;
+        REQUIRE(compiler_fixture_call(
+            &consumer,
+            b,
+            "project:scalar_llvm",
+            "EmitBytes",
+            &produced[b],
+            1,
+            COMPILE_BUDGET,
+            &input,
+            &emitted
+        ));
+        const pin_array *bytes = emitted.ptr;
+        REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
+        char *ir = xmalloc((size_t)bytes->count + 1);
+        for (int i = 0; i < bytes->count; i++) {
+            ir[i] = (char)bytes->items[i].u8;
+        }
+        ir[bytes->count] = 0;
+        bool called = strstr(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") &&
+                      strstr(ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)");
+        free(ir);
+        REQUIRE(called);
+        REQUIRE(rejects_malformed_guards(b, &guarded[b]));
+    }
+    return true;
+}
+/* llvm_native's op and type ordinals, and its tables as Emit takes them.
+ * Functions own no locals. */
+enum
+{
+    NATIVE_BOOL = 1,
+    NATIVE_INT = 6,
+    NATIVE_CONSTANT = 0,
+    NATIVE_ARGUMENT = 1,
+    NATIVE_PUBLISH = 4,
+    NATIVE_RETURN = 5,
+    NATIVE_CHECK = 27,
+    NATIVE_CALL = 28
+};
+typedef struct native_code
+{
+    int op, type, output, left, right, target, literal;
+} native_code;
+typedef struct native_function
+{
+    int result, first_parameter, parameters, first_slot, slots, first_code,
+        code, first_argument, arguments;
+} native_function;
+typedef struct native_module
+{
+    const native_function *functions;
+    int function_count;
+    const int *parameters;
+    int parameter_count;
+    const int *slots;
+    int slot_count;
+    const native_code *code;
+    int code_count;
+    const int *arguments;
+    int argument_count;
+} native_module;
+static const char NATIVE_PACKAGE[] = "project:llvm_native";
+static pin_value native_ints(const int *values, int count)
+{
+    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+    for (int i = 0; i < count; i++) {
+        array->items[i] = (pin_value){ .type = PIN_I32, .i = values[i] };
+    }
+    return (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = array };
+}
+static const char *const CODE_FIELDS[] = { "op",    "type",   "output", "left",
+                                           "right", "target", "literal" };
+static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
+                                               "parameters", "first_slot",
+                                               "slots",      "first_code",
+                                               "code",       "first_argument",
+                                               "arguments" };
+enum
+{
+    CODE_WIDTH = (int)(sizeof CODE_FIELDS / sizeof *CODE_FIELDS),
+    FUNCTION_WIDTH = (int)(sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS)
+};
+/* count Instruction or Function records whose fields, in declaration order,
+ * take consecutive values. */
+static bool native_records(int b, const char *name, const int *values, int count, pin_value *out)
+{
+    bool code = !strcmp(name, "Instruction");
+    const char *const *fields = code ? CODE_FIELDS : FUNCTION_FIELDS;
+    int width = code ? CODE_WIDTH : FUNCTION_WIDTH;
+    assert(count > 0);
+    pin_value *items = xmalloc(sizeof *items * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        items[i] = record_row(&consumer, b, NATIVE_PACKAGE, name);
+        for (int j = 0; j < width; j++) {
+            REQUIRE(put(&items[i], fields[j], values[i * width + j]));
+        }
+    }
+    *out = rows(items, count, PIN_STRUCT, items[0].record);
+    free(items);
+    return true;
+}
+static bool native_codes(int b, const native_code *code, int count, pin_value *out)
+{
+    int *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        const native_code *c = &code[i];
+        const int fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                         c->left,   c->right, c->target,
+                                         c->literal };
+        memcpy(&values[i * CODE_WIDTH], fields, sizeof fields);
+    }
+    bool built = native_records(b, "Instruction", values, count, out);
+    free(values);
+    return built;
+}
+static bool native_functions(int b, const native_function *functions, int count, pin_value *out)
+{
+    int *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        const native_function *f = &functions[i];
+        const int fields[FUNCTION_WIDTH] = { f->result,     f->first_parameter,
+                                             f->parameters, f->first_slot,
+                                             f->slots,      f->first_code,
+                                             f->code,       f->first_argument,
+                                             f->arguments };
+        memcpy(&values[i * FUNCTION_WIDTH], fields, sizeof fields);
+    }
+    bool built = native_records(b, "Function", values, count, out);
+    free(values);
+    return built;
+}
+/* Emits m as a module of internal functions under budget 1. */
+static bool native_emit(int b, const native_module *m, const pin_union **out)
+{
+    pin_value args[9];
+    REQUIRE(compiler_fixture_call(
+        &consumer,
+        b,
+        "project:native_abi",
+        "LinuxX64",
+        NULL,
+        0,
+        COMPILE_BUDGET,
+        &input,
+        &args[0]
+    ));
+    REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
+    args[2] = native_ints(m->parameters, m->parameter_count);
+    args[3] = native_ints(m->slots, m->slot_count);
+    args[4] = native_ints(NULL, 0);
+    REQUIRE(native_codes(b, m->code, m->code_count, &args[5]));
+    args[6] = native_ints(m->arguments, m->argument_count);
+    args[7] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[8] = (pin_value){ .type = PIN_I32, .i = 1 };
+    pin_value result;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 9, COMPILE_BUDGET, &input, &result)
+    );
+    REQUIRE(result.type == PIN_UNION && result.ptr);
+    *out = result.ptr;
+    return true;
+}
+static bool native_rejects(int b, const native_module *m, const char *message)
+{
+    const pin_union *value;
+    REQUIRE(native_emit(b, m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
+    pin_string text = pin_text(value->values[1]);
+    REQUIRE(pin_text_equal(text, (pin_string){ message, strlen(message) }));
+    return true;
+}
+/* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
+ * returns its third argument. Slots s0..s2 hold the arguments in call order. */
+static const native_code CALLER_AND_CALLEE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .literal = 7 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 1, .literal = 1 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 2, .literal = 9 },
+    { .op = NATIVE_CALL, .type = NATIVE_INT, .output = 3, .left = 1, .target = 3 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 3 },
+    { .op = NATIVE_RETURN },
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_ARGUMENT, .type = NATIVE_INT, .left = 2 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    CALL_CODE = (int)(sizeof CALLER_AND_CALLEE / sizeof *CALLER_AND_CALLEE)
+};
+static const native_function CALL_FUNCTIONS[] = {
+    { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
+    { NATIVE_INT, 0, 3, 4, 1, 7, 4, 3, 0 },
+};
+static const int CALL_PARAMETERS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
+static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_INT, NATIVE_INT };
+static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
+static native_module call_module(const native_code *code, const int *arguments, int argument_count)
+{
+    return (native_module){
+        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
+        CALL_CODE,      arguments, argument_count
+    };
+}
+static bool contains(pin_string haystack, const char *needle)
+{
+    char *text = xmalloc(haystack.length + 1);
+    memcpy(text, haystack.bytes, haystack.length);
+    text[haystack.length] = 0;
+    bool found = strstr(text, needle);
+    free(text);
+    return found;
+}
+/* A call loads its argument slots in order and calls the callee's internal
+ * definition. */
+static bool native_calls_emit_definitions(int b)
+{
+    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
+    const pin_union *value;
+    REQUIRE(native_emit(b, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(contains(text, "define i32 @chibi_scalar() {"));
+    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) {"));
+    REQUIRE(contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2)"));
+    REQUIRE(
+        contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2")
+    );
+    REQUIRE(contains(text, "store i32 %arg2, ptr %s0"));
+    return true;
+}
+typedef struct native_change
+{
+    int index;
+    size_t field;
+    int value;
+} native_change;
+/* The call module with one instruction field changed. */
+static bool native_rejects_change(int b, native_change change, const char *message)
+{
+    native_code code[CALL_CODE];
+    memcpy(code, CALLER_AND_CALLEE, sizeof code);
+    *(int *)((char *)&code[change.index] + change.field) = change.value;
+    native_module m = call_module(code, CALL_ARGUMENTS, 3);
+    return native_rejects(b, &m, message);
+}
+static const char
+    SIGNATURE[] = "native call differs from its callee's signature";
+static const char
+    TABLES[] = "unsupported native scalar signature or table size";
+static const char OUTPUT[] = "native scalar output has an invalid type or "
+                             "multiple definitions";
+static bool native_rejects_malformed_calls(int b)
+{
+    /* Argument slots swapped, so a bool slot sits where an int parameter is;
+     * a missing argument row; an argument slot past the caller's slots. */
+    static const int swapped[] = { 1, 0, 2 }, outside[] = { 0, 1, 4 };
+    native_module m = call_module(CALLER_AND_CALLEE, swapped, 3);
+    REQUIRE(native_rejects(b, &m, SIGNATURE));
+    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 2);
+    REQUIRE(native_rejects(b, &m, TABLES));
+    m = call_module(CALLER_AND_CALLEE, outside, 3);
+    REQUIRE(native_rejects(b, &m, SIGNATURE));
+    static const struct
+    {
+        native_change change;
+        const char *message;
+    } changes[] = {
+        /* The callee is past the module's functions or negative. */
+        { { 4, offsetof(native_code, left), 2 }, SIGNATURE },
+        { { 4, offsetof(native_code, left), -1 }, SIGNATURE },
+        /* Arity, argument range and result type disagree with the callee. */
+        { { 4, offsetof(native_code, target), 2 }, SIGNATURE },
+        { { 4, offsetof(native_code, right), 1 }, SIGNATURE },
+        { { 4, offsetof(native_code, type), NATIVE_BOOL }, OUTPUT },
+        /* The call's output is an argument slot defined before it. */
+        { { 4, offsetof(native_code, output), 2 }, OUTPUT },
+        { { 2, offsetof(native_code, literal), 2 }, "native bool constant is not canonical" },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        REQUIRE(native_rejects_change(b, changes[i].change, changes[i].message));
+    }
+    /* An argument defined after the call that reads it. */
+    native_code late[CALL_CODE];
+    memcpy(late, CALLER_AND_CALLEE, sizeof late);
+    late[3] = CALLER_AND_CALLEE[4];
+    late[4] = CALLER_AND_CALLEE[3];
+    m = call_module(late, CALL_ARGUMENTS, 3);
+    REQUIRE(native_rejects(b, &m, "native call argument is not defined on every path"));
+    return true;
+}
+/* Direct and mutual recursion are rejected, as is a function range that
+ * leaves a code row unowned. */
+static bool native_rejects_cycles(int b)
+{
+    static const native_code recursive[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CALL, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CALL, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 } };
+    static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
+                                           { NATIVE_INT, 0, 0, 1, 1, 4, 4, 0, 0 } };
+    static const int slots[] = { NATIVE_INT, NATIVE_INT };
+    native_module m = { one, 1, NULL, 0, slots, 1, recursive, 4, NULL, 0 };
+    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    native_code mutual[8];
+    memcpy(mutual, recursive, sizeof mutual);
+    mutual[1].left = 1;
+    m = (native_module){ two, 2, NULL, 0, slots, 2, mutual, 8, NULL, 0 };
+    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    static const native_function gap[] = { { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
+                                           { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
+    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
+    m.functions = gap;
+    REQUIRE(native_rejects(b, &m, TABLES));
+    return true;
+}
+/* llvm_native's call contract: definitions, argument order, and the
+ * malformed or cyclic plans it rejects before writing IR. */
+TEST_CASE(package_compiler_native_emitter_checks_calls)
+{
+    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(native_calls_emit_definitions(b));
+        REQUIRE(native_rejects_malformed_calls(b));
+        REQUIRE(native_rejects_cycles(b));
+    }
+    return true;
+}
+#if defined(__linux__) && defined(__x86_64__)
+/* Native execution of the authored scalar corpus. Each case's source goes
+ * through CollectScalar on one producer VM, alternating by case, and must be
+ * the result Cases.Check expects. An accepted module's IR becomes O0 and O2
+ * objects through the native driver's fixed opt and llc argument vectors
+ * (test/native_aot/driver/README.md), with no undefined symbol. Each object,
+ * linked as a validation-only shared library, runs in a child process, so a
+ * trap is a status rather than the end of this test. Its entry's value must
+ * be the one the authored compiler's closure of the same source gives on
+ * both VMs, and so must each probe's. A probe reaches an internal function
+ * through a validation-only IR adapter that passes it int32 arguments, which
+ * is how negative values and bool parameters reach it; the adapter is not a
+ * foreign ABI. Linux x86-64 is the one target the emitter admits.
+ * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
+ * nothing is found through PATH. */
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+/* The corpus's accepted cases. */
+enum
+{
+    SCALAR_ACCEPTED_CASES = 30
+};
+/* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
+ * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
+ * the recovered compiler, which has no such limit. */
+static const char *const DEEP_CASES[] = { "most_operands", "too_many_operands" };
+enum
+{
+    DEEP_CASE_COUNT = (int)(sizeof DEEP_CASES / sizeof *DEEP_CASES)
+};
+static bool deep_case(pin_string name)
+{
+    for (int i = 0; i < DEEP_CASE_COUNT; i++) {
+        if (pin_text_equal(name, (pin_string){ DEEP_CASES[i], strlen(DEEP_CASES[i]) })) {
+            return true;
+        }
+    }
+    return false;
+}
+enum
+{
+    MAX_PROBE_ARGUMENTS = 3
+};
+typedef struct scalar_probe
+{
+    const char *source_case, *function;
+    int count;
+    int32_t arguments[MAX_PROBE_ARGUMENTS];
+    int32_t expected;
+} scalar_probe;
+static const scalar_probe SCALAR_PROBES[] = {
+    { "min", "Min", 2, { INT32_MIN, INT32_MAX }, INT32_MIN },
+    { "min", "Min", 2, { INT32_MAX, INT32_MIN }, INT32_MIN },
+    { "min", "Min", 2, { -1, -1 }, -1 },
+    { "max", "Max", 2, { INT32_MIN, INT32_MAX }, INT32_MAX },
+    { "max", "Max", 2, { INT32_MAX, INT32_MIN }, INT32_MAX },
+    { "max", "Max", 2, { 0, -1 }, 0 },
+    { "clamp", "Clamp", 3, { -5, 0, 10 }, 0 },
+    { "clamp", "Clamp", 3, { 5, 0, 10 }, 5 },
+    { "clamp", "Clamp", 3, { 15, 0, 10 }, 10 },
+    { "clamp", "Clamp", 3, { INT32_MIN, INT32_MIN + 1, INT32_MAX }, INT32_MIN + 1 },
+    { "operators", "If", 3, { 1, 4, 9 }, 4 },
+    { "operators", "If", 3, { 0, 4, 9 }, 9 },
+    { "call_condition", "Small", 1, { 9 }, 1 },
+    { "call_condition", "Small", 1, { 10 }, 0 },
+    { "lazy_arm", "Choose", 1, { 1 }, 1 },
+    { "lazy_arm", "Choose", 1, { 0 }, 2 },
+    { "bare_condition", "Positive", 1, { INT32_MIN }, 0 },
+    { "bare_condition", "Positive", 1, { 0 }, 0 },
+    { "bare_condition", "Positive", 1, { INT32_MAX }, INT32_MAX },
+};
+/* The six comparisons of the operators case, in the order of their source
+ * functions, each probed with every pair. */
+static const char *const COMPARISONS[] = { "Lt", "Le", "Gt", "Ge", "Eq", "Ne" };
+static const int32_t COMPARED[][2] = { { INT32_MIN, INT32_MAX },
+                                       { INT32_MAX, INT32_MIN },
+                                       { 0, 0 },
+                                       { -1, 0 },
+                                       { INT32_MAX, INT32_MAX } };
+enum
+{
+    PROBES = (int)(sizeof SCALAR_PROBES / sizeof *SCALAR_PROBES),
+    COMPARISON_COUNT = (int)(sizeof COMPARISONS / sizeof *COMPARISONS),
+    PAIRS = (int)(sizeof COMPARED / sizeof *COMPARED),
+    MAX_CASE_PROBES = 64
+};
+static int32_t compared(int comparison, int32_t a, int32_t b)
+{
+    switch (comparison) {
+        case 0: return a < b;
+        case 1: return a <= b;
+        case 2: return a > b;
+        case 3: return a >= b;
+        case 4: return a == b;
+        default: return a != b;
+    }
+}
+/* The probes of one corpus case. */
+static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
+{
+    int count = 0;
+    for (int i = 0; i < PROBES; i++) {
+        if (!strcmp(SCALAR_PROBES[i].source_case, name)) {
+            probes[count++] = SCALAR_PROBES[i];
+        }
+    }
+    for (int c = 0; !strcmp(name, "operators") && c < COMPARISON_COUNT; c++) {
+        for (int p = 0; p < PAIRS; p++) {
+            probes[count++] = (scalar_probe){
+                "operators",
+                COMPARISONS[c],
+                2,
+                { COMPARED[p][0], COMPARED[p][1] },
+                compared(c, COMPARED[p][0], COMPARED[p][1])
+            };
+        }
+    }
+    assert(count <= MAX_CASE_PROBES);
+    return count;
+}
+static bool llvm_tool(const char *name, char path[PATH_MAX])
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "CHIBI_LLVM_BIN must name the directory of opt, llc, ld.lld and llvm-nm\n");
+    }
+    REQUIRE(bin && *bin);
+    REQUIRE(snprintf(path, PATH_MAX, "%s/%s", bin, name) < PATH_MAX);
+    REQUIRE(!access(path, X_OK));
+    return true;
+}
+/* Set by SIGINT or SIGTERM while the native tests run: the running child's
+ * process group is killed, and the run reports cancellation, not a timeout. */
+static volatile sig_atomic_t native_cancelled;
+static void cancel_native(int)
+{
+    native_cancelled = 1;
+}
+/* The deadlines of an LLVM tool and of a library's calls, and the output
+ * kept of each. */
+static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20;
+enum
+{
+    NATIVE_OUTPUT = 1 << 16
+};
+static const char *native_outcome(chibi_process_capture_result result)
+{
+    switch (result.error) {
+        case CHIBI_PROCESS_OK: return result.status ? "failed" : "passed";
+        case CHIBI_PROCESS_TIMEOUT: return "timed out";
+        case CHIBI_PROCESS_CANCELLED: return "was cancelled";
+        case CHIBI_PROCESS_SPAWN_FAILED: return "could not start";
+        default: return "could not be supervised";
+    }
+}
+/* Runs argv, an absolute executable with a fixed argument vector, in
+ * `directory` under chibi_process_capture: its process group is killed at
+ * the deadline, `seconds` from now, or on cancellation. `out` receives its
+ * standard output; a run that does not pass reports its error output. */
+static chibi_process_capture_result run_native(
+    const char *const argv[],
+    const char *directory,
+    double seconds,
+    char out[NATIVE_OUTPUT]
+)
+{
+    char error[NATIVE_OUTPUT];
+    chibi_process_output output = { out, NATIVE_OUTPUT, 0, false },
+                         errors = { error, sizeof error, 0, false };
+    chibi_process_capture_result result = chibi_process_capture(
+        argv[0],
+        argv,
+        directory,
+        (const char *const *)environ,
+        chibi_process_now() + seconds,
+        &native_cancelled,
+        &output,
+        &errors
+    );
+    if (result.error != CHIBI_PROCESS_OK || result.status) {
+        fprintf(
+            stderr,
+            "%s %s (status %d): %s%s\n",
+            argv[0],
+            native_outcome(result),
+            result.status,
+            out,
+            error
+        );
+    }
+    return result;
+}
+static bool native_passed(chibi_process_capture_result result)
+{
+    return result.error == CHIBI_PROCESS_OK && !result.status;
+}
+/* An LLVM tool's run, which must pass. */
+static bool run_tool(const char *const argv[], const char *directory, char out[NATIVE_OUTPUT])
+{
+    REQUIRE(native_passed(run_native(argv, directory, TOOL_SECONDS, out)));
+    return true;
+}
+static bool write_text(const char *path, const char *first, const char *second)
+{
+    FILE *file = fopen(path, "w");
+    REQUIRE(file);
+    bool written = fputs(first, file) >= 0 && fputs(second, file) >= 0;
+    REQUIRE(!fclose(file) && written);
+    return true;
+}
+/* The files the native builds wrote, which the test removes. */
+static char **native_files;
+static void native_file(const char *path)
+{
+    for (int i = 0; i < acount(native_files); i++) {
+        if (!strcmp(native_files[i], path)) {
+            return;
+        }
+    }
+    char *copy = xmalloc(strlen(path) + 1);
+    strcpy(copy, path);
+    apush(native_files, copy);
+}
+/* `ir` and then `adapter`, built at `level` as the driver builds an object,
+ * then linked as `directory`/`name`.so, which `library` names. */
+static bool native_library(
+    const char *directory,
+    const char *name,
+    const char *ir,
+    const char *adapter,
+    int level,
+    char library[PATH_MAX]
+)
+{
+    char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX], lld[PATH_MAX];
+    REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc));
+    REQUIRE(llvm_tool("llvm-nm", nm) && llvm_tool("ld.lld", lld));
+    char source[PATH_MAX], module[PATH_MAX], object[PATH_MAX];
+    snprintf(source, sizeof source, "%s/%s-%d.ll", directory, name, level);
+    snprintf(module, sizeof module, "%s/%s-%d.opt.ll", directory, name, level);
+    snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
+    snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
+    const char *const outputs[] = { source, module, object, library };
+    for (int i = 0; i < 4; i++) {
+        native_file(outputs[i]);
+    }
+    REQUIRE(write_text(source, ir, adapter));
+    const char *passes = level ? "-passes=verify,default<O2>,verify" : "-passes=verify";
+    const char *const optimize[] = { opt,  "-S",   passes, source,
+                                     "-o", module, NULL };
+    const char *const emit[] = {
+        llc, "-filetype=obj", level ? "-O=2" : "-O=0", module, "-o", object,
+        NULL
+    };
+    const char *const symbols[] = { nm, "--undefined-only", object, NULL };
+    const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
+    char out[NATIVE_OUTPUT];
+    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
+    REQUIRE(run_tool(symbols, directory, out));
+    if (*out) {
+        fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
+    }
+    REQUIRE(!*out);
+    REQUIRE(run_tool(link, directory, out));
+    return true;
+}
+/* A row field of a retained module's row `index`. */
+static int row_int(const pin_value *rows, int index, const char *name)
+{
+    const pin_array *array = rows->ptr;
+    return scalar_field(&array->items[index], name).i;
+}
+static const char *row_name(const pin_value *rows, int index)
+{
+    const pin_array *array = rows->ptr;
+    return pin_text(scalar_field(&array->items[index], "name")).bytes;
+}
+static int row_count(const pin_value *rows)
+{
+    return ((const pin_array *)rows->ptr)->count;
+}
+/* The ordinal of function `name` among the module's functions and its row,
+ * or -1. */
+static int function_row(const pin_value *rows, const char *name, int *ordinal)
+{
+    *ordinal = -1;
+    for (int i = 0; i < row_count(rows); i++) {
+        if (row_int(rows, i, "kind") != SCALAR_FUNCTION_ROW) {
+            continue;
+        }
+        ++*ordinal;
+        if (!strcmp(row_name(rows, i), name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+static const char *llvm_type(int type)
+{
+    return type == SCALAR_BOOL ? "i1" : "i32";
+}
+/* Appends to `adapter` the validation-only probe @probe_<name>(ptr): it reads
+ * each parameter as an int32 of its argument array, truncating a bool's, and
+ * returns the function's result, zero-extending a bool. */
+static bool append_adapter(const pin_value *rows, const char *name, char **adapter)
+{
+    int ordinal;
+    int head = function_row(rows, name, &ordinal);
+    REQUIRE(head > 0 && ordinal > 0);
+    int count = row_int(rows, head, "count"), result = row_int(rows, head, "type");
+    char text[4096], call[1024] = "";
+    int n = snprintf(text, sizeof text, "\ndefine i32 @probe_%s(ptr %%args) {\n", name);
+    for (int i = 0; i < count; i++) {
+        int type = row_int(rows, head + 1 + i, "type");
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%p%d = getelementptr i32, ptr %%args, i64 %d\n  %%w%d = load "
+            "i32, ptr %%p%d\n",
+            i,
+            i,
+            i,
+            i
+        );
+        if (type == SCALAR_BOOL) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = trunc i32 %%w%d to i1\n", i, i);
+        } else {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i32 %%w%d, 0\n", i, i);
+        }
+        size_t used = strlen(call);
+        snprintf(call + used, sizeof call - used, "%s%s %%a%d", i ? ", " : "", llvm_type(type), i);
+    }
+    n += snprintf(
+        text + n,
+        sizeof text - (size_t)n,
+        "  %%r = call %s @chibi_scalar.%d(%s)\n",
+        llvm_type(result),
+        ordinal,
+        call
+    );
+    if (result == SCALAR_BOOL) {
+        n += snprintf(text + n, sizeof text - (size_t)n, "  %%z = zext i1 %%r to i32\n  ret i32 %%z\n}\n");
+    } else {
+        n += snprintf(text + n, sizeof text - (size_t)n, "  ret i32 %%r\n}\n");
+    }
+    REQUIRE(n < (int)sizeof text);
+    size_t old = strlen(*adapter);
+    *adapter = xrealloc(*adapter, old + (size_t)n + 1);
+    memcpy(*adapter + old, text, (size_t)n + 1);
+    return true;
+}
+/* A probe's arguments as the JSON array the compiler host takes. */
+static void probe_json(const pin_value *rows, const scalar_probe *probe, char *json, size_t size)
+{
+    int ordinal;
+    int head = function_row(rows, probe->function, &ordinal);
+    int n = snprintf(json, size, "[");
+    for (int i = 0; i < probe->count; i++) {
+        bool flag = row_int(rows, head + 1 + i, "type") == SCALAR_BOOL;
+        const char *separator = i ? "," : "";
+        if (flag) {
+            n += snprintf(json + n, size - (size_t)n, "%s%s", separator, probe->arguments[i] ? "true" : "false");
+        } else {
+            n += snprintf(json + n, size - (size_t)n, "%s%d", separator, probe->arguments[i]);
+        }
+    }
+    snprintf(json + n, size - (size_t)n, "]");
+}
+/* Loads `bytes`, a closure, as the test's host on `backend`. */
+static bool vm_load(const unsigned char *bytes, size_t length, int backend)
+{
+    char error[256];
+    host = compiler_host_load(
+        bytes,
+        length,
+        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    if (!host) {
+        fprintf(stderr, "scalar closure load: %s\n", error);
+    }
+    REQUIRE(host);
+    return true;
+}
+/* The int32 the loaded closure's `function` of package scalar returns for
+ * `json`, with a bool as 0 or 1. */
+static bool vm_value(const char *function, const char *json, int32_t *out)
+{
+    char name[256];
+    snprintf(name, sizeof name, "project:scalar:1:%s:callable", function);
+    bool valid = compiler_host_invoke(
+        host,
+        script_catalog_id("package-symbol", name),
+        json,
+        strlen(json),
+        TARGET_BUDGET,
+        &result
+    );
+    REQUIRE(valid && result.flow_status == FLOW_OK);
+    /* The host's result is the JSON array of the function's one result. */
+    if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
+        *out = !strcmp(result.json, "[true]");
+    } else {
+        char *end;
+        long value = result.json[0] == '[' ? strtol(result.json + 1, &end, 10) : 0;
+        if (result.json[0] != '[' || strcmp(end, "]")) {
+            fprintf(
+                stderr,
+                "scalar closure %s%s gave %s\n",
+                function,
+                json,
+                result.json
+            );
+        }
+        REQUIRE(
+            result.json[0] == '[' && !strcmp(end, "]") && value >= INT32_MIN &&
+            value <= INT32_MAX
+        );
+        *out = (int32_t)value;
+    }
+    free(result.json);
+    result = (compiler_host_result){ 0 };
+    return true;
+}
+/* The authored compiler's closure of `source` as package scalar. */
+static bool vm_closure(int b, pin_string source, unsigned char **bytes, size_t *length)
+{
+    const source_package_input inputs[] = {
+        { "scalar/Main.chibi", source.bytes, source.length }
+    };
+    pin_value out;
+    REQUIRE(compile(b, false, false, false, inputs, 1, COMPILE_BUDGET, &out));
+    const pin_union *value = out.ptr;
+    REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Compiled"));
+    *bytes = closure_bytes(value, length);
+    return true;
+}
+/* The text of `ir` from `start` to the end of the definition it begins. */
+static char *definition(const char *ir, const char *start)
+{
+    const char *at = strstr(ir, start);
+    assert(at);
+    const char *end = strstr(at, "\n}\n");
+    assert(end);
+    size_t length = (size_t)(end - at);
+    char *text = xmalloc(length + 1);
+    memcpy(text, at, length);
+    text[length] = 0;
+    return text;
+}
+/* Unoptimized IR keeps what the source decides at run time. Min compares its
+ * two parameters and branches on the result. Choose calls Skipped between its
+ * branch and the branch's true target, and Taken only after that target, so
+ * an arm's call runs only when its guard holds. */
+static bool keeps_guards(const char *name, const char *ir)
+{
+    if (!strcmp(name, "min")) {
+        char *min = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1)");
+        bool kept = strstr(min, "store i32 %arg0, ptr %s0") &&
+                    strstr(min, "store i32 %arg1, ptr %s1") &&
+                    strstr(min, "%a3 = load i32, ptr %s0\n  %b3 = load i32, ptr %s1\n  %v3 = icmp slt i32 %a3, %b3") &&
+                    strstr(min, "store i1 %v3, ptr %s2") &&
+                    strstr(min, "br i1 %a4, label %p");
+        free(min);
+        REQUIRE(kept);
+    }
+    if (!strcmp(name, "lazy_arm")) {
+        char *choose = definition(ir, "define internal i32 @chibi_scalar.1(i1 %arg0)");
+        /* The guard's branch, not a budget check's `br i1 %available`. */
+        const char *branch = strstr(choose, "  br i1 %a");
+        while (branch && !isdigit((unsigned char)branch[strlen("  br i1 %a")])) {
+            branch = strstr(branch + 1, "  br i1 %a");
+        }
+        int target = -1;
+        REQUIRE(branch && sscanf(branch, "  br i1 %%a%*d, label %%p%d", &target) == 1);
+        char label[32];
+        snprintf(label, sizeof label, "\np%d:\n", target);
+        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
+        const char *arm = strstr(choose, label);
+        const char *taken = strstr(choose, "call i32 @chibi_scalar.2()");
+        bool lazy = skipped && arm && taken && branch < skipped && skipped < arm &&
+                    arm < taken && !strstr(taken + 1, "call i32 @chibi_scalar.2()");
+        free(choose);
+        REQUIRE(lazy);
+    }
+    return true;
+}
+/* A call a case checks, its entry or a probe, and what it gave on the
+ * bytecode and compiled VMs and natively at O0 and O2. */
+typedef struct scalar_call
+{
+    scalar_probe probe;
+    char json[256], symbol[256];
+    int32_t values[4];
+} scalar_call;
+enum
+{
+    MAX_CASE_CALLS = MAX_CASE_PROBES + 1
+};
+/* Case `name`'s calls: its entry, then each of its probes. */
+static int case_calls(const char *name, const pin_value *rows, scalar_call calls[MAX_CASE_CALLS])
+{
+    scalar_probe probes[MAX_CASE_PROBES];
+    int count = case_probes(name, probes);
+    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, 0 },
+                              .json = "[]",
+                              .symbol = "chibi_scalar" };
+    for (int i = 0; i < count; i++) {
+        scalar_call *call = &calls[i + 1];
+        *call = (scalar_call){ .probe = probes[i] };
+        probe_json(rows, &probes[i], call->json, sizeof call->json);
+        snprintf(call->symbol, sizeof call->symbol, "probe_%s", probes[i].function);
+    }
+    return count + 1;
+}
+/* Each call's value from the authored compiler's closure on both VMs. */
+static bool vm_values(const unsigned char *closure, size_t length, scalar_call *calls, int count)
+{
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(vm_load(closure, length, backend));
+        for (int i = 0; i < count; i++) {
+            REQUIRE(vm_value(calls[i].probe.function, calls[i].json, &calls[i].values[backend]));
+        }
+        compiler_host_free(host);
+        host = NULL;
+    }
+    return true;
+}
+typedef int32_t (*scalar_entry)();
+typedef int32_t (*scalar_adapter)(const int32_t *);
+enum
+{
+    CALL_SPEC = 160
+};
+/* Runs each call of `library` in order, in a child run of this binary (see
+ * test_language_package_compiler_chibi_native_call) that must finish within
+ * `seconds`, and stores each value in its call's `column`. The first call is
+ * the entry; the others are probe adapters. */
+static chibi_process_capture_result library_calls(
+    const char *directory,
+    const char *library,
+    scalar_call *calls,
+    int count,
+    int column,
+    double seconds
+)
+{
+    char self[PATH_MAX], specs[MAX_CASE_CALLS][CALL_SPEC], out[NATIVE_OUTPUT];
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    assert(length > 0 && count <= MAX_CASE_CALLS);
+    self[length] = 0;
+    const char *argv[MAX_CASE_CALLS + 4] = { self, "--package-compiler-chibi-native-call", library };
+    for (int i = 0; i < count; i++) {
+        int n = snprintf(specs[i], CALL_SPEC, "%s", calls[i].symbol);
+        for (int a = 0; i && a < calls[i].probe.count; a++) {
+            n += snprintf(
+                specs[i] + n,
+                CALL_SPEC - (size_t)n,
+                "%c%d",
+                a ? ',' : ':',
+                calls[i].probe.arguments[a]
+            );
+        }
+        assert(n < CALL_SPEC);
+        argv[3 + i] = specs[i];
+    }
+    argv[3 + count] = NULL;
+    chibi_process_capture_result result = run_native(argv, directory, seconds, out);
+    const char *at = out;
+    for (int i = 0; native_passed(result) && i < count; i++) {
+        char *end;
+        long value = strtol(at, &end, 10);
+        assert(end != at && *end == '\n' && value >= INT32_MIN && value <= INT32_MAX);
+        calls[i].values[column] = (int32_t)value;
+        at = end + 1;
+    }
+    return result;
+}
+/* The child of library_calls: opens `library`, then calls each spec in order,
+ * `symbol` for the entry or `symbol:a,b` for an adapter, and prints each value
+ * on its own line as it returns. */
+static int library_child(const char *library, int count, char **specs)
+{
+    void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+    if (!opened) {
+        fprintf(stderr, "native scalar load: %s\n", dlerror());
+        return 1;
+    }
+    for (int i = 0; i < count; i++) {
+        char symbol[CALL_SPEC];
+        int32_t arguments[MAX_PROBE_ARGUMENTS];
+        const char *at = specs[i] + strcspn(specs[i], ":");
+        size_t length = (size_t)(at - specs[i]);
+        assert(length < sizeof symbol);
+        memcpy(symbol, specs[i], length);
+        symbol[length] = 0;
+        int n = 0;
+        for (char *end; *at; at = end, n++) {
+            assert(n < MAX_PROBE_ARGUMENTS);
+            arguments[n] = (int32_t)strtol(at + 1, &end, 10);
+        }
+        void *function = dlsym(opened, symbol);
+        if (!function) {
+            fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
+            return 1;
+        }
+        int32_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
+                                         : ((scalar_entry)function)();
+        printf("%d\n", value);
+        fflush(stdout);
+    }
+    return 0;
+}
+/* Each call's value natively: `ir` with an adapter for each probed function,
+ * built at O0 and at O2. */
+static bool native_values(
+    const char *directory,
+    const char *name,
+    const pin_value *rows,
+    const char *ir,
+    scalar_call *calls,
+    int count
+)
+{
+    char *adapter = xmalloc(1);
+    *adapter = 0;
+    for (int i = 1; i < count; i++) {
+        if (i > 1 && !strcmp(calls[i].probe.function, calls[i - 1].probe.function)) {
+            continue;
+        }
+        REQUIRE(append_adapter(rows, calls[i].probe.function, &adapter));
+    }
+    for (int level = 0; level < 2; level++) {
+        char library[PATH_MAX];
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        REQUIRE(native_passed(
+            library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
+        ));
+    }
+    free(adapter);
+    return true;
+}
+/* Whether each call gave one value everywhere: its expected value for a
+ * probe, and for the entry the same one on both VMs and natively. */
+static bool calls_agree(const char *name, const scalar_call *calls, int count)
+{
+    for (int i = 0; i < count; i++) {
+        const int32_t *values = calls[i].values;
+        int32_t expected = i ? calls[i].probe.expected : values[0];
+        bool agree = values[0] == expected && values[1] == expected &&
+                     values[2] == expected && values[3] == expected;
+        if (!agree) {
+            fprintf(
+                stderr,
+                "scalar case %s %s%s: expected %d, VM %d %d, native O0 %d O2 "
+                "%d\n",
+                name,
+                calls[i].probe.function,
+                calls[i].json,
+                expected,
+                values[0],
+                values[1],
+                values[2],
+                values[3]
+            );
+        }
+        REQUIRE(agree);
+    }
+    return true;
+}
+/* The IR EmitBytes gives for `rows`, NUL-terminated, or NULL for none. */
+static bool emitted_ir(int b, pin_value *rows, char **ir)
+{
+    pin_value emitted;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
+    );
+    const pin_array *bytes = emitted.ptr;
+    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY);
+    *ir = NULL;
+    if (!bytes->count) {
+        return true;
+    }
+    *ir = xmalloc((size_t)bytes->count + 1);
+    for (int i = 0; i < bytes->count; i++) {
+        (*ir)[i] = (char)bytes->items[i].u8;
+    }
+    (*ir)[bytes->count] = 0;
+    return true;
+}
+/* Case `index` of the corpus: its producer rows on VM b must be what the case
+ * expects, and an accepted module must run natively as it does on both VMs. */
+static bool scalar_case_agrees(const char *directory, int index, int *accepted, int *deep)
+{
+    int b = index % 2;
+    pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
+    );
+    if (deep_case(pin_text(name))) {
+        ++*deep;
+        return true;
+    }
+    const char *case_name = pin_text(name).bytes;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
+    );
+    pin_value args[] = { text("/project"),
+                         text("Scalar.chibi"),
+                         source,
+                         { 0 },
+                         instruction_names() };
+    REQUIRE(target(b, &args[3]));
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
+    );
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
+    );
+    if (checked.i != 1) {
+        fprintf(stderr, "scalar case %s: Check gave %d\n", case_name, checked.i);
+    }
+    REQUIRE(checked.i == 1);
+    char *ir;
+    REQUIRE(emitted_ir(b, &rows, &ir));
+    bool rejected = row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW;
+    REQUIRE(rejected == !ir);
+    if (rejected) {
+        return true;
+    }
+    ++*accepted;
+    REQUIRE(keeps_guards(case_name, ir));
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(b, pin_text(source), &closure, &length));
+    scalar_call calls[MAX_CASE_CALLS];
+    int count = case_calls(case_name, &rows, calls);
+    bool ran = vm_values(closure, length, calls, count) &&
+               native_values(directory, case_name, &rows, ir, calls, count);
+    free(closure);
+    free(ir);
+    REQUIRE(ran && calls_agree(case_name, calls, count));
+    return true;
+}
+
+/* A new directory for the native builds' files. */
+static bool native_directory(char directory[PATH_MAX])
+{
+    const char *temporary = getenv("TMPDIR");
+    snprintf(directory, PATH_MAX, "%s/chibi-native-scalar-XXXXXX", temporary && *temporary ? temporary : "/tmp");
+    REQUIRE(mkdtemp(directory));
+    return true;
+}
+/* Removes the files the native builds registered, then `directory`. A build
+ * that failed may not have written all its files. */
+static bool remove_native_files(const char *directory)
+{
+    bool removed = true;
+    for (int i = 0; i < acount(native_files); i++) {
+        removed = (!remove(native_files[i]) || errno == ENOENT) && removed;
+        free(native_files[i]);
+    }
+    afree(native_files);
+    REQUIRE(!rmdir(directory) && removed);
+    return true;
+}
+/* Whether process `pid` has exited: it is gone, or a zombie whose parent has
+ * not reaped it yet. Waits up to `seconds` for its kill to land. */
+static bool process_ended(pid_t pid, double seconds)
+{
+    char path[64];
+    snprintf(path, sizeof path, "/proc/%d/stat", (int)pid);
+    for (double deadline = chibi_process_now() + seconds;
+         chibi_process_now() < deadline;) {
+        FILE *file = fopen(path, "r");
+        if (!file) {
+            return true;
+        }
+        char state = 0;
+        int fields = fscanf(file, "%*d (%*[^)]) %c", &state);
+        fclose(file);
+        if (fields == 1 && (state == 'Z' || state == 'X')) {
+            return true;
+        }
+        usleep(10000);
+    }
+    return false;
+}
+/* How long a run that should end at its deadline or cancellation may take,
+ * which allows for a slow sanitized host. */
+static const double PROMPT_SECONDS = 10;
+
+TEST_CASE(package_compiler_native_runs_are_bounded)
+{
+    char out[NATIVE_OUTPUT];
+    /* A tool that hangs, with a descendant in its group, times out at its
+     * deadline, and the descendant is killed with it. */
+    const char *const hung[] = { "/bin/sh", "-c", "sleep 60 & echo $!; wait", NULL };
+    double started = chibi_process_now();
+    chibi_process_capture_result result = run_native(hung, "/", 0.5, out);
+    REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT);
+    REQUIRE(chibi_process_now() - started < PROMPT_SECONDS);
+    char *end;
+    long descendant = strtol(out, &end, 10);
+    REQUIRE(end != out && descendant > 0);
+    REQUIRE(process_ended((pid_t)descendant, PROMPT_SECONDS));
+    /* SIGTERM while a tool runs cancels it, and is not a timeout. */
+    const char *const terminating[] = { "/bin/sh", "-c", "kill -TERM $PPID; sleep 60", NULL };
+    started = chibi_process_now();
+    result = run_native(terminating, "/", 60, out);
+    bool cancelled = native_cancelled;
+    native_cancelled = 0;
+    REQUIRE(cancelled && result.error == CHIBI_PROCESS_CANCELLED);
+    REQUIRE(chibi_process_now() - started < PROMPT_SECONDS);
+    /* Generated code that does not return in time times out in its child.
+     * It loops 2^35 times, far past the deadline, so a deadline that is not
+     * enforced fails the test instead of hanging it. */
+    char directory[PATH_MAX], library[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    const char *loop = "define i32 @hang() {\n"
+                       "entry:\n"
+                       "  br label %loop\n"
+                       "loop:\n"
+                       "  %i = phi i64 [ 0, %entry ], [ %next, %loop ]\n"
+                       "  %next = add i64 %i, 1\n"
+                       "  %done = icmp eq i64 %next, 34359738368\n"
+                       "  br i1 %done, label %exit, label %loop\n"
+                       "exit:\n"
+                       "  ret i32 0\n"
+                       "}\n";
+    scalar_call call = { .symbol = "hang" };
+    bool built = native_library(directory, "hang", loop, "", 0, library);
+    started = chibi_process_now();
+    result = built ? library_calls(directory, library, &call, 1, 2, 1)
+                   : (chibi_process_capture_result){ 0 };
+    double elapsed = chibi_process_now() - started;
+    REQUIRE(remove_native_files(directory) && built);
+    REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
+    return true;
+}
+TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
+{
+    REQUIRE(prepare());
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    char directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    pin_value count;
+    REQUIRE(
+        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
+    );
+    int accepted = 0, deep = 0;
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < count.i; i++) {
+        agreed = scalar_case_agrees(directory, i, &accepted, &deep);
+        arena_free(&detached);
+    }
+    REQUIRE(remove_native_files(directory));
+    if (native_cancelled) {
+        fprintf(stderr, "native scalar run was cancelled\n");
+    }
+    REQUIRE(agreed && !native_cancelled);
+    REQUIRE(accepted == SCALAR_ACCEPTED_CASES && deep == DEEP_CASE_COUNT);
+    return true;
+}
+#endif
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_packages);
+    RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_types()
@@ -4448,6 +6871,7 @@ void test_language_package_compiler_chibi_behaviors_rest()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
+    RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_sharing()
@@ -4461,4 +6885,42 @@ void test_language_package_compiler_chibi_debug_free()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_omits_debug_info);
     pu_clear_setup();
+}
+void test_language_package_compiler_chibi_scalar()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
+    RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
+    pu_clear_setup();
+}
+#if defined(__linux__) && defined(__x86_64__)
+int test_language_package_compiler_chibi_native_call(int count, char **arguments)
+{
+    return library_child(arguments[0], count - 1, arguments + 1);
+}
+#else
+int test_language_package_compiler_chibi_native_call(int, char **)
+{
+    abort();
+}
+#endif
+void test_language_package_compiler_chibi_native()
+{
+#if defined(__linux__) && defined(__x86_64__)
+    /* The supervised children run in their own process groups, so a signal
+     * to this one cancels them instead of leaving them running. */
+    struct sigaction cancel = { .sa_handler = cancel_native }, interrupt, terminate;
+    sigemptyset(&cancel.sa_mask);
+    sigaction(SIGINT, &cancel, &interrupt);
+    sigaction(SIGTERM, &cancel, &terminate);
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
+    RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);
+    pu_clear_setup();
+    sigaction(SIGINT, &interrupt, NULL);
+    sigaction(SIGTERM, &terminate, NULL);
+#else
+    fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
+    abort();
+#endif
 }

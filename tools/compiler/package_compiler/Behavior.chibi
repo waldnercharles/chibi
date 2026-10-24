@@ -6,6 +6,7 @@ import graph "project:package_graph"
 import syntax "project:syntax_diagnostics"
 import binding "project:lexical_binding"
 import writer "project:prepared_writer"
+import strings "core:strings"
 
 // Compiles a behavior asset to the prepared module of the game a target
 // describes: its retained states, and its event handlers, which read and
@@ -77,13 +78,23 @@ pub NumericOperator :: struct {
     native: int;
     operator: string;
 }
-// A behavior's retained state, with the bits of its initial value.
+// A behavior's retained state, with its nominal type and initial value.
 StateDecl :: struct {
     name: string;
     id: uint64;
     storage: int;
+    record: int;
     bits: uint64;
+    text: string;
     node: int;
+}
+// State rows and every function's variable defaults retain the same header.
+StateValue :: (kept: StateDecl, types: TypeDecl[], layouts: int[], wide: int) -> writer.Value {
+    value := Header(kept.storage, 0, kept.record, types, layouts);
+    value.wide = wide;
+    value.text = kept.text;
+    value.has_text = kept.storage == TextStorage;
+    return value;
 }
 // What a module holds beyond its functions. A behavior's functions keep its
 // states, and handled[i] is the event function i handles, -1 for none; its
@@ -105,7 +116,7 @@ InvocationReadEffect: int : 64;
 
 // A behavior's names: the game's globals, its states, then `self`, its owner,
 // whatever global the game names so.
-BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
+BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record: int) -> Name[] {
     names: Name[] = [];
     index: int = 0;
     while (index < length(globals)) {
@@ -117,12 +128,14 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[]) -> Name[] {
     index = 0;
     while (index < length(kept_states)) {
         kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
-                      storage: kept_states[index].storage, container: 0, record: -1, writable: true,
+                      storage: kept_states[index].storage, container: 0, record: kept_states[index].record,
+                      writable: true,
                       node: kept_states[index].node};
         names.append(kept);
         index += 1;
     }
-    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0, record: -1,
+    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
+                   record: owner_record,
                    writable: false, node: -1};
     return append(names, owner);
 }
@@ -168,7 +181,7 @@ Effects :: (ops: Ops, code: Code[], reads_components: bool, writes_components: b
     for (instruction in code) {
         if (instruction.op == ops.variable) {
             effects = effects | ReadEffect | InvocationReadEffect;
-        } else if (instruction.op == ops.store) {
+        } else if (instruction.op == ops.store || instruction.op == ops.store_value) {
             effects = effects | ReadEffect | InvocationReadEffect | WriteEffect;
         }
     }
@@ -285,6 +298,156 @@ PayloadParams :: (forest: snapshot.SnapshotNode[], source: string, handler: int,
     }
     return Payload.Bound(params);
 }
+// A number or one signed number. Unary plus keeps its operand's value;
+// minus stays attached for the literal readers. Other unary operators are
+// expressions, not numeric literal defaults.
+StateNumberNode :: (forest: snapshot.SnapshotNode[], source: string, node: int) -> int {
+    if (Is(forest, node, "number")) {
+        return node;
+    }
+    if (!Is(forest, node, "unary_expression")) {
+        return -1;
+    }
+    operand := Field(forest, node, "operand");
+    if (!Is(forest, operand, "number")) {
+        return -1;
+    }
+    operator := Text(forest, source, Field(forest, node, "operator"));
+    if (operator == "+") {
+        return operand;
+    }
+    if (operator == "-") {
+        return node;
+    }
+    return -1;
+}
+// A numeric literal's natural storage follows its spelling. Hexadecimal e
+// is a digit; only decimal points and exponents select number storage.
+StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: int) -> int {
+    digits := node;
+    if (Is(forest, node, "unary_expression")) {
+        digits = Field(forest, node, "operand");
+    }
+    spelling := Text(forest, source, digits);
+    hexadecimal := strings.ByteLength(spelling) > 1 && strings.ByteAt(spelling, 0) == 48 &&
+                   (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);
+    if (!hexadecimal) {
+        index: int = 0;
+        while (index < strings.ByteLength(spelling)) {
+            digit := strings.ByteAt(spelling, index);
+            if (digit == 46 || digit == 101 || digit == 69) {
+                return DoubleStorage;
+            }
+            index += 1;
+        }
+    }
+    switch ParseNumber(forest, source, node) {
+        case .Number(negative, magnitude):
+            if (Fits(negative, magnitude, IntStorage)) {
+                return IntStorage;
+            }
+            if (Fits(negative, magnitude, Int64Storage)) {
+                return Int64Storage;
+            }
+        case .Invalid:
+            return WordStorage;
+    }
+    return WordStorage;
+}
+// The written scalar type, or a literal initializer's natural type.
+StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: uint64,
+              member: int) -> ValueType {
+    written := Field(forest, member, "type");
+    value := Field(forest, member, "value");
+    if (written < 0) {
+        if (Is(forest, value, "boolean")) {
+            return {storage: BoolStorage, container: 0, record: -1};
+        }
+        if (Is(forest, value, "string")) {
+            return {storage: TextStorage, container: 0, record: -1};
+        }
+        literal := StateNumberNode(forest, source, value);
+        if (literal >= 0) {
+            return {storage: StateNumberStorage(forest, source, literal), container: 0, record: -1};
+        }
+        return {storage: 0, container: 0, record: -1};
+    }
+    spelled := Text(forest, source, Field(forest, written, "name"));
+    if ((spelled == "entity" || spelled == "number") && Field(forest, written, "trait") < 0 &&
+        Field(forest, written, "arguments") < 0 && !HasToken(forest, written, "?") &&
+        !HasToken(forest, written, "[")) {
+        if (spelled == "number") {
+            return {storage: DoubleStorage, container: 0, record: -1};
+        }
+        return {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
+    }
+    no_names: Name[] = [];
+    return ReadType(forest, source, types, no_names, 0, written);
+}
+// A scalar state's literal default. Handles also admit an unwritten empty
+// value; the other scalar types require an initializer, as stage zero does.
+StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, storage: int,
+                 value: int, ops: Ops) -> Default {
+    if (value < 0) {
+        if (storage == HandleStorage) {
+            return Default.Read(0, "");
+        }
+        return Default.Failed({start: 0, end: 0, line: 1, column: 1, document: 0,
+                               message: format_text("'{}' requires a default value", name)});
+    }
+    if (Is(forest, value, "nil") && Text(forest, source, value) == "null") {
+        return Default.Read(0, "");
+    }
+    literal := StateNumberNode(forest, source, value);
+    if (storage == HandleStorage && literal >= 0) {
+        switch NumberBits(forest, source, literal) {
+            case .Finite(double_bits, float_fits, float_bits):
+                if ((double_bits & 0x7fffffffffffffff) == 0) {
+                    return Default.Read(0, "");
+                }
+            case .OutOfRange:
+                return Default.Failed(Diagnose(forest, value, 0, "Numeric literal is outside the range of its type"));
+        }
+        return Default.Failed(Diagnose(forest, value, 0, "entity default requires null or zero"));
+    }
+    if (storage == BoolStorage && Is(forest, value, "boolean")) {
+        bits: uint64 = 0;
+        if (Text(forest, source, value) == "true") {
+            bits = 1;
+        }
+        return Default.Read(bits, "");
+    }
+    if (storage == TextStorage && Is(forest, value, "string")) {
+        decoded := compiler_json_value_string(Text(forest, source, value));
+        if (!decoded.valid) {
+            return Default.Failed(Diagnose(forest, value, 0, "Invalid string literal"));
+        }
+        return Default.Read(0, decoded.value);
+    }
+    if (Floating(storage) && literal >= 0) {
+        switch FloatConstantStep(forest, source, 0, Typed(-1, NumberStorage, 0, literal), storage, ops,
+                                 NoBases(), forest[value]) {
+            case .Failed(diagnostic):
+                return Default.Failed(diagnostic);
+            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, result, retained, marks):
+                return Default.Read(code[0].payload, "");
+        }
+    }
+    if (Integer(storage)) {
+        switch ParseNumber(forest, source, literal) {
+            case .Number(negative, magnitude):
+                if (Fits(negative, magnitude, storage)) {
+                    return Default.Read(Bits(negative, magnitude), "");
+                }
+                return Default.Failed(Diagnose(forest, value, 0,
+                                               format_text("Numeric literal is outside the range of {}",
+                                                           TypeName(storage))));
+            case .Invalid:
+                return Default.Failed(Diagnose(forest, value, 0, "state default needs a literal of its declared type"));
+        }
+    }
+    return Default.Failed(Diagnose(forest, value, 0, "state default needs a literal of its declared type"));
+}
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
 // from it. The target, natives, events, types, entity, operators, globals and
@@ -331,40 +494,25 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
     while (member >= 0) {
         if (Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
-            declared := ReadType(forest, source, declared_types, no_names, 0, Field(forest, member, "type"));
-            if (!Numeric(declared.storage) || declared.container != 0) {
-                return Result.Rejected(Diagnose(forest, member, 0, "state needs a number type"));
+            declared := StateType(forest, source, declared_types, entity, member);
+            if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
+                 declared.storage != HandleStorage) || declared.container != 0 ||
+                (declared.storage == HandleStorage && declared.record < 0)) {
+                return Result.Rejected(Diagnose(forest, member, 0, "state type is not supported yet"));
             }
             bits: uint64 = 0;
+            initial := "";
             value := Field(forest, member, "value");
-            if (value >= 0 && Floating(declared.storage)) {
-                literal := Typed(-1, NumberStorage, 0, value);
-                if (!Is(forest, value, "number") && !Is(forest, value, "unary_expression")) {
-                    return Result.Rejected(Diagnose(forest, value, 0, "state value must be a number literal"));
-                }
-                switch FloatConstantStep(forest, source, 0, literal, declared.storage, ops, NoBases(), forest[value]) {
-                    case .Failed(diagnostic):
-                        return Result.Rejected(diagnostic);
-                    case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
-                                  typed_calls, typed_bound, typed_next, typed_popped, typed_value, typed_retain,
-                                  typed_marks):
-                        bits = typed_code[0].payload;
-                }
-            } else if (value >= 0) {
-                switch ParseNumber(forest, source, value) {
-                    case .Invalid:
-                        return Result.Rejected(Diagnose(forest, value, 0, "state value must be an integer literal"));
-                    case .Number(negative, magnitude):
-                        if (!Fits(negative, magnitude, declared.storage)) {
-                            return Result.Rejected(Diagnose(forest, value, 0,
-                                                            format_text("Numeric literal is outside the range of {}",
-                                                                        TypeName(declared.storage))));
-                        }
-                        bits = Bits(negative, magnitude);
-                }
+            switch StateDefault(forest, source, name, declared.storage, value, ops) {
+                case .Failed(diagnostic):
+                    return Result.Rejected(diagnostic);
+                case .Read(default_bits, default_text):
+                    bits = default_bits;
+                    initial = default_text;
             }
             kept: StateDecl = {name: name, id: binding.ID("symbol", format_text("{}:1:{}", identity, name)),
-                               storage: declared.storage, bits: bits, node: Field(forest, member, "name")};
+                               storage: declared.storage, record: declared.record, bits: bits, text: initial,
+                               node: Field(forest, member, "name")};
             kept_states.append(kept);
         } else if (Is(forest, member, "handler")) {
             if (Text(forest, source, Field(forest, member, "kind")) != "on" || Field(forest, member, "alias") >= 0 ||
@@ -415,10 +563,16 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    return Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
-                    callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
+    switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+                    callables, params, declared_types, members, constants, natives, ports, native_ids,
+                    resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
-                                  make_fields));
+                                  make_fields)) {
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Compiled(module, bytes, effects):
+            return Result.Compiled(module, bytes);
+    }
 }
 // The modules of a project's behavior assets, `identities[i]` holding
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that

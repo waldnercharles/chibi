@@ -121,11 +121,11 @@ Param :: struct {
     // A literal default a call that omits the argument passes: its bits, or
     // its text for a string.
     has_default: bool;
-    default_bits: uint64;
+    default_bits: u64;
     default_text: string;
     // The occurrence of the default's expression, which stage zero evaluates
     // where a call omits the argument.
-    default_occurrence: uint64;
+    default_occurrence: u64;
     // A `ref` parameter, whose argument is a reference to the caller's value.
     reference: bool;
     // The node that declares the parameter, -1 when the source declares none.
@@ -173,9 +173,9 @@ TypeDecl :: struct {
     size: int;
     parent: int;
     storage: int;
-    id: uint64;
-    layout: uint64;
-    component: uint64;
+    id: u64;
+    layout: u64;
+    component: u64;
     key: int;
     value_storage: int;
     value_container: int;
@@ -198,12 +198,12 @@ TypeMember :: struct {
     read_key: string;
 }
 pub Result :: union {
-    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
+    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: u64, bytes: u8[])
 }
 // Package assembly also returns the effects of its callables, so importers
 // reuse their summaries without compiling a dependency's bodies again.
 Assembly :: union {
-    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[], effects: int[])
+    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: u64, bytes: u8[], effects: int[])
 }
 EffectCall :: struct {
     caller: int;
@@ -218,13 +218,13 @@ ConstDecl :: struct {
     name: string;
     package: int;
     storage: int;
-    bits: uint64;
+    bits: u64;
     // Where its value is written, until the value is folded.
     node: int;
     file: int;
     folded: bool;
     // The occurrence of the constant's symbol, in its own document.
-    occurrence: uint64;
+    occurrence: u64;
 }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -252,7 +252,7 @@ MapDecl: int : 5;
 FunctionKind: int : 1;
 TypeKind: int : 13;
 // Runtime intrinsics are host capabilities with this prefix and ABI one.
-IntrinsicBase: uint64 : 0x4348494900000000;
+IntrinsicBase: u64 : 0x4348494900000000;
 
 Ordinal :: (names: string[], name: string) -> int {
     index: int = 0;
@@ -322,16 +322,7 @@ ScalarStorage :: (text: string) -> int {
         }
         integer += 1;
     }
-    if (text == "byte") {
-        return ByteStorage;
-    }
-    if (text == "int64") {
-        return Int64Storage;
-    }
-    if (text == "uint64") {
-        return WordStorage;
-    }
-    if (text == "int") {
+    if (text == "i32") {
         return IntStorage;
     }
     if (text == "bool") {
@@ -340,10 +331,10 @@ ScalarStorage :: (text: string) -> int {
     if (text == "string") {
         return TextStorage;
     }
-    if (text == "float") {
+    if (text == "number" || text == "f32") {
         return FloatStorage;
     }
-    if (text == "double") {
+    if (text == "f64") {
         return DoubleStorage;
     }
     return 0;
@@ -385,7 +376,7 @@ Aliases :: (links: graph.Binding[], file: int) -> Name[] {
     return aliases;
 }
 // The index of the type whose ID is `id`, -1 when none.
-TypeWithId :: (types: TypeDecl[], id: uint64) -> int {
+TypeWithId :: (types: TypeDecl[], id: u64) -> int {
     index: int = 0;
     while (index < length(types)) {
         if (types[index].id == id) {
@@ -493,8 +484,8 @@ FindMap :: (types: TypeDecl[], key: ValueType, value: ValueType) -> int {
 }
 // The ID stage zero gives a single key or value type: its storage and the
 // ID of the record, union or native type it names.
-TypeTag :: (types: TypeDecl[], storage: int, record: int) -> uint64 {
-    nominal: uint64 = 0;
+TypeTag :: (types: TypeDecl[], storage: int, record: int) -> u64 {
+    nominal: u64 = 0;
     if (record >= 0) {
         nominal = types[record].id;
     }
@@ -861,12 +852,12 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
 Folding :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Waiting
-    | Folded(bits: uint64)
+    | Folded(bits: u64)
 }
 Evaluated :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Waiting
-    | Value(exact: uint64[])
+    | Value(exact: u64[])
 }
 // The integer type a conversion call converts to, 0 for any other node.
 ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
@@ -894,7 +885,7 @@ ConstantExpression :: (forest: snapshot.SnapshotNode[], text: string, constants:
                        package: int, node: int) -> bool {
     value := Unparenthesized(forest, node);
     if (Is(forest, value, "number")) {
-        return InferredNumberStorage(forest, text, value) != DoubleStorage;
+        return InferredNumberStorage(forest, text, value) != FloatStorage;
     }
     if (ConstantOf(forest, text, constants, aliases, package, value) >= 0) {
         return true;
@@ -1046,8 +1037,8 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
                                                          TypeName(left_type), TypeName(right_type))));
         }
     }
-    value: uint64[] = [];
-    right: uint64[] = [];
+    value: u64[] = [];
+    right: u64[] = [];
     for (index in 0..<length(operands)) {
         switch Evaluate(forest, text, file, constants, aliases, package, operands[index], storage) {
             case .Failed(diagnostic):
@@ -1100,13 +1091,13 @@ EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     count := Unparenthesized(forest, Field(forest, node, "right"));
     count_type := ConstantType(forest, text, constants, aliases, package, count);
     if (Signed(count_type)) {
-        return Evaluated.Failed(Diagnose(forest, count, file, "Shift count must be unsigned; convert it with uint(value)"));
+        return Evaluated.Failed(Diagnose(forest, count, file, "Shift count must be unsigned; convert it with u32(value)"));
     }
     if (count_type == 0) {
         count_type = UntypedStorage(forest, text, count);
     }
-    value: uint64[] = [];
-    shift: uint64[] = [];
+    value: u64[] = [];
+    shift: u64[] = [];
     operands: int[] = [Field(forest, node, "left"), count];
     types: int[] = [storage, count_type];
     for (index in 0..<2) {
@@ -1126,7 +1117,7 @@ EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     if (ExactNegative(shift)) {
         return Evaluated.Failed(Diagnose(forest, count, file, "Shift count must not be negative"));
     }
-    if (MagnitudeCompare(Magnitude(shift), Magnitude(ExactOf(false, uint64(ExactLimit)))) > 0) {
+    if (MagnitudeCompare(Magnitude(shift), Magnitude(ExactOf(false, u64(ExactLimit)))) > 0) {
         return Evaluated.Failed(Diagnose(forest, count, file, "Constant shift count is too large"));
     }
     bits := int(LowBits(Magnitude(shift)));
@@ -1182,7 +1173,7 @@ EvaluateConversion :: (forest: snapshot.SnapshotNode[], text: string, file: int,
 
 Default :: union {
     Failed(diagnostic: syntax.Diagnostic)
-    | Read(bits: uint64, text: string)
+    | Read(bits: u64, text: string)
 }
 // A parameter's default, as the literal stage zero folds it to: an integer of
 // the parameter's type, a bool or a string.
@@ -1244,7 +1235,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                                              "Invalid string or embedded NUL"));
         }
         default_value := Field(forest, parameter, "value");
-        default_occurrence: uint64 = 0;
+        default_occurrence: u64 = 0;
         if (default_value >= 0) {
             default_occurrence = Occurrence(key, ExpressionRecord, solid[forest[default_value].start],
                                             solid[forest[default_value].end]);
@@ -1363,7 +1354,7 @@ Own :: (index: int) -> writer.Reference {
 }
 // FNV-1a over `count` little-endian bytes of `value`, as the runtime hashes
 // layouts.
-HashBytes :: (hash: uint64, value: uint64, count: int) -> uint64 {
+HashBytes :: (hash: u64, value: u64, count: int) -> u64 {
     out := hash;
     rest := value;
     index: int = 0;
@@ -1374,27 +1365,27 @@ HashBytes :: (hash: uint64, value: uint64, count: int) -> uint64 {
     }
     return out;
 }
-HashText :: (hash: uint64, text: string) -> uint64 {
+HashText :: (hash: u64, text: string) -> u64 {
     out := hash;
     // Each ByteAt measures the text, so a whole text reads Bytes once.
     for (byte in strings.Bytes(text)) {
-        out = HashBytes(out, uint64(byte), 1);
+        out = HashBytes(out, u64(byte), 1);
     }
     return HashBytes(out, 0, 1);
 }
 // The runtime's layout hash of a record: its size and field count, then each
 // field's name, offset, size, storage, string descriptor marker and absent type name.
-LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> uint64 {
-    hash: uint64 = 1469598103934665603;
-    hash = HashBytes(hash, uint64(record.size), target.pointer_size);
-    hash = HashBytes(hash, uint64(record.count), 4);
+LayoutHash :: (record: TypeDecl, fields: TypeMember[], target: Target) -> u64 {
+    hash: u64 = 1469598103934665603;
+    hash = HashBytes(hash, u64(record.size), target.pointer_size);
+    hash = HashBytes(hash, u64(record.count), 4);
     at := record.first;
     while (at < record.first + record.count) {
         field := fields[at];
         hash = HashText(hash, field.name);
-        hash = HashBytes(hash, uint64(field.offset), target.pointer_size);
-        hash = HashBytes(hash, uint64(FieldSize(field.storage, target)), target.pointer_size);
-        hash = HashBytes(hash, uint64(field.storage), 4);
+        hash = HashBytes(hash, u64(field.offset), target.pointer_size);
+        hash = HashBytes(hash, u64(FieldSize(field.storage, target)), target.pointer_size);
+        hash = HashBytes(hash, u64(field.storage), 4);
         if (field.storage == TextStorage) {
             hash = HashBytes(hash, 1, 1);
         }
@@ -1427,17 +1418,17 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
          callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], native_effects: int[], ops: Ops,
-         target: Target, abi: uint64) -> Result {
+         constants: ConstDecl[], natives: Native[], ports: Port[], identities: u64[], native_effects: int[], ops: Ops,
+         target: Target, abi: u64) -> Result {
     // Each package's identity and module ID, and the fingerprint of its module.
     package_names: string[] = [];
-    package_ids: uint64[] = [];
+    package_ids: u64[] = [];
     for (listed in packages) {
         package_names.append(documents[files_of[listed.member_start]].identity);
         package_ids.append(binding.ID("module", package_names[length(package_names) - 1]));
     }
-    fingerprints := resize([uint64(0)], length(packages));
-    data: byte[] = [];
+    fingerprints := resize([u64(0)], length(packages));
+    data: u8[] = [];
     starts := resize([int(0)], length(packages));
     lengths := resize([int(0)], length(packages));
     effects := resize([int(0)], length(callables));
@@ -1480,7 +1471,7 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
         return constants;
     }
     seen := resize([false], length(constants));
-    firsts := resize([uint64(0)], length(constants));
+    firsts := resize([u64(0)], length(constants));
     solid: int[] = [];
     solid_document: int = -1;
     index := first_own;
@@ -1536,11 +1527,11 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
     return used;
 }
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
-             package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
+             package_names: string[], package_ids: u64[], fingerprints: u64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
-             identities: uint64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
-             abi: uint64, game: Game) -> Assembly {
+             identities: u64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
+             abi: u64, game: Game) -> Assembly {
     identity := package_names[package];
     module := package_ids[package];
     // A behavior's states, the event each of its functions handles, the
@@ -1549,7 +1540,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     handled: int[] = [];
     game_events: GameEvent[] = [];
     game_fields: GameEventField[] = [];
-    owner_type: uint64 = 0;
+    owner_type: u64 = 0;
     behaving: Name[] = [];
     aggregates: NumericOperator[] = [];
     record_makes: NativeMake[] = [];
@@ -1569,7 +1560,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             record_makes = makes;
             make_fields = made_fields;
     }
-    wide: uint64[] = [0];
+    wide: u64[] = [0];
     values: writer.Value[] = [];
     ints: int[] = [];
     spans: writer.Span[] = [];
@@ -1637,7 +1628,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         }
     }
     abi_one := length(wide);
-    wide.append(uint64(1));
+    wide.append(u64(1));
     // A package's functions are contiguous; the module numbers them from 0.
     first_own: int = 0;
     while (first_own < length(callables) && callables[first_own].package != package) {
@@ -1849,7 +1840,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         wide.append(identities[2 * host.linked + 1]);
                         host_abi = capability + 1;
                     } else {
-                        wide.append(IntrinsicBase | uint64(host.intrinsic));
+                        wide.append(IntrinsicBase | u64(host.intrinsic));
                     }
                     row: writer.Host = {capability: capability, abi: host_abi, first: host.first,
                                         result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
@@ -1917,7 +1908,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 spans.append(Range(length(watches), length(body_watches)));
                 for (watched in body_watches) {
                     wide.append(watched.occurrence);
-                    wide.append(uint64(0));
+                    wide.append(u64(0));
                     origin: writer.Point = {occurrence: length(wide) - 2, meaning: length(wide) - 1,
                                             start: watched.start, end: watched.end, line: watched.line,
                                             column: watched.column, kind: ExpressionRecord, completion: false};
@@ -1951,7 +1942,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                                                    forest[callable.node].start, HandlerFunction)));
                     wide.append(handled_event.id);
                     wide.append(handled_event.abi);
-                    wide.append(uint64(0));
+                    wide.append(u64(0));
                     row: writer.Entry = {id: length(wide) - 4, kind: HandlerFunction, entry_name: "", has_entry: false,
                                          event_id: length(wide) - 3, event_abi: length(wide) - 2,
                                          event_name: handled_event.name, has_event_name: true, continuation_wait: false,
@@ -1995,7 +1986,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     at_entry: int = 0;
     while (at_entry < length(entries)) {
         declared := entries[at_entry];
-        wide.append(uint64(effects[first_own + at_entry]));
+        wide.append(u64(effects[first_own + at_entry]));
         declared.effects = length(wide) - 1;
         entries[at_entry] = declared;
         at_entry += 1;
@@ -2047,8 +2038,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // `names` its instruction names in ordinal order, and `natives` the native
 // functions it links.
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
-                ports: Port[], identities: uint64[]) -> Result {
+                sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
+                ports: Port[], identities: u64[]) -> Result {
     return CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
                               names, natives, ports, identities, resize([int(0)], length(natives)));
 }
@@ -2056,8 +2047,8 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 // same order as natives and identities. Compile retains the bootstrap's
 // stable signature for its verified pure-native catalog.
 pub CompileWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                           sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
-                           ports: Port[], identities: uint64[], native_effects: int[]) -> Result {
+                           sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
+                           ports: Port[], identities: u64[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, debug);
     complete := length(identities) == 2 * length(natives) && length(native_effects) == length(natives);
     for (effect in native_effects) {
@@ -2084,12 +2075,12 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
         index += 1;
     }
     inputs: snapshot.Input[] = [];
-    sizes: uint64[] = [];
+    sizes: u64[] = [];
     index = 0;
     while (index < length(paths)) {
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
         inputs.append(input);
-        sizes.append(uint64(strings.ByteLength(sources[index])));
+        sizes.append(u64(strings.ByteLength(sources[index])));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
@@ -2117,8 +2108,8 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
 // Compile's closure, for a host that takes one byte[] result; empty when
 // Compile rejects the input, whose diagnostic Compile returns.
 pub CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                       sources: string[], debug: bool, target: Target, abi: uint64, names: string[],
-                       natives: Native[], ports: Port[], identities: uint64[]) -> byte[] {
+                       sources: string[], debug: bool, target: Target, abi: u64, names: string[],
+                       natives: Native[], ports: Port[], identities: u64[]) -> u8[] {
     switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi, names, natives,
                    ports, identities) {
         case .Rejected(diagnostic):
@@ -2128,8 +2119,8 @@ pub CompileClosure :: (project: string, collection_names: string[], collection_p
     }
 }
 pub CompileClosureWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                                  sources: string[], debug: bool, target: Target, abi: uint64, names: string[],
-                                  natives: Native[], ports: Port[], identities: uint64[], native_effects: int[]) -> byte[] {
+                                  sources: string[], debug: bool, target: Target, abi: u64, names: string[],
+                                  natives: Native[], ports: Port[], identities: u64[], native_effects: int[]) -> u8[] {
     switch CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
                               names, natives, ports, identities, native_effects) {
         case .Rejected(diagnostic):

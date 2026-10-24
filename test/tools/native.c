@@ -2003,7 +2003,7 @@ typedef struct
     CF_V2 drift;
 } charge;
 static const declared_field charge_fields[] = {
-    { .name = "level", .type = "float", .min = 0, .max = 2 },
+    { .name = "level", .type = "number", .min = 0, .max = 2 },
     { .name = "cycles", .type = "int" },
     { .name = "full", .type = "bool" },
     { .name = "source", .type = "entity" },
@@ -2073,19 +2073,19 @@ TEST_CASE(native_ranges_distinguish_contracts_from_valid_wider_domains)
 TEST_CASE(native_player_reads_declared_components)
 {
     char error[192];
-    REQUIRE(rejected("CF_V2", "float", "already an engine type"));
-    REQUIRE(rejected("float", "float", "built-in script type"));
-    REQUIRE(rejected("task", "float", "built-in script type"));
+    REQUIRE(rejected("CF_V2", "number", "already an engine type"));
+    REQUIRE(rejected("number", "number", "built-in script type"));
+    REQUIRE(rejected("task", "number", "built-in script type"));
     REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
     REQUIRE(rejected("Charge", "handle", "unknown type handle"));
-    REQUIRE(rejected("2Charge", "float", "identifier"));
+    REQUIRE(rejected("2Charge", "number", "identifier"));
     declared_component component = { .name = "Charge",
                                      .fields = charge_fields,
                                      .field_count = 5 };
     declared_component twice[] = { component, component };
     REQUIRE(!declared_components_new(twice, 2, error, sizeof error));
     REQUIRE(strstr(error, "declared twice"));
-    declared_field level = { .name = "level", .type = "float" };
+    declared_field level = { .name = "level", .type = "number" };
     declared_component other = { .name = "Battery", .fields = &level, .field_count = 1 };
     declared_components *older = declared_components_new(&other, 1, error, sizeof error);
     REQUIRE(older && type_catalog_find("Battery"));
@@ -2211,7 +2211,7 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(hinted);
     const type_field *hint = &type_catalog_find("Charge")->fields[0];
     REQUIRE(
-        hint->type == PIN_F64 && !strcmp(hint->unit, "u/s") && hint->min == 0 &&
+        hint->type == PIN_F32 && !strcmp(hint->unit, "u/s") && hint->min == 0 &&
         hint->max == 10 && hint->range_contract
     );
     declared_components_free(hinted);

@@ -15,11 +15,11 @@ id_counter 56
                 reference_name "Islands"
                 reference_asset "FieldShapes"
                 inputs {
-                    X id=50 type="float"
-                    Y id=51 type="float"
+                    X id=50 type="number"
+                    Y id=51 type="number"
                 }
                 outputs {
-                    Value id=52 type="float"
+                    Value id=52 type="number"
                 }
             }
             - id=53 type="Field Output"

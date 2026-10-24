@@ -13,14 +13,14 @@ extern const CF_V3 NATIVE_VECTOR_MIN, NATIVE_VECTOR_MAX;
 #define NATIVE_VECTOR_VALUE_INPUTS(X) NATIVE_VECTOR_V2(X, "Value")
 #define NATIVE_VECTOR_VECTOR_OUTPUTS(X) NATIVE_VECTOR_V2(X, "Result")
 #define NATIVE_VECTOR_SCALAR_OUTPUTS(X)                                        \
-    NATIVE_VECTOR_PORT(X, "Result", PIN_F64, "double", ((pin_value){ 0 }))
+    NATIVE_VECTOR_PORT(X, "Result", PIN_F32, "number", ((pin_value){ 0 }))
 #define NATIVE_VECTOR_PAIR_INPUTS(X)                                           \
     NATIVE_VECTOR_V2(X, "A") NATIVE_VECTOR_V2(X, "B")
 #define NATIVE_VECTOR_DIRECTION_INPUTS(X)                                      \
     NATIVE_VECTOR_V2(X, "Origin") NATIVE_VECTOR_V2(X, "Target")
 #define NATIVE_VECTOR_DIRECTION_OUTPUTS(X) NATIVE_VECTOR_V2(X, "Direction")
 #define NATIVE_VECTOR_ANGLE_INPUTS(X)                                          \
-    NATIVE_VECTOR_PORT(X, "Angle", PIN_F64, "double", ((pin_value){ 0 }))
+    NATIVE_VECTOR_PORT(X, "Angle", PIN_F64, "f64", ((pin_value){ 0 }))
 #define NATIVE_VECTOR_RANDOM_INPUTS(X)                                                               \
     NATIVE_VECTOR_PORT(                                                                              \
         X,                                                                                           \

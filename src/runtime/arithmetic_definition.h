@@ -13,7 +13,7 @@
       false,                                                                   \
       ((pin_value){ 0 }))
 #define NATIVE_ARITHMETIC_GENERIC(X, NAME, GROUP)                              \
-    NATIVE_ARITHMETIC_PORT(X, NAME, PIN_F32, "float", SCRIPT_TYPE_UNTYPED, GROUP)
+    NATIVE_ARITHMETIC_PORT(X, NAME, PIN_F32, "number", SCRIPT_TYPE_UNTYPED, GROUP)
 #define NATIVE_ARITHMETIC_UNARY_INPUTS(X)                                      \
     NATIVE_ARITHMETIC_GENERIC(X, "Value", 1)
 #define NATIVE_ARITHMETIC_BINARY_INPUTS(X)                                     \
@@ -50,7 +50,7 @@
 #define NATIVE_ARITHMETIC_Byte_NAME "Byte"
 #define NATIVE_ARITHMETIC_Byte_OPERATOR NULL
 #define NATIVE_ARITHMETIC_Byte_PORTS(X)                                        \
-    NATIVE_ARITHMETIC_PORT(X, "Value", PIN_U8, "byte", 0, 0)
+    NATIVE_ARITHMETIC_PORT(X, "Value", PIN_U8, "u8", 0, 0)
 #define NATIVE_ARITHMETIC_Integer_NAME "Integer"
 #define NATIVE_ARITHMETIC_Integer_OPERATOR NULL
 #define NATIVE_ARITHMETIC_Integer_PORTS(X)                                     \
@@ -58,11 +58,11 @@
 #define NATIVE_ARITHMETIC_Integer64_NAME "Integer64"
 #define NATIVE_ARITHMETIC_Integer64_OPERATOR NULL
 #define NATIVE_ARITHMETIC_Integer64_PORTS(X)                                   \
-    NATIVE_ARITHMETIC_PORT(X, "Value", PIN_I64, "int64", 0, 0)
+    NATIVE_ARITHMETIC_PORT(X, "Value", PIN_I64, "i64", 0, 0)
 #define NATIVE_ARITHMETIC_Real_NAME "Real"
 #define NATIVE_ARITHMETIC_Real_OPERATOR NULL
 #define NATIVE_ARITHMETIC_Real_PORTS(X)                                        \
-    NATIVE_ARITHMETIC_PORT(X, "Value", PIN_F64, "double", 0, 0)
+    NATIVE_ARITHMETIC_PORT(X, "Value", PIN_F64, "f64", 0, 0)
 #define NATIVE_ARITHMETIC_Name_NAME "Name"
 #define NATIVE_ARITHMETIC_Name_OPERATOR NULL
 #define NATIVE_ARITHMETIC_Name_PORTS(X)                                        \

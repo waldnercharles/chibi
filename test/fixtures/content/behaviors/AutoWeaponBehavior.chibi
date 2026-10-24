@@ -2,10 +2,10 @@
 // unused time while preserving projectile defaults.
 AutoWeaponBehavior :: behavior {
     // The last frame step, for actions and functions.
-    Step: float = 0
+    Step: number = 0
     // Weapon
-    Elapsed: float = 0.0
-    on Tick :: (dt: float s) {
+    Elapsed := 0.0
+    on Tick :: (dt: number s) {
         Step = dt
         if find_nearest_entity(self.Transform, 600.0, 2, self).Found {
             await Fire_Ready_Projectiles(self.Transform, direction_to<Direction_To>(self.Transform, find_nearest_entity(self.Transform, 600.0, 2, self).Position), self.Weapon.damage)

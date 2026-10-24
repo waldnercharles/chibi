@@ -22,7 +22,7 @@ pub Reading :: union {
          diagnostics: syntax.Diagnostic[], uses: named.Use[], publications: constructors.Plan[])
 }
 Indexed :: union {
-    Added(types: named.Type[], ids: uint64[], index: int)
+    Added(types: named.Type[], ids: u64[], index: int)
 }
 Decoded :: union {
     Name(value: string, diagnostics: syntax.Diagnostic[])
@@ -102,7 +102,7 @@ pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
     }
     return Decoded.Name(decoded.value, diagnostics);
 }
-pub AddType :: (types: named.Type[], ids: uint64[], value: named.Value) -> Indexed {
+pub AddType :: (types: named.Type[], ids: u64[], value: named.Value) -> Indexed {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             slot := length(ids);

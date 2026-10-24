@@ -60,7 +60,7 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
     write_asset(
         "content/components/PreviewHeat.chibi",
         "PreviewHeat :: component {\n"
-        "    level: float\n"
+        "    level: number\n"
         "}\n"
     );
     write_asset("content/prototypes/Probe.chibi", "Probe :: prototype { PreviewHeat { level: 7 } }\n");
@@ -72,7 +72,7 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
     REQUIRE(strstr(error, "no start scene"));
     chibi_project_free(&launch);
 
-    const declared_field field = { .name = "value", .type = "float" };
+    const declared_field field = { .name = "value", .type = "number" };
     const declared_component component = { .name = "PreviousPreview",
                                            .fields = &field,
                                            .field_count = 1 };

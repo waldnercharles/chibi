@@ -51,7 +51,7 @@ bool model_parameter_get(const node *n, model_parameter_decl *out, shader_error 
     }
     int w = width(&n->output_pins[0]);
     if (!w || n->output_pins[0].type == PIN_I32) {
-        return declaration_error(err, n, "Model Parameter requires float or ShaderVec2/3/4");
+        return declaration_error(err, n, "Model Parameter requires number or ShaderVec2/3/4");
     }
     *out = (model_parameter_decl){ .id = n->id,
                                    .name = n->reference_name,

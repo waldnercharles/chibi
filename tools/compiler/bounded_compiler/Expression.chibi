@@ -26,7 +26,7 @@ DecimalValue :: (text: string, negative: bool) -> Decimal {
     if (size == 0) {
         return Decimal.Invalid;
     }
-    magnitude: int64 = 0;
+    magnitude: i64 = 0;
     index: int = 0;
     while (index < size) {
         digit := strings.ByteAt(text, index) - 48;

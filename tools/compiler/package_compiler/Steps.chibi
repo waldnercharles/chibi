@@ -106,7 +106,7 @@ ElementLoad :: (array: int, position: int, storage: int, packable: bool, first: 
     code.append(stride);
     code.append(ConstantCode(ops, target.pointer_storage, 0, first + 3, node));
     code.append(Instruction(ops.ne, target.pointer_storage, first + 4, first + 2, first + 3, -1, node));
-    code.append(ConstantCode(ops, target.pointer_storage, uint64(target.value_size), first + 5, node));
+    code.append(ConstantCode(ops, target.pointer_storage, u64(target.value_size), first + 5, node));
     code.append(Instruction(ops.select, target.pointer_storage, first + 6, first + 4, first + 2, first + 5, node));
     code.append(CastCode(ops, target.pointer_storage, first + 7, position, 0, node));
     code.append(Instruction(ops.mul, target.pointer_storage, first + 8, first + 7, first + 6, -1, node));
@@ -121,7 +121,7 @@ ElementLoad :: (array: int, position: int, storage: int, packable: bool, first: 
         code.append(Instruction(ops.save, target.pointer_storage, 0, first + 11, 0, local, node));
         return append(code, Instruction(ops.local, target.pointer_storage, first + 12, local, 0, 0, node));
     }
-    code.append(ConstantCode(ops, target.pointer_storage, uint64(target.payload_offset), first + 11, node));
+    code.append(ConstantCode(ops, target.pointer_storage, u64(target.payload_offset), first + 11, node));
     code.append(Instruction(ops.select, target.pointer_storage, first + 12, first + 4, first + 3, first + 11, node));
     code.append(Instruction(ops.add, target.pointer_storage, first + 13, first + 10, first + 12, -1, node));
     return append(code, Instruction(ops.load, SlotStorage(storage, 0, target), first + 14, first + 13, 0, 0, node));
@@ -216,7 +216,7 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
         while (index < size) {
             character := strings.ByteAt(spelling, index);
             if (character == 46 || character == 101 || character == 69) {
-                return DoubleStorage;
+                return FloatStorage;
             }
             index += 1;
         }
@@ -241,7 +241,7 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
 // A function's named results are locals from `named` on.
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
                   params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
-                  identities: uint64[], names: Name[], scope: int, package: int, values: Value[], top: int,
+                  identities: u64[], names: Name[], scope: int, package: int, values: Value[], top: int,
                   function: int, named: int, referenced: string[], mutated: string[], built: int[], item: Work,
                   ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
@@ -864,7 +864,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
 // proof producer. Context chooses storage; parsing, range checking and exact
 // bits have one implementation. This does not infer a type from spelling.
 IntegerLiteralResult :: union {
-    Rejected(diagnostic: syntax.Diagnostic) | Checked(bits: uint64)
+    Rejected(diagnostic: syntax.Diagnostic) | Checked(bits: u64)
 }
 ReadIntegerLiteral :: (forest: snapshot.SnapshotNode[], text: string, document: int, node: int,
                        storage: int) -> IntegerLiteralResult {
@@ -941,7 +941,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         produced = Typed(-1, NumberStorage, 0, item.node);
     } else if (kind == "number" || kind == "boolean" || kind == "string") {
         storage := item.storage;
-        payload: uint64 = 0;
+        payload: u64 = 0;
         literal := "";
         if (kind == "number") {
             switch ReadIntegerLiteral(forest, text, document, item.node, storage) {
@@ -1214,7 +1214,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             // A native record's record field lies inside it.
             word: Slot = {storage: target.pointer_storage, kind: ValueKind};
             slots.append(word);
-            offset := ConstantCode(ops, target.pointer_storage, uint64(field.offset), at.slot, node);
+            offset := ConstantCode(ops, target.pointer_storage, u64(field.offset), at.slot, node);
             code.append(offset);
             slots.append(address);
             code.append(Instruction(ops.add, target.pointer_storage, at.slot + 1, object.slot, at.slot, -1,
@@ -1294,7 +1294,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
         }
         element := values[top - 1];
         if (element.storage == NumberStorage) {
-            return Fail(forest, first, document, "an untyped number is a double; give the array an integer type");
+            return Fail(forest, first, document, "an untyped number needs a type; give the array an integer type");
         }
         if (element.storage <= 0) {
             return Fail(forest, first, document, "array item has no value type");
@@ -1381,7 +1381,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
             // by the field's place in the record.
             code.append(WatchCode(ops, value.slot, value.storage, value.container, value.record,
                                   found - types[record].first, false, forest[item.node], target));
-            offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(field.offset), variant: -1,
+            offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: u64(field.offset), variant: -1,
                             kind: ValueKind};
             cells.append(offset);
         }
@@ -1829,12 +1829,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // the locals the function builds there. It copies the others.
         variant := types[item.a];
         returned := Returned(forest, item.node);
-        keep: int64 = 0;
+        keep: i64 = 0;
         argument_node := FirstMember(forest, Field(forest, item.node, "arguments"));
         position: int = 0;
         while (returned && count <= 64 && argument_node >= 0) {
             if (BuiltName(forest, text, names, built, argument_node)) {
-                keep = keep | (int64(1) << uint(position));
+                keep = keep | (i64(1) << u32(position));
             }
             position += 1;
             argument_node = NextMember(forest, argument_node);
@@ -1844,7 +1844,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         kept := returned && count <= 64;
         shift: int = 0;
         if (kept) {
-            mask: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(wrap: keep), variant: -1,
+            mask: Cell = {storage: WordStorage, container: 0, record: -1, constant: u64(wrap: keep), variant: -1,
                           kind: ValueKind};
             cells.append(mask);
             shift = 1;
@@ -1929,7 +1929,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                          param.default_occurrence,
                                          forest[Field(forest, forest[param.node].parent, "value")]));
             } else {
-                code.append(DefaultWatch(ops, at.slot + length(slots) - 1, param.storage, uint64(0),
+                code.append(DefaultWatch(ops, at.slot + length(slots) - 1, param.storage, u64(0),
                                          forest[Field(forest, item.node, "arguments")]));
             }
             arguments.append(Typed(at.slot + length(slots) - 1, param.storage, 0, -1));
@@ -2391,7 +2391,7 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    bits: uint64 = 0;
+    bits: u64 = 0;
     if (!ParsedLiteral(forest, text, literal.record)) {
         // An untyped constant expression folds at the type its use gives it.
         switch FoldConstant(forest, text, document, constants, names, package, literal.record, storage) {
@@ -2563,7 +2563,7 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
     count_slot := at.slot + length(slots);
     if (right.storage == NumberStorage) {
         written := UntypedStorage(forest, text, right.record);
-        bits: uint64 = 0;
+        bits: u64 = 0;
         switch FoldConstant(forest, text, document, constants, names, package, right.record, written) {
             case .Failed(diagnostic):
                 return Step.Failed(diagnostic);
@@ -2587,7 +2587,7 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
         return Fail(forest, item.node, document, "operator does not apply to these operands");
     } else if (Signed(right.storage)) {
         return Fail(forest, Unparenthesized(forest, Field(forest, item.node, "right")), document,
-                    "Shift count must be unsigned; convert it with uint(value)");
+                    "Shift count must be unsigned; convert it with u32(value)");
     } else if (right.storage != value.storage) {
         slots.append(ValueLocal(value.storage));
         code.append(CastCode(ops, value.storage, count_slot, right.slot, 0, node));
@@ -2756,7 +2756,7 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     // Reference make: the context, the record's type, a value reference to
     // the local's cell, then unused component facts.
     first := at.cell;
-    constants: uint64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
+    constants: u64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
     cells.extend(ReferenceCells(target, binding.record, constants, field));
     // The context and the local's cell address go into the make's cells.
     slots.append(address);
@@ -2891,7 +2891,7 @@ FindNativeType :: (types: TypeDecl[], name: string) -> int {
 // The cells of a reference make: its nine arguments, the context, the type
 // of types[record] and then `facts`: the reference's kind and element, an
 // address, the owner, and a component's ID, layout and size; then its result.
-MakeCells :: (target: Target, record: int, facts: uint64[]) -> Cell[] {
+MakeCells :: (target: Target, record: int, facts: u64[]) -> Cell[] {
     kinds: int[] = [AddressKind, ValueKind, ValueKind, ValueKind, AddressKind, ValueKind, ValueKind, ValueKind,
                     ValueKind];
     storages: int[] = [target.pointer_storage, StructStorage, IntStorage, IntStorage, target.pointer_storage,
@@ -2914,17 +2914,17 @@ ReferenceCell :: (target: Target) -> Cell {
     return {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: ReferenceKind};
 }
 // The make facts of a reference to the owner's component `declared`.
-ComponentFacts :: (declared: TypeDecl) -> uint64[] {
-    return [0, 0, uint64(ComponentReference), 0xFFFFFFFFFFFFFFFF, 0, 0, declared.component, declared.layout,
-            uint64(declared.size)];
+ComponentFacts :: (declared: TypeDecl) -> u64[] {
+    return [0, 0, u64(ComponentReference), 0xFFFFFFFFFFFFFFFF, 0, 0, declared.component, declared.layout,
+            u64(declared.size)];
 }
 // The cells of a field write through references: MakeCells, then the field
 // reference's reference, type, offset and element flag and its result, and the
 // write's reference, value and bool result.
-ReferenceCells :: (target: Target, record: int, facts: uint64[], field: TypeMember) -> Cell[] {
+ReferenceCells :: (target: Target, record: int, facts: u64[], field: TypeMember) -> Cell[] {
     made := ReferenceCell(target);
     typed: Cell = {storage: field.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
-    offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(field.offset), variant: -1,
+    offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: u64(field.offset), variant: -1,
                     kind: ValueKind};
     element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     return extend(MakeCells(target, record, facts), [made, typed, offset, element, made, made, typed, element]);
@@ -3189,13 +3189,13 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     if (!ParsedLiteral(forest, text, literal.record)) {
         return Fail(forest, literal.record, document, "an untyped constant expression needs an integer type here");
     }
-    bits: uint64 = 0;
+    bits: u64 = 0;
     switch NumberBits(forest, text, literal.record) {
         case .OutOfRange:
             return Fail(forest, literal.record, document, "Numeric literal is outside the range of its type");
         case .Finite(double_bits, float_fits, float_bits):
             if (storage == FloatStorage && !float_fits) {
-                return Fail(forest, literal.record, document, "Numeric literal is outside the range of float");
+                return Fail(forest, literal.record, document, "Numeric literal is outside the range of number");
             }
             bits = double_bits;
             if (storage == FloatStorage) {
@@ -3209,10 +3209,11 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                         NoValue(), marks);
 }
 // Whether a number of type `from` converts to `to` implicitly: an integer
-// widens or becomes a floating value, and the floating types convert to one
-// another.
+// widens or becomes a floating value, and f32 widens to f64. f64 becomes f32
+// only through an explicit conversion.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
+    return Widens(from, to) || (Integer(from) && Floating(to)) ||
+           (from == FloatStorage && to == DoubleStorage);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a
@@ -3346,7 +3347,7 @@ NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], 
             context := Instruction(ops.context, target.pointer_storage, header + 1, 0, 0, 0, node);
             context.offset = target.results_offset;
             code.append(context);
-            code.append(ConstantCode(ops, IntStorage, uint64(index), header + 2, node));
+            code.append(ConstantCode(ops, IntStorage, u64(index), header + 2, node));
             destination := Instruction(ops.index, target.pointer_storage, header + 3, header + 1, header + 2, 0,
                                        node);
             destination.offset = target.value_size;
@@ -3590,7 +3591,7 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
 NativeTextReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
                        node: snapshot.SnapshotNode) -> Step {
     first := at.cell;
-    facts: uint64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
+    facts: u64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
     cells := ReferenceCells(target, object.record, facts, field);
     cells.extend([ReferenceCell(target), TypedCell(TextStorage, 0, -1),
                   TypedCell(StructStorage, 0, object.record)]);
@@ -3726,7 +3727,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], 
         if (!SameType(field.storage, 0, -1, value)) {
             return Fail(forest, call, document, "argument differs from its parameter type");
         }
-        offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(field.offset), variant: -1,
+        offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: u64(field.offset), variant: -1,
                         kind: ValueKind};
         content: Cell = {storage: value.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
         cells.extend([offset, content]);
@@ -3909,7 +3910,7 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     while (binding >= 0) {
         field := members[types[variant].first + position];
         first := at.cell + length(cells);
-        index: Cell = {storage: IntStorage, container: 0, record: -1, constant: uint64(position), variant: -1,
+        index: Cell = {storage: IntStorage, container: 0, record: -1, constant: u64(position), variant: -1,
                        kind: ValueKind};
         whole: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
         payload: Cell = {storage: field.storage, container: field.container, record: field.record, constant: 0,

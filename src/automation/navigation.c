@@ -364,12 +364,7 @@ static void add_component_definition(yyjson_mut_doc *doc, yyjson_mut_val *value,
     if (symbol.field) {
         const type_field *field = pin_type_field_path(component->type, symbol.field);
         yyjson_mut_obj_add_strcpy(doc, value, "field", symbol.field);
-        add_text(
-            doc,
-            value,
-            "type",
-            field->type_name ? field->type_name : pin_type_name(field->type)
-        );
+        add_text(doc, value, "type", type_field_type_name(field));
     }
 }
 

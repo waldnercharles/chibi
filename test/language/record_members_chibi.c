@@ -814,7 +814,7 @@ TEST_CASE(record_members_selection_keeps_original_guards)
     return true;
 }
 static const char *const fields[] = {
-    "value:int;",  "value:string;",   "value:bool=Unknown();", "value:float;",
+    "value:int;",  "value:string;",   "value:bool=Unknown();", "value:number;",
     "value:int?;", "value:string[];", "value:ref int;",        "value:Missing;",
     "value:int;",  "label:string;",   "value:int|string;",     "value:Peer;"
 };

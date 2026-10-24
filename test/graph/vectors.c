@@ -76,7 +76,7 @@ static bool test_zero_scale()
     CF_V2 source = { 3, -4 };
     pin_value inputs[] = {
         { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &source },
-        { .type = PIN_F32, .type_name = "float", .f = 0 },
+        { .type = PIN_F32, .type_name = "number", .f = 0 },
     };
     pin_value result = native_arithmetic_multiply(inputs, 2, &memory);
     REQUIRE(result.type == PIN_STRUCT && result.ptr);

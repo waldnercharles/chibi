@@ -25,7 +25,7 @@ static void setup()
     graph *g = asset->graph;
     real = graph_add_node(g, graph_palette_node("Real"));
     add = graph_add_node(g, graph_palette_node("Add"));
-    pin_value half = { .type = PIN_F64, .type_name = "double", .d = 2.5 };
+    pin_value half = { .type = PIN_F64, .type_name = "f64", .d = 2.5 };
     graph_set_pin_default(g, real, 1, 0, &half);
     /* Wiring settles the operator's type, so its values come after. */
     graph_connect(g, real, 0, add, 0);

@@ -163,13 +163,13 @@ TEST_CASE(synchronous_activation_benchmark)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const char *names[] = { "system", "event", "helper-event" };
     const char *sources[] = {
-        "Bench :: system() { total:retain double=0; total+=1; }",
-        "Bench :: behavior { total:retain double=0; on Run :: (amount: double) "
+        "Bench :: system() { total:retain f64=0; total+=1; }",
+        "Bench :: behavior { total:retain f64=0; on Run :: (amount: f64) "
         "{ "
         "total+=amount; } }",
-        "Bench :: behavior { total:retain double=0; Add :: (value:double, "
-        "amount:double)->double { return value+amount; } on Run :: (amount: "
-        "double) "
+        "Bench :: behavior { total:retain f64=0; Add :: (value:f64, "
+        "amount:f64)->f64 { return value+amount; } on Run :: (amount: "
+        "f64) "
         "{ total=Add(total,amount); } }",
     };
     for (int backend = 0; backend < 2; backend++) {

@@ -239,7 +239,7 @@ static bool gpu_matches(shader_graph *g, shader_image_view *image, const float h
                 "in;\nlayout(set=1,binding=0,rgba32f) uniform image2D "
                 "result_image;\nlayout(set=2,binding=0) uniform Inputs {vec4 "
                 "points[256];};\n"
-                "float sample_at(vec3 q){SGSample s;s.object_position=q;vec4 "
+                "number sample_at(vec3 q){SGSample s;s.object_position=q;vec4 "
                 "p[32],r[" OUTPUT_ROWS "];for(int "
                 "k=0;k<32;k++)p[k]=vec4(0);volume_test(s,p,r);return r[0].x;}\n"
                 "void main(){int i=int(gl_GlobalInvocationID.x);vec3 "

@@ -39,7 +39,7 @@ Code :: struct {
     value_storage: int;
     value_container: int;
     value_record: int;
-    payload: uint64;
+    payload: u64;
     text: string;
     has_text: bool;
     message: string;
@@ -51,7 +51,7 @@ Code :: struct {
 }
 // An integer literal's exact value, or none.
 Literal :: union {
-    Number(negative: bool, magnitude: uint64) | Invalid
+    Number(negative: bool, magnitude: u64) | Invalid
 }
 // A data cell's header type and kind. Some cells hold a constant payload: the
 // bits `constant`, or the tag of variant types[variant] when that is not -1.
@@ -59,7 +59,7 @@ Cell :: struct {
     storage: int;
     container: int;
     record: int;
-    constant: uint64;
+    constant: u64;
     variant: int;
     kind: int;
 }
@@ -97,8 +97,8 @@ Body :: union {
 // breakpoints find by its occurrence; `meaning` names what it is, such as the
 // event a handler takes, and a function's completion points mark its returns.
 SourcePoint :: struct {
-    occurrence: uint64;
-    meaning: uint64;
+    occurrence: u64;
+    meaning: u64;
     start: int;
     end: int;
     line: int;
@@ -110,7 +110,7 @@ SourcePoint :: struct {
 // holds, of the type that storage, container and record give, or, unless
 // `output`, its input numbered `ordinal`, such as a call's argument.
 SourceWatch :: struct {
-    occurrence: uint64;
+    occurrence: u64;
     start: int;
     end: int;
     line: int;
@@ -288,7 +288,7 @@ EffectsPhase: int : -1;
 
 // The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
 // a word into an identity.
-MixWord :: (hash: uint64, value: uint64) -> uint64 {
+MixWord :: (hash: u64, value: u64) -> u64 {
     mixed := hash;
     rest := value;
     index: int = 0;
@@ -302,24 +302,24 @@ MixWord :: (hash: uint64, value: uint64) -> uint64 {
 // A record's occurrence, as the SDK's script_occurrence gives it: its
 // document `key`, its kind and its range counted in bytes that are not
 // whitespace.
-Occurrence :: (key: string, kind: int, start: int, end: int) -> uint64 {
+Occurrence :: (key: string, kind: int, start: int, end: int) -> u64 {
     return OccurrenceIn(DocumentHash(key), kind, start, end);
 }
 // The part of every occurrence that the document `key` fixes.
-DocumentHash :: (key: string) -> uint64 {
+DocumentHash :: (key: string) -> u64 {
     hash := binding.ID("source-occurrence", "");
     count := strings.ByteLength(key);
-    hash = MixWord(hash, uint64(count));
+    hash = MixWord(hash, u64(count));
     index: int = 0;
     while (index < count) {
-        hash = (hash ^ uint64(strings.ByteAt(key, index))) * 1099511628211;
+        hash = (hash ^ u64(strings.ByteAt(key, index))) * 1099511628211;
         index += 1;
     }
     return hash;
 }
 // An occurrence in the document whose DocumentHash is `document`.
-OccurrenceIn :: (document: uint64, kind: int, start: int, end: int) -> uint64 {
-    hash := MixWord(MixWord(MixWord(document, uint64(kind)), uint64(start)), uint64(end));
+OccurrenceIn :: (document: u64, kind: int, start: int, end: int) -> u64 {
+    hash := MixWord(MixWord(MixWord(document, u64(kind)), u64(start)), u64(end));
     if (hash == 0) {
         return 1;
     }
@@ -340,7 +340,7 @@ SolidOffsets :: (text: string) -> int[] {
 }
 // The point of the record of `kind` at `node`, in the document whose
 // DocumentHash is `document` and whose bytes `solid` counts.
-PointIn :: (document: uint64, solid: int[], kind: int, node: snapshot.SnapshotNode) -> SourcePoint {
+PointIn :: (document: u64, solid: int[], kind: int, node: snapshot.SnapshotNode) -> SourcePoint {
     return {occurrence: OccurrenceIn(document, kind, solid[node.start], solid[node.end]), meaning: 0,
             start: node.start, end: node.end, line: node.row + 1, column: node.column + 1, kind: kind,
             completion: false};
@@ -348,7 +348,7 @@ PointIn :: (document: uint64, solid: int[], kind: int, node: snapshot.SnapshotNo
 // The point at `node` of the record of `kind` at `record`, in the document
 // `key` whose bytes `solid` counts. A completion point is its function's, at
 // a return.
-PointAt :: (key: string, solid: int[], kind: int, meaning: uint64, completion: bool, record: snapshot.SnapshotNode,
+PointAt :: (key: string, solid: int[], kind: int, meaning: u64, completion: bool, record: snapshot.SnapshotNode,
             node: snapshot.SnapshotNode) -> SourcePoint {
     return {occurrence: Occurrence(key, kind, solid[record.start], solid[record.end]), meaning: meaning,
             start: node.start, end: node.end, line: node.row + 1, column: node.column + 1, kind: kind,
@@ -369,7 +369,7 @@ SymbolCode :: (ops: Ops, declared: int, node: snapshot.SnapshotNode) -> Code {
     return Instruction(ops.source_point, 0, 0, SymbolPoint, declared, 0, node);
 }
 // A point at `node` of a record of `kind` whose occurrence is `occurrence`.
-OccurrenceCode :: (ops: Ops, kind: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
+OccurrenceCode :: (ops: Ops, kind: int, occurrence: u64, node: snapshot.SnapshotNode) -> Code {
     return {op: ops.source_point, type: 0, output: 0, left: OccurrencePoint, right: kind, target: 0, offset: 0,
             value_storage: 0, value_container: 0, value_record: -1, payload: occurrence, text: "", has_text: false,
             message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
@@ -445,8 +445,8 @@ Expression :: (kind: string) -> bool {
 }
 // The occurrence of the symbol the node `declared` declares, or `undeclared`
 // for one the source declares nowhere.
-SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: uint64, solid: int[], undeclared: uint64,
-                     declared: int) -> uint64 {
+SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: u64, solid: int[], undeclared: u64,
+                     declared: int) -> u64 {
     if (declared < 0) {
         return undeclared;
     }
@@ -484,7 +484,7 @@ ScalarWatch :: (ops: Ops, slot: int, storage: int, ordinal: int, output: bool, n
 // expression, with that occurrence. Stage zero reads another package's default
 // from that package's catalog as a constant at the call's arguments. Its
 // occurrence is 0 and is resolved in the caller's document.
-DefaultWatch :: (ops: Ops, slot: int, storage: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
+DefaultWatch :: (ops: Ops, slot: int, storage: int, occurrence: u64, node: snapshot.SnapshotNode) -> Code {
     return {op: ops.source_watch, type: storage, output: 1, left: slot, right: 0, target: Pending, offset: 0,
             value_storage: storage, value_container: 0, value_record: -1, payload: occurrence, text: "",
             has_text: false, message: "", has_message: false, start: node.start, end: node.end,
@@ -898,7 +898,7 @@ ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Lit
     // At most 16 hexadecimal or 20 decimal significant digits; twenty decimal
     // digits must not exceed the largest uint64.
     first: int = -1;
-    magnitude: uint64 = 0;
+    magnitude: u64 = 0;
     while (index < size) {
         digit := HexDigit(strings.ByteAt(literal, index));
         if (digit < 0 || digit >= base) {
@@ -907,7 +907,7 @@ ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Lit
         if (first < 0 && digit != 0) {
             first = index;
         }
-        magnitude = magnitude * uint64(base) + uint64(digit);
+        magnitude = magnitude * u64(base) + u64(digit);
         index += 1;
     }
     significant: int = 0;
@@ -958,11 +958,11 @@ TypeName :: (storage: int) -> string {
     if (!Integer(storage)) {
         return "";
     }
-    names: string[] = ["int8", "byte", "int16", "uint16", "int", "uint", "int64", "uint64"];
+    names: string[] = ["i8", "u8", "i16", "u16", "int", "u32", "i64", "u64"];
     return names[storage - Int8Storage];
 }
 // Whether a literal's value fits an integer type.
-Fits :: (negative: bool, magnitude: uint64, storage: int) -> bool {
+Fits :: (negative: bool, magnitude: u64, storage: int) -> bool {
     // Stage zero rejects any signed literal of an unsigned type, -0 included.
     if (negative && !Signed(storage)) {
         return false;
@@ -971,13 +971,13 @@ Fits :: (negative: bool, magnitude: uint64, storage: int) -> bool {
         return true;
     }
     if (!Signed(storage)) {
-        return storage == WordStorage || (magnitude >> uint64(Width(storage))) == 0;
+        return storage == WordStorage || (magnitude >> u64(Width(storage))) == 0;
     }
-    bits := uint64(Width(storage) - 1);
-    return (magnitude >> bits) == 0 || (negative && magnitude == (uint64(1) << bits));
+    bits := u64(Width(storage) - 1);
+    return (magnitude >> bits) == 0 || (negative && magnitude == (u64(1) << bits));
 }
 // A literal's bits in an integer type it fits, sign-extended when negative.
-Bits :: (negative: bool, magnitude: uint64) -> uint64 {
+Bits :: (negative: bool, magnitude: u64) -> u64 {
     if (negative) {
         return ~magnitude + 1;
     }
@@ -1029,7 +1029,7 @@ Computes :: (ops: Ops, op: int, storage: int) -> bool {
 // A constant of an integer or bool type. One literal holds `bits`: stage
 // zero takes any uint64 for a pointer, and storing one into a local record's
 // field would make this function, and every caller, copy its arguments.
-ConstantCode :: (ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
+ConstantCode :: (ops: Ops, storage: int, bits: u64, output: int, node: snapshot.SnapshotNode) -> Code {
     return {op: ops.constant, type: storage, output: output, left: 0, right: 0, target: 0, offset: 0,
             value_storage: storage, value_container: 0, value_record: -1, payload: bits, text: "",
             has_text: false, message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
@@ -1378,11 +1378,11 @@ BindingCondition :: (forest: snapshot.SnapshotNode[], text: string, node: int) -
 // Whether a range's bounds are both constant and the first is the greater.
 Descends :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
              package: int, node: int) -> bool {
-    bounds: int64[] = [];
+    bounds: i64[] = [];
     for (end in [Field(forest, node, "first"), Field(forest, node, "last")]) {
         switch FoldConstant(forest, text, document, constants, names, package, end, IntStorage) {
             case .Folded(bits):
-                bounds.append(int64(wrap: bits));
+                bounds.append(i64(wrap: bits));
             case .Failed(diagnostic):
                 return false;
             case .Waiting:
@@ -1440,7 +1440,7 @@ NativePort :: (native: Native, index: int) -> int {
 // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
 // zero, the native is recognized by its capability identity.
 InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                  ports: Port[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                  ports: Port[], identities: u64[], names: Name[], package: int, found: int, destination: int,
                   value: int) -> int {
     updated := names[found];
     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
@@ -1553,7 +1553,7 @@ Start :: union {
           points: SourcePoint[], named: int)
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
-             key: string, solid: int[], meaning: uint64, referenced: string[], mutated: string[],
+             key: string, solid: int[], meaning: u64, referenced: string[], mutated: string[],
              ops: Ops, target: Target) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
@@ -1649,9 +1649,9 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
 }
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             constants: ConstDecl[], natives: Native[], ports: Port[], identities: u64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
-             solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
+             solid: int[], undeclared: u64, meaning: u64, function: int, referenced: string[],
              mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
@@ -2530,8 +2530,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
 // instruction's position. The runtime numbers each instruction that suspends,
 // an invocation or a point, by its order, and a prepared module's bytes hold
 // that number.
-NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint64, meaning: uint64,
-                 document_hash: uint64, declaration: snapshot.SnapshotNode, ops: Ops, slots: Slot[], locals: Slot[],
+NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: u64, meaning: u64,
+                 document_hash: u64, declaration: snapshot.SnapshotNode, ops: Ops, slots: Slot[], locals: Slot[],
                  cells: Cell[], code: Code[], calls: Invocation[], hosts: Host[], roots: Root[],
                  points: SourcePoint[], watches: SourceWatch[], effects: int) -> Body {
     numbered_code := code;
@@ -2544,7 +2544,7 @@ NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint
         if (op == ops.source_point && numbered_code[at_point].left < 0) {
             placed := numbered_code[at_point];
             occurrence := OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start], solid[placed.end]);
-            point_meaning: uint64 = 0;
+            point_meaning: u64 = 0;
             point_kind := ExpressionRecord;
             if (placed.left == CompletionPoint) {
                 occurrence = OccurrenceIn(document_hash, FunctionRecord, solid[declaration.start],

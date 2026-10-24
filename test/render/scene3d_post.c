@@ -36,7 +36,7 @@ static const char *emitter_source =
     " if(pattern==4) return "
     "vec4(params.screen_uv.x<2.0/dimensions.x?8.0:0.0,0,0,1);\n"
     " vec2 d=(params.screen_uv-vec2(.5))*dimensions;\n"
-    " float radius=dimensions.y*3.0/128.0;\n"
+    " number radius=dimensions.y*3.0/128.0;\n"
     " return vec4(vec3(4,1,.25)*step(dot(d,d),radius*radius),1);\n"
     "}\n";
 

@@ -32,7 +32,7 @@
 #define PARTICLES_SCALAR(X, NAME, STORAGE, TYPE_NAME, FIELD, VALUE, FLAGS)     \
     PARTICLES_DATA(X, NAME, STORAGE, TYPE_NAME, ((pin_value){ .type = STORAGE, .FIELD = VALUE }), FLAGS)
 #define PARTICLES_FLOAT(X, NAME, VALUE)                                        \
-    PARTICLES_SCALAR(X, NAME, PIN_F32, "float", f, VALUE, PIN_FLAG_ADVANCED)
+    PARTICLES_SCALAR(X, NAME, PIN_F32, "number", f, VALUE, PIN_FLAG_ADVANCED)
 #define PARTICLES_VECTOR(X, NAME)                                              \
     PARTICLES_DATA(X, NAME, PIN_STRUCT, "CF_V2", ((pin_value){ .type = PIN_STRUCT }), 0)
 #define PARTICLES_BURST_INPUTS(X)                                                         \
@@ -40,8 +40,8 @@
     PARTICLES_VECTOR(X, "Position")                                                       \
     PARTICLES_SCALAR(X, "Color", PIN_U32, "unsigned int", u, 0xF0CD69FFu, PIN_FLAG_COLOR) \
     PARTICLES_SCALAR(X, "Count", PIN_I32, "int", i, 12, 0)                                \
-    PARTICLES_SCALAR(X, "Speed", PIN_F32, "float", f, 80.0f, 0)                           \
-    PARTICLES_SCALAR(X, "Lifetime", PIN_F32, "float", f, 0.3f, 0)
+    PARTICLES_SCALAR(X, "Speed", PIN_F32, "number", f, 80.0f, 0)                          \
+    PARTICLES_SCALAR(X, "Lifetime", PIN_F32, "number", f, 0.3f, 0)
 #define PARTICLES_DIRECTED_INPUTS(X)                                                                              \
     PARTICLES_EXEC(X, "Exec")                                                                                     \
     PARTICLES_VECTOR(X, "Position")                                                                               \

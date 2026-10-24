@@ -282,14 +282,14 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 {
     const char
-        *text = "Rhythm :: behavior { phase:retain double=0; pulse:retain "
-                "double=0; period:retain double=0; duration:retain double=0; "
+        *text = "Rhythm :: behavior { phase:retain f64=0; pulse:retain "
+                "f64=0; period:retain f64=0; duration:retain f64=0; "
                 "Read :: "
-                "()->(Phase:double,Pulse:double,Period:double,Duration:double){"
+                "()->(Phase:f64,Pulse:f64,Period:f64,Duration:f64){"
                 " r:=scene_rhythm(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } Apply :: "
-                "()->(Phase:double,Pulse:double,Period:double,Duration:double){"
+                "()->(Phase:f64,Pulse:f64,Period:f64,Duration:f64){"
                 " await delay(Duration:0.125); r:=Read(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } on Tick :: () { r:=await Apply(); phase=r.Phase; "
@@ -375,12 +375,12 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 TEST_CASE(source_native_motion_retains_numeric_outputs)
 {
     const char *text =
-        "Motion :: behavior { input:retain double=0; angle:retain double=0; "
-        "smooth:retain double=0; root:retain double=0; low:retain double=0; "
-        "high:retain double=0; nearest:retain double=0; position:retain "
-        "float=0; velocity:retain float=0; Calculate :: "
-        "(Value:double)->(Angle:double,Smooth:double,Root:double,Low:double,"
-        "High:double,Nearest:double){ "
+        "Motion :: behavior { input:retain f64=0; angle:retain f64=0; "
+        "smooth:retain f64=0; root:retain f64=0; low:retain f64=0; "
+        "high:retain f64=0; nearest:retain f64=0; position:retain "
+        "number=0; velocity:retain number=0; Calculate :: "
+        "(Value:f64)->(Angle:f64,Smooth:f64,Root:f64,Low:f64,"
+        "High:f64,Nearest:f64){ "
         "return(Angle:quantize_angle(Angle:Value,Step:1.5707963267948966),"
         "Smooth:smooth_step(Value:Value),Root:sqrt(Value:Value),Low:floor("
         "Value:Value),High:ceil(Value:Value),Nearest:round(Value:Value)); } on "
@@ -697,9 +697,10 @@ TEST_CASE(source_native_physics3d_queries_read_colliders)
         "Probe :: behavior { start:retain struct<CF_V3>={x:0.0,y:320.0,z:0.0}; "
         "finish:retain struct<CF_V3>={x:0.0,y:-32.0,z:0.0}; push:retain "
         "struct<CF_V3>={x:320.0,y:0.0,z:0.0}; found:retain bool=false; "
-        "target:retain handle<ecs.entity>=0; distance:retain float=0.0; "
+        "target:retain handle<ecs.entity>=0; distance:retain number=0.0; "
         "normal:retain struct<CF_V3>={x:0.0,y:0.0,z:0.0}; blocked:retain "
-        "handle<ecs.entity>=0; travel:retain float=0.0; touching:retain int=0; "
+        "handle<ecs.entity>=0; travel:retain number=0.0; touching:retain "
+        "int=0; "
         "on Tick :: () { found=raycast_3d(start,finish,1,0,false).Found; "
         "target=raycast_3d(start,finish,1,0,false).Entity; "
         "distance=raycast_3d(start,finish,1,0,false).Distance; "
@@ -792,10 +793,7 @@ static bool publish_material(int width)
 }
 TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
 {
-    const char *payloads[] = { "float=0.25",
-                               "double=0.5",
-                               "bool=true",
-                               "struct<CF_V2>={x:0.25,y:-0.5}" };
+    const char *payloads[] = { "number=0.25", "f64=0.5", "bool=true", "struct<CF_V2>={x:0.25,y:-0.5}" };
     const float expected[][2] = { { .25f, 0 }, { .5f, 0 }, { 1, 0 }, { .25f, -.5f } };
     for (int backend = 0; backend < 2; backend++) {
         for (int kind = 0; kind < 4; kind++) {
@@ -827,8 +825,8 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 "done=true; "
                 "} }",
                 payloads[kind],
-                kind == 0   ? "float"
-                : kind == 1 ? "double"
+                kind == 0   ? "number"
+                : kind == 1 ? "f64"
                 : kind == 2 ? "bool"
                             : "struct<CF_V2>"
             );
@@ -1086,7 +1084,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
     } cases[] = {
         { -5, 0, 0 },         { 2.75, 2.75, 2 },   { 100, 10, 10 },
         { INFINITY, 10, 10 }, { -INFINITY, 0, 0 }, { NAN, 0, 0 },
-        { DBL_MAX, 10, 10 },
+        { FLT_MAX, 10, 10 },
     };
     for (int backend = 0; backend < 2; backend++) {
         char error[256];
@@ -1123,19 +1121,23 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
                 execution_instance_set_state(
                     instance,
                     input,
-                    (pin_value){ .type = PIN_F64, .d = cases[i].input }
+                    (pin_value){ .type = PIN_F32, .f = (float)cases[i].input }
                 ) == FLOW_OK
             );
             REQUIRE(dispatch(tick, 4096) >= 0);
-            REQUIRE(execution_instance_state(instance, observed)->d == cases[i].expected);
             REQUIRE(
-                execution_instance_state(instance, constructed)->d == cases[i].expected
+                execution_instance_state(instance, observed)->f ==
+                (float)cases[i].expected
+            );
+            REQUIRE(
+                execution_instance_state(instance, constructed)->f ==
+                (float)cases[i].expected
             );
             REQUIRE(execution_instance_state(instance, converted)->i == cases[i].integer);
-            REQUIRE(execution_instance_state(instance, defaulted)->d == 2);
+            REQUIRE(execution_instance_state(instance, defaulted)->f == 2);
             /* Each saturating assignment is observable: these two updates
              * cannot be reassociated into a single addition of 99. */
-            REQUIRE(execution_instance_state(instance, steps)->d == 9);
+            REQUIRE(execution_instance_state(instance, steps)->f == 9);
         }
         REQUIRE(
             ecs_component_write_field(
@@ -1143,7 +1145,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
                 owner,
                 desc->id,
                 0,
-                (pin_value){ .type = PIN_F64, .d = 1.75 }
+                (pin_value){ .type = PIN_F32, .f = 1.75f }
             ) == ECS_OK
         );
         fields[0].max = 1;
@@ -1153,7 +1155,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         REQUIRE(copy && dispatch(copy, 4096) >= 0);
         /* Both whole-component snapshot and publication retain the world's
          * original range while a newer global schema is being prepared. */
-        REQUIRE(execution_instance_state(instance, observed)->d == 1.75);
+        REQUIRE(execution_instance_state(instance, observed)->f == 1.75f);
         declared_components_free(newer_declared);
         newer_declared = NULL;
         script_lower_bindings bindings = authoring_language_bindings(catalog);
@@ -1172,12 +1174,12 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         REQUIRE(replaced == FLOW_OK);
         instance = execution_program_instance(program, ecs_entity_to_u64(owner));
         REQUIRE(instance);
-        /* The retained DBL_MAX input overflows only floating intermediates;
+        /* The retained FLT_MAX input overflows only floating intermediates;
          * publication sees +infinity and stores the finite high endpoint. */
         REQUIRE(dispatch(tick, 4096) >= 0);
         pin_value actual;
         REQUIRE(ecs_component_read_field(NULL, test_world, owner, desc->id, 0, &actual) == ECS_OK);
-        REQUIRE(actual.d == 10);
+        REQUIRE(actual.f == 10);
         cleanup();
     }
     return true;

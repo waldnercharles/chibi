@@ -6,6 +6,7 @@
 #include "project_migrate29.h"
 #include "project_migrate30.h"
 #include "project_migrate31.h"
+#include "project_migrate32.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -6043,6 +6044,64 @@ static char **migrate_array_calls(char **sources, char **paths, int count, char 
     return migrated;
 }
 
+int chibi_migrate_number_names(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate32_number_names(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Number name", 33, migrated, error, size)
+             : 0;
+}
+/* Renames the scalar types graph pins and event fields store as `type` or
+ * `type_name`; returns whether any changed. */
+static bool number_types(av_value *value)
+{
+    bool changed = false;
+    for (size_t i = 0; av_is_arr(value) && i < av_arr_size(value); i++) {
+        changed |= number_types(av_arr_get(value, i));
+    }
+    for (size_t i = 0; av_is_obj(value) && i < av_obj_size(value); i++) {
+        const char *key = av_get_str(av_obj_key_at(value, i));
+        av_value *member = av_obj_value_at(value, i);
+        const char *name = av_is_str(member) && (!strcmp(key, "type") ||
+                                                 !strcmp(key, "type_name"))
+                             ? chibi_migrate32_number_name(av_get_str(member))
+                             : NULL;
+        if (name) {
+            av_set_str(member, name);
+            changed = true;
+        }
+        changed |= number_types(member);
+    }
+    return changed;
+}
+char *chibi_migrate_number_types(const char *asset)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    char *migrated = root && number_types(root) ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
+static char **migrate_number_names(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            migrated[i] = chibi_migrate_number_types(sources[i]);
+        } else if (chibi_migrate_number_names(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
 /* Removes the scripts later steps migrated past version `from + 1` from the
  * step's inputs; returns the remaining count. */
 static int skip_migrated_ahead(char **paths, char **sources, int count, int from)
@@ -6076,7 +6135,8 @@ int chibi_project_migrate_content(
      * version 21 changes materials, wherever the project keeps them; every
      * other step changes scripts. */
     bool declarative = from == 14 || from == 15 || from == 17 || from == 18 ||
-                       from == 20 || from == 21 || from == 22 || from == 25;
+                       from == 20 || from == 21 || from == 22 || from == 25 ||
+                       from == 32;
     int status = collect_sources(
         content,
         declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -6086,7 +6146,8 @@ int chibi_project_migrate_content(
     );
     /* Versions 16 and 18 also check scripts for names they remove, and
      * versions 23 and 26 also rewrite scripts. */
-    if (!status && (from == 15 || from == 17 || from == 22 || from == 25)) {
+    if (!status &&
+        (from == 15 || from == 17 || from == 22 || from == 25 || from == 32)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* Version 30 types handler payloads from the project's event declarations. */
@@ -6248,6 +6309,11 @@ int chibi_project_migrate_content(
             case 31:
                 error[0] = '\0';
                 migrated = migrate_array_calls(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 32:
+                error[0] = '\0';
+                migrated = migrate_number_names(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

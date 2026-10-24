@@ -3,15 +3,15 @@
 // shrink away after 0.55 seconds.
 ArenaShardBehavior :: behavior {
     // The last frame step, for actions and functions.
-    Step: float = 0
+    Step: number = 0
     // State
-    Age: float = 0.0
-    Pitch_Rate: float = 0.0
-    Roll_Rate: float = 0.0
-    Lift: float = 0.0
-    Birth_Scale: float = 1.0
+    Age: number = 0.0
+    Pitch_Rate: number = 0.0
+    Roll_Rate: number = 0.0
+    Lift: number = 0.0
+    Birth_Scale: number = 1.0
     action age_2 = set_variable<Age>(Age + Step)
-    on Tick :: (dt: float s) {
+    on Tick :: (dt: number s) {
         Step = dt
         age_2()
     }
@@ -25,39 +25,39 @@ ArenaShardBehavior :: behavior {
     on Begin :: () {
         await Initialize_Shard(self.VisualTransform.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
     }
-    Age_Phase :: (Age: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
+    Age_Phase :: (Age: number = 0.0, Delta: number = 0.0) -> (Result: number = 0.0) {
         return (Age + Delta) / real(0.55)
     }
-    Fade :: (Normalized: float = 0.0) -> (Result: double = 0.0) {
+    Fade :: (Normalized: number = 0.0) -> (Result: f64 = 0.0) {
         return (real(1.0) - Normalized) * (real(1.0) - Normalized)
     }
-    Position_X :: (PositionX: float = 0.0, VelocityX: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
+    Position_X :: (PositionX: number = 0.0, VelocityX: number = 0.0, Delta: number = 0.0) -> (Result: number = 0.0) {
         return PositionX + VelocityX * Delta
     }
-    Position_Y :: (PositionY: float = 0.0, VelocityY: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
+    Position_Y :: (PositionY: number = 0.0, VelocityY: number = 0.0, Delta: number = 0.0) -> (Result: number = 0.0) {
         return PositionY + VelocityY * Delta
     }
-    Pitch :: (Pitch: float = 0.0, PitchRate: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
+    Pitch :: (Pitch: number = 0.0, PitchRate: number = 0.0, Delta: number = 0.0) -> (Result: number = 0.0) {
         return Pitch + PitchRate * Delta
     }
-    Roll :: (Roll: float = 0.0, RollRate: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
+    Roll :: (Roll: number = 0.0, RollRate: number = 0.0, Delta: number = 0.0) -> (Result: number = 0.0) {
         return Roll + RollRate * Delta
     }
-    Initialize_Shard :: (scale: float = 0.0, Pitch_Rate: double = 0.0, Roll_Rate: double = 0.0, Lift: double = 0.0) {
+    Initialize_Shard :: (scale: number = 0.0, Pitch_Rate: f64 = 0.0, Roll_Rate: f64 = 0.0, Lift: f64 = 0.0) {
         Birth_Scale = scale
         state.Pitch_Rate = Pitch_Rate
         state.Roll_Rate = Roll_Rate
         state.Lift = Lift
         return
     }
-    Advance_Shard_Motion :: (Seconds: float = 0.0, Age: float = 0.0) {
+    Advance_Shard_Motion :: (Seconds: number = 0.0, Age: number = 0.0) {
         self.Transform.x = Position_X(self.Transform.x, self.Velocity.x, Seconds)
         self.Transform.y = Position_Y(self.Transform.y, self.Velocity.y, Seconds)
         self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, Pitch_Rate, Seconds)
         self.VisualTransform.roll = Roll(self.VisualTransform.roll, Roll_Rate, Seconds)
         self.VisualTransform.scale = Birth_Scale * Fade(Age_Phase(Age, Seconds))
-        self.Geometry3D.elevation = self.Geometry3D.elevation + double(Lift * Seconds)
-        Lift = Lift - multiply(Seconds, B: plain double = 90.0)
+        self.Geometry3D.elevation = self.Geometry3D.elevation + f64(Lift * Seconds)
+        Lift = Lift - multiply(Seconds, B: plain f64 = 90.0)
         return
     }
 }

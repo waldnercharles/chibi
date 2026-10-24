@@ -9,7 +9,7 @@ pub Selection :: union {
     Selected(symbol: int, definition: int, diagnostics: syntax.Diagnostic[])
 }
 pub Member :: union {
-    Discovered(name: string, id: uint64, annotation: reader.Reading,
+    Discovered(name: string, id: u64, annotation: reader.Reading,
                has_default: bool, default_node: int, admissible: bool,
                diagnostics: syntax.Diagnostic[])
 }

@@ -284,7 +284,7 @@ PlaceSlots :: (binding: Name, target: Target) -> Slot[] {
 // container and record give: the make's context, type and kind, its unused
 // state variable, the cell's address, then unused component facts.
 MakeValueCells :: (target: Target, storage: int, container: int, record: int) -> Cell[] {
-    facts: uint64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
+    facts: u64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
     cells := MakeCells(target, -1, facts);
     cells[1] = TypedCell(storage, container, record);
     return cells;
@@ -371,7 +371,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
         // The field reference: its base, the field's type and offset, and no
         // element.
         first := at.cell + length(cells);
-        offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(members[field].offset),
+        offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: u64(members[field].offset),
                         variant: -1, kind: ValueKind};
         element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
         cells.extend([ReferenceCell(target), TypedCell(storage, 0, -1), offset, element, ReferenceCell(target)]);
@@ -409,7 +409,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
     code := extend(before, [DescriptorCode(ops, target, binding.index, at.slot + length(taken), node)]);
     slots := extend(taken, [DescriptorSlot(target)]);
     base := at.slot + length(slots) - 1;
-    offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(field.offset), variant: -1,
+    offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: u64(field.offset), variant: -1,
                     kind: ValueKind};
     element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     cells: Cell[] = [ReferenceCell(target), TypedCell(field.storage, 0, -1), offset, element, ReferenceCell(target)];

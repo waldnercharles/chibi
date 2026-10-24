@@ -2941,7 +2941,7 @@ TEST_CASE(overflowing_transform3d_frames_are_authoring_errors)
     REQUIRE(parts == 1);
     /* So is a Geometry3D, or a part's position, that carries the frame past
      * it. */
-    const char *beyond = "3D Geometry needs a placement within float range.";
+    const char *beyond = "3D Geometry needs a placement within number range.";
     Geometry3D_get(test_world, box)->width = 1e20f;
     parts = render_scene3d_visuals(test_world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
     REQUIRE(parts == -1 && !strcmp(error, beyond));

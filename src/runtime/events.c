@@ -4,7 +4,7 @@
 #include <string.h>
 
 static const event_field TICK_PAYLOAD[] = {
-    { .name = "dt", .type = PIN_F32, .type_name = "float", .unit = "s" },
+    { .name = "dt", .type = PIN_F32, .type_name = "number", .unit = "s" },
 };
 static const event_field INPUT_PAYLOAD[] = {
     { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },

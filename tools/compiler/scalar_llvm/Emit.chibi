@@ -450,8 +450,8 @@ pub Emit :: (rows: facts.Row[]) -> Result {
 
 // Existing compiler-host --output-bytes rejects an empty result before file
 // publication. Emit retains typed diagnostics; this entry adds no host codec.
-pub EmitBytes :: (rows: facts.Row[]) -> byte[] {
-    output: byte[] = [];
+pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+    output: u8[] = [];
     switch Emit(rows) {
         case .Rejected(rejected):
             return output;
@@ -459,7 +459,7 @@ pub EmitBytes :: (rows: facts.Row[]) -> byte[] {
             return output;
         case .Emitted(text):
             for (item in strings.Bytes(text)) {
-                output.append(byte(item));
+                output.append(u8(item));
             }
             return output;
     }

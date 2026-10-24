@@ -568,7 +568,7 @@ static bool corpus()
         NULL
     );
     single(n++, "floating literal", "package facts\nAnswer :: ()->int { return 1.5; }", NULL);
-    single(n++, "unsupported scalar result", "package facts\nAnswer :: ()->uint64 { return 42; }", NULL);
+    single(n++, "unsupported scalar result", "package facts\nAnswer :: ()->u64 { return 42; }", NULL);
     single(n++, "untyped binary expression", "package facts\nAnswer :: ()->int { return 19 + 23; }", NULL);
     single(n++, "function call", "package facts\nAnswer :: ()->int { return length(\"hello\"); }", NULL);
     single(n++, "local statement", "package facts\nAnswer :: ()->int { value:int=42; return value; }", NULL);

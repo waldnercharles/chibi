@@ -875,7 +875,7 @@ static const sample samples[] = {
       .calls = { { .function = "Eight", .arguments = "[8]", .expected = "[true]" },
                  { .function = "Huge", .arguments = "[1]", .expected = "[true]" } } },
     /* A shift has its left operand's type, and a count past that type's
-     * maximum clamps to it. Stage zero types the count from the left today. */
+     * maximum clamps to it. Exact constant shifts retain the written count. */
     { .name = "shift counts clamp",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"

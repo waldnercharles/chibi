@@ -243,3 +243,108 @@ prepared20 artifact versus source/runtime21; no new build rerun is claimed to
 resolve that dependency. No bootstrap generation, asset-disable option, PR688
 adoption, runtime pin change or release occurred. Parent owns authorization of
 the next isolated scratch generation step from a frozen source identity.
+
+## One frozen-source scratch attempt and contextual repair
+
+Parent authorized ONE isolated stage-zero scratch attempt at source commit
+2edf41875edc27935de2b505fadd6b063b526f92, tree
+4fc0bc41a905bff72556414bb79cc5b87c557651. The detached worktree is
+`/Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi-m2-scratch-2edf41875`.
+It remains clean at that identity. Its full tracked Git tree and native build
+logs remain under `.chibi/m2-attempt/` and `.chibi/logs/`; the compiler/core
+[56-file inventory](evidence/m2-integration/scratch-2edf/source-inventory.json)
+has SHA-2561ed77d26f82c18d493e1b47324079a038905d1435c4ab228032c317a750d2a7a.
+
+The exact authorized command, run in that worktree, was:
+
+```
+BUILD_HOST=/nonexistent make bootstrap-artifact JOBS=2 BOOTSTRAP_ARTIFACT=.chibi/m2-attempt/artifact
+```
+
+[Complete top-level log](evidence/m2-integration/scratch-2edf/bootstrap-attempt.log):
+configuration passed in5.0s, the native build-host target built in8.5s, then the
+Mac recipe entered its authored `third-party` step and failed in0.3s:
+`Prepared module core:strings: unknown prepared format version; rebuild prepared code`.
+Make exited2. The bootstrap test, seed generation, recovery and fixedpoint did
+NOT start. No scratch compiler artifact was produced, so there is no new schema
+or artifact hash to claim. No capacity failure occurred and PR688 was not tried.
+
+The host-only preparation is retained for the next reviewed route. The build
+host is1,768,288 bytes, SHA-256
+fc6292d0295bcb040cfaee70d86b4b1e3a5755d2dd3768f134f540fa6e0098fa, protocol9.
+An explicit subsequent `cmake --build build-release-cmake --target
+chibi-compiler-host --parallel 2` built the compiler host without generation:
+1,151,600 bytes, SHA-256
+3d4ba7a93744d5c87ff21ec1c6f0a54021ef1f58036628ace7c15fb40339de64.
+The host target JSON and full toolchain/source/artifact identities are in
+[identity-after.json](evidence/m2-integration/scratch-2edf/identity-after.json).
+Clang23.1.1 and CMake4.4.3 used existing dependency artifacts. Source/runtime
+require prepared21; the seed remains exact main prepared20 bytes. Manifest and
+runtime.json hashes are unchanged from the frozen source.
+
+The concrete recovery build dependency is now evidenced, not guessed:
+Makefile's Mac stage-zero-build constructs chibi-build-host with CMake, then
+calls toolchain-build, which loads the incompatible checked compiler before
+building test_language. Direct CMake test_language also links the required
+asset compiler consumer; sdk/asset_compiler_host.cmake needs that same compiler
+to generate it. A reviewed bootstrap/build dependency solution is required
+before another generation attempt. No SDK-disable switch or second attempt was
+introduced. All requested new-source VM/native-name/integer/array/default-asset
+execution gates remain pending; neither C object builds nor the failed attempt
+count as semantic acceptance.
+
+### Bounded contextual conversion correction
+
+While the diagnostic attempt was running, parent review found a distinct new
+bug in2edf: `Value: float : float(1e300);` selected DoubleStorage for the untyped
+operand and then accepted infinity. Active stagezero comptime conversion sets
+operand=target type (semantic_comptime.c), its literal handler uses that context,
+and semantic_expression.c rejects values beyond FLT_MAX. The authored body
+conversion likewise schedules Expect(value, conversion).
+
+The reviewed five-line Compile.chibi correction now preserves the conversion's
+target context only when ConstantType is zero and UntypedStorage recognizes a
+floating literal through grouping/unary signs. Typed double constants/calls
+retain DoubleStorage and still explicitly narrow to infinity; integer inference
+and range checks are unchanged. Number.chibi is unchanged. Exact product patch:
+`.chibi/m2-integration/contextual-float-repair.patch`, SHA-256
+`e379ce39c7f5ae92c276fbadb37d54becb2c49e56bc3fd4c776e602d1f9c8ffa` against2edf.
+[Independent review](evidence/m2-integration/contextual-repair-review.txt)
+found no source/fixture blocker and independently verified the literal positions.
+
+C fixtures distinguish rejection of float(1e300) at2:22, float((1e300)) at2:23,
+float(-(1e300)) at2:24, and the ordinary body case at2:53, all with the existing
+`Numeric literal is outside the range of float` category. The explicitly typed
+`float(double(1e300))` positive requires infinity classification. Host/fixture
+object compilation and formatting pass; these new fixtures have not executed.
+No generation has occurred from this corrected source.
+
+### Qualified decimal precision investigation
+
+The exact counterexample is
+`1.0000000596046447753906250000000000000001`.
+`test/language/numeric.c:numeric_real_rounds_once_to_target` independently expects
+binary32 bits0x3f800001. The existing direct numeric API selector was actually run
+through normal test_policy:22 passed,567 assertions,0.355s. Its existing driver
+hash isb45d1afa7b6079083ca23390e747e082a77d8b0ee188cd57be6f35c13361ed90.
+This driver predates the corrected compiler fixtures; it proves the numeric API
+oracle only, NOT corrected compiler execution. See its
+[unaltered log](evidence/m2-integration/scratch-2edf/numeric-api-existing-driver.log).
+
+The active stagezero frontend still calls strtold then casts to float; the
+exact-numeric API is a different route. The actual Mac compiler macros report
+LDBL_MANT_DIG=53, DBL_MANT_DIG=53, FLT_MANT_DIG=24. Number.chibi's pre-existing
+header explicitly documents binary64-then-binary32 to match that platform.
+Ordinary contextual authored body literals already use NumberBits/LiteralBits;
+the new typed declaration path reuses it. Source inspection therefore indicates
+inherited rounding behavior extended to the newly supported declaration form,
+not an independently established new rounding-policy defect. The exact value
+lies just above the binary32 midpoint; its binary64 representation is the exact
+midpoint, so explicit narrowing of that typed binary64 value rounds to
+0x3f800000 under the approved represented-value rule.
+
+Pending validation must compare direct contextual local and typed-constant
+forms with the active stagezero frontend on each actual platform, separately
+from both the exact numeric API and explicit double-to-float conversion. The
+numeric API's round-once oracle alone does not authorize imposing a new frontend
+literal contract. No decimal-parser change or broad numeric policy was made.

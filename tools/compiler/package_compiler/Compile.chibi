@@ -1050,6 +1050,11 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
             inner := ConstantType(forest, text, constants, aliases, package, operand);
             if (inner == 0) {
                 inner = UntypedStorage(forest, text, Unparenthesized(forest, operand));
+                if (Floating(inner)) {
+                    // Untyped floating literals take the conversion's context;
+                    // already typed operands keep their represented values.
+                    inner = converted;
+                }
             }
             // Integer-to-floating conversion uses the same ordinary FoldConstant
             // entry; floating-to-integer is not expanded by this dependency.

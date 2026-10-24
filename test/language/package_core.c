@@ -13,14 +13,16 @@
 #include "types/text.h"
 
 #include <assert.h>
+#include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Nine cases, two backends. Each preparation has two files and one import.
+/* Nine string cases, two backends. Each preparation has two files and one import.
  * Dense fixtures return at most 33 fields from 96 bytes. Each call has a fixed
  * 10000-instruction budget;
- * no filesystem, services, workers, frames or timing loops. The
+ * no services, workers, frames or timing loops. The
  * generated header embeds the actual installed-source candidate, not a second
  * wrapper copy. Expected values follow Odin's core:strings over bytes. */
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -930,9 +932,206 @@ TEST_CASE(package_core_strings_binary_overlap_collision_and_limits)
     }
     return true;
 }
+/* Inputs come from C so JSON/literal parsing cannot normalize special values.
+ * Runtime arguments also prevent constant folding from replacing division. */
+static bool prepare_math(const char *source, const char *app, behavior_backend backend, bool valid)
+{
+    source_package_input files[] = {
+        { "/math/core/math/Math.chibi", source, strlen(source) },
+        { "/math/app/Main.chibi", app, strlen(app) },
+    };
+    source_package_collection collections[] = { { "core", "/math/core" } };
+    source_package_snapshot_options options = {
+        .project_root = "/math/app",
+        .files = files,
+        .file_count = 2,
+        .collections = collections,
+        .collection_count = 1,
+    };
+    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+    REQUIRE(!source_package_snapshot_error_at(snapshot));
+    static const script_catalog catalog = { 0 };
+    static const script_lower_bindings bindings = { .generation = 1 };
+    owners[0] = authoring_packages_prepare(snapshot, &catalog, &bindings, backend, NULL);
+    REQUIRE(owners[0]);
+    if (valid && !authoring_packages_valid(owners[0])) {
+        for (int i = 0; i < authoring_packages_count(owners[0]); i++) {
+            const authoring_package *item = authoring_packages_at(owners[0], i);
+            for (int j = 0; j < item->diagnostic_count; j++) {
+                fprintf(stderr, "%s: %s\n", item->identity, item->diagnostics[j].message);
+            }
+        }
+    }
+    REQUIRE(authoring_packages_valid(owners[0]) == valid);
+    return true;
+}
+
+static bool math_float_call(const char *name, float start, float end, float value, float expected, behavior_backend backend)
+{
+    const authoring_package *app = NULL;
+    for (int i = 0; i < authoring_packages_count(owners[0]); i++) {
+        const authoring_package *item = authoring_packages_at(owners[0], i);
+        if (exported(item, name)) {
+            app = item;
+        }
+    }
+    REQUIRE(app);
+    pin_value args[] = {
+        { .type = PIN_F32, .f = start },
+        { .type = PIN_F32, .f = end },
+        { .type = PIN_F32, .f = value },
+    };
+    REQUIRE(invoke(app->module, exported(app, name), args, 3, PIN_F32, backend));
+    if (isnan(expected)) {
+        REQUIRE(isnan(output.f));
+    } else {
+        REQUIRE(output.f == expected);
+        REQUIRE(!!signbit(output.f) == !!signbit(expected));
+    }
+    return true;
+}
+
+TEST_CASE(package_core_raw_float_arithmetic)
+{
+    const char
+        *app = "package app\n"
+               "pub Raw :: (start: float, end: float, value: float) -> float { "
+               "return (value - start) / (end - start); }\n";
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_math("package math\n", app, backends[b], true));
+        REQUIRE(math_float_call("Raw", 0, 0, 0, NAN, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, 0, 1, INFINITY, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, 0, -1, -INFINITY, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, 1, -0.0f, -0.0f, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, -1, 0, -0.0f, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, 1, NAN, NAN, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, 1, INFINITY, INFINITY, backends[b]));
+        REQUIRE(math_float_call("Raw", 0, INFINITY, 1, 0, backends[b]));
+        REQUIRE(math_float_call("Raw", -FLT_MAX, FLT_MAX, 0, 0, backends[b]));
+        REQUIRE(math_float_call("Raw", -FLT_MAX, FLT_MAX, FLT_MAX, NAN, backends[b]));
+        /* A double intermediate would return a value below 1 here. */
+        REQUIRE(math_float_call("Raw", -1, 16777216, 16777215, 1, backends[b]));
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(package_core_math_inverse_lerp)
+{
+    /* Run from the source root, as with the package/compiler source checks.
+     * An SDK integration may override this to inspect its installed source. */
+    const char *path = getenv("CHIBI_CORE_MATH_SOURCE");
+    FILE *file = fopen(path ? path : "packages/core/math/Math.chibi", "rb");
+    REQUIRE(file);
+    char source[2048];
+    size_t size = fread(source, 1, sizeof source - 1, file);
+    bool read_ok = !ferror(file) && feof(file);
+    fclose(file);
+    REQUIRE(read_ok);
+    source[size] = 0;
+    const char *app = "package app\nimport math \"core:math\"\n"
+                      "pub Sample :: (start: float, end: float, value: float) "
+                      "-> float { "
+                      "return math.InverseLerp(start, end, value); }\n"
+                      "pub Literal :: (start: float, end: float, value: float) "
+                      "-> float { "
+                      "return math.InverseLerp(2.0, 6.0, 3.0); }\n";
+    struct
+    {
+        float start, end, value, expected;
+    } cases[] = {
+        { 2, 6, 2, 0 },
+        { 2, 6, 6, 1 },
+        { 2, 6, 3, 0.25f },
+        { 2, 6, 0, -0.5f },
+        { 2, 6, 8, 1.5f },
+        { 6, 2, 6, -0.0f },
+        { 6, 2, 2, 1 },
+        { 6, 2, 3, 0.75f },
+        { 6, 2, 8, -0.5f },
+        { 6, 2, 0, 1.5f },
+        { 1, 1, 1, NAN },
+        { 1, 1, 2, INFINITY },
+        { 1, 1, 0, -INFINITY },
+        { 0, 1, -0.0f, -0.0f },
+        { -0.0f, 1, 0, 0 },
+        { 0, -0.0f, 1, -INFINITY },
+        { -0.0f, 0, 1, INFINITY },
+        { NAN, 1, 0, NAN },
+        { 0, NAN, 1, NAN },
+        { 0, 1, NAN, NAN },
+        { 0, 1, INFINITY, INFINITY },
+        { 0, 1, -INFINITY, -INFINITY },
+        { INFINITY, 1, 0, NAN },
+        { -INFINITY, 1, 0, NAN },
+        { 0, INFINITY, 1, 0 },
+        { 0, -INFINITY, 1, -0.0f },
+        { 0, INFINITY, INFINITY, NAN },
+        { -FLT_MAX, FLT_MAX, 0, 0 },
+        { -FLT_MAX, FLT_MAX, FLT_MAX, NAN },
+        { 0, FLT_MAX, FLT_MAX, 1 },
+        { -1, 16777216, 16777215, 1 },
+        { 16777216, 16777218, 16777216, 0 },
+        { 0, 3, 1, 0x1.555556p-2f },
+        { 0, FLT_MIN, FLT_MIN / 2, 0.5f },
+    };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_math(source, app, backends[b], true));
+        const authoring_package *math = package(0, "core:math");
+        REQUIRE(math && math->exports->member_count == 1);
+        const script_catalog_capability *signature = script_catalog_capability_by_id(
+            math->exports->metadata,
+            exported(math, "InverseLerp")
+        );
+        REQUIRE(signature && signature->pure && !signature->effects);
+        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            REQUIRE(math_float_call(
+                "Sample",
+                cases[i].start,
+                cases[i].end,
+                cases[i].value,
+                cases[i].expected,
+                backends[b]
+            ));
+        }
+        REQUIRE(math_float_call("Literal", 0, 0, 0, 0.25f, backends[b]));
+        cleanup();
+        /* Blocker evidence, not an approved narrowing contract. The current
+         * language accepts this double and loses its low bit at the call. */
+        const char *wide = "package app\nimport math \"core:math\"\n"
+                           "pub Narrow :: (value: double) -> float { "
+                           "return math.InverseLerp(16777216.0, 16777218.0, "
+                           "value); }\n";
+        REQUIRE(prepare_math(source, wide, backends[b], true));
+        const authoring_package *app_package = package(0, "project:");
+        REQUIRE(app_package);
+        pin_value argument = { .type = PIN_F64, .d = 16777217.0 };
+        REQUIRE(
+            invoke(app_package->module, exported(app_package, "Narrow"), &argument, 1, PIN_F32, backends[b])
+        );
+        REQUIRE(output.f == 0.0f); /* Type-preserving arithmetic would yield 0.5. */
+        cleanup();
+        REQUIRE(prepare_math(
+            "package math\n"
+            "pub InverseLerp :: (start: $T, end: T, value: T) -> T { "
+            "return (value - start) / (end - start); }\n",
+            app,
+            backends[b],
+            false
+        ));
+        app_package = package(0, "project:");
+        REQUIRE(app_package && app_package->diagnostic_count > 0);
+        REQUIRE(strstr(app_package->diagnostics[0].message, "Unknown callable 'math.InverseLerp'"));
+        cleanup();
+    }
+    return true;
+}
+
 void test_language_package_core()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_core_raw_float_arithmetic);
+    RUN_TEST_CASE(package_core_math_inverse_lerp);
     RUN_TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices);
     RUN_TEST_CASE(package_core_strings_comparison_identifiers_and_basename);
     RUN_TEST_CASE(package_core_strings_search_matches_odin);

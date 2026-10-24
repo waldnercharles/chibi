@@ -98,7 +98,7 @@ typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built,
+    bool core, math, updates, boxed, game, moves, aliases, variants, built,
         same_rejection, c_string_probe, host_effects;
     sample_call calls[CALLS];
     const char *message;
@@ -182,6 +182,29 @@ static const native_definition_pack CSTRING_PACK = {
     .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
+    { .name = "core-math-inverse-lerp-float",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport math \"core:math\"\n"
+                "pub Sample :: (start: float, end: float, value: float) -> "
+                "float { "
+                "return math.InverseLerp(start, end, value); }\n",
+      .math = true,
+      .calls = { { .function = "Sample", .arguments = "[2,6,3]", .expected = "[0.25]" },
+                 { .function = "Sample", .arguments = "[6,2,3]", .expected = "[0.75]" },
+                 { .function = "Sample", .arguments = "[2,6,8]", .expected = "[1.5]" },
+                 { .function = "Sample",
+                   .arguments = "[-1,16777216,16777215]",
+                   .expected = "[1.0]" } } },
+    /* Blocker evidence only: this narrowing is not approved package policy. */
+    { .name = "core-math-double-narrowing-blocker",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport math \"core:math\"\n"
+                "pub Narrow :: (value: double) -> float { "
+                "return math.InverseLerp(16777216.0, 16777218.0, value); }\n",
+      .math = true,
+      .message = "argument differs from its parameter type",
+      .line = 3,
+      .column = 49 },
     { .name = "typed constant shifts discard bits",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -2307,8 +2330,7 @@ static bool prepare()
     );
     return true;
 }
-/* The sample's files: package facts, then lib and core:strings when it
- * uses them. */
+/* The sample's files: package facts, then its imported lib/core sources. */
 static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
 {
     int count = 0;
@@ -2331,6 +2353,20 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
             CORE_STRINGS_SOURCE,
             sizeof CORE_STRINGS_SOURCE - 1
         };
+    }
+    if (s->math) {
+        const char *path = getenv("CHIBI_CORE_MATH_SOURCE");
+        FILE *file = fopen(path ? path : "packages/core/math/Math.chibi", "rb");
+        REQUIRE(file);
+        static char source[2048];
+        size_t size = fread(source, 1, sizeof source - 1, file);
+        bool read_ok = !ferror(file) && feof(file);
+        fclose(file);
+        REQUIRE(read_ok);
+        source[size] = 0;
+        inputs[count++] = (source_package_input){ "/sdk/core/math/Math.chibi",
+                                                  source,
+                                                  size };
     }
     return count;
 }

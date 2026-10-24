@@ -513,15 +513,17 @@ void script_analyzer_mismatched_integers(analyzer *a, TSNode node, script_type x
     );
 }
 /* An untyped count beside a typed value is read like a conversion operand,
- * so any count is accepted, and a constant one becomes the value's type,
- * clamped as lowering would convert it. The constants pass reports a
- * negative count. */
-static void untyped_count(analyzer *a, TSNode node, int index, script_type value)
+ * so any count is accepted. Beside a value that is not constant, a constant
+ * count becomes the value's type, clamped as lowering would convert it; a
+ * constant shift keeps its count for exact folding. The constants pass
+ * reports a negative count. */
+static void untyped_count(analyzer *a, TSNode node, int left, int index, script_type value)
 {
     contextual_numeric(a, index, script_analyzer_conversion_operand(a, node));
     pin_value count;
     script_fold_error error;
-    if (!typed_integer(value) || !script_integer_constant(a->out, index) ||
+    if (!typed_integer(value) || script_integer_constant(a->out, left) ||
+        !script_integer_constant(a->out, index) ||
         !script_integer_fold(a->out, index, &count, &error) ||
         (behavior_scalar_signed(count.type) && behavior_scalar_bits(count) >> 63)) {
         return;
@@ -582,7 +584,7 @@ static int shift_expression(analyzer *a, TSNode node, script_expression result, 
         if (value.flags & SCRIPT_TYPE_UNTYPED) {
             contextual_numeric(a, result.right, value);
         } else {
-            untyped_count(a, count, result.right, value);
+            untyped_count(a, count, result.left, result.right, value);
         }
     }
     result.effects = script_analyzer_expr_effects(a, result.left) |

@@ -952,6 +952,8 @@ TEST_CASE(language_integer_constants_are_exact_and_must_fit)
     REQUIRE(analysis->valid && folded(PIN_I8, 64));
     parse("L :: library { C: int : (1 << 4000) >> 3990; }");
     REQUIRE(analysis->valid && folded(PIN_I32, 1024));
+    parse("L :: library { F :: () -> int8 { return (int8(1) << 200) >> 199; } }");
+    REQUIRE(analysis->valid && folded(PIN_I8, 2));
     parse("L :: library { F :: () -> uint64 { return ~0; } }");
     REQUIRE(analysis->valid && folded(PIN_U64, UINT64_MAX));
     parse("L :: library { F :: () -> byte { return ~byte(5); } }");
@@ -1016,6 +1018,9 @@ TEST_CASE(language_integer_constants_are_exact_and_must_fit)
     ));
     REQUIRE(
         rejects("L :: library { F :: (x: int) -> int { return x << (2 - 3); } }", "Shift count must not be negative", 52)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: () -> int8 { return int8(1) << 5000; } }", "Constant shift count is too large", 52)
     );
     REQUIRE(
         rejects("L :: library { Grow :: (b: byte) -> int { a: int = 1; a += b; return a; } }", "Mismatched integer types int and byte; convert one operand", 55)

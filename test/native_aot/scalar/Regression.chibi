@@ -20,50 +20,49 @@ pub Tests :: () -> int {
 }
 
 // Host invocation selects entries in its root package only. Keep this test
-// forwarding entry authored and preserve the original input record unchanged.
-pub EmitBytes :: (value: facts.NullaryPureInt32Return) -> byte[] {
-    return scalar.EmitBytes(value);
+// forwarding entry authored and preserve the original input rows unchanged.
+pub EmitBytes :: (rows: facts.Row[]) -> byte[] {
+    return scalar.EmitBytes(rows);
 }
 
-Same :: (left: facts.NullaryPureInt32Return, right: facts.NullaryPureInt32Return) -> bool {
-    return left.accepted == right.accepted && left.value == right.value &&
-           left.name == right.name && left.path == right.path && left.key == right.key && left.text == right.text &&
-           left.declaration_start == right.declaration_start && left.declaration_end == right.declaration_end &&
-           left.declaration_line == right.declaration_line && left.declaration_column == right.declaration_column &&
-           left.body_start == right.body_start && left.body_end == right.body_end &&
-           left.body_line == right.body_line && left.body_column == right.body_column &&
-           left.return_start == right.return_start && left.return_end == right.return_end &&
-           left.return_line == right.return_line && left.return_column == right.return_column &&
-           left.expression_start == right.expression_start && left.expression_end == right.expression_end &&
-           left.expression_line == right.expression_line && left.expression_column == right.expression_column &&
-           left.diagnostic_start == right.diagnostic_start && left.diagnostic_end == right.diagnostic_end &&
-           left.diagnostic_line == right.diagnostic_line && left.diagnostic_column == right.diagnostic_column &&
-           left.diagnostic_message == right.diagnostic_message;
+Same :: (left: facts.Row[], right: facts.Row[]) -> bool {
+    if (length(left) != length(right)) {
+        return false;
+    }
+    for (index in 0..<length(left)) {
+        a := left[index];
+        b := right[index];
+        if (a.kind != b.kind || a.type != b.type || a.value != b.value || a.count != b.count || a.name != b.name ||
+            a.text != b.text || a.start != b.start || a.end != b.end || a.line != b.line || a.column != b.column) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // Negative results are failures. Zero means a checked rejection with no bytes;
 // one means a checked accepted result. Neither is inferred by the transport.
-pub Check :: (value: facts.NullaryPureInt32Return) -> int {
-    checked := cases.Check(value);
+pub Check :: (rows: facts.Row[]) -> int {
+    checked := cases.Check(rows);
     if (checked != 1) {
         return checked - 100;
     }
-    if (scalar.Validate(value) != "") {
+    if (scalar.Validate(rows) != "") {
         return -1;
     }
-    bytes := scalar.EmitBytes(value);
-    switch scalar.Emit(value) {
+    bytes := scalar.EmitBytes(rows);
+    accepted := rows[1].kind == facts.DocumentRow;
+    switch scalar.Emit(rows) {
         case .Invalid(message):
             return -2;
         case .Rejected(projection):
-            if (value.accepted || !Same(value, projection) || length(bytes) != 0) {
+            if (accepted || !Same(rows, projection) || length(bytes) != 0) {
                 return -3;
             }
             return 0;
         case .Emitted(text):
-            if (!value.accepted || length(bytes) == 0 ||
-                !strings.Contains(text, "define i32 @chibi_scalar()") ||
-                !strings.Contains(text, format_text("store i32 {:d}, ptr %s0", value.value))) {
+            if (!accepted || length(bytes) == 0 || !strings.Contains(text, "define i32 @chibi_scalar()") ||
+                !Calls(rows, text)) {
                 return -4;
             }
             expected := strings.Bytes(text);
@@ -77,4 +76,36 @@ pub Check :: (value: facts.NullaryPureInt32Return) -> int {
             }
             return 1;
     }
+}
+
+// Every recorded call is an emitted LLVM call of its callee, and every other
+// function is defined internally, so the module keeps the source's calls.
+Calls :: (rows: facts.Row[], text: string) -> bool {
+    functions: int = 0;
+    for (row in rows) {
+        if (row.kind == facts.FunctionRow) {
+            if (functions > 0 && !strings.Contains(text, format_text("define internal {} @chibi_scalar.{}(",
+                                                                     Type(row.type), functions))) {
+                return false;
+            }
+            functions += 1;
+        }
+        if (row.kind == facts.CallRow && !strings.Contains(text, format_text("call {} @{}(", Type(row.type),
+                                                                             Symbol(row.value)))) {
+            return false;
+        }
+    }
+    return true;
+}
+Symbol :: (function: int) -> string {
+    if (function == 0) {
+        return "chibi_scalar";
+    }
+    return format_text("chibi_scalar.{}", function);
+}
+Type :: (type: int) -> string {
+    if (type == facts.BoolType) {
+        return "i1";
+    }
+    return "i32";
 }

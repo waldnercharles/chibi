@@ -1,172 +1,123 @@
-# Opt-in owned scalar projection → LLVM object
+# Owned scalar modules → LLVM objects
 
-This is a bounded consumer checkpoint, not the default compiler or a general
-semantic IR. The consumer imports only `scalar_facts`, the reviewed pure LLVM
-emitter, `native_abi`, and core strings. It does not import `package_compiler`,
-private `Code`/`Slot` records, the historical `Native` accessor, or the diagnostic
-integer-packet adapters. The existing authored `Driver.Object` is unchanged.
+This is a bounded, opt-in path from Chibi source to a native object. It is not
+the default compiler, a general semantic IR or a public ABI. The authored
+compiler's `CollectScalar` entry produces an owned `scalar_facts.Row[]`; the
+separate `scalar_llvm` consumer validates those rows and lowers them to the
+`llvm_native` emitter; the unchanged authored `Driver.Object` turns the IR into
+an object with trusted LLVM tools.
 
-## Contract and entry points
+## What is supported
 
-`scalar_facts.NullaryPureInt32Return` is the exact producer-owned leaf from
-`e540fd698f0cac3a25ba011242efc6743ad2ef3f`, source SHA-256
-`d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24`.
-The accepted record certifies one ordinary nullary `int` function with known
-zero effects whose **entire body** is one direct integer-literal return.
-Unsupported signatures, managed values, calls, assignments, additional
-statements and control flow are not newly supported here.
+One source document holding one package, no imports, and only ordinary
+function declarations without attributes: at most 32 functions. The first
+function is the module's entry and must be `() -> int`. Every function:
 
-`tools/compiler/scalar_llvm/Emit.chibi` provides:
+- takes at most eight plain `int` or `bool` parameters (no `ref`, defaults or
+  managed, nominal or container types) and returns one plain `int` or `bool`;
+- has a body of exactly one `return EXPR;`;
+- returns an expression that is an integer literal within `int`, `true` or
+  `false`, one of its parameters, or a direct call `F(a, b, ...)` of a function
+  of the same source with exactly its arity and parameter types, whose
+  arguments are again such expressions: at most 64 operands per function.
 
-- `Validate(projection) -> string`: empty means the bounded representation is
-  valid, not that its provenance is authenticated.
-- `Emit(projection) -> Result`: `Rejected` preserves the producer's complete
-  canonical rejected record, `Invalid` explains a malformed/unsupported
-  representation, and `Emitted` contains LLVM text.
-- `EmitBytes(projection) -> byte[]`: the same emission as raw counted bytes;
-  rejected/invalid records return an empty array, without deliberate traps.
+Calls form a bounded acyclic set, so recursion (direct or mutual) is rejected.
+Calls may repeat and nest. Arguments evaluate left to right, each operand
+after the operands it consumes, and the emitted IR keeps that order.
 
-The consumer bounds source text to 16,384 bytes, checks canonical accepted and
-rejected fields, half-open ranges, nonempty nested accepted body ranges, and
-LF-based one-based byte positions. It does **not** parse the source again or
-prove that a caller-fabricated accepted value corresponds to that text. The
-normal pipeline must bind the actual trusted producer artifact, source bytes,
-and unchanged result envelope. The tests deliberately show that a coherent
-fabricated value is not an authentication mechanism.
+```chibi
+package scalar
+Main :: () -> int { return Third(1, Second(2, 3), Third(4, 5, 6)); }
+Second :: (a: int, b: int) -> int { return b; }
+Third :: (a: int, b: int, c: int) -> int { return c; }
+```
 
-The fixed backend fixture policy is `chibi_scalar() -> i32`, with one existing
-entry `CHECK` and positive budget 1. Neither symbol nor budget is inferred from
-the source function name; this adds no public ABI, general runtime budget,
-arithmetic or control-flow semantics. The admitted literal is passed directly
-to the existing emitter's typed constant/return instructions.
+`Main` lowers to `chibi_scalar() -> i32`, and `Second` and `Third` to internal
+`chibi_scalar.1`/`chibi_scalar.2`. The O0 object keeps the three calls; at O2
+LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
-## Phase and tool boundary
+Everything else is rejected with a located diagnostic and no partial result:
+arithmetic, negation, parentheses, comparisons, control flow, locals and other
+statements, conversions such as `int(x)`, function values, qualified or
+imported calls, native or foreign calls (`print`), named arguments, strings and
+other managed values, attributes, structs and constants. Sources are at most
+16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds the 79-source corpus
+with each accepted value and operand trace and each rejection's exact message
+and source excerpt, including both sides of every bound.
 
-The existing compiler-host serializes the producer result into an owned JSON
-output before producer-process exit. Its exact output bytes are then supplied
-as the consumer's argument envelope. No host/Python semantic projection or
-source-to-IR field mapping is used. The separately compiled consumer contains
-only the leaf and backend dependencies. This demonstrates a process-separated
-owned handoff; it does **not** establish same-process retention after frontend
-release or measure preparation high-water storage.
+## Shared decisions
 
-Invoke `project:scalar_llvm:1:EmitBytes:callable` through the existing
-compiler-host `--output-bytes FILE` option to obtain raw LLVM IR, not a JSON
-string extracted by a harness. The current CLI rejects an empty raw result
-before publication (`the compiler entry returned no bytes`); failed emission
-leaves an absent output absent and preserves an existing output. Use `Emit`
-separately when typed diagnostics are required. These are existing host
-semantics, not a new transport or host wrapper.
+`CollectScalar` adds no second frontend. It runs the ordinary snapshot,
+package graph and `Declare`, so duplicate declarations, unknown types and
+signature errors are the compiler's own. Parameters bind through `Prologue` and
+`Lookup`, literals through `ReadIntegerLiteral`, and callees through
+`CalledFunction`, the resolution the ordinary call step makes. Each body must
+pass `EmitBody` first, which types every name, argument and result, with no
+effects, host calls or roots, and no cells but its calls' argument and result
+cells. The checks in `Scalar.chibi` only reject forms the subset cannot
+express; the backend never reparses source or reads VM instructions, and no
+private `Code`/`Slot` identity crosses the boundary.
 
-Feed that file to the existing authored driver:
+## The owned handoff
+
+The compiler host passes arrays of flat records, so a module is one array of
+rows: its source, then either one rejection or its document key and each
+function's signature, parameters, return and operands in evaluation order
+(`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
+rows own their strings and, once snapshotted, their record shape.
+
+- Across processes, `Run.ps1` passes the producer's exact stdout file as the
+  consumer's input.
+- In one process, `tool language-package-compiler-chibi-scalar` produces the
+  rows on both VMs, frees the producer's packages and inputs, reads the
+  retained rows, then prepares the consumer and emits them as IR with the call.
+
+`scalar_llvm.Validate` checks the representation: bounds before counts, row
+layout, canonical fields, positions, typed operand stacks, callee signatures
+and acyclicity, through the same `scalar_facts.Cycle` the producer diagnoses
+with. A rejection keeps its whole source; an accepted source must be within
+the bound. It does not prove that fabricated rows match their source;
+the caller binds the trusted producer artifact, source bytes and envelope.
+`Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
+`EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
+under budget 1; neither the export name nor the budget comes from source.
+
+## Native objects
+
+Feed `EmitBytes` output, written with the compiler host's `--output-bytes`, to
+the unchanged driver:
 
 ```text
 chibi-build-host --root REPO --source tools/native_aot/Driver.chibi \
   --core REPO/packages/core --compiler REPO/tools/compiler \
   --compiler-core REPO/packages/core --entry Object --timeout-ms 120000 -- \
-  ABS_INPUT_LL ABS_FRESH_OUTPUT_DIRECTORY ABS_OPT ABS_LLC 0
+  ABS_INPUT_LL ABS_FRESH_OUTPUT_DIRECTORY ABS_OPT ABS_LLC 0|2
 ```
 
-Mode `2` instead runs LLVM's actual `verify,default<O2>,verify` pass pipeline.
-The driver publishes its existing four-file object receipt without inventing
-`main`, a source wrapper, or a linker step. See [driver contract](../driver/README.md)
-for trusted-tool, target/layout, no-replace and interruption limits.
+See the [driver contract](../driver/README.md) for its trusted-tool,
+target/layout and publication rules. The entry's int32 result is the only
+native observation: `bool` parameters and results are internal, and any `bool`
+probe is a validation-only adapter, not an ABI.
 
-## Focused evidence
-
-The consumer and authored `Tests()` compile identically with bytecode and
-SLJIT compilers. `Tests()` returns 0 on both, with 7,305 selected calls and no
-fallback/overflow. The independently retained pure emitter/ABI baseline is
-`fd64d8349a8bf6ad89308100f315be9524897452`; this checkpoint does not change it.
-
-- Consumer artifact SHA-256:
-  `eb415eb0647079e5863adcdae4a55f965348c755284a6782d61b327ddcef4e93`.
-- Authored test artifact SHA-256:
-  `4bb419f22a79861281ae24eb7bdba694b0522f59ed645d280bb9cf762e67b120`.
-- Actual producer artifact SHA-256:
-  `6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0`;
-  producer source checkpoint
-  `a4df25ea53c47f2740bce368607957b98fd81c38`. Its full source mapping is in the
-  [immutable producer checkpoint](https://github.com/waldnercharles/chibi/blob/a4df25ea53c47f2740bce368607957b98fd81c38/docs/handoffs/2026-10-23-owned-scalar/checkpoint.json);
-  producer semantic review/integration remains separately owned.
-
-The exact producer's 43 source cases were replayed with both producer VMs,
-then each unchanged output envelope was consumed on both VMs (172 crossings).
-Five sources were accepted (42, zero, `INT_MAX`, hexadecimal, and comments);
-38 were rejected. All rejected records retained every source/diagnostic field,
-returned no raw IR, and preserved prior output bytes. All four successful
-crossings per source emitted identical IR. Real unchanged `Driver.Object`
-O0/O2 runs produced ten objects, with no undefined symbols; validation-only
-native calls returned the expected full int32 values. This is actual producer
-and consumer execution, not fabricated instruction-table source coverage.
-
-The `42` source is exactly `package scalar\nMain :: () -> int { return 42; }`.
-Its source SHA-256 is
-`08cd7eefd36c9b36cd7856e82a7039832dbd27e1ff931d0e08bb198037dad78b`,
-unchanged producer envelope SHA-256
-`d3661d6c2b02ee20029bdbc3cefa05003f8018c406e38055137f293b79400b76`,
-and raw IR SHA-256
-`bd60479b447badd2a29144b89a0b00820555557697cfacd11270772485ed1f93`.
-
-The independent coordinator rebuilt the exact consumer and tests on both VMs,
-reproduced all 172 crossings and ten real O0/O2 object/native results, and
-passed nine additional malformed-representation controls per VM. Those controls
-returned typed `Invalid` and left absent raw outputs absent; the genuine
-rejected-source runs also preserved existing outputs.
-Independent report SHA-256:
-`62bfd0169d12b22a22a27f74223608c19fb1545463ffe0caad79c068e849334b`.
-This closes the bounded consumer review gate, not production integration.
-
-For focused compilation through the existing `CompileClosure` entry, map
-`tools/compiler/{scalar_llvm,scalar_facts,llvm_native,native_abi}` into those
-same project-relative package directories and include core strings. Select
-`scalar_llvm/Emit.chibi` as the first/root source. The test closure additionally
-maps this directory's `Tests.chibi` to `scalar_llvm_tests/Tests.chibi` and selects
-that as root; invoke `project:scalar_llvm_tests:1:Tests:callable`. No unrelated
-compiler prototype packages or historical native adapters are required.
-
-The official Linux SDK formatter passes the new Chibi files. Normal repository
-C test dispatchers, full platform builds and CI were not run for this opt-in
-checkpoint.
-The current C compiler/build hosts and validation harness remain migration
-debt: semantic lowering and LLVM orchestration are authored Chibi, but this
-checkpoint does not replace the current runtime. Validation-only shared-library
-linking/native invocation is not production Chibi interop; no first-party C
-source, C transpilation or C shim is linked into the emitted object.
+On Linux x86-64 with Ubuntu LLVM 18.1.3 `opt`/`llc` (whose canonical data
+layout is the one the driver admits), all 21 accepted corpus sources built O0
+and O2 objects. No object has an undefined symbol. Each O0 module keeps every
+recorded call (up to 63 in `most_operands` and 31 in `most_functions`), O2
+inlines them all, and a validation-only harness that links each object as a
+shared library got every case's int32 value from `chibi_scalar()`. A
+validation-only IR adapter appended to copies of `bool_literals` and
+`bool_passthrough` observed `true`, `false` and both `Flip` results at O0 and
+O2. This harness is not part of the authored path.
 
 ## Portable recovery regression
 
-The local integration deliberately refreshes the checked-in compiler artifact
-and bootstrap manifest through the existing host's supported `--seed` command,
-with revision `a4df25ea53c47f2740bce368607957b98fd81c38` and compiler SHA-256
-`6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0`.
-It does not change the target ABI, runtime pin, source/package guards or default
-backend selection. The additional scalar entry remains explicitly invoked.
-
-After the unchanged two-stage self-build, `Run.ps1` binds the current pinned
-runtime, recovered stage2, compiler source/package inventories and regression
-sources. It compiles `Regression.chibi` on both VMs and requires identical
-prepared bytes. Authored `Cases` supply the 43 sources and semantic assertions;
-`Regression.Check` checks the complete consumer rejection or emitted result.
-The PowerShell runner performs only transport/identity/execution checks: it
-preserves uint64 target identities with `JsonNode`, checks exact requested
-source identity, and forwards the original producer stdout file unchanged.
-
-Every source traverses all four producer/consumer VM combinations. Successful
-calls require selected-backend entries with no reported fallback or overflow.
-Expected empty raw-output failures have no counter line in the existing host;
-their matching successful authored check executes `EmitBytes` on the selected
-backend. Those raw failures must report exactly the empty-result diagnostic,
-leave absent output absent and preserve a prior output in each VM crossing.
-The runner owns each child and its cleanup, with a 120-second maximum per call
-inside a 180-second overall budget; workflow permissions, matrix and job
-timeouts are unchanged.
-
-The comparison step checks portable regression artifacts, ordered source
-identities and emitted LLVM IR across the three configured platforms. It does
-not compare runtime binaries or native objects across platforms. This wiring
-does not itself claim three-OS execution: local Linux validation and independent
-review must be recorded for the exact candidate, and real matrix CI remains a
-separate gate. Native `Driver.Object` execution and the separate test-only
-same-process lifetime regression are not silently folded into this portable
-workflow or represented as phase-memory measurements.
+`Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
+binds the pinned runtime, recovered stage2, compiler and regression source
+inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
+runs the authored `Tests` (28 malformed-row fixtures plus emission checks).
+Every corpus source then crosses all four producer/consumer VM combinations:
+`Regression.Check` asserts the case and the complete rejection or emitted IR,
+which must define every function and call each recorded callee. The runner
+only transports, checks identity and requires selected-backend counters with
+no fallback. Rejected sources must publish no raw IR and preserve a prior
+output. Its 180-second budget covers at most 96 sources.

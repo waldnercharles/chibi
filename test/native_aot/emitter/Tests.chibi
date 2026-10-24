@@ -8,9 +8,18 @@ import strings "core:strings"
 Code :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: int) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
 }
+// One function's tables, as the module's only function.
+Single :: (parameters: int[], result: int, slots: int[], locals: int[], code: native.Instruction[], main: bool,
+           budget: int) -> native.Result {
+    shape: native.Function = {result: result, first_parameter: 0, parameters: length(parameters), first_slot: 0,
+                              slots: length(slots), first_local: 0, locals: length(locals), first_code: 0,
+                              code: length(code), first_argument: 0, arguments: 0};
+    empty: int[] = [];
+    return native.Emit(abi.LinuxX64(), [shape], parameters, slots, locals, code, empty, main, budget);
+}
 Accepted :: (slots: int[], locals: int[], code: native.Instruction[]) -> bool {
     parameters: int[] = [];
-    switch native.Emit(abi.LinuxX64(), parameters, 6, slots, locals, code, true, 64) {
+    switch Single(parameters, 6, slots, locals, code, true, 64) {
         case .Rejected(instruction, message):
             return false;
         case .Emitted(text):
@@ -91,7 +100,7 @@ CheckedArithmeticKeepsFailureEdges :: () -> bool {
         code := [Code(native.Constant, 6, 0, 0, 0, 0, -2147483648), Code(native.Constant, 6, 1, 0, 0, 0, -1),
                  Code(op, 6, 2, 0, 1, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
         // The arithmetic result is deliberately unused. Failure is an effect.
-        switch native.Emit(abi.LinuxX64(), empty, 6, [6, 6, 6], empty, code, true, 64) {
+        switch Single(empty, 6, [6, 6, 6], empty, code, true, 64) {
             case .Rejected(instruction, message):
                 return false;
             case .Emitted(text):
@@ -122,7 +131,7 @@ BudgetIsExplicit :: () -> bool {
     code := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
     budgets: int[] = [0, -1];
     for (budget in budgets) {
-        switch native.Emit(abi.LinuxX64(), empty, 6, empty, empty, code, true, budget) {
+        switch Single(empty, 6, empty, empty, code, true, budget) {
             case .Rejected(instruction, message):
                 if (message == "") {
                     return false;
@@ -131,7 +140,7 @@ BudgetIsExplicit :: () -> bool {
                 return false;
         }
     }
-    switch native.Emit(abi.LinuxX64(), empty, 6, empty, empty, code, true, 1) {
+    switch Single(empty, 6, empty, empty, code, true, 1) {
         case .Rejected(instruction, message):
             return false;
         case .Emitted(text):

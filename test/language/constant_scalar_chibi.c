@@ -75,15 +75,15 @@ static const scalar_case cases[] = {
     { "double-nan-payload", LITERAL, 0, F64(NAN), I32(0), PIN_F64, PIN_F64 },
     { "owned-name", LITERAL, 0, NAME("caf\xc3\xa9"), I32(0), PIN_NAME, PIN_NAME },
     { "null-text", LITERAL, 0, TEXT(NULL), I32(0), PIN_STR, PIN_STR },
-    { "i32-add-wrap", BINARY, SCRIPT_OP_ADD, I32(INT32_MAX), I32(1), PIN_I32, PIN_I32 },
-    { "i32-sub-wrap", BINARY, SCRIPT_OP_SUB, I32(INT32_MIN), I32(1), PIN_I32, PIN_I32 },
-    { "i32-mul-wrap", BINARY, SCRIPT_OP_MUL, I32(INT32_MAX), I32(2), PIN_I32, PIN_I32 },
+    { "i32-add-overflow", BINARY, SCRIPT_OP_ADD, I32(INT32_MAX), I32(1), PIN_I32, PIN_I32 },
+    { "i32-sub-overflow", BINARY, SCRIPT_OP_SUB, I32(INT32_MIN), I32(1), PIN_I32, PIN_I32 },
+    { "i32-mul-overflow", BINARY, SCRIPT_OP_MUL, I32(INT32_MAX), I32(2), PIN_I32, PIN_I32 },
     { "i32-neg-min", UNARY, SCRIPT_OP_NEG, I32(INT32_MIN), I32(0), PIN_I32, PIN_I32 },
-    { "i64-add-wrap", BINARY, SCRIPT_OP_ADD, I64(INT64_MAX), I64(1), PIN_I64, PIN_I64 },
-    { "u32-add-wrap", BINARY, SCRIPT_OP_ADD, U32(UINT32_MAX), U32(1), PIN_U32, PIN_U32 },
-    { "u64-add-wrap", BINARY, SCRIPT_OP_ADD, U64(UINT64_MAX), U64(1), PIN_U64, PIN_U64 },
-    { "u64-mul-wrap", BINARY, SCRIPT_OP_MUL, U64(UINT64_MAX), U64(2), PIN_U64, PIN_U64 },
-    { "u64-sub-unsupported", BINARY, SCRIPT_OP_SUB, U64(2), U64(1), PIN_U64, PIN_U64 },
+    { "i64-add-overflow", BINARY, SCRIPT_OP_ADD, I64(INT64_MAX), I64(1), PIN_I64, PIN_I64 },
+    { "u32-add-overflow", BINARY, SCRIPT_OP_ADD, U32(UINT32_MAX), U32(1), PIN_U32, PIN_U32 },
+    { "u64-add-overflow", BINARY, SCRIPT_OP_ADD, U64(UINT64_MAX), U64(1), PIN_U64, PIN_U64 },
+    { "u64-mul-overflow", BINARY, SCRIPT_OP_MUL, U64(UINT64_MAX), U64(2), PIN_U64, PIN_U64 },
+    { "u64-sub", BINARY, SCRIPT_OP_SUB, U64(2), U64(1), PIN_U64, PIN_U64 },
     { "i32-div-zero", BINARY, SCRIPT_OP_DIV, I32(1), I32(0), PIN_I32, PIN_I32 },
     { "i32-div-min", BINARY, SCRIPT_OP_DIV, I32(INT32_MIN), I32(-1), PIN_I32, PIN_I32 },
     { "i64-div-zero", BINARY, SCRIPT_OP_DIV, I64(1), I64(0), PIN_I64, PIN_I64 },
@@ -98,42 +98,42 @@ static const scalar_case cases[] = {
     { "name-text-different", BINARY, SCRIPT_OP_NE, NAME("same"), TEXT("other"), PIN_BOOL, PIN_BOOL },
     { "null-empty-equal", BINARY, SCRIPT_OP_EQ, TEXT(NULL), TEXT(""), PIN_BOOL, PIN_BOOL },
     { "nan-not-equal", BINARY, SCRIPT_OP_EQ, F64(NAN), F64(NAN), PIN_BOOL, PIN_BOOL },
-    { "invalid-shift-negative", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-4), I32(-1), PIN_I32, PIN_I32 },
-    { "invalid-shift-width-int", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I32 },
-    { "invalid-shift-width-int8",
+    { "shift-negative-count", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-4), I32(-1), PIN_I32, PIN_I32 },
+    { "shift-past-width-int", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I32 },
+    { "shift-past-width-int8",
       BINARY,
       SCRIPT_OP_SHIFT_LEFT,
       { .type = PIN_I8, .i8 = 1 },
       { .type = PIN_I8, .i8 = 8 },
       PIN_I8,
       PIN_I8 },
-    { "invalid-shift-width-byte",
+    { "shift-past-width-byte",
       BINARY,
       SCRIPT_OP_SHIFT_RIGHT,
       { .type = PIN_U8, .u8 = 1 },
       { .type = PIN_U8, .u8 = 8 },
       PIN_U8,
       PIN_U8 },
-    { "invalid-shift-width-int16",
+    { "shift-past-width-int16",
       BINARY,
       SCRIPT_OP_SHIFT_RIGHT,
       { .type = PIN_I16, .i16 = -1 },
       { .type = PIN_I16, .i16 = 16 },
       PIN_I16,
       PIN_I16 },
-    { "invalid-shift-width-uint16",
+    { "shift-past-width-uint16",
       BINARY,
       SCRIPT_OP_SHIFT_LEFT,
       { .type = PIN_U16, .u16 = 1 },
       { .type = PIN_U16, .u16 = 16 },
       PIN_U16,
       PIN_U16 },
-    { "invalid-shift-width-uint", BINARY, SCRIPT_OP_SHIFT_RIGHT, U32(1), U32(32), PIN_U32, PIN_U32 },
-    { "invalid-shift-width-int64", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(64), PIN_I64, PIN_I64 },
-    { "invalid-shift-width-uint64", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(1), U64(64), PIN_U64, PIN_U64 },
-    { "invalid-shift-huge-uint64", BINARY, SCRIPT_OP_SHIFT_LEFT, U64(1), U64(UINT64_MAX), PIN_U64, PIN_U64 },
-    { "invalid-shift-before-result-widening", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I64 },
-    { "byte-shift-discards-before-result-widening",
+    { "shift-past-width-uint", BINARY, SCRIPT_OP_SHIFT_RIGHT, U32(1), U32(32), PIN_U32, PIN_U32 },
+    { "shift-past-width-int64", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(64), PIN_I64, PIN_I64 },
+    { "shift-past-width-uint64", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(1), U64(64), PIN_U64, PIN_U64 },
+    { "shift-count-too-large", BINARY, SCRIPT_OP_SHIFT_LEFT, U64(1), U64(UINT64_MAX), PIN_U64, PIN_U64 },
+    { "shift-unfit-before-result-widening", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(1), I32(32), PIN_I32, PIN_I64 },
+    { "byte-shift-unfit-before-result-widening",
       BINARY,
       SCRIPT_OP_SHIFT_LEFT,
       { .type = PIN_U8, .u8 = 128 },
@@ -141,7 +141,7 @@ static const scalar_case cases[] = {
       PIN_U8,
       PIN_I64 },
     { "signed-right-shift-rounds-down", BINARY, SCRIPT_OP_SHIFT_RIGHT, I32(-3), I32(1), PIN_I32, PIN_I32 },
-    { "left-shift-enters-sign-bit", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(63), PIN_I64, PIN_I64 },
+    { "left-shift-past-int64", BINARY, SCRIPT_OP_SHIFT_LEFT, I64(1), I64(63), PIN_I64, PIN_I64 },
     { "zero-shift-preserves-value", BINARY, SCRIPT_OP_SHIFT_LEFT, I32(-3), I32(0), PIN_I32, PIN_I32 },
     { "unsigned-right-shift", BINARY, SCRIPT_OP_SHIFT_RIGHT, U64(UINT64_MAX), U64(63), PIN_U64, PIN_U64 },
     { "byte-not", UNARY, SCRIPT_OP_BIT_NOT, { .type = PIN_U8, .u8 = UINT8_MAX }, I32(0), PIN_U8, PIN_U8 },
@@ -520,19 +520,49 @@ static bool compare(int index)
     const char *error = !script_constant_prove(&analysis, proofs, 1, 0, &steps, true)
                           ? "requires bounded compile-time values and operators"
                           : script_scalar_evaluate(&scalar_expected, &analysis, 0, item->expected, &expected);
-    if (!strncmp(item->name, "invalid-shift-", strlen("invalid-shift-"))) {
-        REQUIRE(error && !strcmp(error, "Integer shift count is outside the type width"));
+    /* Integer operators compute exactly: only the result must fit. */
+    static const char *const unfit[] = {
+        "i32-add-overflow",
+        "i32-neg-min",
+        "i32-div-min",
+        "u64-mul-overflow",
+        "shift-unfit-before-result-widening",
+        "byte-shift-unfit-before-result-widening",
+        "left-shift-past-int64"
+    };
+    for (size_t i = 0; i < sizeof unfit / sizeof *unfit; i++) {
+        if (!strcmp(item->name, unfit[i])) {
+            REQUIRE(error && !strcmp(error, "integer constant does not fit its type"));
+        }
     }
-    if (!strcmp(item->name, "byte-shift-discards-before-result-widening")) {
-        REQUIRE(!error && expected.type == PIN_I64 && expected.i64 == 0);
+    if (!strcmp(item->name, "i32-div-zero") ||
+        !strcmp(item->name, "shift-negative-count")) {
+        REQUIRE(
+            error && !strcmp(error, "integer constant divides by zero, shifts by a negative count or negates an unsigned value")
+        );
+    }
+    if (!strcmp(item->name, "shift-count-too-large")) {
+        REQUIRE(error && !strcmp(error, "integer constant shift count is too large"));
+    }
+    if (!strncmp(item->name, "shift-past-width-", strlen("shift-past-width-"))) {
+        bool negative = behavior_scalar_signed(item->left.type) &&
+                        (int64_t)behavior_scalar_bits(item->left) < 0;
+        REQUIRE(
+            item->op == SCRIPT_OP_SHIFT_LEFT
+                ? error && !strcmp(error, "integer constant does not fit its type")
+                : !error && behavior_scalar_bits(expected) == (negative ? UINT64_MAX : 0)
+        );
+    }
+    if (!strcmp(item->name, "i32-mod-min") || !strcmp(item->name, "u64-sub")) {
+        REQUIRE(!error && behavior_scalar_bits(expected) == (item->op == SCRIPT_OP_SUB));
+    }
+    if (!strcmp(item->name, "int64-to-byte-clamp")) {
+        REQUIRE(!error && expected.type == PIN_U8 && expected.u8 == UINT8_MAX);
     }
     if (!strcmp(item->name, "signed-right-shift-rounds-down") ||
         !strcmp(item->name, "zero-shift-preserves-value")) {
         REQUIRE(!error && expected.type == PIN_I32);
         REQUIRE(expected.i == (!strcmp(item->name, "zero-shift-preserves-value") ? -3 : -2));
-    }
-    if (!strcmp(item->name, "left-shift-enters-sign-bit")) {
-        REQUIRE(!error && expected.type == PIN_I64 && expected.i64 == INT64_MIN);
     }
     if (!strcmp(item->name, "widened-add-result") ||
         !strcmp(item->name, "widened-neg-result")) {

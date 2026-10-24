@@ -1,0 +1,9 @@
+# Atomic M2 stage-zero composition
+
+Development source checkpoint on clean frozen8d5 (`8d5ff52831e12f624a10c178ef9d9aef072881ee`). The prior Mac/Linux recovery and Mac sanitizer/mutation receipts remain bound to8d5, not this changed candidate. No generated seed, runtime pin, release or PR688 change.
+
+Compose PR691 feature17b7c4d0 plus independently reviewed repair1a51623ad and evidence69fb08cf. Current PR691 head738441a4 contributes only its two additional semantic assertions; its competing early shift-count replacement is not imported. The repair retains exact written counts, including negative diagnostics, through ordinary constant folding.
+
+Three textual conflicts were resolved deliberately: main.c keeps every asset/native-name selector and adds shift-count dispatch; test_policy.py keeps asset/compiler-bootstrap groups and adds shift-count selector/group; Graph Targets removes the direct numeric test object now owned by chibi_language and retains existing compiler_host archive ownership (no direct bootstrap/SHA resurrection). Auto-merged CMake/packagecompiler/packed/semantic changes preserve float admission/literal fixtures, native binding/trace fixtures, array update-order checks and main literal/lazy-arm oracles. Removed ahead exclusions now require the independent stage-zero comparisons to pass.
+
+The separate bounded-compiler `int64(digit)` source adjustment will be recorded independently. Required next gates: exact composed-source review; shift9, semantic, numeric22, integer aggregate; previously failing ungrouped selectors; authored equivalents of all shift oracles; subsequent source-semantic corrections if real discrepancies appear. No exemptions or expected-result rewrites are authorized by this checkpoint. No new production bootstrap generation before the reviewed source checkpoint is reported.

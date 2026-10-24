@@ -105,15 +105,13 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. An `ahead` sample
- * uses an integer rule stage zero does not apply yet, so no stage-zero
- * closure checks it. */
+ * Copied function, which assigns its array, does not. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, update_order, ahead;
+        same_rejection, c_string_probe, host_effects, update_order;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -254,7 +252,6 @@ static const sample samples[] = {
                    .expected = "[[1,7,8]]" } } },
     { .name = "typed constants fold exactly",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "Sign: int : -1 << 31;\n"
                 "Small: int8 : (64 << 1) - 1;\n"
@@ -871,7 +868,6 @@ static const sample samples[] = {
      * from its use, and only integer division by zero is an error. */
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "Count: uint : 3;\n"
                 "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
@@ -882,7 +878,6 @@ static const sample samples[] = {
      * maximum clamps to it. Stage zero types the count from the left today. */
     { .name = "shift counts clamp",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "Literal :: (a: byte) -> byte { return a << 300; }\n"
                 "Counted :: (a: byte, n: uint) -> byte { return a << n; }\n"
@@ -915,7 +910,6 @@ static const sample samples[] = {
      * declared in any order and in an imported package. */
     { .name = "constant expressions",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "Area :: Width * Height;\n"
@@ -1660,7 +1654,7 @@ static const sample samples[] = {
                 "    stamped := Stamp(note, 7);\n"
                 "    b: byte = 3;\n"
                 "    copy.count = b;\n"
-                "    copy.count += b;\n"
+                "    copy.count += int(b);\n"
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
                 "note.count, note.open, copy.count, stamped.text, "
                 "stamped.count);\n}",
@@ -2103,7 +2097,6 @@ static const sample samples[] = {
     /* An untyped operand of a conversion is int64, or uint64 beyond it,
      * in parentheses too. */
     { .name = "wrapped literal in parentheses",
-      .ahead = true,
       .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
       .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" } } },
@@ -3909,15 +3902,14 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   ((b && !s->host_effects) || s->ahead ||
+                   ((b && !s->host_effects) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
             }
-            ran = ran && (b || s->ahead ||
-                          run(expected, expected_length, &s->calls[c], 0));
+            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
         if (ran && s->update_order) {
             ran = (b || array_update_order(expected, expected_length, s)) &&

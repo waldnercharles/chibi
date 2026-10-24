@@ -83,8 +83,9 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool canonical = behavior_function_inspection_required(f, ctx);
-    if (compact && behavior_function_fast_allowed(f, ctx)) {
+    bool canonical = behavior_execution_scope_active() ||
+                     behavior_function_inspection_required(f, ctx);
+    if (compact && !canonical && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
     behavior_function_activation *activation = ctx->activation;
@@ -886,6 +887,13 @@ int execution_machine_step(execution_machine *m, int pc)
 done:
     m->steps = steps;
     m->pc = next;
+    return result;
+}
+
+int execution_machine_fail(execution_machine *m, const char *message)
+{
+    int result = fail(m->context, &m->instructions[m->pc], m->steps, m->parents, BEHAVIOR_FUNCTION_BUDGET);
+    m->context->error_message = message;
     return result;
 }
 

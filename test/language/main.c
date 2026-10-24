@@ -31,6 +31,7 @@ void test_language_record_runtime();
 void test_language_record_prepared_runtime();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
+void test_language_execution_scope();
 void test_language_wasm();
 void test_language_semantic();
 void test_language_effects();
@@ -124,6 +125,7 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--inferred-string-array-repro");
     bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
+    bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
     bool activation_benchmark = argc == 2 &&
                                 !strcmp(argv[1], "--activation-benchmark");
@@ -259,8 +261,8 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer &&
-         !execution && !semantic && !inferred_arrays && !inferred_array_repro &&
+        (!format && !prepared && !compiler_artifact && !record_producer && !execution &&
+         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
          !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
          !borrow_benchmark && !incremental_benchmark && !record_publication &&
          !record_publication_repro && !record_values && !record_document &&
@@ -296,7 +298,8 @@ int main(int argc, char **argv)
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
-            "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
+            "Usage: %s --syntax [--corpus manifest] | --execution | "
+            "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
@@ -593,6 +596,8 @@ int main(int argc, char **argv)
         test_language_semantic();
         test_language_effects();
         test_language_symbol_references();
+    } else if (execution_scope) {
+        test_language_execution_scope();
     } else if (execution) {
         test_language_execution();
     } else {

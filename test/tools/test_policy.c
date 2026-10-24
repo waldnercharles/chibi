@@ -3,6 +3,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <glob.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -666,6 +667,75 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
     return true;
 }
 
+TEST_CASE(ci_preserves_failed_macos_graph_stage_log)
+{
+    char workflow[PATH_MAX];
+    snprintf(workflow, sizeof workflow, "%s/.github/workflows/ci.yml", tool_root());
+    char *text = tool_read(workflow);
+    REQUIRE(text);
+    const char *job = strstr(text, "\n  native-macos:\n");
+    const char *limit = job ? strstr(job, "\n  windows:\n") : NULL;
+    const char *step = job ? strstr(job, "      - name: Preserve failed macOS Graph stage log\n")
+                           : NULL;
+    const char *end = step ? strstr(step + 1, "\n      - ") : NULL;
+    bool scoped = step && limit && end && step < limit && end < limit;
+    const char *fields[] = { "        if: failure()\n",
+                             "        uses: actions/upload-artifact@v4\n",
+                             "          name: macos-graph-failure-${{ "
+                             "github.run_id }}-${{ github.run_attempt }}\n",
+                             "          path: .chibi/logs/*-graph.log\n",
+                             "          include-hidden-files: true\n",
+                             "          if-no-files-found: warn\n",
+                             "          retention-days: 7\n" };
+    for (int i = 0; scoped && i < (int)(sizeof fields / sizeof *fields); i++) {
+        const char *field = strstr(step, fields[i]);
+        scoped = field && field < end;
+    }
+    free(text);
+    REQUIRE(scoped);
+
+    char capture[PATH_MAX], hidden[PATH_MAX], logs[PATH_MAX], noise[PATH_MAX],
+        quiet[PATH_MAX];
+    path(capture, "graph-log-capture");
+    path(hidden, "graph-log-capture/.chibi");
+    path(logs, "graph-log-capture/.chibi/logs");
+    path(noise, "graph-log-capture/.chibi/logs/unrelated-configure.log");
+    assert(!mkdir(capture, 0700) && !mkdir(hidden, 0700) && !mkdir(logs, 0700));
+    tool_write(noise, "not selected\n");
+    snprintf(quiet, sizeof quiet, "%s/tools/quiet.py", tool_root());
+    const char *argv[] = { "python3",
+                           quiet,
+                           "--log-dir",
+                           ".chibi/logs",
+                           "graph",
+                           "--",
+                           "python3",
+                           "-c",
+                           "import sys; print('full-log-first-line'); "
+                           "print('ordinary output\\n' * 64, end=''); "
+                           "print('full-log-last-line'); sys.exit(7)",
+                           NULL };
+    REQUIRE(tool_run(argv, capture, logpath) == 7);
+    char *console = tool_read(logpath);
+    bool bounded = console && strstr(console, "graph: FAILED") &&
+                   !strstr(console, "full-log-first-line");
+    free(console);
+    REQUIRE(bounded);
+    char pattern[PATH_MAX];
+    path(pattern, "graph-log-capture/.chibi/logs/*-graph.log");
+    glob_t selected = { 0 };
+    int status = glob(pattern, 0, NULL, &selected);
+    bool one = !status && selected.gl_pathc == 1;
+    char *full = one ? tool_read(selected.gl_pathv[0]) : NULL;
+    bool kept = full && strstr(full, "full-log-first-line\n") &&
+                strstr(full, "full-log-last-line\n");
+    free(full);
+    globfree(&selected);
+    REQUIRE(one && kept);
+    REQUIRE(!access(noise, F_OK));
+    return true;
+}
+
 TEST_CASE(studio_acceptance_requires_exact_completion)
 {
     char filename[PATH_MAX];
@@ -1114,6 +1184,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
+    RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
     RUN_TEST_CASE(studio_gizmo_requires_forty_two_clean_frames);

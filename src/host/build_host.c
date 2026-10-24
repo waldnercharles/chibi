@@ -5,6 +5,7 @@
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
+#include "host/build_io.h"
 #include "host/build_values.h"
 #include "host/process.h"
 #include "runtime/arrays_definition.h"
@@ -624,14 +625,14 @@ static void compile_rejection(build_host *host, const char *json, size_t length)
     free(result.json);
 }
 
-static package_collection *prepare(build_host *host, const native_capabilities *native, uint64_t *root)
+static compiler_host_bytes compile_program(build_host *host, const native_capabilities *native)
 {
+    compiler_host_bytes compiled = { 0 };
     size_t length = 0;
     char *json = compile_input(host, native, &length);
     if (!json) {
-        return NULL;
+        return compiled;
     }
-    compiler_host_bytes compiled = { 0 };
     bool called = compiler_host_invoke_bytes(
         host->options->compiler->host,
         compiler_host_entry("project:package_compiler:1:CompileClosureWithEffects:callable"),
@@ -648,30 +649,42 @@ static package_collection *prepare(build_host *host, const native_capabilities *
         compile_rejection(host, json, length);
     }
     free(json);
-    package_collection *packages = NULL;
-    if (called && !failure && compiled.length) {
-        native_prepared_context context = { .native = native };
-        execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-        linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
-        linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
-        linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
-        size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
-        char error[256] = { 0 };
-        packages = compiler_artifact_read(
-            compiled.bytes,
-            compiled.length,
-            &linker,
-            host->options->backend,
-            &remaining,
-            root,
-            error,
-            sizeof error
-        );
-        if (!packages) {
-            diagnose(host->result, error);
-        }
+    if (!called || failure) {
+        free(compiled.bytes);
+        compiled.bytes = NULL;
+        compiled.length = 0;
     }
-    free(compiled.bytes);
+    return compiled;
+}
+
+static package_collection *read_program(
+    build_host *host,
+    const native_capabilities *native,
+    const void *bytes,
+    size_t length,
+    uint64_t *root
+)
+{
+    native_prepared_context context = { .native = native };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
+    linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    char error[256] = { 0 };
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        host->options->backend,
+        &remaining,
+        root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        diagnose(host->result, error);
+    }
     return packages;
 }
 /* The innermost failure reports, as in a package test: a called function's
@@ -699,7 +712,15 @@ static int refuse_task(behavior_function_context *context, int)
 bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *result)
 {
     *result = (chibi_build_result){ 0 };
-    if (!options || !options->root || !options->source_path || !options->source_text ||
+    bool artifact = options && options->artifact;
+    if (!options || !options->root || !options->source_path ||
+        !options->source_path[0] || (!artifact && !options->source_text) ||
+        (artifact && (options->source_text || options->compiler || options->core ||
+                      options->collection_count || options->output_artifact)) ||
+        (artifact != (options->artifact_size != 0)) ||
+        options->artifact_size > COMPILER_HOST_MAX_OUTPUT_BYTES ||
+        (options->output_artifact &&
+         (!options->output_artifact[0] || options->argument_count)) ||
         !options->entry || !options->entry[0] || options->argument_count < 0 ||
         options->argument_count > BUILD_MAX_ARGUMENTS || options->collection_count < 0 ||
         options->collection_count > CHIBI_BUILD_MAX_COLLECTIONS ||
@@ -711,7 +732,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         diagnose(result, "invalid build host options");
         return false;
     }
-    if (!options->compiler) {
+    if (!artifact && !options->compiler) {
         diagnose(result, "build compiler is required");
         return false;
     }
@@ -763,6 +784,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     const char *failure = environment_valid ? NULL : "build environment limit exceeded";
     native_capabilities *native = NULL;
     package_collection *packages = NULL;
+    compiler_host_bytes compiled = { 0 };
     char error[256];
     const char *observed = NULL;
     behavior_function_context context = { 0 };
@@ -805,7 +827,19 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         goto done;
     }
     uint64_t root = 0;
-    packages = prepare(&host, native, &root);
+    if (!artifact) {
+        compiled = compile_program(&host, native);
+        if (!compiled.length) {
+            goto done;
+        }
+    }
+    packages = read_program(
+        &host,
+        native,
+        artifact ? options->artifact : compiled.bytes,
+        artifact ? options->artifact_size : compiled.length,
+        &root
+    );
     if (!packages) {
         goto done;
     }
@@ -847,6 +881,24 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     }
     failure = build_host_ready(&host);
     if (failure) {
+        goto done;
+    }
+    if (options->output_artifact) {
+        if (options->prepared) {
+            options->prepared();
+        }
+        success = build_io_write(
+            host.root,
+            options->output_artifact,
+            (const char *)compiled.bytes,
+            compiled.length,
+            host.deadline,
+            options->cancelled
+        );
+        if (!success) {
+            failure = build_host_ready(&host);
+            failure = failure ? failure : "build artifact could not be written";
+        }
         goto done;
     }
     apush(services, ((service_binding){ "tool.build", &host }));
@@ -902,6 +954,7 @@ done:
     if (packages) {
         package_collection_free(packages);
     }
+    free(compiled.bytes);
     native_capabilities_free(native);
     for (int i = 0; i < count; i++) {
         free(host.environment[i]);

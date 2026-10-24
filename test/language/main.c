@@ -178,12 +178,16 @@ int main(int argc, char **argv)
                                  !strcmp(argv[1], "--prepared-writer-chibi");
     bool package_compiler_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--package-compiler-chibi");
+    bool package_compiler_chibi_libraries = argc == 2 &&
+                                            !strcmp(argv[1], "--package-compiler-chibi-libraries");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
     bool package_compiler_chibi_literals = argc == 2 &&
                                            !strcmp(argv[1], "--package-compiler-chibi-literals");
     bool package_compiler_chibi_behaviors = argc == 2 &&
                                             !strcmp(argv[1], "--package-compiler-chibi-behaviors");
+    bool package_compiler_chibi_actions = argc == 2 &&
+                                          !strcmp(argv[1], "--package-compiler-chibi-actions");
     bool package_compiler_chibi_sharing = argc == 2 &&
                                           !strcmp(argv[1], "--package-compiler-chibi-sharing");
     bool package_compiler_chibi_debug_free = argc == 2 &&
@@ -282,13 +286,15 @@ int main(int argc, char **argv)
          !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
+         !bounded_compiler_chibi && !prepared_writer_chibi &&
+         !package_compiler_chibi && !package_compiler_chibi_libraries &&
          !package_compiler_chibi_types && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
          !package_compiler_chibi_collections_compiled &&
-         !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
-         !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
+         !package_compiler_chibi_imports_compiled &&
+         !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
+         !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_actions &&
          !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
          !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
@@ -328,7 +334,9 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-imports-compiled | "
             "--package-compiler-chibi-literals | "
             "--package-compiler-chibi-behaviors | "
+            "--package-compiler-chibi-actions | "
             "--package-compiler-chibi-behaviors-rest | "
+            "--package-compiler-chibi-libraries | "
             "--package-compiler-chibi-sharing | "
             "--package-compiler-chibi-debug-free | "
             "--package-compiler-chibi-scalar | "
@@ -527,6 +535,10 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_literals();
     } else if (package_compiler_chibi_behaviors) {
         test_language_package_compiler_chibi_behaviors();
+    } else if (package_compiler_chibi_actions) {
+        test_language_package_compiler_chibi_actions();
+    } else if (package_compiler_chibi_libraries) {
+        test_language_package_compiler_chibi_libraries();
     } else if (package_compiler_chibi_behaviors_rest) {
         test_language_package_compiler_chibi_behaviors_rest();
     } else if (package_compiler_chibi_sharing) {

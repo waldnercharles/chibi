@@ -37,6 +37,11 @@ compiles the compiler. The target supplies what Chibi cannot see:
 bytes, or none when `Compile` rejects the input, for a host that takes one
 `byte[]` result (`compiler_host_invoke_bytes`).
 
+The twelve-argument package entries require a verified pure native catalog.
+`CompileWithEffects` and `CompileClosureWithEffects` add a thirteenth argument,
+`native_effects: int[]`, with one validated mask per native. Hosts that expose
+process, file or state operations must supply their actual masks.
+
 ## Supported language
 
 Packages of functions, records, unions and constants, and the packages they
@@ -98,8 +103,13 @@ import:
   first item gives its element type, as in stage zero; field reads;
   bounds-checked element reads;
 - element assignment, compound included, and `xs = append(xs, x)` and
-  `xs = extend(xs, ys)` on a local array, which update it in place. As in
-  stage zero, the native is recognized by its capability identity;
+  `xs = extend(xs, ys)` on a local array. The native is recognized by its
+  capability identity. In-place lowering requires a resolved proof that the
+  item has no WRITE effect, including calls it makes; READ and other non-WRITE
+  effects do not prevent it. Unknown native metadata cannot establish that
+  proof. The ordinary call preserves source argument order when the item may
+  write. Proven updates read/watch the receiver before the item and reacquire
+  its writable header afterward;
 - field assignment, compound included, on a local record: `x.f = v` writes as
   stage zero writes it, through the reference make, field and write
   intrinsics, which copy the record with the new field, so no other value
@@ -164,7 +174,7 @@ difference remains, and only for programs stage zero rejects: stage zero
 declares a local for its whole scope, so `n := n + 1` with a parameter `n` is
 a cyclic dependency there, while stage one reads the parameter.
 
-## Behaviors
+## Behaviors and executable libraries
 
 `CompileBehavior(identity: string, source: string, target: Target, abi: uint64,
 names: string[], natives: Native[], ports: Port[], native_ids: uint64[],
@@ -203,11 +213,52 @@ events its handlers take. `CompileBehaviors` takes the identities and sources
 of a project's behavior assets, then the same arguments, and returns a
 CHIBICLO closure of their modules, or no bytes when it rejects one; then
 `BehaviorRejection` returns the first rejection's identity, line, column and
-message. `tools/toolchain/StageOne.chibi` runs both on the input `chibi-compile
---stage-one-input` exports from the catalog the project's sources compile
-against (`docs/testing.md#game-equivalence`). Events, components and the
-fields of game types match their names as the catalog matches them: exactly,
-else loosely, ignoring case, spaces, underscores and hyphens.
+message. The production route uses `CompileBehaviorsWithCatalog` and
+`BehaviorRejectionWithCatalog`. Their eighteen arguments use `CatalogNative`
+and `CatalogPort` rows and append the native effect masks in native order.
+Native rows retain capability kind, canonical and source names, and whether the
+binding supports a direct data call. Ports carry nominal type IDs and reflected
+defaults, including whether a default can be represented. `StageOne.chibi`
+invokes these entries on the input that
+`chibi-compile --stage-one-input` exports from the project's catalog
+(`docs/testing.md#game-equivalence`). The pure package/bootstrap inputs keep
+their existing layouts. Fixed native structs and entity handles preserve their
+types through arguments, results, aliases and result-name projections. Nominal
+collections, unknown layouts and unsupported flags remain explicit failures
+when selected; unrelated unsupported catalog rows do not reject a project.
+Events, components and the fields of game types match their names as the catalog
+matches them: exactly, else loosely, ignoring case, spaces, underscores and hyphens.
+
+Synchronous native actions use their actual linked binding, parameter defaults
+and effects. Supplied arguments evaluate once in source order; positional or
+named arguments then bind to the selected parameters, and omitted parameters
+use supported defaults. Only a compatible constant empty owner argument is
+replaced by the current invocation owner. A dynamic empty handle remains empty.
+C-string boundaries reject embedded NUL; owned string results preserve their
+bytes. Suspending actions and other bindings that lack a supported direct call
+remain explicit rejections.
+
+The plural entries also compile executable `library` roots. All source roots
+and signatures are declared before bodies, so libraries can call each other
+regardless of file order. Each body is compiled once; actual call edges order
+the closure's modules and propagate effects. Recursion inside a library is
+allowed; a dependency cycle across libraries is rejected. Library declarations
+export their functions without `pub`. Lexical functions and strict package
+imports keep their existing lookup rules; library exports share catalog name
+resolution with native functions, including canonical-name precedence. Rows
+whose exact callable IDs belong to parsed sources retain their catalog indices
+without competing as native implementations.
+
+Executable libraries support flat records of builtin numeric, bool and string
+fields without field defaults, numeric/bool and struct named results, and
+positional calls with trailing numeric/bool/string literal defaults. String
+fields have owned storage. Their native graph projection uses the same source
+catalog and owns its names and defaults;
+it performs no executable lowering. Authored named arguments, nested source
+records, source constants and unions, systems and overload selection involving
+authored libraries remain unsupported by this game-source path.
+Bare `char`, `number`, `float` and `double` conversion calls are also unsupported;
+qualified library members with those names remain ordinary source calls.
 
 A behavior may hold integer, floating, boolean, string and entity state,
 member procedures, and `on` handlers of the game's events with scalar
@@ -502,6 +553,19 @@ stage one's functions, other than `Compile`,
 its arguments on each call: one such function, through its callers, takes
 stage one compiling itself past its ceiling (11 assertions in 22.9 s; see
 `docs/language-friction.md`).
+
+`tool language-package-compiler-chibi-actions` checks rich catalog export and
+native differential execution of synchronous actions, named and omitted
+arguments, evaluation order, owner substitution, string ownership, callback
+failure and unsupported bindings. `tool language-package-compiler-chibi-libraries`
+checks multi-source library compilation and assembly, dependency order, native
+and source name precedence, named results, owned values and rejected cycles.
+Resolution cases execute distinguishable results and count native callbacks on
+both runtime backends, including primitive and canonical-name collisions.
+Array cases compare an item that writes its receiver and a pure reversed item
+call, including their values, source points and watches.
+Both selectors belong to the compiler group (`make test-compiler-parity`), separately
+from the native language group (`make test-language-all`).
 
 `tool language-package-compiler-chibi-literals` checks stage zero's build of
 `LiteralBits` against that rule, computed with `strtod` (3,962

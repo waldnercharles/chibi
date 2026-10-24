@@ -14,6 +14,7 @@
 #include "authoring/sound_prepare.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_collection.h"
+#include "authoring/source_graph_library.h"
 #include "authoring/ui_prepare.h"
 #include "authoring/visual_prepare.h"
 #include "render/scene3d_parts.h"
@@ -601,7 +602,22 @@ static bool prepare(
         }
         catalog = authoring_sources_source_catalog(sources);
     }
-    if (!authoring_native_graphs_prepare(project.content, sources, fields, error, size)) {
+    behavior_asset **libraries = NULL;
+    if (sources) {
+        libraries = authoring_source_graph_libraries(sources);
+    } else if (!authoring_source_graph_libraries_catalog(catalog, &libraries, error, size)) {
+        goto done;
+    }
+    bool graphs_prepared = authoring_native_graphs_prepare(
+        project.content,
+        (const behavior_asset *const *)libraries,
+        acount(libraries),
+        fields,
+        error,
+        size
+    );
+    authoring_source_graph_libraries_free(libraries);
+    if (!graphs_prepared) {
         goto done;
     }
     native_prepared_context event_context = { .native = options->native };

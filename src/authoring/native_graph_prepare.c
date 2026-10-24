@@ -2,7 +2,6 @@
 
 #include "authoring/graph_sources.h"
 #include "authoring/shader_prepare.h"
-#include "authoring/source_graph_library.h"
 #include "graph/compiler/material_field.h"
 #include "graph/compiler/validation.h"
 #include "graph/document/library.h"
@@ -21,7 +20,8 @@ static bool failed(char *error, size_t size, const char *path, const char *messa
 }
 bool authoring_native_graphs_prepare(
     const char *content,
-    const authoring_sources *code,
+    const behavior_asset *const *libraries,
+    int library_count,
     material_fields *fields,
     char *error,
     size_t size
@@ -31,7 +31,6 @@ bool authoring_native_graphs_prepare(
     if (!authoring_graph_sources_load(content, &sources)) {
         return failed(error, size, content, "Cannot load native graph documents");
     }
-    behavior_asset **libraries = code ? authoring_source_graph_libraries(code) : NULL;
     const behavior_asset **catalog = NULL, **models = NULL;
     behavior_asset **linked = NULL;
     bool valid = false;
@@ -42,7 +41,7 @@ bool authoring_native_graphs_prepare(
                 goto done;
             }
         }
-        for (int j = 0; j < acount(libraries); j++) {
+        for (int j = 0; j < library_count; j++) {
             if (!strcmp(sources[i].asset->name, libraries[j]->name)) {
                 failed(error, size, sources[i].path, "Native graph declaration shares a source library's name");
                 goto done;
@@ -50,7 +49,7 @@ bool authoring_native_graphs_prepare(
         }
         apush(catalog, sources[i].asset);
     }
-    for (int i = 0; i < acount(libraries); i++) {
+    for (int i = 0; i < library_count; i++) {
         apush(catalog, libraries[i]);
     }
     /* Library linking is the same graph-owned transformation used by preview;
@@ -119,7 +118,6 @@ done:
     afree(linked);
     afree(models);
     afree(catalog);
-    authoring_source_graph_libraries_free(libraries);
     authoring_graph_sources_free(sources);
     return valid;
 }

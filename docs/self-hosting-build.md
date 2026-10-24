@@ -182,8 +182,10 @@ bindings to move. `StageOne.chibi` still uses the C catalog for input export and
 final game assembly. Native runtime construction, SDK/full-engine and Wasm builds, Studio
 consumers and command-parity checks retain their current CMake responsibilities.
 
-`chibi-compile --stage-one-input FILE` writes the unchanged behavior-compiler
-argument array and reports its executable source count on stdout. For zero
+`chibi-compile --stage-one-input FILE` writes the eighteen-argument rich game
+compiler input, including nominal port identities and native effect masks, and
+reports its executable source count on stdout. `StageOne.chibi` uses the matching
+`CompileBehaviorsWithCatalog` and `BehaviorRejectionWithCatalog` entries. For zero
 sources, `StageOne.chibi` invokes `chibi-compile --resources-only --output FILE`
 with the project root before recovering or invoking the behavior compiler.
 This mode assembles scenes, prototypes and resources with no supplied modules;

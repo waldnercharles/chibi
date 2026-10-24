@@ -746,7 +746,8 @@ Files :: (target: string) -> string[] {
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
             "test/language/prepared_writer_chibi.c", "test/language/shader_source_chibi.c",
             "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
-            "test/language/execution_scope.c", "test/language/scalar_lowering_chibi.c",
+            "test/language/execution_scope.c", "test/language/integer_semantics.c",
+            "test/language/scalar_lowering_chibi.c",
             "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
             "test/language/lexical_binding_chibi.c", "test/language/nominal_binding_chibi.c",
             "test/language/named_binding_chibi.c", "test/language/type_constructors_chibi.c",
@@ -3493,7 +3494,8 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
         "test/language/docs_markdown.c", "test/language/effect_analysis_chibi.c",
         "test/language/execution.c", "test/language/execution_scope.c", "test/language/generic.c",
-        "test/language/inferred_string_arrays.c", "test/language/lexical_binding_chibi.c",
+        "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c",
+        "test/language/lexical_binding_chibi.c",
         "test/language/maps.c", "test/language/named_binding_chibi.c",
         "test/language/nominal_binding_chibi.c", "test/language/numeric.c",
         "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
@@ -3526,7 +3528,8 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
         ];
     }
     if (target == "test_language" &&
-        (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c")) {
+        (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
+         file == "test/language/integer_semantics.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];

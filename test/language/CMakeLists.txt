@@ -263,10 +263,14 @@ else()
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_target.c"
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
-        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c")
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c")
     set_source_files_properties(
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_target.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
         PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 endif()
 if(TARGET Chibi::asset_compiler_host)
@@ -286,6 +290,13 @@ include(package_compiler_chibi.cmake)
 target_sources(test_language PRIVATE execution_scope.c)
 set_source_files_properties(execution_scope.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+# Integer semantics uses the checked authored compiler through the same host
+# archive as other compiler fixtures. Older SDKs retain the direct-source
+# fallback above; normal and installed compiler-host builds own these once.
+target_sources(test_language PRIVATE integer_semantics.c)
+set_source_files_properties(integer_semantics.c
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
+    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

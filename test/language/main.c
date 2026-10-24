@@ -50,6 +50,7 @@ void test_language_incremental();
 void test_language_modules();
 void test_numeric_ranges();
 void test_numeric_exact_core();
+void test_language_integer_semantics();
 void test_language_package_graph();
 void test_language_package_graph_chibi();
 void test_language_shader_source_chibi();
@@ -159,6 +160,7 @@ int main(int argc, char **argv)
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
+    bool integer_semantics = argc == 2 && !strcmp(argv[1], "--integer-semantics");
     bool package_graph_chibi = argc == 2 && !strcmp(argv[1], "--package-graph-chibi");
     bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
     bool asset_packaging_chibi = argc == 2 &&
@@ -270,22 +272,22 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer &&
-         !execution && !execution_scope && !semantic && !inferred_arrays &&
-         !inferred_array_repro && !root_state && !benchmark && !activation_benchmark &&
-         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
-         !record_publication && !record_publication_repro && !record_values &&
-         !record_document && !record_state && !record_services &&
-         !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_array && !record_runtime &&
-         !runtime_attribution && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !numeric_exact_core &&
-         !package_graph && !package_graph_chibi && !asset_compiler_host &&
-         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
-         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
+        (!format && !prepared && !compiler_artifact && !record_producer && !execution &&
+         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
+         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !record_publication &&
+         !record_publication_repro && !record_values && !record_document &&
+         !record_state && !record_services && !record_compatibility &&
+         !record_semantic && !record_prepared_runtime && !outliner_projection &&
+         !row_array && !record_runtime && !runtime_attribution && !wasm &&
+         !program && !query_program && !incremental && !modules && !ranges &&
+         !numeric_exact_core && !integer_semantics && !package_graph &&
+         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
+         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
+         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
+         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
+         !constant_scalar_chibi && !scalar_lowering_chibi && !bounded_compiler_chibi &&
+         !prepared_writer_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_types && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
@@ -488,6 +490,8 @@ int main(int argc, char **argv)
         test_language_incremental();
     } else if (numeric_exact_core) {
         test_numeric_exact_core();
+    } else if (integer_semantics) {
+        test_language_integer_semantics();
     } else if (package_syntax) {
         test_language_package_syntax();
     } else if (package_syntax_chibi) {

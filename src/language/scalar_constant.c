@@ -324,8 +324,10 @@ static const script_number *exact(folding *f, int index)
             }
             switch (f->numeric.code) {
                 case SCRIPT_NUMERIC_ZERO_DIVISOR:
-                case SCRIPT_NUMERIC_NEGATIVE_SHIFT:
                     fold_failed(f, SCRIPT_FOLD_REPORTED, index);
+                    break;
+                case SCRIPT_NUMERIC_NEGATIVE_SHIFT:
+                    fold_failed(f, SCRIPT_FOLD_NEGATIVE_SHIFT, e->right);
                     break;
                 case SCRIPT_NUMERIC_SHIFT_LIMIT:
                     fold_failed(f, SCRIPT_FOLD_SHIFT, e->right);
@@ -370,6 +372,8 @@ static const char *fold_message(script_fold_error failure)
     switch (failure.code) {
         case SCRIPT_FOLD_SHIFT:
             return "integer constant shift count is too large";
+        case SCRIPT_FOLD_NEGATIVE_SHIFT:
+            return "integer constant shift count must not be negative";
         case SCRIPT_FOLD_CONVERSION:
             return "integer constant does not fit its conversion";
         case SCRIPT_FOLD_REPORTED:

@@ -512,31 +512,6 @@ void script_analyzer_mismatched_integers(analyzer *a, TSNode node, script_type x
         script_numeric_name(y)
     );
 }
-/* An untyped count beside a typed value is read like a conversion operand,
- * so any count is accepted, and a constant one becomes the value's type,
- * clamped as lowering would convert it. The constants pass reports a
- * negative count. */
-static void untyped_count(analyzer *a, TSNode node, int index, script_type value)
-{
-    contextual_numeric(a, index, script_analyzer_conversion_operand(a, node));
-    pin_value count;
-    script_fold_error error;
-    if (!typed_integer(value) || !script_integer_constant(a->out, index) ||
-        !script_integer_fold(a->out, index, &count, &error) ||
-        (behavior_scalar_signed(count.type) && behavior_scalar_bits(count) >> 63)) {
-        return;
-    }
-    script_expression *e = &a->out->expressions[index];
-    pin_value clamped;
-    behavior_scalar_cast(count, value.storage, BEHAVIOR_CAST_CLAMP, &clamped);
-    *e = (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
-                              .type = value,
-                              .constant = clamped,
-                              .range = e->range,
-                              .symbol = -1,
-                              .left = -1,
-                              .right = -1 };
-}
 /* A shift has its left operand's type; the count keeps its own unsigned
  * type, and lowering converts it, so a count past the width stays past it.
  * An untyped left operand takes the expected type. An untyped integer beside
@@ -579,11 +554,10 @@ static int shift_expression(analyzer *a, TSNode node, script_expression result, 
         script_analyzer_diagnostic(a, node, "Shift requires an integer value");
     }
     if ((y.flags & SCRIPT_TYPE_UNTYPED) && !negative) {
-        if (value.flags & SCRIPT_TYPE_UNTYPED) {
-            contextual_numeric(a, result.right, value);
-        } else {
-            untyped_count(a, count, result.right, value);
-        }
+        /* Counts keep their exact expression and an independent type until
+         * constant folding. Lowering converts runtime counts to the value's
+         * type only after the constant checks have finished. */
+        contextual_numeric(a, result.right, script_analyzer_conversion_operand(a, count));
     }
     result.effects = script_analyzer_expr_effects(a, result.left) |
                      script_analyzer_expr_effects(a, result.right);

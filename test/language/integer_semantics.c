@@ -728,13 +728,18 @@ static void cleanup()
     free(result.json);
     result = (compiler_host_result){ 0 };
 }
-static void setup()
+static void setup_native()
 {
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK };
     char error[256];
     native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
     assert(native);
+}
+static void setup()
+{
+    setup_native();
+    char error[256];
     compiler_bootstrap options = {
         .folder = CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap",
         .compiler = CHIBI_SOURCE_ROOT "/tools/compiler",
@@ -906,7 +911,19 @@ static bool call_agrees(const integer_sample *s, const integer_call *call, int c
         CALL_BUDGET,
         &result
     );
-    bool passed = valid && result.flow_status == FLOW_OK;
+    bool entered = !result.counts.overflow &&
+                   !result.counts.inspection_bytecode_fallbacks &&
+                   !result.counts.size_bytecode_fallbacks &&
+                   (backend == 0 ? result.counts.bytecode_entries > 0 &&
+                                       !result.counts.sljit_entries &&
+                                       !result.counts.wasm_entries
+                    : TEST_COMPILED_BACKEND == BEHAVIOR_SLJIT
+                        ? result.counts.sljit_entries > 0 &&
+                              !result.counts.bytecode_entries && !result.counts.wasm_entries
+                        : result.counts.wasm_entries > 0 &&
+                              !result.counts.bytecode_entries &&
+                              !result.counts.sljit_entries);
+    bool passed = valid && result.flow_status == FLOW_OK && entered;
     bool agrees = passed && !strcmp(result.json, call->expected);
     if (!agrees) {
         fprintf(
@@ -1014,5 +1031,83 @@ void test_language_integer_semantics()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(integer_semantics_pin_every_width);
+    pu_clear_setup();
+}
+
+/* Stage-zero regressions use the production package/closure path above and
+ * literal results on both backends. The preserved authored seed is a separate
+ * compiler and is not evidence for these analyzer fixes. Optional selection
+ * isolates assertion regressions without hiding the other original failures. */
+static const integer_sample shift_samples[] = {
+    { .name = "exact-counts",
+      .source = "package facts\nF :: () -> int8 { return (int8(1) << 200) >> "
+                "199; }",
+      .calls = { { "F", "[]", "[2]" } } },
+    { .name = "contextual-counts",
+      .source = "package facts\nF :: () -> int8 { return (1 << 200) >> 199; }",
+      .calls = { { "F", "[]", "[2]" } } },
+    { .name = "dynamic-left",
+      .source = "package facts\nF :: (a: int8) -> int8 { return a << "
+                "((9223372036854775807 + 1) - 9223372036854775807); }",
+      .calls = { { "F", "[1]", "[2]" } } },
+    { .name = "negative-below-int64",
+      .source = "package facts\nF :: () -> int8 { return int8(1) << (0 - "
+                "9223372036854775807 - 2); }",
+      .message = "Shift count must not be negative",
+      .line = 2,
+      .column = 38 },
+    { .name = "dynamic-negative-below-int64",
+      .source = "package facts\nF :: (a: int8) -> int8 { return a << (0 - "
+                "9223372036854775807 - 2); }",
+      .message = "Constant value is outside the range of int64",
+      .line = 2,
+      .column = 39 },
+    { .name = "left-limit",
+      .source = "package facts\nF :: () -> int8 { return int8(0) << 4097; }",
+      .message = "Constant shift count is too large",
+      .line = 2,
+      .column = 37 },
+    { .name = "right-limit",
+      .source = "package facts\nF :: () -> int8 { return int8(1) >> 4097; }",
+      .message = "Constant shift count is too large",
+      .line = 2,
+      .column = 37 },
+    { .name = "limit-inclusive",
+      .source = "package facts\nF :: () -> int8 { return (int8(0) << 4096) + "
+                "(int8(1) >> 4096); }",
+      .calls = { { "F", "[]", "[0]" } } },
+    { .name = "runtime-counts",
+      .source = "package facts\n"
+                "F :: (a: int8) -> int8 { return a << 200; }\n"
+                "G :: (a: int8, n: uint64) -> int8 { return a << n; }\n"
+                "H :: (a: int8) -> int8 { return a << 5000; }\n",
+      .calls = { { "F", "[1]", "[0]" }, { "G", "[1,200]", "[0]" }, { "H", "[1]", "[0]" } } },
+};
+static const integer_sample *shift_sample;
+TEST_CASE(integer_shift_count)
+{
+    compile_outcome out = { 0 };
+    bool compiled = stage_zero(shift_sample, &out);
+    bool agrees = compiled && compiles_alike(shift_sample, &out, 0);
+    free(out.closure);
+    REQUIRE(agrees);
+    return true;
+}
+void test_language_integer_shift_counts(const char *name)
+{
+    pu_setup(setup_native, cleanup);
+    bool found = false;
+    for (size_t i = 0; i < sizeof shift_samples / sizeof *shift_samples; i++) {
+        if (name && strcmp(name, shift_samples[i].name)) {
+            continue;
+        }
+        found = true;
+        shift_sample = &shift_samples[i];
+        pu_run_test(shift_sample->name, integer_shift_count);
+    }
+    if (!found) {
+        fprintf(stderr, "Unknown integer shift case: %s\n", name);
+        abort();
+    }
     pu_clear_setup();
 }

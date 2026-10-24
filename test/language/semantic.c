@@ -904,8 +904,8 @@ TEST_CASE(language_shift_counts_are_unsigned_and_keep_their_type)
     parse("L :: library { F :: (x: int64, n: byte) -> int64 { return x << n; } }");
     REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
     parse("L :: library { F :: (a: int8) -> int8 { return a << 200; } }");
-    const script_expression *count = expression_of(SCRIPT_EXPR_CONSTANT, PIN_I8);
-    REQUIRE(analysis->valid && count && count->constant.i8 == INT8_MAX);
+    const script_expression *count = expression_of(SCRIPT_EXPR_CONSTANT, PIN_I64);
+    REQUIRE(analysis->valid && count && count->constant.i64 == 200);
     parse("L :: library { F :: (x: int64, n: uint) -> bool { return x == (1 << n); } }");
     REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
     parse("L :: library { F :: (n: uint) -> int { y := 1 << n; return y; } }");

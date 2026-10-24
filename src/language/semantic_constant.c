@@ -137,6 +137,9 @@ void script_analyzer_check_constants(analyzer *a)
             case SCRIPT_FOLD_SHIFT:
                 report(a, at->range, "Constant shift count is too large");
                 break;
+            case SCRIPT_FOLD_NEGATIVE_SHIFT:
+                report(a, at->range, "Shift count must not be negative");
+                break;
             case SCRIPT_FOLD_CONVERSION:
                 report(
                     a,

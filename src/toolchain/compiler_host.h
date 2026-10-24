@@ -48,7 +48,7 @@ typedef struct
     compiler_host_source source;
 } compiler_host_bytes;
 
-/* Private runtime-only host. Loads a closed target-compatible prepared closure;
+/* Runtime-only prepared-artifact host. Loads a closed target-compatible prepared closure;
  * no source compilation/discovery occurs. Artifact bytes may retire on return.
  * Only text, arrays and the external JSON/raw-syntax bridges are admitted. */
 compiler_host *compiler_host_load(const void *, size_t, behavior_backend, char *error, size_t error_size);

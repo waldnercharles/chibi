@@ -1391,10 +1391,67 @@ void test_build_graph_archive(const char *host, const char *cmake_build)
     tool_remove_tree(suite);
 }
 
+/* Cheap source registration guard for this delivery's new unconditional
+ * dispatcher calls. Keep these exact contracts together with their recipes. */
+static bool registration(const char *file, const char *needle)
+{
+    char filename[GRAPH_PATH];
+    snprintf(filename, sizeof filename, "%s/%s", CHIBI_SOURCE_ROOT, file);
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    bool found = strstr(text, needle) != NULL;
+    free(text);
+    REQUIRE(found);
+    return true;
+}
+TEST_CASE(language_delivery_registrations_match)
+{
+    const char *calls[] = { "test_language_execution_scope",
+                            "test_language_asset_packaging_chibi",
+                            "test_language_shader_source_chibi" };
+    const char *sources[] = { "execution_scope.c",
+                              "asset_packaging_chibi.c",
+                              "shader_source_chibi.c" };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(registration("test/language/main.c", calls[i]));
+        char source[128];
+        snprintf(source, sizeof source, "test/language/%s", sources[i]);
+        REQUIRE(registration("tools/graph/engine/Targets.chibi", source));
+    }
+    REQUIRE(registration("test/language/CMakeLists.txt", "execution_scope.c"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "include(asset_packaging_chibi.cmake)"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "include(shader_source_chibi.cmake)"));
+    const char *names[] = { "asset_packaging", "shader_source" };
+    for (int i = 0; i < 2; i++) {
+        char file[128], mapping[256];
+        snprintf(file, sizeof file, "test/language/%s_chibi.cmake", names[i]);
+        snprintf(mapping, sizeof mapping, "target_sources(test_language PRIVATE %s_chibi.c)", names[i]);
+        REQUIRE(registration(file, mapping));
+        snprintf(
+            mapping,
+            sizeof mapping,
+            "%s_chibi_source.h=test/language/%s_chibi_source.h.in",
+            names[i],
+            names[i]
+        );
+        REQUIRE(registration("tools/graph/engine/Targets.chibi", mapping));
+    }
+    REQUIRE(
+        registration("tools/graph/engine/Targets.chibi", "CHIBI_ASSET_PACKAGING_BYTES=bytes:tools/compiler/asset_packaging/Packaging.chibi")
+    );
+    REQUIRE(
+        registration("tools/graph/engine/Targets.chibi", "CHIBI_SHADER_LOWER_BYTES=bytes:tools/compiler/shader_source/Lower.chibi")
+    );
+    REQUIRE(registration("test/language/asset_packaging_chibi.cmake", "CHIBI_ASSET_PACKAGING_BYTES"));
+    REQUIRE(registration("test/language/shader_source_chibi.cmake", "CHIBI_${name}_BYTES"));
+    return true;
+}
+
 /* A separate route: reflect's run and the codec compile take seconds. */
 void test_build_graph_generated(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
+    RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);

@@ -299,6 +299,7 @@ TOOLS = {
                                 '--package-syntax'],
     'language-package-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                    '--package-execution'],
+    'language-asset-compiler-host': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--asset-compiler-host'],
     'language-asset-packaging-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--asset-packaging-chibi'],
     'language-shader-source-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

@@ -7,17 +7,22 @@ checks it. A feature is native only when real source reaches an object through
 `CollectScalar`, `scalar_llvm` and `Driver.Object`. A hand-written plan that
 `llvm_native` emits does not count.
 
-Two selectors give the evidence, and they reach LLVM differently:
+Three kinds of evidence exist, and only the last runs `Driver.Object`:
 
-- `Run.ps1` builds each accepted corpus source through `Driver.Object`, the
-  authored driver, at O0 and O2.
-- `language-scalar-native` (`--package-compiler-chibi-native`) runs `opt`
-  and `llc` itself, with the argument vectors the driver uses, then links
-  each object with `ld.lld` and calls it. It does not run `Driver.Object`.
-  It is the differential check against both VMs, and it never shows that the
-  driver works. Each tool and each library's calls run under
-  `chibi_process_capture` with a deadline, cancellation and a process-group
-  kill.
+- `Run.ps1`, in the compiler recovery job on all three platforms, runs the
+  producer and the consumer for each of the 96 corpus sources on the four
+  bytecode and SLJIT crossings. It checks that each crossing gives the same
+  rows, classification and IR. It validates and emits IR and builds no
+  object.
+- `language-scalar-native` (`--package-compiler-chibi-native`, Linux x86-64)
+  runs `opt` and `llc` itself, with the argument vectors the driver uses,
+  then links each object with `ld.lld` and calls it. It is the differential
+  check against both VMs, and does not run `Driver.Object`. Each tool and
+  each library's calls run under `chibi_process_capture` with a deadline,
+  cancellation and a process-group kill.
+- Actual `Driver.Object` runs are recorded one by one under
+  [Baseline and measurements](#baseline-and-measurements). They cover
+  representative cases, not every accepted source.
 
 Each feature has one of these states:
 
@@ -33,7 +38,7 @@ Each feature has one of these states:
 
 | Feature | Semantic owner | State | Native gap | Runtime need | Selector and evidence |
 | --- | --- | --- | --- | --- | --- |
-| `int` and `bool` parameters, results, literals | `Compile.chibi` `Declare`, `Steps.chibi` `ConstantStep` | native | none in the subset | none | `language-scalar-native`, `Run.ps1` |
+| `int` and `bool` parameters, results, literals | `Compile.chibi` `Declare`, `Steps.chibi` `ConstantStep` | native | none in the subset | none | `language-scalar-native`, `Run.ps1` (IR only) |
 | Direct same-source calls, nested and repeated | `Steps.chibi` `CalledFunction` | native | recursion | none | `language-scalar-native` |
 | Six signed `int` comparisons | `Steps.chibi` `OperatorStep` | native | other widths, unsigned, `bool` and string equality | none | `language-scalar-native` probes at `INT32_MIN`/`INT32_MAX` |
 | One guard with a returning arm and a final return | `Body.chibi` `if_statement` | native | `else`, several guards, general control flow (M3) | none | `language-scalar-native`, `lazy_arm` IR order |
@@ -95,7 +100,7 @@ decision.
 
 | ID | Area | Direction set | Still needed | State |
 | --- | --- | --- | --- | --- |
-| D1 | Integer arithmetic | Follow Odin for each case the integer semantics corpus (chibi#682) found (owner, 24 October 2026): `MIN % -1` gives 0, shifts at or past the width give 0 or the sign fill, shift counts are unsigned, a literal zero divisor and mixed widths are compile errors. | Cases where Odin has no defined answer, such as `MIN / -1` at run time. The VMs change first; native lowers to their results, not to `llvm_native`'s provisional traps. | open, needed for M2 |
+| D1 | Integer arithmetic | Checked and wrapping arithmetic, approved but not implemented. On the cases where the integer semantics corpus (chibi#682) found the backends or compilers disagree, the owner wrote "My preference is to do what Odin does for each of these" (24 October 2026). | An approved contract for each of those cases, written from Odin's behavior, and an answer where Odin defines none (`MIN / -1` at run time). Conversions were not part of that answer. Until then `llvm_native`'s wrapping and provisional traps decide nothing. | open, needed for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
 | D3 | Floating math | Odin-style type-preserving helpers, with no blanket finite checks and no automatic double intermediates. | Typed floating widening and narrowing, where stage zero and stage one disagree. | open, needed for M2 |
 | D4 | Budget and recursion | Execution stays bounded. | Where native checks go, call-depth behavior, cancellation. | open, needed for M3 |
@@ -120,14 +125,17 @@ After M1:
 
 - The corpus has 96 sources, 31 accepted.
 - `language-scalar-native` runs 94 of them. The two 64-deep cases go past the
-  stage-zero fixture's call depth limit and run in `Run.ps1` instead. It
+  stage-zero fixture's call depth limit, so only `Run.ps1` checks their IR;
+  `most_operands` also has the `Driver.Object` run below. The selector
   takes 11 s in Release and 91 s under ASan.
 - `language-package-compiler-chibi-scalar` also checks 13 malformed variants
   of guarded rows.
-- Through `Driver.Object`, `min`, `clamp`, `lazy_arm` and `most_operands`
-  each built at O0 and O2 with no undefined symbols (8 of 8, the owner's
-  independent review of `8968748`). Both recovery stages reproduced the
-  bootstrap compiler, and `Run.ps1` passed in 116 s.
+- `Run.ps1` passed 96 sources on four crossings in 116 s, and both recovery
+  stages reproduced the bootstrap compiler (the owner's independent review
+  of `8968748`).
+- Actual `Driver.Object` runs from that review: `min`, `clamp`, `lazy_arm`
+  and `most_operands`, each built at O0 and O2 with no undefined symbols
+  (8 of 8).
 - `language-scalar-native` checks that a hung tool and hung generated code
   each time out within 10 seconds of a short deadline, and that SIGTERM
   cancels a run without counting as a timeout.

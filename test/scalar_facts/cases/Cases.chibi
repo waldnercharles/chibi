@@ -58,6 +58,13 @@ Nest :: (depth: int) -> string {
     return format_text("package scalar\nMain :: () -> int { return {}; }\nId :: (x: int) -> int { return x; }\n",
                        Nested(depth));
 }
+// Main guarding on Small(Id(...(1))) with `condition` nested calls of Id,
+// then returning `arm` nested calls of Id in its arm: operands across both
+// segments count against one bound.
+Split :: (condition: int, arm: int) -> string {
+    return format_text("package scalar\nMain :: () -> int { if (Small({})) { return {}; } return 0; }\nSmall :: (x: int) -> bool { return x < 2; }\nId :: (x: int) -> int { return x; }\n",
+                       Nested(condition), Nested(arm));
+}
 // Main returning 1, then a comment that pads the source to `size` bytes.
 Padded :: (size: int) -> string {
     text := "package scalar\nMain :: () -> int { return 1; }\n//";
@@ -78,10 +85,10 @@ Cases :: () -> Case[] {
         Rejected("u64_overflow", "package scalar\nMain :: () -> int { return 18446744073709551616; }", "only integer literals of 64 bits are supported", "18446744073709551616"),
         Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "only integer literals of 64 bits are supported", "42.5"),
         Rejected("exponent", "package scalar\nMain :: () -> int { return 1e2; }", "only integer literals of 64 bits are supported", "1e2"),
-        Rejected("negative", "package scalar\nMain :: () -> int { return -1; }", "scalar proof supports only literals, parameters and direct calls", "-1"),
-        Rejected("parentheses", "package scalar\nMain :: () -> int { return (42); }", "scalar proof supports only literals, parameters and direct calls", "(42)"),
-        Rejected("arithmetic", "package scalar\nMain :: () -> int { return 40 + 2; }", "scalar proof supports only literals, parameters and direct calls", "40 + 2"),
-        Rejected("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", "scalar proof requires one complete return statement", "if (true) { return 42; }"),
+        Rejected("negative", "package scalar\nMain :: () -> int { return -1; }", "scalar proof supports only literals, parameters, comparisons and direct calls", "-1"),
+        Rejected("parentheses", "package scalar\nMain :: () -> int { return (42); }", "scalar proof supports only literals, parameters, comparisons and direct calls", "(42)"),
+        Rejected("arithmetic", "package scalar\nMain :: () -> int { return 40 + 2; }", "scalar proof supports only literals, parameters, comparisons and direct calls", "40 + 2"),
+        Accepted("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", 42, "Main", "true ? 42 : 0"),
         Rejected("local", "package scalar\nMain :: () -> int { x: int = 42; return x; }", "scalar proof requires one complete return statement", "x: int = 42;"),
         Rejected("after_return", "package scalar\nMain :: () -> int { return 42; assert(false); }", "scalar proof does not support additional statements", "assert(false);"),
         Rejected("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", "scalar proof does not support additional statements", "return 0;"),
@@ -136,7 +143,7 @@ Cases :: () -> Case[] {
         Rejected("named_argument", "package scalar\nMain :: () -> int { return Id(x: 1); }\nId :: (x: int) -> int { return x; }", "unsupported syntax 'named_argument'", "x: 1"),
         Rejected("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 1) -> int { return x; }", "scalar proof requires int or bool parameters and one int or bool result", "x: int = 1"),
         Rejected("string_parameter", "package scalar\nMain :: () -> int { return Size(\"a\"); }\nSize :: (text: string) -> int { return 1; }", "scalar proof requires int or bool parameters and one int or bool result", "text: string"),
-        Rejected("arithmetic_argument", "package scalar\nMain :: () -> int { return Id(1 + 2); }\nId :: (x: int) -> int { return x; }", "scalar proof supports only literals, parameters and direct calls", "1 + 2"),
+        Rejected("arithmetic_argument", "package scalar\nMain :: () -> int { return Id(1 + 2); }\nId :: (x: int) -> int { return x; }", "scalar proof supports only literals, parameters, comparisons and direct calls", "1 + 2"),
         Rejected("native_call", "package scalar\nMain :: () -> int { return print(1); }", "Unknown function 'print'", "print"),
         Rejected("qualified_call", "package scalar\nMain :: () -> int { return scalar.Id(1); }\nId :: (x: int) -> int { return x; }", "Unknown function 'scalar.Id'", "Id"),
         Rejected("duplicate_function", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { return x; }\nId :: (y: int) -> int { return y; }", "Duplicate declaration 'Id'", "Id :: (y: int) -> int { return y; }"),
@@ -147,6 +154,23 @@ Cases :: () -> Case[] {
         Accepted("most_operands", Nest(63), 1, "Main,Id", ""),
         Rejected("too_many_operands", Nest(64), "scalar proof admits at most 64 operands per function", Nested(64)),
         Accepted("largest_source", Padded(16384), 1, "Main", "1"),
+        Accepted("min", "package scalar\nMain :: () -> int { return Min(7, 3); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\n", 3, "Main,Min", "7 ; 3 ; Min(7, 3) | a ; b ; a < b ? a : b"),
+        Accepted("max", "package scalar\nMain :: () -> int { return Max(3, 7); }\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 7, "Main,Max", "3 ; 7 ; Max(3, 7) | a ; b ; a > b ? a : b"),
+        Accepted("clamp", "package scalar\nMain :: () -> int { return Clamp(12, 0, 10); }\nClamp :: (x: int, low: int, high: int) -> int { return Min(Max(x, low), high); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 10, "Main,Clamp,Min,Max", "12 ; 0 ; 10 ; Clamp(12, 0, 10) | x ; low ; Max(x, low) ; high ; Min(Max(x, low), high) | a ; b ; a < b ? a : b | a ; b ; a > b ? a : b"),
+        Accepted("operators", "package scalar\nMain :: () -> int { return If(Ge(2, 3), 1, 5); }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\nLt :: (a: int, b: int) -> bool { return a < b; }\nLe :: (a: int, b: int) -> bool { return a <= b; }\nGt :: (a: int, b: int) -> bool { return a > b; }\nGe :: (a: int, b: int) -> bool { return a >= b; }\nEq :: (a: int, b: int) -> bool { return a == b; }\nNe :: (a: int, b: int) -> bool { return a != b; }\n", 5, "Main,If,Lt,Le,Gt,Ge,Eq,Ne", "2 ; 3 ; Ge(2, 3) ; 1 ; 5 ; If(Ge(2, 3), 1, 5) | c ? a : b | a ; b ; a < b | a ; b ; a <= b | a ; b ; a > b | a ; b ; a >= b | a ; b ; a == b | a ; b ; a != b"),
+        Accepted("call_condition", "package scalar\nMain :: () -> int {\n    if (Small(3)) { return 1; }\n    return 2;\n}\nSmall :: (x: int) -> bool { return x < 10; }\n", 1, "Main,Small", "3 ; Small(3) ? 1 : 2 | x ; 10 ; x < 10"),
+        Accepted("lazy_arm", "package scalar\nMain :: () -> int { return Choose(false); }\nChoose :: (c: bool) -> int {\n    if (c) { return Taken(); }\n    return Skipped();\n}\nTaken :: () -> int { return 1; }\nSkipped :: () -> int { return 2; }\n", 2, "Main,Choose,Taken,Skipped", "false ; Choose(false) | c ? Taken() : Skipped() | 1 | 2"),
+        Accepted("bare_condition", "package scalar\nMain :: () -> int { return Positive(5); }\nPositive :: (x: int) -> int {\n    if x > 0 { return x; }\n    return 0;\n}\n", 5, "Main,Positive", "5 ; Positive(5) | x ; 0 ; x > 0 ? x : 0"),
+        Accepted("split_most_operands", Split(31, 29), 1, "Main,Small,Id", ""),
+        Rejected("split_too_many_operands", Split(31, 30), "scalar proof admits at most 64 operands per function", "0"),
+        Rejected("else_branch", "package scalar\nMain :: () -> int {\n    if (true) { return 1; } else { return 2; }\n}\n", "scalar proof does not support else branches", "{ return 2; }"),
+        Rejected("two_guards", "package scalar\nMain :: () -> int {\n    if (true) { return 1; }\n    if (false) { return 2; }\n    return 3;\n}\n", "scalar proof admits at most 1 guard per function", "if (false) { return 2; }"),
+        Rejected("guard_without_return", "package scalar\nMain :: () -> int {\n    if (true) { assert(false); }\n    return 1;\n}\n", "scalar proof requires a guard that returns", "assert(false);"),
+        Rejected("bool_comparison", "package scalar\nMain :: () -> int { return If(Same(true, false), 1, 2); }\nSame :: (a: bool, b: bool) -> bool { return a == b; }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\n", "scalar proof compares only int operands", "a == b"),
+        Rejected("nested_parentheses", "package scalar\nMain :: () -> int { return Min(1, 2); }\nMin :: (a: int, b: int) -> int {\n    if ((a < b)) { return a; }\n    return b;\n}\n", "scalar proof supports only literals, parameters, comparisons and direct calls", "(a < b)"),
+        Rejected("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", "scalar proof supports only literals, parameters, comparisons and direct calls", "a < b && b < c"),
+        Rejected("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", "scalar proof does not support recursive calls", "Down(0)"),
+        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "7 ; 3 ; 7 < 3 ? 1 : 2"),
         Rejected("too_large", Padded(16385), "scalar proof admits at most 16384 source bytes", "")];
 }
 pub Count :: () -> int {
@@ -190,30 +214,70 @@ Heads :: (rows: facts.Row[]) -> int[] {
     }
     return heads;
 }
-// The value function `function` returns for `arguments`: the rows read as the
-// evaluation they record, operand by operand. Bools are 0 and 1.
+// The value a comparison operator gives for `left` and `right`.
+Compared :: (operator: int, left: int, right: int) -> bool {
+    if (operator == facts.Less) {
+        return left < right;
+    }
+    if (operator == facts.LessEqual) {
+        return left <= right;
+    }
+    if (operator == facts.Greater) {
+        return left > right;
+    }
+    if (operator == facts.GreaterEqual) {
+        return left >= right;
+    }
+    if (operator == facts.Equal) {
+        return left == right;
+    }
+    return left != right;
+}
+// The value function `function` returns for `arguments`: the rows read as
+// the evaluation they record, operand by operand, segment by segment. The
+// first guard whose condition holds returns its arm's value, else the final
+// return gives it. Bools are 0 and 1. Only calls recurse, so the depth is the
+// call chain's.
 Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int[]) -> int {
     head := heads[function];
-    returned := rows[head + 1 + rows[head].count];
-    stack: int[] = [];
-    first := head + 2 + rows[head].count;
-    for (at in first..<first + returned.count) {
-        operand := rows[at];
-        if (operand.kind == facts.LiteralRow) {
-            stack.append(operand.value);
-        } else if (operand.kind == facts.ReadRow) {
-            stack.append(arguments[operand.value]);
-        } else {
-            base := length(stack) - operand.count;
-            passed: int[] = [];
-            for (index in base..<length(stack)) {
-                passed.append(stack[index]);
+    at := head + 1 + rows[head].count;
+    while (true) {
+        stack: int[] = [];
+        first := at + 1;
+        for (index in first..<first + rows[at].count) {
+            operand := rows[index];
+            if (operand.kind == facts.LiteralRow) {
+                stack.append(operand.value);
+            } else if (operand.kind == facts.ReadRow) {
+                stack.append(arguments[operand.value]);
+            } else if (operand.kind == facts.CompareRow) {
+                base := length(stack) - 2;
+                compared: int = 0;
+                if (Compared(operand.value, stack[base], stack[base + 1])) {
+                    compared = 1;
+                }
+                stack = slice(stack, 0, base);
+                stack.append(compared);
+            } else {
+                base := length(stack) - operand.count;
+                passed: int[] = [];
+                for (argument in base..<length(stack)) {
+                    passed.append(stack[argument]);
+                }
+                stack = slice(stack, 0, base);
+                stack.append(Evaluate(rows, heads, operand.value, passed));
             }
-            stack = slice(stack, 0, base);
-            stack.append(Evaluate(rows, heads, operand.value, passed));
+        }
+        value := stack[length(stack) - 1];
+        if (rows[at].kind == facts.ReturnRow) {
+            return value;
+        }
+        // A guard: its arm when it holds, else the segment after the arm.
+        at = first + rows[at].count;
+        if (value != 1) {
+            at += rows[at].count + 1;
         }
     }
-    return stack[length(stack) - 1];
 }
 // Function names joined by commas, and operand excerpts by function.
 Names :: (rows: facts.Row[]) -> string {
@@ -226,26 +290,32 @@ Names :: (rows: facts.Row[]) -> string {
     }
     return names;
 }
+// Each function's operand excerpts, separated by " ; ". A guard's condition
+// is followed by " ? " and its arm's operands by " : ".
 Trace :: (rows: facts.Row[]) -> string {
     trace := "";
-    first := true;
+    separator := "";
+    // 1 within a guard's condition, 2 within its arm.
+    guard: int = 0;
     for (row in rows) {
         if (row.kind == facts.FunctionRow) {
+            separator = "";
             if (trace != "") {
                 trace = format_text("{} |", trace);
-            }
-            first = true;
-        }
-        if (row.kind == facts.LiteralRow || row.kind == facts.ReadRow || row.kind == facts.CallRow) {
-            separator := " ; ";
-            if (first) {
                 separator = " ";
             }
-            if (trace == "") {
-                separator = "";
-            }
+        } else if (row.kind == facts.GuardRow) {
+            guard = 1;
+        } else if (row.kind == facts.ReturnRow && guard == 1) {
+            separator = " ? ";
+            guard = 2;
+        } else if (row.kind == facts.ReturnRow && guard == 2) {
+            separator = " : ";
+            guard = 0;
+        } else if (row.kind == facts.LiteralRow || row.kind == facts.ReadRow || row.kind == facts.CallRow ||
+                   row.kind == facts.CompareRow) {
             trace = format_text("{}{}{}", trace, separator, Excerpt(rows[0].text, row));
-            first = false;
+            separator = " ; ";
         }
     }
     return trace;

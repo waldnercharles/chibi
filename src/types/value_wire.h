@@ -9,7 +9,8 @@
 enum
 {
     EXECUTION_WIRE_MAX_BYTES = 64 * 1024 * 1024,
-    EXECUTION_WIRE_MAX_RECORDS = 1000000,
+    /* The self-hosted compiler module alone holds about a million records. */
+    EXECUTION_WIRE_MAX_RECORDS = 4000000,
     EXECUTION_WIRE_MAX_DEPTH = 64
 };
 typedef struct execution_wire

@@ -1,0 +1,11 @@
+package math
+
+// Candidate held from SDK shipping: typed double call arguments narrow implicitly.
+// See docs/core-math.md for the unsatisfied type boundary.
+
+// Returns the unclamped fraction of the range from start to end at value.
+// Every operation uses float precision, including subtraction overflow.
+// Equal endpoints and nonfinite inputs follow ordinary floating arithmetic.
+pub InverseLerp :: (start: float, end: float, value: float) -> float {
+    return (value - start) / (end - start);
+}

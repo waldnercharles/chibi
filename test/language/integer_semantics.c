@@ -741,6 +741,27 @@ static const integer_sample samples[] = {
                 "}\n",
       .calls = { { .function = "F", .arguments = "[300,0]", .expected = "[255]" },
                  { .function = "G", .arguments = "[300,0]", .expected = "[255]" } } },
+    /* Each operand appends its digit to the trace, so the trace is the order
+     * the operands ran in; the reversed spellings are the negative control. */
+    { .name = "operands evaluate left to right",
+      .source = "package facts\n"
+                "Tag :: (t: ref int, d: int, v: int) -> int { t = t * 10 + d; "
+                "return v; }\n"
+                "Sum :: () -> int { t := 0; x := Tag(t, 1, 3) + Tag(t, 2, 4); "
+                "return t; }\n"
+                "Swapped :: () -> int { t := 0; x := Tag(t, 2, 4) + Tag(t, 1, "
+                "3); return t; }\n"
+                "Quotient :: () -> int { t := 0; x := Tag(t, 1, 7) / Tag(t, 2, "
+                "0); return t; }\n"
+                "Shifted :: () -> int { t := 0; x := Tag(t, 1, 1) << uint(Tag(t, "
+                "2, 40)); return t; }\n"
+                "Ordered :: () -> int { t := 0; b := Tag(t, 2, 5) < Tag(t, 1, 3); "
+                "return t; }\n",
+      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Swapped", .arguments = "[]", .expected = "[21]" },
+                 { .function = "Quotient", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Shifted", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Ordered", .arguments = "[]", .expected = "[21]" } } },
 };
 enum
 {

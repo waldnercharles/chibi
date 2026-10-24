@@ -5311,19 +5311,18 @@ static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
                                                "slots",      "first_code",
                                                "code",       "first_argument",
                                                "arguments" };
-_Static_assert(sizeof(native_code) == sizeof CODE_FIELDS / sizeof *CODE_FIELDS * sizeof(int), "");
-_Static_assert(
-    sizeof(native_function) ==
-        sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS * sizeof(int),
-    ""
-);
-/* count Instruction or Function records from their fields' ints, in
- * declaration order. */
+enum
+{
+    CODE_WIDTH = (int)(sizeof CODE_FIELDS / sizeof *CODE_FIELDS),
+    FUNCTION_WIDTH = (int)(sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS)
+};
+/* count Instruction or Function records whose fields, in declaration order,
+ * take consecutive values. */
 static bool native_records(int b, const char *name, const int *values, int count, pin_value *out)
 {
     bool code = !strcmp(name, "Instruction");
     const char *const *fields = code ? CODE_FIELDS : FUNCTION_FIELDS;
-    int width = code ? 7 : 9;
+    int width = code ? CODE_WIDTH : FUNCTION_WIDTH;
     assert(count > 0);
     pin_value *items = xmalloc(sizeof *items * (size_t)count);
     for (int i = 0; i < count; i++) {
@@ -5335,6 +5334,36 @@ static bool native_records(int b, const char *name, const int *values, int count
     *out = rows(items, count, PIN_STRUCT, items[0].record);
     free(items);
     return true;
+}
+static bool native_codes(int b, const native_code *code, int count, pin_value *out)
+{
+    int *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        const native_code *c = &code[i];
+        const int fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                         c->left,   c->right, c->target,
+                                         c->literal };
+        memcpy(&values[i * CODE_WIDTH], fields, sizeof fields);
+    }
+    bool built = native_records(b, "Instruction", values, count, out);
+    free(values);
+    return built;
+}
+static bool native_functions(int b, const native_function *functions, int count, pin_value *out)
+{
+    int *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        const native_function *f = &functions[i];
+        const int fields[FUNCTION_WIDTH] = { f->result,     f->first_parameter,
+                                             f->parameters, f->first_slot,
+                                             f->slots,      f->first_code,
+                                             f->code,       f->first_argument,
+                                             f->arguments };
+        memcpy(&values[i * FUNCTION_WIDTH], fields, sizeof fields);
+    }
+    bool built = native_records(b, "Function", values, count, out);
+    free(values);
+    return built;
 }
 /* Emits m as a module of internal functions under budget 1. */
 static bool native_emit(int b, const native_module *m, const pin_union **out)
@@ -5351,13 +5380,11 @@ static bool native_emit(int b, const native_module *m, const pin_union **out)
         &input,
         &args[0]
     ));
-    REQUIRE(
-        native_records(b, "Function", (const int *)m->functions, m->function_count, &args[1])
-    );
+    REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
     args[2] = native_ints(m->parameters, m->parameter_count);
     args[3] = native_ints(m->slots, m->slot_count);
     args[4] = native_ints(NULL, 0);
-    REQUIRE(native_records(b, "Instruction", (const int *)m->code, m->code_count, &args[5]));
+    REQUIRE(native_codes(b, m->code, m->code_count, &args[5]));
     args[6] = native_ints(m->arguments, m->argument_count);
     args[7] = (pin_value){ .type = PIN_BOOL, .b = false };
     args[8] = (pin_value){ .type = PIN_I32, .i = 1 };
@@ -5381,17 +5408,17 @@ static bool native_rejects(int b, const native_module *m, const char *message)
 /* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
  * returns its third argument. Slots s0..s2 hold the arguments in call order. */
 static const native_code CALLER_AND_CALLEE[] = {
-    { NATIVE_CHECK },
-    { NATIVE_CONSTANT, NATIVE_INT, 0, 0, 0, 0, 7 },
-    { NATIVE_CONSTANT, NATIVE_BOOL, 1, 0, 0, 0, 1 },
-    { NATIVE_CONSTANT, NATIVE_INT, 2, 0, 0, 0, 9 },
-    { NATIVE_CALL, NATIVE_INT, 3, 1, 0, 3, 0 },
-    { NATIVE_PUBLISH, NATIVE_INT, 0, 3 },
-    { NATIVE_RETURN },
-    { NATIVE_CHECK },
-    { NATIVE_ARGUMENT, NATIVE_INT, 0, 2 },
-    { NATIVE_PUBLISH, NATIVE_INT, 0, 0 },
-    { NATIVE_RETURN },
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .literal = 7 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 1, .literal = 1 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 2, .literal = 9 },
+    { .op = NATIVE_CALL, .type = NATIVE_INT, .output = 3, .left = 1, .target = 3 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 3 },
+    { .op = NATIVE_RETURN },
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_ARGUMENT, .type = NATIVE_INT, .left = 2 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+    { .op = NATIVE_RETURN },
 };
 enum
 {
@@ -5503,14 +5530,14 @@ static bool native_rejects_malformed_calls(int b)
 static bool native_rejects_cycles(int b)
 {
     static const native_code recursive[] = {
-        { NATIVE_CHECK },
-        { NATIVE_CALL, NATIVE_INT, 0, 0, 0, 0, 0 },
-        { NATIVE_PUBLISH, NATIVE_INT, 0, 0 },
-        { NATIVE_RETURN },
-        { NATIVE_CHECK },
-        { NATIVE_CALL, NATIVE_INT, 0, 0, 0, 0, 0 },
-        { NATIVE_PUBLISH, NATIVE_INT, 0, 0 },
-        { NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CALL, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CALL, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
     };
     static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 } };
     static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },

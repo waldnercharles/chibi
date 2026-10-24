@@ -1098,7 +1098,8 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
     REQUIRE(module);
     return true;
 }
-/* A wire's record bound replaces the default, above it as below it. */
+/* A wire's record bound replaces the default, above it as below it, up to
+ * the largest count. */
 TEST_CASE(wire_record_limit)
 {
     for (int raised = 0; raised < 2; raised++) {
@@ -1116,6 +1117,12 @@ TEST_CASE(wire_record_limit)
     execution_wire_count(&small, &count, 0);
     REQUIRE(small.error && strstr(small.error, "record count limit"));
     afree(small.data);
+    /* The largest bound admits its last record and refuses the next without
+     * wrapping the count. */
+    execution_wire full = { .record_limit = SIZE_MAX, .records = SIZE_MAX - 1 };
+    REQUIRE(execution_wire_record(&full) && !full.error && full.records == SIZE_MAX);
+    REQUIRE(!execution_wire_record(&full) && full.error && full.records == SIZE_MAX);
+    afree(full.data);
     return true;
 }
 TEST_CASE(string_wire_bytes)

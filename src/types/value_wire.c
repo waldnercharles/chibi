@@ -184,10 +184,11 @@ void execution_wire_count(execution_wire *w, int *count, size_t minimum_fields)
 }
 bool execution_wire_record(execution_wire *w)
 {
-    if (++w->records > record_limit(w)) {
+    if (w->records >= record_limit(w)) {
         fail(w, "Prepared value nesting or record limit exceeded");
         return false;
     }
+    w->records++;
     return true;
 }
 void execution_wire_string(execution_wire *w, const char **value)

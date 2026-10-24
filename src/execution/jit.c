@@ -127,15 +127,17 @@ static void enter_locals(const behavior_machine *m, int frame)
         );
     }
 }
-void behavior_jit_failure(
+static void failure(
     const behavior_machine *m,
     const behavior_function_instruction *i,
-    behavior_function_failure reason
+    behavior_function_failure reason,
+    bool preserve_message
 )
 {
     struct sljit_compiler *c = m->compiler;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL &&
-        i->op != BF_COMPONENT_WRITE && i->op != BF_INTERN_STRING) {
+    if (!preserve_message && i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
+        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE &&
+        i->op != BF_INTERN_STRING) {
         sljit_emit_op1(
             c,
             SLJIT_MOV_P,
@@ -214,6 +216,14 @@ void behavior_jit_failure(
                                                 : FLOW_ERR_STEP_BUDGET
     );
 }
+void behavior_jit_failure(
+    const behavior_machine *m,
+    const behavior_function_instruction *i,
+    behavior_function_failure reason
+)
+{
+    failure(m, i, reason, false);
+}
 /* Match entry argument defaults and real-number coercion without a C call. */
 static void argument(
     const behavior_machine *m,
@@ -291,6 +301,7 @@ typedef struct
 static behavior_layout layout(
     const behavior_function *f,
     bool inspected,
+    bool scoped,
     const behavior_function *system,
     bool shared,
     int minimum_scratch
@@ -305,8 +316,10 @@ static behavior_layout layout(
     }
     int saved_float = 0;
     bool *invariants = xcalloc((size_t)(acount(f->slots) + 1), sizeof *invariants);
-    int *registers = behavior_jit_registers(f, inspected, &saved_float, invariants);
-    bool arguments = false, calls = false, loop = false;
+    int *registers = scoped
+                       ? xcalloc((size_t)(acount(f->slots) + 1), sizeof *registers)
+                       : behavior_jit_registers(f, inspected, &saved_float, invariants);
+    bool arguments = false, calls = scoped, loop = false;
     for (int i = 0; i < acount(f->instructions); i++) {
         if (!inspected && !behavior_function_runtime_keeps(f, i)) {
             continue;
@@ -330,6 +343,7 @@ static behavior_layout layout(
                  (integers && SLJIT_NUMBER_OF_SCRATCH_REGISTERS < integer_scratch);
     behavior_machine m = { .compiler = NULL,
                            .inspected = inspected,
+                           .scoped = scoped,
                            .system_root = system,
                            .function = f,
                            .registers = registers,
@@ -362,15 +376,25 @@ static behavior_layout layout(
                       : m.system_registers ? 6
                                            : 0;
     int saved_locals = 0;
-    int *local_registers = behavior_jit_local_registers(f, saved_integer, scratch, &saved_locals, &saved_float);
-    saved_locals += behavior_jit_invariant_registers(f, registers, invariants, saved_integer + saved_locals, scratch);
+    int *local_registers = scoped
+                             ? xcalloc((size_t)(acount(f->locals) + 1), sizeof *local_registers)
+                             : behavior_jit_local_registers(f, saved_integer, scratch, &saved_locals, &saved_float);
     m.local_registers = local_registers;
-    behavior_jit_alias_locals(f, registers, local_registers, invariants);
-    if (integers) {
-        behavior_jit_integer_registers(f, inspected, registers, invariants);
+    if (!scoped) {
+        saved_locals += behavior_jit_invariant_registers(
+            f,
+            registers,
+            invariants,
+            saved_integer + saved_locals,
+            scratch
+        );
+        behavior_jit_alias_locals(f, registers, local_registers, invariants);
+        if (integers) {
+            behavior_jit_integer_registers(f, inspected, registers, invariants);
+        }
+        behavior_jit_coalesce_saves(f, registers, local_registers);
     }
     free(invariants);
-    behavior_jit_coalesce_saves(f, registers, local_registers);
     /* DIV/MOD publish their secondary result to the stack. A reused target
      * may already have acquired a register from an earlier definition or a
      * local alias. Keep every definition and use of that slot on the stack;
@@ -448,7 +472,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     /* A loop keeps remaining budget in a register. Parent frames store the
      * same representation; only returns and failures materialize step counts. */
     int check = f->instructions[0].op == BF_POINT ? 1 : 0;
-    if (loop && f->instructions[check].op == BF_CHECK && !f->root_steps) {
+    if (!m.scoped && loop && f->instructions[check].op == BF_CHECK && !f->root_steps) {
         struct sljit_jump *valid = sljit_emit_cmp(
             c,
             SLJIT_LESS_EQUAL,
@@ -487,9 +511,27 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     enter_locals(&m, 0);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
+        if (m.scoped && !(pc % 256) && behavior_execution_scope_cancelled()) {
+            sljit_set_compiler_memory_error(c);
+            break;
+        }
         labels[pc] = sljit_emit_label(c);
         if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
             continue;
+        }
+        if (m.scoped) {
+            sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS0(P), SLJIT_IMM, (sljit_sw)behavior_execution_scope_step);
+            struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+            sljit_emit_op1(
+                c,
+                SLJIT_MOV_P,
+                SLJIT_MEM1(m.context),
+                offsetof(behavior_function_context, error_message),
+                SLJIT_R0,
+                0
+            );
+            failure(&m, i, BEHAVIOR_FUNCTION_BUDGET, true);
+            bind_here(c, ok);
         }
         if (i->op == BF_SAVE && behavior_function_inspectable(f) &&
             f->locals[i->target].parameter) {
@@ -498,7 +540,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
         int flags = width(i->type), mem = SLJIT_MEM1(SLJIT_SP);
         int destination = registers[i->output] ? registers[i->output] : mem;
         sljit_sw offset = registers[i->output] ? 0 : i->output * sizeof(double);
-        int fields = behavior_jit_result_fields(&m, pc);
+        int fields = m.scoped ? 0 : behavior_jit_result_fields(&m, pc);
         if (fields) {
             for (int k = 1; k < fields; k++) {
                 labels[pc + k] = labels[pc];
@@ -507,7 +549,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             continue;
         }
         struct sljit_jump *branch = NULL;
-        int compared = behavior_jit_field_branch(&m, pc, &branch);
+        int compared = m.scoped ? 0 : behavior_jit_field_branch(&m, pc, &branch);
         if (compared) {
             for (int k = 1; k < compared; k++) {
                 labels[pc + k] = labels[pc];
@@ -516,7 +558,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             jumps[pc] = branch;
             continue;
         }
-        int predicate = behavior_jit_fused_branch(&m, pc, &branch);
+        int predicate = m.scoped ? 0 : behavior_jit_fused_branch(&m, pc, &branch);
         if (predicate) {
             for (int k = 1; k < predicate; k++) {
                 labels[pc + k] = labels[pc];
@@ -1142,6 +1184,7 @@ static struct sljit_jump **loop_budget_guard(
 static void *emit(
     const behavior_function *f,
     bool inspected,
+    bool scoped,
     const behavior_function *const *systems,
     int count
 )
@@ -1164,7 +1207,7 @@ static void *emit(
             runtime[i].instructions = body->runtime_body;
             body = &runtime[i];
         }
-        layouts[i] = layout(body, inspected, root, false, 0);
+        layouts[i] = layout(body, inspected, scoped, root, false, 0);
         if (layouts[i].scratch > scratch) {
             scratch = layouts[i].scratch;
         }
@@ -1176,7 +1219,7 @@ static void *emit(
                           layouts[i].scratch < scratch)) {
             free((void *)layouts[i].machine.registers);
             free((void *)layouts[i].machine.local_registers);
-            layouts[i] = layout(layouts[i].machine.function, false, systems[i], shared, scratch);
+            layouts[i] = layout(layouts[i].machine.function, false, false, systems[i], shared, scratch);
         }
         if (layouts[i].saved > saved) {
             saved = layouts[i].saved;
@@ -1265,6 +1308,9 @@ static void *emit(
         emissions[i] = emit_body(&layouts[i], c, -1);
     }
     void *code = NULL;
+    if (scoped && behavior_execution_scope_cancelled()) {
+        sljit_set_compiler_memory_error(c);
+    }
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
         for (int i = 0; i < count; i++) {
             for (int j = 0; j < acount(emissions[i].next); j++) {
@@ -1274,7 +1320,9 @@ static void *emit(
         code = sljit_generate_code(c, 0, NULL);
         if (code && !count) {
             for (int j = 0; j < acount(f->suspensions); j++) {
-                (inspected ? f->artifact->inspection_addresses : f->artifact->resume_addresses)
+                (scoped      ? f->artifact->scoped_addresses
+                 : inspected ? f->artifact->inspection_addresses
+                             : f->artifact->resume_addresses)
                     [f->suspensions[j].pc + 1] = sljit_get_label_addr(
                         emissions[0].resumes[j]
                     );
@@ -1295,7 +1343,11 @@ static void *emit(
 }
 void *behavior_function_jit(const behavior_function *f, bool inspected)
 {
-    return emit(f, inspected, NULL, 0);
+    return emit(f, inspected, false, NULL, 0);
+}
+void *behavior_function_jit_scoped(const behavior_function *f)
+{
+    return emit(f, true, true, NULL, 0);
 }
 void *behavior_function_jit_system(const behavior_function *f)
 {
@@ -1307,7 +1359,7 @@ void *behavior_function_compile_sequence(const behavior_function *const *functio
     for (int i = 0; i < count; i++) {
         assert(functions[i]->batchable);
     }
-    return emit(NULL, false, functions, count);
+    return emit(NULL, false, false, functions, count);
 }
 void *behavior_function_guard(const behavior_function *f)
 {
@@ -1379,6 +1431,10 @@ void *behavior_function_guard(const behavior_function *f)
 
 #else
 void *behavior_function_compile_sequence(const behavior_function *const *, int)
+{
+    return NULL;
+}
+void *behavior_function_jit_scoped(const behavior_function *)
 {
     return NULL;
 }

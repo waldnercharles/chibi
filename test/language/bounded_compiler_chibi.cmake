@@ -9,11 +9,7 @@ foreach(component Compile Expression Prepare)
 endforeach()
 configure_file(bounded_compiler_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/bounded_compiler_chibi_source.h" @ONLY)
-target_sources(test_language PRIVATE bounded_compiler_chibi.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_host.c"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_target.c")
+target_sources(test_language PRIVATE bounded_compiler_chibi.c)
 set_source_files_properties(bounded_compiler_chibi.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_host.c"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_target.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::native_prepared)

@@ -13,7 +13,7 @@ add_custom_command(
     COMMAND $<TARGET_FILE:chibi-build-host>
         --compiler tools/compiler --compiler-core packages/core --root "${CHIBI_SDK_ROOT}"
         --source tools/toolchain/AssetCompiler.chibi --core packages/core
-        --collection graph=tools/graph --entry Build --timeout-ms 240000 --
+        --collection asset_generator=tools/graph/asset_compiler --entry Build --timeout-ms 240000 --
         $<TARGET_FILE:chibi-compiler-host> "${asset_output}"
     COMMAND "${CMAKE_COMMAND}" -DROOT=${CHIBI_SDK_ROOT} -DRESOURCE=${asset_output}
         -P "${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake"

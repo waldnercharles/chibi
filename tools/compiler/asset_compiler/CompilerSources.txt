@@ -6,7 +6,7 @@ package_compiler/References.chibi
 package_compiler/Tree.chibi
 package_compiler/Number.chibi
 package_compiler/Behavior.chibi
-scalar_facts/Facts.chibi
+package_compiler/Scalar.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi
 source_snapshot/Snapshot.chibi
@@ -17,3 +17,4 @@ package_graph/Graph.chibi
 package_paths/Paths.chibi
 lexical_binding/Binding.chibi
 prepared_writer/Writer.chibi
+scalar_facts/Facts.chibi

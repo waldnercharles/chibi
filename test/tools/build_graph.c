@@ -1447,11 +1447,26 @@ TEST_CASE(language_delivery_registrations_match)
     return true;
 }
 
+TEST_CASE(asset_generator_uses_its_own_collection)
+{
+    REQUIRE(
+        registration("tools/toolchain/AssetCompiler.chibi", "import generator \"asset_generator:.\"")
+    );
+    REQUIRE(
+        registration("sdk/asset_compiler_host.cmake", "--collection asset_generator=tools/graph/asset_compiler")
+    );
+    REQUIRE(
+        registration("tools/graph/engine/Engine.chibi", "\"--collection\", \"asset_generator=tools/graph/asset_compiler\"")
+    );
+    return true;
+}
+
 /* A separate route: reflect's run and the codec compile take seconds. */
 void test_build_graph_generated(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
     RUN_TEST_CASE(language_delivery_registrations_match);
+    RUN_TEST_CASE(asset_generator_uses_its_own_collection);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);

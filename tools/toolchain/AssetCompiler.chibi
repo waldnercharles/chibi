@@ -1,6 +1,6 @@
 package toolchain
 
-import generator "graph:asset_compiler"
+import generator "asset_generator:."
 
 pub Build :: () -> int {
     arguments := build.arguments();

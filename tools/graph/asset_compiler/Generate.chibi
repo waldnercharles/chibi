@@ -96,7 +96,7 @@ Read :: (root: string, paths: string[]) -> string[] {
     return sources;
 }
 
-Request :: (first: string, paths: string[], sources: string[], target: string) -> string {
+Request :: (first: string, paths: string[], sources: string[], target: string, game: bool) -> string {
     ordered_paths := [first];
     ordered_sources: string[] = [];
     index: int = 0;
@@ -121,7 +121,11 @@ Request :: (first: string, paths: string[], sources: string[], target: string) -
     if (!strings.HasPrefix(target, "[") || !strings.HasSuffix(target, "]")) {
         return "";
     }
-    return Join(["[\"/project\",[\"core\",\"game\"],[\"/sdk/core\",\"/sdk/game\"],", Array(ordered_paths), ",", Array(ordered_sources),
+    collections := "[\"/project\",[\"core\"],[\"/sdk/core\"],";
+    if (game) {
+        collections = "[\"/project\",[\"core\",\"game\"],[\"/sdk/core\",\"/sdk/game\"],";
+    }
+    return Join([collections, Array(ordered_paths), ",", Array(ordered_sources),
                  ",false,", strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
 }
 
@@ -218,12 +222,26 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
     artifact := Join([folder, "/asset_compiler.chibip"]);
     seed := Join([root, "/tools/compiler/bootstrap/compiler.chibip"]);
     closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
-    if (!build.write_file(inputs, Request("package_compiler/Compile.chibi", bootstrap_paths, bootstrap_sources, native_target)) ||
-        !Invoke(host, seed, closure_entry, inputs, Join([compiler, ".tmp"])) ||
-        !build.rename(Join([compiler, ".tmp"]), compiler)) {
+    if (!build.write_file(inputs, Request("package_compiler/Compile.chibi", bootstrap_paths, bootstrap_sources, native_target, false))) {
         return false;
     }
-    if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, native_target)) ||
+    reused := build.run([host, "--reuse-bootstrap", Join([root, "/tools/compiler/bootstrap"]),
+                         "--compiler", Join([root, "/tools/compiler"]), "--core", Join([root, "/packages/core"]),
+                         "--input", inputs, "--output-artifact", Join([compiler, ".tmp"])]);
+    if (reused == 3) {
+        // Keep this captured request unchanged when the checked seed cannot be
+        // reused: changed sources still compile through the existing path.
+        if (!Invoke(host, seed, closure_entry, inputs, Join([compiler, ".tmp"]))) {
+            return false;
+        }
+    } else if (reused != 0) {
+        build.report(Join(["asset compiler bootstrap reuse failed: ", build.last_stderr()]));
+        return false;
+    }
+    if (!build.rename(Join([compiler, ".tmp"]), compiler)) {
+        return false;
+    }
+    if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, native_target, true)) ||
         !Invoke(host, compiler, closure_entry, inputs, Join([facade, ".tmp"])) ||
         !build.rename(Join([facade, ".tmp"]), facade)) {
         return false;
@@ -233,7 +251,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
             return false;
         }
     } else {
-        if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, target)) ||
+        if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, target, true)) ||
             !Invoke(host, compiler, closure_entry, inputs, Join([artifact, ".tmp"])) ||
             !build.rename(Join([artifact, ".tmp"]), artifact)) {
             return false;

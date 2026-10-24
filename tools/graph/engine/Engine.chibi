@@ -556,7 +556,7 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
     command := [Executable(folder, "chibi-build-host"), "--compiler", "tools/compiler",
                 "--compiler-core", "packages/core", "--root", root,
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
-                "--collection", "graph=tools/graph", "--entry", "Build", "--timeout-ms", "240000", "--",
+                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", "240000", "--",
                 Executable(folder, "chibi-compiler-host"), output];
     inputs := [Executable(folder, "chibi-build-host"), Executable(folder, "chibi-compiler-host")];
     for (directory in ["tools/compiler", "packages/core", "packages/game", "tools/graph/asset_compiler"]) {

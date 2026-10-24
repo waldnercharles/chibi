@@ -62,12 +62,19 @@ const asset_compiler_options *asset_source_default_options();
  * Ordinary package source with public Build() -> byte[]. The authored asset
  * compiler resolves its entry, then the pure runtime evaluates its JSON byte
  * transport. No source parser/type checker or filesystem resolution occurs in
- * this adapter. NULL path selects /project/asset/Asset.chibi. */
+ * this adapter. Decoded NUL text/keys are rejected, not truncated.
+ * NULL path selects /project/asset/Asset.chibi. */
 av_doc *asset_source_read(
     const char *source,
     const char *path,
     const asset_compiler_options *,
     asset_compiler_diagnostic *
 );
+/* Writes new static source through the packaged Chibi writer. Returns caller-
+ * freed source (free), or NULL with a copied diagnostic. Uses compile_budget,
+ * not evaluation_budget, with the same borrowed-option and restored-scope
+ * contract as read. UTF-8 is supported; nonzero controls are escaped. NUL text/keys are
+ * rejected explicitly. The input value and its storage remain caller-owned. */
+char *asset_source_write(const av_value *, const asset_compiler_options *, asset_compiler_diagnostic *);
 
 #endif

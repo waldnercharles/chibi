@@ -4814,8 +4814,6 @@ static int copying_functions(const execution_module_plan *p)
                                  "CompileWithEffects",
                                  "CompileClosureWithEffects",
                                  "CompileBehavior",
-                                 "CompileBehaviors",
-                                 "BehaviorRejection",
                                  "CollectScalar",
                                  "Declare",
                                  "DeclarePackage" };
@@ -6285,23 +6283,13 @@ static bool catalog_export_contract(const script_catalog *catalog)
 {
     const char *identity = "NativeProbe",
                *source = "NativeProbe :: behavior {}";
-    size_t old_length, length;
-    char *old_json = compiler_behavior_input_json(catalog, &identity, &source, 1, &old_length);
+    size_t length;
     char *json = compiler_behavior_catalog_input_json(catalog, NULL, &identity, &source, 1, &length);
-    yyjson_doc *old = yyjson_read(old_json, old_length, 0),
-               *current = yyjson_read(json, length, 0);
-    REQUIRE(old && current);
-    yyjson_val *before = yyjson_doc_get_root(old),
-               *after = yyjson_doc_get_root(current);
-    REQUIRE(yyjson_arr_size(before) == 17 && yyjson_arr_size(after) == 18);
-    for (size_t i = 0; i < 17; i++) {
-        REQUIRE(
-            i == 5 || i == 6 ||
-            yyjson_equals(yyjson_arr_get(before, i), yyjson_arr_get(after, i))
-        );
-    }
-    yyjson_val *old_ports = yyjson_arr_get(before, 6),
-               *ports = yyjson_arr_get(after, 6);
+    yyjson_doc *current = yyjson_read(json, length, 0);
+    REQUIRE(current);
+    yyjson_val *after = yyjson_doc_get_root(current);
+    REQUIRE(yyjson_arr_size(after) == 18);
+    yyjson_val *ports = yyjson_arr_get(after, 6);
     yyjson_val *functions = yyjson_arr_get(after, 5),
                *effects = yyjson_arr_get(after, 17);
     size_t function_index = 0;
@@ -6314,14 +6302,6 @@ static bool catalog_export_contract(const script_catalog *catalog)
         }
         yyjson_val *function = yyjson_arr_get(functions, function_index);
         REQUIRE(function);
-        yyjson_val *old_function = yyjson_arr_get(yyjson_arr_get(before, 5), function_index);
-        static const char *const fields[] = { "name", "first", "parameters", "results", "variadic" };
-        for (int f = 0; f < NATIVE_COUNT(fields); f++) {
-            REQUIRE(yyjson_equals(
-                yyjson_obj_get(old_function, fields[f]),
-                yyjson_obj_get(function, fields[f])
-            ));
-        }
         REQUIRE(yyjson_is_true(yyjson_obj_get(function, "direct")));
         REQUIRE(yyjson_get_int(yyjson_obj_get(function, "kind")) == (int)native->kind);
         REQUIRE(yyjson_get_int(yyjson_obj_get(function, "intrinsic")) == 0);
@@ -6341,12 +6321,6 @@ static bool catalog_export_contract(const script_catalog *catalog)
                                ? &native->parameters[j]
                                : &native->results[j - native->parameter_count];
             yyjson_val *port = yyjson_arr_get(ports, (size_t)(first + j));
-            yyjson_val *old_port = yyjson_arr_get(old_ports, (size_t)(first + j));
-            REQUIRE(!yyjson_obj_get(old_port, "nominal"));
-            REQUIRE(
-                yyjson_get_int(yyjson_obj_get(old_port, "storage")) ==
-                port_storage(parameter->type)
-            );
             REQUIRE(
                 yyjson_get_uint(yyjson_obj_get(port, "nominal")) ==
                 parameter->type.nominal
@@ -6360,9 +6334,7 @@ static bool catalog_export_contract(const script_catalog *catalog)
     REQUIRE(
         yyjson_arr_size(functions) == function_index && yyjson_arr_size(effects) == function_index
     );
-    yyjson_doc_free(old);
     yyjson_doc_free(current);
-    free(old_json);
     free(json);
     return catalog_export_rejects(catalog);
 }

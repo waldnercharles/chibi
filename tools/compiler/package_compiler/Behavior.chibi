@@ -858,20 +858,6 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
     }
     return Result.Compiled(module_ids[0], writer.Closure(module_ids[0], module_ids, identities, data, starts, lengths));
 }
-// The modules of a project's behavior assets, `identities[i]` holding
-// `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that
-// takes one byte[] result; empty when stage one rejects any of them, which
-// BehaviorRejection then says why.
-pub CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                         natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
-                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                         make_fields: int[]) -> byte[] {
-    context: BodyContext = BodyContext.Unknown;
-    return CompileBehaviorsResolved(identities, sources, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
-                                    game_events, event_fields, types, type_fields, entity, operators, globals,
-                                    makes, make_fields, resize([int(0)], length(natives)), context);
-}
 CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
                              natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
                              event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
@@ -885,18 +871,6 @@ CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Ta
         case .Compiled(module, bytes):
             return bytes;
     }
-}
-// The first of CompileBehaviors' behaviors stage one rejects, as
-// "identity:line:column: message"; "" when it compiles them all.
-pub BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                          natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
-                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                          make_fields: int[]) -> string {
-    context: BodyContext = BodyContext.Unknown;
-    return BehaviorRejectionResolved(identities, sources, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
-                                     game_events, event_fields, types, type_fields, entity, operators, globals,
-                                     makes, make_fields, resize([int(0)], length(natives)), context);
 }
 BehaviorRejectionResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
                               natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],

@@ -1,5 +1,4 @@
 #include "host/build_host.h"
-#include "host/build_io.h"
 #include "host/process.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -115,15 +114,7 @@ static void preparation_end()
 }
 static int usage()
 {
-    fprintf(
-        stderr,
-        "usage: chibi-build-host --root DIR --source FILE [--core DIR] "
-        "[--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] "
-        "--entry NAME --timeout-ms N [--output-artifact FILE | -- "
-        "ARGUMENTS...]\n"
-        "       chibi-build-host --root DIR --artifact FILE --entry NAME "
-        "--timeout-ms N [-- ARGUMENTS...]\n"
-    );
+    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE [--core DIR] [--collection NAME=DIR]... [--compiler DIR] [--compiler-core DIR] --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
     return 1;
 }
 #define BUILD_SOURCE_LIMIT (1024 * 1024)
@@ -201,7 +192,6 @@ int main(int argc, char **argv)
         return 0;
     }
     const char *root = NULL, *path = NULL, *core = NULL, *entry = NULL;
-    const char *artifact = NULL, *output_artifact = NULL;
     const char *compiler_sources = NULL, *compiler_core = NULL;
     long timeout = 0;
     int arguments_start = argc;
@@ -219,10 +209,6 @@ int main(int argc, char **argv)
             root = argv[i + 1];
         } else if (!strcmp(argv[i], "--source") && !path) {
             path = argv[i + 1];
-        } else if (!strcmp(argv[i], "--artifact") && !artifact) {
-            artifact = argv[i + 1];
-        } else if (!strcmp(argv[i], "--output-artifact") && !output_artifact) {
-            output_artifact = argv[i + 1];
         } else if (!strcmp(argv[i], "--core") && !core) {
             core = argv[i + 1];
         } else if (!strcmp(argv[i], "--compiler") && !compiler_sources) {
@@ -248,11 +234,7 @@ int main(int argc, char **argv)
             return usage();
         }
     }
-    if (!root || !entry || !timeout || ((path != NULL) == (artifact != NULL)) ||
-        (path && !path[0]) || (artifact && !artifact[0]) ||
-        (artifact && (core || collection_count || compiler_sources ||
-                      compiler_core || output_artifact)) ||
-        (output_artifact && (!output_artifact[0] || arguments_start < argc))) {
+    if (!root || !path || !entry || !timeout) {
         return usage();
     }
     /* Budget starts before file IO and preparation, and every child shares it. */
@@ -265,7 +247,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
-    char *source_path = from_root(root, path ? path : artifact);
+    char *source_path = from_root(root, path);
     char *core_path = NULL;
     if (core) {
         char *joined = from_root(root, core);
@@ -292,31 +274,9 @@ int main(int argc, char **argv)
         name[length] = 0;
         named[i] = (chibi_build_collection){ name, roots[i] };
     }
-    char *text = NULL, *bytes = NULL;
-    size_t artifact_size = 0;
-    const char *read_error = NULL;
-    bool read = false;
-    if (artifact) {
-        char *resolved = realpath(source_path, NULL);
-        if (resolved) {
-            free(source_path);
-            source_path = resolved;
-            read = build_io_read("/", source_path, deadline, &cancelled, &bytes, &artifact_size, &read_error) &&
-                   artifact_size;
-        }
-    } else {
-        text = found ? read_source(source_path, deadline) : NULL;
-        read = text != NULL;
-    }
-    if (!read) {
-        fprintf(
-            stderr,
-            "%s\n",
-            artifact ? (read_error ? read_error : "build artifact could not be read")
-            : found ? "build source could not be read"
-                    : "build collection could not be found"
-        );
-        free(bytes);
+    char *text = found ? read_source(source_path, deadline) : NULL;
+    if (!text) {
+        fprintf(stderr, found ? "build source could not be read\n" : "build collection could not be found\n");
         free(source_path);
         free(core_path);
         for (int i = 0; i < collection_count; i++) {
@@ -325,28 +285,23 @@ int main(int argc, char **argv)
         }
         return 1;
     }
+    char *sources = compiler_sources ? realpath(compiler_sources, NULL)
+                                     : shared("compiler");
+    char *compiler_collection = compiler_core ? realpath(compiler_core, NULL)
+                                              : shared("core");
     char error[256] = "SDK compiler sources and core collection could not be "
                       "found";
-    chibi_build_compiler *compiler = NULL;
-    if (!artifact) {
-        char *sources = compiler_sources ? realpath(compiler_sources, NULL)
-                                         : shared("compiler");
-        char *compiler_collection = compiler_core ? realpath(compiler_core, NULL)
-                                                  : shared("core");
-        compiler = sources && compiler_collection
-                     ? chibi_build_compiler_load(sources, compiler_collection, error, sizeof error)
-                     : NULL;
-        free(sources);
-        free(compiler_collection);
-    }
+    chibi_build_compiler
+        *compiler = sources && compiler_collection
+                      ? chibi_build_compiler_load(sources, compiler_collection, error, sizeof error)
+                      : NULL;
+    free(sources);
+    free(compiler_collection);
     chibi_build_options options = {
         .compiler = compiler,
         .root = root,
         .source_path = source_path,
         .source_text = text,
-        .artifact = bytes,
-        .artifact_size = artifact_size,
-        .output_artifact = output_artifact,
         .core = core_path,
         .collections = named,
         .collection_count = collection_count,
@@ -359,8 +314,8 @@ int main(int argc, char **argv)
         .prepared = preparation_end,
     };
     chibi_build_result result = { 0 };
-    bool success = (artifact || compiler) && chibi_build_invoke(&options, &result);
-    if (!artifact && !compiler) {
+    bool success = compiler && chibi_build_invoke(&options, &result);
+    if (!compiler) {
         snprintf(result.diagnostic, sizeof result.diagnostic, "%s", error);
     }
     fwrite(result.stdout_text, 1, result.stdout_size, stdout);
@@ -376,7 +331,6 @@ int main(int argc, char **argv)
     }
     chibi_build_compiler_free(compiler);
     free(text);
-    free(bytes);
     free(source_path);
     free(core_path);
     for (int i = 0; i < collection_count; i++) {

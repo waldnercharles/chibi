@@ -363,6 +363,7 @@ bool authoring_source_graph_libraries_catalog(
                                                     );
         apush(analyses, analysis);
         if (!analysis->valid) {
+            assert(analysis->diagnostic_count);
             const script_diagnostic *diagnostic = &analysis->diagnostics[0];
             if (size) {
                 snprintf(

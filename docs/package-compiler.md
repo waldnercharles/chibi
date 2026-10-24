@@ -209,13 +209,12 @@ The game arguments are flat tables, since records hold no arrays:
   record's type and, for each argument, the record field it gives.
 
 As in stage zero, the module lists every type as a requirement, and lists the
-events its handlers take. `CompileBehaviors` takes the identities and sources
-of a project's behavior assets, then the same arguments, and returns a
-CHIBICLO closure of their modules, or no bytes when it rejects one; then
-`BehaviorRejection` returns the first rejection's identity, line, column and
-message. The production route uses `CompileBehaviorsWithCatalog` and
-`BehaviorRejectionWithCatalog`. Their eighteen arguments use `CatalogNative`
-and `CatalogPort` rows and append the native effect masks in native order.
+events its handlers take. `CompileBehaviorsWithCatalog` takes the identities
+and sources of a project's behavior assets, then the same arguments, and
+returns a CHIBICLO closure of their modules, or no bytes when it rejects one;
+then `BehaviorRejectionWithCatalog` returns the first rejection's identity,
+line, column and message. Their eighteen arguments use `CatalogNative` and
+`CatalogPort` rows and append the native effect masks in native order.
 Native rows retain capability kind, canonical and source names, and whether the
 binding supports a direct data call. Ports carry nominal type IDs and reflected
 defaults, including whether a default can be represented. `StageOne.chibi`
@@ -549,8 +548,7 @@ Counter's module, state and handler must take stage zero's IDs. The second
 selector checks those two (4,316 and 5,715 assertions in 23.4 s and 28.9 s
 under load). `tool language-package-compiler-chibi-sharing` fails when any of
 stage one's functions, other than `Compile`,
-`CompileClosure`, `CompileBehavior`, `CompileBehaviors`, `Declare` and
-`DeclarePackage`, copies
+`CompileClosure`, `CompileBehavior`, `Declare` and `DeclarePackage`, copies
 its arguments on each call: one such function, through its callers, takes
 stage one compiling itself past its ceiling (11 assertions in 22.9 s; see
 `docs/language-friction.md`).

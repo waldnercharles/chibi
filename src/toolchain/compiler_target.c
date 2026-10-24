@@ -516,17 +516,16 @@ static void add_globals(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_
         );
     }
 }
-static char *behavior_input_json(
+char *compiler_behavior_catalog_input_json(
     const script_catalog *catalog,
     const native_capabilities *bindings,
     const char *const *identities,
     const char *const *sources,
     int count,
-    size_t *length,
-    bool catalog_ports
+    size_t *length
 )
 {
-    target_input input = input_new(catalog, bindings, catalog_ports);
+    target_input input = input_new(catalog, bindings, true);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, root);
@@ -543,30 +542,7 @@ static char *behavior_input_json(
     add_operators(doc, root, &input);
     add_globals(doc, root, catalog);
     add_makes(doc, root, &input);
-    if (catalog_ports) {
-        add_effects(doc, yyjson_mut_arr_add_arr(doc, root), &input);
-    }
+    add_effects(doc, yyjson_mut_arr_add_arr(doc, root), &input);
     afree(input.natives);
-    return written(doc, length, catalog_ports);
-}
-char *compiler_behavior_input_json(
-    const script_catalog *catalog,
-    const char *const *identities,
-    const char *const *sources,
-    int count,
-    size_t *length
-)
-{
-    return behavior_input_json(catalog, NULL, identities, sources, count, length, false);
-}
-char *compiler_behavior_catalog_input_json(
-    const script_catalog *catalog,
-    const native_capabilities *bindings,
-    const char *const *identities,
-    const char *const *sources,
-    int count,
-    size_t *length
-)
-{
-    return behavior_input_json(catalog, bindings, identities, sources, count, length, true);
+    return written(doc, length, true);
 }

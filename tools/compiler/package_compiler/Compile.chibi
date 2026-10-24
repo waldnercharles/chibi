@@ -1831,24 +1831,14 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
             while (first < length(callables) && callables[first].package != package) {
                 first += 1;
             }
-            needed := pass == 0;
-            index := first;
-            while (!needed && index < length(callables) && callables[index].package == package) {
-                needed = length(GenericUpdates(forest, bodies[index], summaries, context)) > 0;
-                index += 1;
-            }
-            if (!needed) {
-                continue;
-            }
-            reachable := Reachable(edges, length(packages), package);
-            used := UsedConstants(forest, documents, links, callables, constants, package, first, reachable);
-            first_document := files_of[packages[package].member_start];
-            first_solid := SolidOffsets(documents[first_document].text);
-            undeclared := OccurrenceIn(DocumentHash(documents[first_document].key), SymbolRecord, 0,
-                                       first_solid[length(first_solid) - 1]);
+            // The second pass prepares only callables with generic updates,
+            // so it reads a package's constants for its first such callable.
+            used: ConstDecl[] = [];
+            undeclared: uint64 = 0;
+            loaded := false;
             solid: int[] = [];
             solid_document: int = -1;
-            index = first;
+            index := first;
             while (index < length(callables) && callables[index].package == package) {
                 callable := callables[index];
                 generic: int[] = [];
@@ -1856,6 +1846,15 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     generic = GenericUpdates(forest, bodies[index], summaries, context);
                 }
                 if (pass == 0 || length(generic) > 0) {
+                    if (!loaded) {
+                        used = UsedConstants(forest, documents, links, callables, constants, package, first,
+                                             Reachable(edges, length(packages), package));
+                        first_document := files_of[packages[package].member_start];
+                        first_solid := SolidOffsets(documents[first_document].text);
+                        undeclared = OccurrenceIn(DocumentHash(documents[first_document].key), SymbolRecord, 0,
+                                                  first_solid[length(first_solid) - 1]);
+                        loaded = true;
+                    }
                     if (callable.document != solid_document) {
                         solid = SolidOffsets(documents[callable.document].text);
                         solid_document = callable.document;
@@ -2307,11 +2306,12 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     entries.append(row);
                 } else if (source_mode) {
                     // A behavior's member procedure is a symbol of its source's scope.
+                    // Stage zero lets every authored function wait.
                     wide.append(binding.ID("symbol", format_text("{}:1:{}:callable", identity,
                                                                  callable.name)));
                     procedure: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: "", has_entry: false,
                                                event_id: 0, event_abi: 0, event_name: "", has_event_name: false,
-                                               continuation_wait: source_mode, effects: 0, body: length(references) - 2,
+                                               continuation_wait: true, effects: 0, body: length(references) - 2,
                                                subscription: length(references) - 1};
                     entries.append(procedure);
                 } else {

@@ -188,6 +188,45 @@ Metal initialization and rendering, but it does not verify keyboard interaction:
     --size 320x180 --capture "$APP/../export-check.png")
 ```
 
+The C tooling driver has an unattended regression for this path. From an engine
+checkout, build the driver with the CPU image decoder, then run its existing
+export selector through the process policy runner:
+
+```sh
+cmake -S test/tools -B build-export-test -DCMAKE_BUILD_TYPE=Debug \
+    -DCHIBI_SDK_BUILD_COMPILER=ON
+cmake --build build-export-test --parallel 2
+python3 tools/test_policy.py --timeout 120 native \
+    "$PWD/build-export-test/test_tools" --chibi-cli-export "$CHIBI_SDK/bin/chibi"
+```
+
+The selector checks the SDK identity and copies the installation into a fresh
+scratch directory using copy-on-write cloning. It reads all six project files
+above directly from this guide and checks them with that copy's compiler. It
+runs two hidden 320x180 frames at a fixed timestep, exports an archive, extracts
+and renames the app, and verifies its signature on macOS. It then removes the
+original export and all scratch prerequisites, including the project, generated
+`.chibi/build` tree and copied SDK. From an unrelated working directory it runs
+the extracted game for two more hidden frames, without resource or shader
+path overrides.
+
+Both launches must exit successfully within 30 seconds, report two frames and
+one simulation step, and produce the expected opaque black image with the
+centered 24x24 blue square. C assertions decode and inspect every pixel, allowing
+one byte of RGB rounding. A blank capture fails. The 120-second outer deadline
+owns process cleanup; a timeout fails the check. Normal completion and assertion
+failures remove the fixture. An outer timeout or signal can leave its
+`/tmp/chibi-installed-*` directory for inspection and removal. The supplied SDK
+and other user paths are never renamed or removed.
+
+This selector requires a working native graphics context, but needs no visible
+window, keyboard input or screen capture service. It stays separate from the
+CPU-only tooling aggregate. It checks the idle scene and deployed resources;
+it does not assert A/D input or movement, or removal of the caller's source,
+SDK build tree or original installation. Use an SDK built from the source under
+test and retain its `share/chibi/package.json` receipt with the test log. An older
+installed SDK can only provide evidence for its recorded source revision.
+
 The ad hoc signature supports local execution. It is not a Developer ID
 signature or notarization for distribution to other Macs.
 

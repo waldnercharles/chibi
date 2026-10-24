@@ -1,5 +1,6 @@
 #include "compiler_bootstrap.h"
 
+#include "execution/function.h"
 #include "execution/status.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
@@ -619,6 +620,56 @@ TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
     REQUIRE(silent);
     REQUIRE(!log_has("compiler-host bytecode="));
     REQUIRE(!unlink(request));
+    REQUIRE(output_is(output, reuse_bytes, reuse_length));
+
+    /* Run counters nest exclusively inside compiler_host, so an outer run
+     * counter cannot forbid compilation here. A pure instruction scope is
+     * shared instead. Calibrate it against this exact real CompileClosure
+     * request: even one canonical instruction must debit the caller's meter. */
+    compiler_bootstrap bootstrap = { .folder = reuse_folder,
+                                     .compiler = reuse_compiler,
+                                     .core = reuse_core };
+    char why[512];
+    compiler_host *loaded = compiler_bootstrap_load(&bootstrap, why, sizeof why);
+    REQUIRE(loaded);
+    doc = reuse_input();
+    size_t length = 0;
+    char *json = yyjson_mut_write(doc, 0, &length);
+    yyjson_mut_doc_free(doc);
+    REQUIRE(json && length);
+    compiler_host_bytes attempted = { 0 };
+    behavior_execution_scope calibration = { .remaining = 1, .pure = true };
+    behavior_execution_scope_begin(&calibration);
+    bool called = compiler_host_invoke_bytes(
+        loaded,
+        compiler_host_entry("project:package_compiler:1:CompileClosure:callable"),
+        json,
+        length,
+        1,
+        COMPILER_HOST_MAX_OUTPUT_BYTES,
+        &attempted
+    );
+    behavior_execution_scope_end(&calibration);
+    compiler_host_free(loaded);
+    bool no_output = !attempted.bytes && !attempted.length;
+    free(attempted.bytes);
+
+    /* Reuse must consume zero instructions, not merely return identical bytes
+     * quietly. An attempted compilation exhausts this one-step sentinel even
+     * if its error is swallowed before copying the recorded bytes anyway. */
+    behavior_execution_scope forbidden = { .remaining = 1, .pure = true };
+    behavior_execution_scope_begin(&forbidden);
+    compiler_bootstrap_reuse_result
+        reused = compiler_bootstrap_reuse(&bootstrap, json, length, output, why, sizeof why);
+    behavior_execution_scope_end(&forbidden);
+    free(json);
+    REQUIRE(!called && attempted.flow_status == FLOW_ERR_STEP_BUDGET);
+    REQUIRE(calibration.remaining == 0 && attempted.counts.bytecode_entries > 0);
+    REQUIRE(strstr(attempted.diagnostic, "shared instruction budget exhausted"));
+    REQUIRE(no_output);
+    REQUIRE(reused == COMPILER_BOOTSTRAP_REUSED);
+    REQUIRE(forbidden.remaining == 1);
+    REQUIRE(!behavior_execution_scope_active());
     REQUIRE(output_is(output, reuse_bytes, reuse_length));
     return true;
 }

@@ -1506,7 +1506,10 @@ TEST_CASE(failed_steps_name_only_the_output)
     return true;
 }
 
-TEST_CASE(asset_generator_reports_bounded_ordered_phases)
+/* Source-registration guard only. Actual success/fallback/failure emitted
+ * traces have separate integration assertions; this scan does not execute
+ * Generate or prove that any report is reached at runtime. */
+TEST_CASE(asset_generator_source_lists_bounded_ordered_phases)
 {
     char filename[GRAPH_PATH];
     join(filename, CHIBI_SOURCE_ROOT, "tools/graph/asset_compiler/Generate.chibi");
@@ -1552,7 +1555,7 @@ void test_build_graph_generated(const char *host, const char *cmake_build)
     RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(asset_generator_uses_its_own_collection);
     RUN_TEST_CASE(failed_steps_name_only_the_output);
-    RUN_TEST_CASE(asset_generator_reports_bounded_ordered_phases);
+    RUN_TEST_CASE(asset_generator_source_lists_bounded_ordered_phases);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);

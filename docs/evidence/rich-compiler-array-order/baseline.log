@@ -1,0 +1,7 @@
+AppendLocal debug order: receiver 30, invocation 23, item 31
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi/test/language/package_compiler_chibi.c (3347): receiver >= 0 && receiver < invocation && invocation < item)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi/test/language/package_compiler_chibi.c (3595): ran)
+Running: package_compiler_builds_runnable_collection_packages 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 1904
+Test command wall time: 10.334s; includes in-test fixture setup; external configuration/build excluded.

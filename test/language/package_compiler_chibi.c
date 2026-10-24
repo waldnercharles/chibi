@@ -110,7 +110,7 @@ typedef struct
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects;
+        same_rejection, c_string_probe, host_effects, update_order;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -193,6 +193,38 @@ static const native_definition_pack CSTRING_PACK = {
     .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
+    { .name = "array update debug order",
+      .group = COLLECTION_SAMPLES,
+      .update_order = true,
+      .source = "package facts\n"
+                "Item :: () -> int { return 7; }\n"
+                "Items :: () -> int[] { return [7, 8]; }\n"
+                "AppendLocal :: () -> int[] { xs: int[] = [1]; xs = append(xs, "
+                "Item()); return xs; }\n"
+                "AppendParameter :: (xs: int[]) -> int[] { xs = append(xs, "
+                "Item()); return xs; }\n"
+                "AppendMethod :: () -> int[] { xs: int[] = [1]; "
+                "xs.append(Item()); return xs; }\n"
+                "AppendParameterMethod :: (xs: int[]) -> int[] { "
+                "xs.append(Item()); return xs; }\n"
+                "ExtendLocal :: () -> int[] { xs: int[] = [1]; xs = extend(xs, "
+                "Items()); return xs; }\n"
+                "ExtendParameter :: (xs: int[]) -> int[] { xs = extend(xs, "
+                "Items()); return xs; }\n"
+                "ExtendMethod :: () -> int[] { xs: int[] = [1]; "
+                "xs.extend(Items()); return xs; }\n"
+                "ExtendParameterMethod :: (xs: int[]) -> int[] { "
+                "xs.extend(Items()); return xs; }",
+      .calls = { { .function = "AppendLocal", .arguments = "[]", .expected = "[[1,7]]" },
+                 { .function = "AppendParameter", .arguments = "[[1]]", .expected = "[[1,7]]" },
+                 { .function = "AppendMethod", .arguments = "[]", .expected = "[[1,7]]" },
+                 { .function = "AppendParameterMethod", .arguments = "[[1]]", .expected = "[[1,7]]" },
+                 { .function = "ExtendLocal", .arguments = "[]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendParameter", .arguments = "[[1]]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendMethod", .arguments = "[]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendParameterMethod",
+                   .arguments = "[[1]]",
+                   .expected = "[[1,7,8]]" } } },
     { .name = "typed constant shifts discard bits",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -3276,6 +3308,64 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     }
     return packages;
 }
+/* The receiver input must be captured before the authored item call. Comparing
+ * watch sets alone cannot detect a watch moved across that call. Each fixture
+ * function has exactly one update and one authored invocation. */
+static bool array_update_order(const unsigned char *bytes, size_t length, const sample *s)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native);
+    REQUIRE(packages);
+    for (int c = 0; c < CALLS && s->calls[c].function; c++) {
+        const behavior_function *body = NULL;
+        for (int p = 0; p < package_collection_count(packages); p++) {
+            const execution_module *module = package_collection_module(packages, p);
+            for (int f = 0; f < module->plan.function_count; f++) {
+                if (module->plan.functions[f].id == function_id(s->calls[c].function)) {
+                    body = module->plan.functions[f].body;
+                }
+            }
+        }
+        REQUIRE(body);
+        int receiver = -1, item = -1, invocation = -1;
+        for (int pc = 0; pc < acount(body->instructions); pc++) {
+            const behavior_function_instruction *op = &body->instructions[pc];
+            if (op->op == BF_INVOKE) {
+                REQUIRE(invocation < 0);
+                invocation = pc;
+            }
+            if (op->op != BF_SOURCE_WATCH) {
+                continue;
+            }
+            const behavior_source_watch *watch = &body->source_watches[op->target];
+            if (watch->output) {
+                continue;
+            }
+            if (watch->ordinal == 0 && watch->initial.container == PIN_CONTAINER_ARRAY) {
+                REQUIRE(receiver < 0);
+                receiver = pc;
+            }
+            if (watch->ordinal == 1) {
+                REQUIRE(item < 0);
+                item = pc;
+            }
+        }
+        if (!(receiver >= 0 && receiver < invocation && invocation < item)) {
+            fprintf(
+                stderr,
+                "%s debug order: receiver %d, invocation %d, item %d\n",
+                s->calls[c].function,
+                receiver,
+                invocation,
+                item
+            );
+        }
+        REQUIRE(receiver >= 0 && receiver < invocation && invocation < item);
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    return true;
+}
 /* Compare serialized function flags, independently of the runtime's derived
  * effect summary. Direct, recursive and imported HOST callers must retain it. */
 static bool same_host_effects(const execution_module *expected, const execution_module *actual)
@@ -3512,6 +3602,32 @@ static bool run_samples(sample_group group, int b)
             }
             ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
+        if (ran && s->update_order) {
+            ran = (b || array_update_order(expected, expected_length, s)) &&
+                  array_update_order(bytes, length, s);
+            pin_value args[ARGUMENTS], closure;
+            REQUIRE(arguments(b, false, inputs, count, args));
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "CompileClosure",
+                args,
+                ARGUMENTS,
+                COMPILE_BUDGET,
+                &detached,
+                &closure
+            ));
+            const pin_array *array = closure.ptr;
+            REQUIRE(closure.type == PIN_U8 && closure.container == PIN_CONTAINER_ARRAY && array);
+            REQUIRE(length > 0 && (size_t)array->count == length);
+            bool same = true;
+            for (size_t i = 0; i < length; i++) {
+                same &= array->items[i].u8 == bytes[i];
+            }
+            arena_free(&detached);
+            REQUIRE(same);
+        }
         free(bytes);
         free(expected);
         REQUIRE(ran);
@@ -3523,7 +3639,7 @@ static bool run_samples(sample_group group, int b)
 TEST_CASE(package_compiler_omits_debug_info)
 {
     REQUIRE(prepare());
-    const char *const names[] = { "loops", "control" };
+    const char *const names[] = { "loops", "control", "array update debug order" };
     for (size_t n = 0; n < sizeof names / sizeof *names; n++) {
         const sample *s = samples;
         while (strcmp(s->name, names[n])) {

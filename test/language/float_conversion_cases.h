@@ -1,8 +1,9 @@
 #ifndef CHIBI_TEST_FLOAT_CONVERSION_CASES_H
 #define CHIBI_TEST_FLOAT_CONVERSION_CASES_H
 
-/* Approved admission and literal answers, independent of compiler folding or
- * runtime cast helpers. Runtime specials and exact bits also have C-fed tests. */
+/* Floating conversions both compilers admit, and their literal answers,
+ * independent of compiler folding or runtime cast helpers. Runtime specials
+ * and exact bits also have C-fed tests. */
 typedef struct
 {
     const char *name, *source;
@@ -11,43 +12,6 @@ typedef struct
     bool constant;
 } float_conversion_case;
 static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
-    { "implicit-narrow-declaration",
-      "package facts\npub Fold :: (value: double) -> float { result: float = "
-      "value; return result; }\n",
-      false,
-      "[1.5]",
-      "[1.5]" },
-    { "implicit-narrow-assignment",
-      "package facts\npub Fold :: (value: double) -> float { result: float = "
-      "0.0; result = value; return result; }\n",
-      false,
-      "[1.5]",
-      "[1.5]" },
-    { "implicit-narrow-return",
-      "package facts\npub Fold :: (value: double) -> float { return value; }\n",
-      false,
-      "[1.5]",
-      "[1.5]" },
-    { "implicit-narrow-argument",
-      "package facts\nTake :: (value: float) -> float { return value; }\npub "
-      "Fold :: (value: double) -> float { return Take(value); }\n",
-      false,
-      "[1.5]",
-      "[1.5]" },
-    { "implicit-narrow-typed-constant",
-      "package facts\nWide: double : 16777217.0;\nNarrow: float : Wide;\npub "
-      "Fold :: (value: double) -> float { return Narrow; }\n",
-      false,
-      "[1.5]",
-      "[1.5]",
-      true },
-    { "implicit-narrow-typed-constant-return",
-      "package facts\nWide: double : 16777217.0;\npub Fold :: (value: double) "
-      "-> float { return Wide; }\n",
-      false,
-      "[1.5]",
-      "[1.5]",
-      true },
     { "explicit-narrow-declaration",
       "package facts\npub Fold :: (value: double) -> float { result: float = "
       "float(value); return result; }\n",

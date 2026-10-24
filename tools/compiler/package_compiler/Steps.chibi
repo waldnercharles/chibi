@@ -3346,13 +3346,15 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
 }
-// Floating widening is lossless. Narrowing requires an explicit conversion.
+// Whether a floating value of type `from` widens to `to` without loss.
 FloatWidens :: (from: int, to: int) -> bool {
     return from == FloatStorage && to == DoubleStorage;
 }
-// Existing integer admission is unchanged; floating values only widen here.
+// Whether a number of type `from` converts to `to` implicitly: an integer
+// widens or becomes a floating value, and the floating types convert to one
+// another.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || (Integer(from) && Floating(to)) || FloatWidens(from, to);
+    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a

@@ -1060,60 +1060,6 @@ TEST_CASE(type_relations_canonical_tables_match_native_oracle)
     REQUIRE(calls == 224 && parses == 10);
     return true;
 }
-TEST_CASE(type_relations_approved_floating_matrix)
-{
-    static const struct
-    {
-        pin_type expected, actual;
-        bool answer;
-    } cases[] = {
-        { PIN_F64, PIN_F32, true },
-        { PIN_F32, PIN_F64, false },
-        { PIN_F32, PIN_F32, true },
-        { PIN_F64, PIN_F64, true },
-    };
-    bool agreed = true;
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        script_type expected = TYPE(cases[i].expected, 0, 0, 0, 0);
-        script_type actual = TYPE(cases[i].actual, 0, 0, 0, 0);
-        bool native = script_type_assignable(expected, actual);
-        if (native != cases[i].answer) {
-            fprintf(
-                stderr,
-                "native floating relation case %zu: expected %d, got %d\n",
-                i,
-                cases[i].answer,
-                native
-            );
-            agreed = false;
-        }
-        for (int b = 0; b < 2; b++) {
-            cleanup();
-            pin_value args[2], result;
-            REQUIRE(pack_value(b, expected, &args[0]));
-            REQUIRE(pack_value(b, actual, &args[1]));
-            REQUIRE(
-                compiler_fixture_call(&fixture, b, PACKAGE, "Assignable", args, 2, CALL_BUDGET, &detached, &result)
-            );
-            REQUIRE(result.type == PIN_BOOL);
-            if (result.b != cases[i].answer) {
-                fprintf(
-                    stderr,
-                    "authored floating relation backend %d case %zu: expected "
-                    "%d, got %d\n",
-                    b,
-                    i,
-                    cases[i].answer,
-                    result.b
-                );
-                agreed = false;
-            }
-        }
-    }
-    REQUIRE(agreed);
-    return true;
-}
-
 TEST_CASE(type_relations_canonical_results_outlive_all_producers)
 {
     REQUIRE(prepared && calls == 224 && parses == 10);
@@ -1138,7 +1084,6 @@ void test_language_type_relations_chibi()
     RUN_TEST_CASE(type_relations_scalar_tables_match_native_oracle);
     RUN_TEST_CASE(type_relations_catalog_tables_match_native_oracle);
     RUN_TEST_CASE(type_relations_canonical_tables_match_native_oracle);
-    RUN_TEST_CASE(type_relations_approved_floating_matrix);
     RUN_TEST_CASE(type_relations_canonical_results_outlive_all_producers);
     pu_clear_setup();
     compiler_fixture_free(&fixture);

@@ -2247,7 +2247,7 @@ TEST_CASE(language_type_patterns_narrow_and_invalidate)
     return true;
 }
 
-TEST_CASE(language_approved_float_conversion_admission)
+TEST_CASE(language_admits_float_conversions)
 {
     bool agreed = true;
     for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
@@ -2280,7 +2280,7 @@ TEST_CASE(language_approved_float_conversion_admission)
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(language_approved_float_conversion_admission);
+    RUN_TEST_CASE(language_admits_float_conversions);
     RUN_TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches);
     RUN_TEST_CASE(language_cancelled_builtin_cannot_be_shadowed);
     RUN_TEST_CASE(language_switch_exhaustiveness_respects_narrowed_tags);

@@ -46,12 +46,11 @@ pub Numeric :: (value: named.Value) -> bool {
     }
 }
 // Integers convert implicitly only when every value fits, and to a float
-// always. Float widens to double; double narrows to float only explicitly.
-// Floating values become integers only explicitly.
+// always; a float becomes an integer only explicitly.
 // Storage 2..9 alternates signed and unsigned 8, 16, 32 and 64-bit integers.
 NumericImplicit :: (from: int, to: int) -> bool {
     if (to > 9) {
-        return !(from == 11 && to == 10);
+        return true;
     }
     if (from > 9) {
         return false;

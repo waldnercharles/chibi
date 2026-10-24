@@ -489,10 +489,15 @@ The focused imports check failed during preparation in 1.537 seconds, before
 running package cases. Moving the check to the existing `ValueStep` and
 `CallStep` functions kept the change within the existing limit.
 
-`src/execution/function_builder.c` bounds its defined-operands matrix to 64 MiB:
+`src/execution/function_builder.c` bounds its defined-operands matrix:
 instruction count times `(slot count / 64 + 1)` 64-bit words. A source edit can
 increase either dimension, so source line count does not predict the limit.
-The diagnostic reports neither dimension nor the estimated storage.
+The diagnostic reports neither dimension nor the estimated storage. On
+2026-10-24 the query and pointer work grew `EmitBody` to 36,186 instructions
+and 15,491 slots, a 70.4 MB matrix, so the bound rose from 64 MiB to 256 MiB.
+A decoded module also counts this matrix in its preparation reservation, which
+now reserves only the largest function's verification scratch, since functions
+are verified one at a time.
 
 - The [JVM Code attribute](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.7.3)
   has an explicit per-method limit of fewer than 65,536 code bytes. Chibi's
@@ -502,7 +507,8 @@ The diagnostic reports neither dimension nor the estimated storage.
 Suggestion: include the function, instruction count, slot count, required bytes
 and allowed bytes in the diagnostic. Investigate a less dense verifier state
 representation if measured compiler functions keep reaching the limit. Keep
-the verification bound and use small owning functions in the meantime.
+the verification bound and split `EmitBody` into small owning functions: the
+matrix grows with the product of its instructions and slots.
 
 ## Calls nest at most 64 deep
 

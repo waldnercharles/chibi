@@ -849,14 +849,26 @@ static bool preparation_budget(prepared_context *c)
         w->error = "prepared module closure exceeds preparation limit";
         return false;
     }
+    /* Definitions are prepared one at a time: each keeps its retained
+     * storage, while only the largest verification scratch is live at once. */
+    size_t scratch = 0;
     for (int i = 0; i < acount(c->functions); i++) {
-        size_t next = behavior_function_preparation_bytes(c->functions[i]);
-        if (next > SIZE_MAX - bytes) {
+        behavior_function_preparation next = behavior_function_preparation_bytes(
+            c->functions[i]
+        );
+        if (next.retained == SIZE_MAX || next.scratch == SIZE_MAX ||
+            next.retained > SIZE_MAX - bytes) {
             w->error = "prepared finalization count exceeds budget";
             return false;
         }
-        bytes += next;
+        bytes += next.retained;
+        scratch = next.scratch > scratch ? next.scratch : scratch;
     }
+    if (scratch > SIZE_MAX - bytes) {
+        w->error = "prepared finalization count exceeds budget";
+        return false;
+    }
+    bytes += scratch;
     size_t services = 1;
     for (int i = 0; i < acount(c->functions); i++) {
         const behavior_function *f = c->functions[i];
@@ -917,7 +929,8 @@ execution_module *execution_prepared_read_budget(
                                .reading = true,
                                .storage = &c.plan->storage,
                                .storage_budget = remaining,
-                               .owned_limit = linker ? linker->decoded_bytes : 0 };
+                               .owned_limit = linker ? linker->decoded_bytes : 0,
+                               .record_limit = linker ? linker->decoded_records : 0 };
     execution_wire *w = &c.wire;
     c.fingerprint_budget = w;
     c.shared_record_work = &c.record_work;

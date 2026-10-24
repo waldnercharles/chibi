@@ -22,6 +22,8 @@ typedef struct execution_wire
     size_t owned_bytes, records;
     /* Decoded storage bound; 0 is EXECUTION_WIRE_MAX_BYTES. */
     size_t owned_limit;
+    /* Decoded record bound; 0 is EXECUTION_WIRE_MAX_RECORDS. */
+    size_t record_limit;
     /* Optional shared remaining allocation budget. Arena charges include new
      * block capacity/headers; caller-owned allocations use reserve(). */
     size_t *storage_budget;
@@ -37,6 +39,8 @@ void execution_wire_bool(execution_wire *, bool *);
 void execution_wire_string(execution_wire *, const char **);
 /* minimum_fields bounds a decoded count by the bytes left: each field is at least one. */
 void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
+/* Counts one decoded value record, failing past the wire's record bound. */
+bool execution_wire_record(execution_wire *);
 /* Struct names/layouts must resolve in the supplied global type catalog. No
  * process pointer is encoded; HANDLE values must be zero. Collections preserve
  * ordered items. Maps encode full typed key/value headers and ordered pairs.

@@ -8,6 +8,8 @@ case "$name" in
     opt*)
         test "$#" = 5 || exit 64
         test "$1" = -S && test "$4" = -o || exit 64
+        # Pass lists stay permissive so independent C argv assertions must catch
+        # missing verification/optimization, even when marker emission succeeds.
         printf '%s\n' 'target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"' > "$5"
         /bin/cat "$3" >> "$5"
         ;;

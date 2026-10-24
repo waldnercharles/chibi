@@ -5887,6 +5887,49 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     }
     return true;
 }
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+/* A shared wrong result is not an oracle. Each executed value must match
+ * the fixture's literal, including Main's value. */
+static bool scalar_results_match(const int32_t values[4], int32_t expected)
+{
+    return values[0] == expected && values[1] == expected &&
+           values[2] == expected && values[3] == expected;
+}
+TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
+{
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    static const int32_t expected[] = { 42, 0, INT32_MAX };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            pin_value ordinal = { .type = PIN_I32, .i = i }, literal;
+            REQUIRE(compiler_fixture_call(
+                &corpus,
+                b,
+                CASES_PACKAGE,
+                "ExpectedValue",
+                &ordinal,
+                1,
+                COMPILE_BUDGET,
+                &detached,
+                &literal
+            ));
+            REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
+            int32_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+            REQUIRE(scalar_results_match(values, literal.i));
+            int32_t wrong = expected[i] == 42 ? 41 : 1;
+            const int32_t consensus[4] = { wrong, wrong, wrong, wrong };
+            REQUIRE(!scalar_results_match(consensus, literal.i));
+            for (int column = 0; column < 4; column++) {
+                values[column] = wrong;
+                REQUIRE(!scalar_results_match(values, literal.i));
+                values[column] = expected[i];
+            }
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
 #if defined(__linux__) && defined(__x86_64__)
 /* Native execution of the authored scalar corpus. Each case's source goes
  * through CollectScalar on one producer VM, alternating by case, and must be
@@ -5894,15 +5937,14 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
  * objects through the native driver's fixed opt and llc argument vectors
  * (test/native_aot/driver/README.md), with no undefined symbol. Each object,
  * linked as a validation-only shared library, runs in a child process, so a
- * trap is a status rather than the end of this test. Its entry's value must
- * be the one the authored compiler's closure of the same source gives on
- * both VMs, and so must each probe's. A probe reaches an internal function
+ * trap is a status rather than the end of this test. Its entry's value on
+ * both VMs and both native levels must match the fixture's literal expected
+ * value, and so must each probe's. A probe reaches an internal function
  * through a validation-only IR adapter that passes it int32 arguments, which
  * is how negative values and bool parameters reach it; the adapter is not a
  * foreign ABI. Linux x86-64 is the one target the emitter admits.
  * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
  * nothing is found through PATH. */
-static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* The corpus's accepted cases. */
 enum
 {
@@ -6110,13 +6152,16 @@ static void native_file(const char *path)
     apush(native_files, copy);
 }
 /* `ir` and then `adapter`, built at `level` as the driver builds an object,
- * then linked as `directory`/`name`.so, which `library` names. */
+ * then linked as `directory`/`name`.so, which `library` names. Only observed
+ * modules request PIC for their added counter globals; ordinary modules keep
+ * the driver's exact object arguments. */
 static bool native_library(
     const char *directory,
     const char *name,
     const char *ir,
     const char *adapter,
     int level,
+    bool pic,
     char library[PATH_MAX]
 )
 {
@@ -6140,10 +6185,21 @@ static bool native_library(
         llc, "-filetype=obj", level ? "-O=2" : "-O=0", module, "-o", object,
         NULL
     };
+    const char *const observed_emit[] = { llc,
+                                          "-filetype=obj",
+                                          level ? "-O=2" : "-O=0",
+                                          "-relocation-model=pic",
+                                          module,
+                                          "-o",
+                                          object,
+                                          NULL };
     const char *const symbols[] = { nm, "--undefined-only", object, NULL };
     const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
     char out[NATIVE_OUTPUT];
-    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
+    REQUIRE(
+        run_tool(optimize, directory, out) &&
+        run_tool(pic ? observed_emit : emit, directory, out)
+    );
     REQUIRE(run_tool(symbols, directory, out));
     if (*out) {
         fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
@@ -6387,11 +6443,11 @@ enum
     MAX_CASE_CALLS = MAX_CASE_PROBES + 1
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
-static int case_calls(const char *name, const pin_value *rows, scalar_call calls[MAX_CASE_CALLS])
+static int case_calls(const char *name, const pin_value *rows, int32_t expected, scalar_call calls[MAX_CASE_CALLS])
 {
     scalar_probe probes[MAX_CASE_PROBES];
     int count = case_probes(name, probes);
-    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, 0 },
+    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, expected },
                               .json = "[]",
                               .symbol = "chibi_scalar" };
     for (int i = 0; i < count; i++) {
@@ -6521,7 +6577,7 @@ static bool native_values(
     }
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
-        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, false, library));
         REQUIRE(native_passed(
             library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
         ));
@@ -6529,15 +6585,146 @@ static bool native_values(
     free(adapter);
     return true;
 }
-/* Whether each call gave one value everywhere: its expected value for a
- * probe, and for the entry the same one on both VMs and natively. */
+/* Rename only one generated callee definition. Its call sites keep the old
+ * symbol, which an observed wrapper supplies. No branch body is rewritten. */
+static bool observed_body(char **ir, int ordinal, const char *name)
+{
+    char before[128], after[128];
+    snprintf(before, sizeof before, "define internal i32 @chibi_scalar.%d()", ordinal);
+    snprintf(after, sizeof after, "define internal i32 @chibi_test_%s_body()", name);
+    const char *at = strstr(*ir, before);
+    REQUIRE(at && !strstr(at + 1, before));
+    size_t prefix = (size_t)(at - *ir), old = strlen(before),
+           replacement = strlen(after);
+    char *renamed = xmalloc(strlen(*ir) - old + replacement + 1);
+    memcpy(renamed, *ir, prefix);
+    memcpy(renamed + prefix, after, replacement);
+    strcpy(renamed + prefix + replacement, at + old);
+    free(*ir);
+    *ir = renamed;
+    return true;
+}
+/* Reset, Choose's return, Taken's entry count and Skipped's entry count. */
+static bool lazy_trace_matches(const scalar_call calls[4], int column, int condition)
+{
+    return calls[0].values[column] == 0 &&
+           calls[1].values[column] == (condition ? 1 : 2) &&
+           calls[2].values[column] == condition &&
+           calls[3].values[column] == !condition;
+}
+/* An additional validation-only module observes generated callee entries.
+ * Normal optimization/result checks above still use the unmodified IR.
+ * The extra-call variant keeps Choose's value but must fail the same trace
+ * oracle on the true path, even after O2 inlines the pure original bodies. */
+static bool observes_lazy_arm(const char *directory, const pin_value *rows, const char *ir)
+{
+    int taken, skipped;
+    int taken_row = function_row(rows, "Taken", &taken);
+    int skipped_row = function_row(rows, "Skipped", &skipped);
+    REQUIRE(taken_row > 0 && skipped_row > 0);
+    REQUIRE(row_int(rows, taken_row, "count") == 0 && row_int(rows, skipped_row, "count") == 0);
+    REQUIRE(
+        row_int(rows, taken_row, "type") == SCALAR_INT &&
+        row_int(rows, skipped_row, "type") == SCALAR_INT
+    );
+    char *observed = xmalloc(strlen(ir) + 1), *probe = xmalloc(1);
+    strcpy(observed, ir);
+    *probe = 0;
+    bool valid = observed_body(&observed, taken, "taken") &&
+                 observed_body(&observed, skipped, "skipped") &&
+                 append_adapter(rows, "Choose", &probe);
+    for (int extra = 0; valid && extra < 2; extra++) {
+        char discarded[128] = "", wrappers[2048];
+        if (extra) {
+            snprintf(discarded, sizeof discarded, "  %%discarded = call i32 @chibi_scalar.%d()\n", skipped);
+        }
+        int length = snprintf(
+            wrappers,
+            sizeof wrappers,
+            "\n@chibi_test_taken = internal global i32 0\n"
+            "@chibi_test_skipped = internal global i32 0\n"
+            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
+            "  %%n = atomicrmw add ptr @chibi_test_taken, i32 1 monotonic\n"
+            "%s"
+            "  %%r = call i32 @chibi_test_taken_body()\n  ret i32 %%r\n}\n"
+            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
+            "  %%n = atomicrmw add ptr @chibi_test_skipped, i32 1 monotonic\n"
+            "  %%r = call i32 @chibi_test_skipped_body()\n  ret i32 %%r\n}\n"
+            "define i32 @chibi_trace_reset() {\nentry:\n"
+            "  store volatile i32 0, ptr @chibi_test_taken\n"
+            "  store volatile i32 0, ptr @chibi_test_skipped\n  ret i32 0\n}\n"
+            "define i32 @chibi_trace_taken() {\nentry:\n"
+            "  %%n = load volatile i32, ptr @chibi_test_taken\n  ret i32 "
+            "%%n\n}\n"
+            "define i32 @chibi_trace_skipped() {\nentry:\n"
+            "  %%n = load volatile i32, ptr @chibi_test_skipped\n  ret i32 "
+            "%%n\n}\n",
+            taken,
+            discarded,
+            skipped
+        );
+        assert(length > 0 && length < (int)sizeof wrappers);
+        size_t probe_length = strlen(probe);
+        char *adapter = xmalloc(probe_length + (size_t)length + 1);
+        memcpy(adapter, probe, probe_length);
+        memcpy(adapter + probe_length, wrappers, (size_t)length + 1);
+        for (int level = 0; valid && level < 2; level++) {
+            char library[PATH_MAX];
+            valid = native_library(
+                directory,
+                extra ? "lazy_trace_extra" : "lazy_trace",
+                observed,
+                adapter,
+                level * 2,
+                true,
+                library
+            );
+            for (int condition = 0; valid && condition < 2; condition++) {
+                scalar_call calls[4] = {
+                    { .symbol = "chibi_trace_reset" },
+                    { .symbol = "probe_Choose",
+                      .probe = { .count = 1, .arguments = { condition } } },
+                    { .symbol = "chibi_trace_taken" },
+                    { .symbol = "chibi_trace_skipped" }
+                };
+                int column = 2 + level;
+                valid = native_passed(
+                    library_calls(directory, library, calls, 4, column, CALLS_SECONDS)
+                );
+                bool matches = lazy_trace_matches(calls, column, condition);
+                valid = valid && matches == (!extra || !condition) &&
+                        calls[0].values[column] == 0 &&
+                        calls[1].values[column] == (condition ? 1 : 2) &&
+                        calls[2].values[column] == condition &&
+                        calls[3].values[column] == (!condition || extra);
+                fprintf(
+                    stderr,
+                    "lazy trace O%d extra %d condition %d: return %d, "
+                    "Taken %d, Skipped %d, oracle %s\n",
+                    level * 2,
+                    extra,
+                    condition,
+                    calls[1].values[column],
+                    calls[2].values[column],
+                    calls[3].values[column],
+                    matches ? "accept" : "reject"
+                );
+            }
+        }
+        free(adapter);
+    }
+    free(observed);
+    free(probe);
+    REQUIRE(valid);
+    return true;
+}
+/* Every executed result matches its literal fixture or probe oracle. */
 static bool calls_agree(const char *name, const scalar_call *calls, int count)
 {
     for (int i = 0; i < count; i++) {
         const int32_t *values = calls[i].values;
-        int32_t expected = i ? calls[i].probe.expected : values[0];
-        bool agree = values[0] == expected && values[1] == expected &&
-                     values[2] == expected && values[3] == expected;
+        int32_t expected = calls[i].probe.expected;
+        bool agree = scalar_results_match(values, expected);
         if (!agree) {
             fprintf(
                 stderr,
@@ -6617,18 +6804,27 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     if (rejected) {
         return true;
     }
+    pin_value expected;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
+    );
+    REQUIRE(expected.type == PIN_I32);
     ++*accepted;
     REQUIRE(keeps_guards(case_name, ir));
     unsigned char *closure;
     size_t length;
     REQUIRE(vm_closure(b, pin_text(source), &closure, &length));
     scalar_call calls[MAX_CASE_CALLS];
-    int count = case_calls(case_name, &rows, calls);
+    int count = case_calls(case_name, &rows, expected.i, calls);
     bool ran = vm_values(closure, length, calls, count) &&
                native_values(directory, case_name, &rows, ir, calls, count);
+    bool agree = ran && calls_agree(case_name, calls, count);
+    if (agree && !strcmp(case_name, "lazy_arm")) {
+        agree = observes_lazy_arm(directory, &rows, ir);
+    }
     free(closure);
     free(ir);
-    REQUIRE(ran && calls_agree(case_name, calls, count));
+    REQUIRE(agree);
     return true;
 }
 
@@ -6718,7 +6914,7 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
                        "  ret i32 0\n"
                        "}\n";
     scalar_call call = { .symbol = "hang" };
-    bool built = native_library(directory, "hang", loop, "", 0, library);
+    bool built = native_library(directory, "hang", loop, "", 0, false, library);
     started = chibi_process_now();
     result = built ? library_calls(directory, library, &call, 1, 2, 1)
                    : (chibi_process_capture_result){ 0 };
@@ -6848,6 +7044,7 @@ void test_language_package_compiler_chibi_scalar()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
+    RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)

@@ -545,6 +545,42 @@ bool behavior_function_compile_inspection(const behavior_function *f)
     );
     return compiled;
 }
+bool behavior_function_compile_scoped(const behavior_function *f)
+{
+#if CHIBI_HAVE_SJLIT && !defined(__EMSCRIPTEN__)
+    execution_artifact *artifact = f->artifact;
+    unsigned state = atomic_load_explicit(&artifact->scoped_state, memory_order_acquire);
+    if (state == EXECUTION_INSPECTION_COMPILED) {
+        return true;
+    }
+    if (behavior_execution_scope_cancelled() || state != EXECUTION_INSPECTION_UNCOMPILED ||
+        !atomic_compare_exchange_strong(&artifact->scoped_state, &state, EXECUTION_INSPECTION_COMPILING)) {
+        return false;
+    }
+    artifact->scoped_addresses = xcalloc(
+        (size_t)acount(f->instructions),
+        sizeof *artifact->scoped_addresses
+    );
+    artifact->scoped_code = behavior_function_jit_scoped(f);
+    bool compiled = artifact->scoped_code != NULL;
+    bool cancelled = !compiled && behavior_execution_scope_cancelled();
+    if (!compiled) {
+        free(artifact->scoped_addresses);
+        artifact->scoped_addresses = NULL;
+    }
+    atomic_store_explicit(
+        &artifact->scoped_state,
+        compiled    ? EXECUTION_INSPECTION_COMPILED
+        : cancelled ? EXECUTION_INSPECTION_UNCOMPILED
+                    : EXECUTION_INSPECTION_FAILED,
+        memory_order_release
+    );
+    return compiled;
+#else
+    (void)f;
+    return false;
+#endif
+}
 bool behavior_function_compile(behavior_function *f)
 {
     if (f->artifact->compilation_attempted) {

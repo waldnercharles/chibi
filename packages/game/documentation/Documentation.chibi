@@ -1,0 +1,89 @@
+package documentation
+
+import data "game:assets"
+import strings "core:strings"
+
+// A typed documentation allowlist. Pages are emitted in section order; the
+// generator never discovers additional pages by scanning the source tree.
+pub Page :: union {
+    Markdown(title: string, source: string, output: string)
+    | Packages(title: string, source: string, collection: string, output: string)
+    | Grammar(title: string, source: string, output: string)
+}
+pub Section :: union {
+    Group(name: string, pages: Page[])
+}
+
+OutputName :: (name: string) -> bool {
+    bytes := strings.Bytes(name);
+    if (length(bytes) <= 5 || !strings.HasSuffix(name, ".html")) {
+        return false;
+    }
+    for (value in bytes) {
+        if (!((value >= 65 && value <= 90) || (value >= 97 && value <= 122) ||
+              (value >= 48 && value <= 57) || value == 45 || value == 95 || value == 46)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Filesystem confinement, including symlinks, belongs to the explicit doc build
+// host. The pure declaration checks its schema and output names before encoding.
+pub Encode :: (title: string, sections: Section[]) -> byte[] {
+    assert(title != "" && length(sections) > 0, "the site needs a title and sections");
+    groups: data.Value[] = [];
+    outputs: string[] = [];
+    for (section in sections) {
+        switch section {
+            case .Group(name, pages):
+                assert(name != "" && length(pages) > 0, "section needs a name and pages");
+                values: data.Value[] = [];
+                for (page in pages) {
+                    page_title: string = "";
+                    source: string = "";
+                    output: string = "";
+                    kind: string = "";
+                    collection: string = "";
+                    switch page {
+                        case .Markdown(label, path, target):
+                            page_title = label;
+                            source = path;
+                            output = target;
+                            kind = "source";
+                        case .Packages(label, path, prefix, target):
+                            page_title = label;
+                            source = path;
+                            output = target;
+                            kind = "packages";
+                            collection = prefix;
+                        case .Grammar(label, path, target):
+                            page_title = label;
+                            source = path;
+                            output = target;
+                            kind = "grammar";
+                    }
+                    assert(page_title != "" && source != "" && OutputName(output),
+                           "page needs a title, an .html output and one of source, grammar or packages with its collection");
+                    if (kind == "packages") {
+                        assert(collection != "", "page needs one of source, grammar or packages with its collection");
+                    }
+                    for (previous in outputs) {
+                        assert(previous != output, "two pages write the same output");
+                    }
+                    outputs.append(output);
+                    fields: data.Field[] = [data.Field.Named("title", data.Value.Text(page_title)),
+                                            data.Field.Named(kind, data.Value.Text(source)),
+                                            data.Field.Named("output", data.Value.Text(output))];
+                    if (kind == "packages") {
+                        fields.append(data.Field.Named("collection", data.Value.Text(collection)));
+                    }
+                    values.append(data.Object(fields));
+                }
+                groups.append(data.Object([data.Field.Named("name", data.Value.Text(name)),
+                                           data.Field.Named("pages", data.List(values))]));
+        }
+    }
+    return data.Encode(data.Object([data.Field.Named("title", data.Value.Text(title)),
+                                    data.Field.Named("sections", data.List(groups))]));
+}

@@ -14,12 +14,15 @@ set_target_properties(owner PROPERTIES OUTPUT_NAME renamed ARCHIVE_OUTPUT_DIRECT
 add_library(debug_archive STATIC src/debug.c)
 add_executable(auxiliary src/auxiliary.c)
 if(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+    add_library(chibi_build_host OBJECT src/debug.c)
     add_executable(chibi-build-host src/auxiliary.c)
-    add_library(chibi_compiler_host OBJECT src/debug.c)
+    target_link_libraries(chibi-build-host PRIVATE chibi_build_host)
+    add_library(chibi_compiler_host STATIC src/debug.c)
     add_executable(chibi-compiler-host src/auxiliary.c)
     target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host)
     # A wrong executable owner must not satisfy the private-tool contract.
-    target_link_libraries(auxiliary PRIVATE chibi_compiler_host)
+    target_link_libraries(auxiliary PRIVATE chibi_build_host)
+    install(TARGETS chibi_compiler_host ARCHIVE DESTINATION lib)
     install(TARGETS chibi-build-host chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
 endif()
 # Keep a .res-shaped compiler output with real host compilation and Ninja

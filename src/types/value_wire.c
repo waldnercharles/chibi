@@ -41,6 +41,10 @@ static size_t owned_limit(const execution_wire *w)
 {
     return w->owned_limit ? w->owned_limit : EXECUTION_WIRE_MAX_BYTES;
 }
+static size_t record_limit(const execution_wire *w)
+{
+    return w->record_limit ? w->record_limit : EXECUTION_WIRE_MAX_RECORDS;
+}
 void *execution_wire_allocate(execution_wire *w, size_t bytes)
 {
     if (w->error) {
@@ -169,13 +173,22 @@ void execution_wire_count(execution_wire *w, int *count, size_t minimum_fields)
         return;
     }
     /* Every encoded field takes at least one byte. */
-    if (*count < 0 || (size_t)*count > EXECUTION_WIRE_MAX_RECORDS - w->records ||
+    if (*count < 0 || w->records > record_limit(w) ||
+        (size_t)*count > record_limit(w) - w->records ||
         (w->reading && minimum_fields &&
          (size_t)*count > (w->size - w->offset) / minimum_fields)) {
         fail(w, "Prepared record count limit or truncated table");
         return;
     }
     w->records += (size_t)*count;
+}
+bool execution_wire_record(execution_wire *w)
+{
+    if (++w->records > record_limit(w)) {
+        fail(w, "Prepared value nesting or record limit exceeded");
+        return false;
+    }
+    return true;
 }
 void execution_wire_string(execution_wire *w, const char **value)
 {
@@ -658,8 +671,11 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (w->error) {
         return;
     }
-    if (depth >= EXECUTION_WIRE_MAX_DEPTH || ++w->records > EXECUTION_WIRE_MAX_RECORDS) {
+    if (depth >= EXECUTION_WIRE_MAX_DEPTH) {
         fail(w, "Prepared value nesting or record limit exceeded");
+        return;
+    }
+    if (!execution_wire_record(w)) {
         return;
     }
     int tag = w->reading ? 0 : v->type;

@@ -328,6 +328,22 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         }
                         code.append(ExpressionCode(ops, forest[value]));
                         code.extend(NamePoints(forest, text, names, ops, ArrayArgument(forest, value)));
+                        // Capture the receiver where it is evaluated, before
+                        // evaluating the item (which can invoke another body).
+                        if (ops.debug) {
+                            array := ArrayArgument(forest, value);
+                            address := AddressSlot(target);
+                            slots.extend([address, address]);
+                            code.extend(CellRead(target.pointer_storage, binding.index, ops, target, at.slot,
+                                                 forest[array]));
+                            receiver: Root = {slot: at.slot + 1, storage: binding.storage, container: ArrayContainer,
+                                              record: binding.record};
+                            roots.append(receiver);
+                            code.append(WatchCode(ops, at.slot + 1, binding.storage, ArrayContainer, binding.record,
+                                                  0, true, forest[array], target));
+                            code.append(WatchCode(ops, at.slot + 1, binding.storage, ArrayContainer, binding.record,
+                                                  0, false, forest[value], target));
+                        }
                         argument := ItemArgument(forest, value);
                         container: int = 0;
                         if (update == 1) {
@@ -797,19 +813,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         header_slot := at.slot + length(slots) - 1;
         code.append(Instruction(ops.host_slot, target.pointer_storage, header_slot, binding.index, 0, 0, node));
         sources[0] = header_slot;
-        // A push watches the array it reads, as the array argument and the
-        // call's first input, and the item as its second.
+        // The receiver was watched before the item; now watch the item as
+        // the call's second input.
         call := StatementValue(forest, item.node);
         if (item.phase == PushPhase && ops.debug) {
-            slots.append(address);
-            read := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, header_slot, 0, 0, node);
-            read.offset = target.payload_offset;
-            code.append(read);
-            array_slot := at.slot + length(slots) - 1;
-            code.append(WatchCode(ops, array_slot, binding.storage, ArrayContainer, binding.record, 0, true,
-                                  forest[ArrayArgument(forest, call)], target));
-            code.append(WatchCode(ops, array_slot, binding.storage, ArrayContainer, binding.record, 0, false,
-                                  forest[call], target));
             code.append(WatchCode(ops, item_value.slot, item_value.storage, item_value.container,
                                   item_value.record, 1, false, forest[call], target));
         }

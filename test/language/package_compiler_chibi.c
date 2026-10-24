@@ -112,7 +112,7 @@ typedef struct
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, ahead;
+        same_rejection, c_string_probe, host_effects, update_order, ahead;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -195,6 +195,38 @@ static const native_definition_pack CSTRING_PACK = {
     .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
+    { .name = "array update debug order",
+      .group = COLLECTION_SAMPLES,
+      .update_order = true,
+      .source = "package facts\n"
+                "Item :: () -> int { return 7; }\n"
+                "Items :: () -> int[] { return [7, 8]; }\n"
+                "AppendLocal :: () -> int[] { xs: int[] = [1]; xs = append(xs, "
+                "Item()); return xs; }\n"
+                "AppendParameter :: (xs: int[]) -> int[] { xs = append(xs, "
+                "Item()); return xs; }\n"
+                "AppendMethod :: () -> int[] { xs: int[] = [1]; "
+                "xs.append(Item()); return xs; }\n"
+                "AppendParameterMethod :: (xs: int[]) -> int[] { "
+                "xs.append(Item()); return xs; }\n"
+                "ExtendLocal :: () -> int[] { xs: int[] = [1]; xs = extend(xs, "
+                "Items()); return xs; }\n"
+                "ExtendParameter :: (xs: int[]) -> int[] { xs = extend(xs, "
+                "Items()); return xs; }\n"
+                "ExtendMethod :: () -> int[] { xs: int[] = [1]; "
+                "xs.extend(Items()); return xs; }\n"
+                "ExtendParameterMethod :: (xs: int[]) -> int[] { "
+                "xs.extend(Items()); return xs; }",
+      .calls = { { .function = "AppendLocal", .arguments = "[]", .expected = "[[1,7]]" },
+                 { .function = "AppendParameter", .arguments = "[[1]]", .expected = "[[1,7]]" },
+                 { .function = "AppendMethod", .arguments = "[]", .expected = "[[1,7]]" },
+                 { .function = "AppendParameterMethod", .arguments = "[[1]]", .expected = "[[1,7]]" },
+                 { .function = "ExtendLocal", .arguments = "[]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendParameter", .arguments = "[[1]]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendMethod", .arguments = "[]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendParameterMethod",
+                   .arguments = "[[1]]",
+                   .expected = "[[1,7,8]]" } } },
     { .name = "typed constants fold exactly",
       .group = TYPE_SAMPLES,
       .ahead = true,
@@ -3368,7 +3400,12 @@ static bool literals_agree()
 }
 /* The packages of a closure, linked against the compiler host's natives,
  * which `native` holds; NULL when it does not load. */
-static package_collection *read_packages(const unsigned char *bytes, size_t length, native_capabilities **native)
+static package_collection *read_packages(
+    const unsigned char *bytes,
+    size_t length,
+    native_capabilities **native,
+    behavior_backend backend
+)
 {
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,
@@ -3388,7 +3425,7 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
         bytes,
         length,
         &linker,
-        BEHAVIOR_BYTECODE,
+        backend,
         &remaining,
         &root,
         error,
@@ -3398,6 +3435,189 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
         fprintf(stderr, "package compiler load: %s\n", error);
     }
     return packages;
+}
+/* The receiver input must be captured before the authored item call. Comparing
+ * watch sets alone cannot detect a watch moved across that call. Each fixture
+ * function has exactly one update and one authored invocation. */
+static bool array_update_order(const unsigned char *bytes, size_t length, const sample *s)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    for (int c = 0; c < CALLS && s->calls[c].function; c++) {
+        const behavior_function *body = NULL;
+        for (int p = 0; p < package_collection_count(packages); p++) {
+            const execution_module *module = package_collection_module(packages, p);
+            for (int f = 0; f < module->plan.function_count; f++) {
+                if (module->plan.functions[f].id == function_id(s->calls[c].function)) {
+                    body = module->plan.functions[f].body;
+                }
+            }
+        }
+        REQUIRE(body);
+        int receiver = -1, item = -1, invocation = -1;
+        for (int pc = 0; pc < acount(body->instructions); pc++) {
+            const behavior_function_instruction *op = &body->instructions[pc];
+            if (op->op == BF_INVOKE) {
+                REQUIRE(invocation < 0);
+                invocation = pc;
+            }
+            if (op->op != BF_SOURCE_WATCH) {
+                continue;
+            }
+            const behavior_source_watch *watch = &body->source_watches[op->target];
+            if (watch->output) {
+                continue;
+            }
+            if (watch->ordinal == 0 && watch->initial.container == PIN_CONTAINER_ARRAY) {
+                REQUIRE(receiver < 0);
+                receiver = pc;
+            }
+            if (watch->ordinal == 1) {
+                REQUIRE(item < 0);
+                item = pc;
+            }
+        }
+        if (!(receiver >= 0 && receiver < invocation && invocation < item)) {
+            fprintf(
+                stderr,
+                "%s debug order: receiver %d, invocation %d, item %d\n",
+                s->calls[c].function,
+                receiver,
+                invocation,
+                item
+            );
+        }
+        REQUIRE(receiver >= 0 && receiver < invocation && invocation < item);
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    return true;
+}
+typedef struct
+{
+    const behavior_function *item;
+    int start, end, step;
+    bool valid;
+} array_update_trace;
+static int array_update_pause(void *user, behavior_function_context *context, const behavior_source_point *point)
+{
+    array_update_trace *trace = user;
+    if (context->source_function == trace->item &&
+        point->kind == BEHAVIOR_SOURCE_FUNCTION && !point->completion) {
+        trace->valid &= trace->step == 1;
+        trace->step++;
+    }
+    return 0;
+}
+static void array_update_capture(
+    void *user,
+    behavior_function_context *,
+    const behavior_source_watch *watch,
+    const pin_value *value
+)
+{
+    array_update_trace *trace = user;
+    if (watch->origin.start != trace->start || watch->origin.end != trace->end) {
+        return;
+    }
+    if (!value) {
+        trace->valid = false;
+        return;
+    }
+    if (!watch->output && watch->ordinal == 1) {
+        trace->valid &= trace->step == 2 && value->type == PIN_I32 &&
+                        value->container == PIN_CONTAINER_SINGLE && value->i == 7;
+        trace->step++;
+        return;
+    }
+    const pin_array *array = value->ptr;
+    bool valid = value->type == PIN_I32 && value->container == PIN_CONTAINER_ARRAY &&
+                 array && array->count == (watch->output ? 2 : 1);
+    if (valid) {
+        valid = pin_array_get(array, 0).i == 1 &&
+                (!watch->output || pin_array_get(array, 1).i == 7);
+    }
+    trace->valid &= valid && watch->ordinal == 0 &&
+                    trace->step == (watch->output ? 3 : 0);
+    trace->step++;
+}
+/* Observe actual delivery as well as emitted order. Payload pointers belong
+ * to the invocation; the callbacks retain only their checked literal values. */
+static bool observes_array_update(const unsigned char *bytes, size_t length, const sample *s)
+{
+    const char *call = "append(xs, Item())";
+    const char *start = strstr(s->source, call);
+    REQUIRE(start);
+    for (int backend = 0; backend < 2; backend++) {
+        native_capabilities *native;
+        package_collection *packages = read_packages(
+            bytes,
+            length,
+            &native,
+            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE
+        );
+        REQUIRE(packages);
+        const behavior_function *body = NULL, *item = NULL;
+        for (int p = 0; p < package_collection_count(packages); p++) {
+            const execution_module *module = package_collection_module(packages, p);
+            for (int f = 0; f < execution_module_function_count(module); f++) {
+                execution_module_function_info info = execution_module_function_at(module, f);
+                if (info.id == function_id("AppendLocal")) {
+                    body = info.body;
+                }
+                if (info.id == function_id("Item")) {
+                    item = info.body;
+                }
+            }
+        }
+        REQUIRE(body && item);
+        array_update_trace trace = { .item = item,
+                                     .start = (int)(start - s->source),
+                                     .end = (int)(start - s->source + strlen(call)),
+                                     .valid = true };
+        arena storage = { 0 };
+        pin_value result = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+        behavior_function_activation activation = { 0 };
+        bool resumable = behavior_function_resumable(body);
+        if (resumable) {
+            behavior_function_activation_init(body, &activation);
+        }
+        behavior_function_prepare_results(body, &result, &storage);
+        behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                              .results = &result,
+                                              .budget = TARGET_BUDGET,
+                                              .source_debug_user = &trace,
+                                              .source_pause = array_update_pause,
+                                              .source_capture = array_update_capture };
+        behavior_function_bind_storage(&context, &storage);
+        bool bound = behavior_function_bind(body, &context, NULL, 0);
+        behavior_run_scope runs = { 0 };
+        behavior_run_scope_begin(&runs);
+        int status = bound ? behavior_function_run(body, &context, backend != 0)
+                           : FLOW_ERR_ARGUMENT;
+        behavior_run_scope_end(&runs);
+        const pin_array *array = result.ptr;
+        bool valid = status == FLOW_OK && context.returned && trace.valid &&
+                     trace.step == 4 && array && array->count == 2 &&
+                     pin_array_get(array, 0).i == 1 &&
+                     pin_array_get(array, 1).i == 7;
+        behavior_function_release_host(&context);
+        behavior_function_activation_free(&activation);
+        arena_free(&storage);
+        package_collection_free(packages);
+        native_capabilities_free(native);
+        REQUIRE(valid);
+        REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+        REQUIRE(backend != 0 || runs.counts.bytecode_entries > 0);
+        if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_SLJIT) {
+            REQUIRE(runs.counts.inspected_sljit_entries > 0 && !runs.counts.bytecode_entries);
+        }
+        if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_WASM) {
+            REQUIRE(runs.counts.inspected_wasm_entries > 0);
+        }
+    }
+    return true;
 }
 /* Compare serialized function flags, independently of the runtime's derived
  * effect summary. Direct, recursive and imported HOST callers must retain it. */
@@ -3440,7 +3660,7 @@ static bool same_host_effects(const execution_module *expected, const execution_
 static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
 {
     native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native);
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
     REQUIRE(packages);
     const authoring_packages *owner = oracle.owners[0];
     bool alike = package_collection_count(packages) == authoring_packages_count(owner);
@@ -3639,6 +3859,33 @@ static bool run_samples(sample_group group, int b)
             ran = ran && (b || s->ahead ||
                           run(expected, expected_length, &s->calls[c], 0));
         }
+        if (ran && s->update_order) {
+            ran = (b || array_update_order(expected, expected_length, s)) &&
+                  array_update_order(bytes, length, s) &&
+                  observes_array_update(bytes, length, s);
+            pin_value args[ARGUMENTS], closure;
+            REQUIRE(arguments(b, false, inputs, count, args));
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "CompileClosure",
+                args,
+                ARGUMENTS,
+                COMPILE_BUDGET,
+                &detached,
+                &closure
+            ));
+            const pin_array *array = closure.ptr;
+            REQUIRE(closure.type == PIN_U8 && closure.container == PIN_CONTAINER_ARRAY && array);
+            REQUIRE(length > 0 && (size_t)array->count == length);
+            bool same = true;
+            for (size_t i = 0; i < length; i++) {
+                same &= array->items[i].u8 == bytes[i];
+            }
+            arena_free(&detached);
+            REQUIRE(same);
+        }
         free(bytes);
         free(expected);
         if (!ran) {
@@ -3653,7 +3900,7 @@ static bool run_samples(sample_group group, int b)
 TEST_CASE(package_compiler_omits_debug_info)
 {
     REQUIRE(prepare());
-    const char *const names[] = { "loops", "control" };
+    const char *const names[] = { "loops", "control", "array update debug order" };
     for (size_t n = 0; n < sizeof names / sizeof *names; n++) {
         const sample *s = samples;
         while (strcmp(s->name, names[n])) {
@@ -3673,7 +3920,7 @@ TEST_CASE(package_compiler_omits_debug_info)
         unsigned char *bytes = closure_bytes(value, &length);
         arena_free(&detached);
         native_capabilities *native;
-        package_collection *packages = read_packages(bytes, length, &native);
+        package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
         REQUIRE(packages);
         int debug = 0;
         for (int p = 0; p < package_collection_count(packages); p++) {
@@ -3740,7 +3987,7 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
             unsigned char *bytes = closure_bytes(value, &length);
             arena_free(&detached);
             native_capabilities *native;
-            package_collection *packages = read_packages(bytes, length, &native);
+            package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
             REQUIRE(packages);
             int checked = 0;
             for (int p = 0; p < package_collection_count(packages); p++) {

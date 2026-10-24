@@ -559,11 +559,14 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, destination, document, "Assignment requires a writable value");
             }
             binding := names[found];
+            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+            if (operator != "" && binding.container == 0 && MixedIntegers(binding.storage, result)) {
+                return Fail(forest, item.node, document, Mismatched(binding.storage, result.storage));
+            }
             if (binding.place == ReferencePlace || binding.place == BoxPlace) {
                 return PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node);
             }
             stored := result;
-            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
             if (binding.container == 0 && result.container == 0 && Widens(result.storage, binding.storage)) {
                 widened: Slot = {storage: binding.storage, kind: ValueKind};
                 slots.append(widened);
@@ -2292,9 +2295,7 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
         // Two untyped literals compare at their common type.
         common := CommonInteger(left.storage, right.storage);
         if (!spelled || common < 0) {
-            return Fail(forest, item.node, document,
-                        format_text("Mismatched integer types {} and {}; convert one operand", TypeName(left.storage),
-                                    TypeName(right.storage)));
+            return Fail(forest, item.node, document, Mismatched(left.storage, right.storage));
         }
         widened: Slot = {storage: common, kind: ValueKind};
         if (left.storage != common) {
@@ -2378,6 +2379,16 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                         Typed(output, storage, 0, -1), NoValue(), marks);
 }
 
+// Whether `value` is an integer of a type other than the integer type
+// `storage`, which an operator, a compound assignment among them, does not
+// combine with it.
+MixedIntegers :: (storage: int, value: Value) -> bool {
+    return Integer(storage) && Single(value, value.storage) && Integer(value.storage) && value.storage != storage;
+}
+// The error for integers of the types `left` and `right` combined.
+Mismatched :: (left: int, right: int) -> string {
+    return format_text("Mismatched integer types {} and {}; convert one operand", TypeName(left), TypeName(right));
+}
 // The untyped literal `literal` as a constant of the integer type `storage`.
 ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
                  package: int, literal: Value, storage: int, ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> Step {
@@ -2488,8 +2499,9 @@ ZeroCompoundDivisor :: (forest: snapshot.SnapshotNode[], text: string, document:
            ZeroDivisor(forest, text, document, constants, names, package, statement);
 }
 // A constant expression as one constant of its type, or of the expected one
-// when it is untyped, watched at its own node. An untyped one with no
-// integer type expected takes its type from its use, as a literal does.
+// when it is untyped, watched at its node as any expression's value is. An
+// untyped one with no integer type expected takes its type from its use, as a
+// literal does, and that use watches it.
 FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
              package: int, item: Work, ops: Ops, at: Bases) -> Step {
     code: Code[] = [];
@@ -2518,7 +2530,6 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
         case .Folded(bits):
             slots.append(ValueLocal(storage));
             code.append(ConstantCode(ops, storage, bits, at.slot, forest[item.node]));
-            code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
@@ -2712,6 +2723,9 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     next: Work[] = [];
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    if (item.c == 1 && MixedIntegers(field.storage, value)) {
+        return Fail(forest, item.node, document, Mismatched(field.storage, value.storage));
+    }
     stored := value;
     if (value.container == 0 && value.storage != field.storage && Converts(value.storage, field.storage)) {
         slots.extend(NumberSlots(value.storage, field.storage));

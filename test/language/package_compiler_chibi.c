@@ -113,6 +113,8 @@ typedef struct
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
         same_rejection, c_string_probe, host_effects, update_order, ahead;
+    /* The source range stage one watches exactly once, when watch_end is set. */
+    int watch_start, watch_end;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -787,6 +789,21 @@ static const sample samples[] = {
       .message = "Mismatched integer types int8 and byte; convert one operand",
       .line = 2,
       .column = 45 },
+    /* A compound assignment combines its operands as their operator does. */
+    { .name = "mixed compound assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
+    { .name = "mixed compound field assignment",
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "b; "
+                "return n.count; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -847,6 +864,8 @@ static const sample samples[] = {
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
       .ahead = true,
+      .watch_start = 74,
+      .watch_end = 84,
       .source = "package facts\n"
                 "Count: uint : 3;\n"
                 "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
@@ -1635,7 +1654,7 @@ static const sample samples[] = {
                 "    stamped := Stamp(note, 7);\n"
                 "    b: byte = 3;\n"
                 "    copy.count = b;\n"
-                "    copy.count += b;\n"
+                "    copy.count += int(b);\n"
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
                 "note.count, note.open, copy.count, stamped.text, "
                 "stamped.count);\n}",
@@ -2079,6 +2098,8 @@ static const sample samples[] = {
      * in parentheses too. */
     { .name = "wrapped literal in parentheses",
       .ahead = true,
+      .watch_start = 40,
+      .watch_end = 71,
       .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
       .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" } } },
@@ -3681,6 +3702,32 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
     native_capabilities_free(native);
     return alike;
 }
+/* A folded constant's value is watched once, at the expression inside any
+ * parentheses, as stage zero watches it. */
+static bool watched_once(const unsigned char *bytes, size_t length, const sample *s)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int count = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < module->plan.function_count; i++) {
+            const behavior_function *f = module->plan.functions[i].body;
+            for (int k = 0; k < acount(f->source_watches); k++) {
+                const behavior_source_watch *w = &f->source_watches[k];
+                count += w->origin.start == s->watch_start &&
+                         w->origin.end == s->watch_end;
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    if (count != 1) {
+        fprintf(stderr, "%s: %d watches at %d..%d\n", s->name, count, s->watch_start, s->watch_end);
+    }
+    return count == 1;
+}
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
 static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
@@ -3849,6 +3896,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
+                   (!s->watch_end || watched_once(bytes, length, s)) &&
                    ((b && !s->host_effects) || s->ahead ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));

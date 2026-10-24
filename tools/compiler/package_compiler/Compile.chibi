@@ -1041,9 +1041,7 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
         left_type := ConstantType(forest, text, constants, aliases, package, operands[0]);
         right_type := ConstantType(forest, text, constants, aliases, package, operands[1]);
         if (left_type != 0 && right_type != 0 && left_type != right_type) {
-            return Evaluated.Failed(Diagnose(forest, node, file,
-                                             format_text("Mismatched integer types {} and {}; convert one operand",
-                                                         TypeName(left_type), TypeName(right_type))));
+            return Evaluated.Failed(Diagnose(forest, node, file, Mismatched(left_type, right_type)));
         }
     }
     value: uint64[] = [];

@@ -30,6 +30,25 @@ static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, inputs_storage;
 static pin_value output;
+static size_t slice_calls, slice_bytes, byte_reads;
+/* Count actual owned slice payloads through the existing native binding seam.
+ * Delegate unchanged to the runtime; no allocator or runtime instrumentation. */
+static const char *measured_slice(arena *memory, const pin_value *args, int count, pin_value *result)
+{
+    const char *error = NATIVE_TEXT_SLICE_CALL.value(memory, args, count, result);
+    if (!error) {
+        slice_calls++;
+        slice_bytes += pin_text(*result).length;
+    }
+    return error;
+}
+static const char *measured_byte_at(arena *memory, const pin_value *args, int count, pin_value *result)
+{
+    byte_reads++;
+    return NATIVE_TEXT_BYTE_AT_CALL.value(memory, args, count, result);
+}
+static const node_host_call MEASURED_SLICE = { .value = measured_slice };
+static const node_host_call MEASURED_BYTE_AT = { .value = measured_byte_at };
 static const char APP[] =
     "package app\nimport strings \"core:strings\"\n"
     "Row :: struct { value: int; tag: string; }\n"
@@ -96,6 +115,18 @@ static bool table(int index)
 {
     native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                        NATIVE_ARRAY_DEFINITION_PACK };
+    native_definition_binding bindings[16];
+    REQUIRE(packs[0].binding_count <= 16);
+    for (int i = 0; i < packs[0].binding_count; i++) {
+        bindings[i] = packs[0].bindings[i];
+        if (!strcmp(bindings[i].canonical_name, NATIVE_TEXT_SLICE_NAME)) {
+            bindings[i].implementation.call = &MEASURED_SLICE;
+        }
+        if (!strcmp(bindings[i].canonical_name, NATIVE_TEXT_BYTE_AT_NAME)) {
+            bindings[i].implementation.call = &MEASURED_BYTE_AT;
+        }
+    }
+    packs[0].bindings = bindings;
     char error[192];
     tables[index] = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
     if (!tables[index]) {
@@ -224,6 +255,7 @@ static bool invoke(
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
     behavior_run_scope runs = { 0 };
+    slice_calls = slice_bytes = byte_reads = 0;
     behavior_run_scope_begin(&runs);
     int status = behavior_function_run(function, &context, backend == TEST_COMPILED_BACKEND);
     behavior_run_scope_end(&runs);
@@ -731,6 +763,50 @@ TEST_CASE(package_core_inputs_modules_and_binding_generations)
     }
     return true;
 }
+TEST_CASE(package_core_strings_dense_copy_budget)
+{
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
+        for (int count = 16; count <= 32; count *= 2) {
+            char dense[97];
+            for (int i = 0; i < count; i++) {
+                memcpy(dense + 3 * i, "x::", 3);
+            }
+            dense[3 * count] = 0;
+            pin_value args[] = { text(dense), text("::"), integer(-1) };
+            REQUIRE(core_call("Count", args, 2, PIN_I32, backends[b]) && output.i == count);
+            fprintf(stderr, "dense backend=%d matches=%d Count slices=%zu bytes=%zu reads=%zu\n", b, count, slice_calls, slice_bytes, byte_reads);
+            const char *names[] = { "Split", "SplitAfter", "SplitN", "SplitAfterN" };
+            for (int k = 0; k < 4; k++) {
+                REQUIRE(core_call(names[k], args, k < 2 ? 2 : 3, PIN_STR, backends[b]));
+                const pin_array *parts = output.ptr;
+                REQUIRE(
+                    output.container == PIN_CONTAINER_ARRAY && parts &&
+                    parts->count == count + 1
+                );
+                for (int i = 0; i < count; i++) {
+                    pin_string part = pin_text(pin_array_get(parts, i));
+                    size_t size = k % 2 ? 3 : 1;
+                    REQUIRE(part.length == size && !memcmp(part.bytes, "x::", size));
+                }
+                REQUIRE(pin_text(pin_array_get(parts, count)).length == 0);
+                fprintf(
+                    stderr,
+                    "dense backend=%d matches=%d %s slices=%zu bytes=%zu "
+                    "reads=%zu\n",
+                    b,
+                    count,
+                    names[k],
+                    slice_calls,
+                    slice_bytes,
+                    byte_reads
+                );
+            }
+        }
+        cleanup();
+    }
+    return true;
+}
 void test_language_package_core()
 {
     pu_setup(NULL, cleanup);
@@ -741,5 +817,6 @@ void test_language_package_core()
     RUN_TEST_CASE(package_core_strings_split_join_and_replace_match_odin);
     RUN_TEST_CASE(package_core_pure_exports_and_generic_native_arrays);
     RUN_TEST_CASE(package_core_inputs_modules_and_binding_generations);
+    RUN_TEST_CASE(package_core_strings_dense_copy_budget);
     pu_clear_setup();
 }

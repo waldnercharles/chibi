@@ -6077,6 +6077,9 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "int_operators", "Mix", 3, { 4, 3, 5 }, 4 },
     /* (a + b) * c wraps to -6, and -c % 3 is -2. */
     { "int_operators", "Mix", 3, { INT32_MAX - 1, INT32_MAX, 2 }, -4 },
+    /* The folded constant is 2^30; only the sum with x wraps. */
+    { "arithmetic", "Half", 1, { 0 }, 1073741824 },
+    { "arithmetic", "Half", 1, { INT32_MAX }, -1073741825 },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */

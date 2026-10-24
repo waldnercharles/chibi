@@ -269,6 +269,21 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                 return ScalarOperands.Built(output);
         }
     }
+    // A constant expression is the one constant EmitBody folds it to
+    // exactly, not rows that would wrap. A scalar source declares no
+    // constants.
+    constants: ConstDecl[] = [];
+    if (Folds(forest, text, constants, names, callable.package, node, expected)) {
+        switch FoldConstant(forest, text, 0, constants, names, callable.package, node, expected) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Waiting:
+                return ScalarOperands.Failed(Diagnose(forest, node, 0, "a constant is not folded yet"));
+            case .Folded(bits):
+                output.append(ScalarAt(forest, node, facts.LiteralRow, type, int(wrap: bits), 0, ""));
+                return ScalarOperands.Built(output);
+        }
+    }
     if (Is(forest, node, "boolean")) {
         value: int = 0;
         if (Text(forest, text, node) == "true") {

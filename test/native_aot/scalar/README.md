@@ -78,6 +78,10 @@ structs and constants. Sources are at most 16,384 bytes.
 accepted) with each accepted value and operand trace and each rejection's
 exact message and source excerpt, including both sides of every bound.
 
+A constant expression, such as `(2147483647 + 1) / 2` or `int(42)`, is one
+literal row holding the value the ordinary compiler folds it to exactly, so
+native code never computes it with wrapping rows.
+
 Two untyped literals compared, as in `if (7 < 3)`, take their common
 spelled type, as stage zero types them; the ordinary compiler's
 `OperatorStep` decides that, not this subset.

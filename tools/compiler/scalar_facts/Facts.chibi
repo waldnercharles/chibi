@@ -63,3 +63,47 @@ pub MaxSource: int : 16384;
 pub MaxFunctions: int : 32;
 pub MaxParameters: int : 8;
 pub MaxOperands: int : 64;
+
+// The index of the first call row that closes a cycle of the rows' call
+// relation, or -1. Each call's `value` must name one of the rows' functions.
+// The relation's transitive closure is at most MaxFunctions squared.
+pub Cycle :: (rows: Row[]) -> int {
+    count: int = 0;
+    for (row in rows) {
+        if (row.kind == FunctionRow) {
+            count += 1;
+        }
+    }
+    reach := resize([false], count * count);
+    caller: int = -1;
+    for (row in rows) {
+        if (row.kind == FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == CallRow) {
+            reach[caller * count + row.value] = true;
+        }
+    }
+    for (via in 0..<count) {
+        for (from in 0..<count) {
+            if (reach[from * count + via]) {
+                for (to in 0..<count) {
+                    if (reach[via * count + to]) {
+                        reach[from * count + to] = true;
+                    }
+                }
+            }
+        }
+    }
+    caller = -1;
+    for (index in 0..<length(rows)) {
+        row := rows[index];
+        if (row.kind == FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == CallRow && reach[row.value * count + caller]) {
+            return index;
+        }
+    }
+    return -1;
+}

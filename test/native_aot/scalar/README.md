@@ -40,9 +40,10 @@ Everything else is rejected with a located diagnostic and no partial result:
 arithmetic, negation, parentheses, comparisons, control flow, locals and other
 statements, conversions such as `int(x)`, function values, qualified or
 imported calls, native or foreign calls (`print`), named arguments, strings and
-other managed values, attributes, structs and constants. `test/scalar_facts/cases/Cases.chibi`
-holds the 77-source corpus with each accepted value and call trace and each
-rejection's exact message and source excerpt.
+other managed values, attributes, structs and constants. Sources are at most
+16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds the 79-source corpus
+with each accepted value and operand trace and each rejection's exact message
+and source excerpt, including both sides of every bound.
 
 ## Shared decisions
 
@@ -50,11 +51,12 @@ rejection's exact message and source excerpt.
 package graph and `Declare`, so duplicate declarations, unknown types and
 signature errors are the compiler's own. Parameters bind through `Prologue` and
 `Lookup`, literals through `ReadIntegerLiteral`, and callees through
-`CalledFunction`, the decision `CallStep` now shares. Each body must also pass
-`EmitBody` with no effects, host calls or roots, and no cells but its calls'
-argument and result cells. The checks in `Scalar.chibi` only reject forms the
-subset cannot express; the backend never reparses source or reads VM
-instructions, and no private `Code`/`Slot` identity crosses the boundary.
+`CalledFunction`, the resolution the ordinary call step makes. Each body must
+pass `EmitBody` first, which types every name, argument and result, with no
+effects, host calls or roots, and no cells but its calls' argument and result
+cells. The checks in `Scalar.chibi` only reject forms the subset cannot
+express; the backend never reparses source or reads VM instructions, and no
+private `Code`/`Slot` identity crosses the boundary.
 
 ## The owned handoff
 
@@ -72,7 +74,9 @@ rows own their strings and, once snapshotted, their record shape.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks, callee signatures
-and acyclicity. It does not prove that fabricated rows match their source;
+and acyclicity, through the same `scalar_facts.Cycle` the producer diagnoses
+with. A rejection keeps its whole source; an accepted source must be within
+the bound. It does not prove that fabricated rows match their source;
 the caller binds the trusted producer artifact, source bytes and envelope.
 `Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
 `EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
@@ -96,7 +100,7 @@ native observation: `bool` parameters and results are internal, and any `bool`
 probe is a validation-only adapter, not an ABI.
 
 On Linux x86-64 with Ubuntu LLVM 18.1.3 `opt`/`llc` (whose canonical data
-layout is the one the driver admits), all 20 accepted corpus sources built O0
+layout is the one the driver admits), all 21 accepted corpus sources built O0
 and O2 objects. No object has an undefined symbol. Each O0 module keeps every
 recorded call (up to 63 in `most_operands` and 31 in `most_functions`), O2
 inlines them all, and a validation-only harness that links each object as a
@@ -110,7 +114,7 @@ O2. This harness is not part of the authored path.
 `Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
-runs the authored `Tests` (27 malformed-row fixtures plus emission checks).
+runs the authored `Tests` (28 malformed-row fixtures plus emission checks).
 Every corpus source then crosses all four producer/consumer VM combinations:
 `Regression.Check` asserts the case and the complete rejection or emitted IR,
 which must define every function and call each recorded callee. The runner

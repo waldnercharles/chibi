@@ -1572,7 +1572,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (qualified_native) {
             callee_name = native_name;
         } else {
-            found = CalledFunction(forest, text, callables, names, package, item.node);
+            found = FindCallable(callables, home, callee_name);
         }
         conversion: int = 0;
         if (qualifier < 0 && found < 0) {

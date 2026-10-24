@@ -29,8 +29,7 @@ AnyReference :: (params: Param[]) -> bool {
     }
     return false;
 }
-// The function a call names, of this package or an import, -1 for any other:
-// the decision the call step and the scalar producer share.
+// The function a call names, of this package or an import, -1 for any other.
 CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], aliases: Name[],
                    package: int, call: int) -> int {
     callee := Field(forest, call, "function");

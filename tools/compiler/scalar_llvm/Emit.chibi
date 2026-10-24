@@ -12,8 +12,8 @@ pub Result :: union {
 }
 
 // The most rows a module of the facts bounds holds: its source and document,
-// then per function its signature, return and operands.
-MaxRows: int : 2370;
+// then per function its signature, parameters, return and operands.
+MaxRows: int : 2 + facts.MaxFunctions * (2 + facts.MaxParameters + facts.MaxOperands);
 
 // The offset each source line starts at, for one-based line/column checks.
 LineStarts :: (text: string) -> int[] {
@@ -154,38 +154,6 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
     }
     return "";
 }
-// Whether some call reaches its own caller: the call relation's transitive
-// closure, bounded by MaxFunctions squared.
-Recursive :: (rows: facts.Row[], count: int) -> bool {
-    reach := resize([false], count * count);
-    caller: int = -1;
-    for (row in rows) {
-        if (row.kind == facts.FunctionRow) {
-            caller += 1;
-        }
-        if (row.kind == facts.CallRow) {
-            reach[caller * count + row.value] = true;
-        }
-    }
-    for (via in 0..<count) {
-        for (from in 0..<count) {
-            if (reach[from * count + via]) {
-                for (to in 0..<count) {
-                    if (reach[via * count + to]) {
-                        reach[from * count + to] = true;
-                    }
-                }
-            }
-        }
-    }
-    for (index in 0..<count) {
-        if (reach[index * count + index]) {
-            return true;
-        }
-    }
-    return false;
-}
-
 // This validates the bounded representation, not the truth of fabricated
 // accepted rows. The caller must bind the actual trusted producer artifact,
 // source bytes and unchanged result envelope. No source parsing occurs here.
@@ -199,12 +167,13 @@ pub Validate :: (rows: facts.Row[]) -> string {
         return "noncanonical scalar source row";
     }
     size := strings.ByteLength(source.text);
-    if (size > facts.MaxSource) {
-        return format_text("scalar consumer source exceeds {} bytes", facts.MaxSource);
-    }
     starts := LineStarts(source.text);
+    // A rejection may hold any source, including one past the bound.
     if (rows[1].kind == facts.RejectionRow) {
         return ValidRejection(rows, starts, size);
+    }
+    if (size > facts.MaxSource) {
+        return format_text("scalar consumer source exceeds {} bytes", facts.MaxSource);
     }
     document := rows[1];
     if (document.kind != facts.DocumentRow || document.type != 0 || document.value != 0 || document.count != 0 ||
@@ -225,7 +194,7 @@ pub Validate :: (rows: facts.Row[]) -> string {
             return error;
         }
     }
-    if (Recursive(rows, length(heads))) {
+    if (facts.Cycle(rows) >= 0) {
         return "scalar module calls are recursive";
     }
     return "";

@@ -42,9 +42,9 @@ ChainNames :: (count: int) -> string {
     }
     return names;
 }
-// Main returns 1 through `depth` nested calls of Id: depth + 1 operands.
-Nest :: (depth: int) -> string {
-    text := "package scalar\nMain :: () -> int { return ";
+// 1 inside `depth` nested calls of Id: depth + 1 operands.
+Nested :: (depth: int) -> string {
+    text := "";
     for (index in 0..<depth) {
         text = format_text("{}Id(", text);
     }
@@ -52,7 +52,20 @@ Nest :: (depth: int) -> string {
     for (index in 0..<depth) {
         text = format_text("{})", text);
     }
-    return format_text("{}; }\nId :: (x: int) -> int { return x; }\n", text);
+    return text;
+}
+Nest :: (depth: int) -> string {
+    return format_text("package scalar\nMain :: () -> int { return {}; }\nId :: (x: int) -> int { return x; }\n",
+                       Nested(depth));
+}
+// Main returning 1, then a comment that pads the source to `size` bytes.
+Padded :: (size: int) -> string {
+    text := "package scalar\nMain :: () -> int { return 1; }\n//";
+    filler := "x";
+    while (strings.ByteLength(filler) < size) {
+        filler = format_text("{}{}", filler, filler);
+    }
+    return format_text("{}{}", text, strings.Slice(filler, 0, size - strings.ByteLength(text)));
 }
 Cases :: () -> Case[] {
     return [
@@ -132,7 +145,9 @@ Cases :: () -> Case[] {
         Accepted("most_functions", Chain(32), 31, ChainNames(32), ""),
         Rejected("too_many_functions", Chain(33), "scalar proof admits at most 32 functions", "F32 :: () -> int { return 32; }"),
         Accepted("most_operands", Nest(63), 1, "Main,Id", ""),
-        Rejected("too_many_operands", Nest(64), "scalar proof admits at most 64 operands per function", "")];
+        Rejected("too_many_operands", Nest(64), "scalar proof admits at most 64 operands per function", Nested(64)),
+        Accepted("largest_source", Padded(16384), 1, "Main", "1"),
+        Rejected("too_large", Padded(16385), "scalar proof admits at most 16384 source bytes", "")];
 }
 pub Count :: () -> int {
     return length(Cases());

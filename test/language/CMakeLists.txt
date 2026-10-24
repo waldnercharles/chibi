@@ -262,6 +262,17 @@ include(bounded_compiler_chibi.cmake)
 include(prepared_writer_chibi.cmake)
 include(shader_source_chibi.cmake)
 include(package_compiler_chibi.cmake)
+# Integer semantics compile with stage zero and with the authored compiler its
+# bootstrap artifact holds, which loads from the checked-in sources at run time.
+target_sources(test_language PRIVATE integer_semantics.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c")
+set_source_files_properties(integer_semantics.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+set_source_files_properties(integer_semantics.c
+    PROPERTIES COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

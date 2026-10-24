@@ -9,6 +9,7 @@
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
+#include "float_conversion_cases.h"
 #include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
@@ -3642,6 +3643,56 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
     }
     return true;
 }
+static bool approved_float_conversion_admission(int compiler)
+{
+    bool agreed = true;
+    for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
+         i++) {
+        const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
+        source_package_input source = { "facts/Main.chibi",
+                                        item->source,
+                                        strlen(item->source) };
+        pin_value out;
+        REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
+        bool accepted = value->tag == tag(compiler, "Compiled");
+        if (accepted != item->accepted) {
+            fprintf(
+                stderr,
+                "stage-one floating admission %s: expected %s, got %s\n",
+                item->name,
+                item->accepted ? "accepted" : "rejected",
+                accepted ? "accepted" : "rejected"
+            );
+            if (!accepted) {
+                pin_value message;
+                REQUIRE(get(&value->values[0], "message", &message));
+                fprintf(stderr, "  %s\n", pin_text(message).bytes);
+            }
+            agreed = false;
+        }
+        if (accepted && item->accepted) {
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
+            arena_free(&detached);
+            sample_call call = { .function = "Fold",
+                                 .arguments = item->arguments,
+                                 .expected = item->expected };
+            bool ran = true;
+            for (int backend = 0; backend < 2; backend++) {
+                ran = run(bytes, length, &call, backend) && ran;
+            }
+            free(bytes);
+            agreed = ran && agreed;
+        }
+        arena_free(&detached);
+    }
+    REQUIRE(agreed);
+    return true;
+}
+
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -3668,11 +3719,13 @@ TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
-    return run_samples(IMPORT_SAMPLES, 0);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 0));
+    return approved_float_conversion_admission(0);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 {
-    return run_samples(IMPORT_SAMPLES, 1);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 1));
+    return approved_float_conversion_admission(1);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */

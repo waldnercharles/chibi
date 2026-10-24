@@ -5789,6 +5789,49 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     }
     return true;
 }
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+/* A shared wrong result is not an oracle. Each executed value must match
+ * the fixture's literal, including Main's value. */
+static bool scalar_results_match(const int32_t values[4], int32_t expected)
+{
+    return values[0] == expected && values[1] == expected &&
+           values[2] == expected && values[3] == expected;
+}
+TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
+{
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    static const int32_t expected[] = { 42, 0, INT32_MAX };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            pin_value ordinal = { .type = PIN_I32, .i = i }, literal;
+            REQUIRE(compiler_fixture_call(
+                &corpus,
+                b,
+                CASES_PACKAGE,
+                "ExpectedValue",
+                &ordinal,
+                1,
+                COMPILE_BUDGET,
+                &detached,
+                &literal
+            ));
+            REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
+            int32_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+            REQUIRE(scalar_results_match(values, literal.i));
+            int32_t wrong = expected[i] == 42 ? 41 : 1;
+            const int32_t consensus[4] = { wrong, wrong, wrong, wrong };
+            REQUIRE(!scalar_results_match(consensus, literal.i));
+            for (int column = 0; column < 4; column++) {
+                values[column] = wrong;
+                REQUIRE(!scalar_results_match(values, literal.i));
+                values[column] = expected[i];
+            }
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
 #if defined(__linux__) && defined(__x86_64__)
 /* Native execution of the authored scalar corpus. Each case's source goes
  * through CollectScalar on one producer VM, alternating by case, and must be
@@ -5796,15 +5839,14 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
  * objects through the native driver's fixed opt and llc argument vectors
  * (test/native_aot/driver/README.md), with no undefined symbol. Each object,
  * linked as a validation-only shared library, runs in a child process, so a
- * trap is a status rather than the end of this test. Its entry's value must
- * be the one the authored compiler's closure of the same source gives on
- * both VMs, and so must each probe's. A probe reaches an internal function
+ * trap is a status rather than the end of this test. Its entry's value on
+ * both VMs and both native levels must match the fixture's literal expected
+ * value, and so must each probe's. A probe reaches an internal function
  * through a validation-only IR adapter that passes it int32 arguments, which
  * is how negative values and bool parameters reach it; the adapter is not a
  * foreign ABI. Linux x86-64 is the one target the emitter admits.
  * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
  * nothing is found through PATH. */
-static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* The corpus's accepted cases. */
 enum
 {
@@ -6289,11 +6331,11 @@ enum
     MAX_CASE_CALLS = MAX_CASE_PROBES + 1
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
-static int case_calls(const char *name, const pin_value *rows, scalar_call calls[MAX_CASE_CALLS])
+static int case_calls(const char *name, const pin_value *rows, int32_t expected, scalar_call calls[MAX_CASE_CALLS])
 {
     scalar_probe probes[MAX_CASE_PROBES];
     int count = case_probes(name, probes);
-    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, 0 },
+    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, expected },
                               .json = "[]",
                               .symbol = "chibi_scalar" };
     for (int i = 0; i < count; i++) {
@@ -6431,15 +6473,13 @@ static bool native_values(
     free(adapter);
     return true;
 }
-/* Whether each call gave one value everywhere: its expected value for a
- * probe, and for the entry the same one on both VMs and natively. */
+/* Every executed result matches its literal fixture or probe oracle. */
 static bool calls_agree(const char *name, const scalar_call *calls, int count)
 {
     for (int i = 0; i < count; i++) {
         const int32_t *values = calls[i].values;
-        int32_t expected = i ? calls[i].probe.expected : values[0];
-        bool agree = values[0] == expected && values[1] == expected &&
-                     values[2] == expected && values[3] == expected;
+        int32_t expected = calls[i].probe.expected;
+        bool agree = scalar_results_match(values, expected);
         if (!agree) {
             fprintf(
                 stderr,
@@ -6519,13 +6559,18 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     if (rejected) {
         return true;
     }
+    pin_value expected;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
+    );
+    REQUIRE(expected.type == PIN_I32);
     ++*accepted;
     REQUIRE(keeps_guards(case_name, ir));
     unsigned char *closure;
     size_t length;
     REQUIRE(vm_closure(b, pin_text(source), &closure, &length));
     scalar_call calls[MAX_CASE_CALLS];
-    int count = case_calls(case_name, &rows, calls);
+    int count = case_calls(case_name, &rows, expected.i, calls);
     bool ran = vm_values(closure, length, calls, count) &&
                native_values(directory, case_name, &rows, ir, calls, count);
     free(closure);
@@ -6750,6 +6795,7 @@ void test_language_package_compiler_chibi_scalar()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
+    RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)

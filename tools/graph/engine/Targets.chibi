@@ -732,6 +732,7 @@ Files :: (target: string) -> string[] {
             "test/language/package_core.c", "test/language/package_tests.c",
             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
             "test/language/shader_source_chibi.c",
+            "test/language/asset_packaging_chibi.c",
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
             "test/language/package_paths_chibi.c", "test/language/source_tokenizer_chibi.c",
@@ -3573,6 +3574,7 @@ pub Configures :: (target: string) -> string[] {
             "constant_proof_chibi_source.h=test/language/constant_proof_chibi_source.h.in",
             "constant_scalar_chibi_source.h=test/language/constant_scalar_chibi_source.h.in",
             "shader_source_chibi_source.h=test/language/shader_source_chibi_source.h.in",
+            "asset_packaging_chibi_source.h=test/language/asset_packaging_chibi_source.h.in",
             "scalar_lowering_chibi_source.h=test/language/scalar_lowering_chibi_source.h.in",
             "lexical_binding_chibi_source.h=test/language/lexical_binding_chibi_source.h.in",
             "nominal_binding_chibi_source.h=test/language/nominal_binding_chibi_source.h.in",
@@ -3615,6 +3617,7 @@ pub Configures :: (target: string) -> string[] {
 pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
+            "CHIBI_ASSET_PACKAGING_BYTES=bytes:tools/compiler/asset_packaging/Packaging.chibi",
             "CHIBI_ANALYSIS_STATE_BYTES=bytes:tools/compiler/analysis_state/State.chibi",
             "CHIBI_BOUNDED_COMPILE_BYTES=bytes:tools/compiler/bounded_compiler/Compile.chibi",
             "CHIBI_BOUNDED_EXPRESSION_BYTES=bytes:tools/compiler/bounded_compiler/Expression.chibi",

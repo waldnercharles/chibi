@@ -261,6 +261,7 @@ target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prep
 include(bounded_compiler_chibi.cmake)
 include(prepared_writer_chibi.cmake)
 include(shader_source_chibi.cmake)
+include(asset_packaging_chibi.cmake)
 include(package_compiler_chibi.cmake)
 target_sources(test_language PRIVATE execution_scope.c)
 set_source_files_properties(execution_scope.c

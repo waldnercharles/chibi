@@ -58,29 +58,29 @@ typedef struct
     "Mul :: (a: " T ", b: " T ") -> " T " { return a * b; }\n"                 \
     "Div :: (a: " T ", b: " T ") -> " T " { return a / b; }\n"                 \
     "Rem :: (a: " T ", b: " T ") -> " T " { return a % b; }\n"                 \
-    "Shl :: (a: " T ", n: byte) -> " T " { return " T "(wrap: a << n); }\n"    \
-    "Shr :: (a: " T ", n: byte) -> " T " { return " T "(wrap: a >> n); }\n"    \
+    "Shl :: (a: " T ", n: u8) -> " T " { return " T "(wrap: a << n); }\n"      \
+    "Shr :: (a: " T ", n: u8) -> " T " { return " T "(wrap: a >> n); }\n"      \
     "Less :: (a: " T ", b: " T ") -> bool { return a < b; }\n"                 \
-    "Converted :: (v: int64) -> " T " { return " T "(v); }\n"                  \
-    "Wrapped :: (v: int64) -> " T " { return " T "(wrap: v); }\n"              \
-    "ConvertedWide :: (v: uint64) -> " T " { return " T "(v); }\n"             \
-    "WrappedWide :: (v: uint64) -> " T " { return " T "(wrap: v); }\n"         \
-    "Truncated :: (v: double) -> " T " { return " T "(v); }\n"                 \
-    "NotANumber :: () -> " T " { z: double = 0.0; return " T "(z / z); }\n"    \
+    "Converted :: (v: i64) -> " T " { return " T "(v); }\n"                    \
+    "Wrapped :: (v: i64) -> " T " { return " T "(wrap: v); }\n"                \
+    "ConvertedWide :: (v: u64) -> " T " { return " T "(v); }\n"                \
+    "WrappedWide :: (v: u64) -> " T " { return " T "(wrap: v); }\n"            \
+    "Truncated :: (v: f64) -> " T " { return " T "(v); }\n"                    \
+    "NotANumber :: () -> " T " { z: f64 = 0.0; return " T "(z / z); }\n"       \
     "Count :: (n: ref int, v: " T ") -> " T " { n += 1; return v; }\n"         \
-    "CountWide :: (n: ref int, v: int64) -> int64 { n += 1; return v; }\n"     \
+    "CountWide :: (n: ref int, v: i64) -> i64 { n += 1; return v; }\n"         \
     "UnusedDiv :: (a: " T ", b: " T ") -> int { n := 0; q := a / Count(n, "    \
     "b); return n; }\n"                                                        \
-    "UnusedShl :: (a: " T ", s: byte) -> int { n := 0; q := Count(n, a) << "   \
+    "UnusedShl :: (a: " T ", s: u8) -> int { n := 0; q := Count(n, a) << "     \
     "s; return n; }\n"                                                         \
-    "UnusedConverted :: (v: int64) -> int { n := 0; x := " T "(CountWide(n, "  \
+    "UnusedConverted :: (v: i64) -> int { n := 0; x := " T "(CountWide(n, "    \
     "v)); return n; }\n"
 #define SIGNED_SOURCE(T)                                                       \
     WIDTH_SOURCE(T) "Neg :: (a: " T ") -> " T " { return -a; }\n"
 
 static const integer_sample samples[] = {
-    { .name = "int8",
-      .source = SIGNED_SOURCE("int8"),
+    { .name = "i8",
+      .source = SIGNED_SOURCE("i8"),
       .calls = { { .function = "Add", .arguments = "[127,1]", .expected = "[-128]" },
                  { .function = "Add", .arguments = "[-128,-1]", .expected = "[127]" },
                  { .function = "Sub", .arguments = "[-128,1]", .expected = "[127]" },
@@ -136,8 +136,8 @@ static const integer_sample samples[] = {
                  { .function = "UnusedConverted",
                    .arguments = "[128]",
                    .expected = "[1]" }, } },
-    { .name = "byte",
-      .source = WIDTH_SOURCE("byte"),
+    { .name = "u8",
+      .source = WIDTH_SOURCE("u8"),
       .calls = { { .function = "Add", .arguments = "[255,1]", .expected = "[0]" },
                  { .function = "Sub", .arguments = "[0,1]", .expected = "[255]" },
                  { .function = "Mul", .arguments = "[255,2]", .expected = "[254]" },
@@ -178,8 +178,8 @@ static const integer_sample samples[] = {
                  { .function = "UnusedConverted",
                    .arguments = "[-1]",
                    .expected = "[1]" }, } },
-    { .name = "int16",
-      .source = SIGNED_SOURCE("int16"),
+    { .name = "i16",
+      .source = SIGNED_SOURCE("i16"),
       .calls = { { .function = "Add", .arguments = "[32767,1]", .expected = "[-32768]" },
                  { .function = "Add", .arguments = "[-32768,-1]", .expected = "[32767]" },
                  { .function = "Sub", .arguments = "[-32768,1]", .expected = "[32767]" },
@@ -235,8 +235,8 @@ static const integer_sample samples[] = {
                  { .function = "UnusedConverted",
                    .arguments = "[32768]",
                    .expected = "[1]" }, } },
-    { .name = "uint16",
-      .source = WIDTH_SOURCE("uint16"),
+    { .name = "u16",
+      .source = WIDTH_SOURCE("u16"),
       .calls = { { .function = "Add", .arguments = "[65535,1]", .expected = "[0]" },
                  { .function = "Sub", .arguments = "[0,1]", .expected = "[65535]" },
                  { .function = "Mul", .arguments = "[65535,2]", .expected = "[65534]" },
@@ -334,8 +334,8 @@ static const integer_sample samples[] = {
                  { .function = "UnusedConverted",
                    .arguments = "[2147483648]",
                    .expected = "[1]" }, } },
-    { .name = "uint",
-      .source = WIDTH_SOURCE("uint"),
+    { .name = "u32",
+      .source = WIDTH_SOURCE("u32"),
       .calls = { { .function = "Add", .arguments = "[4294967295,1]", .expected = "[0]" },
                  { .function = "Sub", .arguments = "[0,1]", .expected = "[4294967295]" },
                  { .function = "Mul", .arguments = "[4294967295,2]", .expected = "[4294967294]" },
@@ -376,8 +376,8 @@ static const integer_sample samples[] = {
                  { .function = "UnusedConverted",
                    .arguments = "[-1]",
                    .expected = "[1]" }, } },
-    { .name = "int64",
-      .source = SIGNED_SOURCE("int64"),
+    { .name = "i64",
+      .source = SIGNED_SOURCE("i64"),
       .calls = { { .function = "Add",
                    .arguments = "[9223372036854775807,1]",
                    .expected = "[-9223372036854775808]" },
@@ -460,8 +460,8 @@ static const integer_sample samples[] = {
                  { .function = "UnusedShl",
                    .arguments = "[1,255]",
                    .expected = "[1]" }, } },
-    { .name = "uint64",
-      .source = WIDTH_SOURCE("uint64"),
+    { .name = "u64",
+      .source = WIDTH_SOURCE("u64"),
       .calls = { { .function = "Add", .arguments = "[18446744073709551615,1]", .expected = "[0]" },
                  { .function = "Sub", .arguments = "[0,1]", .expected = "[18446744073709551615]" },
                  { .function = "Mul",
@@ -517,10 +517,10 @@ static const integer_sample samples[] = {
                    .expected = "[1]" }, } },
     { .name = "literal sum overflows its context",
       .source = "package facts\n"
-                "F :: () -> int8 { return 127 + 1; }\n",
-      .authored_message = "Constant value is outside the range of int8",
+                "F :: () -> i8 { return 127 + 1; }\n",
+      .authored_message = "Constant value is outside the range of i8",
       .authored_line = 2,
-      .authored_column = 26,
+      .authored_column = 24,
       .calls = { { .function = "F", .arguments = "[]", .expected = "[-128]" } } },
     { .name = "literal division by zero",
       .source = "package facts\n"
@@ -559,24 +559,24 @@ static const integer_sample samples[] = {
       .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
     { .name = "literal checked conversion",
       .source = "package facts\n"
-                "F :: () -> byte { return byte(300); }\n",
-      .message = "Numeric literal is outside the range of byte",
+                "F :: () -> u8 { return u8(300); }\n",
+      .message = "Numeric literal is outside the range of u8",
       .line = 2,
-      .column = 31,
-      .authored_message = "Constant does not fit in byte; use byte(wrap: value)",
+      .column = 27,
+      .authored_message = "Constant does not fit in u8; use u8(wrap: value)",
       .authored_line = 2,
-      .authored_column = 26 },
+      .authored_column = 24 },
     { .name = "literal wrap",
       .source = "package facts\n"
-                "W :: () -> byte { return byte(wrap: 300); }\n",
+                "W :: () -> u8 { return u8(wrap: 300); }\n",
       .calls = { { .function = "W", .arguments = "[]", .expected = "[44]" } } },
     { .name = "constant sum overflows its type",
       .source = "package facts\n"
-                "C: int8 : 127 + 1;\n"
-                "F :: () -> int8 { return C; }\n",
-      .authored_message = "Constant value is outside the range of int8",
+                "C: i8 : 127 + 1;\n"
+                "F :: () -> i8 { return C; }\n",
+      .authored_message = "Constant value is outside the range of i8",
       .authored_line = 2,
-      .authored_column = 11,
+      .authored_column = 9,
       .calls = { { .function = "F", .arguments = "[]", .expected = "[-128]" } } },
     { .name = "constant division by zero",
       .source = "package facts\n"
@@ -599,8 +599,8 @@ static const integer_sample samples[] = {
                 "Q: int : -7 / 2;\n"
                 "R: int : -7 % 2;\n"
                 "S: int : -1 >> 1;\n"
-                "F :: () -> int64 { return int64(Q) * 100 + int64(R) * 10 + "
-                "int64(S); }\n",
+                "F :: () -> i64 { return i64(Q) * 100 + i64(R) * 10 + "
+                "i64(S); }\n",
       .calls = { { .function = "F", .arguments = "[]", .expected = "[-311]" } } },
     { .name = "constant minimum by -1",
       .source = "package facts\n"
@@ -612,8 +612,8 @@ static const integer_sample samples[] = {
       .calls = { { .function = "F", .arguments = "[]", .expected = "[-2147483648]" } } },
     { .name = "constant wrap",
       .source = "package facts\n"
-                "C: byte : byte(wrap: 300);\n"
-                "F :: () -> byte { return C; }\n",
+                "C: u8 : u8(wrap: 300);\n"
+                "F :: () -> u8 { return C; }\n",
       .calls = { { .function = "F", .arguments = "[]", .expected = "[44]" } } },
     { .name = "variable by literal zero",
       .source = "package facts\n"
@@ -624,47 +624,47 @@ static const integer_sample samples[] = {
       .calls = { { .function = "F", .arguments = "[5]", .expected = "[0]" } } },
     { .name = "variable shift by a literal past the width",
       .source = "package facts\n"
-                "F :: (a: int8) -> int8 { return a << 8; }\n",
+                "F :: (a: i8) -> i8 { return a << 8; }\n",
       .calls = { { .function = "F", .arguments = "[1]", .expected = "[0]" } } },
     { .name = "variable plus a literal outside its type",
       .source = "package facts\n"
-                "F :: (a: int8) -> int8 { return a + 200; }\n",
-      .message = "Numeric literal is outside the range of int8",
+                "F :: (a: i8) -> i8 { return a + 200; }\n",
+      .message = "Numeric literal is outside the range of i8",
       .line = 2,
-      .column = 37 },
+      .column = 33 },
     { .name = "unsigned negation",
       .source = "package facts\n"
-                "F :: (a: byte) -> byte { return -a; }\n",
+                "F :: (a: u8) -> u8 { return -a; }\n",
       .calls = { { .function = "F", .arguments = "[1]", .expected = "[255]" } } },
     { .name = "unsigned compared with a negative literal",
       .source = "package facts\n"
-                "F :: (a: byte) -> bool { return a < -1; }\n",
-      .message = "Numeric literal is outside the range of byte",
+                "F :: (a: u8) -> bool { return a < -1; }\n",
+      .message = "Numeric literal is outside the range of u8",
       .line = 2,
-      .column = 38,
-      .authored_message = "Numeric literal is outside the range of byte",
+      .column = 36,
+      .authored_message = "Numeric literal is outside the range of u8",
       .authored_line = 2,
-      .authored_column = 37 },
+      .authored_column = 35 },
     { .name = "narrow sum widened after the operation",
       .source = "package facts\n"
-                "F :: (a: int8, b: int8) -> int { return a + b; }\n"
-                "G :: (a: byte, b: byte) -> int { return a * b; }\n"
-                "H :: (a: int16) -> int64 { return a << 15; }\n"
-                "U :: (a: uint) -> uint64 { return a + 1; }\n",
+                "F :: (a: i8, b: i8) -> int { return a + b; }\n"
+                "G :: (a: u8, b: u8) -> int { return a * b; }\n"
+                "H :: (a: i16) -> i64 { return a << 15; }\n"
+                "U :: (a: u32) -> u64 { return a + 1; }\n",
       .calls = { { .function = "F", .arguments = "[127,1]", .expected = "[-128]" },
                  { .function = "G", .arguments = "[255,255]", .expected = "[1]" },
                  { .function = "H", .arguments = "[1]", .expected = "[-32768]" },
                  { .function = "U", .arguments = "[4294967295]", .expected = "[0]" } } },
     { .name = "mixed widths take the wider type",
       .source = "package facts\n"
-                "F :: (a: int8, b: int) -> int { return a + b; }\n"
-                "G :: (a: byte, b: int8) -> int { return a + b; }\n"
-                "H :: (a: uint, b: int) -> int64 { return a + b; }\n"
-                "L :: (a: uint, b: int) -> bool { return a < b; }\n"
-                "S :: (a: byte, n: int) -> int { return a << n; }\n",
-      .authored_message = "Mismatched integer types int8 and int; convert one operand",
+                "F :: (a: i8, b: int) -> int { return a + b; }\n"
+                "G :: (a: u8, b: i8) -> int { return a + b; }\n"
+                "H :: (a: u32, b: int) -> i64 { return a + b; }\n"
+                "L :: (a: u32, b: int) -> bool { return a < b; }\n"
+                "S :: (a: u8, n: int) -> int { return a << n; }\n",
+      .authored_message = "Mismatched integer types i8 and int; convert one operand",
       .authored_line = 2,
-      .authored_column = 40,
+      .authored_column = 38,
       .calls = { { .function = "F", .arguments = "[-128,2147483647]", .expected = "[2147483519]" },
                  { .function = "G", .arguments = "[255,-128]", .expected = "[127]" },
                  { .function = "H", .arguments = "[4294967295,-1]", .expected = "[4294967294]" },
@@ -673,28 +673,28 @@ static const integer_sample samples[] = {
                  { .function = "S", .arguments = "[1,32]", .expected = "[0]" } } },
     { .name = "mixed sum narrowed by its result",
       .source = "package facts\n"
-                "G :: (a: byte, b: int8) -> int16 { return a + b; }\n",
-      .message = "Incompatible types: expected int16, got int; convert with "
-                 "int16(value)",
+                "G :: (a: u8, b: i8) -> i16 { return a + b; }\n",
+      .message = "Incompatible types: expected i16, got int; convert with "
+                 "i16(value)",
       .line = 2,
-      .column = 43,
-      .authored_message = "Mismatched integer types byte and int8; convert one operand",
+      .column = 37,
+      .authored_message = "Mismatched integer types u8 and i8; convert one operand",
       .authored_line = 2,
-      .authored_column = 43 },
+      .authored_column = 37 },
     { .name = "signed and unsigned 64-bit mix",
       .source = "package facts\n"
-                "F :: (a: uint64, b: int64) -> uint64 { return a + b; }\n",
-      .message = "uint64 and int64 operands need an explicit conversion, such "
-                 "as uint64(value)",
+                "F :: (a: u64, b: i64) -> u64 { return a + b; }\n",
+      .message = "u64 and i64 operands need an explicit conversion, such "
+                 "as u64(value)",
       .line = 2,
-      .column = 47,
-      .authored_message = "Mismatched integer types uint64 and int64; convert one operand",
+      .column = 39,
+      .authored_message = "Mismatched integer types u64 and i64; convert one operand",
       .authored_line = 2,
-      .authored_column = 47 },
+      .authored_column = 39 },
     { .name = "compound assignment wraps",
       .source = "package facts\n"
-                "F :: (a: int8) -> int8 { x := a; x += 1; x *= 2; return x; }\n"
-                "G :: (a: byte) -> byte { x := a; x -= 1; return x; }\n",
+                "F :: (a: i8) -> i8 { x := a; x += 1; x *= 2; return x; }\n"
+                "G :: (a: u8) -> u8 { x := a; x -= 1; return x; }\n",
       .calls = { { .function = "F", .arguments = "[127]", .expected = "[0]" },
                  { .function = "G", .arguments = "[0]", .expected = "[255]" } } },
     { .name = "compound division by literal zero",
@@ -706,17 +706,17 @@ static const integer_sample samples[] = {
       .calls = { { .function = "H", .arguments = "[1]", .expected = "[0]" } } },
     { .name = "bitwise operations keep the width",
       .source = "package facts\n"
-                "N :: (a: byte) -> byte { return ~a; }\n"
-                "M :: (a: int8) -> int8 { return ~a; }\n"
-                "X :: (a: uint16, b: uint16) -> uint16 { return a ^ b; }\n",
+                "N :: (a: u8) -> u8 { return ~a; }\n"
+                "M :: (a: i8) -> i8 { return ~a; }\n"
+                "X :: (a: u16, b: u16) -> u16 { return a ^ b; }\n",
       .calls = { { .function = "N", .arguments = "[0]", .expected = "[255]" },
                  { .function = "M", .arguments = "[0]", .expected = "[-1]" },
                  { .function = "X", .arguments = "[65535,1]", .expected = "[65534]" } } },
     { .name = "zero divisor and clamping in one expression",
       .source = "package facts\n"
-                "F :: (a: int, b: int) -> int { return (a / b) + int(byte(a)); "
+                "F :: (a: int, b: int) -> int { return (a / b) + int(u8(a)); "
                 "}\n"
-                "G :: (a: int, b: int) -> int { return int(byte(a)) + (a / b); "
+                "G :: (a: int, b: int) -> int { return int(u8(a)) + (a / b); "
                 "}\n",
       .calls = { { .function = "F", .arguments = "[300,0]", .expected = "[255]" },
                  { .function = "G", .arguments = "[300,0]", .expected = "[255]" } } },
@@ -732,7 +732,7 @@ static const integer_sample samples[] = {
                 "3); return t; }\n"
                 "Quotient :: () -> int { t := 0; x := Tag(t, 1, 7) / Tag(t, 2, "
                 "0); return t; }\n"
-                "Shifted :: () -> int { t := 0; x := Tag(t, 1, 1) << uint(Tag(t, "
+                "Shifted :: () -> int { t := 0; x := Tag(t, 1, 1) << u32(Tag(t, "
                 "2, 40)); return t; }\n"
                 "Ordered :: () -> int { t := 0; b := Tag(t, 2, 5) < Tag(t, 1, 3); "
                 "return t; }\n",

@@ -126,11 +126,11 @@ static execution_instance *invoke()
 TEST_CASE(generic_argument_types_specialize_once_and_execute)
 {
     const char *source = "Generic :: behavior { result: retain int = 0; real: "
-                         "retain double = 0; "
+                         "retain f64 = 0; "
                          "Identity :: (value: $T) -> T { return value } "
                          "on Run :: () { result = Identity(int(7)) + "
                          "Identity(int(8)); "
-                         "real = Identity(double(2.5)); } }";
+                         "real = Identity(f64(2.5)); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -172,12 +172,12 @@ TEST_CASE(generic_argument_types_specialize_once_and_execute)
 TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
 {
     const char *source =
-        "Constants :: behavior { result: retain int = 0; real:retain double=0; "
+        "Constants :: behavior { result: retain int = 0; real:retain f64=0; "
         "Factorial :: (n: int) -> int { if n <= 1 { return 1 } "
         "return n * Factorial(n - 1) } "
         "Size :: Factorial(5); "
         "Scale :: (value: $T, $N: int) -> T { return value * N } "
-        "Gain :: (value:$T,$Amount:double)->T{return value*Amount} "
+        "Gain :: (value:$T,$Amount:f64)->T{return value*Amount} "
         "on Run :: () { result = Scale(int(2), Size); real=Gain(3.0,0.5); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
@@ -197,9 +197,9 @@ TEST_CASE(compile_time_conversions_follow_runtime_modes)
         *source = "Conversions :: behavior { wrapped: retain int = 0; clamped: "
                   "retain int = 0; "
                   "exact: retain int = 0; "
-                  "Wrapped :: (n: int) -> int8 { return int8(wrap: n) } "
-                  "Clamped :: (n: int) -> int8 { return int8(clamp: n) } "
-                  "Exact :: (n: int) -> int8 { return int8(n) } "
+                  "Wrapped :: (n: int) -> i8 { return i8(wrap: n) } "
+                  "Clamped :: (n: int) -> i8 { return i8(clamp: n) } "
+                  "Exact :: (n: int) -> i8 { return i8(n) } "
                   "W :: Wrapped(300); C :: Clamped(300); E :: Exact(100); "
                   "on Run :: () { wrapped = int(W); clamped = int(C); exact = "
                   "int(E); } }";
@@ -220,7 +220,7 @@ TEST_CASE(compile_time_conversions_follow_runtime_modes)
 TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type)
 {
     REQUIRE(
-        analyze("Casts :: behavior { Identity::(value:$T)->T{return value} on Run :: () { direct:int=int(7); casted:=Identity(int(7)); typed:=Identity(direct); decimal:=Identity(double(2.5)); } }")
+        analyze("Casts :: behavior { Identity::(value:$T)->T{return value} on Run :: () { direct:int=int(7); casted:=Identity(int(7)); typed:=Identity(direct); decimal:=Identity(f64(2.5)); } }")
     );
     int identities = 0;
     bool casted = false, typed = false, decimal = false;
@@ -318,9 +318,9 @@ TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensio
                          "Multiply :: (a: $A, b: $B) -> ProductType(A, B) { "
                          "result: ProductType(A, B) = {amount: a.amount * "
                          "b.amount}; return result } "
-                         "Run :: () -> Quantity(double, 1, 0) { "
-                         "speed: Quantity(double, 1, -1) = {amount: 6}; "
-                         "time: Quantity(double, 0, 1) = {amount: 2}; return "
+                         "Run :: () -> Quantity(f64, 1, 0) { "
+                         "speed: Quantity(f64, 1, -1) = {amount: 6}; "
+                         "time: Quantity(f64, 0, 1) = {amount: 2}; return "
                          "Multiply(speed, time) } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
@@ -464,11 +464,11 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
         "Value :: Forever(1) }",
         "Bad :: behavior { Identity :: (value:$T)->T{return value} "
         "on Run :: () { x:=Identity(missing:true) } }",
-        "Bad :: behavior { Narrow :: (n: int) -> int8 { return int8(n) } "
+        "Bad :: behavior { Narrow :: (n: int) -> i8 { return i8(n) } "
         "Value :: Narrow(300) }",
-        "Bad :: library { Pick :: (A: Type) -> Type { x := int8(round: 300); "
+        "Bad :: library { Pick :: (A: Type) -> Type { x := i8(round: 300); "
         "return A } Box :: () -> Pick(int) { return 1 } }",
-        "Bad :: library { Pick :: (A: Type) -> Type { x := int8(wrap: 1.5); "
+        "Bad :: library { Pick :: (A: Type) -> Type { x := i8(wrap: 1.5); "
         "return A } Box :: () -> Pick(int) { return 1 } }",
     };
     const char *messages[] = { "Conflicting polymorphic argument",

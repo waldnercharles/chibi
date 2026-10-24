@@ -22,7 +22,7 @@ static pin_spec setting_inputs[] = {
     { .name = "Mode", .type = PIN_I32, .type_name = "int", .kind = PIN_DATA, .flags = PIN_FLAG_SETTING },
 };
 static pin_spec setting_outputs[] = {
-    { .name = "Value", .type = PIN_F64, .type_name = "double", .kind = PIN_DATA },
+    { .name = "Value", .type = PIN_F64, .type_name = "f64", .kind = PIN_DATA },
 };
 static node_desc setting_desc = { .name = "Inline Setting Source",
                                   .input_count = 1,
@@ -56,7 +56,7 @@ static node *add(graph *to, const char *type)
 static node *real(graph *to, double value)
 {
     node *n = add(to, "Real");
-    pin_value v = { .type = PIN_F64, .type_name = "double", .d = value };
+    pin_value v = { .type = PIN_F64, .type_name = "f64", .d = value };
     int set = graph_set_pin_default(to, n, false, 0, &v);
     assert(set == 0);
     (void)set;
@@ -181,7 +181,7 @@ TEST_CASE(function_entries_keep_their_boxes)
     graph *function = behavior_asset_add_function(asset, "Double", 1);
     node *entry = graph_node_by_id(function, function->entry_id);
     node *ret = graph_node_by_id(function, function->return_id);
-    pin_spec value = { .name = "X", .type = PIN_F64, .type_name = "double", .kind = PIN_DATA };
+    pin_spec value = { .name = "X", .type = PIN_F64, .type_name = "f64", .kind = PIN_DATA };
     REQUIRE(graph_add_pin(function, entry, 1, &value) == 0);
     REQUIRE(graph_add_pin(function, ret, 0, &value) == 0);
     node *doubled = binary(function, "Multiply", entry, real(function, 2));
@@ -345,7 +345,7 @@ TEST_CASE(expressions_format_with_precedence)
         asset,
         "speed",
         PIN_F64,
-        "double",
+        "f64",
         PIN_CONTAINER_SINGLE,
         NULL,
         NULL

@@ -226,7 +226,7 @@ static void live_system()
     assert(fabsf(observed_x - 12) < .001f);
     assert(schedule_count(engine_system_schedule(runtime)) == 1);
     assert(
-        !publish_source(live->runtime, catalog, "FreeMotion :: system(position:Transform, velocity:Velocity, appearance:Appearance, health:Health) without Collider, Body on Tick :: (dt: float s) { position += velocity * dt; }", true)
+        !publish_source(live->runtime, catalog, "FreeMotion :: system(position:Transform, velocity:Velocity, appearance:Appearance, health:Health) without Collider, Body on Tick :: (dt: number s) { position += velocity * dt; }", true)
     );
     assert(!engine_frame(runtime, 61 / 60.));
     assert(fabsf(Transform_get_const(world, marker)->x - 12) < .001f);
@@ -303,7 +303,7 @@ static void source_cohorts()
             *catalog = authoring_language_catalog_new(&input, error, sizeof error);
         native_capabilities_free(native);
         assert(catalog);
-        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: float s) {position.x+=velocity.x*dt;}", backend);
+        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: number s) {position.x+=velocity.x*dt;}", backend);
         publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:Health){health.current+=1;}", backend);
         publish_system(live->runtime, catalog, "Scale", "Scale :: system(position:Transform){position.x*=2;}", backend);
         ecs_entity owners[4];
@@ -427,7 +427,7 @@ static void source_cohorts()
         /* A fresh program has no attached inspector; isolate the mixed-phase
          * preparation barrier from the earlier instrumentation barrier. */
         assert(!source_remove(live->runtime->sources, "Motion"));
-        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: float s) {position.x+=velocity.x*dt;}", backend);
+        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: number s) {position.x+=velocity.x*dt;}", backend);
         ecs_entity added = { 0 };
         schedule_desc native_row = { .name = "Add query owner",
                                      .phase = SYSTEM_PRE_PHYSICS,

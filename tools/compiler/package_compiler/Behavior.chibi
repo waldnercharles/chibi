@@ -16,15 +16,15 @@ import strings "core:strings"
 // An event the game declares; its payload is event_fields[first, first + count).
 pub GameEvent :: struct {
     name: string;
-    id: uint64;
-    abi: uint64;
+    id: u64;
+    abi: u64;
     first: int;
     count: int;
 }
 pub GameEventField :: struct {
     name: string;
     storage: int;
-    nominal: uint64;
+    nominal: u64;
     has_default: bool;
     default_owner: bool;
 }
@@ -36,11 +36,11 @@ pub GameType :: struct {
     required: bool;
     underlying: int;
     name: string;
-    id: uint64;
-    layout: uint64;
+    id: u64;
+    layout: u64;
     storage: int;
     size: int;
-    component: uint64;
+    component: u64;
     first: int;
     count: int;
 }
@@ -81,10 +81,10 @@ pub NumericOperator :: struct {
 // A behavior's retained state, with its nominal type and initial value.
 StateDecl :: struct {
     name: string;
-    id: uint64;
+    id: u64;
     storage: int;
     record: int;
-    bits: uint64;
+    bits: u64;
     text: string;
     node: int;
 }
@@ -102,7 +102,7 @@ StateValue :: (kept: StateDecl, types: TypeDecl[], layouts: int[], wide: int) ->
 Game :: union {
     Package
     | Behavior(kept: StateDecl[], handled: int[], declared: GameEvent[], payloads: GameEventField[],
-               entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+               entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                make_fields: int[])
 }
 // Prepared function kinds.
@@ -141,10 +141,10 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record:
 }
 // The component of each component reference a body makes, or, when
 // `written`, of each it writes through.
-ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> uint64[] {
-    found: uint64[] = [];
+ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> u64[] {
+    found: u64[] = [];
     for (host in hosts) {
-        if (host.intrinsic == ReferenceMakeIntrinsic && cells[host.first + 2].constant == uint64(ComponentReference) &&
+        if (host.intrinsic == ReferenceMakeIntrinsic && cells[host.first + 2].constant == u64(ComponentReference) &&
             (host.written || !written)) {
             found.append(cells[host.first + 6].constant);
         }
@@ -152,8 +152,8 @@ ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> uint64[] {
     return found;
 }
 // Each of `items` once, in order.
-Distinct :: (items: uint64[]) -> uint64[] {
-    kept: uint64[] = [];
+Distinct :: (items: u64[]) -> u64[] {
+    kept: u64[] = [];
     for (item in items) {
         seen := false;
         for (known in kept) {
@@ -336,7 +336,7 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
         while (index < strings.ByteLength(spelling)) {
             digit := strings.ByteAt(spelling, index);
             if (digit == 46 || digit == 101 || digit == 69) {
-                return DoubleStorage;
+                return FloatStorage;
             }
             index += 1;
         }
@@ -355,7 +355,7 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
     return WordStorage;
 }
 // The written scalar type, or a literal initializer's natural type.
-StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: uint64,
+StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: u64,
               member: int) -> ValueType {
     written := Field(forest, member, "type");
     value := Field(forest, member, "value");
@@ -377,7 +377,7 @@ StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[]
         Field(forest, written, "arguments") < 0 && !HasToken(forest, written, "?") &&
         !HasToken(forest, written, "[")) {
         if (spelled == "number") {
-            return {storage: DoubleStorage, container: 0, record: -1};
+            return {storage: FloatStorage, container: 0, record: -1};
         }
         return {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
     }
@@ -411,7 +411,7 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
         return Default.Failed(Diagnose(forest, value, 0, "entity default requires null or zero"));
     }
     if (storage == BoolStorage && Is(forest, value, "boolean")) {
-        bits: uint64 = 0;
+        bits: u64 = 0;
         if (Text(forest, source, value) == "true") {
             bits = 1;
         }
@@ -453,10 +453,10 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
 // from it. The target, natives, events, types, entity, operators, globals and
 // record makes are the game's, as `chibi-compile --stage-one-input` exports
 // them.
-pub CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
-                        natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u64, names: string[],
+                        natives: Native[], ports: Port[], native_ids: u64[], game_events: GameEvent[],
                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                        entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                        entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                         make_fields: int[]) -> Result {
     ops := ResolveOps(names, true);
     if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
@@ -500,7 +500,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                 (declared.storage == HandleStorage && declared.record < 0)) {
                 return Result.Rejected(Diagnose(forest, member, 0, "state type is not supported yet"));
             }
-            bits: uint64 = 0;
+            bits: u64 = 0;
             initial := "";
             value := Field(forest, member, "value");
             switch StateDefault(forest, source, name, declared.storage, value, ops) {
@@ -563,7 +563,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                                    has_syntax: true, has_header: false};
     links: graph.Binding[] = [];
     constants: ConstDecl[] = [];
-    switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+    switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [u64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids,
                     resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
@@ -578,16 +578,16 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that
 // takes one byte[] result; empty when stage one rejects any of them, which
 // BehaviorRejection then says why.
-pub CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                         natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+pub CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: u64, names: string[],
+                         natives: Native[], ports: Port[], native_ids: u64[], game_events: GameEvent[],
                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                         make_fields: int[]) -> byte[] {
+                         entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                         make_fields: int[]) -> u8[] {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return [];
     }
-    ids: uint64[] = [];
-    data: byte[] = [];
+    ids: u64[] = [];
+    data: u8[] = [];
     starts: int[] = [];
     lengths: int[] = [];
     index: int = 0;
@@ -609,10 +609,10 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
 }
 // The first of CompileBehaviors' behaviors stage one rejects, as
 // "identity:line:column: message"; "" when it compiles them all.
-pub BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                          natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+pub BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: u64, names: string[],
+                          natives: Native[], ports: Port[], native_ids: u64[], game_events: GameEvent[],
                           event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                          entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                           make_fields: int[]) -> string {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return "the behaviors' identities and sources differ in number, or there are none";

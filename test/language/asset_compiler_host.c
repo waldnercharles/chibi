@@ -25,7 +25,7 @@ TEST_CASE(asset_source_public_scene_build_and_reuse)
 {
     static const char
         SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                   "pub Build :: () -> byte[] { return "
+                   "pub Build :: () -> u8[] { return "
                    "data.Encode(data.Scene(\"Empty\", [], [])); }\n";
     asset_compiler_options config = options();
     asset_compiler_diagnostic error;
@@ -61,7 +61,7 @@ TEST_CASE(asset_source_public_scene_build_and_reuse)
 TEST_CASE(asset_source_authored_validation_rejects_duplicate_field)
 {
     static const char SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                                 "pub Build :: () -> byte[] { return "
+                                 "pub Build :: () -> u8[] { return "
                                  "data.Encode(data.Scene(\"Empty\", [], "
                                  "[data.Field.Named(\"name\", "
                                  "data.Value.Text(\"Other\"))])); }\n";
@@ -82,7 +82,7 @@ TEST_CASE(asset_source_authored_validation_rejects_duplicate_field)
 }
 TEST_CASE(asset_source_malformed_build_reports_position)
 {
-    static const char SOURCE[] = "package probe\npub Build :: () -> byte[] { "
+    static const char SOURCE[] = "package probe\npub Build :: () -> u8[] { "
                                  "return Missing(); }\n";
     asset_compiler_options config = options();
     asset_compiler_diagnostic error;

@@ -75,17 +75,17 @@ static uint64_t state_id(const char *name)
 static bool compile(behavior_backend backend, int helpers)
 {
     const char *sources[] = {
-        "BorrowBench :: behavior { values: double[] = []; total: double = 0;on "
-        "Run :: () { sum := 0.0; for value in values { sum += value; } total "
+        "BorrowBench :: behavior { values: f64[] = []; total: f64 = 0;on "
+        "Run :: () { sum: f64 = 0; for value in values { sum += value; } total "
         "+= sum; "
         "} }",
-        "BorrowBench :: behavior { values: double[] = []; total: double = "
-        "0;Sum :: (input: double[]) -> double { sum := 0.0; for value in input "
+        "BorrowBench :: behavior { values: f64[] = []; total: f64 = "
+        "0;Sum :: (input: f64[]) -> f64 { sum: f64 = 0; for value in input "
         "{ sum += value; } return sum; }on Run :: () { total += Sum(values); } "
         "}",
-        "BorrowBench :: behavior { values: double[] = []; total: double = "
-        "0;Sum :: (input: double[]) -> double { sum := 0.0; for value in input "
-        "{ sum += value; } return sum; }Forward :: (input: double[]) -> double "
+        "BorrowBench :: behavior { values: f64[] = []; total: f64 = "
+        "0;Sum :: (input: f64[]) -> f64 { sum: f64 = 0; for value in input "
+        "{ sum += value; } return sum; }Forward :: (input: f64[]) -> f64 "
         "{ return Sum(input); }on Run :: () { total += Forward(values); } }"
     };
     syntax = script_parse(sources[helpers]);

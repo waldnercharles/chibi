@@ -183,7 +183,7 @@ LITERAL_DESC(Bool, NATIVE_ARITHMETIC_Bool_NAME, "Returns Value as a constant tru
 LITERAL_DESC(Byte, NATIVE_ARITHMETIC_Byte_NAME, "Returns Value as a constant whole number from 0 to 255.")
 LITERAL_DESC(Integer, NATIVE_ARITHMETIC_Integer_NAME, "Returns Value as a constant 32-bit signed whole number.")
 LITERAL_DESC(Integer64, NATIVE_ARITHMETIC_Integer64_NAME, "Returns Value as a constant 64-bit signed whole number.")
-LITERAL_DESC(Real, NATIVE_ARITHMETIC_Real_NAME, "Returns Value as a constant double-precision number.")
+LITERAL_DESC(Real, NATIVE_ARITHMETIC_Real_NAME, "Returns Value as a constant f64.")
 LITERAL_DESC(Name, NATIVE_ARITHMETIC_Name_NAME, "Returns Value as a constant name.")
 LITERAL_DESC(String, NATIVE_ARITHMETIC_String_NAME, "Returns Value as a constant text string.")
 

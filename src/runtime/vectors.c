@@ -38,7 +38,8 @@ pin_value native_vector_length(const pin_value *inputs, int count, arena *)
     assert(count == 1);
     (void)count;
     CF_V2 v = v2_input(&inputs[0]);
-    return (pin_value){ .type = PIN_F64, .d = hypot((double)v.x, (double)v.y) };
+    return (pin_value){ .type = PIN_F32,
+                        .f = (float)hypot((double)v.x, (double)v.y) };
 }
 
 pin_value native_vector_dot(const pin_value *inputs, int count, arena *)
@@ -49,7 +50,7 @@ pin_value native_vector_dot(const pin_value *inputs, int count, arena *)
     /* Separate steps, as every backend computes it, never a fused multiply-add. */
     double x = (double)a.x * b.x;
     double y = (double)a.y * b.y;
-    return (pin_value){ .type = PIN_F64, .d = x + y };
+    return (pin_value){ .type = PIN_F32, .f = (float)(x + y) };
 }
 
 pin_value native_vector_distance(const pin_value *inputs, int count, arena *)
@@ -57,8 +58,8 @@ pin_value native_vector_distance(const pin_value *inputs, int count, arena *)
     assert(count == 2);
     (void)count;
     CF_V2 a = v2_input(&inputs[0]), b = v2_input(&inputs[1]);
-    return (pin_value){ .type = PIN_F64,
-                        .d = hypot((double)a.x - b.x, (double)a.y - b.y) };
+    return (pin_value){ .type = PIN_F32,
+                        .f = (float)hypot((double)a.x - b.x, (double)a.y - b.y) };
 }
 
 pin_value native_direction_to(const pin_value *inputs, int count, arena *memory)

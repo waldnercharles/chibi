@@ -425,7 +425,7 @@ TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types)
         "Bad :: behavior { m: [int: int] = [\"wrong\": 1]; }",
         "Bad :: behavior { m: [string: int] = [\"wrong\": true]; }",
         "Bad :: behavior { m: [int[]: int] = [:]; }",
-        "Bad :: behavior { m: [int: int] = [:]; on Run :: () { key: float = "
+        "Bad :: behavior { m: [int: int] = [:]; on Run :: () { key: number = "
         "1; "
         "m[key] = 2; } }",
         ("Bad :: behavior { m: [string: int] = [:]; n: [string: bool] = [:]; "
@@ -619,12 +619,12 @@ TEST_CASE(maps_source_literal_round_trips_typed_keys_and_values)
 TEST_CASE(maps_retain_nested_task_results_until_the_last_handle_is_removed)
 {
     const char
-        *source = "Maps :: behavior { seen: double = 0; "
-                  "jobs: [string: [string: task<double>]] = [:]; "
-                  "Work :: () -> double { yield; return 7; } "
+        *source = "Maps :: behavior { seen: f64 = 0; "
+                  "jobs: [string: [string: task<f64>]] = [:]; "
+                  "Work :: () -> f64 { yield; return 7; } "
                   "on Run :: () { jobs = [\"outer\": [\"inner\": Work()]]; "
                   "yield; yield; answer := await jobs[\"outer\"][\"inner\"]; "
-                  "if answer is double value { seen = value; } jobs = [:]; } }";
+                  "if answer is f64 value { seen = value; } jobs = [:]; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(source, backends[b]));

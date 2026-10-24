@@ -101,7 +101,7 @@ static const script_diagnostic *diagnostic(const char *message)
 TEST_CASE(language_shadowing_resolves_nearest_declaration)
 {
     const char *source = "Scope :: behavior {\ndt := 1;\non Tick :: (dt: "
-                         "float s) { copy: float = dt; }\n}";
+                         "number s) { copy: number = dt; }\n}";
     parse(source);
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
@@ -133,9 +133,9 @@ static pin_type local_storage(const char *name)
     return PIN_FLOW;
 }
 /* Without context a literal is typed by its spelling: an integer is int, or
- * the first of int64 and uint64 that holds it, and a decimal point or an
- * exponent makes a number. A floating value becomes an integer only through
- * int(x). */
+ * the first of i64 and u64 that holds it, and a decimal point or an
+ * exponent makes a number, a 32-bit float. A floating value becomes an integer
+ * only through int(x). */
 TEST_CASE(language_literals_are_typed_by_spelling)
 {
     parse(
@@ -145,12 +145,12 @@ TEST_CASE(language_literals_are_typed_by_spelling)
     );
     REQUIRE(analysis->valid);
     REQUIRE(local_storage("count") == PIN_I32 && local_storage("mask") == PIN_I32);
-    REQUIRE(local_storage("ratio") == PIN_F64 && local_storage("power") == PIN_F64);
+    REQUIRE(local_storage("ratio") == PIN_F32 && local_storage("power") == PIN_F32);
     REQUIRE(local_storage("big") == PIN_I64 && local_storage("huge") == PIN_U64);
-    REQUIRE(local_storage("half") == PIN_I32 && local_storage("mixed") == PIN_F64);
-    REQUIRE(local_storage("scaled") == PIN_F64);
+    REQUIRE(local_storage("half") == PIN_I32 && local_storage("mixed") == PIN_F32);
+    REQUIRE(local_storage("scaled") == PIN_F32);
     parse("L :: library { F :: (v: number) { count := 0; count = v; } }");
-    REQUIRE(diagnostic("Incompatible types: expected int, got double; convert with int(value)"));
+    REQUIRE(diagnostic("Incompatible types: expected int, got number; convert with int(value)"));
     parse("L :: library { F :: (v: number) { count := 0; count += 1.5; } }");
     REQUIRE(diagnostic("Numeric literal has a fraction, which int cannot hold"));
     parse("L :: library { F :: (v: number) -> int { return int(v) + 1; } }");
@@ -279,7 +279,7 @@ TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments)
 {
     parse(
         "Motion :: system(position: Position) { step := position.x; "
-        "Apply :: (value: float) { position.y = value; } Apply(step); }"
+        "Apply :: (value: number) { position.y = value; } Apply(step); }"
     );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
@@ -346,7 +346,7 @@ TEST_CASE(language_reductions_resolve_stored_fields_and_membership)
 {
     parse(
         "Motion :: system(position: Position?) where has(Position) { "
-        "Amount :: () -> float { return 2; } "
+        "Amount :: () -> number { return 2; } "
         "if position { reduce position.x += Amount(); "
         "reduce min(position.x, 3); reduce max(position.y, 4); } }"
     );
@@ -406,13 +406,14 @@ TEST_CASE(language_reduction_producers_reject_conflicting_component_values)
         "Motion :: system(position: Position) { if true { snapshot := "
         "position; "
         "reduce position.x += 1; } }",
-        "Motion :: system(position: Position) { Read :: () -> float { return "
+        "Motion :: system(position: Position) { Read :: () -> number { return "
         "position.y; } reduce position.x += Read(); }",
         "Motion :: system(position: Position) { reduce position.x += 1; "
         "self.Position.y = 2; }",
         "Motion :: system(position: Position) { bind position.y = 2; reduce "
         "position.x += 1; }",
-        "Motion :: system(position: Position) { Read :: (n: int) -> float { if "
+        "Motion :: system(position: Position) { Read :: (n: int) -> number { "
+        "if "
         "n "
         "> 0 { return Read(n - 1); } return position.y; } reduce position.x += "
         "Read(1); }",
@@ -670,7 +671,7 @@ TEST_CASE(language_query_generators_bind_rows_and_pure_value_filters)
         "join next in target.Likes join aim: Position? from next "
         "where Positive(p.x) and (aim and aim.x > p.x) and changed(aim) "
         "and has(target.Likes) and not has(next.Placement) "
-        "{ Positive :: (x: float) -> bool { positive := x > 0; return "
+        "{ Positive :: (x: number) -> bool { positive := x > 0; return "
         "positive; } "
         "if aim { p.x = aim.x; } }"
     );
@@ -750,7 +751,7 @@ TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
         "Bad :: system(p: Position ) where ReadState() { enabled: retain = "
         "true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool "
         "{ return enabled; } }",
-        "Bad :: system(p: Position ) where dt > 0 on Tick :: (dt: double) {}",
+        "Bad :: system(p: Position ) where dt > 0 on Tick :: (dt: f64) {}",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         cleanup();
@@ -782,20 +783,20 @@ TEST_CASE(language_derived_component_is_read_only)
     parse("Follow :: system(placement: Placement) { placement.x = 1; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
-    parse("Follow :: behavior { on Tick :: (dt: float s) { self.Placement.y = dt; } }");
+    parse("Follow :: behavior { on Tick :: (dt: number s) { self.Placement.y = dt; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
     return true;
 }
 TEST_CASE(language_numeric_literal_storage_limits)
 {
-    parse("Limits :: behavior { sample: int8 = 128; }");
+    parse("Limits :: behavior { sample: i8 = 128; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
-    const script_diagnostic *error = diagnostic("Numeric literal is outside the range of int8");
+    const script_diagnostic *error = diagnostic("Numeric literal is outside the range of i8");
     int literal = (int)(strstr(analysis->text, "128") - analysis->text);
     REQUIRE(error && error->range.start == literal && error->range.end == literal + 3);
-    parse("Limits :: behavior { sample: int64 = 9223372036854775807; }");
+    parse("Limits :: behavior { sample: i64 = 9223372036854775807; }");
     REQUIRE(analysis->valid);
     bool found = false;
     for (int i = 0; i < analysis->expression_count; i++) {
@@ -833,58 +834,81 @@ static const script_expression *expression_of(script_expression_kind kind, pin_t
 static bool converts(const char *body, behavior_cast_mode mode)
 {
     char source[256];
-    snprintf(source, sizeof source, "L :: library { F :: (x: int) -> byte { return %s; } }", body);
+    snprintf(source, sizeof source, "L :: library { F :: (x: int) -> u8 { return %s; } }", body);
     parse(source);
     const script_expression *conversion = expression_of(SCRIPT_EXPR_CAST, PIN_U8);
     return analysis->valid && conversion && conversion->conversion == mode;
 }
 TEST_CASE(language_numeric_conversions_check_modes_and_constants)
 {
-    REQUIRE(converts("byte(x)", BEHAVIOR_CAST_EXACT));
-    REQUIRE(converts("byte(wrap: x)", BEHAVIOR_CAST_WRAP));
-    REQUIRE(converts("byte(clamp: x)", BEHAVIOR_CAST_CLAMP));
-    REQUIRE(converts("byte(wrap: 300)", BEHAVIOR_CAST_WRAP));
-    parse("L :: library { X: int : 300; F :: () -> byte { return byte(X + 1); } }");
+    REQUIRE(converts("u8(x)", BEHAVIOR_CAST_EXACT));
+    REQUIRE(converts("u8(wrap: x)", BEHAVIOR_CAST_WRAP));
+    REQUIRE(converts("u8(clamp: x)", BEHAVIOR_CAST_CLAMP));
+    REQUIRE(converts("u8(wrap: 300)", BEHAVIOR_CAST_WRAP));
+    parse("L :: library { X: int : 300; F :: () -> u8 { return u8(X + 1); } }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)"));
-    parse("L :: library { X: int : 200; F :: () -> byte { return byte(X); } }");
+    REQUIRE(diagnostic("Constant does not fit in u8; use u8(wrap: value) or u8(clamp: value)"));
+    parse("L :: library { X: int : 200; F :: () -> u8 { return u8(X); } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (x: int) -> byte { return byte(round: x); } }");
+    parse("L :: library { F :: (x: int) -> u8 { return u8(round: x); } }");
     REQUIRE(diagnostic("A conversion argument may only be named wrap or clamp"));
-    parse("L :: library { F :: (x: float) -> int { return int(wrap: x); } }");
+    parse("L :: library { F :: (x: number) -> int { return int(wrap: x); } }");
     REQUIRE(diagnostic("wrap and clamp convert between integer types"));
     parse("L :: library { F :: () -> int { return int(wrap: 3.5); } }");
     REQUIRE(
         analysis->diagnostic_count == 1 &&
         diagnostic("wrap and clamp convert between integer types")
     );
-    parse("L :: library { F :: () -> uint64 { return uint64(clamp: 18446744073709551615); } }");
+    parse("L :: library { F :: () -> u64 { return u64(clamp: 18446744073709551615); } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (x: int) -> byte { return byte(x, x); } }");
+    parse("L :: library { F :: (x: int) -> u8 { return u8(x, x); } }");
     REQUIRE(diagnostic("Conversion takes one value"));
     parse("L :: library { F :: (x: int) -> int { return cast<int>(x); } }");
     REQUIRE(diagnostic("cast<T>(value) was removed; write T(value)"));
     return true;
 }
+/* number is a 32-bit float that f32 also names; f32 widens to f64, and f64
+ * becomes number only through number(x) or f32(x). */
+TEST_CASE(language_number_is_f32_and_f64_narrows_explicitly)
+{
+    parse("L :: library { F :: (x: number, y: f32, z: i32) { a := x; b := y; c := z; } }");
+    REQUIRE(analysis->valid && local_storage("a") == PIN_F32);
+    REQUIRE(local_storage("b") == PIN_F32 && local_storage("c") == PIN_I32);
+    parse("L :: library { F :: (x: number) -> f64 { return x; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (x: f64) -> number { return x; } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Incompatible types: expected number, got f64; convert with number(value)"));
+    parse("L :: library { F :: (x: f64) { y: number = 0; y = x; } }");
+    REQUIRE(!analysis->valid);
+    parse("L :: library { G :: (x: number) {} F :: (x: f64) { G(x); } }");
+    REQUIRE(!analysis->valid);
+    parse("L :: library { F :: (x: f64) -> number { return number(x) + f32(x); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: () -> f64 { return 0.1; } }");
+    const script_expression *wide = constant_of(PIN_F64);
+    REQUIRE(analysis->valid && wide && wide->constant.d == 0.1);
+    return true;
+}
 TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly)
 {
-    parse("L :: library { F :: (x: uint16) -> uint { return x; } }");
+    parse("L :: library { F :: (x: u16) -> u32 { return x; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (x: byte) -> float { return x; } }");
+    parse("L :: library { F :: (x: u8) -> number { return x; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (x: int) -> byte { return x; } }");
+    parse("L :: library { F :: (x: int) -> u8 { return x; } }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Incompatible types: expected byte, got int; convert with byte(value)"));
-    parse("L :: library { F :: (x: int, y: uint) -> int64 { return x + y; } }");
+    REQUIRE(diagnostic("Incompatible types: expected u8, got int; convert with u8(value)"));
+    parse("L :: library { F :: (x: int, y: u32) -> i64 { return x + y; } }");
     REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
-    parse("L :: library { F :: (x: byte, y: int8) -> int { return x + y; } }");
+    parse("L :: library { F :: (x: u8, y: i8) -> int { return x + y; } }");
     REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I32));
-    parse("L :: library { F :: (x: int64, y: uint64) -> int64 { return x + y; } }");
-    REQUIRE(diagnostic("int64 and uint64 operands need an explicit conversion, such as int64(value)"));
-    parse("L :: library { Mask: uint : 0xFF; F :: () -> uint { return Mask; } }");
+    parse("L :: library { F :: (x: i64, y: u64) -> i64 { return x + y; } }");
+    REQUIRE(diagnostic("i64 and u64 operands need an explicit conversion, such as i64(value)"));
+    parse("L :: library { Mask: u32 : 0xFF; F :: () -> u32 { return Mask; } }");
     REQUIRE(analysis->valid && constant_of(PIN_U32));
-    parse("L :: library { Small: byte : 300; }");
-    REQUIRE(diagnostic("Numeric literal is outside the range of byte"));
+    parse("L :: library { Small: u8 : 300; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of u8"));
     return true;
 }
 /* The value of the one character constant the last parse produced. */
@@ -897,14 +921,14 @@ static bool character(pin_type storage, int value, bool is_char)
 }
 TEST_CASE(language_character_literals_take_their_type_from_context)
 {
-    parse("L :: library { F :: (c: byte) -> bool { return c == '/'; } }");
+    parse("L :: library { F :: (c: u8) -> bool { return c == '/'; } }");
     REQUIRE(character(PIN_U8, '/', false));
     parse("L :: library { F :: (c: int) -> bool { return c >= 'A' && c <= 'Z'; } }");
     REQUIRE(analysis->valid && !constant_of(PIN_F64));
-    parse("L :: library { Slash: byte : 'é'; }");
+    parse("L :: library { Slash: u8 : 'é'; }");
     REQUIRE(character(PIN_U8, 233, false));
-    parse("L :: library { Euro: byte : '€'; }");
-    REQUIRE(diagnostic("Character literal is outside the range of byte"));
+    parse("L :: library { Euro: u8 : '€'; }");
+    REQUIRE(diagnostic("Character literal is outside the range of u8"));
     parse("L :: library { F :: () -> char { c := 'a'; return c; } }");
     REQUIRE(character(PIN_I32, 'a', true));
     parse("L :: library { F :: () -> char { return '🐈'; } }");
@@ -929,7 +953,7 @@ TEST_CASE(language_character_literals_take_their_type_from_context)
     REQUIRE(diagnostic("Invalid character literal"));
     parse("L :: library { F :: () -> string { return 'a'; } }");
     REQUIRE(!analysis->valid);
-    parse("L :: library { F :: () -> double { return 'a'; } }");
+    parse("L :: library { F :: () -> f64 { return 'a'; } }");
     REQUIRE(diagnostic("A character literal needs an integer or char type"));
     return true;
 }
@@ -937,15 +961,15 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
 {
     parse("L :: library { F :: (c: char) -> int { return c; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (c: char) -> int64 { return c; } }");
+    parse("L :: library { F :: (c: char) -> i64 { return c; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (c: char) -> byte { return c; } }");
-    REQUIRE(diagnostic("Incompatible types: expected byte, got char; convert with byte(value)"));
+    parse("L :: library { F :: (c: char) -> u8 { return c; } }");
+    REQUIRE(diagnostic("Incompatible types: expected u8, got char; convert with u8(value)"));
     parse("L :: library { F :: (n: int) -> char { return n; } }");
     REQUIRE(diagnostic("Incompatible types: expected char, got int; convert with char(value)"));
     parse("L :: library { F :: (n: int) -> char { return char(n); } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (c: char) -> byte { return byte(c); } }");
+    parse("L :: library { F :: (c: char) -> u8 { return u8(c); } }");
     REQUIRE(analysis->valid);
     parse("L :: library { F :: (n: int) -> char { return char(wrap: n); } }");
     REQUIRE(diagnostic("char converts only with char(value)"));
@@ -964,7 +988,7 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
     REQUIRE(analysis->valid);
     parse("L :: library { F :: (c: char) -> int { return c - '0'; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (d: double) -> char { return char(d); } }");
+    parse("L :: library { F :: (d: f64) -> char { return char(d); } }");
     REQUIRE(diagnostic("char converts from an integer"));
     /* A compile-time call evaluates its character literals. */
     parse(
@@ -980,11 +1004,11 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
     );
     REQUIRE(!analysis->valid);
     /* Beside a wide unsigned operand a char takes part as uint, not int64. */
-    parse("L :: library { F :: (c: char, u: uint) -> uint { return c + u; } }");
+    parse("L :: library { F :: (c: char, u: u32) -> u32 { return c + u; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (c: char, u: uint64) -> uint64 { return c + u; } }");
+    parse("L :: library { F :: (c: char, u: u64) -> u64 { return c + u; } }");
     REQUIRE(analysis->valid);
-    parse("L :: library { F :: (c: char, b: byte) -> int { return c + b; } }");
+    parse("L :: library { F :: (c: char, b: u8) -> int { return c + b; } }");
     REQUIRE(analysis->valid);
     /* A compile-time call keeps its declared char result. */
     parse(
@@ -1016,7 +1040,7 @@ TEST_CASE(language_functions_with_results_must_return)
 {
     const char *missing[] = {
         "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } } }",
-        "L :: library { F :: (a: float) -> (r: float) { r = a; } }",
+        "L :: library { F :: (a: number) -> (r: number) { r = a; } }",
         "L :: library { F :: (c: bool) -> int { while (true) { if c { break; } "
         "return 1; } } }",
         "L :: library { F :: (n: int) -> int { switch n { case 1: return 1; "
@@ -1035,7 +1059,7 @@ TEST_CASE(language_functions_with_results_must_return)
     const char *ending[] = {
         "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } else { "
         "return 2; } } }",
-        "L :: library { F :: (a: float) -> (r: float) { r = a; return; } }",
+        "L :: library { F :: (a: number) -> (r: number) { r = a; return; } }",
         "L :: library { F :: () -> int { while (true) { return 1; } } }",
         "L :: library { F :: (c: bool) -> int { while (true) { while (c) { "
         "break; } return 1; } } }",
@@ -1065,40 +1089,40 @@ TEST_CASE(language_functions_with_results_must_return)
 }
 TEST_CASE(language_hex_literal_fills_integer_storage)
 {
-    parse("Colors :: behavior { color: uint = 0xf7d308ff; }");
+    parse("Colors :: behavior { color: u32 = 0xf7d308ff; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_U32) && constant_of(PIN_U32)->constant.u == 0xf7d308ffu);
-    parse("Colors :: behavior { color: uint = 0xef; }");
+    parse("Colors :: behavior { color: u32 = 0xef; }");
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_U32) && constant_of(PIN_U32)->constant.u == 0xef);
-    parse("Colors :: behavior { mask: uint64 = 0xffffffffffffffff; }");
+    parse("Colors :: behavior { mask: u64 = 0xffffffffffffffff; }");
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_U64) && constant_of(PIN_U64)->constant.u64 == UINT64_MAX);
     parse("Colors :: behavior { mask: int = -0x10; }");
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_I32) && constant_of(PIN_I32)->constant.i == -16);
-    parse("Colors :: behavior { mask: int8 = 0xff; }");
+    parse("Colors :: behavior { mask: i8 = 0xff; }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Numeric literal is outside the range of int8"));
-    parse("Limits :: behavior { mask: int64 = 0x7fffffffffffffff; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of i8"));
+    parse("Limits :: behavior { mask: i64 = 0x7fffffffffffffff; }");
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_I64) && constant_of(PIN_I64)->constant.i64 == INT64_MAX);
-    parse("Limits :: behavior { mask: int64 = -0x8000000000000000; }");
+    parse("Limits :: behavior { mask: i64 = -0x8000000000000000; }");
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_I64) && constant_of(PIN_I64)->constant.i64 == INT64_MIN);
-    parse("Limits :: behavior { mask: int64 = 0x8000000000000000; }");
+    parse("Limits :: behavior { mask: i64 = 0x8000000000000000; }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Numeric literal is outside the range of int64"));
-    parse("Limits :: behavior { mask: int64 = -0x8000000000000001; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of i64"));
+    parse("Limits :: behavior { mask: i64 = -0x8000000000000001; }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Numeric literal is outside the range of int64"));
-    parse("Limits :: behavior { mask: uint64 = 0x10000000000000000; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of i64"));
+    parse("Limits :: behavior { mask: u64 = 0x10000000000000000; }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Numeric literal is outside the range of uint64"));
-    parse("Limits :: behavior { mask: uint64 = -0x1; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of u64"));
+    parse("Limits :: behavior { mask: u64 = -0x1; }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Numeric literal is outside the range of uint64"));
+    REQUIRE(diagnostic("Numeric literal is outside the range of u64"));
     parse("Limits :: behavior { count: int = 1e2; }");
     REQUIRE(analysis->valid);
     REQUIRE(constant_of(PIN_I32) && constant_of(PIN_I32)->constant.i == 100);
@@ -1300,7 +1324,7 @@ TEST_CASE(language_binding_cycle_rejected)
 TEST_CASE(language_inferred_return_of_several_results_is_rejected)
 {
     parse(
-        "Tuples :: library { Pair :: () -> (a: double, b: double) { "
+        "Tuples :: library { Pair :: () -> (a: f64, b: f64) { "
         "return(1, 2) } "
         "Both :: () { return Pair() } }"
     );
@@ -1312,7 +1336,7 @@ TEST_CASE(language_inferred_return_of_several_results_is_rejected)
         "return(Hit: r.Hit, Distance: r.Distance)"
     ));
     parse(
-        "Tuples :: library { Pair :: () -> (a: double, b: double) { "
+        "Tuples :: library { Pair :: () -> (a: f64, b: f64) { "
         "return(1, 2) } "
         "First :: () { return Pair().a } }"
     );
@@ -1394,8 +1418,8 @@ TEST_CASE(language_component_declares_measured_fields)
         "    // Turns.\r\n"
         "    drift: -1.5..2 rad /* per */ / s\n"
         "    rate: banana/basket; count: 0..12 banana\n"
-        "    level: float\n"
-        "    stored: float charge\n"
+        "    level: number\n"
+        "    stored: number charge\n"
         "    measured: int u/s\n"
         "    at: Position\n"
         "}\n"
@@ -1414,8 +1438,8 @@ TEST_CASE(language_component_declares_measured_fields)
     REQUIRE(!strcmp(component_field(c, "drift")->description, "\nTurns."));
     REQUIRE(field_is(component_field(c, "rate"), "number", "banana/basket", 0, 0));
     REQUIRE(field_is(component_field(c, "count"), "number", "banana", 0, 12));
-    REQUIRE(field_is(component_field(c, "level"), "float", NULL, 0, 0));
-    REQUIRE(field_is(component_field(c, "stored"), "float", "charge", 0, 0));
+    REQUIRE(field_is(component_field(c, "level"), "number", NULL, 0, 0));
+    REQUIRE(field_is(component_field(c, "stored"), "number", "charge", 0, 0));
     REQUIRE(field_is(component_field(c, "measured"), "int", "u/s", 0, 0));
     REQUIRE(field_is(component_field(c, "at"), "Position", NULL, 0, 0));
     script_component_free(c);
@@ -1423,7 +1447,7 @@ TEST_CASE(language_component_declares_measured_fields)
      * source cannot declare a component. */
     parse("S :: system() {\n    if true {\n        s := 2\n        u := s * 3\n        component := u\n    }\n}\n");
     REQUIRE(analysis->valid);
-    parse("C :: component {\n    a: float\n}\n");
+    parse("C :: component {\n    a: number\n}\n");
     REQUIRE(diagnostic("Expected behavior, library or system"));
     return true;
 }
@@ -1434,9 +1458,9 @@ TEST_CASE(language_component_rejects_invalid_fields)
         "    a: 1..0\n"
         "    b: flaot\n"
         "    c: u/s^4\n"
-        "    a: float\n"
-        "    d: float[]\n"
-        "    e: 0..1 float\n"
+        "    a: number\n"
+        "    d: number[]\n"
+        "    e: 0..1 number\n"
         "}\n"
     ));
     REQUIRE(component_diagnostic("A range goes from a smaller finite number to a larger one"));
@@ -1444,21 +1468,21 @@ TEST_CASE(language_component_rejects_invalid_fields)
     REQUIRE(component_diagnostic("A unit's power is ^2 or ^3"));
     REQUIRE(component_diagnostic("Field 'a' is declared twice"));
     REQUIRE(component_diagnostic("A component field holds a number, a scalar or a struct"));
-    REQUIRE(component_diagnostic("'float' is a type, not a unit")->range.line == 7);
+    REQUIRE(component_diagnostic("'number' is a type, not a unit")->range.line == 7);
     REQUIRE(acount(component_diagnostics) == 6);
     REQUIRE(!read_component("Empty :: component {\n}\n"));
     REQUIRE(component_diagnostic("A component declares at least one field"));
-    REQUIRE(!read_component("\"Quoted\" :: component {\n    a: float\n}\n"));
+    REQUIRE(!read_component("\"Quoted\" :: component {\n    a: number\n}\n"));
     REQUIRE(syntax->diagnostic_count > 0);
     REQUIRE(acount(component_diagnostics) == syntax->diagnostic_count);
     REQUIRE(!read_component("S :: system() {\n}\n"));
     REQUIRE(acount(component_diagnostics) == 1);
     REQUIRE(component_diagnostic("A component source declares one component"));
     /* Keywords are contextual data-member names, not storage declarations. */
-    script_component *contextual = read_component("C :: component {\n    state: float\n}\n");
+    script_component *contextual = read_component("C :: component {\n    state: number\n}\n");
     REQUIRE(contextual && !syntax->diagnostic_count && !acount(component_diagnostics));
     REQUIRE(acount(contextual->fields) == 1 && !strcmp(contextual->fields[0].name, "state"));
-    REQUIRE(field_is(&contextual->fields[0], "float", NULL, 0, 0));
+    REQUIRE(field_is(&contextual->fields[0], "number", NULL, 0, 0));
     script_component_free(contextual);
     afree(component_diagnostics);
     return true;
@@ -1779,7 +1803,7 @@ TEST_CASE(language_units_check_callable_contracts)
     measured_source(
         "Measures :: library { "
         "Travel :: (speed: u/s, elapsed: s) -> u { return speed * elapsed; } "
-        "Charge :: (value: float charge) -> number charge { return value; } "
+        "Charge :: (value: number charge) -> number charge { return value; } "
         "First :: (value: u) -> u { return Later(value); } "
         "Later :: (value: u) -> u { if value > 0 { return First(value - 1); } "
         "return value; } "
@@ -1799,7 +1823,7 @@ TEST_CASE(language_units_check_callable_contracts)
             plain = s->type.storage == PIN_I32 && !s->unit;
         }
         if (!strcmp(s->name, "speed")) {
-            measured_parameter = s->type.storage == PIN_F64 && s->unit &&
+            measured_parameter = s->type.storage == PIN_F32 && s->unit &&
                                  !strcmp(s->unit, "u/s");
         }
     }
@@ -1822,7 +1846,7 @@ TEST_CASE(language_units_reject_callable_mismatches)
           "= elapsed; } }",
           "Units differ: u = s" },
         { "M :: library { Bad :: (body: Body) { Later(body.speed); } Later :: "
-          "(distance: ref float u) {} }",
+          "(distance: ref number u) {} }",
           "Units differ: u argument u/s" },
         { "M :: library { Bad :: (elapsed: ref number s) -> ref number u { "
           "return "
@@ -1858,10 +1882,10 @@ TEST_CASE(language_units_follow_native_signatures_and_task_results)
 {
     const script_catalog_parameter parameter = { .name = "distance",
                                                  .unit = "u",
-                                                 .type = { .storage = PIN_F64 } };
+                                                 .type = { .storage = PIN_F32 } };
     const script_catalog_parameter result = { .name = "Elapsed",
                                               .unit = "s",
-                                              .type = { .storage = PIN_F64 } };
+                                              .type = { .storage = PIN_F32 } };
     const script_catalog_capability capability = { .id = 91,
                                                    .name = "Measured",
                                                    .parameters = &parameter,
@@ -1903,7 +1927,7 @@ TEST_CASE(language_units_follow_native_signatures_and_task_results)
     native.capabilities = &event;
     native.tick_event = event.id;
     cleanup();
-    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: double) { self.Body.x = float(Elapsed); } }");
+    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: number) { self.Body.x = Elapsed; } }");
     analysis = script_analyze(syntax, &native);
     REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
     measured_source(
@@ -2109,7 +2133,7 @@ TEST_CASE(language_cancelled_builtin_cannot_be_shadowed)
         "if value is .Cancelled(payload) { return payload; } return 0; } }"
     );
     REQUIRE(analysis->valid);
-    script_component *component = read_component("Status :: component { Cancelled: float }");
+    script_component *component = read_component("Status :: component { Cancelled: number }");
     REQUIRE(component && !component_diagnostics);
     REQUIRE(!strcmp(component->fields[0].name, "Cancelled"));
     script_component_free(component);
@@ -2313,6 +2337,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_character_literals_take_their_type_from_context);
     RUN_TEST_CASE(language_char_widens_to_int_and_narrows_explicitly);
     RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
+    RUN_TEST_CASE(language_number_is_f32_and_f64_narrows_explicitly);
     RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_call_chains_infer_effects_and_purity);

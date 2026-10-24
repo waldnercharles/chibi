@@ -118,7 +118,7 @@ static bool value_is(const authoring_sources *collection, const char *name, doub
               execution_instance_dispatch(instance, tick.id, NULL, 0, 0, 0, 1000) ==
                   FLOW_OK;
     const pin_value *value = ok ? execution_instance_state(instance, state) : NULL;
-    ok = value && value->type == PIN_F64 && value->d == expected;
+    ok = value && value->type == PIN_F32 && value->f == (float)expected;
     execution_program_free(program);
     program = NULL;
     return ok;

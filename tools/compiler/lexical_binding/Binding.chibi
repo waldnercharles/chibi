@@ -31,7 +31,7 @@ pub Function :: struct {
 }
 pub Environment :: union {
     Tables(scopes: Scope[], symbols: Symbol[], functions: Function[],
-           ids: uint64[], document_keys: string[])
+           ids: u64[], document_keys: string[])
 }
 pub Context :: struct {
     identity: string;
@@ -51,7 +51,7 @@ pub Request :: struct {
     document: int;
 }
 pub Declaration :: union {
-    Appended(id: uint64, diagnostics: syntax.Diagnostic[])
+    Appended(id: u64, diagnostics: syntax.Diagnostic[])
     | Existing(symbol: int, diagnostics: syntax.Diagnostic[])
 }
 
@@ -138,20 +138,20 @@ Previous :: (symbol: Symbol, message: string) -> syntax.Diagnostic {
 
 // The existing catalog ABI uses FNV-1a over domain, ':', then name, returning
 // one when the hash is zero, reserving zero as an absent ID. Arithmetic wraps64.
-pub ID :: (prefix: string, name: string) -> uint64 {
-    hash: uint64 = 14695981039346656037;
-    prime: uint64 = 1099511628211;
+pub ID :: (prefix: string, name: string) -> u64 {
+    hash: u64 = 14695981039346656037;
+    prime: u64 = 1099511628211;
     index: int = 0;
     count := strings.ByteLength(prefix);
     while (index < count) {
-        hash = (hash ^ uint64(strings.ByteAt(prefix, index))) * prime;
+        hash = (hash ^ u64(strings.ByteAt(prefix, index))) * prime;
         index += 1;
     }
     hash = (hash ^ 58) * prime;
     index = 0;
     count = strings.ByteLength(name);
     while (index < count) {
-        hash = (hash ^ uint64(strings.ByteAt(name, index))) * prime;
+        hash = (hash ^ u64(strings.ByteAt(name, index))) * prime;
         index += 1;
     }
     if (hash == 0) {
@@ -159,7 +159,7 @@ pub ID :: (prefix: string, name: string) -> uint64 {
     }
     return hash;
 }
-SymbolID :: (environment: Environment, context: Context, request: Request, result_parameter: bool) -> uint64 {
+SymbolID :: (environment: Environment, context: Context, request: Request, result_parameter: bool) -> u64 {
     suffix := "";
     if (request.kind == FunctionKind || request.kind == MacroKind) {
         suffix = ":callable";

@@ -1,10 +1,10 @@
 MovementTrailBehavior :: behavior {
     // The last frame step, for actions and functions.
-    Step: float = 0
-    on Tick :: (dt: float s) {
+    Step: number = 0
+    on Tick :: (dt: number s) {
         Step = dt
     }
-    Particle_Carry: float = 0.0
+    Particle_Carry: number = 0.0
     on Input :: (Direction: struct<CF_V2>) {
         if Is_Stationary(Direction) {
             Particle_Carry = 0.0
@@ -16,12 +16,12 @@ MovementTrailBehavior :: behavior {
 
         Particle_Carry = Particle_Carry + Emission_Budget(Step)
         while Particle_Carry >= 1.0 {
-            await emit_directed_particles(convert<transform_to_cf>(self.Transform) + multiply(multiply(vec2_norm(Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+            await emit_directed_particles(convert<transform_to_cf>(self.Transform) + multiply(multiply(vec2_norm(Direction), B: plain number = -1.0), B: plain number = 9.0), multiply(vec2_norm(Direction), B: plain number = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
             Particle_Carry = Particle_Carry - 1.0
         }
         return
     }
-    Emission_Budget :: (dt: float = 0.0) -> (Result: float = 0.0) {
+    Emission_Budget :: (dt: number = 0.0) -> (Result: number = 0.0) {
         return clamp(dt, real(0.0), real(0.10000000149011612)) * real(64.0)
     }
     Is_Stationary :: (Direction: struct<CF_V2> = null) -> (Stationary: bool = false) {

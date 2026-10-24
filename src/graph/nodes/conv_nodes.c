@@ -10,7 +10,8 @@
     "Formats a bool, number or name Value as text."
 #define CONVERSION_To_Name_KEYWORDS "convert string name prototype asset"
 #define CONVERSION_To_Name_DESCRIPTION "Converts the text in Value to a name."
-#define CONVERSION_To_Real_KEYWORDS "convert cast real float double bool"
+#define CONVERSION_To_Real_KEYWORDS                                            \
+    "convert cast real number float f64 double bool"
 #define CONVERSION_To_Real_DESCRIPTION                                         \
     "Converts a byte, integer or bool Value to a real, where a "               \
     "bool gives 1 or 0; very large 64-bit values lose "                        \
@@ -25,7 +26,7 @@
 #define CONVERSION_To_Integer_DESCRIPTION                                      \
     "Truncates Value toward zero and clamps it to the 32-bit "                 \
     "range; NaN gives 0. A bool gives 1 or 0."
-#define CONVERSION_To_Integer64_KEYWORDS "convert cast integer int64 widen bool"
+#define CONVERSION_To_Integer64_KEYWORDS "convert cast integer i64 widen bool"
 #define CONVERSION_To_Integer64_DESCRIPTION                                    \
     "Widens a 32-bit integer, or truncates a real toward zero "                \
     "and clamps it to the 64-bit range. A bool gives 1 or 0."
@@ -54,7 +55,7 @@ NATIVE_CONVERSION_SCALARS(SCALAR)
 #undef SCALAR
 #define VECTOR(TYPE, WIDTH, NAME, SOURCE, DESCRIPTION)                         \
     static pin_spec Splat_##TYPE##_inputs[] = {                                \
-        NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, "Value", PIN_F64, "double")  \
+        NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, "Value", PIN_F64, "f64")     \
     };                                                                         \
     static pin_spec Splat_##TYPE##_outputs[] = {                               \
         NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, "Vector", PIN_STRUCT, #TYPE) \
@@ -72,7 +73,7 @@ NATIVE_CONVERSION_SCALARS(SCALAR)
         .category = "Conversion",                                              \
         .description = DESCRIPTION,                                            \
         .display_class = NODE_DISPLAY_PURE,                                    \
-        .conversion_from = "double",                                           \
+        .conversion_from = "f64",                                              \
         .conversion_to = #TYPE                                                 \
     };
 NATIVE_CONVERSION_VECTORS(VECTOR)

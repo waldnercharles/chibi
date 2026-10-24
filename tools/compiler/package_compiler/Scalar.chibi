@@ -481,7 +481,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                 ops: Ops, target: Target) -> syntax.Diagnostic {
     natives: Native[] = [];
     ports: Port[] = [];
-    identities: uint64[] = [];
+    identities: u64[] = [];
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -623,7 +623,7 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
                                  has_files: true, has_collections: false, file_count: 1, collection_count: 0};
     collections: routes.Collection[] = [];
-    switch snapshot.Build(options, collections, [input], [uint64(strings.ByteLength(text))]) {
+    switch snapshot.Build(options, collections, [input], [u64(strings.ByteLength(text))]) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return ScalarFailure(path, text, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):

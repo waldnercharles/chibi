@@ -31,7 +31,7 @@ static script_type untyped_common(script_type left, script_type right)
         return script_char_type();
     }
     if (left.storage > PIN_U64 || right.storage > PIN_U64) {
-        return (script_type){ .storage = PIN_F64 };
+        return (script_type){ .storage = PIN_F32 };
     }
     pin_type common = behavior_scalar_common_integer(left.storage, right.storage);
     return (script_type){ .storage = common == PIN_FLOW ? PIN_U64 : common };
@@ -209,11 +209,11 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
 }
 
 /* Without a type from context a literal is typed by its spelling, as in C#:
- * an integer is int, or the first of int64 and uint64 that holds it, and a
+ * an integer is int, or the first of i64 and u64 that holds it, and a
  * decimal point or exponent makes a number. Hex digits include e. */
 static script_type untyped_number(const char *text, long double value)
 {
-    script_type type = { .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+    script_type type = { .storage = PIN_F32, .flags = SCRIPT_TYPE_UNTYPED };
     if (!strpbrk(text, "xX") && strpbrk(text, ".eE")) {
         return type;
     }
@@ -443,7 +443,7 @@ static int character_constant(analyzer *a, TSNode node, script_type expected)
     return script_analyzer_expr_add(a, result);
 }
 
-static void contextual_numeric(analyzer *a, int index, script_type type)
+void script_analyzer_contextual_numeric(analyzer *a, int index, script_type type)
 {
     script_expression *expression = &a->out->expressions[index];
     if (!(expression->type.flags & SCRIPT_TYPE_UNTYPED) || !script_type_numeric(type)) {
@@ -475,10 +475,10 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     if (expression->kind == SCRIPT_EXPR_UNARY || expression->kind == SCRIPT_EXPR_BINARY) {
         int left = expression->left, right = expression->right;
         if (left >= 0) {
-            contextual_numeric(a, left, type);
+            script_analyzer_contextual_numeric(a, left, type);
         }
         if (right >= 0) {
-            contextual_numeric(a, right, type);
+            script_analyzer_contextual_numeric(a, right, type);
         }
         a->out->expressions[index].type = type;
     }
@@ -1196,8 +1196,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                 script_type_numeric(expected)) {
                 operands.flags &= ~SCRIPT_TYPE_UNTYPED;
             }
-            contextual_numeric(a, result.left, operands);
-            contextual_numeric(a, result.right, operands);
+            script_analyzer_contextual_numeric(a, result.left, operands);
+            script_analyzer_contextual_numeric(a, result.right, operands);
             x = script_analyzer_expr_type(a, result.left);
             y = script_analyzer_expr_type(a, result.right);
         }

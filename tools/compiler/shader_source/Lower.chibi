@@ -14,8 +14,8 @@ pub ScalarNode :: struct {
     op: int;
     left: int;
     right: int;
-    bits: uint64;
-    source_id: uint64;
+    bits: u64;
+    source_id: u64;
 }
 pub ScalarLowering :: union {
     Ready(nodes: ScalarNode[], output: int, documents: Document[],
@@ -48,11 +48,11 @@ ScalarType :: (types: facts.Type[], index: int, target: ScalarTarget) -> bool {
     }
     type := types[index];
     return type.storage == target.float_storage && type.container == 0 &&
-           type.nominal == uint64(0) && type.qualifiers == 0 && type.field_count == 0;
+           type.nominal == u64(0) && type.qualifiers == 0 && type.field_count == 0;
 }
 RejectScalar :: (origins: Origin[], index: int, message: string) -> ScalarLowering {
     if (!ScalarIndex(index, length(origins))) {
-        return ScalarLowering.Rejected(WithoutRange(uint64(0), -1, message));
+        return ScalarLowering.Rejected(WithoutRange(u64(0), -1, message));
     }
     return ScalarLowering.Rejected(FromOrigin(origins[index], message));
 }
@@ -65,7 +65,7 @@ RejectScalar :: (origins: Origin[], index: int, message: string) -> ScalarLoweri
 pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLowering {
     switch analysis {
         case .Rejected(source_documents, diagnostic):
-            return ScalarLowering.Rejected({source_id: uint64(0), node: -1,
+            return ScalarLowering.Rejected({source_id: u64(0), node: -1,
                                             document: diagnostic.document, start: diagnostic.start,
                                             end: diagnostic.end, message: diagnostic.message});
         case .Accepted(entry_function, source_documents, source_origins, types,
@@ -74,7 +74,7 @@ pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLower
                 length(types) > 1024 || length(fields) > 1024 || length(functions) > 1024 ||
                 length(bindings) > 1024 || length(statements) > 1024 ||
                 length(expressions) > NodeLimit || length(arguments) > 2048) {
-                return ScalarLowering.Rejected(WithoutRange(uint64(0), -1,
+                return ScalarLowering.Rejected(WithoutRange(u64(0), -1,
                                                             "Shader scalar facts exceed their table limits"));
             }
             documents: Document[] = [];
@@ -86,13 +86,13 @@ pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLower
             for (origin in source_origins) {
                 // IDs are bundle-local and deterministic, not compiler node
                 // anchors, occurrences or live program-generation tokens.
-                captured: Origin = {source_id: uint64(length(origins) + 1),
-                                    occurrence: origin.occurrence, call_site: uint64(0),
+                captured: Origin = {source_id: u64(length(origins) + 1),
+                                    occurrence: origin.occurrence, call_site: u64(0),
                                     document: origin.document, start: origin.start, end: origin.end};
                 origins.append(captured);
             }
             results: SourceResult[] = [];
-            node_sources: uint64[] = [];
+            node_sources: u64[] = [];
             checked := Validate(documents, origins, results, node_sources);
             if (checked is .Failed(failure)) {
                 return ScalarLowering.Rejected(failure);
@@ -108,7 +108,7 @@ pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLower
                 function.kind != facts.SourceFunction || function.parameter_count != 0 ||
                 function.unsupported != "" || !ScalarType(types, function.result_type, target)) {
                 return RejectScalar(origins, function.origin,
-                                    "Shader scalar entry must be a nullary source function returning float");
+                                    "Shader scalar entry must be a nullary source function returning number");
             }
             if (function.effects != 0) {
                 return RejectScalar(origins, function.origin, "Shader scalar entry must be pure");
@@ -215,9 +215,9 @@ pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLower
                             return RejectScalar(origins, expression.origin, "Unsupported shader scalar expression");
                         }
                         if (expression.kind == facts.ConstantExpression) {
-                            if ((expression.bits >> 32) != uint64(0) ||
+                            if ((expression.bits >> 32) != u64(0) ||
                                 (expression.bits & 0x7f800000) == 0x7f800000) {
-                                return RejectScalar(origins, expression.origin, "Shader scalar constants must be finite float32 bits");
+                                return RejectScalar(origins, expression.origin, "Shader scalar constants must be finite f32 bits");
                             }
                             node = length(nodes);
                             emitted: ScalarNode = {op: target.constant_op, left: -1, right: -1,
@@ -245,7 +245,7 @@ pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLower
                             op = target.multiply_op;
                         }
                         node = length(nodes);
-                        emitted: ScalarNode = {op: op, left: left, right: right, bits: uint64(0),
+                        emitted: ScalarNode = {op: op, left: left, right: right, bits: u64(0),
                                                source_id: origins[expression.origin].source_id};
                         nodes.append(emitted);
                     }

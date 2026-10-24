@@ -31,11 +31,11 @@ HudDisplay :: behavior {
         } else {
         }
     }
-    current_max_maximum_1 :: (current: int = 0, maximum: int = 0) -> (Result: double = 0.0) {
+    current_max_maximum_1 :: (current: int = 0, maximum: int = 0) -> (Result: f64 = 0.0) {
 
-        return divide(A: double = convert<To_Real>(current), B: double = max(A: double = convert<To_Real>(maximum), B: double = real(Value: 1.0)))
+        return divide(A: f64 = convert<To_Real>(current), B: f64 = max(A: f64 = convert<To_Real>(maximum), B: f64 = real(Value: 1.0)))
     }
-    length_vec2_velocity_x_velocity_y :: (velocity: struct<Velocity> = null) -> (Result: double = 0.0) {
+    length_vec2_velocity_x_velocity_y :: (velocity: struct<Velocity> = null) -> (Result: f64 = 0.0) {
 
         return vector_length(Value: make_cf_v2(x: velocity.x, y: velocity.y))
     }

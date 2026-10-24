@@ -110,7 +110,7 @@ Cases :: () -> Case[] {
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
         Rejected("reference", "package scalar\nMain :: (x: ref int) -> int { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "x: ref int"),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
-        Rejected("int64_result", "package scalar\nMain :: () -> int64 { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "int64"),
+        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "i64"),
         Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires int or bool parameters and one int or bool result", "int[]"),
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
         Rejected("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "(x: int)"),

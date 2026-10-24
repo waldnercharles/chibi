@@ -21,7 +21,7 @@ description "A horizontal ring with an open center; local Y is the tube's height
                     position id=201 type="struct" type_name="ShaderVec3"
                 }
                 outputs {
-                    Result id=202 type="float"
+                    Result id=202 type="number"
                 }
             }
             - id=300 type="Shader Shape Output" x=750.0 y=0.0

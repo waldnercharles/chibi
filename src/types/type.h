@@ -67,6 +67,9 @@ uint64_t type_layout_hash_explicit(const type_desc *type, const type_desc *const
 /* Every field is inline and contains no managed string or container. */
 bool type_is_plain(const type_desc *type);
 bool type_value_is_finite(const type_desc *type, const void *value);
+/* The field's type as the language spells it: a scalar's language name,
+ * otherwise its nominal name. */
+const char *type_field_type_name(const type_field *);
 /* Validate range metadata before publishing a descriptor. */
 bool type_field_range_valid(const type_field *);
 /* Canonicalize a typed scalar without rounding a bounded floating value. */

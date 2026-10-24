@@ -17,13 +17,13 @@ description "A 16-column falling lattice. Index selects the column and row; each
                 id 10
                 type "Function Entry"
                 (array)outputs {
-                    - id=11 name="Index" type="float" kind="data"
-                    - id=12 name="Count" type="float" kind="data"
-                    - id=13 name="Seed" type="float" kind="data"
-                    - id=14 name="Spacing" type="float" kind="data" default=6.0
-                    - id=15 name="Height" type="float" kind="data" default=25.0
-                    - id=16 name="Speed" type="float" kind="data" default=0.2
-                    - id=17 name="DropSize" type="float" kind="data" default=1.0
+                    - id=11 name="Index" type="number" kind="data"
+                    - id=12 name="Count" type="number" kind="data"
+                    - id=13 name="Seed" type="number" kind="data"
+                    - id=14 name="Spacing" type="number" kind="data" default=6.0
+                    - id=15 name="Height" type="number" kind="data" default=25.0
+                    - id=16 name="Speed" type="number" kind="data" default=0.2
+                    - id=17 name="DropSize" type="number" kind="data" default=1.0
                     - {
                         id 18
                         name "Tint"
@@ -39,7 +39,7 @@ description "A 16-column falling lattice. Index selects the column and row; each
                 type "Return"
                 (array)inputs {
                     - id=101 name="Position" type="struct" type_name="ShaderVec3" kind="data"
-                    - id=102 name="Size" type="float" kind="data"
+                    - id=102 name="Size" type="number" kind="data"
                     - id=103 name="Color" type="struct" type_name="ShaderVec4" kind="data"
                 }
             }
@@ -48,13 +48,13 @@ description "A 16-column falling lattice. Index selects the column and row; each
                 type "Behavior Expression"
                 reference_name "vec3((fract(index / 16) * 16 - 7.5) * spacing, (fract(index / max(count, 1) + seed * 0.173 - time * speed) * 2 - 1) * height, (index / 16 - fract(index / 16) - 3.5) * spacing)"
                 inputs {
-                    index id=201 type="float"
-                    count id=202 type="float"
-                    seed id=203 type="float"
-                    time id=204 type="float"
-                    spacing id=205 type="float"
-                    height id=206 type="float"
-                    speed id=207 type="float"
+                    index id=201 type="number"
+                    count id=202 type="number"
+                    seed id=203 type="number"
+                    time id=204 type="number"
+                    spacing id=205 type="number"
+                    height id=206 type="number"
+                    speed id=207 type="number"
                 }
                 outputs {
                     Result id=208 type="struct" type_name="ShaderVec3"

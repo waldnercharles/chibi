@@ -32,12 +32,12 @@ pin_value native_conversion_To_Real(const pin_value *inputs, int input_count, ar
 {
     (void)input_count;
     (void)a;
-    pin_value r = { .type = PIN_F64, .type_name = "double", .d = 0.0 };
+    pin_value r = { .type = PIN_F32, .type_name = "number", .f = 0.0f };
     switch (inputs[0].type) {
-        case PIN_BOOL: r.d = inputs[0].b ? 1.0 : 0.0; break;
-        case PIN_U8: r.d = (double)inputs[0].u8; break;
-        case PIN_I32: r.d = (double)inputs[0].i; break;
-        case PIN_I64: r.d = (double)inputs[0].i64; break;
+        case PIN_BOOL: r.f = inputs[0].b ? 1.0f : 0.0f; break;
+        case PIN_U8: r.f = (float)inputs[0].u8; break;
+        case PIN_I32: r.f = (float)inputs[0].i; break;
+        case PIN_I64: r.f = (float)inputs[0].i64; break;
         default: break; /* input is retyped to one of these before use */
     }
     return r;
@@ -85,7 +85,7 @@ static int64_t real_integer(double value, int64_t minimum, int64_t maximum)
 pin_value native_conversion_To_Byte(const pin_value *inputs, int, arena *)
 {
     return (pin_value){ .type = PIN_U8,
-                        .type_name = "byte",
+                        .type_name = "u8",
                         .u8 = (uint8_t)real_integer(real_value(inputs), 0, UINT8_MAX) };
 }
 
@@ -101,7 +101,7 @@ pin_value native_conversion_To_Integer64(const pin_value *inputs, int, arena *)
     int64_t value = inputs->type == PIN_I32
                       ? inputs->i
                       : real_integer(real_value(inputs), INT64_MIN, INT64_MAX);
-    return (pin_value){ .type = PIN_I64, .type_name = "int64", .i64 = value };
+    return (pin_value){ .type = PIN_I64, .type_name = "i64", .i64 = value };
 }
 
 static pin_value vector_splat(const pin_value *input, arena *storage, const char *type, int width)

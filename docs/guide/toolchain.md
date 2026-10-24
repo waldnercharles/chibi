@@ -33,7 +33,7 @@ with the following files. Hold A or D to move the blue square.
 ### project.kdl
 
 ```kdl
-version 32
+version 33
 name "My Game"
 content "content"
 start_scene "scenes/Start.kdl"
@@ -41,7 +41,7 @@ start_scene "scenes/Start.kdl"
 
 The start scene path is relative to the content folder. The manifest version
 must match the project format printed by your chosen SDK's `chibi version`.
-This example uses format 32. Use an SDK that supports that format.
+This example uses format 33. Use an SDK that supports that format.
 
 ### content/scenes/Start.kdl
 
@@ -93,7 +93,7 @@ Right {
 
 ```chibi
 Move :: behavior {
-    on Tick :: (dt: float s) {
+    on Tick :: (dt: number s) {
         if input.Left.held {
             self.Transform.x -= 120 * dt
         }

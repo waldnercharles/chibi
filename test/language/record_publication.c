@@ -313,13 +313,13 @@ TEST_CASE(record_catalog_conflicts_reject_before_function_creation)
 }
 TEST_CASE(record_scalar_defaults_merge_and_reject_changed_values)
 {
-    static const char source
-        [] = "Defaults :: library { Row :: struct { "
-             "flag: bool = true; i8: int8 = -1; u8: byte = 2; "
-             "i16: int16 = -3; u16: uint16 = 4; i32: int = -5; u32: uint = 6; "
-             "i64: int64 = -7; u64: uint64 = 18446744073709551615; "
-             "f32: float = -0.0; f64: double = -0.0; "
-             "key: name = \"saved\"; label: string = \"saved\"; } }";
+    static const char
+        source[] = "Defaults :: library { Row :: struct { "
+                   "flag: bool = true; i8: i8 = -1; u8: u8 = 2; "
+                   "i16: i16 = -3; u16: u16 = 4; i32: int = -5; u32: u32 = 6; "
+                   "i64: i64 = -7; u64: u64 = 18446744073709551615; "
+                   "f32: number = -0.0; f64: f64 = -0.0; "
+                   "key: name = \"saved\"; label: string = \"saved\"; } }";
     syntax = script_parse(source);
     REQUIRE(!syntax->diagnostic_count);
     analysis = script_analyze_document(syntax, &empty, "libraries/Defaults.chibi");

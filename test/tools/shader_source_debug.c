@@ -11,8 +11,8 @@
 #include <string.h>
 
 static const char material_key[] = "content/materials/Debug.chibi";
-static const char material_text[] = "Shade :: (uv: vec2, time: float, gain: "
-                                    "float) -> Surface {\n"
+static const char material_text[] = "Shade :: (uv: vec2, time: number, gain: "
+                                    "number) -> Surface {\n"
                                     "    phase := uv.x * gain + time\n"
                                     "    first := Twice(uv.x)\n"
                                     "    second := Twice(time)\n"
@@ -25,7 +25,7 @@ static const char material_text[] = "Shade :: (uv: vec2, time: float, gain: "
                                     "}\n";
 static const char helper_key[] = "content/libraries/Math.chibi";
 static const char
-    helper_text[] = "Twice :: (x: float) -> float { return x * 2 }\n";
+    helper_text[] = "Twice :: (x: number) -> number { return x * 2 }\n";
 static shader_graph graph;
 static shader_debug_snapshot *snapshot;
 static shader_debug_document documents[2];

@@ -110,7 +110,9 @@ pin_value native_math_RandomReal(const pin_value *, int count, arena *)
 {
     assert(count == 0);
     (void)count;
-    return (pin_value){ .type = PIN_F64, .d = (double)rand() / ((double)RAND_MAX + 1) };
+    /* Rounding to f32 can reach 1; keep the result below it. */
+    float value = (float)((double)rand() / ((double)RAND_MAX + 1));
+    return (pin_value){ .type = PIN_F32, .f = value < 1 ? value : nextafterf(1, 0) };
 }
 
 pin_value native_math_RandomRangeReal(const pin_value *inputs, int count, arena *)
@@ -133,6 +135,18 @@ pin_value native_math_RandomRangeReal(const pin_value *inputs, int count, arena 
     };
 }
 
+pin_value native_math_F32_RandomRangeReal(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
+    (void)count;
+    float min = fminf(inputs[0].f, inputs[1].f);
+    float max = fmaxf(inputs[0].f, inputs[1].f);
+    if (!isfinite(min) || !isfinite(max)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    return (pin_value){ .type = PIN_F32, .f = (float)behavior_random_range(min, max) };
+}
+
 pin_value native_math_Quantize_Angle(const pin_value *inputs, int count, arena *)
 {
     assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64);
@@ -144,7 +158,7 @@ pin_value native_math_Quantize_Angle(const pin_value *inputs, int count, arena *
     }
     double result = round(angle / step) * step;
     return isfinite(result)
-             ? (pin_value){ .type = PIN_F64, .type_name = "double", .d = result }
+             ? (pin_value){ .type = PIN_F64, .type_name = "f64", .d = result }
              : (pin_value){ .type = PIN_FLOW };
 }
 
@@ -158,7 +172,7 @@ pin_value native_math_Smooth_Step(const pin_value *inputs, int count, arena *)
     }
     value = fmin(fmax(value, 0), 1);
     return (pin_value){ .type = PIN_F64,
-                        .type_name = "double",
+                        .type_name = "f64",
                         .d = value * value * (3 - 2 * value) };
 }
 
@@ -198,8 +212,8 @@ const char *native_math_spring(const pin_value *inputs, pin_value *out)
     if (!isfinite(next_position_f) || !isfinite(next_velocity_f)) {
         return "Advance Damped Spring produced nonfinite output";
     }
-    out[0] = (pin_value){ .type = PIN_F32, .type_name = "float", .f = next_position_f };
-    out[1] = (pin_value){ .type = PIN_F32, .type_name = "float", .f = next_velocity_f };
+    out[0] = (pin_value){ .type = PIN_F32, .type_name = "number", .f = next_position_f };
+    out[1] = (pin_value){ .type = PIN_F32, .type_name = "number", .f = next_velocity_f };
     return NULL;
 }
 
@@ -221,8 +235,9 @@ const char *native_math_spring(const pin_value *inputs, pin_value *out)
 NATIVE_MATH_UNARIES(UNARY)
 NATIVE_MATH_BINARIES(BINARY)
 NATIVE_MATH_VALUES(VALUE)
-#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS) ADAPTER(F32_##KEY)
+#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) ADAPTER(F32_##KEY)
 NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+ADAPTER(RandomReal)
 #undef FLOAT_VALUE
 #undef UNARY
 #undef BINARY

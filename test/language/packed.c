@@ -469,8 +469,8 @@ TEST_CASE(typed_integer_large_constant_folding_is_exact)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         const behavior_function *function = compile_source(
-            "Packed :: library { Inner :: (a:uint64,b:uint64) -> uint64 { "
-            "return (a+b)*3; } Fold :: () -> uint64 { "
+            "Packed :: library { Inner :: (a:u64,b:u64) -> u64 { "
+            "return (a+b)*3; } Fold :: () -> u64 { "
             "return Inner(9007199254740993,9007199254740991); } }",
             backends[b]
         );
@@ -600,7 +600,30 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
     }
     return true;
 }
-TEST_CASE(float_math_stays_float_and_default_math_stays_double)
+/* Counts the native calls of the last compile whose kernel returns `storage`,
+ * or -1 when one returns another type. */
+static int kernel_calls(pin_type storage)
+{
+    int calls = 0;
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *expression = &analysis->expressions[i];
+        if (expression->kind != SCRIPT_EXPR_CALL || !expression->capability) {
+            continue;
+        }
+        const script_catalog_capability *capability = script_catalog_capability_by_id(
+            native_capabilities_catalog(natives),
+            expression->capability
+        );
+        assert(capability && capability->result_count == 1);
+        if (capability->results[0].type.storage != storage) {
+            return -1;
+        }
+        calls++;
+    }
+    return calls;
+}
+/* Literal-only math picks the number kernel; an f64 operand picks f64. */
+TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -616,30 +639,17 @@ TEST_CASE(float_math_stays_float_and_default_math_stays_double)
             );
             REQUIRE(natives);
             const behavior_function *function = compile_source(
-                narrow ? "Packed :: library { Math :: (value:float) -> float { "
-                         "return "
-                         "sqrt(value)+sin(value)+pow(value,2)+mix(value,value,"
-                         "0.5); } }"
-                       : "Packed :: library { Math :: () -> double { return "
-                         "sqrt(2); } }",
+                narrow
+                    ? "Packed :: library { Math :: (value:number) -> number { "
+                      "return "
+                      "sqrt(value)+sin(value)+pow(value,2)+mix(value,value,"
+                      "0.5); } }"
+                    : "Packed :: library { Math :: () -> f64 { return "
+                      "sqrt(f64(2)); } }",
                 backends[b]
             );
             REQUIRE(function);
-            int calls = 0;
-            for (int i = 0; i < analysis->expression_count; i++) {
-                const script_expression *expression = &analysis->expressions[i];
-                if (expression->kind != SCRIPT_EXPR_CALL || !expression->capability) {
-                    continue;
-                }
-                const script_catalog_capability *capability = script_catalog_capability_by_id(
-                    native_capabilities_catalog(natives),
-                    expression->capability
-                );
-                REQUIRE(capability && capability->result_count == 1);
-                REQUIRE(capability->results[0].type.storage == (narrow ? PIN_F32 : PIN_F64));
-                calls++;
-            }
-            REQUIRE(calls == (narrow ? 4 : 1));
+            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 4 : 1));
             pin_value value = { .type = PIN_F32, .f = 2 },
                       result = { .type = narrow ? PIN_F32 : PIN_F64 };
             context = (behavior_function_context){ .arguments = narrow ? &value : NULL,
@@ -660,6 +670,37 @@ TEST_CASE(float_math_stays_float_and_default_math_stays_double)
             }
             cleanup();
         }
+    }
+    /* A 64-bit integer keeps its digits in the f64 kernel; int picks number. */
+    static const struct
+    {
+        const char *source;
+        pin_type kernel;
+    } integers[] = {
+        { "Packed :: library { Math :: (value:i64) -> f64 { return "
+          "sqrt(value); } }",
+          PIN_F64 },
+        { "Packed :: library { Math :: (value:u64) -> f64 { return "
+          "sqrt(value); } }",
+          PIN_F64 },
+        { "Packed :: library { Math :: (value:int) -> number { return "
+          "sqrt(value); } }",
+          PIN_F32 },
+    };
+    for (size_t i = 0; i < sizeof integers / sizeof *integers; i++) {
+        char error[256];
+        natives = native_capabilities_from_definition_packs(
+            NULL,
+            0,
+            &NATIVE_MATH_DEFINITION_PACK,
+            1,
+            error,
+            sizeof error
+        );
+        REQUIRE(natives);
+        REQUIRE(compile_source(integers[i].source, BEHAVIOR_BYTECODE));
+        REQUIRE(kernel_calls(integers[i].kernel) == 1);
+        cleanup();
     }
     return true;
 }
@@ -797,8 +838,8 @@ TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         const behavior_function *function = compile_source(
-            "Packed :: library { Fold :: (value: double) -> float { return "
-            "float(value); } }",
+            "Packed :: library { Fold :: (value: f64) -> number { return "
+            "number(value); } }",
             backends[b]
         );
         REQUIRE(function);
@@ -838,7 +879,7 @@ TEST_CASE(float_implicit_widening_preserves_literal_values)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         const behavior_function *function = compile_source(
-            "Packed :: library { Fold :: (value: float) -> double { return "
+            "Packed :: library { Fold :: (value: number) -> f64 { return "
             "value; } }",
             backends[b]
         );
@@ -867,7 +908,7 @@ void test_language_packed()
     RUN_TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends);
     RUN_TEST_CASE(typed_integer_large_constant_folding_is_exact);
     RUN_TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder);
-    RUN_TEST_CASE(float_math_stays_float_and_default_math_stays_double);
+    RUN_TEST_CASE(float_math_stays_float_and_f64_math_stays_f64);
     RUN_TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles);
     RUN_TEST_CASE(float_implicit_widening_preserves_literal_values);
     pu_clear_setup();

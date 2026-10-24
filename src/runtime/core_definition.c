@@ -32,7 +32,7 @@ PORTS(COMPONENT_SET_OUT, CORE_COMPONENT_SET_OUTPUTS)
 PORTS(COMPONENT_CHANGE, CORE_COMPONENT_CHANGE_INPUTS)
 PORTS(COMPONENT_CHANGE_OUT, CORE_COMPONENT_CHANGE_OUTPUTS)
 static const native_parameter_definition PI[] = {
-    CORE_DATA_PORT(NATIVE_PORT, "Pi", PIN_F64, "double")
+    CORE_DATA_PORT(NATIVE_PORT, "Pi", PIN_F32, "number")
 };
 #undef PORTS
 #define IN(ARRAY) .inputs = ARRAY, .input_count = NATIVE_COUNT(ARRAY)
@@ -144,9 +144,9 @@ static const native_definition_global_binding GLOBAL_BINDINGS[] = {
     { .canonical_name = "self", .instruction = { .op = BF_OWNER, .type = PIN_HANDLE } },
     { .canonical_name = "pi",
       .instruction = { .op = BF_CONSTANT,
-                       .type = PIN_F64,
-                       .value = { .type = PIN_F64,
-                                  .d = 3.14159265358979323846264338327950288 } } },
+                       .type = PIN_F32,
+                       .value = { .type = PIN_F32,
+                                  .f = 3.14159265358979323846264338327950288f } } },
 };
 const native_definition_pack CORE_DEFINITION_PACK = {
     .definitions = DEFINITIONS,

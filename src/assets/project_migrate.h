@@ -135,5 +135,14 @@ int chibi_migrate_step_globals(const char *source, char **migrated, char *error,
  * chibi_migrate31_array_calls. Returns -1 with `error` set when the source
  * declares one of those names or the current grammar rejects the result. */
 int chibi_migrate_array_calls(const char *source, char **migrated, char *error, size_t error_size);
+/* Version 33 spells sized numbers with Odin's names and makes `number` 32-bit:
+ * see chibi_migrate32_number_names. Returns -1 with `error` set when the
+ * source declares one of the new names or the current grammar rejects the
+ * result. */
+int chibi_migrate_number_names(const char *source, char **migrated, char *error, size_t error_size);
+/* Version 33 also renames the scalar types that graph pins and event fields
+ * store in KDL. Returns an owned copy of `asset`, or NULL when nothing changes
+ * or it is not KDL. */
+char *chibi_migrate_number_types(const char *asset);
 
 #endif

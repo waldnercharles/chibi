@@ -34,10 +34,10 @@
         }                                                                      \
     }
 static const type_field fields[] = {
-    { .name = "x", .type = PIN_F32, .type_name = "float", .offset = 0, .size = 4 },
-    { .name = "y", .type = PIN_F32, .type_name = "float", .offset = 4, .size = 4 },
-    { .name = "z", .type = PIN_F32, .type_name = "float", .offset = 8, .size = 4 },
-    { .name = "w", .type = PIN_F32, .type_name = "float", .offset = 12, .size = 4 },
+    { .name = "x", .type = PIN_F32, .type_name = "number", .offset = 0, .size = 4 },
+    { .name = "y", .type = PIN_F32, .type_name = "number", .offset = 4, .size = 4 },
+    { .name = "z", .type = PIN_F32, .type_name = "number", .offset = 8, .size = 4 },
+    { .name = "w", .type = PIN_F32, .type_name = "number", .offset = 12, .size = 4 },
 };
 static const type_desc vec2_type = { .name = "ShaderVec2",
                                      .size = 8,
@@ -53,7 +53,7 @@ static const type_desc vec4_type = { .name = "ShaderVec4",
                                      .field_count = 4 };
 static const type_field ramp_fields[] = { { .name = "Position",
                                             .type = PIN_F32,
-                                            .type_name = "float",
+                                            .type_name = "number",
                                             .offset = offsetof(shader_ramp_stop, position),
                                             .size = sizeof(float) },
                                           { .name = "Color",

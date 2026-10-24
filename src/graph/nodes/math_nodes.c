@@ -5,6 +5,7 @@
 
 static pin_spec unary[] = { NATIVE_MATH_UNARY_INPUTS(GRAPH_NATIVE_PORT) };
 static pin_spec result[] = { NATIVE_MATH_RESULT_OUTPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec number_result[] = { NATIVE_MATH_F32_OUTPUTS(GRAPH_NATIVE_PORT) };
 
 #define UNARY(NAME, LABEL, SOURCE, FN, DESCRIPTION)                            \
     node_desc NODE_##NAME = { .name = LABEL,                                   \
@@ -83,7 +84,7 @@ static const char *random_value(const eval_context *, arena *, pin_value *out)
 
 node_desc NODE_RandomReal = { .name = NATIVE_MATH_RandomReal_NAME,
                               .source_name = NATIVE_MATH_RandomReal_SOURCE,
-                              .outputs = result,
+                              .outputs = number_result,
                               .output_count = 1,
                               .pure_kind = NODE_PURE_READ,
                               .read = random_value,

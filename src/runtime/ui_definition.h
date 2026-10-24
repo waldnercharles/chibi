@@ -49,7 +49,7 @@
     )
 #define UI_VALUE_INPUTS(X)                                                     \
     UI_BASE_INPUTS(X)                                                          \
-    UI_DATA(X, "Value", PIN_F32, "float")
+    UI_DATA(X, "Value", PIN_F32, "number")
 #define UI_FOCUS_INPUTS(X) UI_BASE_INPUTS(X)
 #define UI_MOVE_FOCUS_INPUTS(X)                                                \
     UI_BASE_INPUTS(X)                                                          \
@@ -76,12 +76,12 @@
     UI_PORT(X, "Value", NATIVE_PARAMETER_DATA, PIN_FLOW, NULL, SCRIPT_TYPE_UNTYPED, false, ((pin_value){ 0 }))
 #define UI_THEN_OUTPUTS(X) UI_EXEC(X, "Then")
 #define UI_VALUE_OUTPUTS(X)                                                    \
-    UI_DATA(X, "Value", PIN_F32, "float")                                      \
+    UI_DATA(X, "Value", PIN_F32, "number")                                     \
     UI_DATA(X, "Known", PIN_BOOL, "bool")
 #define UI_SCROLL_OUTPUTS(X)                                                   \
-    UI_DATA(X, "Scroll Top", PIN_F32, "float")                                 \
-    UI_DATA(X, "View Height", PIN_F32, "float")                                \
-    UI_DATA(X, "Content Height", PIN_F32, "float")                             \
+    UI_DATA(X, "Scroll Top", PIN_F32, "number")                                \
+    UI_DATA(X, "View Height", PIN_F32, "number")                               \
+    UI_DATA(X, "Content Height", PIN_F32, "number")                            \
     UI_DATA(X, "Known", PIN_BOOL, "bool")
 #define UI_SET_TEXT_NAME "Set UI Text"
 #define UI_SET_TEXT_SOURCE "set_ui_text"

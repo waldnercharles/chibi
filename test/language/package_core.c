@@ -725,8 +725,8 @@ TEST_CASE(package_core_pure_exports_and_generic_native_arrays)
             REQUIRE(signature && signature->pure && !signature->effects);
             functions++;
         }
-        /* Odin keeps its two splitters private. */
-        REQUIRE(functions == 49 && types == 1 && core->exports->private_count == 2);
+        /* The splitters and cursor search helpers stay private. */
+        REQUIRE(functions == 49 && types == 1 && core->exports->private_count == 4);
         REQUIRE(invoke(app->module, exported(app, "Check"), NULL, 0, PIN_I32, backends[b]));
         REQUIRE(output.i == 3);
         cleanup();

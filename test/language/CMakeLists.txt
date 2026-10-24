@@ -270,8 +270,9 @@ target_sources(test_language PRIVATE integer_semantics.c
 set_source_files_properties(integer_semantics.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
-    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
-    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+set_source_files_properties(integer_semantics.c
+    PROPERTIES COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

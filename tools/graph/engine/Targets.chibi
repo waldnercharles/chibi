@@ -741,7 +741,8 @@ Files :: (target: string) -> string[] {
             "test/language/bounded_compiler_chibi.c", "src/toolchain/compiler_host.c",
             "src/toolchain/compiler_target.c", "test/language/prepared_writer_chibi.c",
             "test/language/package_compiler_chibi.c", "test/language/scalar_lowering_chibi.c",
-            "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
+            "test/language/integer_semantics.c", "src/toolchain/compiler_bootstrap.c",
+            "src/support/sha256.c", "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
             "test/language/lexical_binding_chibi.c", "test/language/nominal_binding_chibi.c",
             "test/language/named_binding_chibi.c", "test/language/type_constructors_chibi.c",
             "test/language/type_relations_chibi.c", "test/language/unit_algebra_chibi.c",
@@ -3449,7 +3450,8 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
 // test/language/CMakeLists.txt gives them.
 LanguageTestsOverSource :: () -> string[] {
     return [
-        "src/language/numeric.c", "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
+        "src/language/numeric.c", "src/support/sha256.c", "src/toolchain/compiler_artifact.c",
+        "src/toolchain/compiler_bootstrap.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/binding_benchmark.c",
         "test/language/borrow.c", "test/language/bounded_compiler_chibi.c",
@@ -3459,7 +3461,8 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
         "test/language/docs_markdown.c", "test/language/effect_analysis_chibi.c",
         "test/language/execution.c", "test/language/generic.c",
-        "test/language/inferred_string_arrays.c", "test/language/lexical_binding_chibi.c",
+        "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c",
+        "test/language/lexical_binding_chibi.c",
         "test/language/maps.c", "test/language/named_binding_chibi.c",
         "test/language/nominal_binding_chibi.c", "test/language/numeric.c",
         "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
@@ -3491,7 +3494,8 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
             "CHIBI_ATTRIBUTION_FIXTURE_SHA=\"{sha256:test/language/runtime_attribution.c}\""
         ];
     }
-    if (target == "test_language" && file == "test/language/source_tokenizer_chibi.c") {
+    if (target == "test_language" &&
+        (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/integer_semantics.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];

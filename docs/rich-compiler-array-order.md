@@ -44,7 +44,7 @@ watch instruction 30 followed item invocation 23. Stage zero passed the same
 ordering assertion; explicit result execution also passed before the structural
 failure. The baseline run failed 1 case with 1,904 assertions, 10.334 seconds.
 
-After the source fix and direct closure regression:
+After the source fix and direct closure regression, checkpoint `c6b3f185e`:
 
 | Selector | Cases | Assertions | Test wall seconds |
 | --- | ---: | ---: | ---: |
@@ -73,10 +73,41 @@ SHA-256 is `d2fd2b2d9aacd7add71b4c70ce04a74ca72159a17e3220b1102020b8bd3414f7`.
 This is an ungenerated source checkpoint, not an artifact/source-identity match.
 
 Remote refresh after the focused checks found main `7ffa3ef48` (PR685 scalar
-oracle improvements). Its disjoint test changes will be reconciled and tested
-before final handoff. PR683 remains open at `8b17a0edb6e67558608a81806882ec1b84bdfe01`;
+oracle improvements). Its disjoint test changes merged cleanly at `7d9850bfe`.
+PR683 remains open at `8b17a0edb6e67558608a81806882ec1b84bdfe01`;
 PR678 remains an open draft at `ab54e98f406d0f577b01f0ad762166b03d6d25a7`.
 Neither is a dependency.
+
+The parent subsequently identified stacked M2 PR687 at
+`7096fdf1d97bad1d5f64b01a7bab8fa7a5ecb99f`, based on runtime PR683. Read-only
+inspection of its exact source finds file overlap in `Steps.chibi` and
+`package_compiler_chibi.c`. Its Steps hunks begin in `CallStep` and change numeric
+conversion, operators and folding; this lane changes only `StatementStep`'s
+receiver watches. M2 does not change the `CellRead` or `AddressSlot` helpers.
+The C sample table and `run_samples` need explicit reconciliation: M2 adds an
+`ahead` flag to bypass the native oracle for selected scalar samples. This
+lane's array sample must keep its native oracle, emitted-order assertion,
+nonempty closure comparison and literal results. No M2 code or semantic claim
+is adopted here. Its prepared version21/protocol9/artifact remain outside this
+lane's ABI20/protocol8 checkpoint.
+
+Independent source review found no product correctness blocker. Its identified
+coverage gap prompted one live observed `AppendLocal` invocation per compiler
+and runtime backend. Callbacks check receiver `[1]`, then Item entry, input `7`,
+and output `[1,7]`, in that order. They retain no borrowed payload. The test
+requires the selected inspected compiled backend and rejects inspection fallback.
+The development ASan/UBSan collection selector passes this observer extension:
+1 case, 3,399 assertions, 57.422 seconds. The normal
+`make build JOBS=2 BUILD_TARGET=test_language` also passes: native configuration
+7.3 seconds, first host build 5.8 seconds, authored dependency preparation
+113.2 seconds and authored graph build 255.7 seconds. This build is separate
+from test time and publishes no bootstrap artifact. Final clean-candidate
+checks remain pending at this source checkpoint.
+
+The parent later confirmed the listed M2 compile-time rules were approved,
+while its Scalar exact-fold implementation and prepared21/protocol9 integrated
+gates remain unaccepted. Typed double-to-float narrowing is still unanswered.
+This slice neither changes nor chooses any of those rules.
 
 Before artifact publication, the single generation coordinator must select
 the final combined source checkpoint and regenerate/verify one matching compiler

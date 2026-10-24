@@ -71,6 +71,12 @@ static const char driver_routes
     [] = "if sys.argv[2] == 'asset-host-platforms':\n"
          "    print(' '.join(policy.ASSET_COMPILER_HOST_PLATFORMS))\n"
          "    sys.exit(0)\n"
+         "if sys.argv[2] == 'bootstrap-route':\n"
+         "    command = policy.tool_command('compiler-bootstrap')\n"
+         "    print(len(command), Path(command[0]).name, command[1],\n"
+         "          Path(command[2]).name, Path(command[3]).name,\n"
+         "          policy.GROUPS['language'].count('compiler-bootstrap'))\n"
+         "    sys.exit(0)\n"
          "if sys.argv[2] == 'cpu-route':\n"
          "    import agent\n"
          "    selector = sys.argv[5]\n"
@@ -500,9 +506,10 @@ TEST_CASE(asset_language_cases_are_in_the_actual_ci_group)
     REQUIRE(output);
     const char *selectors[] = { "--execution-scope\n",
                                 "--asset-packaging-chibi\n",
-                                "--asset-compiler-host\n" };
-    int counts[3] = { 0 };
-    for (int i = 0; i < 3; i++) {
+                                "--asset-compiler-host\n",
+                                "--compiler-bootstrap\n" };
+    int counts[4] = { 0 };
+    for (int i = 0; i < 4; i++) {
         const char *at = output;
         while ((at = strstr(at, selectors[i]))) {
             counts[i]++;
@@ -516,6 +523,13 @@ TEST_CASE(asset_language_cases_are_in_the_actual_ci_group)
 #else
     REQUIRE(counts[2] == 0);
 #endif
+    REQUIRE(counts[3] == 1);
+    REQUIRE(run("bootstrap-route", "-") == 0);
+    output = tool_read(logpath);
+    bool bootstrap = output &&
+                     !strcmp(output, "4 test_tools --compiler-bootstrap test_language chibi-compiler-host 1\n");
+    free(output);
+    REQUIRE(bootstrap);
     REQUIRE(run("asset-host-platforms", "-") == 0);
     output = tool_read(logpath);
     bool platforms = output && !strcmp(output, "linux darwin\n");

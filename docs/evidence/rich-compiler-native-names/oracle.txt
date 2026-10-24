@@ -1,0 +1,13 @@
+native arguments reference: native positional control
+native arguments reference: native names in declaration order
+native arguments reference: native reordered names
+native arguments reference: native mixed arguments
+native arguments reference: native unary name
+native arguments reference: native arguments evaluate in source order
+native arguments reference: native unknown name
+native arguments reference: native duplicate name
+native arguments reference: native extra argument
+Running: native_arguments_reference_contract (OK) (0.010378 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 126
+Test command wall time: 0.364s; includes in-test fixture setup; external configuration/build excluded.

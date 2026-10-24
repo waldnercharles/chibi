@@ -1,0 +1,22 @@
+Tested clean candidate: 23a5236b01ada794d382c9554f6c5192d40643eb
+Tree: cc6651cf10bf8c36f482e6b1848f7b672d69e842
+Base: 4684d45bc78d37b89ac35ae94aa33f392157edc7
+Environment: macOS arm64, standalone Debug language driver, no sanitizers.
+Build: make language-build JOBS=2; exit 0; configure 1.9s, build 3.6s.
+Driver SHA256: f454e52c26ecc2d60994a1cc86815665ae8c483e6d7a189b3c34683184a69a68
+Steps.chibi SHA256 (unchanged main source): cdc2c8ec95d8d81b80fd39570591e501cd7df6a8dbb7cf05e252688ef44580a0
+Oracle: exit 0; 1 case, 126 assertions, 0.364s supervisor wall time.
+Authored: exit 1 (intentional pending-implementation acceptance case); 1 case,
+4834 assertions, 9.599s supervisor wall time. 16 mismatches: 5 valid named
+programs and 3 diagnostic contracts on each of 2 compiler backends.
+Positional control succeeds for both compiler backends and both host selections.
+Inventory: authored selector belongs to no aggregate group; oracle is in compiler.
+Formatting: clang-format 22 dry-run on changed C/header files passed.
+Whitespace: git diff --check passed.
+Independent fixture review: /root/review_array_order, no remaining blockers.
+No compiler/runtime/bootstrap files changed. No bootstrap generation, native
+LLVM, Wasm, recovery, fixedpoint, full groups, renderer or SDK acceptance run.
+Earlier iteration: missing-field initializers fixed before successful build;
+diagnostic columns corrected from literal source coordinates; proposed missing
+Count rejection removed because native ports have defaults. Final logs above
+are from the narrowed 6-valid/3-diagnostic clean candidate, not those iterations.

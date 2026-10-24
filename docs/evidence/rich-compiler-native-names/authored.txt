@@ -1,0 +1,23 @@
+native arguments authored 0: native positional control: compiled (expected)
+native arguments authored 0: native names in declaration order: unsupported syntax 'named_argument' at 2:41 (MISMATCH)
+native arguments authored 0: native reordered names: unsupported syntax 'named_argument' at 2:41 (MISMATCH)
+native arguments authored 0: native mixed arguments: unsupported syntax 'named_argument' at 2:49 (MISMATCH)
+native arguments authored 0: native unary name: unsupported syntax 'named_argument' at 2:44 (MISMATCH)
+native arguments authored 0: native arguments evaluate in source order: unsupported syntax 'named_argument' at 6:24 (MISMATCH)
+native arguments authored 0: native unknown name: unsupported syntax 'named_argument' at 2:41 (MISMATCH)
+native arguments authored 0: native duplicate name: call has the wrong number of arguments at 2:30 (MISMATCH)
+native arguments authored 0: native extra argument: call has the wrong number of arguments at 2:30 (MISMATCH)
+native arguments authored 1: native positional control: compiled (expected)
+native arguments authored 1: native names in declaration order: unsupported syntax 'named_argument' at 2:41 (MISMATCH)
+native arguments authored 1: native reordered names: unsupported syntax 'named_argument' at 2:41 (MISMATCH)
+native arguments authored 1: native mixed arguments: unsupported syntax 'named_argument' at 2:49 (MISMATCH)
+native arguments authored 1: native unary name: unsupported syntax 'named_argument' at 2:44 (MISMATCH)
+native arguments authored 1: native arguments evaluate in source order: unsupported syntax 'named_argument' at 6:24 (MISMATCH)
+native arguments authored 1: native unknown name: unsupported syntax 'named_argument' at 2:41 (MISMATCH)
+native arguments authored 1: native duplicate name: call has the wrong number of arguments at 2:30 (MISMATCH)
+native arguments authored 1: native extra argument: call has the wrong number of arguments at 2:30 (MISMATCH)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi-native-names/test/language/package_compiler_chibi.c (7124): all)
+Running: native_arguments_authored_contract 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 4834
+Test command wall time: 9.599s; includes in-test fixture setup; external configuration/build excluded.

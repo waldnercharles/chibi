@@ -25,9 +25,10 @@ implemented before the ports that need them.
   project and tooling checks. Bootstrap publication is recorded below.
 - New text/binary APIs and new public collection names: proposed, awaiting
   semantic review. Approval of the program does not settle these choices.
-- Managed pointers and explicit call-site `ref` are implemented locally on
-  `codex/managed-pointers-20261022`. The [pointer contract and verification
-  ledger](managed-pointers.md) record supported operations and remaining limits.
+- Managed pointers replace `ref`: a `^T` parameter that does not escape
+  lends the caller's location, `F(&value)`. The [pointer contract and
+  verification ledger](managed-pointers.md) record supported operations and
+  remaining limits.
   The separate sequence workstream owns shared array objects and retained slices.
 - Shift behavior approved on 2026-10-21: reject counts outside the operand
   width and discard shifted-out bits. Implemented and verified locally across

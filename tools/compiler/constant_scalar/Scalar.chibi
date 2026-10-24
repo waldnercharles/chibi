@@ -338,7 +338,7 @@ Quotient :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
 // A right shift rounds toward negative infinity.
 Shifted :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
     if (yn) {
-        return Exact.Failed(Reported);
+        return Exact.Failed("integer constant shift count must not be negative");
     }
     if (y > ShiftLimit) {
         return Exact.Failed("integer constant shift count is too large");

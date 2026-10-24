@@ -13,3 +13,31 @@ Independent composition review accepted staged tree21615e7073fc61c72356901c03828
 Separate bounded-source adjustment: Expression.chibi:36 explicitly converts digit:int to int64 before adding to magnitude:int64. This implements the approved no-mixed-integer contract without changing the parser's arithmetic values. Also correct the old fixture comment about exact shift counts. The composed candidate will run both existing bounded-compiler fixtures and the new authored shift equivalents with literal oracles.
 
 Release build of exactea9 failed before test execution: semantic_constant.c168 `folded` was used only by assert and became unused under NDEBUG/-Werror. The raw build failure remains preserved in the local validation receipts. Independently reviewed correction includes stdlib.h and keeps assert(folded), then aborts if !folded before consuming value. This preserves the invariant in Release without warning suppression, fallback semantics or a second evaluator. The repaired candidate requires a fresh build; ea9 has no passing test claim.
+
+The e0b Release build passed with default asset generation. Its 29 focused
+selectors completed: 15 passed and 14 failed (raw identities/results under
+`docs/evidence/m2-stagezero`). Passing coverage includes stage-zero shift9/46,
+authored shift9/91, semantic66/923, numeric22/567, integer1/325, bounded1/37483,
+and scalar3/10905. These are execution receipts, not acceptance of the red suite.
+
+The next reviewed source repair addresses each observed cause: integer shift
+watches preserve the written operand type/value before count conversion; the
+scalar mirror uses the approved negative-count diagnostic; the tokenizer admits
+the existing half-open range token; record tests bind expectations by parameter;
+Graph request strings use the input arena that survives invocation; dependent
+snapshot-reader tests fail safely after setup failure. Nine fixtures remove only
+the obsolete core-strings 16 KiB guard. All other source, aggregate, production,
+invocation and process bounds remain unchanged. Both prepared compiler backends
+now verify complete owned input retention; the existing core poison/free test
+checks all retained bytes. Independent read-only review found no remaining
+source blocker, including the corrected failure-path ownership.
+
+These repairs are a source checkpoint: their execution is pending. Frozen8d
+artifacts and its Mac/Linux gates remain unchanged. The retained current8d seed
+now differs at exactly one of its 20 recorded inputs, package_compiler/Steps.chibi.
+Normal scratch asset generation must use its supported changed-source route;
+this does not authorize a production --seed write or public seed/pin update.
+The separate preexisting fractional shift-count admission question is unchanged.
+Full compiler-bootstrap clean-HEAD reuse still requires an authorized prepared21
+checked-seed migration; those failures must not be suppressed or called fixture
+failures. Accepted main957 will be merged and reviewed before the next build.

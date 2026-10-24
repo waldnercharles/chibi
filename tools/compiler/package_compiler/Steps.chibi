@@ -2700,12 +2700,22 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
         if (ExactNegative(exact)) {
             return Fail(forest, Unparenthesized(forest, right.record), document, "Shift count must not be negative");
         }
+        // Observe the written integer before the runtime count conversion.
+        // Its value and type belong to the source expression, not the shift.
+        if (ops.debug && Integer(written)) {
+            slots.append(ValueLocal(written));
+            code.append(ConstantCode(ops, written, bits, count_slot, node));
+            code.extend(LiteralWatch(forest, ops, count_slot, written, right.record));
+            count_slot += 1;
+        }
         if (!ExactFits(exact, value.storage)) {
             exact = ExactMax(value.storage);
         }
         slots.append(ValueLocal(value.storage));
         code.append(ConstantCode(ops, value.storage, ExactWrapped(exact, value.storage), count_slot, node));
-        code.extend(LiteralWatch(forest, ops, count_slot, value.storage, right.record));
+        if (!Integer(written)) {
+            code.extend(LiteralWatch(forest, ops, count_slot, value.storage, right.record));
+        }
         count = Typed(count_slot, value.storage, 0, -1);
     } else if (!Single(right, right.storage) || !Integer(right.storage)) {
         return Fail(forest, item.node, document, "operator does not apply to these operands");

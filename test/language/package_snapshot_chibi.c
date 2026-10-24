@@ -301,7 +301,8 @@ static bool prepare()
     };
     const native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };
-    for (int i = 0; i < 8; i++) {
+    /* Core strings uses the production snapshot limits and full retention checks. */
+    for (int i = 0; i < 7; i++) {
         REQUIRE(files[i].size < 16384);
     }
     return compiler_fixture_prepare_packs(&fixture, files, 8, packs, 2);

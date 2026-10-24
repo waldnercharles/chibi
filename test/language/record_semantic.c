@@ -85,12 +85,27 @@ TEST_CASE(record_semantic_row)
             if (!constructors) {
                 REQUIRE(e->arguments[0].parameter == 1 && e->arguments[1].parameter == 0);
             }
+            for (int j = 0; j < e->argument_count; j++) {
+                const script_argument *argument = &e->arguments[j];
+                REQUIRE(argument->parameter >= 0 && argument->parameter < row->field_count);
+                REQUIRE(argument->value >= 0 && argument->value < analysis->expression_count);
+                if (argument->parameter > 4) {
+                    continue;
+                }
+                const script_expression *field = &analysis->expressions[argument->value];
+                REQUIRE(
+                    field->kind == SCRIPT_EXPR_CONSTANT &&
+                    field->constant_snapshot && field->constant.type == PIN_STR
+                );
+                const char *expected = argument->parameter == 0
+                                         ? (constructors ? "b" : "a")
+                                     : argument->parameter == 1
+                                         ? (constructors ? "two" : "one")
+                                         : "";
+                REQUIRE(!strcmp(pin_text(field->constant).bytes, expected));
+                owned_strings += argument->parameter >= 2;
+            }
             constructors++;
-        }
-        if (e->kind == SCRIPT_EXPR_CONSTANT && e->constant_snapshot &&
-            e->constant.type == PIN_STR) {
-            REQUIRE(!strcmp(pin_text(e->constant).bytes, ""));
-            owned_strings++;
         }
     }
     REQUIRE(constructors == 2 && owned_strings == 6);

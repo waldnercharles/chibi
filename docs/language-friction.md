@@ -291,9 +291,9 @@ after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
 range, keyed and reverse forms too, but not `ref` loops, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step
-hangs (#503). The stage-one tokenizer has no `..<` token, so a build program
-that the tokenizer corpus reads can't use half-open ranges either; the map
-syntax PR counted positions by hand in `Build.chibi`'s `PrivateSources`.
+hangs (#503). The authored tokenizer now recognizes `..<` with independently pinned byte
+spans and inclusive/spaced controls, so its corpus can read those half-open
+ranges too.
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig

@@ -535,8 +535,10 @@ static bool compare(int index)
             REQUIRE(error && !strcmp(error, "integer constant does not fit its type"));
         }
     }
-    if (!strcmp(item->name, "i32-div-zero") ||
-        !strcmp(item->name, "shift-negative-count")) {
+    if (!strcmp(item->name, "shift-negative-count")) {
+        REQUIRE(error && !strcmp(error, "integer constant shift count must not be negative"));
+    }
+    if (!strcmp(item->name, "i32-div-zero")) {
         REQUIRE(
             error && !strcmp(error, "integer constant divides by zero, shifts by a negative count or negates an unsigned value")
         );

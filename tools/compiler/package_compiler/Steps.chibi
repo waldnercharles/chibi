@@ -2961,6 +2961,34 @@ Folds :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[],
     }
     return ConstantType(forest, text, constants, names, package, node) != 0 || !Floating(storage);
 }
+// Whether a conversion in the constant expression `node` names a callable its
+// package declares instead, as `int(7)` does where a behavior declares `int`.
+ShadowedConversion :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], package: int,
+                       node: int) -> bool {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "unary_expression")) {
+        return ShadowedConversion(forest, text, callables, package, Field(forest, value, "operand"));
+    }
+    if (Is(forest, value, "binary_expression")) {
+        return ShadowedConversion(forest, text, callables, package, Field(forest, value, "left")) ||
+               ShadowedConversion(forest, text, callables, package, Field(forest, value, "right"));
+    }
+    if (ConversionType(forest, text, value) == 0) {
+        return false;
+    }
+    if (FindCallable(callables, package, Text(forest, text, Field(forest, value, "function"))) >= 0) {
+        return true;
+    }
+    return ShadowedConversion(forest, text, callables, package, ConversionArgument(forest, value));
+}
+// The one argument of the conversion `node`, named or not.
+ConversionArgument :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    argument := FirstMember(forest, Field(forest, node, "arguments"));
+    if (Is(forest, argument, "named_argument")) {
+        return Field(forest, argument, "value");
+    }
+    return argument;
+}
 // Whether `node` divides by a constant expression equal to zero, which is an
 // error for integers whether or not the dividend is constant. A divisor that
 // does not evaluate has reported its own error.
@@ -3032,8 +3060,43 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
             return Fail(forest, item.node, document, "a constant is not folded yet");
         case .Folded(bits):
             slots.append(ValueLocal(storage));
+            // Stage zero evaluates a conversion's argument as an expression
+            // of its own, with its point, and watches it before the
+            // conversion, whose own watch follows this step.
+            levels: int[] = [];
+            value := Unparenthesized(forest, item.node);
+            while (ConversionType(forest, text, value) != 0) {
+                value = Unparenthesized(forest, ConversionArgument(forest, value));
+                code.append(ExpressionCode(ops, forest[value]));
+                levels.append(value);
+            }
+            level := length(levels) - 1;
+            while (level >= 0) {
+                within := item.node;
+                if (level > 0) {
+                    within = levels[level - 1];
+                }
+                typed := ConstantType(forest, text, constants, names, package, levels[level]);
+                if (typed == 0) {
+                    typed = ConversionType(forest, text, Unparenthesized(forest, within));
+                }
+                switch FoldConstant(forest, text, document, constants, names, package, levels[level], typed) {
+                    case .Failed(diagnostic):
+                        return Step.Failed(diagnostic);
+                    case .Waiting:
+                        return Fail(forest, levels[level], document, "a constant is not folded yet");
+                    case .Folded(argument):
+                        slot := at.slot + length(slots);
+                        slots.append(ValueLocal(typed));
+                        code.append(ConstantCode(ops, typed, argument, slot, forest[levels[level]]));
+                        code.extend(LiteralWatch(forest, ops, slot, typed, levels[level]));
+                }
+                level -= 1;
+            }
             code.append(ConstantCode(ops, storage, bits, at.slot, forest[item.node]));
-            code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
+            if (length(levels) == 0) {
+                code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
+            }
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);

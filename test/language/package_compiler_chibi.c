@@ -7573,6 +7573,20 @@ static bool append_sample_alike(const sample *s, bool writing)
     REQUIRE(alike);
     return true;
 }
+/* A folded conversion keeps stage zero's points and watches for each
+ * argument it converts, innermost first. */
+TEST_CASE(package_compiler_folds_nested_conversions_as_stage_zero_does)
+{
+    REQUIRE(prepare());
+    const char *identity = "behaviors/Nested.chibi";
+    const char
+        *source = "Nested :: behavior { observed: int = 0; Read :: () -> int { "
+                  "x: int = int(byte(9)); return x + int(-3); } "
+                  "on Tick :: () { observed = Read(); } }";
+    const library_result result = { identity, 6, 0, 0 };
+    REQUIRE(libraries_with_results(&identity, &source, 1, false, false, &result, 1));
+    return true;
+}
 TEST_CASE(package_compiler_preserves_receiver_before_writing_item)
 {
     const sample s = {
@@ -10990,6 +11004,7 @@ void test_language_package_compiler_chibi_libraries()
     RUN_TEST_CASE(package_compiler_resolves_library_array_updates);
     RUN_TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions);
     RUN_TEST_CASE(package_compiler_rejects_invalid_library_closures);
+    RUN_TEST_CASE(package_compiler_folds_nested_conversions_as_stage_zero_does);
     RUN_TEST_CASE(package_compiler_preserves_receiver_before_writing_item);
     RUN_TEST_CASE(package_compiler_preserves_pure_reversed_append_debug);
     pu_clear_setup();

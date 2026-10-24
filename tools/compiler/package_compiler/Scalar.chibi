@@ -273,7 +273,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     // exactly, not rows that would wrap. A scalar source declares no
     // constants.
     constants: ConstDecl[] = [];
-    if (Folds(forest, text, constants, names, callable.package, node, expected)) {
+    if (Folds(forest, text, constants, names, callable.package, node, expected) &&
+        !ShadowedConversion(forest, text, callables, callable.package, node)) {
         switch FoldConstant(forest, text, 0, constants, names, callable.package, node, expected) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);

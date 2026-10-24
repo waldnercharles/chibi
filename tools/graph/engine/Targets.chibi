@@ -3849,6 +3849,9 @@ pub ArtifactFormats :: () -> string[] {
 // builds them: test_tools runs the workers and tools whose paths it compiles
 // in, and the launcher the compiler and player beside it.
 pub Runs :: (target: string) -> string[] {
+    if (target == "chibi_asset_compiler_host") {
+        return ["chibi-build-host", "chibi-compiler-host"];
+    }
     if (target == "chibi") {
         return ["chibi-compile", "chibi-player"];
     }
@@ -4104,8 +4107,8 @@ pub Links :: (target: string) -> string[] {
     }
     if (target == "test_language" && build.platform() == "Darwin") {
         return [
-            "chibi_compiler_host", "chibi_asset_compiler_host",
             "chibi_json", "chibi_language_syntax", "chibi_asset_json", "chibi_native_prepared",
+            "chibi_compiler_host", "chibi_asset_compiler_host",
             "chibi_native_prepared", "chibi_math_capabilities", "chibi_project_compilation", "chibi_asset_text",
             "chibi_value_document", "chibi_array_capabilities", "chibi_authoring", "chibi_source_catalog",
             "chibi_input_map", "chibi_source_presentation", "chibi_behavior_runtime", "chibi_field_catalog",
@@ -4113,7 +4116,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_scene_document", "chibi_ui_authoring", "chibi_ui_document", "chibi_text_capabilities",
             "chibi_state_capabilities", "chibi_arithmetic_capabilities", "chibi_core_capabilities",
             "chibi_graph_model", "chibi_graph_authoring", "chibi_graph_compilation", "chibi_mesh_runtime",
-            "chibi_ui_documents", "chibi_entity_runtime", "chibi_ui_runtime", "chibi_native_prepared",
+            "chibi_ui_documents", "chibi_entity_runtime", "chibi_ui_runtime",
+            "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a",
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a", "chibi_shader_preparation",
             "chibi_player", "chibi_engine", "chibi_scheduling", "chibi_visual_catalog", "chibi_graph_catalog",
@@ -4145,8 +4149,8 @@ pub Links :: (target: string) -> string[] {
     }
     if (target == "test_tools" && build.platform() == "Darwin") {
         return [
-            "chibi_compiler_host",
-            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_shader_runtime",
+            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_compiler_host",
+            "chibi_shader_runtime",
             "chibi_authoring", "chibi_execution", "chibi_array_capabilities", "chibi_audio_runtime",
             "chibi_scene_authoring", "chibi_scene_document", "chibi_scene_authoring", "chibi_source_catalog",
             "chibi_authoring", "chibi_project_compilation", "chibi_image_preparation",

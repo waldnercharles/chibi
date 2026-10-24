@@ -17,8 +17,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Seven cases, two backends. Each preparation has two files, one import and
- * three-element arrays at most. Each call has a fixed 10000-instruction budget;
+/* Nine cases, two backends. Each preparation has two files and one import.
+ * Dense fixtures return at most 33 fields from 96 bytes. Each call has a fixed
+ * 10000-instruction budget;
  * no filesystem, services, workers, frames or timing loops. The
  * generated header embeds the actual installed-source candidate, not a second
  * wrapper copy. Expected values follow Odin's core:strings over bytes. */
@@ -767,15 +768,30 @@ TEST_CASE(package_core_strings_dense_copy_budget)
 {
     for (int b = 0; b < 2; b++) {
         REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
-        for (int count = 16; count <= 32; count *= 2) {
+        for (int variant = 0; variant < 4; variant++) {
+            int count = variant % 2 ? 32 : 16;
+            const char *sep = variant < 2 ? "::" : "\xc3\xa9";
             char dense[97];
             for (int i = 0; i < count; i++) {
-                memcpy(dense + 3 * i, "x::", 3);
+                dense[3 * i] = 'x';
+                memcpy(dense + 3 * i + 1, sep, 2);
             }
             dense[3 * count] = 0;
-            pin_value args[] = { text(dense), text("::"), integer(-1) };
+            pin_value args[] = { text(dense), text(sep), integer(-1) };
             REQUIRE(core_call("Count", args, 2, PIN_I32, backends[b]) && output.i == count);
-            fprintf(stderr, "dense backend=%d matches=%d Count slices=%zu bytes=%zu reads=%zu\n", b, count, slice_calls, slice_bytes, byte_reads);
+            REQUIRE(slice_calls == 0 && slice_bytes == 0);
+            REQUIRE(byte_reads <= (size_t)(12 * count));
+            fprintf(
+                stderr,
+                "dense backend=%d variant=%d matches=%d Count slices=%zu "
+                "bytes=%zu reads=%zu\n",
+                b,
+                variant,
+                count,
+                slice_calls,
+                slice_bytes,
+                byte_reads
+            );
             const char *names[] = { "Split", "SplitAfter", "SplitN", "SplitAfterN" };
             for (int k = 0; k < 4; k++) {
                 REQUIRE(core_call(names[k], args, k < 2 ? 2 : 3, PIN_STR, backends[b]));
@@ -787,14 +803,19 @@ TEST_CASE(package_core_strings_dense_copy_budget)
                 for (int i = 0; i < count; i++) {
                     pin_string part = pin_text(pin_array_get(parts, i));
                     size_t size = k % 2 ? 3 : 1;
-                    REQUIRE(part.length == size && !memcmp(part.bytes, "x::", size));
+                    REQUIRE(part.length == size && !memcmp(part.bytes, dense, size));
                 }
                 REQUIRE(pin_text(pin_array_get(parts, count)).length == 0);
+                REQUIRE(slice_calls == (size_t)count + 1);
+                REQUIRE(slice_bytes == (size_t)count * (k % 2 ? 3 : 1));
+                REQUIRE(byte_reads <= (size_t)(12 * count));
                 fprintf(
                     stderr,
-                    "dense backend=%d matches=%d %s slices=%zu bytes=%zu "
+                    "dense backend=%d variant=%d matches=%d %s slices=%zu "
+                    "bytes=%zu "
                     "reads=%zu\n",
                     b,
+                    variant,
                     count,
                     names[k],
                     slice_calls,
@@ -803,6 +824,108 @@ TEST_CASE(package_core_strings_dense_copy_budget)
                 );
             }
         }
+        cleanup();
+    }
+    return true;
+}
+/* A bounded, direct byte oracle independent of the rolling hash. Empty
+ * separators split into bytes, with no trailing empty field. */
+static bool split_bytes(const char *source, int size, const char *sep, int width, behavior_backend backend)
+{
+    pin_value args[3];
+    REQUIRE(!pin_value_text(&inputs_storage, &args[0], source, (size_t)size));
+    REQUIRE(!pin_value_text(&inputs_storage, &args[1], sep, (size_t)width));
+    int matches = 0, first = width ? -1 : 0;
+    for (int i = 0; width && i <= size - width; i++) {
+        if (!memcmp(source + i, sep, (size_t)width)) {
+            if (first < 0) {
+                first = i;
+            }
+            matches++;
+            i += width - 1;
+        }
+    }
+    REQUIRE(core_call("Index", args, 2, PIN_I32, backend) && output.i == first);
+    REQUIRE(core_call("Count", args, 2, PIN_I32, backend));
+    REQUIRE(output.i == (width ? matches : size + 1));
+    REQUIRE(slice_calls == 0 && slice_bytes == 0);
+    /* Repeated-prefix absent fixtures distinguish rolling search from a naive
+     * comparison at every position, without a wall-clock threshold. */
+    REQUIRE(byte_reads <= (size_t)(4 * size + 2 * width));
+    const int limits[] = { -7, -1, 0, 1, 2, 3, 4, 100 };
+    for (int k = 0; k < 4; k++) {
+        for (int n = 0; n < (k < 2 ? 1 : 8); n++) {
+            int limit = k < 2 ? -1 : limits[n];
+            int starts[33], sizes[33], count = 0, start = 0;
+            if (!width) {
+                count = limit < 0 || limit > size ? size : limit;
+                for (int i = 0; i < count; i++) {
+                    starts[i] = i;
+                    sizes[i] = i == count - 1 ? size - i : 1;
+                }
+            } else if (limit) {
+                for (int i = 0; i <= size - width && (limit < 0 || count < limit - 1);
+                     i++) {
+                    if (!memcmp(source + i, sep, (size_t)width)) {
+                        starts[count] = start;
+                        sizes[count++] = i - start + (k % 2 ? width : 0);
+                        start = i + width;
+                        i += width - 1;
+                    }
+                }
+                starts[count] = start;
+                sizes[count++] = size - start;
+            }
+            const char *names[] = { "Split", "SplitAfter", "SplitN", "SplitAfterN" };
+            args[2] = integer(limit);
+            REQUIRE(core_call(names[k], args, k < 2 ? 2 : 3, PIN_STR, backend));
+            const pin_array *parts = output.ptr;
+            REQUIRE(output.container == PIN_CONTAINER_ARRAY && parts && parts->count == count);
+            size_t payload = 0;
+            for (int i = 0; i < count; i++) {
+                pin_string part = pin_text(pin_array_get(parts, i));
+                REQUIRE(part.length == (size_t)sizes[i]);
+                REQUIRE(!memcmp(part.bytes, source + starts[i], part.length));
+                payload += part.length;
+            }
+            REQUIRE(slice_calls <= (size_t)count && slice_bytes <= payload);
+            REQUIRE(byte_reads <= (size_t)(4 * size + 2 * width));
+        }
+    }
+    return true;
+}
+TEST_CASE(package_core_strings_binary_overlap_collision_and_limits)
+{
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
+        const char binary[] = { 'A', 0, (char)0xff, (char)0x80,
+                                'A', 0, (char)0xff, (char)0x80 };
+        REQUIRE(split_bytes(binary, sizeof binary, binary + 1, 3, backends[b]));
+        REQUIRE(split_bytes(binary, sizeof binary, binary + 2, 1, backends[b]));
+        REQUIRE(split_bytes(binary, sizeof binary, "", 0, backends[b]));
+        REQUIRE(split_bytes("\xc3\xa9\xc3\xa9\xc3\xa9", 6, "\xc3\xa9", 2, backends[b]));
+        REQUIRE(split_bytes("\xc3\xa9\xc3\xa9", 4, "\xa9", 1, backends[b]));
+        REQUIRE(split_bytes("aaaaa", 5, "aa", 2, backends[b]));
+        REQUIRE(split_bytes("abababa", 7, "aba", 3, backends[b]));
+        REQUIRE(split_bytes("ababab", 6, "ac", 2, backends[b]));
+        REQUIRE(split_bytes("", 0, "", 0, backends[b]));
+        REQUIRE(split_bytes("", 0, "ab", 2, backends[b]));
+        REQUIRE(split_bytes("ab", 2, "abcd", 4, backends[b]));
+        /* Both six-byte strings hash to 0x1d967b07. Reject the first hit. */
+        const char
+            collision[] = "\x43\x3c\xce\xb9\xc0\x87\x78\x92\xfb\x4d\x2b\x1e";
+        uint32_t left = 0, right = 0;
+        for (int i = 0; i < 6; i++) {
+            left = left * 16777619u + (unsigned char)collision[i];
+            right = right * 16777619u + (unsigned char)collision[6 + i];
+        }
+        REQUIRE(left == right && left == 0x1d967b07u);
+        REQUIRE(split_bytes(collision, 12, collision + 6, 6, backends[b]));
+        char prefix[96], absent[16];
+        memset(prefix, 'a', sizeof prefix);
+        memset(absent, 'a', sizeof absent);
+        absent[15] = 'b';
+        REQUIRE(split_bytes(prefix, sizeof prefix, absent, sizeof absent, backends[b]));
         cleanup();
     }
     return true;
@@ -818,5 +941,6 @@ void test_language_package_core()
     RUN_TEST_CASE(package_core_pure_exports_and_generic_native_arrays);
     RUN_TEST_CASE(package_core_inputs_modules_and_binding_generations);
     RUN_TEST_CASE(package_core_strings_dense_copy_budget);
+    RUN_TEST_CASE(package_core_strings_binary_overlap_collision_and_limits);
     pu_clear_setup();
 }

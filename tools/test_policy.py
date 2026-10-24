@@ -499,6 +499,10 @@ GPU_TOOLS = (
     'texture-transform',
 )
 
+# Native source generation is currently provided only on these host platforms.
+# Explicit tool requests still fail with the component's unavailable diagnostic.
+ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
+
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
@@ -541,6 +545,9 @@ GROUPS = {
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-package-compiler-chibi-scalar', 'language-asset-packaging-chibi'],
 }
+if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
+    GROUPS['language'].append('language-asset-compiler-host')
+
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]
 GROUPS['compiler'] = [name for name in TOOLS if name.startswith('language-package-compiler-chibi')]

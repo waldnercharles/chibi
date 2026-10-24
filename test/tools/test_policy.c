@@ -67,7 +67,10 @@ static const char driver_setup
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
 static const char driver_routes
-    [] = "if sys.argv[2] == 'cpu-route':\n"
+    [] = "if sys.argv[2] == 'asset-host-platforms':\n"
+         "    print(' '.join(policy.ASSET_COMPILER_HOST_PLATFORMS))\n"
+         "    sys.exit(0)\n"
+         "if sys.argv[2] == 'cpu-route':\n"
          "    import agent\n"
          "    selector = sys.argv[5]\n"
          "    if selector not in agent.runnable_selectors(agent.CPU, "
@@ -475,6 +478,49 @@ static int run_group(const char *group)
         free(saved[i]);
     }
     return status;
+}
+
+TEST_CASE(asset_language_cases_are_in_the_actual_ci_group)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "asset-language-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    /* The production group/supervisor launches only these disposable recorders;
+     * no engine build, asset evaluation or inspection-policy override occurs. */
+    REQUIRE(run_group("language") == 0);
+    char *output = tool_read(commands);
+    REQUIRE(output);
+    const char *selectors[] = { "--execution-scope\n",
+                                "--asset-packaging-chibi\n",
+                                "--asset-compiler-host\n" };
+    int counts[3] = { 0 };
+    for (int i = 0; i < 3; i++) {
+        const char *at = output;
+        while ((at = strstr(at, selectors[i]))) {
+            counts[i]++;
+            at += strlen(selectors[i]);
+        }
+    }
+    free(output);
+    REQUIRE(counts[0] == 1 && counts[1] == 1);
+#if defined(__linux__) || defined(__APPLE__)
+    REQUIRE(counts[2] == 1);
+#else
+    REQUIRE(counts[2] == 0);
+#endif
+    REQUIRE(run("asset-host-platforms", "-") == 0);
+    output = tool_read(logpath);
+    bool platforms = output && !strcmp(output, "linux darwin\n");
+    free(output);
+    REQUIRE(platforms);
+    return true;
 }
 
 TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
@@ -1062,6 +1108,7 @@ void test_tool_test_policy()
     assert(fputs(driver_ci_build, script) >= 0);
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
+    RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);

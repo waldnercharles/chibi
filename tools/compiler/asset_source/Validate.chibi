@@ -15,45 +15,72 @@ pub ValidatePrototype :: (kinds: int[], parents: int[], keys: string[], texts: s
     roles: int[] = [];
     named: bool[] = [];
     based: bool[] = [];
-    for (kind in kinds) { roles.append(0); named.append(false); based.append(false); }
+    for (kind in kinds) {
+        roles.append(0);
+        named.append(false);
+        based.append(false);
+    }
     roles[0] = 1;
     index: int = 1;
     while (index < count) {
         parent := parents[index];
-        if (parent < 0 || parent >= index) { return "Invalid prototype value structure"; }
+        if (parent < 0 || parent >= index) {
+            return "Invalid prototype value structure";
+        }
         owner := roles[parent];
         kind := kinds[index];
         key := keys[index];
         if (owner == 3 || owner == 4 || owner == 6) {
             if (kind != 5) {
-                if (owner == 3) { return "Prototype includes must contain text references"; }
-                if (owner == 4) { return "Prototype behaviors must contain text references"; }
+                if (owner == 3) {
+                    return "Prototype includes must contain text references";
+                }
+                if (owner == 4) {
+                    return "Prototype behaviors must contain text references";
+                }
                 return "Prototype relationship targets must contain text references";
             }
         } else if (owner == 5) {
-            if (kind == 7) { roles[index] = 6; }
-            else if (kind != 5) { return "Prototype relationship targets must be text or arrays of text references"; }
+            if (kind == 7) {
+                roles[index] = 6;
+            } else if (kind != 5) {
+                return "Prototype relationship targets must be text or arrays of text references";
+            }
         } else if (owner == 7) {
-            if (kind != 6) { return "Prototype children must contain entity objects"; }
+            if (kind != 6) {
+                return "Prototype children must contain entity objects";
+            }
             roles[index] = 2;
         } else if (owner == 1 || owner == 2) {
             if (owner == 1 && key == "includes") {
-                if (kind != 7) { return "Prototype includes must be an array of text references"; }
+                if (kind != 7) {
+                    return "Prototype includes must be an array of text references";
+                }
                 roles[index] = 3;
             } else if (key == "behaviors") {
-                if (kind != 7) { return "Prototype behaviors must be an array of text references"; }
+                if (kind != 7) {
+                    return "Prototype behaviors must be an array of text references";
+                }
                 roles[index] = 4;
             } else if (key == "links") {
-                if (kind != 6) { return "Prototype links must be a relationship object"; }
+                if (kind != 6) {
+                    return "Prototype links must be a relationship object";
+                }
                 roles[index] = 5;
             } else if (key == "children") {
-                if (kind != 7) { return "Prototype children must be an array of entity objects"; }
+                if (kind != 7) {
+                    return "Prototype children must be an array of entity objects";
+                }
                 roles[index] = 7;
             } else if (owner == 2 && key == "prototype") {
-                if (kind != 5 || texts[index] == "") { return "Prototype child prototype reference must be nonempty text"; }
+                if (kind != 5 || texts[index] == "") {
+                    return "Prototype child prototype reference must be nonempty text";
+                }
                 based[parent] = true;
             } else if (owner == 2 && key == "name") {
-                if (kind != 5 || texts[index] == "") { return "Prototype child name must be nonempty text"; }
+                if (kind != 5 || texts[index] == "") {
+                    return "Prototype child name must be nonempty text";
+                }
                 named[parent] = true;
             }
         }
@@ -62,8 +89,12 @@ pub ValidatePrototype :: (kinds: int[], parents: int[], keys: string[], texts: s
     index = 1;
     while (index < count) {
         if (roles[index] == 2) {
-            if (!named[index]) { return "Prototype child name must be nonempty text"; }
-            if (!based[index]) { return "Prototype child prototype reference must be nonempty text"; }
+            if (!named[index]) {
+                return "Prototype child name must be nonempty text";
+            }
+            if (!based[index]) {
+                return "Prototype child prototype reference must be nonempty text";
+            }
         }
         index += 1;
     }

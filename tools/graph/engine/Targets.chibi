@@ -64,7 +64,9 @@ Files :: (target: string) -> string[] {
         return ["src/authoring/asset_compiler_host.c", "src/support/binary_cache.c",
                 "build/sdk/generated/assets/asset_compiler_packaged.c"];
     }
-    if (target == "chibi_asset_compiler_consumer") { return ["test/language/asset_compiler_host.c"]; }
+    if (target == "chibi_asset_compiler_consumer") {
+        return ["test/language/asset_compiler_host.c"];
+    }
     if (target == "reflect") {
         return [
             "tools/reflect/reflect.c", "tools/reflect/collect.c", "tools/reflect/identity.c", "tools/reflect/emit.c",
@@ -935,8 +937,12 @@ pub HeaderSource :: (target: string) -> string {
 // The headers a target publishes, below its HeaderSource. Windows adds posix
 // shims to chibi_support; this graph does not build Windows yet.
 pub PublicHeaders :: (target: string) -> string[] {
-    if (target == "chibi_compiler_host") { return ["toolchain/compiler_host.h"]; }
-    if (target == "chibi_asset_compiler_host") { return ["authoring/asset_compiler_host.h"]; }
+    if (target == "chibi_compiler_host") {
+        return ["toolchain/compiler_host.h"];
+    }
+    if (target == "chibi_asset_compiler_host") {
+        return ["authoring/asset_compiler_host.h"];
+    }
     if (target == "chibi_save_runtime") {
         return ["runtime/save.h", "runtime/save_definition.h", "runtime/save_native.h"];
     }

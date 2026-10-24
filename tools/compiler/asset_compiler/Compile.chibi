@@ -68,12 +68,12 @@ pub Reconcile :: (text: string, old_kinds: int[], old_parents: int[], old_keys: 
 }
 
 pub ReconcileNative :: (text: string, old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
-                  old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
-                  new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
-                  new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+                        old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                        new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
+                        new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
     return source.ReconcileNative(text, old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned,
-                            old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
-                            new_signed, new_unsigned, new_reals, new_booleans);
+                                  old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
+                                  new_signed, new_unsigned, new_reals, new_booleans);
 }
 
 pub Materialize :: (text: string, kinds: int[], parents: int[], keys: string[], texts: string[],
@@ -90,10 +90,12 @@ Entry :: (project: string, collection_names: string[], collection_paths: string[
         index += 1;
     }
     switch routes.RootSet(project, true, collections) {
-        case .Rejected(diagnostic): return 0;
+        case .Rejected(diagnostic):
+            return 0;
         case .Accepted(roots):
             switch routes.FileRoute(roots, path, true, 0) {
-                case .Rejected(diagnostic): return 0;
+                case .Rejected(diagnostic):
+                    return 0;
                 case .Accepted(file):
                     return binding.ID("package-symbol", format_text("{}:1:Build:callable", file.identity));
             }
@@ -128,7 +130,9 @@ pub CompileBytes :: (project: string, collection_names: string[], collection_pat
                    names, natives, ports, identities) {
         case .Completed(ok, entry_id, prepared, document, start, end, line, column, message):
             out: byte[] = [0];
-            if (ok) { out[0] = 1; }
+            if (ok) {
+                out[0] = 1;
+            }
             wide := entry_id;
             index: int = 0;
             while (index < 8) {
@@ -151,7 +155,9 @@ pub CompileBytes :: (project: string, collection_names: string[], collection_pat
                 assert(length(prepared) <= max_prepared, "Compiled asset exceeds transport byte quota");
                 out.extend(prepared);
             } else {
-                for (part in strings.Bytes(message)) { out.append(byte(part)); }
+                for (part in strings.Bytes(message)) {
+                    out.append(byte(part));
+                }
             }
             return out;
     }

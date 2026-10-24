@@ -9,7 +9,11 @@ pub Build :: () -> int {
         return 2;
     }
     target := "";
-    if (length(arguments) == 3) { target = build.read_file(arguments[2]); }
-    if (!generator.Generate(build.root(), arguments[0], arguments[1], target)) { return 1; }
+    if (length(arguments) == 3) {
+        target = build.read_file(arguments[2]);
+    }
+    if (!generator.Generate(build.root(), arguments[0], arguments[1], target)) {
+        return 1;
+    }
     return 0;
 }

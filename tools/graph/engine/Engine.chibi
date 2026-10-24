@@ -549,7 +549,9 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
         }
     }
     compiled := Build(tools, profile, root, folder, prerequisites);
-    if (compiled < 0) { return -1; }
+    if (compiled < 0) {
+        return -1;
+    }
     output := Join([folder, "/sdk/generated/assets"]);
     command := [Executable(folder, "chibi-build-host"), "--compiler", "tools/compiler",
                 "--compiler-core", "packages/core", "--root", root,
@@ -561,22 +563,26 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
         inputs.extend(ChibiSources(Join([root, "/", directory])));
     }
     for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
-                 "tools/compiler/asset_compiler/CompilerSources.txt", "tools/toolchain/AssetCompiler.chibi",
-                 "tools/graph/engine/Engine.chibi", "tools/graph/engine/Targets.chibi"]) {
+                  "tools/compiler/asset_compiler/CompilerSources.txt", "tools/toolchain/AssetCompiler.chibi",
+                  "tools/graph/engine/Engine.chibi", "tools/graph/engine/Targets.chibi"]) {
         inputs.append(Join([root, "/", path]));
     }
     for (name in ["asset_compiler.chibip", "asset_compiler_blob.inc", "manifest.json", "sources.sha256",
-                 "inventory.txt", "inventory-directories.txt", "target.json"]) {
+                  "inventory.txt", "inventory-directories.txt", "target.json"]) {
         inputs.append(Join([output, "/", name]));
     }
     inventory := Join([output, "/input-inventory.txt"]);
     listing := build.join(inputs, "\n");
     if (!build.file_exists(inventory) || build.read_file(inventory) != listing) {
         build.make_directory(output);
-        if (!build.write_file(inventory, listing)) { return -1; }
+        if (!build.write_file(inventory, listing)) {
+            return -1;
+        }
     }
     inputs.append(inventory);
-    if (c.Step(command, inputs, Join([output, "/asset_compiler_packaged.c"])) < 0) { return -1; }
+    if (c.Step(command, inputs, Join([output, "/asset_compiler_packaged.c"])) < 0) {
+        return -1;
+    }
     return compiled;
 }
 
@@ -932,7 +938,9 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
     }
     if (Listed(targets, "chibi_asset_compiler_host")) {
         assets_built := AssetCompiler(tools, profile, source_root, build_dir);
-        if (assets_built < 0) { return -1; }
+        if (assets_built < 0) {
+            return -1;
+        }
         generated += assets_built;
     }
     for (target in targets) {

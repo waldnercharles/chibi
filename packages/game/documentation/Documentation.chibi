@@ -10,11 +10,15 @@ pub Page :: union {
     | Packages(title: string, source: string, collection: string, output: string)
     | Grammar(title: string, source: string, output: string)
 }
-pub Section :: union { Group(name: string, pages: Page[]) }
+pub Section :: union {
+    Group(name: string, pages: Page[])
+}
 
 OutputName :: (name: string) -> bool {
     bytes := strings.Bytes(name);
-    if (length(bytes) <= 5 || !strings.HasSuffix(name, ".html")) { return false; }
+    if (length(bytes) <= 5 || !strings.HasSuffix(name, ".html")) {
+        return false;
+    }
     for (value in bytes) {
         if (!((value >= 65 && value <= 90) || (value >= 97 && value <= 122) ||
               (value >= 48 && value <= 57) || value == 45 || value == 95 || value == 46)) {
@@ -43,12 +47,21 @@ pub Encode :: (title: string, sections: Section[]) -> byte[] {
                     collection: string = "";
                     switch page {
                         case .Markdown(label, path, target):
-                            page_title = label; source = path; output = target; kind = "source";
+                            page_title = label;
+                            source = path;
+                            output = target;
+                            kind = "source";
                         case .Packages(label, path, prefix, target):
-                            page_title = label; source = path; output = target; kind = "packages";
+                            page_title = label;
+                            source = path;
+                            output = target;
+                            kind = "packages";
                             collection = prefix;
                         case .Grammar(label, path, target):
-                            page_title = label; source = path; output = target; kind = "grammar";
+                            page_title = label;
+                            source = path;
+                            output = target;
+                            kind = "grammar";
                     }
                     assert(page_title != "" && source != "" && OutputName(output),
                            "page needs a title, an .html output and one of source, grammar or packages with its collection");
@@ -72,5 +85,5 @@ pub Encode :: (title: string, sections: Section[]) -> byte[] {
         }
     }
     return data.Encode(data.Object([data.Field.Named("title", data.Value.Text(title)),
-                                   data.Field.Named("sections", data.List(groups))]));
+                                    data.Field.Named("sections", data.List(groups))]));
 }

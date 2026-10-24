@@ -5,7 +5,9 @@ package assets
 // duplicate of a required field. Runtime catalog validators own native names.
 TextList :: (items: string[]) -> Value {
     values: Value[] = [];
-    for (item in items) { values.append(Value.Text(item)); }
+    for (item in items) {
+        values.append(Value.Text(item));
+    }
     return List(values);
 }
 
@@ -49,7 +51,9 @@ pub Scene :: (name: string, entities: EntityDefinition[], fields: Field[]) -> Va
     for (entity in entities) {
         switch entity {
             case .Named(entity_name, base_name, components, extra):
-                for (previous in names) { assert(previous != entity_name, "Duplicate scene entity name"); }
+                for (previous in names) {
+                    assert(previous != entity_name, "Duplicate scene entity name");
+                }
                 names.append(entity_name);
         }
         values.append(EntityValue(entity));
@@ -64,12 +68,16 @@ pub Prototype :: (name: string, components: Field[], includes: string[], behavio
                         Field.Named("includes", TextList(includes)), Field.Named("behaviors", TextList(behaviors))], fields);
 }
 
-pub GraphNode :: union { Named(id: uint64, type: string, fields: Field[]) }
+pub GraphNode :: union {
+    Named(id: uint64, type: string, fields: Field[])
+}
 pub GraphConnection :: union {
     Named(from: string, to: string, fields: Field[])
     | Linked(from: uint64, from_pin: uint64, to: uint64, to_pin: uint64, fields: Field[])
 }
-pub GraphDefinition :: union { Named(kind: string, name: string, nodes: GraphNode[], edges: GraphConnection[], fields: Field[]) }
+pub GraphDefinition :: union {
+    Named(kind: string, name: string, nodes: GraphNode[], edges: GraphConnection[], fields: Field[])
+}
 
 GraphValue :: (graph: GraphDefinition) -> Value {
     switch graph {
@@ -81,7 +89,9 @@ GraphValue :: (graph: GraphDefinition) -> Value {
                 switch node {
                     case .Named(id, type, extra):
                         assert(type != "", "Graph node needs a type");
-                        for (previous in ids) { assert(previous != id, "Duplicate graph node ID"); }
+                        for (previous in ids) {
+                            assert(previous != id, "Duplicate graph node ID");
+                        }
                         ids.append(id);
                         values.append(NamedObject([Field.Named("id", Value.UInt(id)),
                                                    Field.Named("type", Value.Text(type))], extra));
@@ -108,7 +118,9 @@ pub Graph :: (name: string, domain: string, version: int, id_counter: uint64, gr
     assert(name != "" && domain != "", "Graph asset needs a name and domain");
     assert(version > 0, "Graph version must be positive");
     values: Value[] = [];
-    for (graph in graphs) { values.append(GraphValue(graph)); }
+    for (graph in graphs) {
+        values.append(GraphValue(graph));
+    }
     return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("domain", Value.Text(domain)),
                         Field.Named("version", Value.UInt(uint64(version))), Field.Named("id_counter", Value.UInt(id_counter)),
                         Field.Named("graphs", List(values))], fields);
@@ -144,7 +156,9 @@ pub InputMap :: (actions: InputAction[]) -> Value {
     return Object(fields);
 }
 
-pub Keyframe :: union { At(frame: int, fields: Field[]) }
+pub Keyframe :: union {
+    At(frame: int, fields: Field[])
+}
 
 pub Scenario :: (scene: string, frames: int, keys: Keyframe[], fields: Field[]) -> Value {
     assert(scene != "" && frames > 0 && frames <= 108000, "Scenario needs a scene and 1 to 108000 frames");
@@ -162,7 +176,9 @@ pub Scenario :: (scene: string, frames: int, keys: Keyframe[], fields: Field[]) 
                         Field.Named("keys", List(values))], fields);
 }
 
-pub ComponentDisplay :: union { Named(name: string, tab: string, icon: string, fields: Field[]) }
+pub ComponentDisplay :: union {
+    Named(name: string, tab: string, icon: string, fields: Field[])
+}
 
 pub ComponentPresentation :: (components: ComponentDisplay[]) -> Value {
     entries: Field[] = [];
@@ -176,7 +192,9 @@ pub ComponentPresentation :: (components: ComponentDisplay[]) -> Value {
                            "Unknown component presentation tab");
                     display.append(Field.Named("tab", Value.Text(tab)));
                 }
-                if (icon != "") { display.append(Field.Named("icon", Value.Text(icon))); }
+                if (icon != "") {
+                    display.append(Field.Named("icon", Value.Text(icon)));
+                }
                 entries.append(Field.Named(name, NamedObject(display, fields)));
         }
     }

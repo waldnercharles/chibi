@@ -15,7 +15,10 @@ ValidText :: (bytes: int[]) -> bool {
     at: int = 0;
     while (at < length(bytes)) {
         first := bytes[at];
-        if (first < 128) { at += 1; continue; }
+        if (first < 128) {
+            at += 1;
+            continue;
+        }
         count: int = 0;
         low: int = 128;
         high: int = 191;
@@ -23,19 +26,31 @@ ValidText :: (bytes: int[]) -> bool {
             count = 2;
         } else if (first >= 224 && first <= 239) {
             count = 3;
-            if (first == 224) { low = 160; }
-            if (first == 237) { high = 159; }
+            if (first == 224) {
+                low = 160;
+            }
+            if (first == 237) {
+                high = 159;
+            }
         } else if (first >= 240 && first <= 244) {
             count = 4;
-            if (first == 240) { low = 144; }
-            if (first == 244) { high = 143; }
-        } else { return false; }
+            if (first == 240) {
+                low = 144;
+            }
+            if (first == 244) {
+                high = 143;
+            }
+        } else {
+            return false;
+        }
         if (count > length(bytes) - at || bytes[at + 1] < low || bytes[at + 1] > high) {
             return false;
         }
         offset: int = 2;
         while (offset < count) {
-            if (bytes[at + offset] < 128 || bytes[at + offset] > 191) { return false; }
+            if (bytes[at + offset] < 128 || bytes[at + offset] > 191) {
+                return false;
+            }
             offset += 1;
         }
         at += count;
@@ -82,16 +97,24 @@ Indent :: (depth: int) -> string {
 
 Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
            real: double, boolean: bool) -> string {
-    if (kind == 0) { return "data.Value.Null"; }
+    if (kind == 0) {
+        return "data.Value.Null";
+    }
     if (kind == 1) {
-        if (boolean) { return "data.Value.Bool(true)"; }
+        if (boolean) {
+            return "data.Value.Bool(true)";
+        }
         return "data.Value.Bool(false)";
     }
-    if (kind == 2) { return format_text("data.Value.Int({})", signed); }
-    if (kind == 3) { return format_text("data.Value.UInt({})", unsigned); }
+    if (kind == 2) {
+        return format_text("data.Value.Int({})", signed);
+    }
+    if (kind == 3) {
+        return format_text("data.Value.UInt({})", unsigned);
+    }
     if (kind == 4) {
         assert(real == real && real <= 1.7976931348623157e308 &&
-                   real >= -1.7976931348623157e308, "Asset reals must be finite");
+               real >= -1.7976931348623157e308, "Asset reals must be finite");
         // Decimal subnormal literals are intentionally rejected by the number
         // parser. Scale by exact powers of two so both source operands are
         // normal and their product reconstructs every subnormal bit exactly.
@@ -101,7 +124,9 @@ Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
             return format_text("data.Value.Real({} * 2.2204460492503131e-16)", scaled);
         }
         literal := format_text("{:.17g}", real);
-        if (!strings.ContainsAny(literal, ".eE")) { literal = strings.Join([literal, ".0"], ""); }
+        if (!strings.ContainsAny(literal, ".eE")) {
+            literal = strings.Join([literal, ".0"], "");
+        }
         return format_text("data.Value.Real({})", literal);
     }
     assert(kind == 5, "Invalid asset scalar kind");
@@ -114,8 +139,8 @@ EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     count := length(kinds);
     assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
     assert(length(parents) == count && length(keys) == count && length(texts) == count &&
-               length(signed) == count && length(unsigned) == count && length(reals) == count &&
-               length(booleans) == count, "Asset source columns must have equal lengths");
+           length(signed) == count && length(unsigned) == count && length(reals) == count &&
+           length(booleans) == count, "Asset source columns must have equal lengths");
     assert(parents[0] == -1, "Asset source needs exactly one root");
     children: int[] = [];
     index := first;
@@ -133,8 +158,12 @@ EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     at := first;
     while (at < last) {
         parent := parents[at];
-        if (at == first) { parent = -1; }
-        if (at > first) { assert(parent >= 0 && parent < at, "Asset parents must precede their children"); }
+        if (at == first) {
+            parent = -1;
+        }
+        if (at > first) {
+            assert(parent >= 0 && parent < at, "Asset parents must precede their children");
+        }
         while (length(stack) > 0 && stack[length(stack) - 1] != parent) {
             closed := stack[length(stack) - 1];
             stack.remove_index(length(stack) - 1);
@@ -143,12 +172,16 @@ EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
                 parts.append(Indent(length(stack)));
             }
             parts.append("])");
-            if (closed != first && parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
+            if (closed != first && parents[closed] >= 0 && kinds[parents[closed]] == 6) {
+                parts.append(")");
+            }
         }
         if (at > first) {
             assert(length(stack) > 0 && stack[length(stack) - 1] == parent,
                    "Asset children must form a preorder tree");
-            if (children[parent - first] > 0) { parts.append(","); }
+            if (children[parent - first] > 0) {
+                parts.append(",");
+            }
             parts.append("\n");
             parts.append(Indent(length(stack)));
             children[parent - first] += 1;
@@ -163,20 +196,27 @@ EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
         }
         if (at != first && length(helpers) > 0 && helpers[at]) {
             parts.append(format_text("AssetValue{}()", at));
-            if (parent >= 0 && kinds[parent] == 6) { parts.append(")"); }
+            if (parent >= 0 && kinds[parent] == 6) {
+                parts.append(")");
+            }
             at = ends[at];
             continue;
         }
         kind := kinds[at];
         assert(length(stack) <= MaxDepth, "Asset source exceeds depth quota");
         if (kind == 6 || kind == 7) {
-            if (kind == 6) { parts.append(format_text("{}.Object([", alias)); }
-            else { parts.append(format_text("{}.List([", alias)); }
+            if (kind == 6) {
+                parts.append(format_text("{}.Object([", alias));
+            } else {
+                parts.append(format_text("{}.List([", alias));
+            }
             stack.append(at);
         } else {
             scalar := Scalar(kind, texts[at], signed[at], unsigned[at], reals[at], booleans[at]);
             parts.append(strings.Join([alias, strings.Slice(scalar, 4, strings.ByteLength(scalar) - 4)], ""));
-            if (parent >= 0 && kinds[parent] == 6) { parts.append(")"); }
+            if (parent >= 0 && kinds[parent] == 6) {
+                parts.append(")");
+            }
         }
         at += 1;
     }
@@ -188,9 +228,13 @@ EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
             parts.append(Indent(length(stack)));
         }
         parts.append("])");
-        if (closed != first && parents[closed] >= 0 && kinds[parents[closed]] == 6) { parts.append(")"); }
+        if (closed != first && parents[closed] >= 0 && kinds[parents[closed]] == 6) {
+            parts.append(")");
+        }
     }
-    if (document) { parts.append("\n    )\n}\n"); }
+    if (document) {
+        parts.append("\n    )\n}\n");
+    }
     used: int = 0;
     for (part in parts) {
         bytes := strings.ByteLength(part);
@@ -223,7 +267,9 @@ NeedsHelpers :: (parents: int[]) -> bool {
             depth = depths[parent] + 1;
         }
         assert(depth <= MaxDepth, "Asset source exceeds depth quota");
-        if (depth > InlineDepth) { needed = true; }
+        if (depth > InlineDepth) {
+            needed = true;
+        }
         depths.append(depth);
         at += 1;
     }
@@ -242,12 +288,16 @@ CheckedJoin :: (parts: string[]) -> string {
 
 MemberSource :: (at: int, kinds: int[], texts: string[], signed: int64[], unsigned: uint64[],
                  reals: double[], booleans: bool[]) -> string {
-    if (kinds[at] >= 6) { return format_text("AssetValue{}()", at); }
+    if (kinds[at] >= 6) {
+        return format_text("AssetValue{}()", at);
+    }
     return Scalar(kinds[at], texts[at], signed[at], unsigned[at], reals[at], booleans[at]);
 }
 
 GroupName :: (at: int, object: bool, level: int, group: int) -> string {
-    if (object) { return format_text("AssetFields{}_{}_{}", at, level, group); }
+    if (object) {
+        return format_text("AssetFields{}_{}_{}", at, level, group);
+    }
     return format_text("AssetValues{}_{}_{}", at, level, group);
 }
 
@@ -256,7 +306,10 @@ WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: i
     object := kinds[at] == 6;
     element := "data.Value";
     constructor := "data.List";
-    if (object) { element = "data.Field"; constructor = "data.Object"; }
+    if (object) {
+        element = "data.Field";
+        constructor = "data.Object";
+    }
     members: int[] = [];
     child := at + 1;
     while (child < ends[at]) {
@@ -271,17 +324,23 @@ WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: i
         parts.append("{\n    return [\n");
         first := group * GroupWidth;
         last := first + GroupWidth;
-        if (last > length(members)) { last = length(members); }
+        if (last > length(members)) {
+            last = length(members);
+        }
         index := first;
         while (index < last) {
             member := members[index];
-            if (index > first) { parts.append(",\n"); }
+            if (index > first) {
+                parts.append(",\n");
+            }
             parts.append("        ");
             if (object) {
                 parts.append(format_text("data.Field.Named({}, ", Quoted(keys[member])));
             }
             parts.append(MemberSource(member, kinds, texts, signed, unsigned, reals, booleans));
-            if (object) { parts.append(")"); }
+            if (object) {
+                parts.append(")");
+            }
             index += 1;
         }
         parts.append("\n    ];\n}\n\n");
@@ -297,7 +356,9 @@ WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: i
             parts.append(format_text("    out: {}[] = [];\n", element));
             first := group * GroupWidth;
             last := first + GroupWidth;
-            if (last > groups) { last = groups; }
+            if (last > groups) {
+                last = groups;
+            }
             index := first;
             while (index < last) {
                 parts.append(format_text("    out.extend({}());\n", GroupName(at, object, level, index)));
@@ -354,7 +415,9 @@ DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], si
                 seen[identity] = true;
             }
         }
-        if (kind >= 6) { stack.append(at); }
+        if (kind >= 6) {
+            stack.append(at);
+        }
         at += 1;
     }
     while (length(stack) > 0) {
@@ -368,7 +431,9 @@ DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], si
         if (widths[at] > GroupWidth) {
             helpers[at] = true;
             while (child < ends[at]) {
-                if (kinds[child] >= 6) { helpers[child] = true; }
+                if (kinds[child] >= 6) {
+                    helpers[child] = true;
+                }
                 child = ends[child];
             }
         } else {
@@ -379,14 +444,19 @@ DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], si
                 remaining -= 1;
                 child_cost := costs[child];
                 child_height := heights[child];
-                if (helpers[child]) { child_cost = 1; child_height = 0; }
+                if (helpers[child]) {
+                    child_cost = 1;
+                    child_height = 0;
+                }
                 if (child_cost > InlineNodes - cost - remaining || child_height + 1 > InlineDepth) {
                     helpers[child] = true;
                     child_cost = 1;
                     child_height = 0;
                 }
                 cost += child_cost;
-                if (child_height + 1 > height) { height = child_height + 1; }
+                if (child_height + 1 > height) {
+                    height = child_height + 1;
+                }
                 child = ends[child];
             }
             costs[at] = cost;
@@ -421,8 +491,8 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     count := length(kinds);
     assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
     assert(length(parents) == count && length(keys) == count && length(texts) == count &&
-               length(signed) == count && length(unsigned) == count && length(reals) == count &&
-               length(booleans) == count, "Asset source columns must have equal lengths");
+           length(signed) == count && length(unsigned) == count && length(reals) == count &&
+           length(booleans) == count, "Asset source columns must have equal lengths");
     assert(parents[0] == -1, "Asset source needs exactly one root");
     if (document && NeedsHelpers(parents)) {
         return DeepSource(kinds, parents, keys, texts, signed, unsigned, reals, booleans, alias);
@@ -439,7 +509,9 @@ Emit :: (kinds: int[], parents: int[], keys: string[], texts: string[],
 SourceBytes :: (text: string) -> byte[] {
     assert(strings.ByteLength(text) <= MaxBytes, "Asset source exceeds byte quota");
     out: byte[] = [];
-    for (value in strings.Bytes(text)) { out.append(byte(value)); }
+    for (value in strings.Bytes(text)) {
+        out.append(byte(value));
+    }
     return out;
 }
 

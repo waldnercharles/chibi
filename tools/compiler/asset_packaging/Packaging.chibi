@@ -4,7 +4,9 @@ import strings "core:strings"
 
 Bytes :: (text: string) -> byte[] {
     result: byte[] = [];
-    for (value in strings.Bytes(text)) { result.append(byte(value)); }
+    for (value in strings.Bytes(text)) {
+        result.append(byte(value));
+    }
     return result;
 }
 
@@ -23,7 +25,9 @@ Join :: (parts: string[]) -> string {
         }
         parts = next;
     }
-    if (length(parts) == 0) { return ""; }
+    if (length(parts) == 0) {
+        return "";
+    }
     return parts[0];
 }
 
@@ -35,7 +39,9 @@ pub Packaged :: (paths: string[], sources: string[]) -> byte[] {
     index: int = 0;
     while (index < length(paths)) {
         parts.append(format_text("static const unsigned char asset_library_{}[] = {{", index));
-        for (value in strings.Bytes(sources[index])) { parts.append(format_text("{},", value)); }
+        for (value in strings.Bytes(sources[index])) {
+            parts.append(format_text("{},", value));
+        }
         parts.append("0};\n");
         index += 1;
     }
@@ -45,7 +51,9 @@ pub Packaged :: (paths: string[], sources: string[]) -> byte[] {
         path := paths[index];
         assert(strings.HasPrefix(path, "/sdk/core/") || strings.HasPrefix(path, "/sdk/game/"));
         assert(strings.ByteLength(path) > 10);
-        for (value in strings.Bytes(path)) { assert(value >= 32 && value != 34 && value != 92); }
+        for (value in strings.Bytes(path)) {
+            assert(value >= 32 && value != 34 && value != 92);
+        }
         parts.append(format_text("{{\"{}\", (const char *)asset_library_{}}},\n", path, index));
         index += 1;
     }

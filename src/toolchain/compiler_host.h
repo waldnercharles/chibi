@@ -3,6 +3,7 @@
 
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/module.h"
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
@@ -48,6 +49,8 @@ void compiler_host_free(compiler_host *);
  * (data functions with no flow, outcomes or suspension), their ports, and each
  * native's identity and signature ABI. Malloc-owned JSON; release with free(). */
 char *compiler_host_target_json(const compiler_host *, size_t *length);
+/* The artifact's root module, which the host owns, for inspection. */
+const execution_module *compiler_host_root(const compiler_host *);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);

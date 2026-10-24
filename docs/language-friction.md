@@ -798,6 +798,20 @@ stage zero has checked, but on its own it would accept such a function.
 
 Suggestion: stage one applies the same terminating-statement rule.
 
+### Stage one's element stores into call results copy arguments
+
+Stage one. A function whose local array holds an authored call's result and
+then takes an element store (`rest := Shift(rest); rest[0] = 1`) is one the
+sharing analysis cannot prove safe in stage one's build, though stage zero's
+build of the same source shares. The function then copies every argument on
+each call, and so does every caller. In M2 the exact division in `Number.chibi`
+had this shape, and stage two compiled itself in 775 s instead of 37 s. The
+division now adds the bit instead of storing it, and the self-compile check
+fails when any function of stage one's build of the compiler copies.
+
+Suggestion: stage one's element store keeps the local's array as stage zero's
+does, so the analysis sees that it owns it.
+
 ### Calls and record snapshots are costly
 
 Runtime. Profiling the tokenizer showed record validation at the top: storing

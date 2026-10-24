@@ -247,6 +247,13 @@ static const sample samples[] = {
       .message = "Constant shift count is too large",
       .line = 2,
       .column = 17 },
+    { .name = "parenthesized negative shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nShift :: (a: int) -> int { return a << (2 - "
+                "3); }\n",
+      .message = "Shift count must not be negative",
+      .line = 2,
+      .column = 41 },
     { .name = "constant signed shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nCount: int : 3;\nBad: int : 1 << Count;",
@@ -3977,6 +3984,40 @@ static bool stage_two_samples()
  * the compiler host, compiles the same packages to the same bytes, every
  * sample as stage one does, and reads the listed floating literals as stage
  * one does. */
+/* The functions of the package compiler's module `p` that copy their
+ * arguments, other than those that run once per compile, each reported. */
+static int copying_functions(const execution_module_plan *p)
+{
+    const char *const once[] = { "Compile",
+                                 "CompileClosure",
+                                 "CompileWithEffects",
+                                 "CompileClosureWithEffects",
+                                 "CompileBehavior",
+                                 "CompileBehaviors",
+                                 "BehaviorRejection",
+                                 "CollectScalar",
+                                 "Declare",
+                                 "DeclarePackage" };
+    int copying = 0;
+    for (int i = 0; i < p->function_count; i++) {
+        const behavior_function *body = p->functions[i].body;
+        bool allowed = false;
+        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
+            char name[128];
+            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
+            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
+        }
+        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
+            fprintf(
+                stderr,
+                "package compiler function %016llx copies its arguments\n",
+                (unsigned long long)p->functions[i].id
+            );
+            copying++;
+        }
+    }
+    return copying;
+}
 TEST_CASE(package_compiler_compiles_itself)
 {
     REQUIRE(prepare());
@@ -4082,11 +4123,16 @@ TEST_CASE(package_compiler_compiles_itself)
             at
         );
     }
+    /* Stage one's build of the compiler shares arguments as stage zero's
+     * does: a function that copies them made stage two compile itself 20
+     * times slower. */
+    int copying = copying_functions(&compiler_host_root(host)->plan);
     bool seeded = same && write_seed(stage_two, length, json, json_length);
     free(again.bytes);
     free(stage_two);
     free(json);
     REQUIRE(same);
+    REQUIRE(copying == 0);
     REQUIRE(seeded);
     return stage_two_samples() && stage_two_literals();
 }
@@ -5169,36 +5215,11 @@ static bool takes_project_identities(int b)
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",
-                                 "CompileClosure",
-                                 "CompileWithEffects",
-                                 "CompileClosureWithEffects",
-                                 "CompileBehavior",
-                                 "CompileBehaviors",
-                                 "BehaviorRejection",
-                                 "Declare",
-                                 "DeclarePackage" };
-    const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
-                                          ->module->plan;
-    int copying = 0;
-    for (int i = 0; i < p->function_count; i++) {
-        const behavior_function *body = p->functions[i].body;
-        bool allowed = false;
-        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
-            char name[128];
-            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
-            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
-        }
-        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
-            fprintf(
-                stderr,
-                "package compiler function %016llx copies its arguments\n",
-                (unsigned long long)p->functions[i].id
-            );
-            copying++;
-        }
-    }
-    REQUIRE(copying == 0);
+    REQUIRE(
+        copying_functions(
+            &compiler_fixture_package(&fixture, 1, PACKAGE)->module->plan
+        ) == 0
+    );
     return true;
 }
 /* The behavior samples from `first` before `last` compile alike on both

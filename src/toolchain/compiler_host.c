@@ -87,6 +87,10 @@ compiler_host *compiler_host_load(
     }
     return host;
 }
+const execution_module *compiler_host_root(const compiler_host *host)
+{
+    return host->root;
+}
 uint64_t compiler_host_entry(const char *symbol)
 {
     return script_catalog_id("package-symbol", symbol);

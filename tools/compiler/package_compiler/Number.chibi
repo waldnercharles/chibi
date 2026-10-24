@@ -705,8 +705,11 @@ MagnitudeDivide :: (a: uint64[], b: uint64[]) -> Division {
     rest: uint64[] = [];
     bit := MagnitudeBits(a) - 1;
     while (bit >= 0) {
-        rest = MagnitudeShiftLeft(Magnitude(Exact(false, rest)), 1);
-        rest[0] = rest[0] | ((a[bit / 32] >> uint64(bit % 32)) & 1);
+        // Adds the next bit rather than storing it in the shifted array: an
+        // element store into a call's result makes stage one's build of
+        // this function copy its arguments, and so every caller's.
+        shifted := MagnitudeShiftLeft(Magnitude(Exact(false, rest)), 1);
+        rest = MagnitudeAdd(shifted, [(a[bit / 32] >> uint64(bit % 32)) & 1]);
         if (MagnitudeCompare(rest, divisor) >= 0) {
             rest = MagnitudeSubtract(rest, divisor);
             quotient[bit / 32] = quotient[bit / 32] | (uint64(1) << uint64(bit % 32));

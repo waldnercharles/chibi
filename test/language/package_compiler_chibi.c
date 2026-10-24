@@ -104,13 +104,15 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. */
+ * Copied function, which assigns its array, does not. An `ahead` sample
+ * uses an integer rule stage zero does not apply yet, so no stage-zero
+ * closure checks it. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects;
+        same_rejection, c_string_probe, host_effects, ahead;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -193,41 +195,64 @@ static const native_definition_pack CSTRING_PACK = {
     .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
-    { .name = "typed constant shifts discard bits",
+    { .name = "typed constants fold exactly",
       .group = TYPE_SAMPLES,
+      .ahead = true,
       .source = "package facts\n"
-                "Sign: int : 1 << 31;\n"
-                "Zero: byte : 128 << 1;\n"
-                "Small: int8 : 64 << 1;\n"
-                "Unsigned: uint : 4294967295 << 1;\n"
+                "Sign: int : -1 << 31;\n"
+                "Small: int8 : (64 << 1) - 1;\n"
+                "Unsigned: uint : 4294967295 >> 1;\n"
                 "Floor: int : -3 >> 1;\n"
-                "Wide: int64 : 1 << 63;\n"
+                "Wide: int64 : -1 << 63;\n"
+                "Mask: uint64 : ~0;\n"
+                "Low: byte : ~byte(15);\n"
+                "Big: int : (1 << 100) >> 98;\n"
+                "Half: int8 : (127 + 1) / 2;\n"
+                "Wrapped: byte : byte(wrap: 300);\n"
                 "ReadSign :: () -> int { return Sign; }\n"
-                "ReadZero :: () -> byte { return Zero; }\n"
                 "ReadSmall :: () -> int8 { return Small; }\n"
                 "ReadUnsigned :: () -> uint { return Unsigned; }\n"
                 "ReadFloor :: () -> int { return Floor; }\n"
-                "ReadWide :: () -> int64 { return Wide; }",
+                "ReadWide :: () -> int64 { return Wide; }\n"
+                "ReadMask :: () -> uint64 { return Mask; }\n"
+                "ReadLow :: () -> byte { return Low; }\n"
+                "ReadBig :: () -> int { return Big; }\n"
+                "ReadHalf :: () -> int8 { return Half; }\n"
+                "ReadWrapped :: () -> byte { return Wrapped; }",
       .calls = { { .function = "ReadSign", .arguments = "[]", .expected = "[-2147483648]" },
-                 { .function = "ReadZero", .arguments = "[]", .expected = "[0]" },
-                 { .function = "ReadSmall", .arguments = "[]", .expected = "[-128]" },
-                 { .function = "ReadUnsigned", .arguments = "[]", .expected = "[4294967294]" },
+                 { .function = "ReadSmall", .arguments = "[]", .expected = "[127]" },
+                 { .function = "ReadUnsigned", .arguments = "[]", .expected = "[2147483647]" },
                  { .function = "ReadFloor", .arguments = "[]", .expected = "[-2]" },
-                 { .function = "ReadWide",
-                   .arguments = "[]",
-                   .expected = "[-9223372036854775808]" } } },
+                 { .function = "ReadWide", .arguments = "[]", .expected = "[-9223372036854775808]" },
+                 { .function = "ReadMask", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "ReadLow", .arguments = "[]", .expected = "[240]" },
+                 { .function = "ReadBig", .arguments = "[]", .expected = "[4]" },
+                 { .function = "ReadHalf", .arguments = "[]", .expected = "[64]" },
+                 { .function = "ReadWrapped", .arguments = "[]", .expected = "[44]" } } },
+    { .name = "constant outside its type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: int : 1 << 31;",
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 12 },
     { .name = "constant negative shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nBad: int : 1 << -1;",
-      .message = "Constant shift count is outside the type",
+      .message = "Shift count must not be negative",
       .line = 2,
-      .column = 12 },
-    { .name = "constant shift count at width",
+      .column = 17 },
+    { .name = "constant shift count too large",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nBad: int : 1 >> 32;",
-      .message = "Constant shift count is outside the type",
+      .source = "package facts\nBad: int : 1 >> 4097;",
+      .message = "Constant shift count is too large",
       .line = 2,
-      .column = 12 },
+      .column = 17 },
+    { .name = "constant signed shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nCount: int : 3;\nBad: int : 1 << Count;",
+      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .line = 3,
+      .column = 17 },
     { .name = "comparisons of untyped literals",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -698,8 +723,10 @@ static const sample samples[] = {
                 "Narrow :: (a: int8, b: uint16, c: uint, d: int16) -> int64 {\n"
                 "    x: int8 = a - 1;\n    y: uint = c / 2;\n"
                 "    return int64(x) + int64(b) * 2 + int64(y) - int64(d);\n}\n"
-                "Mixed :: (a: int8, b: byte) -> int { return a + b; }\n"
-                "Big :: (a: uint, b: int) -> int64 { return a + b; }\n"
+                "Mixed :: (a: int8, b: byte) -> int { return int(a) + int(b); "
+                "}\n"
+                "Big :: (a: uint, b: int) -> int64 { return int64(a) + "
+                "int64(b); }\n"
                 "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
                 "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
                 "int(p.a) + int(p.b); }\n",
@@ -708,6 +735,98 @@ static const sample samples[] = {
                  { .function = "Big", .arguments = "[4000000000,-1]", .expected = "[3999999999]" },
                  { .function = "Store", .arguments = "[]", .expected = "[65535]" },
                  { .function = "Make", .arguments = "[-2]", .expected = "[5]" } } },
+    { .name = "clamp label",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nClamp :: (v: int) -> byte { return byte(clamp: "
+                "v); }\n",
+      .message = "A conversion argument may only be named wrap",
+      .line = 2,
+      .column = 41 },
+    { .name = "mixed integer types",
+      .source = "package facts\nMixed :: (a: int8, b: byte) -> int { return a "
+                "+ b; }\n",
+      .message = "Mismatched integer types int8 and byte; convert one operand",
+      .line = 2,
+      .column = 45 },
+    { .name = "constant division by zero",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
+                "}\n",
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 34 },
+    { .name = "compound division by zero",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nHalve :: (a: int) -> int { b := a; b /= 0; "
+                "return b; }\n",
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 36 },
+    { .name = "folded constant outside its type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBig :: () -> int { return 1 << 32; }\n",
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 27 },
+    { .name = "conversion outside its type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: byte : byte(300);\n",
+      .message = "Constant does not fit in byte; use byte(wrap: value)",
+      .line = 2,
+      .column = 13 },
+    { .name = "negated unsigned constant",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: byte : -byte(1);\n",
+      .message = "Cannot negate an unsigned constant",
+      .line = 2,
+      .column = 13 },
+    { .name = "signed shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nShift :: (a: int, n: int) -> int { return a << "
+                "n; }\n",
+      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .line = 2,
+      .column = 48 },
+    /* Integer operations never fail at run time: unsigned negation wraps, a
+     * count at or past the width gives 0 and a zero divisor gives 0. */
+    { .name = "total integer operations",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Negate :: (a: byte) -> byte { return -a; }\n"
+                "Wide :: (a: uint64) -> uint64 { return -a; }\n"
+                "Far :: (a: int) -> int { return a << 40; }\n"
+                "Fill :: (a: int) -> int { return a >> 40; }\n"
+                "Divide :: (a: int, b: int) -> int { return a / b + a % b; }\n",
+      .calls = { { .function = "Negate", .arguments = "[1]", .expected = "[255]" },
+                 { .function = "Wide", .arguments = "[1]", .expected = "[18446744073709551615]" },
+                 { .function = "Far", .arguments = "[3]", .expected = "[0]" },
+                 { .function = "Fill", .arguments = "[-5]", .expected = "[-1]" },
+                 { .function = "Fill", .arguments = "[5]", .expected = "[0]" },
+                 { .function = "Divide", .arguments = "[7,0]", .expected = "[7]" } } },
+    /* An untyped constant expression that names a constant takes its type
+     * from its use, and only integer division by zero is an error. */
+    { .name = "untyped constant expressions",
+      .group = TYPE_SAMPLES,
+      .ahead = true,
+      .source = "package facts\n"
+                "Count: uint : 3;\n"
+                "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
+                "Huge :: (f: double) -> bool { return f / 0 > 1000000.0; }\n",
+      .calls = { { .function = "Eight", .arguments = "[8]", .expected = "[true]" },
+                 { .function = "Huge", .arguments = "[1]", .expected = "[true]" } } },
+    /* A shift has its left operand's type, and a count past that type's
+     * maximum clamps to it. Stage zero types the count from the left today. */
+    { .name = "shift counts clamp",
+      .group = TYPE_SAMPLES,
+      .ahead = true,
+      .source = "package facts\n"
+                "Literal :: (a: byte) -> byte { return a << 300; }\n"
+                "Counted :: (a: byte, n: uint) -> byte { return a << n; }\n"
+                "Signed :: (a: int8, n: uint64) -> int8 { return a >> n; }\n",
+      .calls = { { .function = "Literal", .arguments = "[1]", .expected = "[0]" },
+                 { .function = "Counted", .arguments = "[1,300]", .expected = "[0]" },
+                 { .function = "Counted", .arguments = "[1,7]", .expected = "[128]" },
+                 { .function = "Signed", .arguments = "[-5,4096]", .expected = "[-1]" } } },
     /* uint64 and byte have every operator, unsigned ordering and division
      * included, as stage zero computes them. */
     { .name = "unsigned arithmetic",
@@ -732,6 +851,7 @@ static const sample samples[] = {
      * declared in any order and in an imported package. */
     { .name = "constant expressions",
       .group = TYPE_SAMPLES,
+      .ahead = true,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "Area :: Width * Height;\n"
@@ -965,7 +1085,8 @@ static const sample samples[] = {
                 "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
                 "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
                 "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-                "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
+                "Grow :: (xs: ref int[]) { item: int = 7; xs = append(xs, "
+                "item); }\n"
                 "Inc :: (k: int) -> int { Bump(k); return k; }\n"
                 "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
                 "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
@@ -1157,8 +1278,8 @@ static const sample samples[] = {
                 "Plain + lib.Step; }\n"
                 "Hidden :: () -> int { Base: int = 1; return Base; }\n"
                 "Limits :: () -> int {\n"
-                "    if (lib.Low < 0 && lib.High > 0) { return lib.High + "
-                "lib.Low; }\n"
+                "    high := lib.High;\n"
+                "    if (lib.Low < 0 && high > 0) { return high + lib.Low; }\n"
                 "    return 0;\n}\n"
                 "Scale :: () -> int { return lib.Scaled(2); }\n"
                 "Tripled :: () -> int { return Triple(2); }",
@@ -1252,26 +1373,26 @@ static const sample samples[] = {
                 "    for (item in bytes) { hash = (hash ^ uint64(item)) * "
                 "1099511628211; }\n"
                 "    return hash;\n}\n"
-                "Bytes :: () -> byte[] {\n"
+                "Bytes :: (n: int) -> byte[] {\n"
                 "    out: byte[] = [1, 2, 255];\n"
-                "    out = append(out, byte(wrap: 300));\n"
+                "    out = append(out, byte(wrap: n));\n"
                 "    out = append(out, Small);\n"
                 "    return out;\n}\n"
-                "High :: (n: int) -> int { return int(wrap: (Mask >> "
-                "56) + uint64(n)); }\n"
-                "Mixed :: (a: int, b: int64) -> int64 { return a + b; "
+                "High :: (n: int) -> int { mask := Mask; return int(wrap: "
+                "(mask >> 56) + uint64(n)); }\n"
+                "Mixed :: (a: int, b: int64) -> int64 { return int64(a) + b; "
                 "}\n"
                 "Store :: (a: int) -> int64 { x: int64 = a; x += 10; x "
                 "*= 3; return x; }\n"
                 "Narrow :: (v: int64) -> int { return int(v); }\n"
-                "Clamp :: (v: int) -> byte { return byte(clamp: v); }",
+                "Clamp :: (v: int) -> byte { return byte(v); }",
       .calls = { { .function = "Hash", .arguments = "[[1,2,3]]", .expected = "[11570874782335668893]" },
-                 { .function = "Bytes", .arguments = "[]", .expected = "[[1,2,255,44,200]]" },
+                 { .function = "Bytes", .arguments = "[300]", .expected = "[[1,2,255,44,200]]" },
                  { .function = "High", .arguments = "[1]", .expected = "[256]" },
                  { .function = "Mixed", .arguments = "[2,5000000000]", .expected = "[5000000002]" },
                  { .function = "Store", .arguments = "[4]", .expected = "[42]" },
                  { .function = "Narrow", .arguments = "[7]", .expected = "[7]" },
-                 { .function = "Narrow", .arguments = "[5000000000]", .expected = NULL },
+                 { .function = "Narrow", .arguments = "[5000000000]", .expected = "[2147483647]" },
                  { .function = "Clamp", .arguments = "[300]", .expected = "[255]" },
                  { .function = "Clamp", .arguments = "[-5]", .expected = "[0]" } } },
     { .name = "wide values",
@@ -1283,7 +1404,7 @@ static const sample samples[] = {
                 "(v << 4) | (v >> 60) & 0xF; }\n"
                 "Equal :: (a: int, b: int) -> bool { return uint64(a) "
                 "== uint64(b) && uint64(a) != 0; }\n"
-                "Twice :: () -> int64 { return Wide * 2; }\n"
+                "Twice :: () -> int64 { wide := Wide; return wide * 2; }\n"
                 "Negative :: (n: int64) -> bool { return n < 0; }\n"
                 "Mk :: (v: uint64) -> Tag { return Tag.Bits(v); }\n"
                 "Pick :: (n: int) -> uint64 {\n"
@@ -1343,7 +1464,8 @@ static const sample samples[] = {
                 "Point :: struct { x: int; y: int; }\n"
                 "Sizes :: (n: int) -> int {\n"
                 "    flags := resize([false], n);\n"
-                "    counts := resize([int(0)], n);\n"
+                "    zero: int = 0;\n"
+                "    counts := resize([zero], n);\n"
                 "    counts[0] = 7;\n"
                 "    total: int = 0;\n"
                 "    for (count in counts) { total += count; }\n"
@@ -1353,7 +1475,8 @@ static const sample samples[] = {
                 "\"yy\", \"zzz\"]; return length(words); }\n"
                 "Points :: () -> int { p: Point = {x: 1, y: 2}; points "
                 ":= [p, p]; return points[1].y + length(points); }\n"
-                "Wide :: () -> uint64 { bits := [uint64(1), 2, 0xFF]; "
+                "Wide :: () -> uint64 { one: uint64 = 1; bits := [one, 2, "
+                "0xFF]; "
                 "return bits[1] + bits[2]; }",
       .calls = { { .function = "Sizes", .arguments = "[3]", .expected = "[73]" },
                  { .function = "Words", .arguments = "[]", .expected = "[3]" },
@@ -1419,8 +1542,8 @@ static const sample samples[] = {
                 "Plain :: () -> string { return format_text(\"plain\"); "
                 "}\n"
                 "Mixed :: (flag: bool) -> string { big: uint64 = "
-                "0xFFFFFFFFFFFFFFFF; return format_text(\"{} {} {}\", flag, "
-                "big, int64(-3)); }",
+                "0xFFFFFFFFFFFFFFFF; small: int64 = -3; return "
+                "format_text(\"{} {} {}\", flag, big, small); }",
       .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
                  { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
                  { .function = "Mixed",
@@ -1770,7 +1893,7 @@ static const sample samples[] = {
       .line = 2,
       .column = 10 },
     { .name = "constant overflow",
-      .source = "package facts\nA: int : 65536 * 65536 / 65536;",
+      .source = "package facts\nA: int : 65536 * 65536;",
       .message = "Constant value is outside the range of int",
       .line = 2,
       .column = 10 },
@@ -1849,15 +1972,9 @@ static const sample samples[] = {
     { .name = "signed with uint64",
       .source = "package facts\nOne :: (a: int, b: uint64) -> uint64 { "
                 "return a + b; }",
-      .message = "int and uint64 operands need an explicit conversion, such as "
-                 "int(value)",
+      .message = "Mismatched integer types int and uint64; convert one operand",
       .line = 2,
       .column = 47 },
-    { .name = "unsigned negation",
-      .source = "package facts\nOne :: (a: uint64) -> uint64 { return -a; }",
-      .message = "unsupported arithmetic type",
-      .line = 2,
-      .column = 39 },
     { .name = "byte literal range",
       .source = "package facts\nOne :: () -> byte { return 256; }",
       .message = "Numeric literal is outside the range of byte",
@@ -1905,7 +2022,7 @@ static const sample samples[] = {
     { .name = "conversion name",
       .source = "package facts\nOne :: () -> byte { return byte(round: "
                 "1); }",
-      .message = "A conversion argument may only be named wrap or clamp",
+      .message = "A conversion argument may only be named wrap",
       .line = 2,
       .column = 33 },
     { .name = "floating constant",
@@ -1919,12 +2036,13 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
       .column = 31 },
+    /* An untyped operand of a conversion is int64, or uint64 beyond it,
+     * in parentheses too. */
     { .name = "wrapped literal in parentheses",
+      .ahead = true,
       .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
-      .message = "Numeric literal is outside the range of int64",
-      .line = 2,
-      .column = 38 },
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" } } },
     { .name = "untyped empty array",
       .source = "package facts\nOne :: () -> int { xs := []; return "
                 "length(xs); }",
@@ -3446,6 +3564,9 @@ static bool run_samples(sample_group group, int b)
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
+            if (value->tag != tag(b, "Rejected")) {
+                fprintf(stderr, "package compiler %s: accepted\n", s->name);
+            }
             REQUIRE(value->tag == tag(b, "Rejected"));
             pin_value message, line, column;
             REQUIRE(get(&value->values[0], "message", &message));
@@ -3501,17 +3622,21 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   ((b && !s->host_effects) ||
+                   ((b && !s->host_effects) || s->ahead ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
             }
-            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
+            ran = ran && (b || s->ahead ||
+                          run(expected, expected_length, &s->calls[c], 0));
         }
         free(bytes);
         free(expected);
+        if (!ran) {
+            fprintf(stderr, "package compiler %s: differs\n", s->name);
+        }
         REQUIRE(ran);
     }
     return true;

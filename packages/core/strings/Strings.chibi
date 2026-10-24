@@ -158,9 +158,9 @@ IndexFrom :: (s: string, substr: string, start: int) -> int {
     h: int64 = 0;
     i: int = 0;
     while (i < n) {
-        hash = (hash * 16777619 + ByteAt(substr, i)) & 0xFFFFFFFF;
+        hash = (hash * 16777619 + int64(ByteAt(substr, i))) & 0xFFFFFFFF;
         pow = (pow * 16777619) & 0xFFFFFFFF;
-        h = (h * 16777619 + ByteAt(s, start + i)) & 0xFFFFFFFF;
+        h = (h * 16777619 + int64(ByteAt(s, start + i))) & 0xFFFFFFFF;
         i += 1;
     }
     i += start;
@@ -168,7 +168,7 @@ IndexFrom :: (s: string, substr: string, start: int) -> int {
         return start;
     }
     while (i < size) {
-        h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i - n)) & 0xFFFFFFFF;
+        h = (h * 16777619 + int64(ByteAt(s, i)) - pow * int64(ByteAt(s, i - n))) & 0xFFFFFFFF;
         i += 1;
         if (h == hash && MatchesAt(s, substr, i - n)) {
             return i - n;
@@ -206,9 +206,9 @@ pub LastIndex :: (s: string, substr: string) -> int {
     h: int64 = 0;
     i: int = 0;
     while (i < n) {
-        hash = (hash * 16777619 + ByteAt(substr, n - 1 - i)) & 0xFFFFFFFF;
+        hash = (hash * 16777619 + int64(ByteAt(substr, n - 1 - i))) & 0xFFFFFFFF;
         pow = (pow * 16777619) & 0xFFFFFFFF;
-        h = (h * 16777619 + ByteAt(s, size - 1 - i)) & 0xFFFFFFFF;
+        h = (h * 16777619 + int64(ByteAt(s, size - 1 - i))) & 0xFFFFFFFF;
         i += 1;
     }
     i = size - n;
@@ -217,7 +217,7 @@ pub LastIndex :: (s: string, substr: string) -> int {
     }
     i -= 1;
     while (i >= 0) {
-        h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i + n)) & 0xFFFFFFFF;
+        h = (h * 16777619 + int64(ByteAt(s, i)) - pow * int64(ByteAt(s, i + n))) & 0xFFFFFFFF;
         if (h == hash && Slice(s, i, n) == substr) {
             return i;
         }
@@ -558,11 +558,11 @@ pub Repeat :: (s: string, count: int) -> string {
     if (count < 1) {
         return "";
     }
-    total: int64 = int64(ByteLength(s)) * count;
+    total: int64 = int64(ByteLength(s)) * int64(count);
     result: string = s;
-    while (ByteLength(result) < total) {
-        rest: int64 = total - ByteLength(result);
-        result = format_text("{}{}", result, Slice(result, 0, int(clamp: rest)));
+    while (int64(ByteLength(result)) < total) {
+        rest: int64 = total - int64(ByteLength(result));
+        result = format_text("{}{}", result, Slice(result, 0, int(rest)));
     }
     return result;
 }

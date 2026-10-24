@@ -59,3 +59,5 @@ values a shipped build computes, and a shipped build has no checks.
 every width's boundary values through stage zero and stage one, on bytecode and
 SLJIT. Prepared instructions keep their encoding: a cast mode of EXACT clamps at
 run time like CLAMP, and compile time still rejects a constant that does not fit.
+Prepared format 21 marks code compiled under these semantics, so code prepared
+for format 20, which could trap, is rebuilt instead of loaded.

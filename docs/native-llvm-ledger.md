@@ -44,9 +44,9 @@ Each feature has one of these states:
 | One guard with a returning arm and a final return | `Body.chibi` `if_statement` | native | `else`, several guards, general control flow (M3) | none | `language-scalar-native`, `lazy_arm` IR order |
 | Comparing two untyped literals | `Steps.chibi` `OperatorStep` | native | none | none | `language-package-compiler-chibi-types` against stage zero, corpus `literal_comparison` |
 | `int` arithmetic, negation, complement, bitwise `&`, `\|`, `^`, parentheses | `Steps.chibi` `OperatorStep` | native | other widths | none: nothing fails (D1) | `language-scalar-native`: corpus `int_operators` probes at `INT32_MIN`, -7, -1 and 0; every emitter operation at eight edge values |
-| Shifts | `Steps.chibi` `OperatorStep`, `Number.chibi` | stage one | unsigned counts in the subset; the emitter already lowers them | none | `language-scalar-native` (emitter only); corpus `shift` rejects |
+| Shifts | `Steps.chibi` `ShiftStep` | stage one | unsigned counts in the subset; the emitter already lowers them | none: a count past the width gives 0 or the sign fill (D1) | `language-package-compiler-chibi-types` (`shift counts clamp`), `language-scalar-native` (emitter only); corpus `shift` rejects |
 | Other integer widths, `float`, `double` | `Number.chibi`, `src/runtime/arithmetic.c` | stage one | type mapping, conversions, float ABI | none | `language-package-compiler-chibi-types` (VM only) |
-| Checked, `wrap:` and `clamp:` conversions | `Number.chibi`, `src/runtime/conversions.c` | stage one | conversion operations; must not become plain casts | trap path | VM only |
+| Clamping and `wrap:` conversions | `Steps.chibi` `CallStep`, `src/runtime/conversions.c` | stage one | conversion operations; a clamp must not become a plain cast | none: nothing fails (D1) | VM only |
 | Locals, assignment, compound assignment | `Body.chibi`, `Steps.chibi` | stage one | slot lowering exists in `llvm_native`, not connected | none | corpus `local` rejects |
 | `while`, `for`, `break`, `continue` | `Body.chibi` | stage one | loops, budget checks per iteration (M3) | budget | VM only |
 | `&&`, `\|\|`, `!` short circuit | `Steps.chibi` | stage one | lazy lowering (M3) | none | corpus `logical_and` rejects |
@@ -59,7 +59,7 @@ Each feature has one of these states:
 | Arrays, bounds checks | `Steps.chibi`, `src/types/array.c` | stage one | managed arrays, bounds traps (M4) | allocator | corpus `array_result` rejects |
 | Maps | `Maps.chibi` | stage one (restricted) | managed maps (M4) | hashing, allocator | corpus `map_result` rejects |
 | References and `ref` loops | `References.chibi`, `src/execution/borrow.c` | stage one (partial) | borrow lowering (M4) | borrow checks | corpus `reference` rejects |
-| Constants | `Compile.chibi` constant folding | stage one | constant reads | none | corpus `constant` rejects |
+| Constants and constant expressions | `Compile.chibi` `FoldConstant`, exact arithmetic in `Number.chibi` | stage one | constant reads | none | `language-package-compiler-chibi-types` (`typed constants fold exactly`, rule rejections); corpus `constant` rejects |
 | Imports and multi-file packages | package graph, `Compile.chibi` | stage one | module composition (M5) | linker, initialization | corpus `import`, `qualified_call` reject |
 | Natives such as `length`, `format_text` | native catalog | stage one | foreign call ABI (M5) | runtime library | corpus `native_call` rejects |
 | `assert` | `Steps.chibi` intrinsic | stage one | trap with message | failure reporting | corpus `assert_before` rejects |

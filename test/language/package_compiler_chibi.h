@@ -16,5 +16,8 @@ void test_language_package_compiler_chibi_behaviors_rest();
 void test_language_package_compiler_chibi_sharing();
 void test_language_package_compiler_chibi_debug_free();
 void test_language_package_compiler_chibi_scalar();
+void test_language_package_compiler_chibi_native();
+/* The child mode of the native test: calls into one built library. */
+int test_language_package_compiler_chibi_native_call(int count, char **arguments);
 
 #endif

@@ -118,6 +118,9 @@ void test_language_record_producer(const char *directory);
 
 int main(int argc, char **argv)
 {
+    if (argc >= 3 && !strcmp(argv[1], "--package-compiler-chibi-native-call")) {
+        return test_language_package_compiler_chibi_native_call(argc - 2, argv + 2);
+    }
     bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
     bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
@@ -196,6 +199,8 @@ int main(int argc, char **argv)
                                              !strcmp(argv[1], "--package-compiler-chibi-debug-free");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
+    bool package_compiler_chibi_native = argc == 2 &&
+                                         !strcmp(argv[1], "--package-compiler-chibi-native");
     bool package_compiler_chibi_behaviors_rest = argc == 2 &&
                                                  !strcmp(argv[1], "--package-compiler-chibi-behaviors-rest");
     bool package_compiler_chibi_imports = argc == 2 &&
@@ -292,10 +297,10 @@ int main(int argc, char **argv)
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
          !package_compiler_chibi_collections_compiled &&
-         !package_compiler_chibi_imports_compiled &&
-         !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
-         !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_sharing &&
-         !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
+         !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
+         !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
+         !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
          !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
          !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
@@ -338,6 +343,7 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-sharing | "
             "--package-compiler-chibi-debug-free | "
             "--package-compiler-chibi-scalar | "
+            "--package-compiler-chibi-native | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -540,6 +546,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_debug_free();
     } else if (package_compiler_chibi_scalar) {
         test_language_package_compiler_chibi_scalar();
+    } else if (package_compiler_chibi_native) {
+        test_language_package_compiler_chibi_native();
     } else if (scalar_lowering_chibi) {
         test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {

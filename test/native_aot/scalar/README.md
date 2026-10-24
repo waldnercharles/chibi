@@ -5,7 +5,8 @@ the default compiler, a general semantic IR or a public ABI. The authored
 compiler's `CollectScalar` entry produces an owned `scalar_facts.Row[]`; the
 separate `scalar_llvm` consumer validates those rows and lowers them to the
 `llvm_native` emitter; the unchanged authored `Driver.Object` turns the IR into
-an object with trusted LLVM tools.
+an object with trusted LLVM tools. The [native LLVM ledger](../../../docs/native-llvm-ledger.md)
+tracks which language features reach native code and what blocks the rest.
 
 ## What is supported
 
@@ -15,15 +16,41 @@ function is the module's entry and must be `() -> int`. Every function:
 
 - takes at most eight plain `int` or `bool` parameters (no `ref`, defaults or
   managed, nominal or container types) and returns one plain `int` or `bool`;
-- has a body of exactly one `return EXPR;`;
-- returns an expression that is an integer literal within `int`, `true` or
-  `false`, one of its parameters, or a direct call `F(a, b, ...)` of a function
-  of the same source with exactly its arity and parameter types, whose
-  arguments are again such expressions: at most 64 operands per function.
+- has a body of at most one guard `if (CONDITION) { return EXPR; }`, then
+  exactly one final `return EXPR;`, and no other statement, reachable or not;
+- has a `bool` condition and returns expressions of its result type. Each is
+  an integer literal within `int`, `true` or `false`, one of its parameters, a
+  comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of two `int` expressions,
+  or a direct call `F(a, b, ...)` of a function of the same source with exactly
+  its arity and parameter types, whose operands are again such expressions: at
+  most 64 operands per function, counted over its condition and returns.
+
+The guard's condition may be written with or without its own parentheses;
+no other parentheses are admitted. Comparisons are signed 32-bit and admit
+only `int` operands, so `bool` equality is rejected. The arm's expression is
+evaluated only when the condition holds, and the final return's only when it
+does not.
 
 Calls form a bounded acyclic set, so recursion (direct or mutual) is rejected.
 Calls may repeat and nest. Arguments evaluate left to right, each operand
 after the operands it consumes, and the emitted IR keeps that order.
+
+```chibi
+package scalar
+Main :: () -> int { return Clamp(12, 0, 10); }
+Clamp :: (x: int, low: int, high: int) -> int { return Min(Max(x, low), high); }
+Min :: (a: int, b: int) -> int {
+    if (a < b) { return a; }
+    return b;
+}
+Max :: (a: int, b: int) -> int {
+    if (a > b) { return a; }
+    return b;
+}
+```
+
+At O0 `Min` stores its parameters, compares them with `icmp slt` and branches
+on the result; it returns 10 natively and on both VMs.
 
 ```chibi
 package scalar
@@ -37,13 +64,19 @@ Third :: (a: int, b: int, c: int) -> int { return c; }
 LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
 Everything else is rejected with a located diagnostic and no partial result:
-arithmetic, negation, parentheses, comparisons, control flow, locals and other
-statements, conversions such as `int(x)`, function values, qualified or
-imported calls, native or foreign calls (`print`), named arguments, strings and
-other managed values, attributes, structs and constants. Sources are at most
-16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds the 79-source corpus
-with each accepted value and operand trace and each rejection's exact message
-and source excerpt, including both sides of every bound.
+arithmetic, negation, other parentheses, `&&`, `||` and `!`, `bool`
+comparisons, `else` branches, a second guard, a guard that does not return,
+loops and other control flow, locals and other statements, conversions such as
+`int(x)`, function values, qualified or imported calls, native or foreign calls
+(`print`), named arguments, strings and other managed values, attributes,
+structs and constants. Sources are at most 16,384 bytes.
+`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (31
+accepted) with each accepted value and operand trace and each rejection's
+exact message and source excerpt, including both sides of every bound.
+
+Two untyped literals compared, as in `if (7 < 3)`, take their common
+spelled type, as stage zero types them; the ordinary compiler's
+`OperatorStep` decides that, not this subset.
 
 ## Shared decisions
 
@@ -62,7 +95,9 @@ private `Code`/`Slot` identity crosses the boundary.
 
 The compiler host passes arrays of flat records, so a module is one array of
 rows: its source, then either one rejection or its document key and each
-function's signature, parameters, return and operands in evaluation order
+function's signature, parameters, guard with its condition operands and its
+arm's return, and final return, each followed by its operands in evaluation
+order
 (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
 rows own their strings and, once snapshotted, their record shape.
 
@@ -71,6 +106,10 @@ rows own their strings and, once snapshotted, their record shape.
 - In one process, `tool language-package-compiler-chibi-scalar` produces the
   rows on both VMs, frees the producer's packages and inputs, reads the
   retained rows, then prepares the consumer and emits them as IR with the call.
+  It also validates a guarded module's rows and 13 malformed variants of them:
+  guard layout, comparison operator, arity, result and operand types, the
+  condition's stack, guard, arm and final-return ranges, and an arm call that
+  closes a cycle.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks, callee signatures
@@ -99,15 +138,28 @@ target/layout and publication rules. The entry's int32 result is the only
 native observation: `bool` parameters and results are internal, and any `bool`
 probe is a validation-only adapter, not an ABI.
 
-On Linux x86-64 with Ubuntu LLVM 18.1.3 `opt`/`llc` (whose canonical data
-layout is the one the driver admits), all 21 accepted corpus sources built O0
-and O2 objects. No object has an undefined symbol. Each O0 module keeps every
-recorded call (up to 63 in `most_operands` and 31 in `most_functions`), O2
-inlines them all, and a validation-only harness that links each object as a
-shared library got every case's int32 value from `chibi_scalar()`. A
-validation-only IR adapter appended to copies of `bool_literals` and
-`bool_passthrough` observed `true`, `false` and both `Flip` results at O0 and
-O2. This harness is not part of the authored path.
+`tool language-scalar-native` (`test/language`, Linux x86-64 only) runs the
+corpus natively. `CHIBI_LLVM_BIN` names the directory of `opt`, `llc`,
+`ld.lld` and `llvm-nm`; nothing is found through `PATH`, and `make
+test-language-all` passes `NATIVE_LLVM_BIN` as it. Each case goes through
+`CollectScalar` on one VM, alternating by case, and must be what
+`Cases.Check` expects. Each accepted module's IR becomes O0 and O2 objects
+through the driver's fixed `opt` and `llc` argument vectors, with no undefined
+symbol, and each object, linked as a validation-only shared library, runs in a
+child process. Its `chibi_scalar()` must return what the authored compiler's
+closure of the same source returns on both VMs. Probes call internal functions
+such as `Min`, `Max`, `Clamp` and each comparison with `INT32_MIN`,
+`INT32_MAX`, equal and adjacent values, and both outcomes of each guard,
+through a validation-only IR adapter that passes int32 arguments and widens a
+`bool` result. The adapter is not an ABI. The O0 IR must keep `Min`'s
+parameter-dependent `icmp` and `br`, and `lazy_arm` must call the arm's
+callee only after the branch's true target and the fallback's only on the
+false path.
+
+`most_operands` and `too_many_operands` nest 64 calls deep, past the
+stage-zero test fixture's call depth limit, so that selector skips them;
+`Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
+other 30 accepted sources build, run and agree at O0 and O2.
 
 ## Portable recovery regression
 
@@ -115,6 +167,7 @@ O2. This harness is not part of the authored path.
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
 runs the authored `Tests` (28 malformed-row fixtures plus emission checks).
+Guarded-row validation is asserted in C, by the scalar selector above.
 Every corpus source then crosses all four producer/consumer VM combinations:
 `Regression.Check` asserts the case and the complete rejection or emitted IR,
 which must define every function and call each recorded callee. The runner

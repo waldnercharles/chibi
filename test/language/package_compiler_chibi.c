@@ -18,6 +18,7 @@
 #include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_json.h"
+#include "support/file_io.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
@@ -33,6 +34,7 @@
 #include "types/value_document.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <float.h>
 #include <math.h>
@@ -40,6 +42,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__linux__) && defined(__x86_64__)
+#include "host/process.h"
+
+#include <dlfcn.h>
+#include <limits.h>
+#include <signal.h>
+#include <unistd.h>
+extern char **environ;
+#endif
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
  * package, with the packages it imports, to a closure against the natives the
@@ -217,6 +228,22 @@ static const sample samples[] = {
       .message = "Constant shift count is outside the type",
       .line = 2,
       .column = 12 },
+    { .name = "comparisons of untyped literals",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Guard :: () -> int {\n"
+                "    if (7 < 3) { return 1; }\n"
+                "    return 2;\n"
+                "}\n"
+                "Wide :: () -> bool { return 3000000000 > 2; }\n"
+                "Mixed :: () -> bool { return 2.5 > 2; }\n"
+                "Negative :: () -> bool { return -1 < 0; }\n"
+                "Same :: () -> bool { return 7 == 7; }",
+      .calls = { { .function = "Guard", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Mixed", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Same", .arguments = "[]", .expected = "[true]" } } },
     { .name = "private imported function",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
@@ -2050,7 +2077,7 @@ enum
 {
     SAMPLES = sizeof samples / sizeof *samples
 };
-static compiler_fixture fixture, oracle, consumer;
+static compiler_fixture fixture, oracle, consumer, corpus;
 /* The compiler host's natives, and those with the core pack a game links,
  * which declares assert. */
 static native_capabilities *linked[2][2];
@@ -2078,6 +2105,7 @@ static void cleanup()
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
     compiler_fixture_free(&consumer);
+    compiler_fixture_free(&corpus);
     for (int game = 0; game < 2; game++) {
         for (int probe = 0; probe < 2; probe++) {
             native_capabilities_free(linked[game][probe]);
@@ -5200,13 +5228,199 @@ static const char
     SCALAR_SOURCE[] = "package scalar\n"
                       "Main :: () -> int { return Pick(7, true); }\n"
                       "Pick :: (x: int, b: bool) -> int { return x; }\n";
+/* A guarded module as CollectScalar gives it: Pick's guard compares its
+ * parameters and its arm calls Id. */
+static const char GUARD_SOURCE[] = "package scalar\n"
+                                   "Main :: () -> int { return Pick(1, 2); }\n"
+                                   "Pick :: (a: int, b: int) -> int {\n"
+                                   "    if (a < b) { return Id(a); }\n"
+                                   "    return b;\n"
+                                   "}\n"
+                                   "Id :: (x: int) -> int { return x; }\n";
+/* scalar_facts row kinds and types. */
+enum
+{
+    SCALAR_SOURCE_ROW = 0,
+    SCALAR_REJECTION_ROW = 1,
+    SCALAR_DOCUMENT_ROW = 2,
+    SCALAR_FUNCTION_ROW = 3,
+    SCALAR_PARAMETER_ROW = 4,
+    SCALAR_RETURN_ROW = 5,
+    SCALAR_LITERAL_ROW = 6,
+    SCALAR_READ_ROW = 7,
+    SCALAR_CALL_ROW = 8,
+    SCALAR_GUARD_ROW = 9,
+    SCALAR_COMPARE_ROW = 10,
+    SCALAR_INT = 1,
+    SCALAR_BOOL = 2
+};
+/* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
+static const int GUARD_KINDS[] = {
+    SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
+    SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_GUARD_ROW,    SCALAR_READ_ROW,
+    SCALAR_READ_ROW,      SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,      SCALAR_CALL_ROW,     SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_READ_ROW,
+};
+enum
+{
+    GUARD_ROW = 10,
+    GUARD_CONDITION = 11,
+    GUARD_COMPARE = 13,
+    GUARD_ARM = 14,
+    GUARD_ARM_READ = 15,
+    GUARD_FINAL = 17,
+    GUARD_ID_READ = 22,
+    GUARD_ROWS = (int)(sizeof GUARD_KINDS / sizeof *GUARD_KINDS),
+    GUARD_EDITS = 5
+};
+/* One field of one row set to `value`, to `text` when it is set, or to the
+ * same field of row `from` when it is set. */
+typedef struct row_edit
+{
+    int row;
+    const char *field;
+    int value;
+    const char *text;
+    int from;
+} row_edit;
+typedef struct malformed_guard
+{
+    row_edit edits[GUARD_EDITS];
+    const char *message;
+} malformed_guard;
+#define EDIT(r, f, v) { .row = (r), .field = (f), .value = (v), .from = -1 }
+#define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
+static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its int operands",
+                  SEGMENT[] = "invalid scalar return row";
+static const malformed_guard MALFORMED_GUARDS[] = {
+    /* A guard with no condition, and a second guard past the bound. */
+    { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
+    { { EDIT(GUARD_FINAL, "kind", SCALAR_GUARD_ROW) }, LAYOUT },
+    /* A comparison's operator, arity and result. */
+    { { EDIT(GUARD_COMPARE, "value", 0) }, COMPARISON },
+    { { EDIT(GUARD_COMPARE, "value", 7) }, COMPARISON },
+    { { EDIT(GUARD_COMPARE, "count", 1) }, COMPARISON },
+    { { EDIT(GUARD_COMPARE, "type", SCALAR_INT) }, COMPARISON },
+    /* A comparison of a bool. */
+    { { EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
+        EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
+        EDIT(GUARD_CONDITION + 1, "value", 1) },
+      COMPARISON },
+    /* A condition that leaves three ints rather than one bool: the
+     * comparison becomes a read of b. */
+    { { EDIT(GUARD_COMPARE, "kind", SCALAR_READ_ROW),
+        EDIT(GUARD_COMPARE, "type", SCALAR_INT),
+        EDIT(GUARD_COMPARE, "count", 0) },
+      "scalar condition is not one bool" },
+    /* A guard row that carries a type, an arm that ends past its guard, a
+     * condition operand inside the arm and a final return that starts inside
+     * the guard. */
+    { { EDIT(GUARD_ROW, "type", SCALAR_INT) }, SEGMENT },
+    { { COPY(GUARD_ARM, "end", GUARD_FINAL) }, SEGMENT },
+    { { COPY(GUARD_CONDITION, "start", GUARD_ARM_READ),
+        COPY(GUARD_CONDITION, "end", GUARD_ARM_READ),
+        COPY(GUARD_CONDITION, "line", GUARD_ARM_READ),
+        COPY(GUARD_CONDITION, "column", GUARD_ARM_READ) },
+      "invalid scalar operand row" },
+    { { COPY(GUARD_FINAL, "start", GUARD_ROW),
+        COPY(GUARD_FINAL, "line", GUARD_ROW),
+        COPY(GUARD_FINAL, "column", GUARD_ROW) },
+      SEGMENT },
+    /* Id calls Main, so the arm's call closes a cycle. */
+    { { EDIT(GUARD_ID_READ, "kind", SCALAR_CALL_ROW),
+        EDIT(GUARD_ID_READ, "value", 0),
+        { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
+      "scalar module calls are recursive" },
+};
+#undef EDIT
+#undef COPY
+static pin_value *guard_row(const pin_value *rows, int index)
+{
+    return &((const pin_array *)rows->ptr)->items[index];
+}
+static void write_row(const pin_value *rows, int index, const char *name, pin_value value)
+{
+    pin_value *row = guard_row(rows, index);
+    const type_field *field = pin_type_field_path(pin_value_type(row), name);
+    assert(field);
+    assert(!pin_write_field(&detached, row->ptr, field, value));
+}
+static bool validated(int b, pin_value *rows, const char *message)
+{
+    pin_value error, emitted;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
+    );
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
+    );
+    bool valid = pin_text_equal(pin_text(error), (pin_string){ message, strlen(message) });
+    if (!valid) {
+        fprintf(
+            stderr,
+            "scalar_llvm Validate gave \"%.*s\", not \"%s\"\n",
+            (int)pin_text(error).length,
+            pin_text(error).bytes,
+            message
+        );
+    }
+    REQUIRE(valid && !((const pin_array *)emitted.ptr)->count == !!*message);
+    return true;
+}
+/* Each edit applied to the producer's rows, the message Validate gives, and
+ * the rows restored. */
+static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malformed)
+{
+    pin_value saved[GUARD_EDITS];
+    int count = 0;
+    while (count < GUARD_EDITS && malformed->edits[count].field) {
+        const row_edit *edit = &malformed->edits[count];
+        saved[count++] = scalar_field(guard_row(rows, edit->row), edit->field);
+    }
+    for (int i = 0; i < count; i++) {
+        const row_edit *edit = &malformed->edits[i];
+        pin_value value = { .type = PIN_I32, .i = edit->value };
+        if (edit->text) {
+            value = text(edit->text);
+        }
+        if (edit->from >= 0) {
+            value = scalar_field(guard_row(rows, edit->from), edit->field);
+        }
+        write_row(rows, edit->row, edit->field, value);
+    }
+    REQUIRE(validated(b, rows, malformed->message));
+    for (int i = count - 1; i >= 0; i--) {
+        write_row(rows, malformed->edits[i].row, malformed->edits[i].field, saved[i]);
+    }
+    return true;
+}
+/* scalar_llvm accepts the producer's guarded rows, rejects each malformed
+ * variant of them when its layout, comparison, condition, ranges or calls are
+ * not what a producer gives, and emits nothing for it. */
+static bool rejects_malformed_guards(int b, pin_value *rows)
+{
+    REQUIRE(((const pin_array *)rows->ptr)->count == GUARD_ROWS);
+    for (int i = 0; i < GUARD_ROWS; i++) {
+        REQUIRE(scalar_field(guard_row(rows, i), "kind").i == GUARD_KINDS[i]);
+    }
+    REQUIRE(validated(b, rows, ""));
+    for (size_t i = 0; i < sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS; i++) {
+        REQUIRE(rejects_guard(b, rows, &MALFORMED_GUARDS[i]));
+    }
+    REQUIRE(validated(b, rows, ""));
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
- * them as LLVM IR that keeps the call. */
+ * them as LLVM IR that keeps the call, and validates guarded rows. */
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2];
+    pin_value produced[2], guarded[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -5216,6 +5430,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(target(b, &args[3]));
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &produced[b])
+        );
+        args[2] = text(GUARD_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &guarded[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -5257,6 +5475,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
                       strstr(ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)");
         free(ir);
         REQUIRE(called);
+        REQUIRE(rejects_malformed_guards(b, &guarded[b]));
     }
     return true;
 }
@@ -5570,6 +5789,876 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     }
     return true;
 }
+#if defined(__linux__) && defined(__x86_64__)
+/* Native execution of the authored scalar corpus. Each case's source goes
+ * through CollectScalar on one producer VM, alternating by case, and must be
+ * the result Cases.Check expects. An accepted module's IR becomes O0 and O2
+ * objects through the native driver's fixed opt and llc argument vectors
+ * (test/native_aot/driver/README.md), with no undefined symbol. Each object,
+ * linked as a validation-only shared library, runs in a child process, so a
+ * trap is a status rather than the end of this test. Its entry's value must
+ * be the one the authored compiler's closure of the same source gives on
+ * both VMs, and so must each probe's. A probe reaches an internal function
+ * through a validation-only IR adapter that passes it int32 arguments, which
+ * is how negative values and bool parameters reach it; the adapter is not a
+ * foreign ABI. Linux x86-64 is the one target the emitter admits.
+ * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
+ * nothing is found through PATH. */
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+/* The corpus's accepted cases. */
+enum
+{
+    SCALAR_ACCEPTED_CASES = 30
+};
+/* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
+ * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
+ * the recovered compiler, which has no such limit. */
+static const char *const DEEP_CASES[] = { "most_operands", "too_many_operands" };
+enum
+{
+    DEEP_CASE_COUNT = (int)(sizeof DEEP_CASES / sizeof *DEEP_CASES)
+};
+static bool deep_case(pin_string name)
+{
+    for (int i = 0; i < DEEP_CASE_COUNT; i++) {
+        if (pin_text_equal(name, (pin_string){ DEEP_CASES[i], strlen(DEEP_CASES[i]) })) {
+            return true;
+        }
+    }
+    return false;
+}
+enum
+{
+    MAX_PROBE_ARGUMENTS = 3
+};
+typedef struct scalar_probe
+{
+    const char *source_case, *function;
+    int count;
+    int32_t arguments[MAX_PROBE_ARGUMENTS];
+    int32_t expected;
+} scalar_probe;
+static const scalar_probe SCALAR_PROBES[] = {
+    { "min", "Min", 2, { INT32_MIN, INT32_MAX }, INT32_MIN },
+    { "min", "Min", 2, { INT32_MAX, INT32_MIN }, INT32_MIN },
+    { "min", "Min", 2, { -1, -1 }, -1 },
+    { "max", "Max", 2, { INT32_MIN, INT32_MAX }, INT32_MAX },
+    { "max", "Max", 2, { INT32_MAX, INT32_MIN }, INT32_MAX },
+    { "max", "Max", 2, { 0, -1 }, 0 },
+    { "clamp", "Clamp", 3, { -5, 0, 10 }, 0 },
+    { "clamp", "Clamp", 3, { 5, 0, 10 }, 5 },
+    { "clamp", "Clamp", 3, { 15, 0, 10 }, 10 },
+    { "clamp", "Clamp", 3, { INT32_MIN, INT32_MIN + 1, INT32_MAX }, INT32_MIN + 1 },
+    { "operators", "If", 3, { 1, 4, 9 }, 4 },
+    { "operators", "If", 3, { 0, 4, 9 }, 9 },
+    { "call_condition", "Small", 1, { 9 }, 1 },
+    { "call_condition", "Small", 1, { 10 }, 0 },
+    { "lazy_arm", "Choose", 1, { 1 }, 1 },
+    { "lazy_arm", "Choose", 1, { 0 }, 2 },
+    { "bare_condition", "Positive", 1, { INT32_MIN }, 0 },
+    { "bare_condition", "Positive", 1, { 0 }, 0 },
+    { "bare_condition", "Positive", 1, { INT32_MAX }, INT32_MAX },
+};
+/* The six comparisons of the operators case, in the order of their source
+ * functions, each probed with every pair. */
+static const char *const COMPARISONS[] = { "Lt", "Le", "Gt", "Ge", "Eq", "Ne" };
+static const int32_t COMPARED[][2] = { { INT32_MIN, INT32_MAX },
+                                       { INT32_MAX, INT32_MIN },
+                                       { 0, 0 },
+                                       { -1, 0 },
+                                       { INT32_MAX, INT32_MAX } };
+enum
+{
+    PROBES = (int)(sizeof SCALAR_PROBES / sizeof *SCALAR_PROBES),
+    COMPARISON_COUNT = (int)(sizeof COMPARISONS / sizeof *COMPARISONS),
+    PAIRS = (int)(sizeof COMPARED / sizeof *COMPARED),
+    MAX_CASE_PROBES = 64
+};
+static int32_t compared(int comparison, int32_t a, int32_t b)
+{
+    switch (comparison) {
+        case 0: return a < b;
+        case 1: return a <= b;
+        case 2: return a > b;
+        case 3: return a >= b;
+        case 4: return a == b;
+        default: return a != b;
+    }
+}
+/* The probes of one corpus case. */
+static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
+{
+    int count = 0;
+    for (int i = 0; i < PROBES; i++) {
+        if (!strcmp(SCALAR_PROBES[i].source_case, name)) {
+            probes[count++] = SCALAR_PROBES[i];
+        }
+    }
+    for (int c = 0; !strcmp(name, "operators") && c < COMPARISON_COUNT; c++) {
+        for (int p = 0; p < PAIRS; p++) {
+            probes[count++] = (scalar_probe){
+                "operators",
+                COMPARISONS[c],
+                2,
+                { COMPARED[p][0], COMPARED[p][1] },
+                compared(c, COMPARED[p][0], COMPARED[p][1])
+            };
+        }
+    }
+    assert(count <= MAX_CASE_PROBES);
+    return count;
+}
+static bool llvm_tool(const char *name, char path[PATH_MAX])
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "CHIBI_LLVM_BIN must name the directory of opt, llc, ld.lld and llvm-nm\n");
+    }
+    REQUIRE(bin && *bin);
+    REQUIRE(snprintf(path, PATH_MAX, "%s/%s", bin, name) < PATH_MAX);
+    REQUIRE(!access(path, X_OK));
+    return true;
+}
+/* Set by SIGINT or SIGTERM while the native tests run: the running child's
+ * process group is killed, and the run reports cancellation, not a timeout. */
+static volatile sig_atomic_t native_cancelled;
+static void cancel_native(int)
+{
+    native_cancelled = 1;
+}
+/* The deadlines of an LLVM tool and of a library's calls, and the output
+ * kept of each. */
+static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20;
+enum
+{
+    NATIVE_OUTPUT = 1 << 16
+};
+static const char *native_outcome(chibi_process_capture_result result)
+{
+    switch (result.error) {
+        case CHIBI_PROCESS_OK: return result.status ? "failed" : "passed";
+        case CHIBI_PROCESS_TIMEOUT: return "timed out";
+        case CHIBI_PROCESS_CANCELLED: return "was cancelled";
+        case CHIBI_PROCESS_SPAWN_FAILED: return "could not start";
+        default: return "could not be supervised";
+    }
+}
+/* Runs argv, an absolute executable with a fixed argument vector, in
+ * `directory` under chibi_process_capture: its process group is killed at
+ * the deadline, `seconds` from now, or on cancellation. `out` receives its
+ * standard output; a run that does not pass reports its error output. */
+static chibi_process_capture_result run_native(
+    const char *const argv[],
+    const char *directory,
+    double seconds,
+    char out[NATIVE_OUTPUT]
+)
+{
+    char error[NATIVE_OUTPUT];
+    chibi_process_output output = { out, NATIVE_OUTPUT, 0, false },
+                         errors = { error, sizeof error, 0, false };
+    chibi_process_capture_result result = chibi_process_capture(
+        argv[0],
+        argv,
+        directory,
+        (const char *const *)environ,
+        chibi_process_now() + seconds,
+        &native_cancelled,
+        &output,
+        &errors
+    );
+    if (result.error != CHIBI_PROCESS_OK || result.status) {
+        fprintf(
+            stderr,
+            "%s %s (status %d): %s%s\n",
+            argv[0],
+            native_outcome(result),
+            result.status,
+            out,
+            error
+        );
+    }
+    return result;
+}
+static bool native_passed(chibi_process_capture_result result)
+{
+    return result.error == CHIBI_PROCESS_OK && !result.status;
+}
+/* An LLVM tool's run, which must pass. */
+static bool run_tool(const char *const argv[], const char *directory, char out[NATIVE_OUTPUT])
+{
+    REQUIRE(native_passed(run_native(argv, directory, TOOL_SECONDS, out)));
+    return true;
+}
+static bool write_text(const char *path, const char *first, const char *second)
+{
+    FILE *file = fopen(path, "w");
+    REQUIRE(file);
+    bool written = fputs(first, file) >= 0 && fputs(second, file) >= 0;
+    REQUIRE(!fclose(file) && written);
+    return true;
+}
+/* The files the native builds wrote, which the test removes. */
+static char **native_files;
+static void native_file(const char *path)
+{
+    for (int i = 0; i < acount(native_files); i++) {
+        if (!strcmp(native_files[i], path)) {
+            return;
+        }
+    }
+    char *copy = xmalloc(strlen(path) + 1);
+    strcpy(copy, path);
+    apush(native_files, copy);
+}
+/* `ir` and then `adapter`, built at `level` as the driver builds an object,
+ * then linked as `directory`/`name`.so, which `library` names. */
+static bool native_library(
+    const char *directory,
+    const char *name,
+    const char *ir,
+    const char *adapter,
+    int level,
+    char library[PATH_MAX]
+)
+{
+    char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX], lld[PATH_MAX];
+    REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc));
+    REQUIRE(llvm_tool("llvm-nm", nm) && llvm_tool("ld.lld", lld));
+    char source[PATH_MAX], module[PATH_MAX], object[PATH_MAX];
+    snprintf(source, sizeof source, "%s/%s-%d.ll", directory, name, level);
+    snprintf(module, sizeof module, "%s/%s-%d.opt.ll", directory, name, level);
+    snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
+    snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
+    const char *const outputs[] = { source, module, object, library };
+    for (int i = 0; i < 4; i++) {
+        native_file(outputs[i]);
+    }
+    REQUIRE(write_text(source, ir, adapter));
+    const char *passes = level ? "-passes=verify,default<O2>,verify" : "-passes=verify";
+    const char *const optimize[] = { opt,  "-S",   passes, source,
+                                     "-o", module, NULL };
+    const char *const emit[] = {
+        llc, "-filetype=obj", level ? "-O=2" : "-O=0", module, "-o", object,
+        NULL
+    };
+    const char *const symbols[] = { nm, "--undefined-only", object, NULL };
+    const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
+    char out[NATIVE_OUTPUT];
+    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
+    REQUIRE(run_tool(symbols, directory, out));
+    if (*out) {
+        fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
+    }
+    REQUIRE(!*out);
+    REQUIRE(run_tool(link, directory, out));
+    return true;
+}
+/* A row field of a retained module's row `index`. */
+static int row_int(const pin_value *rows, int index, const char *name)
+{
+    const pin_array *array = rows->ptr;
+    return scalar_field(&array->items[index], name).i;
+}
+static const char *row_name(const pin_value *rows, int index)
+{
+    const pin_array *array = rows->ptr;
+    return pin_text(scalar_field(&array->items[index], "name")).bytes;
+}
+static int row_count(const pin_value *rows)
+{
+    return ((const pin_array *)rows->ptr)->count;
+}
+/* The ordinal of function `name` among the module's functions and its row,
+ * or -1. */
+static int function_row(const pin_value *rows, const char *name, int *ordinal)
+{
+    *ordinal = -1;
+    for (int i = 0; i < row_count(rows); i++) {
+        if (row_int(rows, i, "kind") != SCALAR_FUNCTION_ROW) {
+            continue;
+        }
+        ++*ordinal;
+        if (!strcmp(row_name(rows, i), name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+static const char *llvm_type(int type)
+{
+    return type == SCALAR_BOOL ? "i1" : "i32";
+}
+/* Appends to `adapter` the validation-only probe @probe_<name>(ptr): it reads
+ * each parameter as an int32 of its argument array, truncating a bool's, and
+ * returns the function's result, zero-extending a bool. */
+static bool append_adapter(const pin_value *rows, const char *name, char **adapter)
+{
+    int ordinal;
+    int head = function_row(rows, name, &ordinal);
+    REQUIRE(head > 0 && ordinal > 0);
+    int count = row_int(rows, head, "count"), result = row_int(rows, head, "type");
+    char text[4096], call[1024] = "";
+    int n = snprintf(text, sizeof text, "\ndefine i32 @probe_%s(ptr %%args) {\n", name);
+    for (int i = 0; i < count; i++) {
+        int type = row_int(rows, head + 1 + i, "type");
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%p%d = getelementptr i32, ptr %%args, i64 %d\n  %%w%d = load "
+            "i32, ptr %%p%d\n",
+            i,
+            i,
+            i,
+            i
+        );
+        if (type == SCALAR_BOOL) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = trunc i32 %%w%d to i1\n", i, i);
+        } else {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i32 %%w%d, 0\n", i, i);
+        }
+        size_t used = strlen(call);
+        snprintf(call + used, sizeof call - used, "%s%s %%a%d", i ? ", " : "", llvm_type(type), i);
+    }
+    n += snprintf(
+        text + n,
+        sizeof text - (size_t)n,
+        "  %%r = call %s @chibi_scalar.%d(%s)\n",
+        llvm_type(result),
+        ordinal,
+        call
+    );
+    if (result == SCALAR_BOOL) {
+        n += snprintf(text + n, sizeof text - (size_t)n, "  %%z = zext i1 %%r to i32\n  ret i32 %%z\n}\n");
+    } else {
+        n += snprintf(text + n, sizeof text - (size_t)n, "  ret i32 %%r\n}\n");
+    }
+    REQUIRE(n < (int)sizeof text);
+    size_t old = strlen(*adapter);
+    *adapter = xrealloc(*adapter, old + (size_t)n + 1);
+    memcpy(*adapter + old, text, (size_t)n + 1);
+    return true;
+}
+/* A probe's arguments as the JSON array the compiler host takes. */
+static void probe_json(const pin_value *rows, const scalar_probe *probe, char *json, size_t size)
+{
+    int ordinal;
+    int head = function_row(rows, probe->function, &ordinal);
+    int n = snprintf(json, size, "[");
+    for (int i = 0; i < probe->count; i++) {
+        bool flag = row_int(rows, head + 1 + i, "type") == SCALAR_BOOL;
+        const char *separator = i ? "," : "";
+        if (flag) {
+            n += snprintf(json + n, size - (size_t)n, "%s%s", separator, probe->arguments[i] ? "true" : "false");
+        } else {
+            n += snprintf(json + n, size - (size_t)n, "%s%d", separator, probe->arguments[i]);
+        }
+    }
+    snprintf(json + n, size - (size_t)n, "]");
+}
+/* Loads `bytes`, a closure, as the test's host on `backend`. */
+static bool vm_load(const unsigned char *bytes, size_t length, int backend)
+{
+    char error[256];
+    host = compiler_host_load(
+        bytes,
+        length,
+        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    if (!host) {
+        fprintf(stderr, "scalar closure load: %s\n", error);
+    }
+    REQUIRE(host);
+    return true;
+}
+/* The int32 the loaded closure's `function` of package scalar returns for
+ * `json`, with a bool as 0 or 1. */
+static bool vm_value(const char *function, const char *json, int32_t *out)
+{
+    char name[256];
+    snprintf(name, sizeof name, "project:scalar:1:%s:callable", function);
+    bool valid = compiler_host_invoke(
+        host,
+        script_catalog_id("package-symbol", name),
+        json,
+        strlen(json),
+        TARGET_BUDGET,
+        &result
+    );
+    REQUIRE(valid && result.flow_status == FLOW_OK);
+    /* The host's result is the JSON array of the function's one result. */
+    if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
+        *out = !strcmp(result.json, "[true]");
+    } else {
+        char *end;
+        long value = result.json[0] == '[' ? strtol(result.json + 1, &end, 10) : 0;
+        if (result.json[0] != '[' || strcmp(end, "]")) {
+            fprintf(
+                stderr,
+                "scalar closure %s%s gave %s\n",
+                function,
+                json,
+                result.json
+            );
+        }
+        REQUIRE(
+            result.json[0] == '[' && !strcmp(end, "]") && value >= INT32_MIN &&
+            value <= INT32_MAX
+        );
+        *out = (int32_t)value;
+    }
+    free(result.json);
+    result = (compiler_host_result){ 0 };
+    return true;
+}
+/* The authored compiler's closure of `source` as package scalar. */
+static bool vm_closure(int b, pin_string source, unsigned char **bytes, size_t *length)
+{
+    const source_package_input inputs[] = {
+        { "scalar/Main.chibi", source.bytes, source.length }
+    };
+    pin_value out;
+    REQUIRE(compile(b, false, false, false, inputs, 1, COMPILE_BUDGET, &out));
+    const pin_union *value = out.ptr;
+    REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Compiled"));
+    *bytes = closure_bytes(value, length);
+    return true;
+}
+/* The text of `ir` from `start` to the end of the definition it begins. */
+static char *definition(const char *ir, const char *start)
+{
+    const char *at = strstr(ir, start);
+    assert(at);
+    const char *end = strstr(at, "\n}\n");
+    assert(end);
+    size_t length = (size_t)(end - at);
+    char *text = xmalloc(length + 1);
+    memcpy(text, at, length);
+    text[length] = 0;
+    return text;
+}
+/* Unoptimized IR keeps what the source decides at run time. Min compares its
+ * two parameters and branches on the result. Choose calls Skipped between its
+ * branch and the branch's true target, and Taken only after that target, so
+ * an arm's call runs only when its guard holds. */
+static bool keeps_guards(const char *name, const char *ir)
+{
+    if (!strcmp(name, "min")) {
+        char *min = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1)");
+        bool kept = strstr(min, "store i32 %arg0, ptr %s0") &&
+                    strstr(min, "store i32 %arg1, ptr %s1") &&
+                    strstr(min, "%a3 = load i32, ptr %s0\n  %b3 = load i32, ptr %s1\n  %v3 = icmp slt i32 %a3, %b3") &&
+                    strstr(min, "store i1 %v3, ptr %s2") &&
+                    strstr(min, "br i1 %a4, label %p");
+        free(min);
+        REQUIRE(kept);
+    }
+    if (!strcmp(name, "lazy_arm")) {
+        char *choose = definition(ir, "define internal i32 @chibi_scalar.1(i1 %arg0)");
+        /* The guard's branch, not a budget check's `br i1 %available`. */
+        const char *branch = strstr(choose, "  br i1 %a");
+        while (branch && !isdigit((unsigned char)branch[strlen("  br i1 %a")])) {
+            branch = strstr(branch + 1, "  br i1 %a");
+        }
+        int target = -1;
+        REQUIRE(branch && sscanf(branch, "  br i1 %%a%*d, label %%p%d", &target) == 1);
+        char label[32];
+        snprintf(label, sizeof label, "\np%d:\n", target);
+        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
+        const char *arm = strstr(choose, label);
+        const char *taken = strstr(choose, "call i32 @chibi_scalar.2()");
+        bool lazy = skipped && arm && taken && branch < skipped && skipped < arm &&
+                    arm < taken && !strstr(taken + 1, "call i32 @chibi_scalar.2()");
+        free(choose);
+        REQUIRE(lazy);
+    }
+    return true;
+}
+/* A call a case checks, its entry or a probe, and what it gave on the
+ * bytecode and compiled VMs and natively at O0 and O2. */
+typedef struct scalar_call
+{
+    scalar_probe probe;
+    char json[256], symbol[256];
+    int32_t values[4];
+} scalar_call;
+enum
+{
+    MAX_CASE_CALLS = MAX_CASE_PROBES + 1
+};
+/* Case `name`'s calls: its entry, then each of its probes. */
+static int case_calls(const char *name, const pin_value *rows, scalar_call calls[MAX_CASE_CALLS])
+{
+    scalar_probe probes[MAX_CASE_PROBES];
+    int count = case_probes(name, probes);
+    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, 0 },
+                              .json = "[]",
+                              .symbol = "chibi_scalar" };
+    for (int i = 0; i < count; i++) {
+        scalar_call *call = &calls[i + 1];
+        *call = (scalar_call){ .probe = probes[i] };
+        probe_json(rows, &probes[i], call->json, sizeof call->json);
+        snprintf(call->symbol, sizeof call->symbol, "probe_%s", probes[i].function);
+    }
+    return count + 1;
+}
+/* Each call's value from the authored compiler's closure on both VMs. */
+static bool vm_values(const unsigned char *closure, size_t length, scalar_call *calls, int count)
+{
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(vm_load(closure, length, backend));
+        for (int i = 0; i < count; i++) {
+            REQUIRE(vm_value(calls[i].probe.function, calls[i].json, &calls[i].values[backend]));
+        }
+        compiler_host_free(host);
+        host = NULL;
+    }
+    return true;
+}
+typedef int32_t (*scalar_entry)();
+typedef int32_t (*scalar_adapter)(const int32_t *);
+enum
+{
+    CALL_SPEC = 160
+};
+/* Runs each call of `library` in order, in a child run of this binary (see
+ * test_language_package_compiler_chibi_native_call) that must finish within
+ * `seconds`, and stores each value in its call's `column`. The first call is
+ * the entry; the others are probe adapters. */
+static chibi_process_capture_result library_calls(
+    const char *directory,
+    const char *library,
+    scalar_call *calls,
+    int count,
+    int column,
+    double seconds
+)
+{
+    char self[PATH_MAX], specs[MAX_CASE_CALLS][CALL_SPEC], out[NATIVE_OUTPUT];
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    assert(length > 0 && count <= MAX_CASE_CALLS);
+    self[length] = 0;
+    const char *argv[MAX_CASE_CALLS + 4] = { self, "--package-compiler-chibi-native-call", library };
+    for (int i = 0; i < count; i++) {
+        int n = snprintf(specs[i], CALL_SPEC, "%s", calls[i].symbol);
+        for (int a = 0; i && a < calls[i].probe.count; a++) {
+            n += snprintf(
+                specs[i] + n,
+                CALL_SPEC - (size_t)n,
+                "%c%d",
+                a ? ',' : ':',
+                calls[i].probe.arguments[a]
+            );
+        }
+        assert(n < CALL_SPEC);
+        argv[3 + i] = specs[i];
+    }
+    argv[3 + count] = NULL;
+    chibi_process_capture_result result = run_native(argv, directory, seconds, out);
+    const char *at = out;
+    for (int i = 0; native_passed(result) && i < count; i++) {
+        char *end;
+        long value = strtol(at, &end, 10);
+        assert(end != at && *end == '\n' && value >= INT32_MIN && value <= INT32_MAX);
+        calls[i].values[column] = (int32_t)value;
+        at = end + 1;
+    }
+    return result;
+}
+/* The child of library_calls: opens `library`, then calls each spec in order,
+ * `symbol` for the entry or `symbol:a,b` for an adapter, and prints each value
+ * on its own line as it returns. */
+static int library_child(const char *library, int count, char **specs)
+{
+    void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+    if (!opened) {
+        fprintf(stderr, "native scalar load: %s\n", dlerror());
+        return 1;
+    }
+    for (int i = 0; i < count; i++) {
+        char symbol[CALL_SPEC];
+        int32_t arguments[MAX_PROBE_ARGUMENTS];
+        const char *at = specs[i] + strcspn(specs[i], ":");
+        size_t length = (size_t)(at - specs[i]);
+        assert(length < sizeof symbol);
+        memcpy(symbol, specs[i], length);
+        symbol[length] = 0;
+        int n = 0;
+        for (char *end; *at; at = end, n++) {
+            assert(n < MAX_PROBE_ARGUMENTS);
+            arguments[n] = (int32_t)strtol(at + 1, &end, 10);
+        }
+        void *function = dlsym(opened, symbol);
+        if (!function) {
+            fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
+            return 1;
+        }
+        int32_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
+                                         : ((scalar_entry)function)();
+        printf("%d\n", value);
+        fflush(stdout);
+    }
+    return 0;
+}
+/* Each call's value natively: `ir` with an adapter for each probed function,
+ * built at O0 and at O2. */
+static bool native_values(
+    const char *directory,
+    const char *name,
+    const pin_value *rows,
+    const char *ir,
+    scalar_call *calls,
+    int count
+)
+{
+    char *adapter = xmalloc(1);
+    *adapter = 0;
+    for (int i = 1; i < count; i++) {
+        if (i > 1 && !strcmp(calls[i].probe.function, calls[i - 1].probe.function)) {
+            continue;
+        }
+        REQUIRE(append_adapter(rows, calls[i].probe.function, &adapter));
+    }
+    for (int level = 0; level < 2; level++) {
+        char library[PATH_MAX];
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        REQUIRE(native_passed(
+            library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
+        ));
+    }
+    free(adapter);
+    return true;
+}
+/* Whether each call gave one value everywhere: its expected value for a
+ * probe, and for the entry the same one on both VMs and natively. */
+static bool calls_agree(const char *name, const scalar_call *calls, int count)
+{
+    for (int i = 0; i < count; i++) {
+        const int32_t *values = calls[i].values;
+        int32_t expected = i ? calls[i].probe.expected : values[0];
+        bool agree = values[0] == expected && values[1] == expected &&
+                     values[2] == expected && values[3] == expected;
+        if (!agree) {
+            fprintf(
+                stderr,
+                "scalar case %s %s%s: expected %d, VM %d %d, native O0 %d O2 "
+                "%d\n",
+                name,
+                calls[i].probe.function,
+                calls[i].json,
+                expected,
+                values[0],
+                values[1],
+                values[2],
+                values[3]
+            );
+        }
+        REQUIRE(agree);
+    }
+    return true;
+}
+/* The IR EmitBytes gives for `rows`, NUL-terminated, or NULL for none. */
+static bool emitted_ir(int b, pin_value *rows, char **ir)
+{
+    pin_value emitted;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
+    );
+    const pin_array *bytes = emitted.ptr;
+    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY);
+    *ir = NULL;
+    if (!bytes->count) {
+        return true;
+    }
+    *ir = xmalloc((size_t)bytes->count + 1);
+    for (int i = 0; i < bytes->count; i++) {
+        (*ir)[i] = (char)bytes->items[i].u8;
+    }
+    (*ir)[bytes->count] = 0;
+    return true;
+}
+/* Case `index` of the corpus: its producer rows on VM b must be what the case
+ * expects, and an accepted module must run natively as it does on both VMs. */
+static bool scalar_case_agrees(const char *directory, int index, int *accepted, int *deep)
+{
+    int b = index % 2;
+    pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
+    );
+    if (deep_case(pin_text(name))) {
+        ++*deep;
+        return true;
+    }
+    const char *case_name = pin_text(name).bytes;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
+    );
+    pin_value args[] = { text("/project"),
+                         text("Scalar.chibi"),
+                         source,
+                         { 0 },
+                         instruction_names() };
+    REQUIRE(target(b, &args[3]));
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
+    );
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
+    );
+    if (checked.i != 1) {
+        fprintf(stderr, "scalar case %s: Check gave %d\n", case_name, checked.i);
+    }
+    REQUIRE(checked.i == 1);
+    char *ir;
+    REQUIRE(emitted_ir(b, &rows, &ir));
+    bool rejected = row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW;
+    REQUIRE(rejected == !ir);
+    if (rejected) {
+        return true;
+    }
+    ++*accepted;
+    REQUIRE(keeps_guards(case_name, ir));
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(b, pin_text(source), &closure, &length));
+    scalar_call calls[MAX_CASE_CALLS];
+    int count = case_calls(case_name, &rows, calls);
+    bool ran = vm_values(closure, length, calls, count) &&
+               native_values(directory, case_name, &rows, ir, calls, count);
+    free(closure);
+    free(ir);
+    REQUIRE(ran && calls_agree(case_name, calls, count));
+    return true;
+}
+
+/* A new directory for the native builds' files. */
+static bool native_directory(char directory[PATH_MAX])
+{
+    const char *temporary = getenv("TMPDIR");
+    snprintf(directory, PATH_MAX, "%s/chibi-native-scalar-XXXXXX", temporary && *temporary ? temporary : "/tmp");
+    REQUIRE(mkdtemp(directory));
+    return true;
+}
+/* Removes the files the native builds registered, then `directory`. A build
+ * that failed may not have written all its files. */
+static bool remove_native_files(const char *directory)
+{
+    bool removed = true;
+    for (int i = 0; i < acount(native_files); i++) {
+        removed = (!remove(native_files[i]) || errno == ENOENT) && removed;
+        free(native_files[i]);
+    }
+    afree(native_files);
+    REQUIRE(!rmdir(directory) && removed);
+    return true;
+}
+/* Whether process `pid` has exited: it is gone, or a zombie whose parent has
+ * not reaped it yet. Waits up to `seconds` for its kill to land. */
+static bool process_ended(pid_t pid, double seconds)
+{
+    char path[64];
+    snprintf(path, sizeof path, "/proc/%d/stat", (int)pid);
+    for (double deadline = chibi_process_now() + seconds;
+         chibi_process_now() < deadline;) {
+        FILE *file = fopen(path, "r");
+        if (!file) {
+            return true;
+        }
+        char state = 0;
+        int fields = fscanf(file, "%*d (%*[^)]) %c", &state);
+        fclose(file);
+        if (fields == 1 && (state == 'Z' || state == 'X')) {
+            return true;
+        }
+        usleep(10000);
+    }
+    return false;
+}
+/* How long a run that should end at its deadline or cancellation may take,
+ * which allows for a slow sanitized host. */
+static const double PROMPT_SECONDS = 10;
+
+TEST_CASE(package_compiler_native_runs_are_bounded)
+{
+    char out[NATIVE_OUTPUT];
+    /* A tool that hangs, with a descendant in its group, times out at its
+     * deadline, and the descendant is killed with it. */
+    const char *const hung[] = { "/bin/sh", "-c", "sleep 60 & echo $!; wait", NULL };
+    double started = chibi_process_now();
+    chibi_process_capture_result result = run_native(hung, "/", 0.5, out);
+    REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT);
+    REQUIRE(chibi_process_now() - started < PROMPT_SECONDS);
+    char *end;
+    long descendant = strtol(out, &end, 10);
+    REQUIRE(end != out && descendant > 0);
+    REQUIRE(process_ended((pid_t)descendant, PROMPT_SECONDS));
+    /* SIGTERM while a tool runs cancels it, and is not a timeout. */
+    const char *const terminating[] = { "/bin/sh", "-c", "kill -TERM $PPID; sleep 60", NULL };
+    started = chibi_process_now();
+    result = run_native(terminating, "/", 60, out);
+    bool cancelled = native_cancelled;
+    native_cancelled = 0;
+    REQUIRE(cancelled && result.error == CHIBI_PROCESS_CANCELLED);
+    REQUIRE(chibi_process_now() - started < PROMPT_SECONDS);
+    /* Generated code that does not return in time times out in its child.
+     * It loops 2^35 times, far past the deadline, so a deadline that is not
+     * enforced fails the test instead of hanging it. */
+    char directory[PATH_MAX], library[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    const char *loop = "define i32 @hang() {\n"
+                       "entry:\n"
+                       "  br label %loop\n"
+                       "loop:\n"
+                       "  %i = phi i64 [ 0, %entry ], [ %next, %loop ]\n"
+                       "  %next = add i64 %i, 1\n"
+                       "  %done = icmp eq i64 %next, 34359738368\n"
+                       "  br i1 %done, label %exit, label %loop\n"
+                       "exit:\n"
+                       "  ret i32 0\n"
+                       "}\n";
+    scalar_call call = { .symbol = "hang" };
+    bool built = native_library(directory, "hang", loop, "", 0, library);
+    started = chibi_process_now();
+    result = built ? library_calls(directory, library, &call, 1, 2, 1)
+                   : (chibi_process_capture_result){ 0 };
+    double elapsed = chibi_process_now() - started;
+    REQUIRE(remove_native_files(directory) && built);
+    REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
+    return true;
+}
+TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
+{
+    REQUIRE(prepare());
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    char directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    pin_value count;
+    REQUIRE(
+        compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
+    );
+    int accepted = 0, deep = 0;
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < count.i; i++) {
+        agreed = scalar_case_agrees(directory, i, &accepted, &deep);
+        arena_free(&detached);
+    }
+    REQUIRE(remove_native_files(directory));
+    if (native_cancelled) {
+        fprintf(stderr, "native scalar run was cancelled\n");
+    }
+    REQUIRE(agreed && !native_cancelled);
+    REQUIRE(accepted == SCALAR_ACCEPTED_CASES && deep == DEEP_CASE_COUNT);
+    return true;
+}
+#endif
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -5662,4 +6751,35 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     pu_clear_setup();
+}
+#if defined(__linux__) && defined(__x86_64__)
+int test_language_package_compiler_chibi_native_call(int count, char **arguments)
+{
+    return library_child(arguments[0], count - 1, arguments + 1);
+}
+#else
+int test_language_package_compiler_chibi_native_call(int, char **)
+{
+    abort();
+}
+#endif
+void test_language_package_compiler_chibi_native()
+{
+#if defined(__linux__) && defined(__x86_64__)
+    /* The supervised children run in their own process groups, so a signal
+     * to this one cancels them instead of leaving them running. */
+    struct sigaction cancel = { .sa_handler = cancel_native }, interrupt, terminate;
+    sigemptyset(&cancel.sa_mask);
+    sigaction(SIGINT, &cancel, &interrupt);
+    sigaction(SIGTERM, &cancel, &terminate);
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
+    RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);
+    pu_clear_setup();
+    sigaction(SIGINT, &interrupt, NULL);
+    sigaction(SIGTERM, &terminate, NULL);
+#else
+    fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
+    abort();
+#endif
 }

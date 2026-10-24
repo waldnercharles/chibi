@@ -746,6 +746,7 @@ Files :: (target: string) -> string[] {
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
             "test/language/prepared_writer_chibi.c", "test/language/shader_source_chibi.c",
             "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
+            "src/host/process.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/scalar_lowering_chibi.c",
             "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
@@ -3484,7 +3485,8 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
 // test/language/CMakeLists.txt gives them.
 LanguageTestsOverSource :: () -> string[] {
     return [
-        "src/language/numeric.c", "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
+        "src/host/process.c", "src/language/numeric.c",
+        "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/binding_benchmark.c",
         "test/language/borrow.c", "test/language/bounded_compiler_chibi.c",
@@ -3694,6 +3696,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_SYNTAX_BYTES=bytes:tools/compiler/package_syntax/Extract.chibi",
             "CHIBI_PREPARED_WRITER_BYTES=bytes:tools/compiler/prepared_writer/Writer.chibi",
             "CHIBI_RECORD_MEMBERS_BYTES=bytes:tools/compiler/record_members/Members.chibi",
+            "CHIBI_SCALAR_CASES_BYTES=bytes:test/scalar_facts/cases/Cases.chibi",
             "CHIBI_SCALAR_FACTS_BYTES=bytes:tools/compiler/scalar_facts/Facts.chibi",
             "CHIBI_SCALAR_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
             "CHIBI_SCALAR_LLVM_BYTES=bytes:tools/compiler/scalar_llvm/Emit.chibi",

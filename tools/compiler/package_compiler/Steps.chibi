@@ -1608,11 +1608,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
-        // `assert(condition, "message")`, where the target links the core
-        // native, fails the call when the condition is false, as stage
-        // zero's intrinsic does.
-        if (qualifier < 0 && found < 0 && NameMatches("assert", callee_name) &&
-            FindNative(natives, callee_name) >= 0) {
+        // `assert(condition, "message")` is a language intrinsic. It emits a
+        // checked instruction, so a pure host needs no native capability for it.
+        if (qualifier < 0 && found < 0 && NameMatches("assert", callee_name)) {
             condition: int = -1;
             message: int = -1;
             index: int = 0;

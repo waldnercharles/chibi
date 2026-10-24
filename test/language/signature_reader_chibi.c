@@ -700,7 +700,7 @@ static script_signature_facts facts(bool chained)
 static const char *annotations[] = {
     NULL,
     "int",
-    "ref Row?[]",
+    "Row?[]",
     "task<int>",
     "task",
     "task<int, number>",
@@ -722,7 +722,7 @@ static const char *annotations[] = {
     "string int/s",
     "u",
     "u",
-    "^int",
+    "^int u",
     "^int?",
     "^int[]",
     "^(int[])",

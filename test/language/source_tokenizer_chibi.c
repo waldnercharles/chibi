@@ -497,7 +497,7 @@ static const struct
       "pointer := &value\n"
       "copy := pointer^^\n"
       "xor := value ^ +value\n"
-      "F(ref pointer^)\n"
+      "F(pointer)\n"
       "}\n" },
     { "numbers",
       "package p\n"

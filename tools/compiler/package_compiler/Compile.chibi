@@ -126,7 +126,8 @@ Param :: struct {
     // The occurrence of the default's expression, which stage zero evaluates
     // where a call omits the argument.
     default_occurrence: uint64;
-    // A `ref` parameter, whose argument is a reference to the caller's value.
+    // A scoped pointer parameter, whose argument is a reference to the
+    // caller's location.
     reference: bool;
     // The node that declares the parameter, -1 when the source declares none.
     node: int;
@@ -411,29 +412,8 @@ FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
 // array of one; storage 0 for any other.
 ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
              node: int) -> ValueType {
-    if (Field(forest, node, "trait") >= 0) {
-        return {storage: 0, container: 0, record: -1};
-    }
-    return ReadReferencedType(forest, text, types, names, package, node);
-}
-// Whether the type `node` is `ref T`: its only trait is `ref`.
-Referenced :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    traits: int = 0;
-    child := forest[node].first_child;
-    while (child >= 0) {
-        if (forest[child].field == "trait") {
-            traits += 1;
-        }
-        child = forest[child].next_sibling;
-    }
-    return traits == 1 && Text(forest, text, Field(forest, node, "trait")) == "ref";
-}
-// The type `node` names, as ReadType reads it, or the T of `ref T`.
-ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
-                       node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (!Is(forest, node, "type") || (Field(forest, node, "trait") >= 0 && !Referenced(forest, text, node)) ||
-        Field(forest, node, "arguments") >= 0) {
+    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0) {
         return none;
     }
     pointer := TypePointerNode(forest, node);
@@ -1130,13 +1110,18 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         if (hidden >= 0) {
             return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
         }
-        declared := ReadReferencedType(forest, text, types, aliases, package, type_node);
+        // A scoped pointer parameter takes a reference to its target.
+        pointer := PointerAnnotation(forest, type_node);
+        reference := pointer >= 0 && ScopedPointer(forest, text, member, parameter, []);
+        if (reference) {
+            type_node = Field(forest, pointer, "target");
+        }
+        declared := ReadType(forest, text, types, aliases, package, type_node);
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
         }
-        reference := Field(forest, type_node, "trait") >= 0;
         if (reference && Field(forest, parameter, "value") >= 0) {
-            return Signature.Failed(Diagnose(forest, parameter, file, "a reference parameter takes no default"));
+            return Signature.Failed(Diagnose(forest, parameter, file, "a scoped pointer parameter takes no default"));
         }
         param_name := Text(forest, text, Field(forest, parameter, "name"));
         if (param_name == "") {
@@ -1254,7 +1239,7 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
             authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
             count: types[record].count};
 }
-// A parameter's header: its type's, or a `ref` parameter's descriptor pointer.
+// A parameter's header: its type's, or a scoped parameter's descriptor pointer.
 ParamHeader :: (param: Param, types: TypeDecl[], layouts: int[], target: Target) -> writer.Value {
     if (param.reference) {
         return ScalarValue(target.pointer_storage, 0);
@@ -1572,8 +1557,12 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     imports: writer.Import[] = [];
     points: writer.Point[] = [];
     watches: writer.Watch[] = [];
-    // Only a package that calls a ref parameter keeps locals in data cells.
+    // Only a package that calls a scoped parameter keeps locals in data cells.
     referencing := AnyReference(params);
+    bodies := forest;
+    if (referencing) {
+        bodies = ScopedTargets(forest, documents, callables, params, package);
+    }
     // Debugger points count each document's bytes that are not whitespace.
     solid: int[] = [];
     solid_document: int = -1;
@@ -1601,22 +1590,22 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
         }
         aliases := extend(Aliases(links, callable.document), behaving);
-        // The names a ref argument reaches live in data cells.
+        // The names a scoped argument lends live in data cells.
         referenced: string[] = [];
         if (referencing) {
-            referenced = ReferencedNames(forest, documents[callable.document].text, callables, params, aliases, package,
-                                         Field(forest, callable.node, "body"));
+            referenced = ReferencedNames(bodies, documents[callable.document].text, callables, params, aliases, package,
+                                         Field(bodies, callable.node, "body"));
         }
-        mutated := MutatedNames(forest, documents[callable.document].text, Field(forest, callable.node, "body"),
+        mutated := MutatedNames(bodies, documents[callable.document].text, Field(bodies, callable.node, "body"),
                                 referenced);
         // A function with one result builds the arrays it returns in its
         // caller's storage.
         built: int[] = [];
         if (callable.results == 0) {
-            built = BuiltLocals(forest, documents[callable.document].text, types, aliases, callable.package,
-                                Field(forest, callable.node, "body"), referenced);
+            built = BuiltLocals(bodies, documents[callable.document].text, types, aliases, callable.package,
+                                Field(bodies, callable.node, "body"), referenced);
         }
-        tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
+        tables := EmitBody(bodies, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
                            aliases, documents[callable.document].key, solid, undeclared, meaning, index, referenced,
                            mutated, built, ops, target);

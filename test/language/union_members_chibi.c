@@ -43,7 +43,7 @@ static const char *const sources[SOURCE_CASES] = {
     "Facts :: library { Choice::union{Payload(value:int,name:string)} }",
     "Facts :: library { Choice::union{\"same\"|\"same\"|\"same\"} }",
     "Facts :: library { Choice::union{A(value:int)|A(value:string)} }",
-    "Facts :: library { Choice::union{Payload(value:ref int)} }",
+    "Facts :: library { Choice::union{Payload(value:^int)} }",
     "Facts :: library { Choice::union{Payload(value)} }",
     "Facts :: library { Choice::union{Payload(value:int=Unknown())} }",
     "Facts :: library { "

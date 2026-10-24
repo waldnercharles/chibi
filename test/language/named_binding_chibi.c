@@ -801,14 +801,13 @@ static bool raw_query(int index)
             q.token_count = 1;
             break;
         case 15:
-            q.tokens[0] = "ref";
-            q.tokens[1] = "?";
-            q.tokens[2] = "[]";
-            q.token_count = 3;
+            q.tokens[0] = "?";
+            q.tokens[1] = "[]";
+            q.token_count = 2;
             break;
         case 16:
             q.operation = TEXT;
-            q.text = " ref set<Comp> ? ";
+            q.text = " set<Comp> ? ";
             break;
         case 17:
             q.operation = TEXT;
@@ -907,7 +906,7 @@ TEST_CASE(named_binding_analyzer_annotations_match)
         "} }",
         "Facts :: library { Thing :: struct { value: int; }; Run :: "
         "(value: Thing?) -> Thing? { return value; } }",
-        "Facts :: library { Run :: (value: ref int) -> int { return value; "
+        "Facts :: library { Run :: (value: ^int) -> ^int { return value; "
         "} }",
     };
     const script_catalog native = { 0 };

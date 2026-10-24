@@ -94,7 +94,7 @@ Cases :: () -> Case[] {
         Rejected("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", "scalar proof does not support additional statements", "return 0;"),
         Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
-        Rejected("reference", "package scalar\nMain :: (x: ref int) -> int { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "x: ref int"),
+        Rejected("scoped pointer", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "x: ^int"),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
         Rejected("int64_result", "package scalar\nMain :: () -> int64 { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "int64"),
         Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires int or bool parameters and one int or bool result", "int[]"),

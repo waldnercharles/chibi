@@ -823,7 +823,7 @@ TEST_CASE(record_members_selection_keeps_original_guards)
 }
 static const char *const fields[] = {
     "value:int;",  "value:string;",   "value:bool=Unknown();", "value:float;",
-    "value:int?;", "value:string[];", "value:ref int;",        "value:Missing;",
+    "value:int?;", "value:string[];", "value:int64;",          "value:Missing;",
     "value:int;",  "label:string;",   "value:int|string;",     "value:Peer;"
 };
 TEST_CASE(record_members_annotations_and_diagnostics)

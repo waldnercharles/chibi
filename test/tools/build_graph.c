@@ -1461,12 +1461,98 @@ TEST_CASE(asset_generator_uses_its_own_collection)
     return true;
 }
 
+TEST_CASE(failed_steps_name_only_the_output)
+{
+    char source[GRAPH_PATH], output[GRAPH_PATH], record[GRAPH_PATH];
+    join(source, suite, "FailedStep.chibi");
+    join(output, suite, "expected-step-output.c");
+    int size = snprintf(record, sizeof record, "%s.chibi-record", output);
+    REQUIRE(size > 0 && size < (int)sizeof record);
+    tool_write(
+        source,
+        "package step_fixture\nimport c \"graph_c:.\"\n"
+        "Build :: () -> int { arguments := build.arguments(); "
+        "if (c.Step([\"/bin/sh\", \"-c\", \"exit 7\", "
+        "\"unlogged-command-token\"], [], arguments[0]) != -1) { return 1; } "
+        "return 0; }\n"
+    );
+    const char *const argv[] = { host_path,
+                                 "--root",
+                                 CHIBI_SOURCE_ROOT,
+                                 "--source",
+                                 source,
+                                 "--core",
+                                 "packages/core",
+                                 "--collection",
+                                 "graph_c=tools/graph/c",
+                                 "--entry",
+                                 "Build",
+                                 "--timeout-ms",
+                                 "30000",
+                                 "--",
+                                 output,
+                                 NULL };
+    REQUIRE(tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, 30) == 0);
+    char *log = tool_read(log_path);
+    REQUIRE(log);
+    char expected[GRAPH_PATH + 32];
+    snprintf(expected, sizeof expected, "graph: step failed: %s\n", output);
+    bool exact = !strcmp(log, expected);
+    printf("controlled step diagnostic: %s", log);
+    free(log);
+    REQUIRE(exact);
+    REQUIRE(access(output, F_OK) != 0);
+    REQUIRE(access(record, F_OK) != 0);
+    return true;
+}
+
+TEST_CASE(asset_generator_reports_bounded_ordered_phases)
+{
+    char filename[GRAPH_PATH];
+    join(filename, CHIBI_SOURCE_ROOT, "tools/graph/asset_compiler/Generate.chibi");
+    char *source = tool_read(filename);
+    REQUIRE(source);
+    const char *phases[] = { "asset compiler: entered generator",
+                             "asset compiler: serialize bootstrap request",
+                             "asset compiler: bootstrap request ready",
+                             "asset compiler: bootstrap reuse status {}",
+                             "asset compiler: invoke bootstrap fallback",
+                             "asset compiler: serialize facade request",
+                             "asset compiler: invoke facade compiler",
+                             "asset compiler: facade ready",
+                             "asset compiler: serialize target request",
+                             "asset compiler: invoke target compiler",
+                             "asset compiler: serialize packaging request",
+                             "asset compiler: invoke packaging",
+                             "asset compiler: packaging ready",
+                             "asset compiler: embed artifact",
+                             "asset compiler: generation complete" };
+    const char *next = source;
+    size_t bytes = 0;
+    bool ordered = true;
+    for (size_t i = 0; ordered && i < sizeof phases / sizeof *phases; i++) {
+        const char *found = strstr(next, phases[i]);
+        ordered = found != NULL;
+        if (found) {
+            next = found + strlen(phases[i]);
+            bytes += strlen(phases[i]) + 1;
+        }
+    }
+    free(source);
+    REQUIRE(ordered);
+    /* Allow an entire signed 32-bit status instead of the two-byte {}. */
+    REQUIRE(bytes + 9 < 1024);
+    return true;
+}
+
 /* A separate route: reflect's run and the codec compile take seconds. */
 void test_build_graph_generated(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
     RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(asset_generator_uses_its_own_collection);
+    RUN_TEST_CASE(failed_steps_name_only_the_output);
+    RUN_TEST_CASE(asset_generator_reports_bounded_ordered_phases);
     RUN_TEST_CASE(native_types_generate_as_cmake);
     RUN_TEST_CASE(rewritten_codec_headers_match_cmake);
     RUN_TEST_CASE(configured_headers_match_cmake);

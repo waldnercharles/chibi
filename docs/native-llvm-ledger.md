@@ -140,3 +140,14 @@ After M1:
 - `language-scalar-native` checks that a hung tool and hung generated code
   each time out within 10 seconds of a short deadline, and that SIGTERM
   cancels a run without counting as a timeout.
+
+After M2's compile rules (24 October 2026, same container):
+
+- Bootstrap compiler: 13,372,687 bytes, SHA-256 `5a74dccb…a7ef43`, prepared
+  format 21. The checked-in format-20 compiler cannot recover the new
+  sources, so `make bootstrap-artifact` built the Release tree through the
+  stage-zero path, with `BUILD_HOST` naming no host.
+- `language-package-compiler-chibi-bootstrap` takes 50 s in Release. Before
+  the exact division stopped copying its arguments it took 842 s, 775 of
+  them in stage two compiling itself (see
+  [language friction](language-friction.md#stage-ones-element-stores-into-call-results-copy-arguments)).

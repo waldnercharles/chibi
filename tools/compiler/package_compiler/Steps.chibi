@@ -1445,6 +1445,50 @@ CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, bou
     }
     return "";
 }
+// Named association here is limited to fixed primitive inputs. Constructors,
+// inferred/container ports and variadic calls keep their existing paths.
+PrimitiveNativeArguments :: (ports: Port[], native: Native) -> bool {
+    if (native.variadic) {
+        return false;
+    }
+    index: int = 0;
+    while (index < native.parameters) {
+        port := ports[native.first + index];
+        if (port.container != 0 ||
+            !(Integer(port.storage) || Floating(port.storage) || port.storage == BoolStorage ||
+              port.storage == TextStorage)) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+// Match native parameter names exactly first, otherwise uniquely by the
+// existing loose native-name rule. Positional arguments retain their ordinal.
+NativeArgumentIndex :: (forest: snapshot.SnapshotNode[], text: string, ports: Port[], native: Native,
+                        argument: int, ordinal: int) -> int {
+    if (!Is(forest, argument, "named_argument")) {
+        return ordinal;
+    }
+    name := Text(forest, text, Field(forest, argument, "name"));
+    found: int = -1;
+    index: int = 0;
+    while (index < native.parameters) {
+        declared := ports[native.first + index].name;
+        if (declared == name) {
+            return index;
+        }
+        if (NameMatches(declared, name)) {
+            if (found == -1) {
+                found = index;
+            } else {
+                found = -2;
+            }
+        }
+        index += 1;
+    }
+    return found;
+}
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -1695,11 +1739,44 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             expected_count = natives[native].parameters;
         }
+        associated := native >= 0 && FindMake(makes, native) < 0 &&
+                      PrimitiveNativeArguments(ports, natives[native]);
+        seen: bool[] = [];
+        if (associated) {
+            index: int = 0;
+            while (index < expected_count) {
+                seen.append(false);
+                index += 1;
+            }
+        }
         count: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
         while (argument >= 0) {
             expected := Visit(argument);
-            if (found >= 0 && count < expected_count) {
+            if (associated) {
+                parameter := NativeArgumentIndex(forest, text, ports, natives[native], argument, count);
+                if (parameter < 0) {
+                    label := Field(forest, argument, "name");
+                    kind: string = "Unknown";
+                    if (parameter == -2) {
+                        kind = "Ambiguous";
+                    }
+                    return Fail(forest, label, document, format_text("{} argument '{}'", kind, Text(forest, text, label)));
+                }
+                if (parameter >= expected_count) {
+                    return Fail(forest, argument, document, "Too many arguments");
+                }
+                if (seen[parameter]) {
+                    return Fail(forest, argument, document, "Argument supplied more than once");
+                }
+                seen[parameter] = true;
+                value := argument;
+                if (Is(forest, argument, "named_argument")) {
+                    value = Field(forest, argument, "value");
+                }
+                port := ports[natives[native].first + parameter];
+                expected = Expect(value, port.storage, port.container, -1);
+            } else if (found >= 0 && count < expected_count) {
                 param := params[callables[found].first + count];
                 expected = Expect(argument, param.storage, param.container, param.record);
                 if (param.reference) {
@@ -1736,6 +1813,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (native >= 0) {
             finish.a = native;
             finish.c = 1;
+            if (associated) {
+                finish.c = 7;
+            }
         }
         if (native >= 0 && FindMake(makes, native) >= 0) {
             finish.a = FindMake(makes, native);
@@ -1913,7 +1993,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         return MakeStep(forest, document, types, members, makes[item.a], make_fields, values, first, count, item.node,
                         ops, target, at, node);
     }
-    linked := item.c == 1 || item.c == 4;
+    linked := item.c == 1 || item.c == 4 || item.c == 7;
     inferred := NoValue();
     first_port: int = 0;
     if (linked) {
@@ -1921,6 +2001,27 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     // The given arguments, then the defaults of those the call omits.
     arguments: Value[] = slice(values, first, count);
+    argument_nodes: int[] = [];
+    if (item.c == 7) {
+        // Evaluation has finished in source order. Only the resulting values
+        // move into port order; keep their expression nodes paired with them.
+        for (value in arguments) {
+            argument_nodes.append(-1);
+        }
+        argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+        ordinal: int = 0;
+        while (argument >= 0) {
+            parameter := NativeArgumentIndex(forest, text, ports, natives[chosen], argument, ordinal);
+            arguments[parameter] = values[first + ordinal];
+            value := argument;
+            if (Is(forest, argument, "named_argument")) {
+                value = Field(forest, argument, "value");
+            }
+            argument_nodes[parameter] = value;
+            ordinal += 1;
+            argument = NextMember(forest, argument);
+        }
+    }
     if (!linked) {
         called := callables[item.a];
         while (length(arguments) < called.count) {
@@ -1956,6 +2057,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 while (ordinal < index && argument_node >= 0) {
                     argument_node = NextMember(forest, argument_node);
                     ordinal += 1;
+                }
+                if (item.c == 7) {
+                    argument_node = argument_nodes[index];
                 }
                 message := CStringMessage(forest, text, argument_node, port.name);
                 if (message != "") {

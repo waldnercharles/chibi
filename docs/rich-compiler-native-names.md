@@ -1,5 +1,7 @@
 # Named primitive-native argument fixtures
 
+This document records the preserved fixture-only checkpoint. The separately allocated implementation and its current status are described in [Primitive native argument association](rich-compiler-native-names-implementation.md).
+
 This is a test-only handoff, not an implementation or a passing compiler acceptance claim. The retained branch is `codex/rich-compiler-native-names-fixtures-20261024`, based on accepted main `4684d45bc78d37b89ac35ae94aa33f392157edc7`. The independently accepted array receiver-watch branch stays unchanged at `6dc54c24a436be7fabadeca365b96395dcadd434`.
 
 ## Bounded contract

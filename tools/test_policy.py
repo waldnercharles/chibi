@@ -350,7 +350,6 @@ TOOLS = {
                                                '--package-compiler-chibi-sharing'],
     'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                   '--package-compiler-chibi-debug-free'],
-    # Isolated acceptance fixtures; authored selector is intentionally red until implementation.
     'language-package-compiler-chibi-native-arguments': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                         '--package-compiler-chibi-native-arguments'],
     'language-package-compiler-chibi-native-arguments-oracle': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -561,9 +560,7 @@ elif not os.environ.get('CHIBI_LLVM_BIN'):
     UNRUN['language-scalar-native'] = 'set NATIVE_LLVM_BIN to the directory of opt, llc, ld.lld and llvm-nm'
 else:
     GROUPS['language'].append('language-scalar-native')
-# Pending compiler ownership: retain the red acceptance selector as an explicit opt-in.
-GROUPS['compiler'] = [name for name in TOOLS if name.startswith('language-package-compiler-chibi')
-                      and name != 'language-package-compiler-chibi-native-arguments']
+GROUPS['compiler'] = [name for name in TOOLS if name.startswith('language-package-compiler-chibi')]
 GROUPS['benchmarks'] = [name for name in TOOLS if name.endswith('-benchmark') and not name.startswith('wasm-')]
 
 

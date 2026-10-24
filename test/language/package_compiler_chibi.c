@@ -142,6 +142,19 @@ static const native_parameter_definition CSTRING_INPUT[] = {
       .type_name = "const char *",
       .c_string = true },
 };
+/* The second parameter deliberately carries the C-string boundary. */
+static const native_parameter_definition CSTRING_PAIR_INPUT[] = {
+    { .name = "prefix", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "value",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_STR,
+      .type_name = "const char *",
+      .c_string = true },
+};
+static const char *cstring_pair(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    return cstring_probe(storage, arguments + 1, count - 1, result);
+}
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -157,6 +170,15 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    { .canonical_name = "CString Pair",
+      .source_name = "cstring_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = CSTRING_PAIR_INPUT,
+      .input_count = 2,
+      .outputs = CSTRING_OUTPUT,
+      .output_count = 1,
+      .completion_output = -1,
+      .pure = true },
     PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
     PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
@@ -166,6 +188,7 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
@@ -178,6 +201,7 @@ static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
     }
 static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("CString Pair", CSTRING_PAIR_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
     PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
@@ -6981,8 +7005,8 @@ void test_language_package_compiler_chibi_native()
 #endif
 }
 
-/* Acceptance fixtures for the next bounded compiler slice. Keep these separate
- * from samples until named primitive-native arguments are implemented. */
+/* Fixed primitive-native argument association, checked against literal results
+ * and the independent stage-zero reference. */
 static const sample native_argument_samples[] = {
     { .name = "native positional control",
       .source = "package facts\nRun :: () -> string { return "
@@ -7004,6 +7028,10 @@ static const sample native_argument_samples[] = {
       .source = "package facts\nRun :: () -> int { return "
                 "text_byte_length(Value: \"abcd\"); }",
       .calls = { { "Run", "[]", "[4]", NULL } } },
+    { .name = "native loose label match",
+      .source = "package facts\nRun :: () -> string { return text_slice(count: "
+                "2, value: \"abcd\", start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
     { .name = "native arguments evaluate in source order",
       .source = "package facts\n"
                 "Number :: (order: ref int, digit: int, value: int) -> int { "
@@ -7029,6 +7057,32 @@ static const sample native_argument_samples[] = {
       .message = "Argument supplied more than once",
       .line = 2,
       .column = 66 },
+    { .name = "native positional named duplicate",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Value: \"efgh\", Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 49 },
+    { .name = "native named CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_probe(value: "
+                "(\"a\\u0000b\")); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 48 },
+    { .name = "native named positional duplicate",
+      .source = "package facts\nRun :: () -> string { return text_slice(Start: "
+                "1, 2, Value: \"abcd\"); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 51 },
+    { .name = "native reordered CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_pair(value: "
+                "(\"a\\u0000b\"), prefix: 1); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 47 },
     { .name = "native extra argument",
       .source = "package facts\nRun :: () -> string { return "
                 "text_slice(\"abcd\", 1, 2, 3); }",
@@ -7042,7 +7096,8 @@ TEST_CASE(native_arguments_reference_contract)
     /* Every valid call supplies all parameters of the existing text natives. */
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(&native_argument_samples[0], inputs);
-    REQUIRE(compiler_fixture_prepare(&fixture, inputs, count));
+    native_definition_pack packs[] = { CSTRING_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
     for (int i = 0;
          i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
          i++) {
@@ -7075,7 +7130,9 @@ TEST_CASE(native_arguments_authored_contract)
             source_package_input inputs[SAMPLE_INPUTS];
             int count = sample_inputs(s, inputs);
             pin_value out;
-            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
+            REQUIRE(
+                compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
+            );
             const pin_union *value = out.ptr;
             REQUIRE(out.type == PIN_UNION && value);
             bool passed = false;
@@ -7100,8 +7157,14 @@ TEST_CASE(native_arguments_authored_contract)
                 REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
                 size_t length = 0;
                 unsigned char *bytes = closure_bytes(value, &length);
-                passed = !s->message && run(bytes, length, &s->calls[0], 0) &&
+                unsigned char *expected = NULL;
+                size_t expected_length = 0;
+                passed = !s->message &&
+                         (b || (oracle_closure(s, &expected, &expected_length) &&
+                                points_like_oracle(bytes, length, false))) &&
+                         run(bytes, length, &s->calls[0], 0) &&
                          run(bytes, length, &s->calls[0], 1);
+                free(expected);
                 free(bytes);
                 /* run() leaves a failed invocation for cleanup; continue the
                  * remaining fixtures without overwriting that ownership. */

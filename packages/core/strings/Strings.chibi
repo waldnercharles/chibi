@@ -9,7 +9,7 @@ pub ByteLength :: (value: string) -> int {
 }
 
 // Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
-// Each call measures the string, so a loop over a long one should read Bytes.
+// Reads the runtime's stored byte length.
 pub ByteAt :: (value: string, index: int) -> int {
     return text_byte_at(value, index);
 }
@@ -120,23 +120,37 @@ pub LastIndexByte :: (s: string, c: int) -> int {
     return -1;
 }
 
-// Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.
-pub Index :: (s: string, substr: string) -> int {
+// Verify hash hits byte for byte.
+MatchesAt :: (s: string, substr: string, start: int) -> bool {
+    i: int = 0;
+    while (i < ByteLength(substr)) {
+        if (ByteAt(s, start + i) != ByteAt(substr, i)) {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+// Search from a byte offset without copying.
+IndexFrom :: (s: string, substr: string, start: int) -> int {
     n := ByteLength(substr);
     size := ByteLength(s);
     if (n == 0) {
-        return 0;
+        return start;
     }
-    if (n == 1) {
-        return IndexByte(s, ByteAt(substr, 0));
-    }
-    if (n == size) {
-        if (s == substr) {
-            return 0;
-        }
+    if (n > size - start) {
         return -1;
     }
-    if (n > size) {
+    if (n == 1) {
+        c := ByteAt(substr, 0);
+        i := start;
+        while (i < size) {
+            if (ByteAt(s, i) == c) {
+                return i;
+            }
+            i += 1;
+        }
         return -1;
     }
     hash: int64 = 0;
@@ -146,20 +160,26 @@ pub Index :: (s: string, substr: string) -> int {
     while (i < n) {
         hash = (hash * 16777619 + ByteAt(substr, i)) & 0xFFFFFFFF;
         pow = (pow * 16777619) & 0xFFFFFFFF;
-        h = (h * 16777619 + ByteAt(s, i)) & 0xFFFFFFFF;
+        h = (h * 16777619 + ByteAt(s, start + i)) & 0xFFFFFFFF;
         i += 1;
     }
-    if (h == hash && Slice(s, 0, n) == substr) {
-        return 0;
+    i += start;
+    if (h == hash && MatchesAt(s, substr, start)) {
+        return start;
     }
     while (i < size) {
         h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i - n)) & 0xFFFFFFFF;
         i += 1;
-        if (h == hash && Slice(s, i - n, n) == substr) {
+        if (h == hash && MatchesAt(s, substr, i - n)) {
             return i - n;
         }
     }
     return -1;
+}
+
+// Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.
+pub Index :: (s: string, substr: string) -> int {
+    return IndexFrom(s, substr, 0);
 }
 
 // Index's search from the end. An empty substring is found at the length of s.
@@ -250,12 +270,14 @@ pub Count :: (s: string, substr: string) -> int {
         }
         return total;
     }
-    rest: string = s;
-    i := Index(rest, substr);
-    while (i >= 0) {
+    start: int = 0;
+    while (true) {
+        i := IndexFrom(s, substr, start);
+        if (i < 0) {
+            break;
+        }
         total += 1;
-        rest = Slice(rest, i + n, ByteLength(rest));
-        i = Index(rest, substr);
+        start = i + n;
     }
     return total;
 }
@@ -432,19 +454,20 @@ SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
     if (limit == 0) {
         return parts;
     }
-    if (limit < 0) {
-        limit = Count(s, sep) + 1;
-    }
-    rest: string = s;
-    while (length(parts) < limit - 1) {
-        m := Index(rest, sep);
+    start: int = 0;
+    while (limit < 0 || length(parts) < limit - 1) {
+        m := IndexFrom(s, sep, start);
         if (m < 0) {
             break;
         }
-        parts.append(Slice(rest, 0, m + keep));
-        rest = Slice(rest, m + size, ByteLength(rest));
+        parts.append(Slice(s, start, m - start + keep));
+        start = m + size;
     }
-    parts.append(rest);
+    if (start == 0) {
+        parts.append(s);
+        return parts;
+    }
+    parts.append(Slice(s, start, ByteLength(s) - start));
     return parts;
 }
 

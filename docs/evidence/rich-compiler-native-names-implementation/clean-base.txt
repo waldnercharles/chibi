@@ -1,0 +1,5 @@
+Running: package_compiler_builds_runnable_packages (OK) (11.940445 secs)
+Running: package_compiler_asserts_without_native_capability (OK) (9.710542 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 16142
+Test command wall time: 21.899s; includes in-test fixture setup; external configuration/build excluded.

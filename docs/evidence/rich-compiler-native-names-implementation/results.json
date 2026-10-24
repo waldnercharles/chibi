@@ -1,0 +1,42 @@
+[
+  {
+    "selector": "language-package-compiler-chibi-native-arguments-oracle",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-native-arguments-oracle.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi-native-arguments",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-native-arguments.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-base.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi-compiled",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-compiled.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi-collections",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-collections.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi-sharing",
+    "exit": 1,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-sharing.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi-debug-free",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-debug-free.txt"
+  },
+  {
+    "selector": "language-package-compiler-chibi-scalar",
+    "exit": 0,
+    "log": "docs/evidence/rich-compiler-native-names-implementation/clean-scalar.txt"
+  }
+]

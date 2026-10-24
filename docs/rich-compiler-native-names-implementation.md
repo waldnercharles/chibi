@@ -27,4 +27,23 @@ Extract the bounded implementation with `git diff f57675ec2 <implementation-sour
 
 ## Validation status
 
-Focused reference and authored selectors run through `tools/test_policy.py`; build uses `make language-build JOBS=2`. Before the source checkpoint, the focused reference passed 163 assertions and authored acceptance passed 9641 assertions, including both compiler backends. Independent source review found no blocker. Exact clean source identity and final selected-check evidence will be recorded beside this document. Standalone Debug is unsanitized. A successful source check does not claim combined M2/float acceptance, matching generated artifact, fixedpoint or recovery. Those gates remain pending coordinator work. No seed is generated or published here.
+Exact clean tested source: `1108e4310dc862bf536bc860eb1dfa7e1a055f0b`. Independent source review found no blocker. All checks used the normal supervisor and the two-job standalone Debug build; no sanitizer claim.
+
+| Selector suffix | Result | Cases / assertions | Wall seconds |
+| --- | --- | --- | --- |
+| native-arguments-oracle | pass | 1 / 163 | 0.353 |
+| native-arguments | pass | 1 / 9739 | 10.142 |
+| base compiler | pass | 2 / 16142 | 21.899 |
+| compiled | pass | 1 / 11622 | 10.446 |
+| collections | pass | 1 / 3102 | 11.689 |
+| sharing | inherited failure | 1 / 11 | 9.783 |
+| debug-free | pass | 1 / 1876 | 10.143 |
+| scalar | pass | 3 / 10251 | 10.353 |
+
+Sharing identifies `CollectScalar` (`ebbc43e46769862a`). Building and running the exact clean fixture baseline `f57675ec2` reproduces that same failure (11 assertions, 9.920s). This is not a new CallStep/helper failure, and no Scalar/runtime edit or relaxed assertion is included. M2 owns its repair; the overall sharing gate remains open.
+
+Build configuration/build were 1.9s/3.8s before the first six checks, and 1.8s/4.1s after restoring the same source from the baseline investigation for the last two checks. Logs, both driver identities, source hashes and unchanged d2fd bootstrap hash are under `docs/evidence/rich-compiler-native-names-implementation`.
+
+Product-only `git apply --check` succeeds separately against both inspected float and M2 reference files. This does not establish combined-source acceptance. Root must reconcile current shared files, rerun the combined checks, resolve the existing sharing gate, and coordinate one matching bootstrap generation/fixedpoint/recovery sequence. No seed was regenerated or published here. Native LLVM, Wasm, full groups, renderer and installed-SDK gates were not run.
+
+Local ignored scratch remains in `.chibi/native-names` (scripts, logs and comparison copies); the normal `build-language` driver and `.chibi/logs` remain available. No scratch binary or project copy was created.

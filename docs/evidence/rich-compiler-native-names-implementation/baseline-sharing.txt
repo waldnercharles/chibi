@@ -1,0 +1,6 @@
+package compiler function ebbc43e46769862a copies its arguments
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi-native-names/test/language/package_compiler_chibi.c (5078): copying == 0)
+Running: package_compiler_shares_its_arguments 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 11
+Test command wall time: 9.920s; includes in-test fixture setup; external configuration/build excluded.

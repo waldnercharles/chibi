@@ -1,0 +1,34 @@
+Exact clean source: 1108e4310dc862bf536bc860eb1dfa7e1a055f0b
+Tree: 3d5c21cc3b11c8f12f7897a66a79a911feb100e8
+Fixture base: f57675ec2fca2d67286bef0bb7497b49a7bf1811
+Accepted main base: 4684d45bc78d37b89ac35ae94aa33f392157edc7
+Environment: macOS arm64, standalone Debug, no sanitizer claim.
+Build: make language-build JOBS=2; configure 1.9s/build 3.8s.
+First driver SHA256: 3a8cec5a4ea1ac7b67eb161693cd3e4cfe67af4cffef6a5a674c0232e4ce53d5
+Used for new oracle/acceptance, base, compiled, collections, sharing.
+After baseline investigation, restored same clean source and rebuilt:
+configure 1.8s/build 4.1s; used for debug-free and scalar.
+Restored driver SHA256: a4b33b3afd4a8620dccc7296bf0164f4c8f6d9097ade1b69d6475aefd93f0e2e
+Steps.chibi SHA256: 8ab0277a4a269244b7328c28546a8f4dc5e3478da8202f3e019cea955aca5781
+C tests SHA256: ca1ea2ec5d9cf67e3d2b1a595e9bcdd993655da5be556ef2c9756c971fa2e256
+Unchanged bootstrap SHA256: d2fd2b2d9aacd7add71b4c70ce04a74ca72159a17e3220b1102020b8bd3414f7
+
+Seven selected selectors pass, 10 cases/52895 assertions. Sharing fails on
+CollectScalar ID ebbc43e46769862a (11 assertions), identically on exact clean
+fixture baseline f57675ec2. The baseline was built/run on detached HEAD then
+implementation branch was restored; neither retained reference branch changed.
+Scalar is M2-owned. No sharing/runtime repair or assertion relaxation here.
+
+Independent read-only source review: /root/review_array_order; no source
+correctness blocker. Requested extra ordinal, loose-label, reordered CString
+and source-point/watch tests were added and passed. Existing C/pico assertions
+and normal test_policy.py supervision used throughout.
+
+Product-only git apply --check passed separately against read-only copies of:
+float83f9977baafe0390c6cee09c80e51eb5c19a24fb
+M2ab8c4a58f6cabc8b74e9d94c37fde41cb634c2ac
+This is textual compatibility evidence only. No combined-source execution,
+prepared artifact regeneration, fixedpoint, recovery, native LLVM, Wasm,
+full aggregate groups, renderer or installed-SDK acceptance is claimed.
+Formatting and git diff --check passed. Both new selectors are in compiler.
+Historical red oracle/acceptance logs remain in the sibling fixture directory.

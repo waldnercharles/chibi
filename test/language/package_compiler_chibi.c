@@ -9,6 +9,7 @@
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
+#include "float_conversion_cases.h"
 #include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
@@ -146,6 +147,19 @@ static const native_parameter_definition CSTRING_INPUT[] = {
       .type_name = "const char *",
       .c_string = true },
 };
+/* The second parameter deliberately carries the C-string boundary. */
+static const native_parameter_definition CSTRING_PAIR_INPUT[] = {
+    { .name = "prefix", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "value",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_STR,
+      .type_name = "const char *",
+      .c_string = true },
+};
+static const char *cstring_pair(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    return cstring_probe(storage, arguments + 1, count - 1, result);
+}
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -161,6 +175,15 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    { .canonical_name = "CString Pair",
+      .source_name = "cstring_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = CSTRING_PAIR_INPUT,
+      .input_count = 2,
+      .outputs = CSTRING_OUTPUT,
+      .output_count = 1,
+      .completion_output = -1,
+      .pure = true },
     PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
     PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
@@ -170,6 +193,7 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
@@ -182,6 +206,7 @@ static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
     }
 static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("CString Pair", CSTRING_PAIR_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
     PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
@@ -861,6 +886,29 @@ static const sample samples[] = {
                  { .function = "Divide", .arguments = "[7,0]", .expected = "[7]" } } },
     /* An untyped constant expression that names a constant takes its type
      * from its use, and only integer division by zero is an error. */
+    /* Floating constants fold at their type: a conversion rounds half to
+     * even and overflows to infinity, and a float, subnormal ones too,
+     * widens to double exactly. */
+    { .name = "floating constants",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Big: double : 1e300;\n"
+                "Huge: float : float(Big);\n"
+                "Even: float : float(double(16777219.0));\n"
+                "Tenth: float : float(0.1);\n"
+                "Wide: double : Tenth;\n"
+                "Tiny: float : float(1e-40);\n"
+                "TinyWide: double : (Tiny);\n"
+                "Rounded :: () -> float { return Even; }\n"
+                "Infinite :: () -> bool { return Huge > 3e38; }\n"
+                "Widened :: (unused: int) -> bool { return Wide == "
+                "double(float(0.1)) && Wide != 0.1; }\n"
+                "Subnormal :: () -> bool { return TinyWide == double(Tiny) && "
+                "TinyWide > 0.0; }\n",
+      .calls = { { .function = "Rounded", .arguments = "[]", .expected = "[16777220.0]" },
+                 { .function = "Infinite", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Widened", .arguments = "[0]", .expected = "[true]" },
+                 { .function = "Subnormal", .arguments = "[]", .expected = "[true]" } } },
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
       .ahead = true,
@@ -4067,6 +4115,59 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
     }
     return true;
 }
+static bool approved_float_conversion_admission(int compiler, bool constants)
+{
+    bool agreed = true;
+    for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
+         i++) {
+        const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
+        if (item->constant != constants) {
+            continue;
+        }
+        source_package_input source = { "facts/Main.chibi",
+                                        item->source,
+                                        strlen(item->source) };
+        pin_value out;
+        REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
+        bool accepted = value->tag == tag(compiler, "Compiled");
+        if (accepted != item->accepted) {
+            fprintf(
+                stderr,
+                "stage-one floating admission %s: expected %s, got %s\n",
+                item->name,
+                item->accepted ? "accepted" : "rejected",
+                accepted ? "accepted" : "rejected"
+            );
+            if (!accepted) {
+                pin_value message;
+                REQUIRE(get(&value->values[0], "message", &message));
+                fprintf(stderr, "  %s\n", pin_text(message).bytes);
+            }
+            agreed = false;
+        }
+        if (accepted && item->accepted) {
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
+            arena_free(&detached);
+            sample_call call = { .function = "Fold",
+                                 .arguments = item->arguments,
+                                 .expected = item->expected };
+            bool ran = true;
+            for (int backend = 0; backend < 2; backend++) {
+                ran = run(bytes, length, &call, backend) && ran;
+            }
+            free(bytes);
+            agreed = ran && agreed;
+        }
+        arena_free(&detached);
+    }
+    REQUIRE(agreed);
+    return true;
+}
+
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -4093,11 +4194,23 @@ TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
-    return run_samples(IMPORT_SAMPLES, 0);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 0));
+    return approved_float_conversion_admission(0, false);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 {
-    return run_samples(IMPORT_SAMPLES, 1);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 1));
+    return approved_float_conversion_admission(1, false);
+}
+TEST_CASE(package_compiler_float_constant_dependency)
+{
+    REQUIRE(prepare());
+    return approved_float_conversion_admission(0, true);
+}
+TEST_CASE(package_compiler_float_constant_dependency_compiled)
+{
+    REQUIRE(prepare());
+    return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -7750,6 +7863,7 @@ void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_compiled()
@@ -7780,6 +7894,7 @@ void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()
@@ -7858,4 +7973,200 @@ void test_language_package_compiler_chibi_native()
     fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
     abort();
 #endif
+}
+
+/* Fixed primitive-native argument association, checked against literal results
+ * and the independent stage-zero reference. */
+static const sample native_argument_samples[] = {
+    { .name = "native positional control",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native names in declaration order",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Count: 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native reordered names",
+      .source = "package facts\nRun :: () -> string { return text_slice(Count: "
+                "2, Value: \"abcd\", Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native mixed arguments",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Count: 2, Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native unary name",
+      .source = "package facts\nRun :: () -> int { return "
+                "text_byte_length(Value: \"abcd\"); }",
+      .calls = { { "Run", "[]", "[4]", NULL } } },
+    { .name = "native loose label match",
+      .source = "package facts\nRun :: () -> string { return text_slice(count: "
+                "2, value: \"abcd\", start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native arguments evaluate in source order",
+      .source = "package facts\n"
+                "Number :: (order: ref int, digit: int, value: int) -> int { "
+                "order = order * 10 + digit; return value; }\n"
+                "Text :: (order: ref int) -> string { order = order * 10 + 2; "
+                "return \"abcd\"; }\n"
+                "Run :: () -> int {\n"
+                "  order: int = 0;\n"
+                "  sliced := text_slice(Count: Number(order, 3, 2), Value: "
+                "Text(order), Start: Number(order, 1, 1));\n"
+                "  if (!text_equal(sliced, \"bc\")) { return -1; }\n"
+                "  return order;\n}",
+      .calls = { { "Run", "[]", "[321]", NULL } } },
+    { .name = "native unknown name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Missing: 2); }",
+      .message = "Unknown argument 'Missing'",
+      .line = 2,
+      .column = 66 },
+    { .name = "native duplicate name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Start: 2, Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 66 },
+    { .name = "native positional named duplicate",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Value: \"efgh\", Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 49 },
+    { .name = "native named CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_probe(value: "
+                "(\"a\\u0000b\")); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 48 },
+    { .name = "native named positional duplicate",
+      .source = "package facts\nRun :: () -> string { return text_slice(Start: "
+                "1, 2, Value: \"abcd\"); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 51 },
+    { .name = "native reordered CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_pair(value: "
+                "(\"a\\u0000b\"), prefix: 1); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 47 },
+    { .name = "native extra argument",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2, 3); }",
+      .message = "Too many arguments",
+      .line = 2,
+      .column = 55 },
+};
+
+TEST_CASE(native_arguments_reference_contract)
+{
+    /* Every valid call supplies all parameters of the existing text natives. */
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(&native_argument_samples[0], inputs);
+    native_definition_pack packs[] = { CSTRING_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
+    for (int i = 0;
+         i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+         i++) {
+        const sample *s = &native_argument_samples[i];
+        fprintf(stderr, "native arguments reference: %s\n", s->name);
+        if (s->message) {
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            continue;
+        }
+        unsigned char *bytes = NULL;
+        size_t length = 0;
+        REQUIRE(oracle_closure(s, &bytes, &length));
+        bool passed = run(bytes, length, &s->calls[0], 0) &&
+                      run(bytes, length, &s->calls[0], 1);
+        free(bytes);
+        REQUIRE(passed);
+    }
+    return true;
+}
+
+TEST_CASE(native_arguments_authored_contract)
+{
+    REQUIRE(prepare());
+    bool all = true;
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0;
+             i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+             i++) {
+            const sample *s = &native_argument_samples[i];
+            source_package_input inputs[SAMPLE_INPUTS];
+            int count = sample_inputs(s, inputs);
+            pin_value out;
+            REQUIRE(
+                compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
+            );
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            bool passed = false;
+            if (value->tag == tag(b, "Rejected")) {
+                pin_value message, line, column;
+                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(&value->values[0], "line", &line));
+                REQUIRE(get(&value->values[0], "column", &column));
+                passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
+                         line.i == s->line && column.i == s->column;
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: %s at %d:%d (%s)\n",
+                    b,
+                    s->name,
+                    pin_text(message).bytes,
+                    line.i,
+                    column.i,
+                    passed ? "expected" : "MISMATCH"
+                );
+            } else {
+                REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+                size_t length = 0;
+                unsigned char *bytes = closure_bytes(value, &length);
+                unsigned char *expected = NULL;
+                size_t expected_length = 0;
+                passed = !s->message &&
+                         (b || (oracle_closure(s, &expected, &expected_length) &&
+                                points_like_oracle(bytes, length, false))) &&
+                         run(bytes, length, &s->calls[0], 0) &&
+                         run(bytes, length, &s->calls[0], 1);
+                free(expected);
+                free(bytes);
+                /* run() leaves a failed invocation for cleanup; continue the
+                 * remaining fixtures without overwriting that ownership. */
+                compiler_host_free(host);
+                host = NULL;
+                free(result.json);
+                result = (compiler_host_result){ 0 };
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: compiled (%s)\n",
+                    b,
+                    s->name,
+                    passed ? "expected" : "MISMATCH"
+                );
+            }
+            arena_free(&detached);
+            all = passed && all;
+        }
+    }
+    REQUIRE(all);
+    return true;
+}
+
+void test_language_package_compiler_chibi_native_arguments_oracle()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_reference_contract);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_native_arguments()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_authored_contract);
+    pu_clear_setup();
 }

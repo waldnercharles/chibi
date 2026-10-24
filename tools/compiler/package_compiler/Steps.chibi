@@ -492,10 +492,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 resolved := ReadType(forest, text, types, names, package, declared);
                 local = Typed(-1, resolved.storage, resolved.container, resolved.record);
             }
-            if (result.container == 0 && local.container == 0 && Widens(result.storage, local.storage)) {
+            if (result.container == 0 && local.container == 0 &&
+                (Widens(result.storage, local.storage) || FloatWidens(result.storage, local.storage))) {
                 widened: Slot = {storage: local.storage, kind: ValueKind};
                 slots.append(widened);
-                code.append(CastCode(ops, local.storage, at.slot + length(slots) - 1, result.slot, 0, node));
+                code.extend(NumberCode(ops, result.storage, local.storage, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, local.storage, 0, -1);
             }
             if (!SameType(local.storage, local.container, local.record, result)) {
@@ -567,10 +568,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node);
             }
             stored := result;
-            if (binding.container == 0 && result.container == 0 && Widens(result.storage, binding.storage)) {
+            if (binding.container == 0 && result.container == 0 &&
+                (Widens(result.storage, binding.storage) || FloatWidens(result.storage, binding.storage))) {
                 widened: Slot = {storage: binding.storage, kind: ValueKind};
                 slots.append(widened);
-                code.append(CastCode(ops, binding.storage, at.slot + length(slots) - 1, result.slot, 0, node));
+                code.extend(NumberCode(ops, result.storage, binding.storage, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, binding.storage, 0, -1);
                 stored = result;
             }
@@ -634,10 +636,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.append(SymbolCode(ops, binding.node, node));
             }
         } else if (kind == "return_statement") {
-            if (result.container == 0 && callable.result_container == 0 && Widens(result.storage, callable.result)) {
+            if (result.container == 0 && callable.result_container == 0 &&
+                (Widens(result.storage, callable.result) || FloatWidens(result.storage, callable.result))) {
                 widened: Slot = {storage: callable.result, kind: ValueKind};
                 slots.append(widened);
-                code.append(CastCode(ops, callable.result, at.slot + length(slots) - 1, result.slot, 0, node));
+                code.extend(NumberCode(ops, result.storage, callable.result, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, callable.result, 0, -1);
             }
             if (!SameType(callable.result, callable.result_container, callable.result_record, result)) {
@@ -1455,6 +1458,50 @@ CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, bou
     }
     return "";
 }
+// Named association here is limited to fixed primitive inputs. Constructors,
+// inferred/container ports and variadic calls keep their existing paths.
+PrimitiveNativeArguments :: (ports: Port[], native: Native) -> bool {
+    if (native.variadic) {
+        return false;
+    }
+    index: int = 0;
+    while (index < native.parameters) {
+        port := ports[native.first + index];
+        if (port.container != 0 ||
+            !(Integer(port.storage) || Floating(port.storage) || port.storage == BoolStorage ||
+              port.storage == TextStorage)) {
+            return false;
+        }
+        index += 1;
+    }
+    return true;
+}
+// Match native parameter names exactly first, otherwise uniquely by the
+// existing loose native-name rule. Positional arguments retain their ordinal.
+NativeArgumentIndex :: (forest: snapshot.SnapshotNode[], text: string, ports: Port[], native: Native,
+                        argument: int, ordinal: int) -> int {
+    if (!Is(forest, argument, "named_argument")) {
+        return ordinal;
+    }
+    name := Text(forest, text, Field(forest, argument, "name"));
+    found: int = -1;
+    index: int = 0;
+    while (index < native.parameters) {
+        declared := ports[native.first + index].name;
+        if (declared == name) {
+            return index;
+        }
+        if (NameMatches(declared, name)) {
+            if (found == -1) {
+                found = index;
+            } else {
+                found = -2;
+            }
+        }
+        index += 1;
+    }
+    return found;
+}
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -1588,9 +1635,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (qualifier < 0 && found < 0) {
             conversion = ScalarStorage(callee_name);
         }
-        if (Integer(conversion)) {
-            // `T(value)` clamps the value to T; `T(wrap: value)` keeps its
-            // low bits. A constant value folds before it gets here.
+        if (Integer(conversion) || Floating(conversion)) {
+            // `T(value)` clamps the value to an integer T, and rounds it to
+            // a floating T; `T(wrap: value)` keeps an integer's low bits. A
+            // constant value folds before it gets here.
             argument := FirstMember(forest, Field(forest, item.node, "arguments"));
             if (argument < 0 || NextMember(forest, argument) >= 0) {
                 return Fail(forest, item.node, document, "Conversion takes one value");
@@ -1601,6 +1649,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 if (Text(forest, text, Field(forest, argument, "name")) != "wrap") {
                     return Fail(forest, Field(forest, argument, "name"), document,
                                 "A conversion argument may only be named wrap");
+                }
+                if (Floating(conversion)) {
+                    return Fail(forest, item.node, document, "wrap converts between integer types");
                 }
                 mode = 1;
                 value = Field(forest, argument, "value");
@@ -1702,11 +1753,44 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             expected_count = natives[native].parameters;
         }
+        associated := native >= 0 && FindMake(makes, native) < 0 &&
+                      PrimitiveNativeArguments(ports, natives[native]);
+        seen: bool[] = [];
+        if (associated) {
+            index: int = 0;
+            while (index < expected_count) {
+                seen.append(false);
+                index += 1;
+            }
+        }
         count: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
         while (argument >= 0) {
             expected := Visit(argument);
-            if (found >= 0 && count < expected_count) {
+            if (associated) {
+                parameter := NativeArgumentIndex(forest, text, ports, natives[native], argument, count);
+                if (parameter < 0) {
+                    label := Field(forest, argument, "name");
+                    kind: string = "Unknown";
+                    if (parameter == -2) {
+                        kind = "Ambiguous";
+                    }
+                    return Fail(forest, label, document, format_text("{} argument '{}'", kind, Text(forest, text, label)));
+                }
+                if (parameter >= expected_count) {
+                    return Fail(forest, argument, document, "Too many arguments");
+                }
+                if (seen[parameter]) {
+                    return Fail(forest, argument, document, "Argument supplied more than once");
+                }
+                seen[parameter] = true;
+                value := argument;
+                if (Is(forest, argument, "named_argument")) {
+                    value = Field(forest, argument, "value");
+                }
+                port := ports[natives[native].first + parameter];
+                expected = Expect(value, port.storage, port.container, -1);
+            } else if (found >= 0 && count < expected_count) {
                 param := params[callables[found].first + count];
                 expected = Expect(argument, param.storage, param.container, param.record);
                 if (param.reference) {
@@ -1743,6 +1827,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (native >= 0) {
             finish.a = native;
             finish.c = 1;
+            if (associated) {
+                finish.c = 7;
+            }
         }
         if (native >= 0 && FindMake(makes, native) >= 0) {
             finish.a = FindMake(makes, native);
@@ -1795,6 +1882,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
         if (value.storage == item.a) {
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, value, NoValue(), marks);
+        }
+        if (Floating(item.a)) {
+            output := at.slot + length(slots);
+            slots.extend(NumberSlots(value.storage, item.a));
+            code.extend(NumberCode(ops, value.storage, item.a, value.slot, output, node));
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                Typed(at.slot + length(slots) - 1, item.a, 0, -1), NoValue(), marks);
         }
         converted: Slot = {storage: item.a, kind: ValueKind};
         slots.append(converted);
@@ -1910,7 +2004,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         return MakeStep(forest, document, types, members, makes[item.a], make_fields, values, first, count, item.node,
                         ops, target, at, node);
     }
-    linked := item.c == 1 || item.c == 4;
+    linked := item.c == 1 || item.c == 4 || item.c == 7;
     inferred := NoValue();
     first_port: int = 0;
     if (linked) {
@@ -1918,6 +2012,27 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     // The given arguments, then the defaults of those the call omits.
     arguments: Value[] = slice(values, first, count);
+    argument_nodes: int[] = [];
+    if (item.c == 7) {
+        // Evaluation has finished in source order. Only the resulting values
+        // move into port order; keep their expression nodes paired with them.
+        for (value in arguments) {
+            argument_nodes.append(-1);
+        }
+        argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+        ordinal: int = 0;
+        while (argument >= 0) {
+            parameter := NativeArgumentIndex(forest, text, ports, natives[chosen], argument, ordinal);
+            arguments[parameter] = values[first + ordinal];
+            value := argument;
+            if (Is(forest, argument, "named_argument")) {
+                value = Field(forest, argument, "value");
+            }
+            argument_nodes[parameter] = value;
+            ordinal += 1;
+            argument = NextMember(forest, argument);
+        }
+    }
     if (!linked) {
         called := callables[item.a];
         while (length(arguments) < called.count) {
@@ -1939,8 +2054,6 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
     }
     total := length(arguments);
-    // Slots for the call follow the defaults'.
-    b := at.slot + length(slots);
     index: int = 0;
     while (index < total) {
         argument := arguments[index];
@@ -1953,6 +2066,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 while (ordinal < index && argument_node >= 0) {
                     argument_node = NextMember(forest, argument_node);
                     ordinal += 1;
+                }
+                if (item.c == 7) {
+                    argument_node = argument_nodes[index];
                 }
                 message := CStringMessage(forest, text, argument_node, port.name);
                 if (message != "") {
@@ -1978,6 +2094,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 expected = Typed(-1, ReferenceStorage, 0, -1);
             }
         }
+        if (argument.container == 0 && expected.container == 0 && FloatWidens(argument.storage, expected.storage)) {
+            slots.append(ValueLocal(expected.storage));
+            code.append(Instruction(ops.convert, expected.storage, at.slot + length(slots) - 1, argument.slot, 0, 0, node));
+            argument = Typed(at.slot + length(slots) - 1, expected.storage, 0, -1);
+            arguments[index] = argument;
+        }
         if (!SameType(expected.storage, expected.container, expected.record, argument)) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
         }
@@ -1989,6 +2111,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         cells.append(cell);
         index += 1;
     }
+    // Call address slots follow defaults and any floating widening temporaries.
+    b := at.slot + length(slots);
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
     named_results: bool = false;
@@ -3222,11 +3346,13 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
 }
-// Whether a number of type `from` converts to `to` implicitly: an integer
-// widens or becomes a floating value, and the floating types convert to one
-// another.
+// Floating widening is lossless. Narrowing requires an explicit conversion.
+FloatWidens :: (from: int, to: int) -> bool {
+    return from == FloatStorage && to == DoubleStorage;
+}
+// Existing integer admission is unchanged; floating values only widen here.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
+    return Widens(from, to) || (Integer(from) && Floating(to)) || FloatWidens(from, to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a

@@ -69,16 +69,12 @@ jobs:
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER=clang-18
-      - name: Native selectors
-        run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Material selectors
-        run: make test-materials LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Project selectors
-        run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Language selectors
+      # One make process shares test-build across these targets. Keep groups
+      # sequential so they cannot race over fixtures or build outputs.
+      - name: Native, material, project and language selectors
         env:
           UBSAN_OPTIONS: halt_on_error=1
-        run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
+        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
 
   native-macos:
     name: Engine build and native tests (macOS)
@@ -111,14 +107,10 @@ jobs:
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER="$CC"
-      - name: Native selectors
-        run: make test-native LIBCLANG_ROOT="$LLVM"
-      - name: Material selectors
-        run: make test-materials LIBCLANG_ROOT="$LLVM"
-      - name: Project selectors
-        run: make test-projects LIBCLANG_ROOT="$LLVM"
-      - name: Language selectors
-        run: make test-language-all LIBCLANG_ROOT="$LLVM"
+      # One make process shares test-build across these targets. Keep groups
+      # sequential so they cannot race over fixtures or build outputs.
+      - name: Native, material, project and language selectors
+        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT="$LLVM"
 
   windows:
     name: Engine build and compile smoke test (Windows)

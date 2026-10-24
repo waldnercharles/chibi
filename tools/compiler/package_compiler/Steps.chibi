@@ -2567,7 +2567,7 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
         }
         exact := ExactStored(bits, written);
         if (ExactNegative(exact)) {
-            return Fail(forest, right.record, document, "Shift count must not be negative");
+            return Fail(forest, Unparenthesized(forest, right.record), document, "Shift count must not be negative");
         }
         if (!ExactFits(exact, value.storage)) {
             exact = ExactMax(value.storage);
@@ -2579,7 +2579,7 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
     } else if (!Single(right, right.storage) || !Integer(right.storage)) {
         return Fail(forest, item.node, document, "operator does not apply to these operands");
     } else if (Signed(right.storage)) {
-        return Fail(forest, Field(forest, item.node, "right"), document,
+        return Fail(forest, Unparenthesized(forest, Field(forest, item.node, "right")), document,
                     "Shift count must be unsigned; convert it with uint(value)");
     } else if (right.storage != value.storage) {
         slots.append(ValueLocal(value.storage));

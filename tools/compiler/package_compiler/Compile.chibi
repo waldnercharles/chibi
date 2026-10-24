@@ -977,7 +977,8 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
             return Folding.Waiting;
         case .Value(exact):
             if (!ExactFits(exact, typed)) {
-                return Folding.Failed(OutsideRange(forest, file, node, typed));
+                // Anchored inside parentheses, as stage zero anchors it.
+                return Folding.Failed(OutsideRange(forest, file, Unparenthesized(forest, node), typed));
             }
             return Folding.Folded(ExactWrapped(exact, typed));
     }
@@ -1096,7 +1097,7 @@ OutsideRange :: (forest: snapshot.SnapshotNode[], file: int, node: int, storage:
 // type, which must be unsigned, and must not be negative.
 EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                   package: int, node: int, storage: int) -> Evaluated {
-    count := Field(forest, node, "right");
+    count := Unparenthesized(forest, Field(forest, node, "right"));
     count_type := ConstantType(forest, text, constants, aliases, package, count);
     if (Signed(count_type)) {
         return Evaluated.Failed(Diagnose(forest, count, file, "Shift count must be unsigned; convert it with uint(value)"));

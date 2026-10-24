@@ -106,13 +106,56 @@ checks remain pending at this source checkpoint.
 
 The parent later confirmed the listed M2 compile-time rules were approved,
 while its Scalar exact-fold implementation and prepared21/protocol9 integrated
-gates remain unaccepted. Typed double-to-float narrowing is still unanswered.
-This slice neither changes nor chooses any of those rules.
+gates remain unaccepted. The parent subsequently confirmed implicit typed
+float-to-double, explicit double-to-float with ordinary ties-to-even/infinity
+narrowing, and contextual literals; the separate float owner is preparing that
+work. This slice neither implements nor changes any of those rules.
+
+## Final source validation
+
+Clean source checkpoint: `383c8fa2ce8b271059d1c17dcf8e74660cdc7b85`.
+Tree: `bc544f1bf42e377b900e78f40f1a4ef8c54dc3b5`.
+Fresh remote main remains `7ffa3ef48b204658ba6d9f95f6b2716039fd8798`.
+The final evidence commit changes documentation/logs only relative to this
+source checkpoint. Independent source and test review is clear, including
+callback lifetime, bind-failure cleanup and actual inspected-backend counters.
+
+All six selected checks pass using the normal supervisor and the normal
+ASan/UBSan graph-built driver (`-fsanitize=address,undefined`, assertions on).
+The collection selectors include actual live watch delivery on bytecode and
+inspected SLJIT, with no inspection fallback. Native stage-zero is the
+differential compiler reference; these are not native LLVM execution claims.
+
+| Selector | Cases | Assertions | Test wall seconds |
+| --- | ---: | ---: | ---: |
+| `language-package-compiler-chibi-collections` | 1 | 3,399 | 56.665 |
+| `language-package-compiler-chibi-collections-compiled` | 1 | 3,154 | 45.034 |
+| `language-package-compiler-chibi-debug-free` | 1 | 1,978 | 41.706 |
+| `language-package-compiler-chibi-scalar` | 3 | 10,251 | 44.431 |
+| `language-execution` | 31 | 4,017 | 0.452 |
+| `language-integer-semantics` | 2 | 335 | 209.553 |
+
+Total: 39 cases and 23,134 assertions. The scalar check includes main PR685's
+independent fixture-result oracle. Integer results characterize current main,
+not the pending total-integer or M2 contract. Build time is recorded separately.
+Changed C formatting and `git diff --check` pass. Full logs, command/environment,
+source/tree identities and SHA-256 hashes are in
+[the validation receipt](evidence/rich-compiler-array-order/validation.json).
+
+There is no remaining source/test blocker for this bounded slice. The exact
+generation request is to sequence `Steps.chibi` SHA-256
+`892f77f0f2e0e334a1657d40fdc3c1d0f318fd680a9d2aa473a11e7498c66c6b`
+with the accepted common compiler source, preserving this fixture during M2
+test reconciliation, then have the single coordinator produce and verify one
+matching artifact. Artifact publication is **pending**, not denied or attempted.
+No generated compiler seed was published, and no main/PR merge was performed.
+Normal ignored build/dependency directories and `.chibi/array-order` logs remain
+in the isolated task workspace; no scratch executable or copied project remains.
 
 Before artifact publication, the single generation coordinator must select
 the final combined source checkpoint and regenerate/verify one matching compiler
 artifact. This lane must not regenerate or publish that seed concurrently.
-Independent review and focused sanitizer/scalar-preservation checks are pending.
+The source review and focused sanitizer/scalar-preservation checks above pass.
 Broad native/material/project/language/tools groups, bootstrap fixed point,
 isolated recovery, native LLVM, Wasm, renderer and installed SDK acceptance have
 not run for this slice. Root owns final review and gated main integration.

@@ -1,0 +1,7 @@
+integer semantics budget exhaustion Spin[1], stage zero on bytecode: fails: compiler execution did not return (status -104; expected compiler execution did not return, status -106)
+integer semantics budget exhaustion Spin[1], stage zero on compiled: fails: compiler execution did not return (status -104; expected compiler execution did not return, status -106)
+Running: integer_semantics_pin_every_width (OK) (1.617866 secs)
+Running: integer_semantics_pin_trap_status (OK) (0.571138 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 335
+Test command wall time: 209.553s; includes in-test fixture setup; external configuration/build excluded.

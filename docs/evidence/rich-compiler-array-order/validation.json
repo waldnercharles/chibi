@@ -1,0 +1,88 @@
+{
+  "source_commit": "383c8fa2ce8b271059d1c17dcf8e74660cdc7b85",
+  "source_tree": "bc544f1bf42e377b900e78f40f1a4ef8c54dc3b5",
+  "accepted_main": "7ffa3ef48b204658ba6d9f95f6b2716039fd8798",
+  "platform": "macOS arm64",
+  "build_command": "make build JOBS=2 BUILD_TARGET=test_language",
+  "build_exit_code": 0,
+  "test_environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "build/test/language",
+    "MallocNanoZone": "0"
+  },
+  "test_command": "python3 tools/test_policy.py tool <selector>",
+  "test_driver_sha256": "3283dd3e50b3e946966831abc58e42f2d1f23fcdcad03cdb14751f24cd2833ba",
+  "files": {
+    "tools/compiler/package_compiler/Steps.chibi": "892f77f0f2e0e334a1657d40fdc3c1d0f318fd680a9d2aa473a11e7498c66c6b",
+    "test/language/package_compiler_chibi.c": "5ae0e0e9ad5e38d44827a097076eff429a7d073b7bfc9fe367fc254248d8ced5",
+    "tools/compiler/bootstrap/compiler.chibip": "d2fd2b2d9aacd7add71b4c70ce04a74ca72159a17e3220b1102020b8bd3414f7",
+    "tools/compiler/bootstrap/bootstrap.json": "69d3eee868658609d3882d216accad9f4247291b9b28ffb203072d72a1f899dd"
+  },
+  "checks": [
+    {
+      "selector": "language-package-compiler-chibi-collections",
+      "exit_code": 0,
+      "cases": 1,
+      "assertions": 3399,
+      "wall_seconds": 56.665,
+      "log": "final-language-package-compiler-chibi-collections.log"
+    },
+    {
+      "selector": "language-package-compiler-chibi-collections-compiled",
+      "exit_code": 0,
+      "cases": 1,
+      "assertions": 3154,
+      "wall_seconds": 45.034,
+      "log": "final-language-package-compiler-chibi-collections-compiled.log"
+    },
+    {
+      "selector": "language-package-compiler-chibi-debug-free",
+      "exit_code": 0,
+      "cases": 1,
+      "assertions": 1978,
+      "wall_seconds": 41.706,
+      "log": "final-language-package-compiler-chibi-debug-free.log"
+    },
+    {
+      "selector": "language-package-compiler-chibi-scalar",
+      "exit_code": 0,
+      "cases": 3,
+      "assertions": 10251,
+      "wall_seconds": 44.431,
+      "log": "final-language-package-compiler-chibi-scalar.log"
+    },
+    {
+      "selector": "language-execution",
+      "exit_code": 0,
+      "cases": 31,
+      "assertions": 4017,
+      "wall_seconds": 0.452,
+      "log": "final-language-execution.log"
+    },
+    {
+      "selector": "language-integer-semantics",
+      "exit_code": 0,
+      "cases": 2,
+      "assertions": 335,
+      "wall_seconds": 209.553,
+      "log": "final-language-integer-semantics.log"
+    }
+  ],
+  "generation": "No tracked bootstrap artifact/manifest regenerated or published; source-only checkpoint.",
+  "unexecuted": [
+    "full native/materials/projects/language/tools groups",
+    "bootstrap fixed point and isolated recovery",
+    "native LLVM execution",
+    "Wasm",
+    "renderer",
+    "installed SDK acceptance"
+  ],
+  "compiler": "/opt/homebrew/opt/llvm/bin/clang",
+  "build_flags": [
+    "-g",
+    "-std=gnu23",
+    "-Werror",
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer",
+    "-UNDEBUG"
+  ]
+}

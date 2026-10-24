@@ -1,0 +1,4 @@
+Running: package_compiler_omits_debug_info (OK) (41.069360 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 1978
+Test command wall time: 41.706s; includes in-test fixture setup; external configuration/build excluded.

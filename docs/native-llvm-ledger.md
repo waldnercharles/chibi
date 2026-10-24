@@ -143,7 +143,7 @@ After M1:
 
 After M2's compile rules (24 October 2026, same container):
 
-- Bootstrap compiler: 13,372,687 bytes, SHA-256 `5a74dccb…a7ef43`, prepared
+- Bootstrap compiler: 13,388,080 bytes, SHA-256 `46d7cd86…fcf0bf`, prepared
   format 21. The checked-in format-20 compiler cannot recover the new
   sources, so `make bootstrap-artifact` built the Release tree through the
   stage-zero path, with `BUILD_HOST` naming no host.

@@ -6,6 +6,7 @@ import json
 import math
 import os
 from pathlib import Path
+import platform
 import signal
 import shlex
 import subprocess
@@ -347,6 +348,10 @@ TOOLS = {
                                                   '--package-compiler-chibi-debug-free'],
     'language-package-compiler-chibi-scalar': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                               '--package-compiler-chibi-scalar'],
+    # Needs Linux x86-64 and CHIBI_LLVM_BIN, the directory of opt, llc, ld.lld
+    # and llvm-nm.
+    'language-scalar-native': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-compiler-chibi-native'],
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
     'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
@@ -538,6 +543,15 @@ GROUPS = {
 }
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]
+# Native scalar execution runs on the one target the emitter admits, with
+# the LLVM tools it is given; otherwise the language group reports it unrun.
+UNRUN = {}
+if not (sys.platform.startswith('linux') and platform.machine() == 'x86_64'):
+    UNRUN['language-scalar-native'] = 'it needs Linux x86-64'
+elif not os.environ.get('CHIBI_LLVM_BIN'):
+    UNRUN['language-scalar-native'] = 'set NATIVE_LLVM_BIN to the directory of opt, llc, ld.lld and llvm-nm'
+else:
+    GROUPS['language'].append('language-scalar-native')
 GROUPS['compiler'] = [name for name in TOOLS if name.startswith('language-package-compiler-chibi')]
 GROUPS['benchmarks'] = [name for name in TOOLS if name.endswith('-benchmark') and not name.startswith('wasm-')]
 
@@ -789,6 +803,9 @@ def main():
     if args.action == 'group':
         if len(arguments) != 1 or arguments[0] not in GROUPS:
             parser.error('unknown test group')
+        if arguments[0] == 'language':
+            for name, reason in UNRUN.items():
+                print(f'{name} not run: {reason}')
         commands = [tool_command(name) for name in GROUPS[arguments[0]]]
         return run_commands(commands, seconds=args.timeout)
     if args.action == 'tool':

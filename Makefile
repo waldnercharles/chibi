@@ -65,6 +65,9 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # Apple's nano allocator before starting instrumented native binaries so the
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
+# The directory of opt, llc, ld.lld and llvm-nm for native scalar execution
+# in test-language-all. It runs only when this is set.
+NATIVE_LLVM_BIN ?= $(CHIBI_LLVM_BIN)
 
 .PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
@@ -373,7 +376,7 @@ test-language:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language
 
 test-language-all: test-build
-	@CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group language
+	@CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group language
 
 test-language-semantic:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-semantic

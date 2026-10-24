@@ -10,10 +10,12 @@ import strings "core:strings"
 // declarations, bodies, literal ranges, parameter bindings and callees are the
 // ordinary compiler's decisions, not a second parser or evaluator. The checks
 // here only reject forms the bounded subset cannot express: every function
-// takes and returns int or bool, and its whole body returns a literal, a
-// parameter or a direct call of a function of the same source, with such
-// arguments. Parentheses, negation, arithmetic, conversions, locals, control
-// flow, attributes, imports, defaults and recursion are excluded.
+// takes and returns int or bool, and its body is at most one guard,
+// `if (condition) { return value; }`, then a final `return value;`. Values and
+// conditions are literals, parameters, comparisons of two ints or direct calls
+// of functions of the same source, with such arguments. Other parentheses,
+// negation, arithmetic, conversions, locals, else branches, other statements,
+// attributes, imports, defaults and recursion are excluded.
 //
 // Each body must also pass EmitBody with no effects, host calls or roots,
 // and no cells but its calls' argument and result cells. Its calls go only to
@@ -21,6 +23,9 @@ import strings "core:strings"
 
 ScalarOperands :: union {
     Failed(diagnostic: syntax.Diagnostic) | Built(rows: facts.Row[])
+}
+ScalarStatements :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Shaped(statements: int[])
 }
 
 ScalarSource :: (path: string, text: string) -> facts.Row {
@@ -75,28 +80,81 @@ ScalarSignature :: (forest: snapshot.SnapshotNode[], params: Param[], callable: 
     }
     return -1;
 }
-// The body's single return value, or a diagnostic for any other shape.
-ScalarReturn :: (forest: snapshot.SnapshotNode[], callable: Callable) -> ScalarOperands {
-    body := Field(forest, callable.node, "body");
-    returned := FirstMember(forest, body);
-    if (!Is(forest, returned, "return_statement")) {
-        if (returned < 0) {
-            returned = body;
-        }
-        return ScalarOperands.Failed(Diagnose(forest, returned, 0, "scalar proof requires one complete return statement"));
-    }
+// The diagnostic of a return statement that does not return one plain value,
+// or none.
+ScalarReturned :: (forest: snapshot.SnapshotNode[], returned: int) -> syntax.Diagnostic {
     outcome := Field(forest, returned, "outcome");
     if (outcome >= 0) {
-        return ScalarOperands.Failed(Diagnose(forest, outcome, 0, "scalar proof does not support return outcomes"));
-    }
-    extra := NextMember(forest, returned);
-    if (extra >= 0) {
-        return ScalarOperands.Failed(Diagnose(forest, extra, 0, "scalar proof does not support additional statements"));
+        return Diagnose(forest, outcome, 0, "scalar proof does not support return outcomes");
     }
     if (Field(forest, returned, "value") < 0) {
-        return ScalarOperands.Failed(Diagnose(forest, returned, 0, "scalar proof requires a returned value"));
+        return Diagnose(forest, returned, 0, "scalar proof requires a returned value");
     }
-    return ScalarOperands.Built([ScalarAt(forest, returned, facts.ReturnRow, 0, 0, 0, "")]);
+    return ScalarPassed();
+}
+// The diagnostic of a statement that follows `statement` in its block, or
+// none: every statement is checked, whether or not it is reachable.
+ScalarLast :: (forest: snapshot.SnapshotNode[], statement: int) -> syntax.Diagnostic {
+    extra := NextMember(forest, statement);
+    if (extra >= 0) {
+        return Diagnose(forest, extra, 0, "scalar proof does not support additional statements");
+    }
+    return ScalarPassed();
+}
+// The diagnostic of a guard that is not `if (condition) { return value; }`,
+// or none.
+ScalarGuarded :: (forest: snapshot.SnapshotNode[], guard: int) -> syntax.Diagnostic {
+    alternative := Field(forest, guard, "alternative");
+    if (alternative >= 0) {
+        return Diagnose(forest, alternative, 0, "scalar proof does not support else branches");
+    }
+    consequence := Field(forest, guard, "consequence");
+    arm := FirstMember(forest, consequence);
+    if (!Is(forest, arm, "return_statement")) {
+        if (arm < 0) {
+            arm = consequence;
+        }
+        return Diagnose(forest, arm, 0, "scalar proof requires a guard that returns");
+    }
+    returned := ScalarReturned(forest, arm);
+    if (returned.message != "") {
+        return returned;
+    }
+    return ScalarLast(forest, arm);
+}
+// The body's guards, then its final return statement as the last element, or
+// a diagnostic for any other shape.
+ScalarBody :: (forest: snapshot.SnapshotNode[], callable: Callable) -> ScalarStatements {
+    body := Field(forest, callable.node, "body");
+    statements: int[] = [];
+    statement := FirstMember(forest, body);
+    while (Is(forest, statement, "if_statement")) {
+        if (length(statements) >= facts.MaxGuards) {
+            return ScalarStatements.Failed(Diagnose(forest, statement, 0, format_text("scalar proof admits at most {} guard per function",
+                                                                                      facts.MaxGuards)));
+        }
+        guarded := ScalarGuarded(forest, statement);
+        if (guarded.message != "") {
+            return ScalarStatements.Failed(guarded);
+        }
+        statements.append(statement);
+        statement = NextMember(forest, statement);
+    }
+    if (!Is(forest, statement, "return_statement")) {
+        if (statement < 0) {
+            statement = body;
+        }
+        return ScalarStatements.Failed(Diagnose(forest, statement, 0, "scalar proof requires one complete return statement"));
+    }
+    returned := ScalarReturned(forest, statement);
+    if (returned.message == "") {
+        returned = ScalarLast(forest, statement);
+    }
+    if (returned.message != "") {
+        return ScalarStatements.Failed(returned);
+    }
+    statements.append(statement);
+    return ScalarStatements.Shaped(statements);
 }
 // The ordinal of the parameter the body's binding of `name` declares, -1 when
 // it is not a parameter. `names` is the body's scope at its start.
@@ -111,6 +169,43 @@ ScalarParameter :: (params: Param[], callable: Callable, names: Name[], name: st
         }
     }
     return -1;
+}
+// The facts operator of a comparison's source operator, 0 for any other. The
+// spellings are in the order of facts.Less through facts.NotEqual.
+ScalarComparison :: (operator: string) -> int {
+    spellings := ["<", "<=", ">", ">=", "==", "!="];
+    for (index in 0..<length(spellings)) {
+        if (spellings[index] == operator) {
+            return facts.Less + index;
+        }
+    }
+    return 0;
+}
+ScalarCompares :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    return Is(forest, node, "binary_expression") &&
+           ScalarComparison(Text(forest, text, Field(forest, node, "operator"))) != 0;
+}
+// The storage of an operand whose own form gives one: a parameter, a call's
+// result, a bool literal or a comparison. 0 for an untyped number literal,
+// which takes its type from its use, as OperatorStep types it.
+ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         callable: Callable, names: Name[], node: int) -> int {
+    if (Is(forest, node, "boolean") || ScalarCompares(forest, text, node)) {
+        return BoolStorage;
+    }
+    if (Is(forest, node, "identifier")) {
+        ordinal := ScalarParameter(params, callable, names, Text(forest, text, node));
+        if (ordinal >= 0) {
+            return params[callable.first + ordinal].storage;
+        }
+    }
+    if (Is(forest, node, "call_expression")) {
+        callee := CalledFunction(forest, text, callables, names, callable.package, node);
+        if (callee >= 0) {
+            return callables[callee].result;
+        }
+    }
+    return 0;
 }
 ScalarFull :: (forest: snapshot.SnapshotNode[], node: int) -> ScalarOperands {
     return ScalarOperands.Failed(Diagnose(forest, node, 0, format_text("scalar proof admits at most {} operands per function",
@@ -150,9 +245,41 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         output.append(ScalarAt(forest, node, facts.ReadRow, type, ordinal, 0, ""));
         return ScalarOperands.Built(output);
     }
+    if (ScalarCompares(forest, text, node)) {
+        // As OperatorStep types it: an untyped literal takes the other
+        // operand's type. EmitBody has typed both sides.
+        left := Field(forest, node, "left");
+        right := Field(forest, node, "right");
+        storage := ScalarOperandStorage(forest, text, callables, params, callable, names, left);
+        if (storage == 0) {
+            storage = ScalarOperandStorage(forest, text, callables, params, callable, names, right);
+        }
+        // Two untyped literals each take their spelled type.
+        if (storage == 0 && InferredNumberStorage(forest, text, left) == IntStorage &&
+            InferredNumberStorage(forest, text, right) == IntStorage) {
+            storage = IntStorage;
+        }
+        if (storage != IntStorage) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof compares only int operands"));
+        }
+        for (side in [left, right]) {
+            switch ScalarOperand(forest, text, callables, params, callable, names, side, IntStorage, output) {
+                case .Failed(diagnostic):
+                    return ScalarOperands.Failed(diagnostic);
+                case .Built(built):
+                    output = built;
+            }
+        }
+        if (length(output) >= facts.MaxOperands) {
+            return ScalarFull(forest, node);
+        }
+        operator := ScalarComparison(Text(forest, text, Field(forest, node, "operator")));
+        output.append(ScalarAt(forest, node, facts.CompareRow, facts.BoolType, operator, 2, ""));
+        return ScalarOperands.Built(output);
+    }
     if (!Is(forest, node, "call_expression")) {
         return ScalarOperands.Failed(Diagnose(forest, node, 0,
-                                              "scalar proof supports only literals, parameters and direct calls"));
+                                              "scalar proof supports only literals, parameters, comparisons and direct calls"));
     }
     callee := CalledFunction(forest, text, callables, names, callable.package, node);
     if (!Is(forest, Field(forest, node, "function"), "identifier") || callee < 0) {
@@ -177,10 +304,20 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     output.append(ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name));
     return ScalarOperands.Built(output);
 }
-// A function's rows: its signature, its return statement and the return's
-// operands.
+// The condition of a guard, without the one pair of parentheses that may
+// enclose it as the guard's own syntax.
+ScalarCondition :: (forest: snapshot.SnapshotNode[], guard: int) -> int {
+    condition := Field(forest, guard, "condition");
+    if (Is(forest, condition, "parenthesized_expression")) {
+        return Field(forest, condition, "expression");
+    }
+    return condition;
+}
+// A function's rows: its signature, then each guard's row, condition operands,
+// arm return and that return's operands, then its final return and that
+// return's operands. Operands count against one bound per function.
 ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], callables: Callable[],
-                   params: Param[], function: int, statement: facts.Row, ops: Ops, target: Target) -> ScalarOperands {
+                   params: Param[], function: int, statements: int[], ops: Ops, target: Target) -> ScalarOperands {
     callable := callables[function];
     rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, ScalarTypeOf(callable.result), 0,
                                   callable.count, callable.name)];
@@ -196,18 +333,41 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         case .Begun(work, begun_names, slots, locals, cells, hosts, code, points, named):
             names = begun_names;
     }
-    value := Field(forest, FirstMember(forest, Field(forest, callable.node, "body")), "value");
-    operands: facts.Row[] = [];
-    switch ScalarOperand(forest, text, callables, params, callable, names, value, callable.result, operands) {
-        case .Failed(diagnostic):
-            return ScalarOperands.Failed(diagnostic);
-        case .Built(built):
-            operands = built;
+    // Each segment: its row's node and kind, the value it evaluates and the
+    // storage that value has.
+    heads: int[] = [];
+    kinds: int[] = [];
+    values: int[] = [];
+    storages: int[] = [];
+    for (statement in statements) {
+        if (Is(forest, statement, "if_statement")) {
+            arm := FirstMember(forest, Field(forest, statement, "consequence"));
+            heads.extend([statement, arm]);
+            kinds.extend([facts.GuardRow, facts.ReturnRow]);
+            values.extend([ScalarCondition(forest, statement), Field(forest, arm, "value")]);
+            storages.extend([BoolStorage, callable.result]);
+        } else {
+            heads.append(statement);
+            kinds.append(facts.ReturnRow);
+            values.append(Field(forest, statement, "value"));
+            storages.append(callable.result);
+        }
     }
-    returned := statement;
-    returned.count = length(operands);
-    rows.append(returned);
-    rows.extend(operands);
+    operands: facts.Row[] = [];
+    for (index in 0..<length(heads)) {
+        first := length(operands);
+        switch ScalarOperand(forest, text, callables, params, callable, names, values[index], storages[index],
+                             operands) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                operands = built;
+        }
+        rows.append(ScalarAt(forest, heads[index], kinds[index], 0, 0, length(operands) - first, ""));
+        for (at in first..<length(operands)) {
+            rows.append(operands[at]);
+        }
+    }
     return ScalarOperands.Built(rows);
 }
 // Whether each of `count` cells is an argument or result of an authored call,
@@ -274,19 +434,19 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     solid := SolidOffsets(text);
     rows: facts.Row[] = [];
     for (function in 0..<length(callables)) {
-        statement: facts.Row[] = [];
-        switch ScalarReturn(forest, callables[function]) {
+        statements: int[] = [];
+        switch ScalarBody(forest, callables[function]) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
-            case .Built(built):
-                statement = built;
+            case .Shaped(shaped):
+                statements = shaped;
         }
         emitted := ScalarEmits(forest, text, key, callables, params, types, members, constants, solid, function,
                                ops, target);
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }
-        switch ScalarFunction(forest, text, key, solid, callables, params, function, statement[0], ops, target) {
+        switch ScalarFunction(forest, text, key, solid, callables, params, function, statements, ops, target) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(function_rows):

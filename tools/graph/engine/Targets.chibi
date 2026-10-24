@@ -3653,6 +3653,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_SYNTAX_BYTES=bytes:tools/compiler/package_syntax/Extract.chibi",
             "CHIBI_PREPARED_WRITER_BYTES=bytes:tools/compiler/prepared_writer/Writer.chibi",
             "CHIBI_RECORD_MEMBERS_BYTES=bytes:tools/compiler/record_members/Members.chibi",
+            "CHIBI_SCALAR_CASES_BYTES=bytes:test/scalar_facts/cases/Cases.chibi",
             "CHIBI_SCALAR_FACTS_BYTES=bytes:tools/compiler/scalar_facts/Facts.chibi",
             "CHIBI_SCALAR_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
             "CHIBI_SCALAR_LLVM_BYTES=bytes:tools/compiler/scalar_llvm/Emit.chibi",

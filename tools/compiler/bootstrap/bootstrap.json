@@ -2,12 +2,12 @@
   "format": 1,
   "version": 5,
   "minimum": 2,
-  "revision": "a4df25ea53c47f2740bce368607957b98fd81c38",
+  "revision": "530ada6c7cbb91de6974bc1e5d5a3a3997fb3e32 + pure assert source tree923564bf1bf62be0e89171f6dae8b50a01c76601",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 12300558,
-    "sha256": "6a15507da9397cf20f9fd3753631bf75b2beb9782e37bfd6ab5319873d27c2e0"
+    "bytes": 12299241,
+    "sha256": "2766378823436ea480d7cdd875a7564d950a388a4ca6409528834e44405a1ac2"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -24,8 +24,8 @@
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 199734,
-      "sha256": "fae606ce824cd19184a14bfb212562c9b562bdef449c9f3b899d15cc56a0bc0f"
+      "bytes": 199660,
+      "sha256": "aee0c378d05df0829f38127de019d8140f65a75a19106e3ae0b096d12740d2be"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -53,9 +53,19 @@
       "sha256": "03b4e04831528254d7f0deb31cbb6e8dfd7d2e07e79a1c31796266e7a2196e76"
     },
     {
+      "path": "package_compiler/Scalar.chibi",
+      "bytes": 13169,
+      "sha256": "2a6ce7d1201fa90d84fb9c1fd146a2946be9154a029db626d0b63c64d4a288e6"
+    },
+    {
       "path": "syntax_diagnostics/Diagnostics.chibi",
       "bytes": 2282,
       "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "bytes": 15843,
+      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
@@ -98,19 +108,9 @@
       "sha256": "f10c7e7fce12aa046f59f4196b6ce6364dba217f3331dec196d463e347936281"
     },
     {
-      "path": "package_compiler/Scalar.chibi",
-      "bytes": 13169,
-      "sha256": "2a6ce7d1201fa90d84fb9c1fd146a2946be9154a029db626d0b63c64d4a288e6"
-    },
-    {
       "path": "scalar_facts/Facts.chibi",
       "bytes": 1580,
       "sha256": "d84b75ce7ffc8fdacb02ae22e50830b75cacb7164c27fa673b75b42a6b100d24"
-    },
-    {
-      "path": "/sdk/core/strings/Strings.chibi",
-      "bytes": 15843,
-      "sha256": "672f9fa816bcc043b8265cacc54eb619142bdb268a7d59577fd03a1427f95471"
     }
   ],
   "target": [

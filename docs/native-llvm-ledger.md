@@ -143,10 +143,16 @@ After M1:
 
 After M2's compile rules (24 October 2026, same container):
 
-- Bootstrap compiler: 13,390,570 bytes, SHA-256 `58d17229…f77c06`, prepared
-  format 21. The checked-in format-20 compiler cannot recover the new
-  sources, so `make bootstrap-artifact` built the Release tree through the
-  stage-zero path, with `BUILD_HOST` naming no host.
+- Bootstrap compiler: 13,611,155 bytes, SHA-256 `d170310e…6ff4e7`, prepared
+  format 21, with the floating conversions and typed floating constants. The
+  checked-in format-20 compiler cannot recover the new sources, so
+  `make bootstrap-artifact` built the Release tree through the stage-zero
+  path, with `BUILD_HOST` naming no host. Since #678, building
+  `test_language` generates the asset compiler, which needs a bootstrap that
+  recovers the current compiler, so a compiler whose code generation changes
+  cannot regenerate its own bootstrap in a tree that has the asset compiler.
+  This one was generated at b947ec4ac, before #678 merged in, whose compiler
+  sources are identical.
 - `language-package-compiler-chibi-bootstrap` takes 50 s in Release, by its
   own wall time on this container (164 s before M2). Before the exact
   division stopped copying its arguments it took 842 s, 775 of them in stage

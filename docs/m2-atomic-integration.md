@@ -172,3 +172,74 @@ diagnostic. This confirms the normal gate is restored. It is a known version
 block, not denial or uncertain execution, and no capacity workaround was tried.
 A compatible scratch artifact, full driver execution and recovery remain
 pending parent source review and explicit generation authorization.
+
+## Reviewed typed-constant repair after 7977e09e
+
+Parent authorized repair of the two blockers, without broader floating arithmetic
+or integer folding changes. The revised proposal is now applied to the source
+checkpoint after independent review; the original failed proposal and both
+historical test logs above remain preserved unchanged.
+
+Only two production files change relative to7977e09e: Compile.chibi and
+Number.chibi. The exact two-file patch is retained locally at
+`.chibi/m2-integration/typed-float-revised.patch`, SHA-256
+`ddafca8f17b14a08d2dc5f276e19d39676accb2c22351a941f490df814842136`.
+It is reproducible with `git diff 7977e09e <this-source-commit> --
+tools/compiler/package_compiler/Compile.chibi tools/compiler/package_compiler/Number.chibi`.
+It has197 insertions and10 deletions. Source composition still uses the inputs
+and explicit artifact hold documented above.
+
+The repaired integer conversion boundary rejects a floating operand before
+FoldConstant/ExactStored, with a diagnostic at the operand. Evaluate's named
+constant path independently requires integer storage, including when reached
+through a shift count. No floating bit pattern can become an exact integer
+through either newly reachable path. Integer arithmetic, range checks and wrap
+calculation are unchanged; float-to-integer constant conversion remains an
+explicit unsupported boundary, not a new conversion implementation.
+
+UntypedStorage now peels only grouping and unary +/- while classifying a
+floating literal leaf. It then chooses double. Its existing integer ParseNumber
+still receives the original unparenthesized node, preserving integer operand
+range/type behavior. This repairs double(-(1.5)), float(+((1.5))) and
+double(-(-1.5)) without introducing another expression evaluator. ConstantType
+still leaves contextual literals untyped. The finite floating representation
+conversion helper is unchanged from the original proposal.
+
+The fixed positive C fixtures add expected-1.5/1.5/1.5 results for those three
+forms, negative overflow classification, and the exact decimal midpoint
+340282356779733661637539395458142568448.0 (2^128-2^103), which rounds into positive
+float infinity. The prior lower/upper rounding, subnormal, alias and signed-zero
+oracles remain unchanged. Five authored-only sample rejections require:
+
+- uint64(Wide), for named double1.5: floating-to-integer constant conversion
+  unsupported, at3:22.
+- int(wrap: Wide): same category at3:22.
+- uint64(double(1.5)): same category at2:22.
+- 1 << Wide: integer-expression category at3:17.
+- A floating binary declaration initializer: unsupported initializer at2:15.
+
+These negatives use the existing authored sample runner in both compiler
+backends, with literal messages/coordinates and no new test framework. They are
+not placed in the shared stagezero-parity table because stagezero supports some
+forms deliberately outside this source slice. Removing the production guards
+would cause an acceptance/category mismatch; reverting float-leaf inference
+would reject positive literal cases. Those mutation runs have not yet executed.
+
+[Independent review](evidence/m2-integration/typed-float-revised-review.txt)
+verified the exact patch hash, closed both blockers, checked source columns and
+the overflow midpoint, and found no remaining source-design blocker. This is
+approval of source design/fixture coverage, not execution acceptance.
+
+Executed: existing chibi-build-host and chibi-compiler-host targets, and changed
+semantic.c/package_compiler_chibi.c object targets build with two jobs and
+warnings enabled. Formatting and diff whitespace checks pass. Embedding Chibi
+source in a compiled C object does NOT semantically compile or execute it.
+
+Pending: new literal/rejection execution on bytecode and SLJIT, actual mutation
+controls, integer/exact-fold/native-name/array-watch regressions, ordinary asset
+host generation, coordinated selfbuild/fixedpoint/recovery and Linux native
+checks. The ordinary build remains blocked by the verified preserved
+prepared20 artifact versus source/runtime21; no new build rerun is claimed to
+resolve that dependency. No bootstrap generation, asset-disable option, PR688
+adoption, runtime pin change or release occurred. Parent owns authorization of
+the next isolated scratch generation step from a frozen source identity.

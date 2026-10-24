@@ -285,5 +285,43 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "[1.5]",
       "[true]",
       .constant = true },
+    { "constant-parenthesized-negative",
+      "package facts\nValue: double : double(-(1.5));\npub Fold :: (unused: "
+      "float) -> double { return Value; }\n",
+      true,
+      "[1.5]",
+      "[-1.5]",
+      .constant = true },
+    { "constant-parenthesized-positive",
+      "package facts\nValue: float : float(+((1.5)));\npub Fold :: (unused: "
+      "float) -> float { return Value; }\n",
+      true,
+      "[1.5]",
+      "[1.5]",
+      .constant = true },
+    { "constant-nested-negative",
+      "package facts\nValue: double : double(-(-1.5));\npub Fold :: (unused: "
+      "float) -> double { return Value; }\n",
+      true,
+      "[1.5]",
+      "[1.5]",
+      .constant = true },
+    { "constant-explicit-negative-overflow",
+      "package facts\nWide: double : -1e300;\nValue: float : float(Wide);\npub "
+      "Fold :: (unused: float) -> bool { return Value < 0.0 && Value == Value "
+      "+ Value; }\n",
+      true,
+      "[1.5]",
+      "[true]",
+      .constant = true },
+    { "constant-round-to-infinity",
+      "package facts\nWide: double : "
+      "340282356779733661637539395458142568448.0;\nValue: float : "
+      "float(Wide);\npub Fold :: (unused: float) -> bool { return Value > 0.0 "
+      "&& Value == Value + Value; }\n",
+      true,
+      "[1.5]",
+      "[true]",
+      .constant = true },
 };
 #endif

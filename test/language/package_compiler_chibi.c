@@ -2252,6 +2252,41 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
+    /* Authored constant support boundaries. Stage zero accepts some of these
+     * forms; require the authored diagnostic at the operand, not parity with
+     * stage zero or an earlier unsupported-declaration failure. */
+    { .name = "floating constant cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: uint64 : "
+                "uint64(Wide);\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 3,
+      .column = 22 },
+    { .name = "floating constant cannot wrap into integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: int : int(wrap: "
+                "Wide);\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 3,
+      .column = 22 },
+    { .name = "floating conversion cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBad: uint64 : uint64(double(1.5));\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 2,
+      .column = 22 },
+    { .name = "floating shift count cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: int : 1 << Wide;\n",
+      .message = "constant value must be an integer expression",
+      .line = 3,
+      .column = 17 },
+    { .name = "floating binary constant initializer remains unsupported",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBad: double : 1.0 + 2.0;\n",
+      .message = "floating constant initializer is not supported yet",
+      .line = 2,
+      .column = 15 },
 };
 enum
 {

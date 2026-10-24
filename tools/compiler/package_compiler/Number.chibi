@@ -359,6 +359,50 @@ FloatFromDouble :: (exponent: int, mantissa: int64) -> int64 {
     return (int64(narrow) << 23) + kept - (int64(1) << 23);
 }
 
+// Convert already represented floating values. Literal admission is separate:
+// explicit narrowing may overflow to infinity, and preserves signed zero.
+FloatingBits :: (bits: uint64, from: int, to: int) -> uint64 {
+    if (from == to) {
+        return bits;
+    }
+    if (from == DoubleStorage) {
+        sign := (bits >> uint(32)) & uint64(0x80000000);
+        exponent := int((bits >> uint(52)) & uint64(0x7ff));
+        fraction := bits & uint64(0xfffffffffffff);
+        if (exponent == 2047 && fraction != 0) {
+            return sign | uint64(0x7fc00000);
+        }
+        if (exponent > 1150) {
+            return sign | uint64(0x7f800000);
+        }
+        if (exponent == 0) {
+            return sign;
+        }
+        return sign | uint64(FloatFromDouble(exponent, int64(fraction)));
+    }
+    sign := (bits & uint64(0x80000000)) << uint(32);
+    exponent := int((bits >> uint(23)) & uint64(0xff));
+    fraction := bits & uint64(0x7fffff);
+    if (exponent == 255) {
+        if (fraction != 0) {
+            return sign | uint64(0x7ff8000000000000);
+        }
+        return sign | uint64(0x7ff0000000000000);
+    }
+    if (exponent == 0) {
+        if (fraction == 0) {
+            return sign;
+        }
+        exponent = 1;
+        while ((fraction & uint64(0x800000)) == 0) {
+            fraction = fraction << uint(1);
+            exponent -= 1;
+        }
+        fraction = fraction & uint64(0x7fffff);
+    }
+    return sign | (uint64(exponent + 896) << uint(52)) | (fraction << uint(29));
+}
+
 // The bit patterns of the decimal, negated when `negative`, as Odin's
 // decimal_to_float_bits for binary64.
 DecimalBits :: (digits: int[], count: int, point: int, trunc: bool, negative: bool) -> FloatBits {

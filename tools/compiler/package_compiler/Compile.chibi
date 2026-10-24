@@ -805,7 +805,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     }
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
                     storage = constant_type.storage;
-                    if (!Integer(storage) || constant_type.container != 0) {
+                    if ((!Integer(storage) && !Floating(storage)) || constant_type.container != 0) {
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
@@ -896,8 +896,11 @@ ConstantExpression :: (forest: snapshot.SnapshotNode[], text: string, constants:
     if (Is(forest, value, "number")) {
         return InferredNumberStorage(forest, text, value) != DoubleStorage;
     }
-    if (ConstantOf(forest, text, constants, aliases, package, value) >= 0) {
-        return true;
+    named := ConstantOf(forest, text, constants, aliases, package, value);
+    if (named >= 0) {
+        // This classifier admits only the exact integer evaluator. Floating
+        // expressions in bodies retain ordinary runtime lowering.
+        return Integer(constants[named].storage);
     }
     if (ConversionType(forest, text, value) != 0) {
         argument := FirstMember(forest, Field(forest, value, "arguments"));
@@ -918,7 +921,7 @@ ConstantExpression :: (forest: snapshot.SnapshotNode[], text: string, constants:
            ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, "left")) &&
            ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, "right"));
 }
-// The integer type a constant expression has of its own: a constant's or a
+// The type a constant expression has of its own: a constant's or a
 // conversion's, through unary operators and a shift's value, else either
 // operand's of another binary operator, left first. 0 when it is untyped
 // literals alone, which take their type from its use.
@@ -932,6 +935,13 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
     if (ConversionType(forest, text, value) != 0) {
         return ConversionType(forest, text, value);
     }
+    callee := Field(forest, value, "function");
+    if (Is(forest, value, "call_expression") && Is(forest, callee, "identifier")) {
+        converted := ScalarStorage(Text(forest, text, callee));
+        if (Floating(converted)) {
+            return converted;
+        }
+    }
     if (Is(forest, value, "unary_expression")) {
         return ConstantType(forest, text, constants, aliases, package, Field(forest, value, "operand"));
     }
@@ -944,9 +954,18 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
     }
     return ConstantType(forest, text, constants, aliases, package, Field(forest, value, "right"));
 }
-// The type an untyped operand of a conversion or a shift count takes: int64,
-// or uint64 for a literal beyond it.
+// An untyped floating literal takes double through grouping and unary signs.
+// Integer operands retain int64, or uint64 for a literal beyond it.
 UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    literal := Unparenthesized(forest, node);
+    while (Is(forest, literal, "unary_expression") &&
+           (Text(forest, text, Field(forest, literal, "operator")) == "+" ||
+            Text(forest, text, Field(forest, literal, "operator")) == "-")) {
+        literal = Unparenthesized(forest, Field(forest, literal, "operand"));
+    }
+    if (Is(forest, literal, "number") && InferredNumberStorage(forest, text, literal) == DoubleStorage) {
+        return DoubleStorage;
+    }
     switch ParseNumber(forest, text, Unparenthesized(forest, node)) {
         case .Invalid:
             return Int64Storage;
@@ -957,15 +976,132 @@ UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
             return WordStorage;
     }
 }
-// The bits of the constant integer expression `node`. It has its own type,
-// or the context's `storage` when it is untyped, and folds exactly: only its
-// literals, its value and each conversion's operand must fit their types.
-// `Waiting` when a constant it names is not folded yet.
+// The bits of a constant of its own type, or the context's storage when
+// untyped. Integer expressions fold exactly; floating literals, names and
+// conversions use their represented values. Waiting on an unfolded name.
 FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                  package: int, node: int, storage: int) -> Folding {
     typed := ConstantType(forest, text, constants, aliases, package, node);
     if (typed == 0) {
         typed = storage;
+    }
+    if (Floating(storage)) {
+        if (typed != storage && !FloatWidens(typed, storage) && !Integer(typed)) {
+            return Folding.Failed(Diagnose(forest, node, file, "a constant of another type needs a conversion"));
+        }
+        if (Integer(typed)) {
+            // Reuse the ordinary exact fold before the existing decimal-to-
+            // floating conversion, including the source integer's range check.
+            switch FoldConstant(forest, text, file, constants, aliases, package, node, typed) {
+                case .Failed(diagnostic):
+                    return Folding.Failed(diagnostic);
+                case .Waiting:
+                    return Folding.Waiting;
+                case .Folded(bits):
+                    exact := ExactStored(bits, typed);
+                    switch LiteralBits(format_text("{}", LowBits(Magnitude(exact))), ExactNegative(exact)) {
+                        case .OutOfRange:
+                            return Folding.Failed(OutsideRange(forest, file, node, storage));
+                        case .Finite(wide, fits, narrow):
+                            if (storage == FloatStorage) {
+                                return Folding.Folded(narrow);
+                            }
+                            return Folding.Folded(wide);
+                    }
+            }
+        }
+        value := Unparenthesized(forest, node);
+        if (ParsedLiteral(forest, text, value)) {
+            switch NumberBits(forest, text, value) {
+                case .OutOfRange:
+                    return Folding.Failed(Diagnose(forest, value, file, "Numeric literal is outside the range of its type"));
+                case .Finite(wide, fits, narrow):
+                    if (storage == FloatStorage && !fits) {
+                        return Folding.Failed(Diagnose(forest, value, file, "Numeric literal is outside the range of float"));
+                    }
+                    if (storage == FloatStorage) {
+                        return Folding.Folded(narrow);
+                    }
+                    return Folding.Folded(wide);
+            }
+        }
+        named := ConstantOf(forest, text, constants, aliases, package, value);
+        if (named >= 0) {
+            constant := constants[named];
+            if (constant.package != package && PrivateDeclaration(forest, forest[constant.node].parent)) {
+                return Folding.Failed(Diagnose(forest, value, file, PrivateMessage(Text(forest, text, value))));
+            }
+            if (!constant.folded) {
+                return Folding.Waiting;
+            }
+            return Folding.Folded(FloatingBits(constant.bits, constant.storage, storage));
+        }
+        callee := Field(forest, value, "function");
+        if (Is(forest, value, "call_expression") && Is(forest, callee, "identifier") &&
+            Floating(ScalarStorage(Text(forest, text, callee)))) {
+            converted := ScalarStorage(Text(forest, text, callee));
+            operand := FirstMember(forest, Field(forest, value, "arguments"));
+            if (operand < 0 || NextMember(forest, operand) >= 0) {
+                return Folding.Failed(Diagnose(forest, value, file, "Conversion takes one value"));
+            }
+            if (Is(forest, operand, "named_argument")) {
+                return Folding.Failed(Diagnose(forest, value, file, "wrap and clamp convert between integer types"));
+            }
+            inner := ConstantType(forest, text, constants, aliases, package, operand);
+            if (inner == 0) {
+                inner = UntypedStorage(forest, text, Unparenthesized(forest, operand));
+            }
+            // Integer-to-floating conversion uses the same ordinary FoldConstant
+            // entry; floating-to-integer is not expanded by this dependency.
+            if (Integer(inner)) {
+                switch FoldConstant(forest, text, file, constants, aliases, package, operand, inner) {
+                    case .Failed(diagnostic):
+                        return Folding.Failed(diagnostic);
+                    case .Waiting:
+                        return Folding.Waiting;
+                    case .Folded(bits):
+                        exact := ExactStored(bits, inner);
+                        switch LiteralBits(format_text("{}", LowBits(Magnitude(exact))), ExactNegative(exact)) {
+                            case .OutOfRange:
+                                return Folding.Failed(OutsideRange(forest, file, operand, converted));
+                            case .Finite(wide, fits, narrow):
+                                converted_bits := wide;
+                                if (converted == FloatStorage) {
+                                    converted_bits = narrow;
+                                }
+                                return Folding.Folded(FloatingBits(converted_bits, converted, storage));
+                        }
+                }
+            }
+            switch FoldConstant(forest, text, file, constants, aliases, package, operand, inner) {
+                case .Failed(diagnostic):
+                    return Folding.Failed(diagnostic);
+                case .Waiting:
+                    return Folding.Waiting;
+                case .Folded(bits):
+                    return Folding.Folded(FloatingBits(FloatingBits(bits, inner, converted), converted, storage));
+            }
+        }
+        operator := Text(forest, text, Field(forest, value, "operator"));
+        if (Is(forest, value, "unary_expression") && (operator == "+" || operator == "-")) {
+            switch FoldConstant(forest, text, file, constants, aliases, package,
+                                Field(forest, value, "operand"), storage) {
+                case .Failed(diagnostic):
+                    return Folding.Failed(diagnostic);
+                case .Waiting:
+                    return Folding.Waiting;
+                case .Folded(bits):
+                    if (operator == "-") {
+                        sign: uint64 = 0x8000000000000000;
+                        if (storage == FloatStorage) {
+                            sign = 0x80000000;
+                        }
+                        return Folding.Folded(bits ^ sign);
+                    }
+                    return Folding.Folded(bits);
+            }
+        }
+        return Folding.Failed(Diagnose(forest, value, file, "floating constant initializer is not supported yet"));
     }
     if (typed != storage && !Widens(typed, storage)) {
         return Folding.Failed(Diagnose(forest, node, file, "a constant of another type needs a conversion"));
@@ -1014,6 +1150,9 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
         }
         if (!constants[named].folded) {
             return Evaluated.Waiting;
+        }
+        if (!Integer(constants[named].storage)) {
+            return Evaluated.Failed(Diagnose(forest, node, file, "constant value must be an integer expression"));
         }
         return Evaluated.Value(ExactStored(constants[named].bits, constants[named].storage));
     }
@@ -1160,6 +1299,10 @@ EvaluateConversion :: (forest: snapshot.SnapshotNode[], text: string, file: int,
     inner := ConstantType(forest, text, constants, aliases, package, value);
     if (inner == 0) {
         inner = UntypedStorage(forest, text, value);
+    }
+    if (Floating(inner)) {
+        return Evaluated.Failed(Diagnose(forest, value, file,
+                                         "floating-to-integer constant conversion is not supported yet"));
     }
     switch FoldConstant(forest, text, file, constants, aliases, package, value, inner) {
         case .Failed(diagnostic):

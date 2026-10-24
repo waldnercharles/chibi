@@ -26,17 +26,104 @@ old sources, restore `project.kdl` with them.
 
 ## Project files
 
-A project has a `project.kdl` manifest and a content folder:
+A project has a `project.kdl` manifest and a content folder. This complete
+example uses the installed SDK alone. Create a new disposable `my-game` folder
+with the following files. Hold A or D to move the blue square.
+
+### project.kdl
 
 ```kdl
-version 29
+version 32
 name "My Game"
 content "content"
-start_scene "scenes/Main.kdl"
+start_scene "scenes/Start.kdl"
 ```
 
-The start scene path is relative to the content folder. Behaviors, libraries
-and systems use `.chibi`. Scenes, prototypes and materials use KDL.
+The start scene path is relative to the content folder. The manifest version
+must match the project format printed by your chosen SDK's `chibi version`.
+This example uses format 32. Use an SDK that supports that format.
+
+### content/scenes/Start.kdl
+
+```kdl
+version 1
+name "Start"
+(array)entities {
+    - {
+        name "Player"
+        prototype "Player"
+        (array)behaviors "Move"
+    }
+    - name="View" prototype="View"
+}
+```
+
+### content/prototypes/Player.kdl
+
+```kdl
+name "Player"
+components {
+    Appearance color=0x5b6ee1ff height=24.0 width=24.0
+    (object)Transform
+}
+```
+
+### content/prototypes/View.kdl
+
+```kdl
+name "View"
+components {
+    Camera height=180.0 width=320.0
+    (object)Transform
+}
+```
+
+### content/input.kdl
+
+```kdl
+Left {
+    (array)sources "A"
+}
+Right {
+    (array)sources "D"
+}
+```
+
+### content/behaviors/Move.chibi
+
+```chibi
+Move :: behavior {
+    on Tick :: (dt: float s) {
+        if input.Left.held {
+            self.Transform.x -= 120 * dt
+        }
+        if input.Right.held {
+            self.Transform.x += 120 * dt
+        }
+    }
+}
+```
+
+Choose an installed prefix explicitly to keep the compiler, player and SDK
+resources together. `CHIBI_SDK` below is a shell variable for these commands;
+choose any installed prefix rather than changing your normal `PATH`.
+Record the SDK build identity and compiler bytes with the project:
+
+```sh
+CHIBI_SDK="${CHIBI_SDK:-$HOME/.local}"
+"$CHIBI_SDK/bin/chibi" version > my-game/sdk-version.txt
+shasum -a 256 "$CHIBI_SDK/bin/chibi" "$CHIBI_SDK/bin/chibi-compile" \
+    "$CHIBI_SDK/bin/chibi-player" "$CHIBI_SDK/share/chibi/engine.json" \
+    > my-game/sdk-sha256.txt
+"$CHIBI_SDK/bin/chibi" doctor
+"$CHIBI_SDK/bin/chibi" fmt --check my-game
+"$CHIBI_SDK/bin/chibi" check my-game
+"$CHIBI_SDK/bin/chibi" build my-game
+"$CHIBI_SDK/bin/chibi" run my-game
+```
+
+Close the player to return to the shell. Behaviors, libraries and systems use
+`.chibi`. Scenes, prototypes and materials use KDL.
 
 ## Format files
 
@@ -80,6 +167,30 @@ to replace an existing folder without that marker.
 ### macOS
 
 The output is `/path/to/release.app`, with an `Info.plist` and an ad hoc signature.
+For the example above, export and launch the bundle from another directory:
+
+```sh
+"$CHIBI_SDK/bin/chibi" export my-game --output "$PWD/MyGame" --archive
+APP="$PWD/MyGame.app"
+(cd /tmp && "$APP/Contents/MacOS/My Game" --frames 120 --fixed-dt 0.016666667)
+open "$APP"
+```
+
+The first launch exits after 120 frames; `open` starts the normal interactive
+app. Move or copy the `.app` as one directory. It carries its own compiled game,
+shaders and runtime resources and does not need the source project, SDK or an
+engine build directory to run. Player options such as `--shader-dir DIR` remain
+available for explicit overrides. A bounded hidden launch is useful for checking
+Metal initialization and rendering, but it does not verify keyboard interaction:
+
+```sh
+(cd /tmp && "$APP/Contents/MacOS/My Game" --hidden --frames 2 \
+    --size 320x180 --capture "$APP/../export-check.png")
+```
+
+The ad hoc signature supports local execution. It is not a Developer ID
+signature or notarization for distribution to other Macs.
+
 A project icon must be a square PNG. Supported sizes are 16, 32, 64, 128, 256,
 512 and 1024 pixels.
 

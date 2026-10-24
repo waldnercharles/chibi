@@ -2094,6 +2094,13 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
       .column = 31 },
+    /* Unary complements are classified as literal-shaped for debug metadata.
+     * Their folded value still needs one watch, including through grouping. */
+    { .name = "folded complement retains its watch",
+      .source = "package facts\nOne :: () -> int { return ~0; }\n"
+                "Grouped :: () -> int { return (~0); }",
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[-1]" } } },
     /* An untyped operand of a conversion is int64, or uint64 beyond it,
      * in parentheses too. */
     { .name = "wrapped literal in parentheses",

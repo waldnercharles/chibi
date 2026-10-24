@@ -2612,8 +2612,9 @@ ZeroCompoundDivisor :: (forest: snapshot.SnapshotNode[], text: string, document:
            ZeroDivisor(forest, text, document, constants, names, package, statement);
 }
 // A constant expression as one constant of its type, or of the expected one
-// when it is untyped, watched at its own node. An untyped one with no
-// integer type expected takes its type from its use, as a literal does.
+// when it is untyped. Body watches ordinary expressions; literal-shaped
+// unary expressions keep their watch here. An untyped one with no integer
+// type expected takes its type from its use.
 FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
              package: int, item: Work, ops: Ops, at: Bases) -> Step {
     code: Code[] = [];
@@ -2642,7 +2643,9 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
         case .Folded(bits):
             slots.append(ValueLocal(storage));
             code.append(ConstantCode(ops, storage, bits, at.slot, forest[item.node]));
-            code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
+            if (NumberLiteral(forest, item.node)) {
+                code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
+            }
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);

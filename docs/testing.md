@@ -3209,3 +3209,15 @@ exact cross-repository candidate.
 The two hidden frames cover starter project startup. Web compilation does not
 establish browser execution, Studio UI interaction or visual acceptance. These
 checks do not publish packages or clear renderer, deployment or PR holds.
+
+### Authored exact shift-count parity
+
+The normal language group runs `language-integer-shift-counts-authored` once,
+alongside the existing stage-zero shift-count selector. `make test-language-all`
+and the existing Linux/macOS CI invocations therefore retain the nine literal
+shift oracles as a required authored-compiler parity gate. The selector checks
+actual bytecode and SLJIT entries; no optional environment switch exempts it.
+With matching compiler input it took 2.6 seconds on the Mac validation host. With a
+changed compiler source and retained older input it took 71 seconds including supported
+in-process recovery. It retains the existing process budget. No second workflow
+invocation or broader suite is added.

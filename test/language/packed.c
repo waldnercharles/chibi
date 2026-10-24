@@ -381,8 +381,7 @@ static bool integer_case(
     uint64_t left,
     uint64_t right,
     uint64_t expected,
-    bool comparison,
-    bool fails
+    bool comparison
 )
 {
     char source[384];
@@ -413,13 +412,11 @@ static bool integer_case(
         return false;
     }
     int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
-    bool valid = fails ? status == FLOW_ERR_INVALID_GRAPH
-                       : status == FLOW_OK &&
-                             (comparison ? result.b == (expected != 0)
-                                         : behavior_scalar_bits(result) ==
-                                               behavior_scalar_bits(
-                                                   behavior_scalar_from_bits(type, expected)
-                                               ));
+    bool valid = status == FLOW_OK &&
+                 (comparison
+                      ? result.b == (expected != 0)
+                      : behavior_scalar_bits(result) ==
+                            behavior_scalar_bits(behavior_scalar_from_bits(type, expected)));
     if (!valid) {
         fprintf(
             stderr,
@@ -445,19 +442,21 @@ TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends)
             uint64_t mask = UINT64_MAX >> (64 - bits);
             uint64_t high = UINT64_C(1) << (bits - 1);
             bool sign = behavior_scalar_signed(type);
-            REQUIRE(integer_case(type, backends[b], "+", mask, 1, 0, false, false));
-            REQUIRE(integer_case(type, backends[b], "-", 0, 1, mask, false, false));
-            REQUIRE(integer_case(type, backends[b], "*", high + 1, 3, high + 3, false, false));
-            REQUIRE(integer_case(type, backends[b], "<", high, 1, sign, true, false));
+            REQUIRE(integer_case(type, backends[b], "+", mask, 1, 0, false));
+            REQUIRE(integer_case(type, backends[b], "-", 0, 1, mask, false));
+            REQUIRE(integer_case(type, backends[b], "*", high + 1, 3, high + 3, false));
+            REQUIRE(integer_case(type, backends[b], "<", high, 1, sign, true));
             REQUIRE(
-                integer_case(type, backends[b], "/", mask - 1, 2, sign ? mask : (mask - 1) / 2, false, false)
+                integer_case(type, backends[b], "/", mask - 1, 2, sign ? mask : (mask - 1) / 2, false)
             );
-            REQUIRE(integer_case(type, backends[b], "%", mask, 2, sign ? mask : 1, false, false));
-            REQUIRE(integer_case(type, backends[b], "/", high, 0, 0, false, true));
-            REQUIRE(integer_case(type, backends[b], "%", high, 0, 0, false, true));
+            REQUIRE(integer_case(type, backends[b], "%", mask, 2, sign ? mask : 1, false));
+            /* x / 0 is 0 and x % 0 is x. */
+            REQUIRE(integer_case(type, backends[b], "/", high, 0, 0, false));
+            REQUIRE(integer_case(type, backends[b], "%", high, 0, high, false));
             if (sign) {
-                REQUIRE(integer_case(type, backends[b], "/", high, mask, 0, false, true));
-                REQUIRE(integer_case(type, backends[b], "%", high, mask, 0, false, true));
+                /* The minimum / -1 wraps to the minimum, with remainder 0. */
+                REQUIRE(integer_case(type, backends[b], "/", high, mask, high, false));
+                REQUIRE(integer_case(type, backends[b], "%", high, mask, 0, false));
             }
         }
     }

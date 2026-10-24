@@ -194,6 +194,17 @@ Wasm and typed constant folders. A regression also preserves earlier writes
 when an unused shift fails in an optimized function. Default checked arithmetic
 and lexical wrapping remain pending. See the [numeric contract](package-numeric-contract.md).
 
+Decision (2026-10-24): no integer operation fails at run time, and zero answers
+the cases that have no answer. This replaces both decisions above. Arithmetic
+wraps; `x / 0` is 0 and `x % 0` is `x`; the signed minimum divided by -1 wraps
+to the minimum, with remainder 0; a shift count at or past the width shifts
+every bit out; `T(v)` clamps between integers and `T(wrap: v)` keeps the low
+bits. Safety comes from compile-time rules (no mixed integer types, unsigned
+shift counts, exact constants that must fit, no constant zero divisor) and
+from development builds, which report each overflow, zero divisor and clamp
+once per site without stopping. The runtime part is implemented; the
+compile-time rules and development reports follow.
+
 ## Stage one has no character literals
 
 Stage one. Stage zero has character literals and `char` since #530: `'a'`

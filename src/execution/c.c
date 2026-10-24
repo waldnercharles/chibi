@@ -140,6 +140,66 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
                                                 : FLOW_ERR_STEP_BUDGET
     );
 }
+/* Emits the branch where the divisor is `divisor`, whose quotient and
+ * remainder are given rather than divided. Both are read before either
+ * result is written, since a result may share a slot with an operand. */
+static void division_case(
+    FILE *out,
+    const behavior_function_instruction *i,
+    const char *divisor,
+    const char *quotient,
+    const char *remainder
+)
+{
+    fprintf(
+        out,
+        "if(v%d==%s){%s quotient=%s,remainder=%s;",
+        i->right,
+        divisor,
+        behavior_scalar_c_type(i->type),
+        quotient,
+        remainder
+    );
+    if (i->target >= 0) {
+        fprintf(out, "v%d=%s;", i->target, i->op == BF_DIV ? "remainder" : "quotient");
+    }
+    fprintf(out, "v%d=%s;}else ", i->output, i->op == BF_DIV ? "quotient" : "remainder");
+}
+/* Integer division never fails. x / 0 is 0 with remainder x; a signed
+ * divisor of -1 negates, so the minimum wraps to itself, with remainder 0. */
+static void integer_division(FILE *out, const behavior_function_instruction *i)
+{
+    const char *type = behavior_scalar_c_type(i->type);
+    char left[32];
+    snprintf(left, sizeof left, "v%d", i->left);
+    division_case(out, i, "0", "0", left);
+    if (behavior_scalar_signed(i->type)) {
+        const char *u = i->type == PIN_I32 ? "uint32_t" : "uint64_t";
+        char negated[64];
+        snprintf(negated, sizeof negated, "(%s)(0-(%s)v%d)", type, u, i->left);
+        division_case(out, i, "-1", negated, "0");
+    }
+    const char *divide = i->op == BF_DIV ? "/" : "%",
+               *other = i->op == BF_DIV ? "%" : "/";
+    if (i->target >= 0) {
+        fprintf(
+            out,
+            "{%s primary=v%d%s v%d, secondary=v%d%s "
+            "v%d;v%d=secondary;v%d=primary;}\n",
+            type,
+            i->left,
+            divide,
+            i->right,
+            i->left,
+            other,
+            i->right,
+            i->target,
+            i->output
+        );
+        return;
+    }
+    fprintf(out, "{v%d=v%d%s v%d;}\n", i->output, i->left, divide, i->right);
+}
 /* INT64_MIN has no literal spelling; its negation overflows. */
 static void lower_bound(char *text, size_t size, long long low)
 {
@@ -203,12 +263,6 @@ static void cast(FILE *out, const behavior_function *f, const behavior_function_
             i->left,
             high
         );
-    }
-    if (i->target == BEHAVIOR_CAST_EXACT) {
-        fprintf(out, "if(%s||%s){", low_test, high_test);
-        failure(out, i, BEHAVIOR_FUNCTION_DATA);
-        fprintf(out, "}\nv%d=(%s)v%d;\n", i->output, type, i->left);
-        return;
     }
     fprintf(
         out,
@@ -1131,11 +1185,6 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_BIT_NOT:
             case BF_SHL:
             case BF_SHR:
-                if (i->op == BF_SHL || i->op == BF_SHR) {
-                    fprintf(out, "if(!behavior_scalar_shift_count_valid(%d,(uint64_t)v%d)){", i->type, i->right);
-                    failure(out, i, BEHAVIOR_FUNCTION_DATA);
-                    fputs("}\n", out);
-                }
                 fprintf(
                     out,
                     "v%d=behavior_scalar_from_bits(%d,behavior_scalar_bitwise_"
@@ -1189,36 +1238,8 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             default: {
                 if ((i->op == BF_DIV || i->op == BF_MOD) &&
                     behavior_scalar_integer(i->type)) {
-                    fprintf(out, "if(v%d==0", i->right);
-                    if (behavior_scalar_signed(i->type)) {
-                        fprintf(
-                            out,
-                            " || (v%d==behavior_scalar_minimum(%d) && v%d==-1)",
-                            i->left,
-                            i->type,
-                            i->right
-                        );
-                    }
-                    fprintf(out, "){");
-                    failure(out, i, BEHAVIOR_FUNCTION_DATA);
-                    fprintf(out, "}\n");
-                    if (i->target >= 0) {
-                        fprintf(
-                            out,
-                            "{%s primary=v%d%s v%d, secondary=v%d%s v%d;"
-                            "v%d=secondary;v%d=primary;}\n",
-                            behavior_scalar_c_type(i->type),
-                            i->left,
-                            i->op == BF_DIV ? "/" : "%",
-                            i->right,
-                            i->left,
-                            i->op == BF_DIV ? "%" : "/",
-                            i->right,
-                            i->target,
-                            i->output
-                        );
-                        break;
-                    }
+                    integer_division(out, i);
+                    break;
                 }
                 if (i->op >= BF_ADD && i->op <= BF_MUL &&
                     behavior_scalar_integer(i->type)) {

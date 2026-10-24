@@ -695,8 +695,8 @@ TEST_CASE(ci_preserves_failed_macos_graph_stage_log)
     bool scoped = step && limit && end && step < limit && end < limit;
     const char *fields[] = { "        if: failure()\n",
                              "        uses: actions/upload-artifact@v4\n",
-                             "          name: macos-graph-failure-${{ "
-                             "github.run_id }}-${{ github.run_attempt }}\n",
+                             ("          name: macos-graph-failure-${{ "
+                              "github.run_id }}-${{ github.run_attempt }}\n"),
                              "          path: .chibi/logs/*-graph.log\n",
                              "          include-hidden-files: true\n",
                              "          if-no-files-found: warn\n",

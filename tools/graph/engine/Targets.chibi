@@ -3525,7 +3525,8 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
             "CHIBI_ATTRIBUTION_FIXTURE_SHA=\"{sha256:test/language/runtime_attribution.c}\""
         ];
     }
-    if (target == "test_language" && file == "test/language/source_tokenizer_chibi.c") {
+    if (target == "test_language" &&
+        (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];
@@ -3651,6 +3652,7 @@ pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
             "CHIBI_ASSET_PACKAGING_BYTES=bytes:tools/compiler/asset_packaging/Packaging.chibi",
+            "CHIBI_ASSET_GENERATOR_BYTES=bytes:tools/graph/asset_compiler/Generate.chibi",
             "CHIBI_ANALYSIS_STATE_BYTES=bytes:tools/compiler/analysis_state/State.chibi",
             "CHIBI_BOUNDED_COMPILE_BYTES=bytes:tools/compiler/bounded_compiler/Compile.chibi",
             "CHIBI_BOUNDED_EXPRESSION_BYTES=bytes:tools/compiler/bounded_compiler/Expression.chibi",

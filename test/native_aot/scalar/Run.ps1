@@ -39,10 +39,21 @@ function Entry([string]$symbol) {
     if ($hash.IsZero) { $hash = [System.Numerics.BigInteger]::One }
     return '0x' + ([uint64]$hash).ToString('x16')
 }
+# The complete 96-source matrix starts 970 bounded child invocations. Keep one
+# finite total, and never give a child more than 120 seconds or what remains.
+function Host-Limit([double]$elapsed, [string]$name) {
+    $total = 240000
+    if ($elapsed -ge $total) {
+        $crossings = if ($evidence.Contains('case_count')) {
+            "$($evidence.cases.Count)/$($evidence.case_count * 4)"
+        } else { "$($evidence.cases.Count)/not-yet-enumerated" }
+        throw "Scalar regression exceeded its $($total / 1000)s total deadline after $($evidence.runs.Count) host invocations and $crossings VM crossings; next: $name"
+    }
+    return [Math]::Max(1, [Math]::Min(120000, [int]($total - $elapsed)))
+}
 function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
                      [string]$request, [string]$backend, [string]$raw = '', [switch]$Compile) {
-    if ($timer.Elapsed.TotalSeconds -ge 180) { throw 'Scalar regression exceeded its total deadline' }
-    $limit = [Math]::Max(1, [Math]::Min(120000, [int](180000 - $timer.Elapsed.TotalMilliseconds)))
+    $limit = Host-Limit $timer.Elapsed.TotalMilliseconds $name
     $stdoutPath = Join-Path $output ($name + '.stdout')
     $stderrPath = Join-Path $output ($name + '.stderr')
     $start = [Diagnostics.ProcessStartInfo]::new()

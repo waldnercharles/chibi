@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Admissibility checks the complete graph before short-circuit evaluation. */
@@ -167,6 +168,9 @@ void script_analysis_fold_constants(script_analysis *analysis)
         }
         bool folded = script_integer_fold(analysis, i, &value, &error);
         assert(folded);
+        if (!folded) {
+            abort();
+        }
         script_expression *e = &analysis->expressions[i];
         *e = (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
                                   .type = e->type,

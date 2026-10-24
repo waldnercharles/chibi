@@ -464,6 +464,20 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
     return FLOW_OK;
 }
 
+static void copy_failure(behavior_function_context *root, const behavior_function_context *context)
+{
+    root->error_message = context->error_message;
+    root->failure = context->failure;
+    root->source_function = context->source_function;
+    root->node_id = context->node_id;
+    root->error_source = context->error_source;
+    root->error_frame = context->error_frame;
+    root->error_stack = context->error_stack;
+    root->error_pin = context->error_pin;
+    root->error_steps = context->error_steps;
+    root->error_status = context->error_status;
+}
+
 int behavior_function_run_calls(
     const behavior_function *function,
     behavior_function_context *root,
@@ -505,10 +519,7 @@ int behavior_function_run_calls(
             invocation_frame *frame = frame_new(calls, active, context);
             if (!frame) {
                 if (context != root) {
-                    root->error_message = context->error_message;
-                    root->failure = context->failure;
-                    root->source_function = context->source_function;
-                    root->error_source = context->error_source;
+                    copy_failure(root, context);
                 }
                 return settle_calls(
                     calls,
@@ -543,10 +554,7 @@ int behavior_function_run_calls(
         if (result < 0 && context != root) {
             /* Preserve the diagnostic before failure unwinds the owned frames.
              * Source observers already received the precise callee location. */
-            root->error_message = context->error_message;
-            root->failure = context->failure;
-            root->source_function = context->source_function;
-            root->error_source = context->error_source;
+            copy_failure(root, context);
         }
         return settle_calls(calls, result);
     }

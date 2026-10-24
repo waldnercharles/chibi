@@ -890,6 +890,13 @@ done:
     return result;
 }
 
+int execution_machine_fail(execution_machine *m, const char *message)
+{
+    int result = fail(m->context, &m->instructions[m->pc], m->steps, m->parents, BEHAVIOR_FUNCTION_BUDGET);
+    m->context->error_message = message;
+    return result;
+}
+
 void execution_machine_end(execution_machine *m, int result)
 {
     if (!result) {

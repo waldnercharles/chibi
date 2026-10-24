@@ -47,6 +47,7 @@ static void cleanup()
 static void emit(behavior_function_builder *b, behavior_function_instruction instruction)
 {
     instruction.source = 1;
+    instruction.node_id = 1000 + instruction.op;
     behavior_function_builder_emit(b, instruction);
 }
 static behavior_function_builder *builder(bool arguments)
@@ -159,7 +160,10 @@ static bool prepare()
 }
 typedef struct
 {
-    int status, source, frame, stack;
+    int status, source, frame, stack, error_pin;
+    uint64_t node_id;
+    uintptr_t steps, error_steps;
+    const behavior_function *source_function;
     double value;
     bool returned;
     const char *message;
@@ -180,6 +184,7 @@ static observation invoke(const behavior_function *f)
                                           .argument_count = f == scalar ? 1 : 0,
                                           .results = &result,
                                           .budget = 128,
+                                          .steps = 5,
                                           .activation = resumable ? &activation : NULL };
     behavior_function_bind_storage(&context, &storage);
     assert(behavior_function_bind(f, &context, NULL, 0));
@@ -189,6 +194,11 @@ static observation invoke(const behavior_function *f)
     behavior_run_scope_end(&runs);
     observation out = { .status = status,
                         .source = context.error_source,
+                        .error_pin = context.error_pin,
+                        .node_id = context.node_id,
+                        .steps = context.steps,
+                        .error_steps = context.error_steps,
+                        .source_function = context.source_function,
                         .frame = context.error_frame,
                         .stack = context.error_stack,
                         .value = result.d,
@@ -212,15 +222,24 @@ static bool cancelled(void *user)
     const behavior_execution_scope *scope = user;
     return scope->remaining <= 125;
 }
-static bool parity(const observation *a, const observation *b)
+static bool parity(const behavior_function *root, const observation *a, const observation *b)
 {
     REQUIRE(a->status == b->status);
     REQUIRE(a->returned == b->returned);
     REQUIRE(a->source == b->source && a->frame == b->frame && a->stack == b->stack);
+    REQUIRE(a->node_id == b->node_id && a->error_pin == b->error_pin);
+    REQUIRE(a->steps == b->steps && a->error_steps == b->error_steps);
+    REQUIRE(a->source_function == b->source_function);
     REQUIRE(!a->message == !b->message);
     REQUIRE(!a->message || !strcmp(a->message, b->message));
     if (a->status == FLOW_OK) {
         REQUIRE(a->returned && a->value == 42 && b->value == 42);
+    } else {
+        REQUIRE(a->node_id && a->error_pin == -1);
+        REQUIRE(a->steps == 5);
+        /* Outlined callees have their own step domain; the root keeps its
+         * prior work while error_steps describes the precise failing frame. */
+        REQUIRE(a->error_steps == (a->source_function == root ? 5 : 0));
     }
     return true;
 }
@@ -236,7 +255,7 @@ TEST_CASE(scoped_native_matches_canonical_vm)
             behavior_execution_scope jit = { .remaining = budgets[i],
                                              .prefer_compiled = true };
             observation a = run(functions[f], &vm), b = run(functions[f], &jit);
-            REQUIRE(parity(&a, &b));
+            REQUIRE(parity(functions[f], &a, &b));
             REQUIRE(vm.remaining == jit.remaining);
             REQUIRE(a.counts.bytecode_entries > 0 && !a.counts.sljit_entries);
             REQUIRE(native ? b.counts.sljit_entries > 0 : b.counts.bytecode_entries > 0);
@@ -246,6 +265,10 @@ TEST_CASE(scoped_native_matches_canonical_vm)
             if (!budgets[i]) {
                 REQUIRE(a.status == FLOW_ERR_STEP_BUDGET && a.source == 1);
                 REQUIRE(a.message && !strcmp(a.message, "shared instruction budget exhausted"));
+                REQUIRE(a.node_id == functions[f]->instructions[0].node_id);
+            }
+            if (f && budgets[i] == 1) {
+                REQUIRE(a.source_function == scalar);
             }
         }
         behavior_execution_scope vm = { .remaining = 128, .cancelled = cancelled };
@@ -255,9 +278,10 @@ TEST_CASE(scoped_native_matches_canonical_vm)
         vm.user = &vm;
         jit.user = &jit;
         observation a = run(functions[f], &vm), b = run(functions[f], &jit);
-        REQUIRE(parity(&a, &b));
+        REQUIRE(parity(functions[f], &a, &b));
         REQUIRE(vm.remaining == 125 && jit.remaining == 125);
         REQUIRE(a.message && !strcmp(a.message, "execution cancelled"));
+        REQUIRE(a.source_function == scalar);
         REQUIRE(!native || b.counts.sljit_entries > 0);
     }
     return true;

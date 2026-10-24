@@ -33,6 +33,8 @@ void execution_machine_begin(
 /* Executes one instruction, publishes the next PC and returns either
  * EXECUTION_CONTINUE or a terminal FLOW status. */
 int execution_machine_step(execution_machine *, int pc);
+/* Publish a pre-instruction scope failure through the canonical VM path. */
+int execution_machine_fail(execution_machine *, const char *message);
 void execution_machine_end(execution_machine *, int result);
 
 #endif

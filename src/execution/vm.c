@@ -55,12 +55,7 @@ int behavior_function_run_interpreted(const behavior_function *f, behavior_funct
             failure = "operation is unavailable during pure evaluation";
         }
         if (failure) {
-            ctx->error_message = failure;
-            ctx->failure = BEHAVIOR_FUNCTION_BUDGET;
-            ctx->error_source = machine.instructions[pc].source;
-            ctx->error_frame = machine.instructions[pc].frame;
-            ctx->error_stack = machine.instructions[pc].stack;
-            result = FLOW_ERR_STEP_BUDGET;
+            result = execution_machine_fail(&machine, failure);
             break;
         }
         result = execution_machine_step(&machine, pc);

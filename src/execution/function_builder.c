@@ -2470,9 +2470,12 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
         }
     }
     /* Decoded definitions use this same data-flow verifier. Bound its matrix
-     * before allocating instruction_count * slot_words, including overflow. */
+     * before allocating instruction_count * slot_words, including overflow.
+     * The bound admits the package compiler's largest function, EmitBody;
+     * a decoded module's preparation reservation also counts this matrix
+     * against its decoded storage limit. */
     size_t words = (size_t)acount(f->slots) / 64 + 1;
-    const size_t verifier_bytes = 64u * 1024u * 1024u;
+    const size_t verifier_bytes = 256u * 1024u * 1024u;
     if ((size_t)acount(f->instructions) > verifier_bytes / sizeof(uint64_t) / words) {
         snprintf(error, size, "definition exceeds verifier storage budget");
         return NULL;

@@ -65,6 +65,7 @@ compiler_host *compiler_host_load(
     native_prepared_context context = { .native = host->native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
     linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
     linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
     uint64_t root;

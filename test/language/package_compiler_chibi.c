@@ -3385,6 +3385,7 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
     native_prepared_context context = { .native = *native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
     linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
     linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
     uint64_t root = 0;
@@ -3569,8 +3570,7 @@ static bool run_samples(sample_group group, int b)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
-        bool compiled =
-            compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
+        bool compiled = compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
         if (!compiled) {
             fprintf(
                 stderr,

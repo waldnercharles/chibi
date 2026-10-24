@@ -440,14 +440,20 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
     if (pointer >= 0) {
         element := ReadType(forest, text, types, names, package, Field(forest, pointer, "target"));
         declared := FindPointer(types, element, HasToken(forest, node, "?"));
-        if (declared < 0) { return none; }
+        if (declared < 0) {
+            return none;
+        }
         container: int = 0;
         child := forest[node].first_child;
         while (child >= 0) {
-            if (forest[child].kind == "[") { container += 1; }
+            if (forest[child].kind == "[") {
+                container += 1;
+            }
             child = forest[child].next_sibling;
         }
-        if (container > 1 || (container != 0 && HasToken(forest, node, "?"))) { return none; }
+        if (container > 1 || (container != 0 && HasToken(forest, node, "?"))) {
+            return none;
+        }
         return {storage: PointerStorage, container: container, record: declared};
     }
     grouped := TypeGroupNode(forest, node);
@@ -456,20 +462,28 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
         child := forest[node].first_child;
         while (child >= 0) {
             if (forest[child].kind == "[") {
-                if (value.container != 0) { return none; }
+                if (value.container != 0) {
+                    return none;
+                }
                 value.container = ArrayContainer;
             }
             child = forest[child].next_sibling;
         }
         if (HasToken(forest, node, "?")) {
-            if (value.storage != PointerStorage || value.container != 0 || value.record < 0) { return none; }
+            if (value.storage != PointerStorage || value.container != 0 || value.record < 0) {
+                return none;
+            }
             nullable := FindPointer(types, PointerElement(types, Typed(-1, value.storage, 0, value.record)), true);
-            if (nullable < 0) { return none; }
+            if (nullable < 0) {
+                return none;
+            }
             value.record = nullable;
         }
         return value;
     }
-    if (HasToken(forest, node, "?")) { return none; }
+    if (HasToken(forest, node, "?")) {
+        return none;
+    }
     container: int = 0;
     child := forest[node].first_child;
     while (child >= 0) {
@@ -729,7 +743,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             at += 1;
                         }
-                        if (pointer_field) { storage = PointerStorage; }
+                        if (pointer_field) {
+                            storage = PointerStorage;
+                        }
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
@@ -1530,8 +1546,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         } else if (declared.kind == PointerDecl && declared.key == 0) {
             wide.append(declared.id);
             pointer_requirement: writer.Requirement = {id: length(wide) - 1, layout: 0, storage: PointerStorage,
-                                                        name: declared.type_name, size: target.pointer_size,
-                                                        authored: false, first: 0, count: 0};
+                                                       name: declared.type_name, size: target.pointer_size,
+                                                       authored: false, first: 0, count: 0};
             requirements.append(pointer_requirement);
         } else if (declared.kind == NativeDecl) {
             wide.append(declared.id);

@@ -858,149 +858,326 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     return Declarations.Collected(callables, params, types, members, constants);
 }
 
-Int64Min: int64 : -9223372036854775808;
 Folding :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Waiting
     | Folded(bits: uint64)
 }
-// The bits of a constant integer expression of type `storage`, as stage zero
-// folds it: literals, the package's constants and an import's, parentheses
-// and the unary and binary integer operators. Arithmetic intermediates must
-// fit the type; shifts discard the bits outside it. `Waiting` when a
-// constant it names is not folded yet. A uint64 constant is a literal.
+Evaluated :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Waiting
+    | Value(exact: uint64[])
+}
+// The integer type a conversion call converts to, 0 for any other node.
+ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    callee := Field(forest, node, "function");
+    if (!Is(forest, node, "call_expression") || !Is(forest, callee, "identifier")) {
+        return 0;
+    }
+    storage := ScalarStorage(Text(forest, text, callee));
+    if (!Integer(storage)) {
+        return 0;
+    }
+    return storage;
+}
+Arithmetic :: (operator: string) -> bool {
+    return operator == "+" || operator == "-" || operator == "*" || operator == "/" || operator == "%" ||
+           operator == "&" || operator == "|" || operator == "^";
+}
+Shift :: (operator: string) -> bool {
+    return operator == "<<" || operator == ">>";
+}
+// Whether `node` is a constant integer expression: integer literals, the
+// package's constants and an import's, parentheses, conversions to integer
+// types and the integer operators over them.
+ConstantExpression :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], aliases: Name[],
+                       package: int, node: int) -> bool {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "number")) {
+        return InferredNumberStorage(forest, text, value) != DoubleStorage;
+    }
+    if (ConstantOf(forest, text, constants, aliases, package, value) >= 0) {
+        return true;
+    }
+    if (ConversionType(forest, text, value) != 0) {
+        argument := FirstMember(forest, Field(forest, value, "arguments"));
+        if (argument < 0 || NextMember(forest, argument) >= 0) {
+            return false;
+        }
+        if (Is(forest, argument, "named_argument")) {
+            argument = Field(forest, argument, "value");
+        }
+        return ConstantExpression(forest, text, constants, aliases, package, argument);
+    }
+    operator := Text(forest, text, Field(forest, value, "operator"));
+    if (Is(forest, value, "unary_expression")) {
+        return (operator == "+" || operator == "-" || operator == "~") &&
+               ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, "operand"));
+    }
+    return Is(forest, value, "binary_expression") && (Arithmetic(operator) || Shift(operator)) &&
+           ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, "left")) &&
+           ConstantExpression(forest, text, constants, aliases, package, Field(forest, value, "right"));
+}
+// The integer type a constant expression has of its own: a constant's or a
+// conversion's, through unary operators and a shift's value, else either
+// operand's of another binary operator, left first. 0 when it is untyped
+// literals alone, which take their type from its use.
+ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], aliases: Name[], package: int,
+                 node: int) -> int {
+    value := Unparenthesized(forest, node);
+    named := ConstantOf(forest, text, constants, aliases, package, value);
+    if (named >= 0) {
+        return constants[named].storage;
+    }
+    if (ConversionType(forest, text, value) != 0) {
+        return ConversionType(forest, text, value);
+    }
+    if (Is(forest, value, "unary_expression")) {
+        return ConstantType(forest, text, constants, aliases, package, Field(forest, value, "operand"));
+    }
+    if (!Is(forest, value, "binary_expression")) {
+        return 0;
+    }
+    left := ConstantType(forest, text, constants, aliases, package, Field(forest, value, "left"));
+    if (left != 0 || Shift(Text(forest, text, Field(forest, value, "operator")))) {
+        return left;
+    }
+    return ConstantType(forest, text, constants, aliases, package, Field(forest, value, "right"));
+}
+// The type an untyped operand of a conversion or a shift count takes: int64,
+// or uint64 for a literal beyond it.
+UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    switch ParseNumber(forest, text, Unparenthesized(forest, node)) {
+        case .Invalid:
+            return Int64Storage;
+        case .Number(negative, magnitude):
+            if (Fits(negative, magnitude, Int64Storage)) {
+                return Int64Storage;
+            }
+            return WordStorage;
+    }
+}
+// The bits of the constant integer expression `node`. It has its own type,
+// or the context's `storage` when it is untyped, and folds exactly: only its
+// literals, its value and each conversion's operand must fit their types.
+// `Waiting` when a constant it names is not folded yet.
 FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
                  package: int, node: int, storage: int) -> Folding {
+    typed := ConstantType(forest, text, constants, aliases, package, node);
+    if (typed == 0) {
+        typed = storage;
+    }
+    if (typed != storage && !Widens(typed, storage)) {
+        return Folding.Failed(Diagnose(forest, node, file, "a constant of another type needs a conversion"));
+    }
+    switch Evaluate(forest, text, file, constants, aliases, package, node, typed) {
+        case .Failed(diagnostic):
+            return Folding.Failed(diagnostic);
+        case .Waiting:
+            return Folding.Waiting;
+        case .Value(exact):
+            if (!ExactFits(exact, typed)) {
+                // Anchored inside parentheses, as stage zero anchors it.
+                return Folding.Failed(OutsideRange(forest, file, Unparenthesized(forest, node), typed));
+            }
+            return Folding.Folded(ExactWrapped(exact, typed));
+    }
+}
+// The exact value of the constant integer expression `node` of type
+// `storage`.
+Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
+             package: int, node: int, storage: int) -> Evaluated {
+    if (Is(forest, node, "parenthesized_expression")) {
+        return Evaluate(forest, text, file, constants, aliases, package, Field(forest, node, "expression"), storage);
+    }
     // A literal, `-` on one included, so the most negative value is one.
     signed_literal := Is(forest, node, "unary_expression") &&
                       Text(forest, text, Field(forest, node, "operator")) == "-" &&
                       Is(forest, Field(forest, node, "operand"), "number");
-    if (storage == WordStorage || Is(forest, node, "number") || signed_literal) {
+    if (Is(forest, node, "number") || signed_literal) {
         switch ParseNumber(forest, text, node) {
             case .Invalid:
-                return Folding.Failed(Diagnose(forest, node, file, "only integer constants are supported yet"));
+                return Evaluated.Failed(Diagnose(forest, node, file, "only integer constants are supported yet"));
             case .Number(negative, magnitude):
                 if (!Fits(negative, magnitude, storage)) {
-                    return Folding.Failed(Diagnose(forest, node, file,
-                                                   format_text("Numeric literal is outside the range of {}",
-                                                               TypeName(storage))));
+                    return Evaluated.Failed(Diagnose(forest, node, file,
+                                                     format_text("Numeric literal is outside the range of {}",
+                                                                 TypeName(storage))));
                 }
-                return Folding.Folded(Bits(negative, magnitude));
+                return Evaluated.Value(ExactOf(negative, magnitude));
         }
-    }
-    if (Is(forest, node, "parenthesized_expression")) {
-        return FoldConstant(forest, text, file, constants, aliases, package, Field(forest, node, "expression"), storage);
     }
     named := ConstantOf(forest, text, constants, aliases, package, node);
     if (named >= 0) {
         if (constants[named].package != package && PrivateDeclaration(forest, forest[constants[named].node].parent)) {
-            return Folding.Failed(Diagnose(forest, node, file, PrivateMessage(Text(forest, text, node))));
+            return Evaluated.Failed(Diagnose(forest, node, file, PrivateMessage(Text(forest, text, node))));
         }
         if (!constants[named].folded) {
-            return Folding.Waiting;
+            return Evaluated.Waiting;
         }
-        if (constants[named].storage != storage && !Widens(constants[named].storage, storage)) {
-            return Folding.Failed(Diagnose(forest, node, file, "a constant of another type needs a conversion"));
-        }
-        return Folding.Folded(constants[named].bits);
+        return Evaluated.Value(ExactStored(constants[named].bits, constants[named].storage));
+    }
+    if (ConversionType(forest, text, node) != 0) {
+        return EvaluateConversion(forest, text, file, constants, aliases, package, node);
     }
     unary := Is(forest, node, "unary_expression");
     if (!unary && !Is(forest, node, "binary_expression")) {
-        return Folding.Failed(Diagnose(forest, node, file, "constant value must be an integer expression"));
+        return Evaluated.Failed(Diagnose(forest, node, file, "constant value must be an integer expression"));
     }
     operator := Text(forest, text, Field(forest, node, "operator"));
-    left: int64 = 0;
-    right: int64 = 0;
+    if (!unary && Shift(operator)) {
+        return EvaluateShift(forest, text, file, constants, aliases, package, node, storage);
+    }
+    if ((unary && operator != "+" && operator != "-" && operator != "~") || (!unary && !Arithmetic(operator))) {
+        return Evaluated.Failed(Diagnose(forest, node, file,
+                                         format_text("constant operator '{}' is not supported yet", operator)));
+    }
+    if (unary && operator == "-" && !Signed(storage)) {
+        return Evaluated.Failed(Diagnose(forest, node, file, "Cannot negate an unsigned constant"));
+    }
     operands: int[] = [Field(forest, node, "operand")];
     if (!unary) {
         operands = [Field(forest, node, "left"), Field(forest, node, "right")];
+        left_type := ConstantType(forest, text, constants, aliases, package, operands[0]);
+        right_type := ConstantType(forest, text, constants, aliases, package, operands[1]);
+        if (left_type != 0 && right_type != 0 && left_type != right_type) {
+            return Evaluated.Failed(Diagnose(forest, node, file,
+                                             format_text("Mismatched integer types {} and {}; convert one operand",
+                                                         TypeName(left_type), TypeName(right_type))));
+        }
     }
-    folded: int64[] = [];
-    for (operand in operands) {
-        switch FoldConstant(forest, text, file, constants, aliases, package, operand, storage) {
+    value: uint64[] = [];
+    right: uint64[] = [];
+    for (index in 0..<length(operands)) {
+        switch Evaluate(forest, text, file, constants, aliases, package, operands[index], storage) {
             case .Failed(diagnostic):
-                return Folding.Failed(diagnostic);
+                return Evaluated.Failed(diagnostic);
             case .Waiting:
-                return Folding.Waiting;
-            case .Folded(bits):
-                folded.append(int64(wrap: bits));
+                return Evaluated.Waiting;
+            case .Value(exact):
+                if (index == 0) {
+                    value = exact;
+                } else {
+                    right = exact;
+                }
         }
     }
-    left = folded[0];
-    if (!unary) {
-        right = folded[1];
-    }
-    result: int64 = 0;
-    exact := true;
     if (unary && operator == "-") {
-        result = -left;
-        exact = left != Int64Min;
-    } else if (unary && operator == "+") {
-        result = left;
+        value = ExactNegate(value);
+    } else if (unary && operator == "~" && Signed(storage)) {
+        value = ExactSubtract(ExactNegate(value), ExactOf(false, 1));
     } else if (unary && operator == "~") {
-        // An unsigned type's complement keeps only its own bits.
-        result = ~left;
-        if (!Signed(storage) && storage != WordStorage) {
-            result = result & ((int64(1) << int64(Width(storage))) - 1);
-        }
+        // An unsigned type's complement is its largest value less this one.
+        value = ExactSubtract(ExactMax(storage), value);
     } else if (operator == "+") {
-        result = left + right;
-        exact = (left >= 0) != (right >= 0) || (result >= 0) == (left >= 0);
+        value = ExactAdd(value, right);
     } else if (operator == "-") {
-        result = left - right;
-        exact = (left >= 0) == (right >= 0) || (result >= 0) == (left >= 0);
+        value = ExactSubtract(value, right);
     } else if (operator == "*") {
-        result = left * right;
-        // Int64Min / -1 itself traps, so that pair is tested first.
-        exact = left == 0 || (!(left == -1 && right == Int64Min) && result / left == right);
+        value = ExactMultiply(value, right);
     } else if (operator == "/" || operator == "%") {
-        if (right == 0) {
-            return Folding.Failed(Diagnose(forest, node, file, "Constant division by zero"));
+        if (ExactZero(right)) {
+            return Evaluated.Failed(Diagnose(forest, node, file, "Constant division by zero"));
         }
-        exact = !(right == -1 && left == Int64Min);
-        if (exact && operator == "/") {
-            result = left / right;
-        } else if (exact) {
-            result = left % right;
-        }
-    } else if (operator == "&") {
-        result = left & right;
-    } else if (operator == "|") {
-        result = left | right;
-    } else if (operator == "^") {
-        result = left ^ right;
-    } else if (operator == "<<" || operator == ">>") {
-        width := int64(Width(storage));
-        if (right < 0 || right >= width) {
-            return Folding.Failed(Diagnose(forest, node, file, "Constant shift count is outside the type"));
-        }
-        mask := ~uint64(0) >> uint64(64 - width);
-        bits := uint64(wrap: left) & mask;
-        if (operator == "<<") {
-            bits = (bits << uint64(right)) & mask;
-        } else if (Signed(storage)) {
-            bits = uint64(wrap: left >> right) & mask;
-        } else {
-            bits = bits >> uint64(right);
-        }
-        if (Signed(storage) && (bits & (uint64(1) << uint64(width - 1))) != 0) {
-            bits = bits | ~mask;
-        }
-        return Folding.Folded(bits);
-    } else {
-        return Folding.Failed(Diagnose(forest, node, file,
-                                       format_text("constant operator '{}' is not supported yet", operator)));
+        value = ExactDivide(value, right, operator == "%");
+    } else if (!unary) {
+        value = ExactBitwise(operator, value, right);
     }
-    negative := result < 0;
-    magnitude := uint64(wrap: result);
-    if (negative) {
-        magnitude = ~magnitude + 1;
+    if (MagnitudeBits(Magnitude(value)) > ExactLimit) {
+        return Evaluated.Failed(OutsideRange(forest, file, node, storage));
     }
-    if (!exact || !Fits(negative, magnitude, storage)) {
-        return Folding.Failed(Diagnose(forest, node, file,
-                                       format_text("Constant value is outside the range of {}", TypeName(storage))));
+    return Evaluated.Value(value);
+}
+// A constant whose value does not fit its type. A value beyond ExactLimit
+// bits fits none.
+OutsideRange :: (forest: snapshot.SnapshotNode[], file: int, node: int, storage: int) -> syntax.Diagnostic {
+    return Diagnose(forest, node, file, format_text("Constant value is outside the range of {}", TypeName(storage)));
+}
+// A shift's value has the type of its left operand. Its count has its own
+// type, which must be unsigned, and must not be negative.
+EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[], aliases: Name[],
+                  package: int, node: int, storage: int) -> Evaluated {
+    count := Unparenthesized(forest, Field(forest, node, "right"));
+    count_type := ConstantType(forest, text, constants, aliases, package, count);
+    if (Signed(count_type)) {
+        return Evaluated.Failed(Diagnose(forest, count, file, "Shift count must be unsigned; convert it with uint(value)"));
     }
-    return Folding.Folded(uint64(wrap: result));
+    if (count_type == 0) {
+        count_type = UntypedStorage(forest, text, count);
+    }
+    value: uint64[] = [];
+    shift: uint64[] = [];
+    operands: int[] = [Field(forest, node, "left"), count];
+    types: int[] = [storage, count_type];
+    for (index in 0..<2) {
+        switch Evaluate(forest, text, file, constants, aliases, package, operands[index], types[index]) {
+            case .Failed(diagnostic):
+                return Evaluated.Failed(diagnostic);
+            case .Waiting:
+                return Evaluated.Waiting;
+            case .Value(exact):
+                if (index == 0) {
+                    value = exact;
+                } else {
+                    shift = exact;
+                }
+        }
+    }
+    if (ExactNegative(shift)) {
+        return Evaluated.Failed(Diagnose(forest, count, file, "Shift count must not be negative"));
+    }
+    if (MagnitudeCompare(Magnitude(shift), Magnitude(ExactOf(false, uint64(ExactLimit)))) > 0) {
+        return Evaluated.Failed(Diagnose(forest, count, file, "Constant shift count is too large"));
+    }
+    bits := int(LowBits(Magnitude(shift)));
+    if (Text(forest, text, Field(forest, node, "operator")) == ">>") {
+        return Evaluated.Value(ExactShiftRight(value, bits));
+    }
+    shifted := ExactShiftLeft(value, bits);
+    if (MagnitudeBits(Magnitude(shifted)) > ExactLimit) {
+        return Evaluated.Failed(OutsideRange(forest, file, node, storage));
+    }
+    return Evaluated.Value(shifted);
+}
+// `T(value)` must fit T; `T(wrap: value)` keeps the low bits. The value has
+// its own type, or int64 when untyped, and must fit it.
+EvaluateConversion :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[],
+                       aliases: Name[], package: int, node: int) -> Evaluated {
+    storage := ConversionType(forest, text, node);
+    argument := FirstMember(forest, Field(forest, node, "arguments"));
+    if (argument < 0 || NextMember(forest, argument) >= 0) {
+        return Evaluated.Failed(Diagnose(forest, node, file, "Conversion takes one value"));
+    }
+    wrap := Is(forest, argument, "named_argument");
+    value := argument;
+    if (wrap) {
+        if (Text(forest, text, Field(forest, argument, "name")) != "wrap") {
+            return Evaluated.Failed(Diagnose(forest, Field(forest, argument, "name"), file,
+                                             "A conversion argument may only be named wrap"));
+        }
+        value = Field(forest, argument, "value");
+    }
+    inner := ConstantType(forest, text, constants, aliases, package, value);
+    if (inner == 0) {
+        inner = UntypedStorage(forest, text, value);
+    }
+    switch FoldConstant(forest, text, file, constants, aliases, package, value, inner) {
+        case .Failed(diagnostic):
+            return Evaluated.Failed(diagnostic);
+        case .Waiting:
+            return Evaluated.Waiting;
+        case .Folded(bits):
+            exact := ExactStored(bits, inner);
+            if (wrap) {
+                return Evaluated.Value(ExactStored(ExactWrapped(exact, storage), storage));
+            }
+            if (!ExactFits(exact, storage)) {
+                return Evaluated.Failed(Diagnose(forest, node, file,
+                                                 format_text("Constant does not fit in {}; use {}(wrap: value)",
+                                                             TypeName(storage), TypeName(storage))));
+            }
+            return Evaluated.Value(exact);
+    }
 }
 
 Default :: union {

@@ -3,6 +3,7 @@
 
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/module.h"
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
@@ -73,6 +74,8 @@ bool compiler_host_accepts_byte_entry(compiler_host *, uint64_t entry, int argum
 char *compiler_host_target_json(const compiler_host *, size_t *length);
 char *compiler_host_values_target_json(size_t *length, char *, size_t);
 char *compiler_host_compiler_target_json(size_t *length, char *, size_t);
+/* The artifact's root module, which the host owns, for inspection. */
+const execution_module *compiler_host_root(const compiler_host *);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);

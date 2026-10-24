@@ -355,6 +355,10 @@ TOOLS = {
                                                '--package-compiler-chibi-sharing'],
     'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                   '--package-compiler-chibi-debug-free'],
+    'language-package-compiler-chibi-native-arguments': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                        '--package-compiler-chibi-native-arguments'],
+    'language-package-compiler-chibi-native-arguments-oracle': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                               '--package-compiler-chibi-native-arguments-oracle'],
     'language-package-compiler-chibi-scalar': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                               '--package-compiler-chibi-scalar'],
     # Needs Linux x86-64 and CHIBI_LLVM_BIN, the directory of opt, llc, ld.lld

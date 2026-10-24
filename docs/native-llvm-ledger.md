@@ -43,9 +43,10 @@ Each feature has one of these states:
 | Six signed `int` comparisons | `Steps.chibi` `OperatorStep` | native | other widths, unsigned, `bool` and string equality | none | `language-scalar-native` probes at `INT32_MIN`/`INT32_MAX` |
 | One guard with a returning arm and a final return | `Body.chibi` `if_statement` | native | `else`, several guards, general control flow (M3) | none | `language-scalar-native`, `lazy_arm` IR order |
 | Comparing two untyped literals | `Steps.chibi` `OperatorStep` | native | none | none | `language-package-compiler-chibi-types` against stage zero, corpus `literal_comparison` |
-| Arithmetic, negation, bitwise, shifts | `Steps.chibi` `OperatorStep`, `Number.chibi` | decision (D1) | overflow and division contract, all widths | trap or wrap policy | corpus `arithmetic` rejects today. It is M2's first fixture. |
+| `int` arithmetic, negation, complement, bitwise `&`, `\|`, `^`, parentheses | `Steps.chibi` `OperatorStep` | native | other widths | none: nothing fails (D1) | `language-scalar-native`: corpus `int_operators` probes at `INT32_MIN`, -7, -1 and 0; every emitter operation at eight edge values |
+| Shifts | `Steps.chibi` `ShiftStep` | stage one | unsigned counts in the subset; the emitter already lowers them | none: a count past the width gives 0 or the sign fill (D1) | `language-package-compiler-chibi-types` (`shift counts clamp`), `language-scalar-native` (emitter only); corpus `shift` rejects |
 | Other integer widths, `float`, `double` | `Number.chibi`, `src/runtime/arithmetic.c` | stage one | type mapping, conversions, float ABI | none | `language-package-compiler-chibi-types` (VM only) |
-| Checked, `wrap:` and `clamp:` conversions | `Number.chibi`, `src/runtime/conversions.c` | stage one | conversion operations; must not become plain casts | trap path | VM only |
+| Clamping and `wrap:` conversions | `Steps.chibi` `CallStep`, `src/runtime/conversions.c` | stage one | conversion operations; a clamp must not become a plain cast | none: nothing fails (D1) | VM only |
 | Locals, assignment, compound assignment | `Body.chibi`, `Steps.chibi` | stage one | slot lowering exists in `llvm_native`, not connected | none | corpus `local` rejects |
 | `while`, `for`, `break`, `continue` | `Body.chibi` | stage one | loops, budget checks per iteration (M3) | budget | VM only |
 | `&&`, `\|\|`, `!` short circuit | `Steps.chibi` | stage one | lazy lowering (M3) | none | corpus `logical_and` rejects |
@@ -58,7 +59,7 @@ Each feature has one of these states:
 | Arrays, bounds checks | `Steps.chibi`, `src/types/array.c` | stage one | managed arrays, bounds traps (M4) | allocator | corpus `array_result` rejects |
 | Maps | `Maps.chibi` | stage one (restricted) | managed maps (M4) | hashing, allocator | corpus `map_result` rejects |
 | References and `ref` loops | `References.chibi`, `src/execution/borrow.c` | stage one (partial) | borrow lowering (M4) | borrow checks | corpus `reference` rejects |
-| Constants | `Compile.chibi` constant folding | stage one | constant reads | none | corpus `constant` rejects |
+| Constants and constant expressions | `Compile.chibi` `FoldConstant`, exact arithmetic in `Number.chibi` | stage one | constant reads | none | `language-package-compiler-chibi-types` (`typed constants fold exactly`, rule rejections); corpus `constant` rejects |
 | Imports and multi-file packages | package graph, `Compile.chibi` | stage one | module composition (M5) | linker, initialization | corpus `import`, `qualified_call` reject |
 | Natives such as `length`, `format_text` | native catalog | stage one | foreign call ABI (M5) | runtime library | corpus `native_call` rejects |
 | `assert` | `Steps.chibi` intrinsic | stage one | trap with message | failure reporting | corpus `assert_before` rejects |
@@ -100,14 +101,14 @@ decision.
 
 | ID | Area | Direction set | Still needed | State |
 | --- | --- | --- | --- | --- |
-| D1 | Integer arithmetic | Checked and wrapping arithmetic, approved but not implemented. On the cases where the integer semantics corpus (chibi#682) found the backends or compilers disagree, the owner wrote "My preference is to do what Odin does for each of these" (24 October 2026). | An approved contract for each of those cases, written from Odin's behavior, and an answer where Odin defines none (`MIN / -1` at run time). Conversions were not part of that answer. Until then `llvm_native`'s wrapping and provisional traps decide nothing. | open, needed for M2 |
+| D1 | Integer arithmetic | No integer operation fails at run time (owner, 24 October 2026, approving the integer semantics thread's contract): overflow wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN`, `MIN % -1` is 0, a shift at or past the width gives 0 or the sign fill, `T(v)` between integers clamps and `T(wrap: v)` wraps. Mixed integer types, signed shift counts, inexact or out-of-range constants and a constant zero divisor are compile errors. Development builds report each site; shipped native code has no checks. | none | decided for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
-| D3 | Floating math | Odin-style type-preserving helpers, with no blanket finite checks and no automatic double intermediates. | Typed floating widening and narrowing, where stage zero and stage one disagree. | open, needed for M2 |
+| D3 | Floating math | `number` is a 32-bit float everywhere, on the CPU and the GPU, and `f64` appears only where a type spells it, such as long timers and the engine's total time. Float arithmetic is IEEE at its type's width: nothing computes at reduced precision or is fast-math-like. Typed `float` to `double` widening may be implicit. Typed `double` to `float` narrowing needs an explicit `float(value)` at assignments, arguments and returns alike, and rounds to nearest, ties to even: overflow gives a signed infinity, and NaN stays NaN with no payload guarantee. Nothing panics, clamps or checks precision. Untyped literals stay contextual. This is Chibi's choice; Odin does not widen implicitly. Helpers stay Odin-style, with no blanket finite checks. Game code spells `number` and `int`, and sized types later take Odin's names (`i8`-`u64`, `f32`, `f64`) in a separate rename. (Owner, 24 October 2026.) | Implementing it, which a separate math and float lane owns, apart from M2's integer rules. Changing `number` from 64 to 32 bits moves recorded results in their low bits. | decided; implementation open |
 | D4 | Budget and recursion | Execution stays bounded. | Where native checks go, call-depth behavior, cancellation. | open, needed for M3 |
 | D5 | Native ABI | An explicit target, ownership and effect contract. `bool` stays internal for now, and probes use a validation-only adapter. | Pointer, collection and query ABI, and foreign `bool`. | open, needed for M4 and M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. | Native diagnostics, unwinding, status and termination. A provisional trap is not the final answer. | open |
 | D7 | Targets and defaults | Prove each target, and keep current behavior working. | The pinned LLVM (the driver measured LLVM 19's layout, and Ubuntu LLVM 18.1.3 gives the same one), the final linker, and when native output becomes a default. | open, M6 and M8 |
-| D8 | Regression budget | `Run.ps1` caps at 96 sources and 180 seconds, and M1 reaches 96. | A measured larger cap, or M2 cases go in the C selector instead. | open, needed for M2 |
+| D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180), and M1 reaches 96. M2's folded-constant sources go in the C selector (`FOLDED_SOURCES`), and its corpus edits keep 96. | A measured larger cap. | M2 cases in the C selector; cap open |
 
 ## Baseline and measurements
 
@@ -129,7 +130,7 @@ After M1:
   `most_operands` also has the `Driver.Object` run below. The selector
   takes 11 s in Release and 91 s under ASan.
 - `language-package-compiler-chibi-scalar` also checks 13 malformed variants
-  of guarded rows.
+  of guarded rows and 9 of arithmetic rows.
 - `Run.ps1` passed 96 sources on four crossings in 116 s, and both recovery
   stages reproduced the bootstrap compiler (the owner's independent review
   of `8968748`).
@@ -139,3 +140,18 @@ After M1:
 - `language-scalar-native` checks that a hung tool and hung generated code
   each time out within 10 seconds of a short deadline, and that SIGTERM
   cancels a run without counting as a timeout.
+
+After M2's compile rules (24 October 2026, same container):
+
+- Bootstrap compiler: 13,390,570 bytes, SHA-256 `58d17229…f77c06`, prepared
+  format 21. The checked-in format-20 compiler cannot recover the new
+  sources, so `make bootstrap-artifact` built the Release tree through the
+  stage-zero path, with `BUILD_HOST` naming no host.
+- `language-package-compiler-chibi-bootstrap` takes 50 s in Release, by its
+  own wall time on this container (164 s before M2). Before the exact
+  division stopped copying its arguments it took 842 s, 775 of them in stage
+  two compiling itself, by the selector's phase timings (see
+  [language friction](language-friction.md#stage-ones-element-stores-into-call-results-copy-arguments)).
+  The selector now asserts that stage two's compiler marks no function but
+  the listed ones as copying its arguments. That reads the module's sharing
+  metadata; it neither counts allocations nor proves the timing.

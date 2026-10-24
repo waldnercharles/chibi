@@ -18,43 +18,39 @@
 #include <string.h>
 #include <yyjson.h>
 
-/* Pins today's integer semantics, the contract native lowering must keep.
- * One sample per width covers wrapping add, sub, mul and negation; division
- * and remainder by zero and of the signed minimum by -1, which fail; shift
- * counts below zero or at the width, which fail; signed and unsigned order;
- * checked, wrap: and clamp: conversions from int64, uint64 and double; and
- * failures whose result is unused. The other samples cover literal and
- * constant operands, mixed widths and failure order. Stage zero and the
- * authored compiler its bootstrap artifact holds each compile every sample,
- * and each closure runs every call on bytecode and SLJIT. Failures pin their
- * diagnostic and status: division and shifts fail without a message of their
- * own, so the host reports that execution did not return, which is also how it
- * reports any other unfinished call. */
+/* Pins integer semantics, the contract native lowering must keep: no integer
+ * operation fails at run time. One sample per width covers wrapping add, sub,
+ * mul and negation; division and remainder by zero, which give 0 and the
+ * dividend, and of the signed minimum by -1, which wrap to the minimum with
+ * remainder 0; shift counts at or past the width, which shift every bit out,
+ * and -1, which is past it; signed and unsigned order; and conversions from
+ * int64, uint64 and double, where T(v) clamps and wrap: keeps the low bits. The other samples cover literal and constant operands, mixed
+ * widths and evaluation order. Stage zero and the authored compiler its
+ * bootstrap artifact holds each compile every sample, and each closure runs
+ * every call on bytecode and SLJIT. */
 enum
 {
     CALLS = 64,
     COMPILE_BUDGET = 200000000,
     CALL_BUDGET = 100000
 };
-/* Every failing call fails as an invalid graph, the runtime's arithmetic and
- * conversion trap. */
-static const int TRAP = FLOW_ERR_INVALID_GRAPH;
-/* A NULL result means the call traps with `failure` as its diagnostic. */
+/* A call gives `expected`, its result array as JSON. No integer operation
+ * fails, so a failing call never agrees. */
 typedef struct
 {
-    const char *function, *arguments, *expected, *failure;
+    const char *function, *arguments, *expected;
 } integer_call;
 /* A sample with a message is one stage zero rejects with it at line:column.
  * `authored_message` is the authored compiler's rejection where its outcome
- * differs from stage zero's: a conformance defect, pinned as found. */
+ * differs from stage zero's: the authored compiler applies the compile-time
+ * integer rules, which stage zero does not apply yet. */
 typedef struct
 {
     const char *name, *source, *message, *authored_message;
     int line, column, authored_line, authored_column;
     integer_call calls[CALLS];
 } integer_sample;
-/* Every operation on one width T. A signed T also negates; the Unused
- * functions discard the result a failure would have given. */
+/* Every operation on one width T. A signed T also negates. */
 #define WIDTH_SOURCE(T)                                                        \
     "package facts\n"                                                          \
     "Add :: (a: " T ", b: " T ") -> " T " { return a + b; }\n"                 \
@@ -62,20 +58,23 @@ typedef struct
     "Mul :: (a: " T ", b: " T ") -> " T " { return a * b; }\n"                 \
     "Div :: (a: " T ", b: " T ") -> " T " { return a / b; }\n"                 \
     "Rem :: (a: " T ", b: " T ") -> " T " { return a % b; }\n"                 \
-    "Shl :: (a: " T ", n: " T ") -> " T " { return a << n; }\n"                \
-    "Shr :: (a: " T ", n: " T ") -> " T " { return a >> n; }\n"                \
+    "Shl :: (a: " T ", n: byte) -> " T " { return " T "(wrap: a << n); }\n"    \
+    "Shr :: (a: " T ", n: byte) -> " T " { return " T "(wrap: a >> n); }\n"    \
     "Less :: (a: " T ", b: " T ") -> bool { return a < b; }\n"                 \
-    "Checked :: (v: int64) -> " T " { return " T "(v); }\n"                    \
+    "Converted :: (v: int64) -> " T " { return " T "(v); }\n"                  \
     "Wrapped :: (v: int64) -> " T " { return " T "(wrap: v); }\n"              \
-    "Clamped :: (v: int64) -> " T " { return " T "(clamp: v); }\n"             \
-    "CheckedWide :: (v: uint64) -> " T " { return " T "(v); }\n"               \
+    "ConvertedWide :: (v: uint64) -> " T " { return " T "(v); }\n"             \
     "WrappedWide :: (v: uint64) -> " T " { return " T "(wrap: v); }\n"         \
-    "ClampedWide :: (v: uint64) -> " T " { return " T "(clamp: v); }\n"        \
     "Truncated :: (v: double) -> " T " { return " T "(v); }\n"                 \
     "NotANumber :: () -> " T " { z: double = 0.0; return " T "(z / z); }\n"    \
-    "UnusedDiv :: (a: " T ", b: " T ") -> int { q := a / b; return 1; }\n"     \
-    "UnusedShl :: (a: " T ", n: " T ") -> int { s := a << n; return 1; }\n"    \
-    "UnusedChecked :: (v: int64) -> int { x := " T "(v); return 1; }\n"
+    "Count :: (n: ref int, v: " T ") -> " T " { n += 1; return v; }\n"         \
+    "CountWide :: (n: ref int, v: int64) -> int64 { n += 1; return v; }\n"     \
+    "UnusedDiv :: (a: " T ", b: " T ") -> int { n := 0; q := a / Count(n, "    \
+    "b); return n; }\n"                                                        \
+    "UnusedShl :: (a: " T ", s: byte) -> int { n := 0; q := Count(n, a) << "   \
+    "s; return n; }\n"                                                         \
+    "UnusedConverted :: (v: int64) -> int { n := 0; x := " T "(CountWide(n, "  \
+    "v)); return n; }\n"
 #define SIGNED_SOURCE(T)                                                       \
     WIDTH_SOURCE(T) "Neg :: (a: " T ") -> " T " { return -a; }\n"
 
@@ -91,58 +90,52 @@ static const integer_sample samples[] = {
                  { .function = "Div", .arguments = "[7,-2]", .expected = "[-3]" },
                  { .function = "Div", .arguments = "[-7,2]", .expected = "[-3]" },
                  { .function = "Div", .arguments = "[-128,1]", .expected = "[-128]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Div", .arguments = "[-128,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
+                 { .function = "Div", .arguments = "[-128,-1]", .expected = "[-128]" },
                  { .function = "Rem", .arguments = "[-7,2]", .expected = "[-1]" },
                  { .function = "Rem", .arguments = "[7,-2]", .expected = "[1]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Rem", .arguments = "[-128,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "Rem", .arguments = "[-128,-1]", .expected = "[0]" },
                  { .function = "Neg", .arguments = "[-128]", .expected = "[-128]" },
                  { .function = "Neg", .arguments = "[127]", .expected = "[-127]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,7]", .expected = "[-128]" },
                  { .function = "Shl", .arguments = "[127,1]", .expected = "[-2]" },
-                 { .function = "Shl", .arguments = "[1,8]", .failure = "compiler execution did not return" },
-                 { .function = "Shl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,8]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[-128,7]", .expected = "[-1]" },
                  { .function = "Shr", .arguments = "[-1,1]", .expected = "[-1]" },
-                 { .function = "Shr", .arguments = "[-128,8]", .failure = "compiler execution did not return" },
-                 { .function = "Shr", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[-128,8]", .expected = "[-1]" },
+                 { .function = "Shr", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[-128,127]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[-1,0]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[127,-128]", .expected = "[false]" },
-                 { .function = "Checked", .arguments = "[127]", .expected = "[127]" },
-                 { .function = "Checked", .arguments = "[128]", .failure = "Value does not fit in int8" },
-                 { .function = "Checked", .arguments = "[-129]", .failure = "Value does not fit in int8" },
+                 { .function = "Converted", .arguments = "[127]", .expected = "[127]" },
+                 { .function = "Converted", .arguments = "[128]", .expected = "[127]" },
+                 { .function = "Converted", .arguments = "[-129]", .expected = "[-128]" },
                  { .function = "Wrapped", .arguments = "[128]", .expected = "[-128]" },
                  { .function = "Wrapped", .arguments = "[261]", .expected = "[5]" },
                  { .function = "Wrapped", .arguments = "[-129]", .expected = "[127]" },
-                 { .function = "Clamped", .arguments = "[128]", .expected = "[127]" },
-                 { .function = "Clamped", .arguments = "[-129]", .expected = "[-128]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[-1]" },
-                 { .function = "CheckedWide", .arguments = "[127]", .expected = "[127]" },
-                 { .function = "CheckedWide", .arguments = "[128]", .failure = "Value does not fit in int8" },
+                 { .function = "ConvertedWide", .arguments = "[127]", .expected = "[127]" },
+                 { .function = "ConvertedWide", .arguments = "[128]", .expected = "[127]" },
                  { .function = "WrappedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[-1]" },
                  { .function = "WrappedWide", .arguments = "[128]", .expected = "[-128]" },
-                 { .function = "ClampedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[127]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
                  { .function = "Truncated", .arguments = "[-2.9]", .expected = "[-2]" },
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[127]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[-128]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "UnusedDiv",
                    .arguments = "[-128,-1]",
-                   .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,8]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                   .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,8]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,255]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[128]",
-                   .failure = "Value does not fit in int8" } } },
+                   .expected = "[1]" }, } },
     { .name = "byte",
       .source = WIDTH_SOURCE("byte"),
       .calls = { { .function = "Add", .arguments = "[255,1]", .expected = "[0]" },
@@ -150,34 +143,29 @@ static const integer_sample samples[] = {
                  { .function = "Mul", .arguments = "[255,2]", .expected = "[254]" },
                  { .function = "Mul", .arguments = "[255,255]", .expected = "[1]" },
                  { .function = "Div", .arguments = "[255,2]", .expected = "[127]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
                  { .function = "Rem", .arguments = "[255,10]", .expected = "[5]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,7]", .expected = "[128]" },
                  { .function = "Shl", .arguments = "[255,1]", .expected = "[254]" },
-                 { .function = "Shl", .arguments = "[1,8]", .failure = "compiler execution did not return" },
-                 { .function = "Shl", .arguments = "[1,255]", .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,8]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[255,7]", .expected = "[1]" },
                  { .function = "Shr", .arguments = "[128,1]", .expected = "[64]" },
-                 { .function = "Shr", .arguments = "[255,8]", .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[255,8]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[0,255]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[128,1]", .expected = "[false]" },
                  { .function = "Less", .arguments = "[1,128]", .expected = "[true]" },
-                 { .function = "Checked", .arguments = "[-1]", .failure = "Value does not fit in byte" },
+                 { .function = "Converted", .arguments = "[-1]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[-1]", .expected = "[255]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[0]" },
-                 { .function = "Checked", .arguments = "[255]", .expected = "[255]" },
-                 { .function = "Checked", .arguments = "[256]", .failure = "Value does not fit in byte" },
+                 { .function = "Converted", .arguments = "[255]", .expected = "[255]" },
+                 { .function = "Converted", .arguments = "[256]", .expected = "[255]" },
                  { .function = "Wrapped", .arguments = "[256]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[261]", .expected = "[5]" },
-                 { .function = "Clamped", .arguments = "[256]", .expected = "[255]" },
-                 { .function = "CheckedWide", .arguments = "[255]", .expected = "[255]" },
-                 { .function = "CheckedWide", .arguments = "[256]", .failure = "Value does not fit in byte" },
+                 { .function = "ConvertedWide", .arguments = "[255]", .expected = "[255]" },
+                 { .function = "ConvertedWide", .arguments = "[256]", .expected = "[255]" },
                  { .function = "WrappedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[255]" },
-                 { .function = "ClampedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[255]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
@@ -185,11 +173,11 @@ static const integer_sample samples[] = {
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[255]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[0]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,8]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,8]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[-1]",
-                   .failure = "Value does not fit in byte" } } },
+                   .expected = "[1]" }, } },
     { .name = "int16",
       .source = SIGNED_SOURCE("int16"),
       .calls = { { .function = "Add", .arguments = "[32767,1]", .expected = "[-32768]" },
@@ -201,58 +189,52 @@ static const integer_sample samples[] = {
                  { .function = "Div", .arguments = "[7,-2]", .expected = "[-3]" },
                  { .function = "Div", .arguments = "[-7,2]", .expected = "[-3]" },
                  { .function = "Div", .arguments = "[-32768,1]", .expected = "[-32768]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Div", .arguments = "[-32768,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
+                 { .function = "Div", .arguments = "[-32768,-1]", .expected = "[-32768]" },
                  { .function = "Rem", .arguments = "[-7,2]", .expected = "[-1]" },
                  { .function = "Rem", .arguments = "[7,-2]", .expected = "[1]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Rem", .arguments = "[-32768,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "Rem", .arguments = "[-32768,-1]", .expected = "[0]" },
                  { .function = "Neg", .arguments = "[-32768]", .expected = "[-32768]" },
                  { .function = "Neg", .arguments = "[32767]", .expected = "[-32767]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,15]", .expected = "[-32768]" },
                  { .function = "Shl", .arguments = "[32767,1]", .expected = "[-2]" },
-                 { .function = "Shl", .arguments = "[1,16]", .failure = "compiler execution did not return" },
-                 { .function = "Shl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,16]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[-32768,15]", .expected = "[-1]" },
                  { .function = "Shr", .arguments = "[-1,1]", .expected = "[-1]" },
-                 { .function = "Shr", .arguments = "[-32768,16]", .failure = "compiler execution did not return" },
-                 { .function = "Shr", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[-32768,16]", .expected = "[-1]" },
+                 { .function = "Shr", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[-32768,32767]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[-1,0]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[32767,-32768]", .expected = "[false]" },
-                 { .function = "Checked", .arguments = "[32767]", .expected = "[32767]" },
-                 { .function = "Checked", .arguments = "[32768]", .failure = "Value does not fit in int16" },
-                 { .function = "Checked", .arguments = "[-32769]", .failure = "Value does not fit in int16" },
+                 { .function = "Converted", .arguments = "[32767]", .expected = "[32767]" },
+                 { .function = "Converted", .arguments = "[32768]", .expected = "[32767]" },
+                 { .function = "Converted", .arguments = "[-32769]", .expected = "[-32768]" },
                  { .function = "Wrapped", .arguments = "[32768]", .expected = "[-32768]" },
                  { .function = "Wrapped", .arguments = "[65541]", .expected = "[5]" },
                  { .function = "Wrapped", .arguments = "[-32769]", .expected = "[32767]" },
-                 { .function = "Clamped", .arguments = "[32768]", .expected = "[32767]" },
-                 { .function = "Clamped", .arguments = "[-32769]", .expected = "[-32768]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[-1]" },
-                 { .function = "CheckedWide", .arguments = "[32767]", .expected = "[32767]" },
-                 { .function = "CheckedWide", .arguments = "[32768]", .failure = "Value does not fit in int16" },
+                 { .function = "ConvertedWide", .arguments = "[32767]", .expected = "[32767]" },
+                 { .function = "ConvertedWide", .arguments = "[32768]", .expected = "[32767]" },
                  { .function = "WrappedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[-1]" },
                  { .function = "WrappedWide", .arguments = "[32768]", .expected = "[-32768]" },
-                 { .function = "ClampedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[32767]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
                  { .function = "Truncated", .arguments = "[-2.9]", .expected = "[-2]" },
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[32767]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[-32768]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "UnusedDiv",
                    .arguments = "[-32768,-1]",
-                   .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,16]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                   .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,16]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,255]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[32768]",
-                   .failure = "Value does not fit in int16" } } },
+                   .expected = "[1]" }, } },
     { .name = "uint16",
       .source = WIDTH_SOURCE("uint16"),
       .calls = { { .function = "Add", .arguments = "[65535,1]", .expected = "[0]" },
@@ -260,34 +242,29 @@ static const integer_sample samples[] = {
                  { .function = "Mul", .arguments = "[65535,2]", .expected = "[65534]" },
                  { .function = "Mul", .arguments = "[65535,65535]", .expected = "[1]" },
                  { .function = "Div", .arguments = "[65535,2]", .expected = "[32767]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
                  { .function = "Rem", .arguments = "[65535,10]", .expected = "[5]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,15]", .expected = "[32768]" },
                  { .function = "Shl", .arguments = "[65535,1]", .expected = "[65534]" },
-                 { .function = "Shl", .arguments = "[1,16]", .failure = "compiler execution did not return" },
-                 { .function = "Shl", .arguments = "[1,65535]", .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,16]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[65535,15]", .expected = "[1]" },
                  { .function = "Shr", .arguments = "[32768,1]", .expected = "[16384]" },
-                 { .function = "Shr", .arguments = "[65535,16]", .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[65535,16]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[0,65535]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[32768,1]", .expected = "[false]" },
                  { .function = "Less", .arguments = "[1,32768]", .expected = "[true]" },
-                 { .function = "Checked", .arguments = "[-1]", .failure = "Value does not fit in uint16" },
+                 { .function = "Converted", .arguments = "[-1]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[-1]", .expected = "[65535]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[0]" },
-                 { .function = "Checked", .arguments = "[65535]", .expected = "[65535]" },
-                 { .function = "Checked", .arguments = "[65536]", .failure = "Value does not fit in uint16" },
+                 { .function = "Converted", .arguments = "[65535]", .expected = "[65535]" },
+                 { .function = "Converted", .arguments = "[65536]", .expected = "[65535]" },
                  { .function = "Wrapped", .arguments = "[65536]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[65541]", .expected = "[5]" },
-                 { .function = "Clamped", .arguments = "[65536]", .expected = "[65535]" },
-                 { .function = "CheckedWide", .arguments = "[65535]", .expected = "[65535]" },
-                 { .function = "CheckedWide", .arguments = "[65536]", .failure = "Value does not fit in uint16" },
+                 { .function = "ConvertedWide", .arguments = "[65535]", .expected = "[65535]" },
+                 { .function = "ConvertedWide", .arguments = "[65536]", .expected = "[65535]" },
                  { .function = "WrappedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[65535]" },
-                 { .function = "ClampedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[65535]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
@@ -295,11 +272,11 @@ static const integer_sample samples[] = {
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[65535]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[0]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,16]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,16]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[-1]",
-                   .failure = "Value does not fit in uint16" } } },
+                   .expected = "[1]" }, } },
     { .name = "int",
       .source = SIGNED_SOURCE("int"),
       .calls = { { .function = "Add", .arguments = "[2147483647,1]", .expected = "[-2147483648]" },
@@ -311,66 +288,52 @@ static const integer_sample samples[] = {
                  { .function = "Div", .arguments = "[7,-2]", .expected = "[-3]" },
                  { .function = "Div", .arguments = "[-7,2]", .expected = "[-3]" },
                  { .function = "Div", .arguments = "[-2147483648,1]", .expected = "[-2147483648]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Div",
-                   .arguments = "[-2147483648,-1]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
+                 { .function = "Div", .arguments = "[-2147483648,-1]", .expected = "[-2147483648]" },
                  { .function = "Rem", .arguments = "[-7,2]", .expected = "[-1]" },
                  { .function = "Rem", .arguments = "[7,-2]", .expected = "[1]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Rem",
-                   .arguments = "[-2147483648,-1]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "Rem", .arguments = "[-2147483648,-1]", .expected = "[0]" },
                  { .function = "Neg", .arguments = "[-2147483648]", .expected = "[-2147483648]" },
                  { .function = "Neg", .arguments = "[2147483647]", .expected = "[-2147483647]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,31]", .expected = "[-2147483648]" },
                  { .function = "Shl", .arguments = "[2147483647,1]", .expected = "[-2]" },
-                 { .function = "Shl", .arguments = "[1,32]", .failure = "compiler execution did not return" },
-                 { .function = "Shl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,32]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[-2147483648,31]", .expected = "[-1]" },
                  { .function = "Shr", .arguments = "[-1,1]", .expected = "[-1]" },
-                 { .function = "Shr",
-                   .arguments = "[-2147483648,32]",
-                   .failure = "compiler execution did not return" },
-                 { .function = "Shr", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[-2147483648,32]", .expected = "[-1]" },
+                 { .function = "Shr", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[-2147483648,2147483647]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[-1,0]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[2147483647,-2147483648]", .expected = "[false]" },
-                 { .function = "Checked", .arguments = "[2147483647]", .expected = "[2147483647]" },
-                 { .function = "Checked", .arguments = "[2147483648]", .failure = "Value does not fit in int" },
-                 { .function = "Checked", .arguments = "[-2147483649]", .failure = "Value does not fit in int" },
+                 { .function = "Converted", .arguments = "[2147483647]", .expected = "[2147483647]" },
+                 { .function = "Converted", .arguments = "[2147483648]", .expected = "[2147483647]" },
+                 { .function = "Converted", .arguments = "[-2147483649]", .expected = "[-2147483648]" },
                  { .function = "Wrapped", .arguments = "[2147483648]", .expected = "[-2147483648]" },
                  { .function = "Wrapped", .arguments = "[4294967301]", .expected = "[5]" },
                  { .function = "Wrapped", .arguments = "[-2147483649]", .expected = "[2147483647]" },
-                 { .function = "Clamped", .arguments = "[2147483648]", .expected = "[2147483647]" },
-                 { .function = "Clamped", .arguments = "[-2147483649]", .expected = "[-2147483648]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[-1]" },
-                 { .function = "CheckedWide", .arguments = "[2147483647]", .expected = "[2147483647]" },
-                 { .function = "CheckedWide",
-                   .arguments = "[2147483648]",
-                   .failure = "Value does not fit in int" },
+                 { .function = "ConvertedWide", .arguments = "[2147483647]", .expected = "[2147483647]" },
+                 { .function = "ConvertedWide", .arguments = "[2147483648]", .expected = "[2147483647]" },
                  { .function = "WrappedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[-1]" },
                  { .function = "WrappedWide", .arguments = "[2147483648]", .expected = "[-2147483648]" },
-                 { .function = "ClampedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[2147483647]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
                  { .function = "Truncated", .arguments = "[-2.9]", .expected = "[-2]" },
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[2147483647]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[-2147483648]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "UnusedDiv",
                    .arguments = "[-2147483648,-1]",
-                   .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,32]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                   .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,32]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,255]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[2147483648]",
-                   .failure = "Value does not fit in int" } } },
+                   .expected = "[1]" }, } },
     { .name = "uint",
       .source = WIDTH_SOURCE("uint"),
       .calls = { { .function = "Add", .arguments = "[4294967295,1]", .expected = "[0]" },
@@ -378,40 +341,29 @@ static const integer_sample samples[] = {
                  { .function = "Mul", .arguments = "[4294967295,2]", .expected = "[4294967294]" },
                  { .function = "Mul", .arguments = "[4294967295,4294967295]", .expected = "[1]" },
                  { .function = "Div", .arguments = "[4294967295,2]", .expected = "[2147483647]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
                  { .function = "Rem", .arguments = "[4294967295,10]", .expected = "[5]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,31]", .expected = "[2147483648]" },
                  { .function = "Shl", .arguments = "[4294967295,1]", .expected = "[4294967294]" },
-                 { .function = "Shl", .arguments = "[1,32]", .failure = "compiler execution did not return" },
-                 { .function = "Shl",
-                   .arguments = "[1,4294967295]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,32]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[4294967295,31]", .expected = "[1]" },
                  { .function = "Shr", .arguments = "[2147483648,1]", .expected = "[1073741824]" },
-                 { .function = "Shr",
-                   .arguments = "[4294967295,32]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[4294967295,32]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[0,4294967295]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[2147483648,1]", .expected = "[false]" },
                  { .function = "Less", .arguments = "[1,2147483648]", .expected = "[true]" },
-                 { .function = "Checked", .arguments = "[-1]", .failure = "Value does not fit in uint" },
+                 { .function = "Converted", .arguments = "[-1]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[-1]", .expected = "[4294967295]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[0]" },
-                 { .function = "Checked", .arguments = "[4294967295]", .expected = "[4294967295]" },
-                 { .function = "Checked", .arguments = "[4294967296]", .failure = "Value does not fit in uint" },
+                 { .function = "Converted", .arguments = "[4294967295]", .expected = "[4294967295]" },
+                 { .function = "Converted", .arguments = "[4294967296]", .expected = "[4294967295]" },
                  { .function = "Wrapped", .arguments = "[4294967296]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[4294967301]", .expected = "[5]" },
-                 { .function = "Clamped", .arguments = "[4294967296]", .expected = "[4294967295]" },
-                 { .function = "CheckedWide", .arguments = "[4294967295]", .expected = "[4294967295]" },
-                 { .function = "CheckedWide",
-                   .arguments = "[4294967296]",
-                   .failure = "Value does not fit in uint" },
+                 { .function = "ConvertedWide", .arguments = "[4294967295]", .expected = "[4294967295]" },
+                 { .function = "ConvertedWide", .arguments = "[4294967296]", .expected = "[4294967295]" },
                  { .function = "WrappedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[4294967295]" },
-                 { .function = "ClampedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[4294967295]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
@@ -419,11 +371,11 @@ static const integer_sample samples[] = {
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[4294967295]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[0]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,32]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,32]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[-1]",
-                   .failure = "Value does not fit in uint" } } },
+                   .expected = "[1]" }, } },
     { .name = "int64",
       .source = SIGNED_SOURCE("int64"),
       .calls = { { .function = "Add",
@@ -447,16 +399,14 @@ static const integer_sample samples[] = {
                  { .function = "Div",
                    .arguments = "[-9223372036854775808,1]",
                    .expected = "[-9223372036854775808]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
                  { .function = "Div",
                    .arguments = "[-9223372036854775808,-1]",
-                   .failure = "compiler execution did not return" },
+                   .expected = "[-9223372036854775808]" },
                  { .function = "Rem", .arguments = "[-7,2]", .expected = "[-1]" },
                  { .function = "Rem", .arguments = "[7,-2]", .expected = "[1]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "Rem",
-                   .arguments = "[-9223372036854775808,-1]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "Rem", .arguments = "[-9223372036854775808,-1]", .expected = "[0]" },
                  { .function = "Neg",
                    .arguments = "[-9223372036854775808]",
                    .expected = "[-9223372036854775808]" },
@@ -466,14 +416,12 @@ static const integer_sample samples[] = {
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,63]", .expected = "[-9223372036854775808]" },
                  { .function = "Shl", .arguments = "[9223372036854775807,1]", .expected = "[-2]" },
-                 { .function = "Shl", .arguments = "[1,64]", .failure = "compiler execution did not return" },
-                 { .function = "Shl", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,64]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[-9223372036854775808,63]", .expected = "[-1]" },
                  { .function = "Shr", .arguments = "[-1,1]", .expected = "[-1]" },
-                 { .function = "Shr",
-                   .arguments = "[-9223372036854775808,64]",
-                   .failure = "compiler execution did not return" },
-                 { .function = "Shr", .arguments = "[1,-1]", .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[-9223372036854775808,64]", .expected = "[-1]" },
+                 { .function = "Shr", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Less",
                    .arguments = "[-9223372036854775808,9223372036854775807]",
                    .expected = "[true]" },
@@ -481,43 +429,37 @@ static const integer_sample samples[] = {
                  { .function = "Less",
                    .arguments = "[9223372036854775807,-9223372036854775808]",
                    .expected = "[false]" },
-                 { .function = "Checked",
+                 { .function = "Converted",
                    .arguments = "[-9223372036854775808]",
                    .expected = "[-9223372036854775808]" },
                  { .function = "Wrapped",
                    .arguments = "[-9223372036854775808]",
                    .expected = "[-9223372036854775808]" },
-                 { .function = "Clamped",
+                 { .function = "ConvertedWide",
                    .arguments = "[9223372036854775807]",
                    .expected = "[9223372036854775807]" },
-                 { .function = "CheckedWide",
-                   .arguments = "[9223372036854775807]",
-                   .expected = "[9223372036854775807]" },
-                 { .function = "CheckedWide",
+                 { .function = "ConvertedWide",
                    .arguments = "[9223372036854775808]",
-                   .failure = "Value does not fit in int64" },
+                   .expected = "[9223372036854775807]" },
                  { .function = "WrappedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[-1]" },
                  { .function = "WrappedWide",
                    .arguments = "[9223372036854775808]",
                    .expected = "[-9223372036854775808]" },
-                 { .function = "ClampedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[9223372036854775807]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
                  { .function = "Truncated", .arguments = "[-2.9]", .expected = "[-2]" },
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[9223372036854775807]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[-9223372036854775808]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "UnusedDiv",
                    .arguments = "[-9223372036854775808,-1]",
-                   .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,64]", .failure = "compiler execution did not return" },
+                   .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,64]", .expected = "[1]" },
                  { .function = "UnusedShl",
-                   .arguments = "[1,-1]",
-                   .failure = "compiler execution did not return" } } },
+                   .arguments = "[1,255]",
+                   .expected = "[1]" }, } },
     { .name = "uint64",
       .source = WIDTH_SOURCE("uint64"),
       .calls = { { .function = "Add", .arguments = "[18446744073709551615,1]", .expected = "[0]" },
@@ -531,45 +473,36 @@ static const integer_sample samples[] = {
                  { .function = "Div",
                    .arguments = "[18446744073709551615,2]",
                    .expected = "[9223372036854775807]" },
-                 { .function = "Div", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Div", .arguments = "[1,0]", .expected = "[0]" },
                  { .function = "Rem", .arguments = "[18446744073709551615,10]", .expected = "[5]" },
-                 { .function = "Rem", .arguments = "[1,0]", .failure = "compiler execution did not return" },
+                 { .function = "Rem", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,0]", .expected = "[1]" },
                  { .function = "Shl", .arguments = "[1,63]", .expected = "[9223372036854775808]" },
                  { .function = "Shl",
                    .arguments = "[18446744073709551615,1]",
                    .expected = "[18446744073709551614]" },
-                 { .function = "Shl", .arguments = "[1,64]", .failure = "compiler execution did not return" },
-                 { .function = "Shl",
-                   .arguments = "[1,18446744073709551615]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Shl", .arguments = "[1,64]", .expected = "[0]" },
+                 { .function = "Shl", .arguments = "[1,255]", .expected = "[0]" },
                  { .function = "Shr", .arguments = "[18446744073709551615,63]", .expected = "[1]" },
                  { .function = "Shr",
                    .arguments = "[9223372036854775808,1]",
                    .expected = "[4611686018427387904]" },
-                 { .function = "Shr",
-                   .arguments = "[18446744073709551615,64]",
-                   .failure = "compiler execution did not return" },
+                 { .function = "Shr", .arguments = "[18446744073709551615,64]", .expected = "[0]" },
                  { .function = "Less", .arguments = "[0,18446744073709551615]", .expected = "[true]" },
                  { .function = "Less", .arguments = "[9223372036854775808,1]", .expected = "[false]" },
                  { .function = "Less", .arguments = "[1,9223372036854775808]", .expected = "[true]" },
-                 { .function = "Checked", .arguments = "[-1]", .failure = "Value does not fit in uint64" },
+                 { .function = "Converted", .arguments = "[-1]", .expected = "[0]" },
                  { .function = "Wrapped", .arguments = "[-1]", .expected = "[18446744073709551615]" },
-                 { .function = "Clamped", .arguments = "[-1]", .expected = "[0]" },
-                 { .function = "Checked",
+                 { .function = "Converted",
                    .arguments = "[9223372036854775807]",
                    .expected = "[9223372036854775807]" },
                  { .function = "Wrapped",
                    .arguments = "[-9223372036854775808]",
                    .expected = "[9223372036854775808]" },
-                 { .function = "Clamped", .arguments = "[-9223372036854775808]", .expected = "[0]" },
-                 { .function = "CheckedWide",
+                 { .function = "ConvertedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[18446744073709551615]" },
                  { .function = "WrappedWide",
-                   .arguments = "[18446744073709551615]",
-                   .expected = "[18446744073709551615]" },
-                 { .function = "ClampedWide",
                    .arguments = "[18446744073709551615]",
                    .expected = "[18446744073709551615]" },
                  { .function = "Truncated", .arguments = "[2.9]", .expected = "[2]" },
@@ -577,59 +510,66 @@ static const integer_sample samples[] = {
                  { .function = "Truncated", .arguments = "[1e300]", .expected = "[18446744073709551615]" },
                  { .function = "Truncated", .arguments = "[-1e300]", .expected = "[0]" },
                  { .function = "NotANumber", .arguments = "[]", .expected = "[0]" },
-                 { .function = "UnusedDiv", .arguments = "[1,0]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedShl", .arguments = "[1,64]", .failure = "compiler execution did not return" },
-                 { .function = "UnusedChecked",
+                 { .function = "UnusedDiv", .arguments = "[1,0]", .expected = "[1]" },
+                 { .function = "UnusedShl", .arguments = "[1,64]", .expected = "[1]" },
+                 { .function = "UnusedConverted",
                    .arguments = "[-1]",
-                   .failure = "Value does not fit in uint64" } } },
+                   .expected = "[1]" }, } },
     { .name = "literal sum overflows its context",
       .source = "package facts\n"
                 "F :: () -> int8 { return 127 + 1; }\n",
+      .authored_message = "Constant value is outside the range of int8",
+      .authored_line = 2,
+      .authored_column = 26,
       .calls = { { .function = "F", .arguments = "[]", .expected = "[-128]" } } },
     { .name = "literal division by zero",
       .source = "package facts\n"
                 "F :: () -> int { return 1 / 0; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[]",
-                   .failure = "compiler execution did not return" } } },
+      .authored_message = "Constant division by zero",
+      .authored_line = 2,
+      .authored_column = 25,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
     { .name = "literal remainder by zero",
       .source = "package facts\n"
                 "F :: () -> int { return 1 % 0; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[]",
-                   .failure = "compiler execution did not return" } } },
+      .authored_message = "Constant division by zero",
+      .authored_line = 2,
+      .authored_column = 25,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[1]" } } },
     { .name = "literal minimum by -1",
       .source = "package facts\n"
                 "F :: () -> int { return -2147483648 / -1; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[]",
-                   .failure = "compiler execution did not return" } } },
+      .authored_message = "Constant value is outside the range of int",
+      .authored_line = 2,
+      .authored_column = 25,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[-2147483648]" } } },
     { .name = "literal shift past the width",
       .source = "package facts\n"
                 "F :: () -> int { return 1 << 32; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[]",
-                   .failure = "compiler execution did not return" } } },
+      .authored_message = "Constant value is outside the range of int",
+      .authored_line = 2,
+      .authored_column = 25,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
     { .name = "literal negative shift",
       .source = "package facts\n"
                 "F :: () -> int { return 1 << -1; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[]",
-                   .failure = "compiler execution did not return" } } },
+      .authored_message = "Shift count must not be negative",
+      .authored_line = 2,
+      .authored_column = 30,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
     { .name = "literal checked conversion",
       .source = "package facts\n"
                 "F :: () -> byte { return byte(300); }\n",
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
-      .column = 31 },
-    { .name = "literal wrap and clamp",
+      .column = 31,
+      .authored_message = "Constant does not fit in byte; use byte(wrap: value)",
+      .authored_line = 2,
+      .authored_column = 26 },
+    { .name = "literal wrap",
       .source = "package facts\n"
-                "W :: () -> byte { return byte(wrap: 300); }\n"
-                "C :: () -> byte { return byte(clamp: 300); }\n"
-                "N :: () -> byte { return byte(clamp: -5); }\n",
-      .calls = { { .function = "W", .arguments = "[]", .expected = "[44]" },
-                 { .function = "C", .arguments = "[]", .expected = "[255]" },
-                 { .function = "N", .arguments = "[]", .expected = "[0]" } } },
+                "W :: () -> byte { return byte(wrap: 300); }\n",
+      .calls = { { .function = "W", .arguments = "[]", .expected = "[44]" } } },
     { .name = "constant sum overflows its type",
       .source = "package facts\n"
                 "C: int8 : 127 + 1;\n"
@@ -642,22 +582,18 @@ static const integer_sample samples[] = {
       .source = "package facts\n"
                 "C :: 1 / 0;\n"
                 "F :: () -> int { return C; }\n",
-      .message = "Cannot evaluate state default",
-      .line = 2,
-      .column = 1,
       .authored_message = "Constant division by zero",
       .authored_line = 2,
-      .authored_column = 6 },
+      .authored_column = 6,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
     { .name = "constant shift past the width",
       .source = "package facts\n"
                 "C: int : 1 << 32;\n"
                 "F :: () -> int { return C; }\n",
-      .message = "Cannot evaluate state default",
-      .line = 2,
-      .column = 1,
-      .authored_message = "Constant shift count is outside the type",
+      .authored_message = "Constant value is outside the range of int",
       .authored_line = 2,
-      .authored_column = 10 },
+      .authored_column = 10,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
     { .name = "constant arithmetic",
       .source = "package facts\n"
                 "Q: int : -7 / 2;\n"
@@ -670,32 +606,26 @@ static const integer_sample samples[] = {
       .source = "package facts\n"
                 "M: int : -2147483648 / -1;\n"
                 "F :: () -> int { return M; }\n",
-      .message = "Cannot evaluate state default",
-      .line = 2,
-      .column = 1,
       .authored_message = "Constant value is outside the range of int",
       .authored_line = 2,
-      .authored_column = 10 },
+      .authored_column = 10,
+      .calls = { { .function = "F", .arguments = "[]", .expected = "[-2147483648]" } } },
     { .name = "constant wrap",
       .source = "package facts\n"
                 "C: byte : byte(wrap: 300);\n"
                 "F :: () -> byte { return C; }\n",
-      .authored_message = "constant value must be an integer expression",
-      .authored_line = 2,
-      .authored_column = 11,
       .calls = { { .function = "F", .arguments = "[]", .expected = "[44]" } } },
     { .name = "variable by literal zero",
       .source = "package facts\n"
                 "F :: (a: int) -> int { return a / 0; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[5]",
-                   .failure = "compiler execution did not return" } } },
+      .authored_message = "Constant division by zero",
+      .authored_line = 2,
+      .authored_column = 31,
+      .calls = { { .function = "F", .arguments = "[5]", .expected = "[0]" } } },
     { .name = "variable shift by a literal past the width",
       .source = "package facts\n"
                 "F :: (a: int8) -> int8 { return a << 8; }\n",
-      .calls = { { .function = "F",
-                   .arguments = "[1]",
-                   .failure = "compiler execution did not return" } } },
+      .calls = { { .function = "F", .arguments = "[1]", .expected = "[0]" } } },
     { .name = "variable plus a literal outside its type",
       .source = "package facts\n"
                 "F :: (a: int8) -> int8 { return a + 200; }\n",
@@ -705,9 +635,6 @@ static const integer_sample samples[] = {
     { .name = "unsigned negation",
       .source = "package facts\n"
                 "F :: (a: byte) -> byte { return -a; }\n",
-      .authored_message = "unsupported arithmetic type",
-      .authored_line = 2,
-      .authored_column = 33,
       .calls = { { .function = "F", .arguments = "[1]", .expected = "[255]" } } },
     { .name = "unsigned compared with a negative literal",
       .source = "package facts\n"
@@ -735,14 +662,15 @@ static const integer_sample samples[] = {
                 "H :: (a: uint, b: int) -> int64 { return a + b; }\n"
                 "L :: (a: uint, b: int) -> bool { return a < b; }\n"
                 "S :: (a: byte, n: int) -> int { return a << n; }\n",
+      .authored_message = "Mismatched integer types int8 and int; convert one operand",
+      .authored_line = 2,
+      .authored_column = 40,
       .calls = { { .function = "F", .arguments = "[-128,2147483647]", .expected = "[2147483519]" },
                  { .function = "G", .arguments = "[255,-128]", .expected = "[127]" },
                  { .function = "H", .arguments = "[4294967295,-1]", .expected = "[4294967294]" },
                  { .function = "L", .arguments = "[4294967295,-1]", .expected = "[false]" },
                  { .function = "S", .arguments = "[1,8]", .expected = "[256]" },
-                 { .function = "S",
-                   .arguments = "[1,32]",
-                   .failure = "compiler execution did not return" } } },
+                 { .function = "S", .arguments = "[1,32]", .expected = "[0]" } } },
     { .name = "mixed sum narrowed by its result",
       .source = "package facts\n"
                 "G :: (a: byte, b: int8) -> int16 { return a + b; }\n",
@@ -750,26 +678,32 @@ static const integer_sample samples[] = {
                  "int16(value)",
       .line = 2,
       .column = 43,
-      .authored_message = "returned value differs from the result type",
+      .authored_message = "Mismatched integer types byte and int8; convert one operand",
       .authored_line = 2,
-      .authored_column = 36 },
+      .authored_column = 43 },
     { .name = "signed and unsigned 64-bit mix",
       .source = "package facts\n"
                 "F :: (a: uint64, b: int64) -> uint64 { return a + b; }\n",
       .message = "uint64 and int64 operands need an explicit conversion, such "
                  "as uint64(value)",
       .line = 2,
-      .column = 47 },
+      .column = 47,
+      .authored_message = "Mismatched integer types uint64 and int64; convert one operand",
+      .authored_line = 2,
+      .authored_column = 47 },
     { .name = "compound assignment wraps",
       .source = "package facts\n"
                 "F :: (a: int8) -> int8 { x := a; x += 1; x *= 2; return x; }\n"
-                "G :: (a: byte) -> byte { x := a; x -= 1; return x; }\n"
-                "H :: (a: int) -> int { x := a; x /= 0; return x; }\n",
+                "G :: (a: byte) -> byte { x := a; x -= 1; return x; }\n",
       .calls = { { .function = "F", .arguments = "[127]", .expected = "[0]" },
-                 { .function = "G", .arguments = "[0]", .expected = "[255]" },
-                 { .function = "H",
-                   .arguments = "[1]",
-                   .failure = "compiler execution did not return" } } },
+                 { .function = "G", .arguments = "[0]", .expected = "[255]" } } },
+    { .name = "compound division by literal zero",
+      .source = "package facts\n"
+                "H :: (a: int) -> int { x := a; x /= 0; return x; }\n",
+      .authored_message = "Constant division by zero",
+      .authored_line = 2,
+      .authored_column = 32,
+      .calls = { { .function = "H", .arguments = "[1]", .expected = "[0]" } } },
     { .name = "bitwise operations keep the width",
       .source = "package facts\n"
                 "N :: (a: byte) -> byte { return ~a; }\n"
@@ -778,16 +712,35 @@ static const integer_sample samples[] = {
       .calls = { { .function = "N", .arguments = "[0]", .expected = "[255]" },
                  { .function = "M", .arguments = "[0]", .expected = "[-1]" },
                  { .function = "X", .arguments = "[65535,1]", .expected = "[65534]" } } },
-    { .name = "failure order in an expression",
+    { .name = "zero divisor and clamping in one expression",
       .source = "package facts\n"
                 "F :: (a: int, b: int) -> int { return (a / b) + int(byte(a)); "
                 "}\n"
                 "G :: (a: int, b: int) -> int { return int(byte(a)) + (a / b); "
                 "}\n",
-      .calls = { { .function = "F", .arguments = "[300,0]", .failure = "compiler execution did not return" },
-                 { .function = "G",
-                   .arguments = "[300,0]",
-                   .failure = "Value does not fit in byte" } } },
+      .calls = { { .function = "F", .arguments = "[300,0]", .expected = "[255]" },
+                 { .function = "G", .arguments = "[300,0]", .expected = "[255]" } } },
+    /* Each operand appends its digit to the trace, so the trace is the order
+     * the operands ran in; the reversed spellings are the negative control. */
+    { .name = "operands evaluate left to right",
+      .source = "package facts\n"
+                "Tag :: (t: ref int, d: int, v: int) -> int { t = t * 10 + d; "
+                "return v; }\n"
+                "Sum :: () -> int { t := 0; x := Tag(t, 1, 3) + Tag(t, 2, 4); "
+                "return t; }\n"
+                "Swapped :: () -> int { t := 0; x := Tag(t, 2, 4) + Tag(t, 1, "
+                "3); return t; }\n"
+                "Quotient :: () -> int { t := 0; x := Tag(t, 1, 7) / Tag(t, 2, "
+                "0); return t; }\n"
+                "Shifted :: () -> int { t := 0; x := Tag(t, 1, 1) << uint(Tag(t, "
+                "2, 40)); return t; }\n"
+                "Ordered :: () -> int { t := 0; b := Tag(t, 2, 5) < Tag(t, 1, 3); "
+                "return t; }\n",
+      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Swapped", .arguments = "[]", .expected = "[21]" },
+                 { .function = "Quotient", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Shifted", .arguments = "[]", .expected = "[12]" },
+                 { .function = "Ordered", .arguments = "[]", .expected = "[21]" } } },
 };
 enum
 {
@@ -987,14 +940,12 @@ static bool call_agrees(const integer_sample *s, const integer_call *call, int c
         &result
     );
     bool passed = valid && result.flow_status == FLOW_OK;
-    bool agrees = call->expected ? passed && !strcmp(result.json, call->expected)
-                                 : !passed && result.flow_status == TRAP &&
-                                       !strcmp(result.diagnostic, call->failure);
+    bool agrees = passed && !strcmp(result.json, call->expected);
     if (!agrees) {
         fprintf(
             stderr,
             "integer semantics %s %s%s, %s on %s: %s %s (status %d; expected "
-            "%s, status %d)\n",
+            "%s)\n",
             s->name,
             call->function,
             call->arguments,
@@ -1003,8 +954,7 @@ static bool call_agrees(const integer_sample *s, const integer_call *call, int c
             passed ? "gives" : "fails:",
             passed ? result.json : result.diagnostic,
             result.flow_status,
-            call->expected ? call->expected : call->failure,
-            call->expected ? FLOW_OK : TRAP
+            call->expected
         );
     }
     free(result.json);
@@ -1096,60 +1046,9 @@ TEST_CASE(integer_semantics_pin_every_width)
     REQUIRE(agrees);
     return true;
 }
-/* A call that exhausts its budget also does not return, with another status,
- * so call_agrees reports this sample's mismatch as it rejects it. */
-static const integer_sample spin = {
-    .name = "budget exhaustion",
-    .source = "package facts\n"
-              "Spin :: (n: int) -> int { while n > 0 { n += 1 } return n }\n",
-    .calls = { { .function = "Spin", .arguments = "[1]", .failure = "compiler execution did not return" } }
-};
-/* Whether the spin call exhausts its budget with the trap's diagnostic, and
- * call_agrees still rejects it as a trap on `backend`. */
-static bool spin_disagrees(const compile_outcome *out, int backend)
-{
-    char error[256];
-    host = compiler_host_load(
-        out->closure,
-        out->length,
-        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    REQUIRE(host);
-    const integer_call *call = &spin.calls[0];
-    bool valid = compiler_host_invoke(
-        host,
-        compiler_host_entry("project:facts:1:Spin:callable"),
-        call->arguments,
-        strlen(call->arguments),
-        CALL_BUDGET,
-        &result
-    );
-    bool exhausted = !valid && result.flow_status == FLOW_ERR_STEP_BUDGET &&
-                     !strcmp(result.diagnostic, call->failure);
-    free(result.json);
-    result = (compiler_host_result){ 0 };
-    bool agrees = call_agrees(&spin, call, 0, backend);
-    compiler_host_free(host);
-    host = NULL;
-    REQUIRE(exhausted);
-    REQUIRE(!agrees);
-    return true;
-}
-TEST_CASE(integer_semantics_pin_trap_status)
-{
-    compile_outcome out = { 0 };
-    bool compiled = stage_zero(&spin, &out) && out.closure;
-    bool rejected = compiled && spin_disagrees(&out, 0) && spin_disagrees(&out, 1);
-    free(out.closure);
-    REQUIRE(rejected);
-    return true;
-}
 void test_language_integer_semantics()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(integer_semantics_pin_every_width);
-    RUN_TEST_CASE(integer_semantics_pin_trap_status);
     pu_clear_setup();
 }

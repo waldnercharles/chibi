@@ -808,7 +808,7 @@ BitOperation :: (op: int, left: Value, right: Value, storage: int) -> Result {
     if (op == OpShiftRight) {
         bits = x >> shift;
         if (shift != 0 && Signed(source) &&
-            (x & (1 << uint64(width - 1))) != 0) {
+            (x & (uint64(1) << uint64(width - 1))) != 0) {
             bits = bits | (mask ^ (mask >> shift));
         }
     }

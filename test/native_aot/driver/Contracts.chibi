@@ -14,3 +14,7 @@ InspectCleanup :: () -> int {
     }
     return 1;
 }
+
+InspectInterruption :: () -> int {
+    return build.run(build.arguments());
+}

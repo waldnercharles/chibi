@@ -215,20 +215,38 @@ identities, not independently rerun. This is not broader platform or integration
 acceptance. Foreign allocation, typed memory, output/free, production
 frontend integration and wider toolchain/platform support remain open.
 
-## C regression cases awaiting dispatcher registration
+## C regression cases
 
-`test/tools/native_aot_driver.c` adds C/pico assertions against the existing
-private build host and authored driver. `Contracts.chibi` contains only adapters
-for the private `Tool` and `Cleanup` helpers. The C runner appends those adapters
-to the unchanged driver text in memory. It does not change the production file,
-compiler, capabilities or platform admission.
+`python3 tools/test_policy.py tool native-aot-driver` selects the C/pico cases in
+`test/tools/native_aot_driver.c` through the existing `test_tools` dispatcher.
+It requires the private `chibi_build_host` target. A minimal compiler-enabled SDK
+and tooling build is sufficient; no renderer or GPU is needed. As with other
+tooling selectors, `CHIBI_TOOLS_BUILD_DIR` can name that tooling build directory.
+The dispatcher takes `--native-aot-driver ABSOLUTE_DRIVER_SOURCE`; the policy
+supplies the production driver. An explicit source path permits a temporary
+negative control without changing the checked-in driver.
 
-The two portable cases check resolved executable aliases with spaces; missing,
-non-executable, directory, dangling, relative and control-character tool paths;
-and cleanup's known-file list, unknown-file preservation and sibling output
-preservation. On macOS arm64, both passed with 26 assertions. A separate negative
-control changed only `Tool`'s final `return resolved` to `return path` in a scratch
-source copy. The alias assertion failed, while the original driver passed.
+`Contracts.chibi` contains only adapters for private `Tool`/`Cleanup` helpers and
+the host's process capability. The C runner appends those adapters to unchanged
+driver text in memory. It does not change production source, compiler,
+capabilities or platform admission.
+
+Three portable cases passed on macOS arm64 with 30 assertions:
+
+- Resolved executable aliases with spaces; missing, non-executable, directory,
+  dangling, relative and control-character tool paths.
+- Cleanup's known-file list, unknown-file preservation and sibling output
+  preservation.
+- Cancellation after a controlled tool writes object bytes. This host-capability
+  control requires the exact `build process cancelled` diagnostic. It does not
+  execute the Linux-only `Run` path on macOS.
+
+Two temporary negative controls fail as intended. Changing only `Tool`'s final
+`return resolved` to `return path` in a scratch driver copy fails the alias
+assertion. Disabling the C runner's cancellation pointer in a scratch C copy
+makes the process reach its 10-second deadline, yielding `build process timeout`.
+The cancellation case then fails its exact diagnostic assertion. The original
+source passes. Neither mutation is published.
 
 Six additional Linux-only cases cover:
 
@@ -241,41 +259,33 @@ Six additional Linux-only cases cover:
 - An object written before exit71 or SIGTERM, and a zero-exit tool producing no
   object. Both entries must leave no final or partial output and never link.
 - Mutation of opt or llc bytes after object creation, preventing publication.
-- Cancellation after an object is written, leaving an unpublished partial that
-  a retry refuses without altering its bytes.
+- Cancellation after an object is written, requiring the exact cancellation
+  diagnostic, leaving an unpublished partial that a retry refuses without
+  altering its bytes. A deadline failure cannot satisfy the cancellation check.
 
 `fixtures/stage-tool.sh` supplies controlled executable capabilities for these
 failure paths, following the tooling suite's existing shell stand-in pattern.
-It checks fixed argument shapes, records each argument on its own line, and
-uses absolute utility paths. Its object bytes are deliberately a marker, not an
-ELF object. These cases test orchestration and publication, not LLVM behavior;
+It rejects malformed argument shapes, records each argument on its own line,
+and uses absolute utility paths. Its object bytes are a marker, not an ELF
+object. These cases test orchestration and publication, not LLVM behavior;
 the real LLVM fixtures and authored suites above remain separate coverage.
-The cancellation fixture signals its direct C test parent only after writing the
-object, then waits for host process-group cleanup. Every invocation has a
+The cancellation fixture signals its direct C test parent only after writing
+the object, then waits for host process-group cleanup. Every invocation has a
 10-second deadline. All fixtures live in one disposable directory removed by
 the C runner. Only the bytecode backend is selected.
 
-Shared registration is intentionally pending coordinator ownership approval.
-No shared dispatcher/build/policy file is changed by this checkpoint. The
-proposed route is `python3 tools/test_policy.py tool native-aot-driver`, selecting
-`test_tools --native-aot-driver ABSOLUTE_DRIVER_SOURCE`. Registration needs the
-C file in the existing `chibi_build_host` conditional in
-`test/tools/CMakeLists.txt`, a guarded declaration/selector in
-`test/tools/main.c`, and a tool-command entry in `tools/test_policy.py`.
-The exported test function is `test_native_aot_driver(const char *source)`.
-The source argument also permits the negative control without modifying the
-checked-in driver.
+The coordinator approved minimal registration in `test/tools/main.c`,
+`test/tools/CMakeLists.txt` and `tools/test_policy.py`. Existing selectors,
+group membership, budgets and cleanup policy are unchanged. Registration was
+validated through the normal policy route against a Release compiler-enabled
+SDK/tooling build with assertions, no sanitizers, dead stripping and at most two
+jobs. The prebuilt third-party store matched the SHA256 pinned by this
+checkout's unchanged `third_party/archives.tsv`; first-party code was built from
+this checkout.
 
-Validation used a scratch CMake parent with the existing SDK and tooling
-subdirectories, adding this C file and a temporary selector adapter to the same
-`test_tools` executable. The original dispatcher was compiled with its main
-symbol renamed; its repository file stayed unchanged. The build used Release,
-assertions enabled, no sanitizers, dead stripping, and at most two jobs. The
-prebuilt third-party store matched the SHA256 pinned by this checkout's unchanged
-`third_party/archives.tsv`; first-party code was built from this checkout.
 The focused C build, portable cases, canonical source formatting and shell syntax
-passed. The Linux C branches passed a syntax-only compile on macOS with
-`__linux__` defined; this does not count as a Linux build or execution.
-Linux publication/interruption execution, real LLVM reruns, standard test-policy
-selection and broader native/material/project/language/tool suites remain
-unexecuted. Registration and Linux execution block landing this draft.
+passed. Linux C branches passed a syntax-only compile on macOS with `__linux__`
+defined; this does not count as a Linux build or execution. Linux driver
+publication/interruption execution, real LLVM reruns and broader
+native/material/project/language/tool suites remain unexecuted. Separate Linux
+verification and independent review remain required before landing this draft.

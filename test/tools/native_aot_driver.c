@@ -174,6 +174,33 @@ TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings)
     return true;
 }
 
+static void cancel(int signal)
+{
+    (void)signal;
+    cancelled = 1;
+}
+
+// Exercise the same process capability on hosts where Run rejects Linux IR.
+// A disabled cancellation pointer must fail on the timeout diagnostic.
+TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic)
+{
+    reset("stage cancellation");
+    write_at(root, "action", "cancel\n");
+    struct sigaction action = { .sa_handler = cancel }, previous;
+    sigemptyset(&action.sa_mask);
+    REQUIRE(!sigaction(SIGUSR1, &action, &previous));
+    const char *arguments[] = { llc,  "-filetype=obj", "-O=0", input,
+                                "-o", output };
+    bool ok = invoke("InspectInterruption", arguments, 6, true);
+    assert(!sigaction(SIGUSR1, &previous, NULL));
+    bool interrupted = cancelled;
+    cancelled = 0;
+    REQUIRE(interrupted && !ok);
+    REQUIRE(!strcmp(result.diagnostic, "build process cancelled"));
+    REQUIRE(equals(root, "output with spaces", "controlled object\n"));
+    return true;
+}
+
 #ifdef __linux__
 TEST_CASE(publication_preserves_existing_files_and_stale_partial_bytes)
 {
@@ -293,12 +320,6 @@ TEST_CASE(changed_tool_identity_prevents_publication_after_object_creation)
     return true;
 }
 
-static void cancel(int signal)
-{
-    (void)signal;
-    cancelled = 1;
-}
-
 TEST_CASE(interrupted_object_remains_unpublished_and_retry_preserves_it)
 {
     reset("interrupted emission");
@@ -312,6 +333,7 @@ TEST_CASE(interrupted_object_remains_unpublished_and_retry_preserves_it)
     bool interrupted = cancelled;
     cancelled = 0;
     REQUIRE(interrupted && !ok && !exists(output));
+    REQUIRE(!strcmp(result.diagnostic, "build process cancelled"));
     char partial[1100];
     snprintf(partial, sizeof partial, "%s.partial", output);
     REQUIRE(equals(partial, "object.o", "controlled object\n"));
@@ -359,6 +381,7 @@ void test_native_aot_driver(const char *source)
     free(adapters);
     RUN_TEST_CASE(tool_admission_resolves_aliases_and_rejects_unusable_paths);
     RUN_TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings);
+    RUN_TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic);
 #ifdef __linux__
     char *saved_path = getenv("PATH") ? strdup(getenv("PATH")) : NULL;
     assert(!setenv("PATH", "", 1));

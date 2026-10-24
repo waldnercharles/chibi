@@ -6,12 +6,14 @@ name=${0##*/}
 printf '%s\n' "$@" > "$root/$name.argv"
 case "$name" in
     opt*)
-        test "$#" = 5 && test "$1" = -S && test "$4" = -o
+        test "$#" = 5 || exit 64
+        test "$1" = -S && test "$4" = -o || exit 64
         printf '%s\n' 'target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"' > "$5"
         /bin/cat "$3" >> "$5"
         ;;
     llc*)
-        test "$#" = 5 && test "$1" = -filetype=obj && test "$4" = -o
+        test "$#" = 5 || exit 64
+        test "$1" = -filetype=obj && test "$4" = -o || exit 64
         IFS= read -r action < "$root/action"
         test "$action" != missing || exit 0
         printf 'controlled object\n' > "$5"
@@ -24,7 +26,8 @@ case "$name" in
         esac
         ;;
     linker*)
-        test "$#" = 4 && test "$2" = -Wl,--gc-sections && test "$3" = -o
+        test "$#" = 4 || exit 64
+        test "$2" = -Wl,--gc-sections && test "$3" = -o || exit 64
         printf '#!/bin/sh\nexit 42\n' > "$4"
         /bin/chmod 700 "$4"
         ;;

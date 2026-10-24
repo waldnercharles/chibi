@@ -27,7 +27,13 @@
 #define FNV_BASIS UINT64_C(14695981039346656037)
 #define FNV_PRIME UINT64_C(1099511628211)
 #define HARNESS "test/tools/GameEquivalence.chibi"
-#define HARNESS_MILLISECONDS "50000"
+/* The harness rebuilds every story through stage one's route, and each
+ * story's build host loads the compiler, about 7 s under sanitizers. */
+#define HARNESS_MILLISECONDS "120000"
+#define HARNESS_SECONDS 125
+/* One story through stage one's route. */
+#define STORY_MILLISECONDS "50000"
+#define STORY_SECONDS 55
 #define STORIES "test/stories"
 #define SCENARIO "/content/scenarios/Story.kdl"
 #define STORY_COUNT 5
@@ -337,7 +343,7 @@ static int harness(const char *entry, const char *const *arguments, int count)
         argv[at++] = arguments[i];
     }
     argv[at] = NULL;
-    return tool_run_within(argv, root, log_path, 55);
+    return tool_run_within(argv, root, log_path, HARNESS_SECONDS);
 }
 
 static bool compile(const char *project, const char *output)
@@ -789,24 +795,14 @@ TEST_CASE(a_resource_only_project_builds_and_plays_without_a_behavior_compiler)
     path(unavailable, sizeof unavailable, "no-behavior-compiler");
     snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
     REQUIRE(compile(project, reference));
-    const char *command[] = { build_host_path,
-                              "--root",
-                              tool_root(),
-                              "--source",
-                              route,
-                              "--entry",
-                              "Compile",
-                              "--timeout-ms",
-                              HARNESS_MILLISECONDS,
-                              "--",
-                              "--project-root",
-                              project,
-                              "--output",
-                              candidate,
-                              NULL };
+    const char *command[] = {
+        build_host_path,  "--root",  tool_root(),    "--source",         route,
+        "--entry",        "Compile", "--timeout-ms", STORY_MILLISECONDS, "--",
+        "--project-root", project,   "--output",     candidate,          NULL
+    };
     char *previous = xstrdup(getenv("CHIBI_STAGE_ONE_HOST"));
     REQUIRE(!setenv("CHIBI_STAGE_ONE_HOST", unavailable, 1));
-    int status = tool_run_within(command, tool_root(), log_path, 55);
+    int status = tool_run_within(command, tool_root(), log_path, STORY_SECONDS);
     REQUIRE(!setenv("CHIBI_STAGE_ONE_HOST", previous, 1));
     free(previous);
     REQUIRE(status == 0);

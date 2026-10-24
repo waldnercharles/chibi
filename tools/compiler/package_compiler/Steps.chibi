@@ -2066,9 +2066,17 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
-        // `assert(condition, "message")` is a language intrinsic. It emits a
-        // checked instruction, so a pure host needs no native capability for it.
-        if (qualifier < 0 && found < 0 && NameMatches("assert", callee_name)) {
+        // `assert(condition, "message")` is a language intrinsic unless a
+        // native shadows it. It emits a checked instruction, so a pure host
+        // needs no native capability for it. A linked native whose intrinsic
+        // is the assertion lowers the same way, whatever its name.
+        assertion := FindNative(natives, callee_name);
+        guard := (qualifier < 0 || qualified_native) && found < 0 && assertion >= 0 &&
+                 natives[assertion].intrinsic == ops.guard;
+        if (guard && !natives[assertion].direct) {
+            return Fail(forest, callee, document, "native binding cannot be called directly as data");
+        }
+        if (guard || (qualifier < 0 && found < 0 && assertion < 0 && NameMatches("assert", callee_name))) {
             condition: int = -1;
             message: int = -1;
             index: int = 0;
@@ -2111,6 +2119,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             if (message >= 0 && !Is(forest, Unparenthesized(forest, message), "string")) {
                 return Fail(forest, message, document, "assert's message is a string constant");
+            }
+            if (guard) {
+                next.append(RecordSemantic(item.node, NativeFact, assertion));
             }
             next.append(Expect(condition, BoolStorage, 0, -1));
             finish := Resume(item.node, 1, message, condition);

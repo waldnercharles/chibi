@@ -27,15 +27,19 @@
  * constant operands, mixed widths and failure order. Stage zero and the
  * authored compiler its bootstrap artifact holds each compile every sample,
  * and each closure runs every call on bytecode and SLJIT. Failures pin their
- * diagnostic: division and shifts fail without a message of their own, so the
- * host reports that execution did not return. */
+ * diagnostic and status: division and shifts fail without a message of their
+ * own, so the host reports that execution did not return, which is also how it
+ * reports any other unfinished call. */
 enum
 {
     CALLS = 64,
     COMPILE_BUDGET = 200000000,
     CALL_BUDGET = 100000
 };
-/* A NULL result means the call fails with `failure` as its diagnostic. */
+/* Every failing call fails as an invalid graph, the runtime's arithmetic and
+ * conversion trap. */
+static const int TRAP = FLOW_ERR_INVALID_GRAPH;
+/* A NULL result means the call traps with `failure` as its diagnostic. */
 typedef struct
 {
     const char *function, *arguments, *expected, *failure;
@@ -983,14 +987,14 @@ static bool call_agrees(const integer_sample *s, const integer_call *call, int c
         &result
     );
     bool passed = valid && result.flow_status == FLOW_OK;
-    bool agrees = call->expected
-                    ? passed && !strcmp(result.json, call->expected)
-                    : !passed && !strcmp(result.diagnostic, call->failure);
+    bool agrees = call->expected ? passed && !strcmp(result.json, call->expected)
+                                 : !passed && result.flow_status == TRAP &&
+                                       !strcmp(result.diagnostic, call->failure);
     if (!agrees) {
         fprintf(
             stderr,
             "integer semantics %s %s%s, %s on %s: %s %s (status %d; expected "
-            "%s)\n",
+            "%s, status %d)\n",
             s->name,
             call->function,
             call->arguments,
@@ -999,7 +1003,8 @@ static bool call_agrees(const integer_sample *s, const integer_call *call, int c
             passed ? "gives" : "fails:",
             passed ? result.json : result.diagnostic,
             result.flow_status,
-            call->expected ? call->expected : call->failure
+            call->expected ? call->expected : call->failure,
+            call->expected ? FLOW_OK : TRAP
         );
     }
     free(result.json);
@@ -1091,9 +1096,60 @@ TEST_CASE(integer_semantics_pin_every_width)
     REQUIRE(agrees);
     return true;
 }
+/* A call that exhausts its budget also does not return, with another status,
+ * so call_agrees reports this sample's mismatch as it rejects it. */
+static const integer_sample spin = {
+    .name = "budget exhaustion",
+    .source = "package facts\n"
+              "Spin :: (n: int) -> int { while n > 0 { n += 1 } return n }\n",
+    .calls = { { .function = "Spin", .arguments = "[1]", .failure = "compiler execution did not return" } }
+};
+/* Whether the spin call exhausts its budget with the trap's diagnostic, and
+ * call_agrees still rejects it as a trap on `backend`. */
+static bool spin_disagrees(const compile_outcome *out, int backend)
+{
+    char error[256];
+    host = compiler_host_load(
+        out->closure,
+        out->length,
+        backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    REQUIRE(host);
+    const integer_call *call = &spin.calls[0];
+    bool valid = compiler_host_invoke(
+        host,
+        compiler_host_entry("project:facts:1:Spin:callable"),
+        call->arguments,
+        strlen(call->arguments),
+        CALL_BUDGET,
+        &result
+    );
+    bool exhausted = !valid && result.flow_status == FLOW_ERR_STEP_BUDGET &&
+                     !strcmp(result.diagnostic, call->failure);
+    free(result.json);
+    result = (compiler_host_result){ 0 };
+    bool agrees = call_agrees(&spin, call, 0, backend);
+    compiler_host_free(host);
+    host = NULL;
+    REQUIRE(exhausted);
+    REQUIRE(!agrees);
+    return true;
+}
+TEST_CASE(integer_semantics_pin_trap_status)
+{
+    compile_outcome out = { 0 };
+    bool compiled = stage_zero(&spin, &out) && out.closure;
+    bool rejected = compiled && spin_disagrees(&out, 0) && spin_disagrees(&out, 1);
+    free(out.closure);
+    REQUIRE(rejected);
+    return true;
+}
 void test_language_integer_semantics()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(integer_semantics_pin_every_width);
+    RUN_TEST_CASE(integer_semantics_pin_trap_status);
     pu_clear_setup();
 }

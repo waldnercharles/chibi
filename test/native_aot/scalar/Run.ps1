@@ -247,7 +247,7 @@ try {
     Require-Success $sourcesBytecode
     if ((Digest $sourcesResult.Stdout) -ne (Digest $sourcesBytecode.Stdout)) { throw 'Authored source corpus differs between backends' }
     $sources = (Read-Node $sourcesResult.Stdout)[0].AsArray()
-    if ($sources.Count -le 0 -or $sources.Count -gt 64) { throw 'Authored source corpus exceeds its runner bound' }
+    if ($sources.Count -le 0 -or $sources.Count -gt 96) { throw 'Authored source corpus exceeds its runner bound' }
     $evidence['case_count'] = $sources.Count
     $priorChecked = @{}
     for ($index = 0; $index -lt $sources.Count; $index++) {
@@ -267,9 +267,9 @@ try {
             # Identity only, not source classification: Cases.Check must inspect
             # the source requested here, not another internally valid fixture.
             $returned = Read-Node $producer.Stdout
-            if ($returned.AsArray().Count -ne 1 -or
-                ![string]::Equals($returned[0]['text'].GetValue[string](), $source, [StringComparison]::Ordinal) -or
-                ![string]::Equals($returned[0]['path'].GetValue[string](), 'Scalar.chibi', [StringComparison]::Ordinal)) {
+            if ($returned.AsArray().Count -ne 1 -or $returned[0].AsArray().Count -lt 2 -or
+                ![string]::Equals($returned[0][0]['text'].GetValue[string](), $source, [StringComparison]::Ordinal) -or
+                ![string]::Equals($returned[0][0]['name'].GetValue[string](), 'Scalar.chibi', [StringComparison]::Ordinal)) {
                 throw 'Producer result source identity differs from its requested input'
             }
             foreach ($consumerBackend in @('bytecode', 'sljit')) {

@@ -345,6 +345,8 @@ TOOLS = {
                                                '--package-compiler-chibi-sharing'],
     'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                   '--package-compiler-chibi-debug-free'],
+    'language-package-compiler-chibi-scalar': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                              '--package-compiler-chibi-scalar'],
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
     'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
@@ -532,7 +534,7 @@ GROUPS = {
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
-                 'language-shader-source-chibi'],
+                 'language-shader-source-chibi', 'language-package-compiler-chibi-scalar'],
 }
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]

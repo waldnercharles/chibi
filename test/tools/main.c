@@ -54,6 +54,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host);
 void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 #endif
 #ifdef CHIBI_TEST_BUILD_PROCESS
+void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
@@ -543,6 +544,18 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[1], "--native-aot-driver")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_native_aot_driver(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 5 && !strcmp(argv[1], "--build-sdk")) {
 #if defined(CHIBI_TEST_BUILD_PROCESS) && !defined(_WIN32)
         tool_init();

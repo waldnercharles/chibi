@@ -6080,6 +6080,13 @@ static const scalar_probe SCALAR_PROBES[] = {
     /* The folded constant is 2^30; only the sum with x wraps. */
     { "arithmetic", "Half", 1, { 0 }, 1073741824 },
     { "arithmetic", "Half", 1, { INT32_MAX }, -1073741825 },
+    { "folded_operand", "Add", 1, { INT32_MAX }, -1073741825 },
+    /* The guard compares with 2^29, not the -2^29 wrapping rows give. */
+    { "folded_guard", "Pick", 1, { 0 }, 0 },
+    { "folded_guard", "Pick", 1, { 536870912 }, 0 },
+    { "folded_guard", "Pick", 1, { 536870913 }, INT32_MAX },
+    { "wrapped_operand", "Half", 1, { 1 }, 1 },
+    { "wrapped_operand", "Half", 1, { -3 }, -1 },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
@@ -6766,6 +6773,56 @@ static bool emitted_ir(int b, pin_value *rows, char **ir)
     (*ir)[bytes->count] = 0;
     return true;
 }
+/* `source`'s producer rows from CollectScalar on VM b. */
+static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
+{
+    pin_value args[] = { text("/project"),
+                         text("Scalar.chibi"),
+                         source,
+                         { 0 },
+                         instruction_names() };
+    REQUIRE(target(b, &args[3]));
+    bool collected = compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        "CollectScalar",
+        args,
+        5,
+        COMPILE_BUDGET,
+        &detached,
+        rows
+    );
+    if (!collected) {
+        fprintf(stderr, "scalar case %s: CollectScalar failed\n", case_name);
+    }
+    REQUIRE(collected);
+    return true;
+}
+/* An accepted module, `ir` its IR, which this frees: each of its calls must
+ * give one value on both VMs and natively at O0 and O2. */
+static bool module_agrees(
+    const char *directory,
+    int b,
+    const char *case_name,
+    pin_string source,
+    const pin_value *rows,
+    char *ir,
+    scalar_call calls[MAX_CASE_CALLS]
+)
+{
+    REQUIRE(keeps_guards(case_name, ir));
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(b, source, &closure, &length));
+    int count = case_calls(case_name, rows, calls);
+    bool ran = vm_values(closure, length, calls, count) &&
+               native_values(directory, case_name, rows, ir, calls, count);
+    free(closure);
+    free(ir);
+    REQUIRE(ran && calls_agree(case_name, calls, count));
+    return true;
+}
 /* Case `index` of the corpus: its producer rows on VM b must be what the case
  * expects, and an accepted module must run natively as it does on both VMs. */
 static bool scalar_case_agrees(const char *directory, int index, int *accepted, int *deep)
@@ -6783,27 +6840,7 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     REQUIRE(
         compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
     );
-    pin_value args[] = { text("/project"),
-                         text("Scalar.chibi"),
-                         source,
-                         { 0 },
-                         instruction_names() };
-    REQUIRE(target(b, &args[3]));
-    bool collected = compiler_fixture_call(
-        &fixture,
-        b,
-        PACKAGE,
-        "CollectScalar",
-        args,
-        5,
-        COMPILE_BUDGET,
-        &detached,
-        &rows
-    );
-    if (!collected) {
-        fprintf(stderr, "scalar case %s: CollectScalar failed\n", case_name);
-    }
-    REQUIRE(collected);
+    REQUIRE(collected_rows(b, case_name, source, &rows));
     REQUIRE(
         compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
     );
@@ -6819,17 +6856,95 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
         return true;
     }
     ++*accepted;
-    REQUIRE(keeps_guards(case_name, ir));
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(vm_closure(b, pin_text(source), &closure, &length));
     scalar_call calls[MAX_CASE_CALLS];
-    int count = case_calls(case_name, &rows, calls);
-    bool ran = vm_values(closure, length, calls, count) &&
-               native_values(directory, case_name, &rows, ir, calls, count);
-    free(closure);
-    free(ir);
-    REQUIRE(ran && calls_agree(case_name, calls, count));
+    return module_agrees(directory, b, case_name, pin_text(source), &rows, ir, calls);
+}
+/* A scalar module with a constant expression the ordinary compiler folds
+ * exactly, and the value its Main gives. They stay out of the 96-source
+ * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each one:
+ * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
+static const struct
+{
+    const char *name, *source;
+    int32_t entry;
+} FOLDED_SOURCES[] = {
+    { "folded_return",
+      "package scalar\nMain :: () -> int { return (2147483647 + 1) / 2; }\n",
+      1073741824 },
+    { "folded_square", "package scalar\nMain :: () -> int { return (2147483647 * 2147483647) / 2147483647; }\n", INT32_MAX },
+    { "folded_operand",
+      "package scalar\nMain :: () -> int { return Add(1); }\n"
+      "Add :: (x: int) -> int { return x + ((2147483647 + 1) / 2); }\n",
+      1073741825 },
+    /* In an argument, a guard's condition and its arm. */
+    { "folded_guard",
+      "package scalar\nMain :: () -> int { return Pick(Id((2147483647 + 1) / "
+      "2)); }\n"
+      "Id :: (x: int) -> int { return x; }\n"
+      "Pick :: (x: int) -> int {\n"
+      "    if (x > (2147483647 + 1) / 4) { return (2147483647 * 2147483647) / "
+      "2147483647; }\n"
+      "    return 0;\n"
+      "}\n",
+      INT32_MAX },
+    /* Not constant: the sum wraps at run time. */
+    { "wrapped_operand",
+      "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
+      "Half :: (x: int) -> int { return (x + 1) / 2; }\n",
+      -1073741824 },
+};
+enum
+{
+    FOLDED_SOURCE_COUNT = (int)(sizeof FOLDED_SOURCES / sizeof *FOLDED_SOURCES)
+};
+/* Each folded source is accepted, and its Main gives its value on both VMs
+ * and natively at O0 and O2. */
+static bool folded_sources_agree(const char *directory)
+{
+    for (int i = 0; i < FOLDED_SOURCE_COUNT && !native_cancelled; i++) {
+        int b = i % 2;
+        const char *name = FOLDED_SOURCES[i].name;
+        pin_value rows;
+        REQUIRE(collected_rows(b, name, text(FOLDED_SOURCES[i].source), &rows));
+        char *ir;
+        REQUIRE(emitted_ir(b, &rows, &ir));
+        if (!ir) {
+            fprintf(stderr, "scalar case %s: rejected\n", name);
+        }
+        REQUIRE(ir);
+        scalar_call calls[MAX_CASE_CALLS];
+        pin_string source = { FOLDED_SOURCES[i].source,
+                              strlen(FOLDED_SOURCES[i].source) };
+        REQUIRE(module_agrees(directory, b, name, source, &rows, ir, calls));
+        if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
+            fprintf(
+                stderr,
+                "scalar case %s: Main gave %d, not %d\n",
+                name,
+                calls[0].values[0],
+                FOLDED_SOURCES[i].entry
+            );
+        }
+        REQUIRE(calls[0].values[0] == FOLDED_SOURCES[i].entry);
+        arena_free(&detached);
+    }
+    return true;
+}
+/* A constant that folds outside its type is still a located error. */
+static bool folded_overflow_rejected()
+{
+    static const char SOURCE[] = "package scalar\nMain :: () -> int { return "
+                                 "2147483647 + 1; }\n";
+    pin_value rows;
+    REQUIRE(collected_rows(0, "folded_overflow", text(SOURCE), &rows));
+    const pin_array *array = rows.ptr;
+    REQUIRE(row_count(&rows) == 2 && row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW);
+    const char *message = pin_text(scalar_field(&array->items[1], "text")).bytes;
+    if (!strstr(message, "outside the range of int")) {
+        fprintf(stderr, "scalar case folded_overflow: %s\n", message);
+    }
+    REQUIRE(strstr(message, "outside the range of int"));
+    arena_free(&detached);
     return true;
 }
 
@@ -7107,6 +7222,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
         agreed = scalar_case_agrees(directory, i, &accepted, &deep);
         arena_free(&detached);
     }
+    agreed = agreed && folded_sources_agree(directory) && folded_overflow_rejected();
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

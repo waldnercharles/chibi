@@ -100,8 +100,9 @@ TEST_CASE(record_semantic_operators)
 {
     parse(
         "Defaults :: library { Row :: struct { depth: int = Later + 1; wrap: "
-        "int = 2147483647 + 1; shift: int = -1 >> 33; flag: bool = true or "
-        "(int(1) / int(0) > 0); same: bool = \"x\" == \"x\"; "
+        "int = int(wrap: 2147483648); shift: int = -1 >> 33; flag: bool = true "
+        "or "
+        "(int(1) / int(1) > 1); same: bool = \"x\" == \"x\"; "
         "label: string = Text; } Later :: 3; Text :: \"saved\"; Make :: () -> "
         "Row { return {}; } }",
         &empty
@@ -155,7 +156,7 @@ TEST_CASE(record_semantic_default_rejections)
         "Row :: struct { value: int = mutable; } mutable: int = 1;",
         "Row :: struct { value: int = 1 / 0; }",
         "Row :: struct { value: int = -2147483648 / -1; }",
-        "Row :: struct { value: int = -2147483648 % -1; }",
+        "Row :: struct { value: int = 1 % 0; }",
         "Row :: struct { value: bool = true or Call(); } Call :: () -> "
         "bool { return true; }",
         "Row :: struct { value: int = Later; } Later :: Earlier; Earlier :: "
@@ -163,15 +164,17 @@ TEST_CASE(record_semantic_default_rejections)
         "Row :: struct { value: string[]; }",
         "Row :: struct { value: bool = true or [false][0]; }"
     };
-    static const char *const messages[] = { "Record default",
-                                            "Record default",
-                                            "invalid integer division",
-                                            "invalid integer division",
-                                            "invalid integer division",
-                                            "Record default",
-                                            "Cyclic value dependency",
-                                            "Record fields require",
-                                            "Record default" };
+    static const char *const messages[] = {
+        "Record default",
+        "Record default",
+        "integer constant divides by zero",
+        "integer constant does not fit its type",
+        "integer constant divides by zero",
+        "Record default",
+        "Cyclic value dependency",
+        "Record fields require",
+        "Record default"
+    };
     _Static_assert(sizeof bodies / sizeof *bodies == 9, "fixed rejection inputs");
     _Static_assert(sizeof messages / sizeof *messages == 9, "matching diagnostics");
     char source[256];

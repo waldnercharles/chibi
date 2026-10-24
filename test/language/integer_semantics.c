@@ -22,10 +22,11 @@
  * operation fails at run time. One sample per width covers wrapping add, sub,
  * mul and negation; division and remainder by zero, which give 0 and the
  * dividend, and of the signed minimum by -1, which wrap to the minimum with
- * remainder 0; shift counts at or past the width, which shift every bit out,
- * and -1, which is past it; signed and unsigned order; and conversions from
- * int64, uint64 and double, where T(v) clamps and wrap: keeps the low bits. The other samples cover literal and constant operands, mixed
- * widths and evaluation order. Stage zero and the authored compiler its
+ * remainder 0; unsigned shift counts at or past the width, which shift every
+ * bit out; signed and unsigned order; and conversions from int64, uint64 and
+ * double, where T(v) clamps and wrap: keeps the low bits. The other samples
+ * cover the compile-time rules for literal and constant operands and mixed
+ * widths, and evaluation order. Stage zero and the authored compiler its
  * bootstrap artifact holds each compile every sample, and each closure runs
  * every call on bytecode and SLJIT. */
 enum
@@ -40,14 +41,12 @@ typedef struct
 {
     const char *function, *arguments, *expected;
 } integer_call;
-/* A sample with a message is one stage zero rejects with it at line:column.
- * `authored_message` is the authored compiler's rejection where its outcome
- * differs from stage zero's: the authored compiler applies the compile-time
- * integer rules, which stage zero does not apply yet. */
+/* A sample with a message is one both compilers reject with it at
+ * line:column. */
 typedef struct
 {
-    const char *name, *source, *message, *authored_message;
-    int line, column, authored_line, authored_column;
+    const char *name, *source, *message;
+    int line, column;
     integer_call calls[CALLS];
 } integer_sample;
 /* Every operation on one width T. A signed T also negates. */
@@ -518,54 +517,45 @@ static const integer_sample samples[] = {
     { .name = "literal sum overflows its context",
       .source = "package facts\n"
                 "F :: () -> int8 { return 127 + 1; }\n",
-      .authored_message = "Constant value is outside the range of int8",
-      .authored_line = 2,
-      .authored_column = 26,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[-128]" } } },
+      .message = "Constant value is outside the range of int8",
+      .line = 2,
+      .column = 26 },
     { .name = "literal division by zero",
       .source = "package facts\n"
                 "F :: () -> int { return 1 / 0; }\n",
-      .authored_message = "Constant division by zero",
-      .authored_line = 2,
-      .authored_column = 25,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 25 },
     { .name = "literal remainder by zero",
       .source = "package facts\n"
                 "F :: () -> int { return 1 % 0; }\n",
-      .authored_message = "Constant division by zero",
-      .authored_line = 2,
-      .authored_column = 25,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[1]" } } },
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 25 },
     { .name = "literal minimum by -1",
       .source = "package facts\n"
                 "F :: () -> int { return -2147483648 / -1; }\n",
-      .authored_message = "Constant value is outside the range of int",
-      .authored_line = 2,
-      .authored_column = 25,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[-2147483648]" } } },
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 25 },
     { .name = "literal shift past the width",
       .source = "package facts\n"
                 "F :: () -> int { return 1 << 32; }\n",
-      .authored_message = "Constant value is outside the range of int",
-      .authored_line = 2,
-      .authored_column = 25,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 25 },
     { .name = "literal negative shift",
       .source = "package facts\n"
                 "F :: () -> int { return 1 << -1; }\n",
-      .authored_message = "Shift count must not be negative",
-      .authored_line = 2,
-      .authored_column = 30,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
+      .message = "Shift count must not be negative",
+      .line = 2,
+      .column = 30 },
     { .name = "literal checked conversion",
       .source = "package facts\n"
                 "F :: () -> byte { return byte(300); }\n",
-      .message = "Numeric literal is outside the range of byte",
+      .message = "Constant does not fit in byte; use byte(wrap: value)",
       .line = 2,
-      .column = 31,
-      .authored_message = "Constant does not fit in byte; use byte(wrap: value)",
-      .authored_line = 2,
-      .authored_column = 26 },
+      .column = 26 },
     { .name = "literal wrap",
       .source = "package facts\n"
                 "W :: () -> byte { return byte(wrap: 300); }\n",
@@ -574,26 +564,23 @@ static const integer_sample samples[] = {
       .source = "package facts\n"
                 "C: int8 : 127 + 1;\n"
                 "F :: () -> int8 { return C; }\n",
-      .authored_message = "Constant value is outside the range of int8",
-      .authored_line = 2,
-      .authored_column = 11,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[-128]" } } },
+      .message = "Constant value is outside the range of int8",
+      .line = 2,
+      .column = 11 },
     { .name = "constant division by zero",
       .source = "package facts\n"
                 "C :: 1 / 0;\n"
                 "F :: () -> int { return C; }\n",
-      .authored_message = "Constant division by zero",
-      .authored_line = 2,
-      .authored_column = 6,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 6 },
     { .name = "constant shift past the width",
       .source = "package facts\n"
                 "C: int : 1 << 32;\n"
                 "F :: () -> int { return C; }\n",
-      .authored_message = "Constant value is outside the range of int",
-      .authored_line = 2,
-      .authored_column = 10,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[0]" } } },
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 10 },
     { .name = "constant arithmetic",
       .source = "package facts\n"
                 "Q: int : -7 / 2;\n"
@@ -606,10 +593,9 @@ static const integer_sample samples[] = {
       .source = "package facts\n"
                 "M: int : -2147483648 / -1;\n"
                 "F :: () -> int { return M; }\n",
-      .authored_message = "Constant value is outside the range of int",
-      .authored_line = 2,
-      .authored_column = 10,
-      .calls = { { .function = "F", .arguments = "[]", .expected = "[-2147483648]" } } },
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 10 },
     { .name = "constant wrap",
       .source = "package facts\n"
                 "C: byte : byte(wrap: 300);\n"
@@ -618,10 +604,9 @@ static const integer_sample samples[] = {
     { .name = "variable by literal zero",
       .source = "package facts\n"
                 "F :: (a: int) -> int { return a / 0; }\n",
-      .authored_message = "Constant division by zero",
-      .authored_line = 2,
-      .authored_column = 31,
-      .calls = { { .function = "F", .arguments = "[5]", .expected = "[0]" } } },
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 31 },
     { .name = "variable shift by a literal past the width",
       .source = "package facts\n"
                 "F :: (a: int8) -> int8 { return a << 8; }\n",
@@ -641,10 +626,7 @@ static const integer_sample samples[] = {
                 "F :: (a: byte) -> bool { return a < -1; }\n",
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
-      .column = 38,
-      .authored_message = "Numeric literal is outside the range of byte",
-      .authored_line = 2,
-      .authored_column = 37 },
+      .column = 37 },
     { .name = "narrow sum widened after the operation",
       .source = "package facts\n"
                 "F :: (a: int8, b: int8) -> int { return a + b; }\n"
@@ -655,42 +637,28 @@ static const integer_sample samples[] = {
                  { .function = "G", .arguments = "[255,255]", .expected = "[1]" },
                  { .function = "H", .arguments = "[1]", .expected = "[-32768]" },
                  { .function = "U", .arguments = "[4294967295]", .expected = "[0]" } } },
-    { .name = "mixed widths take the wider type",
+    { .name = "mixed widths need a conversion",
       .source = "package facts\n"
                 "F :: (a: int8, b: int) -> int { return a + b; }\n"
                 "G :: (a: byte, b: int8) -> int { return a + b; }\n"
                 "H :: (a: uint, b: int) -> int64 { return a + b; }\n"
                 "L :: (a: uint, b: int) -> bool { return a < b; }\n"
                 "S :: (a: byte, n: int) -> int { return a << n; }\n",
-      .authored_message = "Mismatched integer types int8 and int; convert one operand",
-      .authored_line = 2,
-      .authored_column = 40,
-      .calls = { { .function = "F", .arguments = "[-128,2147483647]", .expected = "[2147483519]" },
-                 { .function = "G", .arguments = "[255,-128]", .expected = "[127]" },
-                 { .function = "H", .arguments = "[4294967295,-1]", .expected = "[4294967294]" },
-                 { .function = "L", .arguments = "[4294967295,-1]", .expected = "[false]" },
-                 { .function = "S", .arguments = "[1,8]", .expected = "[256]" },
-                 { .function = "S", .arguments = "[1,32]", .expected = "[0]" } } },
+      .message = "Mismatched integer types int8 and int; convert one operand",
+      .line = 2,
+      .column = 40 },
     { .name = "mixed sum narrowed by its result",
       .source = "package facts\n"
                 "G :: (a: byte, b: int8) -> int16 { return a + b; }\n",
-      .message = "Incompatible types: expected int16, got int; convert with "
-                 "int16(value)",
+      .message = "Mismatched integer types byte and int8; convert one operand",
       .line = 2,
-      .column = 43,
-      .authored_message = "Mismatched integer types byte and int8; convert one operand",
-      .authored_line = 2,
-      .authored_column = 43 },
+      .column = 43 },
     { .name = "signed and unsigned 64-bit mix",
       .source = "package facts\n"
                 "F :: (a: uint64, b: int64) -> uint64 { return a + b; }\n",
-      .message = "uint64 and int64 operands need an explicit conversion, such "
-                 "as uint64(value)",
+      .message = "Mismatched integer types uint64 and int64; convert one operand",
       .line = 2,
-      .column = 47,
-      .authored_message = "Mismatched integer types uint64 and int64; convert one operand",
-      .authored_line = 2,
-      .authored_column = 47 },
+      .column = 47 },
     { .name = "compound assignment wraps",
       .source = "package facts\n"
                 "F :: (a: int8) -> int8 { x := a; x += 1; x *= 2; return x; }\n"
@@ -700,10 +668,9 @@ static const integer_sample samples[] = {
     { .name = "compound division by literal zero",
       .source = "package facts\n"
                 "H :: (a: int) -> int { x := a; x /= 0; return x; }\n",
-      .authored_message = "Constant division by zero",
-      .authored_line = 2,
-      .authored_column = 32,
-      .calls = { { .function = "H", .arguments = "[1]", .expected = "[0]" } } },
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 32 },
     { .name = "bitwise operations keep the width",
       .source = "package facts\n"
                 "N :: (a: byte) -> byte { return ~a; }\n"
@@ -990,10 +957,7 @@ static bool runs_alike(const integer_sample *s, const compile_outcome *out, int 
  * gives every call's result. */
 static bool compiles_alike(const integer_sample *s, const compile_outcome *out, int c)
 {
-    bool own = c && s->authored_message;
-    const char *message = own ? s->authored_message : s->message;
-    int line = own ? s->authored_line : s->line;
-    int column = own ? s->authored_column : s->column;
+    const char *message = s->message;
     if (out->closure) {
         if (message) {
             fprintf(
@@ -1007,7 +971,7 @@ static bool compiles_alike(const integer_sample *s, const compile_outcome *out, 
         return runs_alike(s, out, c) && !message;
     }
     bool agrees = message && !strcmp(out->message, message) &&
-                  out->line == line && out->column == column;
+                  out->line == s->line && out->column == s->column;
     if (!agrees) {
         fprintf(
             stderr,
@@ -1019,8 +983,8 @@ static bool compiles_alike(const integer_sample *s, const compile_outcome *out, 
             out->line,
             out->column,
             message ? message : "a closure",
-            line,
-            column
+            s->line,
+            s->column
         );
     }
     return agrees;

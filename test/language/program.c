@@ -2858,7 +2858,7 @@ static bool int_state(execution_instance *instance, const char *name, pin_type t
     return value && value->type == type &&
            (int64_t)behavior_scalar_bits(*value) == expected;
 }
-/* T(value) clamps an integer that does not fit; wrap and clamp choose the bits. */
+/* T(value) clamps an integer that does not fit; T(wrap: value) keeps its low bits. */
 TEST_CASE(program_integer_conversions_clamp_or_wrap)
 {
     const char
@@ -2867,11 +2867,11 @@ TEST_CASE(program_integer_conversions_clamp_or_wrap)
                   "  mixed: int64 = 0; narrow: byte = 7;\n"
                   "  same: bool = true; below: bool = false; small: int = 0;\n"
                   "  on Impulse :: (enabled: bool) {\n"
-                  "    wrapped = byte(wrap: wide); clamped = byte(clamp: "
-                  "-wide);\n"
-                  "    mixed = wide + uint(7);\n"
-                  "    same = wide == uint(0); below = wide < uint(7);\n"
-                  "    small = byte(200) + int8(-100);\n"
+                  "    wrapped = byte(wrap: wide); clamped = byte(-wide);\n"
+                  "    mixed = wide + int(uint(7));\n"
+                  "    same = wide == int(uint(0)); below = wide < "
+                  "int(uint(7));\n"
+                  "    small = int(byte(200)) + int(int8(-100));\n"
                   "    if (enabled) { narrow = byte(wide); }\n"
                   "  }\n"
                   "}";

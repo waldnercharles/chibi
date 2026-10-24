@@ -202,8 +202,9 @@ every bit out; `T(v)` clamps between integers and `T(wrap: v)` keeps the low
 bits. Safety comes from compile-time rules (no mixed integer types, unsigned
 shift counts, exact constants that must fit, no constant zero divisor) and
 from development builds, which report each overflow, zero divisor and clamp
-once per site without stopping. The runtime part is implemented; the
-compile-time rules and development reports follow.
+once per site without stopping. The runtime part and stage zero's
+compile-time rules are implemented; stage one's compile-time rules and
+development reports follow.
 
 ## Stage one has no character literals
 

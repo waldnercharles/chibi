@@ -6473,6 +6473,138 @@ static bool native_values(
     free(adapter);
     return true;
 }
+/* Rename only one generated callee definition. Its call sites keep the old
+ * symbol, which an observed wrapper supplies. No branch body is rewritten. */
+static bool observed_body(char **ir, int ordinal, const char *name)
+{
+    char before[128], after[128];
+    snprintf(before, sizeof before, "define internal i32 @chibi_scalar.%d()", ordinal);
+    snprintf(after, sizeof after, "define internal i32 @chibi_test_%s_body()", name);
+    const char *at = strstr(*ir, before);
+    REQUIRE(at && !strstr(at + 1, before));
+    size_t prefix = (size_t)(at - *ir), old = strlen(before),
+           replacement = strlen(after);
+    char *renamed = xmalloc(strlen(*ir) - old + replacement + 1);
+    memcpy(renamed, *ir, prefix);
+    memcpy(renamed + prefix, after, replacement);
+    strcpy(renamed + prefix + replacement, at + old);
+    free(*ir);
+    *ir = renamed;
+    return true;
+}
+/* Reset, Choose's return, Taken's entry count and Skipped's entry count. */
+static bool lazy_trace_matches(const scalar_call calls[4], int column, int condition)
+{
+    return calls[0].values[column] == 0 &&
+           calls[1].values[column] == (condition ? 1 : 2) &&
+           calls[2].values[column] == condition &&
+           calls[3].values[column] == !condition;
+}
+/* An additional validation-only module observes generated callee entries.
+ * Normal optimization/result checks above still use the unmodified IR.
+ * The extra-call variant keeps Choose's value but must fail the same trace
+ * oracle on the true path, even after O2 inlines the pure original bodies. */
+static bool observes_lazy_arm(const char *directory, const pin_value *rows, const char *ir)
+{
+    int taken, skipped;
+    int taken_row = function_row(rows, "Taken", &taken);
+    int skipped_row = function_row(rows, "Skipped", &skipped);
+    REQUIRE(taken_row > 0 && skipped_row > 0);
+    REQUIRE(row_int(rows, taken_row, "count") == 0 && row_int(rows, skipped_row, "count") == 0);
+    REQUIRE(
+        row_int(rows, taken_row, "type") == SCALAR_INT &&
+        row_int(rows, skipped_row, "type") == SCALAR_INT
+    );
+    char *observed = xmalloc(strlen(ir) + 1), *probe = xmalloc(1);
+    strcpy(observed, ir);
+    *probe = 0;
+    bool valid = observed_body(&observed, taken, "taken") &&
+                 observed_body(&observed, skipped, "skipped") &&
+                 append_adapter(rows, "Choose", &probe);
+    for (int extra = 0; valid && extra < 2; extra++) {
+        char discarded[128] = "", wrappers[2048];
+        if (extra) {
+            snprintf(discarded, sizeof discarded, "  %%discarded = call i32 @chibi_scalar.%d()\n", skipped);
+        }
+        int length = snprintf(
+            wrappers,
+            sizeof wrappers,
+            "\n@chibi_test_taken = internal global i32 0\n"
+            "@chibi_test_skipped = internal global i32 0\n"
+            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
+            "  %%n = atomicrmw add ptr @chibi_test_taken, i32 1 monotonic\n"
+            "%s"
+            "  %%r = call i32 @chibi_test_taken_body()\n  ret i32 %%r\n}\n"
+            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
+            "  %%n = atomicrmw add ptr @chibi_test_skipped, i32 1 monotonic\n"
+            "  %%r = call i32 @chibi_test_skipped_body()\n  ret i32 %%r\n}\n"
+            "define i32 @chibi_trace_reset() {\nentry:\n"
+            "  store volatile i32 0, ptr @chibi_test_taken\n"
+            "  store volatile i32 0, ptr @chibi_test_skipped\n  ret i32 0\n}\n"
+            "define i32 @chibi_trace_taken() {\nentry:\n"
+            "  %%n = load volatile i32, ptr @chibi_test_taken\n  ret i32 "
+            "%%n\n}\n"
+            "define i32 @chibi_trace_skipped() {\nentry:\n"
+            "  %%n = load volatile i32, ptr @chibi_test_skipped\n  ret i32 "
+            "%%n\n}\n",
+            taken,
+            discarded,
+            skipped
+        );
+        assert(length > 0 && length < (int)sizeof wrappers);
+        size_t probe_length = strlen(probe);
+        char *adapter = xmalloc(probe_length + (size_t)length + 1);
+        memcpy(adapter, probe, probe_length);
+        memcpy(adapter + probe_length, wrappers, (size_t)length + 1);
+        for (int level = 0; valid && level < 2; level++) {
+            char library[PATH_MAX];
+            valid = native_library(
+                directory,
+                extra ? "lazy_trace_extra" : "lazy_trace",
+                observed,
+                adapter,
+                level * 2,
+                library
+            );
+            for (int condition = 0; valid && condition < 2; condition++) {
+                scalar_call calls[4] = {
+                    { .symbol = "chibi_trace_reset" },
+                    { .symbol = "probe_Choose",
+                      .probe = { .count = 1, .arguments = { condition } } },
+                    { .symbol = "chibi_trace_taken" },
+                    { .symbol = "chibi_trace_skipped" }
+                };
+                int column = 2 + level;
+                valid = native_passed(
+                    library_calls(directory, library, calls, 4, column, CALLS_SECONDS)
+                );
+                bool matches = lazy_trace_matches(calls, column, condition);
+                valid = valid && matches == (!extra || !condition) &&
+                        calls[0].values[column] == 0 &&
+                        calls[1].values[column] == (condition ? 1 : 2) &&
+                        calls[2].values[column] == condition &&
+                        calls[3].values[column] == (!condition || extra);
+                fprintf(
+                    stderr,
+                    "lazy trace O%d extra %d condition %d: return %d, "
+                    "Taken %d, Skipped %d, oracle %s\n",
+                    level * 2,
+                    extra,
+                    condition,
+                    calls[1].values[column],
+                    calls[2].values[column],
+                    calls[3].values[column],
+                    matches ? "accept" : "reject"
+                );
+            }
+        }
+        free(adapter);
+    }
+    free(observed);
+    free(probe);
+    REQUIRE(valid);
+    return true;
+}
 /* Every executed result matches its literal fixture or probe oracle. */
 static bool calls_agree(const char *name, const scalar_call *calls, int count)
 {
@@ -6573,9 +6705,13 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     int count = case_calls(case_name, &rows, expected.i, calls);
     bool ran = vm_values(closure, length, calls, count) &&
                native_values(directory, case_name, &rows, ir, calls, count);
+    bool agree = ran && calls_agree(case_name, calls, count);
+    if (agree && !strcmp(case_name, "lazy_arm")) {
+        agree = observes_lazy_arm(directory, &rows, ir);
+    }
     free(closure);
     free(ir);
-    REQUIRE(ran && calls_agree(case_name, calls, count));
+    REQUIRE(agree);
     return true;
 }
 

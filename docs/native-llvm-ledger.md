@@ -7,6 +7,18 @@ checks it. A feature is native only when real source reaches an object through
 `CollectScalar`, `scalar_llvm` and `Driver.Object`. A hand-written plan that
 `llvm_native` emits does not count.
 
+Two selectors give the evidence, and they reach LLVM differently:
+
+- `Run.ps1` builds each accepted corpus source through `Driver.Object`, the
+  authored driver, at O0 and O2.
+- `language-scalar-native` (`--package-compiler-chibi-native`) runs `opt`
+  and `llc` itself, with the argument vectors the driver uses, then links
+  each object with `ld.lld` and calls it. It does not run `Driver.Object`.
+  It is the differential check against both VMs, and it never shows that the
+  driver works. Each tool and each library's calls run under
+  `chibi_process_capture` with a deadline, cancellation and a process-group
+  kill.
+
 Each feature has one of these states:
 
 - **native**: real source runs natively and agrees with both VMs;
@@ -72,7 +84,7 @@ needs. Each one says who uses it and what replacing it requires.
 | Bytecode and SLJIT VMs | `src/execution` | all authored tools, reference results | Stays as the reference and the editor runtime. |
 | Stage-zero compiler | `src/language` | compiles the compiler; differential reference | Kept until the native bootstrap passes its gates (M7). |
 | Runtime arithmetic, conversions, comparisons | `src/runtime/{arithmetic,conversions,comparisons}.c` | VMs | Native code matches them; they stay for the VMs. |
-| LLVM `opt`, `llc` | external, declared | `Driver.Object`, `language-scalar-native` | External input; identity recorded per run. |
+| LLVM `opt`, `llc` | external, declared | `Driver.Object`; `language-scalar-native` calls them directly | External input; identity recorded per run. |
 | `ld.lld`, `llvm-nm` | external, declared | `language-scalar-native` only | Validation only; not part of the authored path. |
 | Build-host file and process capabilities | `chibi-build-host` | `Driver.Object` | Native driver (M6). |
 
@@ -83,7 +95,7 @@ decision.
 
 | ID | Area | Direction set | Still needed | State |
 | --- | --- | --- | --- | --- |
-| D1 | Integer arithmetic | Checked and wrapping arithmetic, approved but not implemented. | The exact operations and default syntax, failure behavior, and how existing projects migrate. Docs describe wrapping, and `llvm_native` wraps with provisional traps. Neither one decides it. | open, needed for M2 |
+| D1 | Integer arithmetic | Follow Odin for each case the integer semantics corpus (chibi#682) found (owner, 24 October 2026): `MIN % -1` gives 0, shifts at or past the width give 0 or the sign fill, shift counts are unsigned, a literal zero divisor and mixed widths are compile errors. | Cases where Odin has no defined answer, such as `MIN / -1` at run time. The VMs change first; native lowers to their results, not to `llvm_native`'s provisional traps. | open, needed for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
 | D3 | Floating math | Odin-style type-preserving helpers, with no blanket finite checks and no automatic double intermediates. | Typed floating widening and narrowing, where stage zero and stage one disagree. | open, needed for M2 |
 | D4 | Budget and recursion | Execution stays bounded. | Where native checks go, call-depth behavior, cancellation. | open, needed for M3 |
@@ -112,3 +124,10 @@ After M1:
   takes 11 s in Release and 91 s under ASan.
 - `language-package-compiler-chibi-scalar` also checks 13 malformed variants
   of guarded rows.
+- Through `Driver.Object`, `min`, `clamp`, `lazy_arm` and `most_operands`
+  each built at O0 and O2 with no undefined symbols (8 of 8, the owner's
+  independent review of `8968748`). Both recovery stages reproduced the
+  bootstrap compiler, and `Run.ps1` passed in 116 s.
+- `language-scalar-native` checks that a hung tool and hung generated code
+  each time out within 10 seconds of a short deadline, and that SIGTERM
+  cancels a run without counting as a timeout.

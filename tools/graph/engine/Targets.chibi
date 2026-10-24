@@ -738,7 +738,7 @@ Files :: (target: string) -> string[] {
             "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
             "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
             "test/language/compiler_artifact_chibi.c", "src/toolchain/compiler_artifact.c",
-            "test/language/bounded_compiler_chibi.c", "src/toolchain/compiler_host.c",
+            "test/language/bounded_compiler_chibi.c", "src/toolchain/compiler_host.c", "src/host/process.c",
             "src/toolchain/compiler_target.c", "test/language/prepared_writer_chibi.c",
             "test/language/package_compiler_chibi.c", "test/language/scalar_lowering_chibi.c",
             "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",

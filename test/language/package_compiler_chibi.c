@@ -43,11 +43,11 @@
 #include <stdlib.h>
 #include <string.h>
 #if defined(__linux__) && defined(__x86_64__)
+#include "host/process.h"
+
 #include <dlfcn.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <spawn.h>
-#include <sys/wait.h>
+#include <signal.h>
 #include <unistd.h>
 extern char **environ;
 #endif
@@ -5827,11 +5827,15 @@ static bool deep_case(pin_string name)
     }
     return false;
 }
+enum
+{
+    MAX_PROBE_ARGUMENTS = 3
+};
 typedef struct scalar_probe
 {
     const char *source_case, *function;
     int count;
-    int32_t arguments[3];
+    int32_t arguments[MAX_PROBE_ARGUMENTS];
     int32_t expected;
 } scalar_probe;
 static const scalar_probe SCALAR_PROBES[] = {
@@ -5915,29 +5919,75 @@ static bool llvm_tool(const char *name, char path[PATH_MAX])
     REQUIRE(!access(path, X_OK));
     return true;
 }
-/* Runs argv, a fixed argument vector, with its output in `log`. */
-static bool spawn_tool(const char *const argv[], const char *log)
+/* Set by SIGINT or SIGTERM while the native tests run: the running child's
+ * process group is killed, and the run reports cancellation, not a timeout. */
+static volatile sig_atomic_t native_cancelled;
+static void cancel_native(int)
 {
-    posix_spawn_file_actions_t actions;
-    REQUIRE(!posix_spawn_file_actions_init(&actions));
-    REQUIRE(
-        !posix_spawn_file_actions_addopen(&actions, 1, log, O_WRONLY | O_CREAT | O_TRUNC, 0600)
-    );
-    REQUIRE(!posix_spawn_file_actions_adddup2(&actions, 1, 2));
-    pid_t pid;
-    int spawned = posix_spawn(&pid, argv[0], &actions, NULL, (char *const *)argv, environ);
-    posix_spawn_file_actions_destroy(&actions);
-    REQUIRE(!spawned);
-    int status;
-    REQUIRE(waitpid(pid, &status, 0) == pid);
-    bool exited = WIFEXITED(status) && !WEXITSTATUS(status);
-    if (!exited) {
-        char *output = file_read_text(log);
-        assert(output);
-        fprintf(stderr, "%s failed: %s\n", argv[0], output);
-        free(output);
+    native_cancelled = 1;
+}
+/* The deadlines of an LLVM tool and of a library's calls, and the output
+ * kept of each. */
+static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20;
+enum
+{
+    NATIVE_OUTPUT = 1 << 16
+};
+static const char *native_outcome(chibi_process_capture_result result)
+{
+    switch (result.error) {
+        case CHIBI_PROCESS_OK: return result.status ? "failed" : "passed";
+        case CHIBI_PROCESS_TIMEOUT: return "timed out";
+        case CHIBI_PROCESS_CANCELLED: return "was cancelled";
+        case CHIBI_PROCESS_SPAWN_FAILED: return "could not start";
+        default: return "could not be supervised";
     }
-    REQUIRE(exited);
+}
+/* Runs argv, an absolute executable with a fixed argument vector, in
+ * `directory` under chibi_process_capture: its process group is killed at
+ * the deadline, `seconds` from now, or on cancellation. `out` receives its
+ * standard output; a run that does not pass reports its error output. */
+static chibi_process_capture_result run_native(
+    const char *const argv[],
+    const char *directory,
+    double seconds,
+    char out[NATIVE_OUTPUT]
+)
+{
+    char error[NATIVE_OUTPUT];
+    chibi_process_output output = { out, NATIVE_OUTPUT, 0, false },
+                         errors = { error, sizeof error, 0, false };
+    chibi_process_capture_result result = chibi_process_capture(
+        argv[0],
+        argv,
+        directory,
+        (const char *const *)environ,
+        chibi_process_now() + seconds,
+        &native_cancelled,
+        &output,
+        &errors
+    );
+    if (result.error != CHIBI_PROCESS_OK || result.status) {
+        fprintf(
+            stderr,
+            "%s %s (status %d): %s%s\n",
+            argv[0],
+            native_outcome(result),
+            result.status,
+            out,
+            error
+        );
+    }
+    return result;
+}
+static bool native_passed(chibi_process_capture_result result)
+{
+    return result.error == CHIBI_PROCESS_OK && !result.status;
+}
+/* An LLVM tool's run, which must pass. */
+static bool run_tool(const char *const argv[], const char *directory, char out[NATIVE_OUTPUT])
+{
+    REQUIRE(native_passed(run_native(argv, directory, TOOL_SECONDS, out)));
     return true;
 }
 static bool write_text(const char *path, const char *first, const char *second)
@@ -5975,14 +6025,13 @@ static bool native_library(
     char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX], lld[PATH_MAX];
     REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc));
     REQUIRE(llvm_tool("llvm-nm", nm) && llvm_tool("ld.lld", lld));
-    char source[PATH_MAX], module[PATH_MAX], object[PATH_MAX], log[PATH_MAX];
+    char source[PATH_MAX], module[PATH_MAX], object[PATH_MAX];
     snprintf(source, sizeof source, "%s/%s-%d.ll", directory, name, level);
     snprintf(module, sizeof module, "%s/%s-%d.opt.ll", directory, name, level);
     snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
-    snprintf(log, sizeof log, "%s/%s-%d.log", directory, name, level);
     snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
-    const char *const outputs[] = { source, module, object, log, library };
-    for (int i = 0; i < 5; i++) {
+    const char *const outputs[] = { source, module, object, library };
+    for (int i = 0; i < 4; i++) {
         native_file(outputs[i]);
     }
     REQUIRE(write_text(source, ir, adapter));
@@ -5995,43 +6044,14 @@ static bool native_library(
     };
     const char *const symbols[] = { nm, "--undefined-only", object, NULL };
     const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
-    REQUIRE(spawn_tool(optimize, log) && spawn_tool(emit, log));
-    REQUIRE(spawn_tool(symbols, log));
-    char *undefined = file_read_text(log);
-    assert(undefined);
-    bool resolved = !*undefined;
-    if (!resolved) {
-        fprintf(stderr, "%s has undefined symbols: %s\n", object, undefined);
+    char out[NATIVE_OUTPUT];
+    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
+    REQUIRE(run_tool(symbols, directory, out));
+    if (*out) {
+        fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
     }
-    free(undefined);
-    REQUIRE(resolved);
-    REQUIRE(spawn_tool(link, log));
-    return true;
-}
-typedef int32_t (*scalar_entry)();
-typedef int32_t (*scalar_adapter)(const int32_t *);
-/* The value `symbol` of the open `library` returns, called in a child
- * process: the entry when `arguments` is NULL, else a probe adapter. */
-static bool native_call(void *library, const char *symbol, const int32_t *arguments, int32_t *out)
-{
-    void *function = dlsym(library, symbol);
-    REQUIRE(function);
-    int channel[2];
-    REQUIRE(!pipe(channel));
-    pid_t pid = fork();
-    REQUIRE(pid >= 0);
-    if (!pid) {
-        close(channel[0]);
-        int32_t value = arguments ? ((scalar_adapter)function)(arguments)
-                                  : ((scalar_entry)function)();
-        _exit(write(channel[1], &value, sizeof value) == sizeof value ? 0 : 1);
-    }
-    close(channel[1]);
-    ssize_t got = read(channel[0], out, sizeof *out);
-    close(channel[0]);
-    int status;
-    REQUIRE(waitpid(pid, &status, 0) == pid);
-    REQUIRE(WIFEXITED(status) && !WEXITSTATUS(status) && got == (ssize_t)sizeof *out);
+    REQUIRE(!*out);
+    REQUIRE(run_tool(link, directory, out));
     return true;
 }
 /* A row field of a retained module's row `index`. */
@@ -6297,6 +6317,91 @@ static bool vm_values(const unsigned char *closure, size_t length, scalar_call *
     }
     return true;
 }
+typedef int32_t (*scalar_entry)();
+typedef int32_t (*scalar_adapter)(const int32_t *);
+enum
+{
+    CALL_SPEC = 160
+};
+/* Runs each call of `library` in order, in a child run of this binary (see
+ * test_language_package_compiler_chibi_native_call) that must finish within
+ * `seconds`, and stores each value in its call's `column`. The first call is
+ * the entry; the others are probe adapters. */
+static chibi_process_capture_result library_calls(
+    const char *directory,
+    const char *library,
+    scalar_call *calls,
+    int count,
+    int column,
+    double seconds
+)
+{
+    char self[PATH_MAX], specs[MAX_CASE_CALLS][CALL_SPEC], out[NATIVE_OUTPUT];
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    assert(length > 0 && count <= MAX_CASE_CALLS);
+    self[length] = 0;
+    const char *argv[MAX_CASE_CALLS + 4] = { self, "--package-compiler-chibi-native-call", library };
+    for (int i = 0; i < count; i++) {
+        int n = snprintf(specs[i], CALL_SPEC, "%s", calls[i].symbol);
+        for (int a = 0; i && a < calls[i].probe.count; a++) {
+            n += snprintf(
+                specs[i] + n,
+                CALL_SPEC - (size_t)n,
+                "%c%d",
+                a ? ',' : ':',
+                calls[i].probe.arguments[a]
+            );
+        }
+        assert(n < CALL_SPEC);
+        argv[3 + i] = specs[i];
+    }
+    argv[3 + count] = NULL;
+    chibi_process_capture_result result = run_native(argv, directory, seconds, out);
+    const char *at = out;
+    for (int i = 0; native_passed(result) && i < count; i++) {
+        char *end;
+        long value = strtol(at, &end, 10);
+        assert(end != at && *end == '\n' && value >= INT32_MIN && value <= INT32_MAX);
+        calls[i].values[column] = (int32_t)value;
+        at = end + 1;
+    }
+    return result;
+}
+/* The child of library_calls: opens `library`, then calls each spec in order,
+ * `symbol` for the entry or `symbol:a,b` for an adapter, and prints each value
+ * on its own line as it returns. */
+static int library_child(const char *library, int count, char **specs)
+{
+    void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+    if (!opened) {
+        fprintf(stderr, "native scalar load: %s\n", dlerror());
+        return 1;
+    }
+    for (int i = 0; i < count; i++) {
+        char symbol[CALL_SPEC];
+        int32_t arguments[MAX_PROBE_ARGUMENTS];
+        const char *at = specs[i] + strcspn(specs[i], ":");
+        size_t length = (size_t)(at - specs[i]);
+        assert(length < sizeof symbol);
+        memcpy(symbol, specs[i], length);
+        symbol[length] = 0;
+        int n = 0;
+        for (char *end; *at; at = end, n++) {
+            assert(n < MAX_PROBE_ARGUMENTS);
+            arguments[n] = (int32_t)strtol(at + 1, &end, 10);
+        }
+        void *function = dlsym(opened, symbol);
+        if (!function) {
+            fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
+            return 1;
+        }
+        int32_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
+                                         : ((scalar_entry)function)();
+        printf("%d\n", value);
+        fflush(stdout);
+    }
+    return 0;
+}
 /* Each call's value natively: `ir` with an adapter for each probed function,
  * built at O0 and at O2. */
 static bool native_values(
@@ -6317,22 +6422,11 @@ static bool native_values(
         REQUIRE(append_adapter(rows, calls[i].probe.function, &adapter));
     }
     for (int level = 0; level < 2; level++) {
-        char path[PATH_MAX];
-        REQUIRE(native_library(directory, name, ir, adapter, level * 2, path));
-        void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-        if (!library) {
-            fprintf(stderr, "native scalar load: %s\n", dlerror());
-        }
-        REQUIRE(library);
-        for (int i = 0; i < count; i++) {
-            REQUIRE(native_call(
-                library,
-                calls[i].symbol,
-                i ? calls[i].probe.arguments : NULL,
-                &calls[i].values[2 + level]
-            ));
-        }
-        REQUIRE(!dlclose(library));
+        char library[PATH_MAX];
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        REQUIRE(native_passed(
+            library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
+        ));
     }
     free(adapter);
     return true;
@@ -6440,6 +6534,101 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     return true;
 }
 
+/* A new directory for the native builds' files. */
+static bool native_directory(char directory[PATH_MAX])
+{
+    const char *temporary = getenv("TMPDIR");
+    snprintf(directory, PATH_MAX, "%s/chibi-native-scalar-XXXXXX", temporary && *temporary ? temporary : "/tmp");
+    REQUIRE(mkdtemp(directory));
+    return true;
+}
+/* Removes the files the native builds registered, then `directory`. A build
+ * that failed may not have written all its files. */
+static bool remove_native_files(const char *directory)
+{
+    bool removed = true;
+    for (int i = 0; i < acount(native_files); i++) {
+        removed = (!remove(native_files[i]) || errno == ENOENT) && removed;
+        free(native_files[i]);
+    }
+    afree(native_files);
+    REQUIRE(!rmdir(directory) && removed);
+    return true;
+}
+/* Whether process `pid` has exited: it is gone, or a zombie whose parent has
+ * not reaped it yet. Waits up to `seconds` for its kill to land. */
+static bool process_ended(pid_t pid, double seconds)
+{
+    char path[64];
+    snprintf(path, sizeof path, "/proc/%d/stat", (int)pid);
+    for (double deadline = chibi_process_now() + seconds;
+         chibi_process_now() < deadline;) {
+        FILE *file = fopen(path, "r");
+        if (!file) {
+            return true;
+        }
+        char state = 0;
+        int fields = fscanf(file, "%*d (%*[^)]) %c", &state);
+        fclose(file);
+        if (fields == 1 && (state == 'Z' || state == 'X')) {
+            return true;
+        }
+        usleep(10000);
+    }
+    return false;
+}
+/* How long a run that should end at its deadline or cancellation may take,
+ * which allows for a slow sanitized host. */
+static const double PROMPT_SECONDS = 10;
+
+TEST_CASE(package_compiler_native_runs_are_bounded)
+{
+    char out[NATIVE_OUTPUT];
+    /* A tool that hangs, with a descendant in its group, times out at its
+     * deadline, and the descendant is killed with it. */
+    const char *const hung[] = { "/bin/sh", "-c", "sleep 60 & echo $!; wait", NULL };
+    double started = chibi_process_now();
+    chibi_process_capture_result result = run_native(hung, "/", 0.5, out);
+    REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT);
+    REQUIRE(chibi_process_now() - started < PROMPT_SECONDS);
+    char *end;
+    long descendant = strtol(out, &end, 10);
+    REQUIRE(end != out && descendant > 0);
+    REQUIRE(process_ended((pid_t)descendant, PROMPT_SECONDS));
+    /* SIGTERM while a tool runs cancels it, and is not a timeout. */
+    const char *const terminating[] = { "/bin/sh", "-c", "kill -TERM $PPID; sleep 60", NULL };
+    started = chibi_process_now();
+    result = run_native(terminating, "/", 60, out);
+    bool cancelled = native_cancelled;
+    native_cancelled = 0;
+    REQUIRE(cancelled && result.error == CHIBI_PROCESS_CANCELLED);
+    REQUIRE(chibi_process_now() - started < PROMPT_SECONDS);
+    /* Generated code that does not return in time times out in its child.
+     * It loops 2^35 times, far past the deadline, so a deadline that is not
+     * enforced fails the test instead of hanging it. */
+    char directory[PATH_MAX], library[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    const char *loop = "define i32 @hang() {\n"
+                       "entry:\n"
+                       "  br label %loop\n"
+                       "loop:\n"
+                       "  %i = phi i64 [ 0, %entry ], [ %next, %loop ]\n"
+                       "  %next = add i64 %i, 1\n"
+                       "  %done = icmp eq i64 %next, 34359738368\n"
+                       "  br i1 %done, label %exit, label %loop\n"
+                       "exit:\n"
+                       "  ret i32 0\n"
+                       "}\n";
+    scalar_call call = { .symbol = "hang" };
+    bool built = native_library(directory, "hang", loop, "", 0, library);
+    started = chibi_process_now();
+    result = built ? library_calls(directory, library, &call, 1, 2, 1)
+                   : (chibi_process_capture_result){ 0 };
+    double elapsed = chibi_process_now() - started;
+    REQUIRE(remove_native_files(directory) && built);
+    REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
+    return true;
+}
 TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
 {
     REQUIRE(prepare());
@@ -6450,33 +6639,22 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
     const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
     REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
     char directory[PATH_MAX];
-    const char *temporary = getenv("TMPDIR");
-    snprintf(
-        directory,
-        sizeof directory,
-        "%s/chibi-native-scalar-XXXXXX",
-        temporary && *temporary ? temporary : "/tmp"
-    );
-    REQUIRE(mkdtemp(directory));
+    REQUIRE(native_directory(directory));
     pin_value count;
     REQUIRE(
         compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count)
     );
     int accepted = 0, deep = 0;
     bool agreed = true;
-    for (int i = 0; agreed && i < count.i; i++) {
+    for (int i = 0; agreed && !native_cancelled && i < count.i; i++) {
         agreed = scalar_case_agrees(directory, i, &accepted, &deep);
         arena_free(&detached);
     }
-    /* A build that failed may not have written all its files. */
-    bool removed = true;
-    for (int i = 0; i < acount(native_files); i++) {
-        removed = (!remove(native_files[i]) || errno == ENOENT) && removed;
-        free(native_files[i]);
+    REQUIRE(remove_native_files(directory));
+    if (native_cancelled) {
+        fprintf(stderr, "native scalar run was cancelled\n");
     }
-    afree(native_files);
-    REQUIRE(!rmdir(directory) && removed);
-    REQUIRE(agreed);
+    REQUIRE(agreed && !native_cancelled);
     REQUIRE(accepted == SCALAR_ACCEPTED_CASES && deep == DEEP_CASE_COUNT);
     return true;
 }
@@ -6574,12 +6752,32 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     pu_clear_setup();
 }
+#if defined(__linux__) && defined(__x86_64__)
+int test_language_package_compiler_chibi_native_call(int count, char **arguments)
+{
+    return library_child(arguments[0], count - 1, arguments + 1);
+}
+#else
+int test_language_package_compiler_chibi_native_call(int, char **)
+{
+    abort();
+}
+#endif
 void test_language_package_compiler_chibi_native()
 {
 #if defined(__linux__) && defined(__x86_64__)
+    /* The supervised children run in their own process groups, so a signal
+     * to this one cancels them instead of leaving them running. */
+    struct sigaction cancel = { .sa_handler = cancel_native }, interrupt, terminate;
+    sigemptyset(&cancel.sa_mask);
+    sigaction(SIGINT, &cancel, &interrupt);
+    sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);
     pu_clear_setup();
+    sigaction(SIGINT, &interrupt, NULL);
+    sigaction(SIGTERM, &terminate, NULL);
 #else
     fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
     abort();

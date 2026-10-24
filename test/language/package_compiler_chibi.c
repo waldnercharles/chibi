@@ -6980,3 +6980,160 @@ void test_language_package_compiler_chibi_native()
     abort();
 #endif
 }
+
+/* Acceptance fixtures for the next bounded compiler slice. Keep these separate
+ * from samples until named primitive-native arguments are implemented. */
+static const sample native_argument_samples[] = {
+    { .name = "native positional control",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native names in declaration order",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Count: 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native reordered names",
+      .source = "package facts\nRun :: () -> string { return text_slice(Count: "
+                "2, Value: \"abcd\", Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native mixed arguments",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Count: 2, Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native unary name",
+      .source = "package facts\nRun :: () -> int { return "
+                "text_byte_length(Value: \"abcd\"); }",
+      .calls = { { "Run", "[]", "[4]", NULL } } },
+    { .name = "native arguments evaluate in source order",
+      .source = "package facts\n"
+                "Number :: (order: ref int, digit: int, value: int) -> int { "
+                "order = order * 10 + digit; return value; }\n"
+                "Text :: (order: ref int) -> string { order = order * 10 + 2; "
+                "return \"abcd\"; }\n"
+                "Run :: () -> int {\n"
+                "  order: int = 0;\n"
+                "  sliced := text_slice(Count: Number(order, 3, 2), Value: "
+                "Text(order), Start: Number(order, 1, 1));\n"
+                "  if (!text_equal(sliced, \"bc\")) { return -1; }\n"
+                "  return order;\n}",
+      .calls = { { "Run", "[]", "[321]", NULL } } },
+    { .name = "native unknown name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Missing: 2); }",
+      .message = "Unknown argument 'Missing'",
+      .line = 2,
+      .column = 66 },
+    { .name = "native duplicate name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Start: 2, Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 66 },
+    { .name = "native extra argument",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2, 3); }",
+      .message = "Too many arguments",
+      .line = 2,
+      .column = 55 },
+};
+
+TEST_CASE(native_arguments_reference_contract)
+{
+    /* Every valid call supplies all parameters of the existing text natives. */
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(&native_argument_samples[0], inputs);
+    REQUIRE(compiler_fixture_prepare(&fixture, inputs, count));
+    for (int i = 0;
+         i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+         i++) {
+        const sample *s = &native_argument_samples[i];
+        fprintf(stderr, "native arguments reference: %s\n", s->name);
+        if (s->message) {
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            continue;
+        }
+        unsigned char *bytes = NULL;
+        size_t length = 0;
+        REQUIRE(oracle_closure(s, &bytes, &length));
+        bool passed = run(bytes, length, &s->calls[0], 0) &&
+                      run(bytes, length, &s->calls[0], 1);
+        free(bytes);
+        REQUIRE(passed);
+    }
+    return true;
+}
+
+TEST_CASE(native_arguments_authored_contract)
+{
+    REQUIRE(prepare());
+    bool all = true;
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0;
+             i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+             i++) {
+            const sample *s = &native_argument_samples[i];
+            source_package_input inputs[SAMPLE_INPUTS];
+            int count = sample_inputs(s, inputs);
+            pin_value out;
+            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            bool passed = false;
+            if (value->tag == tag(b, "Rejected")) {
+                pin_value message, line, column;
+                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(&value->values[0], "line", &line));
+                REQUIRE(get(&value->values[0], "column", &column));
+                passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
+                         line.i == s->line && column.i == s->column;
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: %s at %d:%d (%s)\n",
+                    b,
+                    s->name,
+                    pin_text(message).bytes,
+                    line.i,
+                    column.i,
+                    passed ? "expected" : "MISMATCH"
+                );
+            } else {
+                REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+                size_t length = 0;
+                unsigned char *bytes = closure_bytes(value, &length);
+                passed = !s->message && run(bytes, length, &s->calls[0], 0) &&
+                         run(bytes, length, &s->calls[0], 1);
+                free(bytes);
+                /* run() leaves a failed invocation for cleanup; continue the
+                 * remaining fixtures without overwriting that ownership. */
+                compiler_host_free(host);
+                host = NULL;
+                free(result.json);
+                result = (compiler_host_result){ 0 };
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: compiled (%s)\n",
+                    b,
+                    s->name,
+                    passed ? "expected" : "MISMATCH"
+                );
+            }
+            arena_free(&detached);
+            all = passed && all;
+        }
+    }
+    REQUIRE(all);
+    return true;
+}
+
+void test_language_package_compiler_chibi_native_arguments_oracle()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_reference_contract);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_native_arguments()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_authored_contract);
+    pu_clear_setup();
+}

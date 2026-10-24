@@ -1,11 +1,13 @@
+#include "execution/definition.h"
 #include "execution/machine.h"
 #include "execution/runner.h"
 #include "execution/status.h"
 #include "support/array.h"
 
-static bool pure_operation(behavior_function_op op)
+static bool pure_operation(const behavior_function *f, const behavior_function_instruction *i)
 {
-    switch (op) {
+    switch (i->op) {
+        case BF_INVOKE: return !f->calls[i->left].task;
         case BF_VARIABLE:
         case BF_DELTA:
         case BF_OWNER:
@@ -51,7 +53,7 @@ int behavior_function_run_interpreted(const behavior_function *f, behavior_funct
     for (int pc = machine.pc; pc < instruction_count; pc = machine.pc) {
         const char *failure = behavior_execution_scope_step();
         if (!failure && behavior_execution_scope_pure() &&
-            !pure_operation(machine.instructions[pc].op)) {
+            !pure_operation(machine.function, &machine.instructions[pc])) {
             failure = "operation is unavailable during pure evaluation";
         }
         if (failure) {

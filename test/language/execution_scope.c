@@ -27,6 +27,7 @@ static execution_module *value_module;
 static unsigned char *value_blob, *value_artifact;
 static size_t value_artifact_size;
 static compiler_host_result value_result;
+static int task_starts;
 static void cleanup()
 {
     free(value_result.json);
@@ -43,6 +44,7 @@ static void cleanup()
     behavior_function_free(caller);
     behavior_function_free(scalar);
     caller = scalar = NULL;
+    task_starts = 0;
 }
 static void emit(behavior_function_builder *b, behavior_function_instruction instruction)
 {
@@ -160,7 +162,7 @@ static bool prepare()
 }
 typedef struct
 {
-    int status, source, frame, stack, error_pin;
+    int status, source, frame, stack, error_pin, pc;
     uint64_t node_id;
     uintptr_t steps, error_steps;
     const behavior_function *source_function;
@@ -169,6 +171,12 @@ typedef struct
     const char *message;
     behavior_run_counts counts;
 } observation;
+static int start_task(behavior_function_context *context, int call)
+{
+    assert(context->activation->pc && call == 0);
+    task_starts++;
+    return FLOW_SUSPENDED_RESULT;
+}
 static observation invoke(const behavior_function *f)
 {
     arena storage = { 0 };
@@ -185,6 +193,7 @@ static observation invoke(const behavior_function *f)
                                           .results = &result,
                                           .budget = 128,
                                           .steps = 5,
+                                          .start_task = start_task,
                                           .activation = resumable ? &activation : NULL };
     behavior_function_bind_storage(&context, &storage);
     assert(behavior_function_bind(f, &context, NULL, 0));
@@ -198,6 +207,7 @@ static observation invoke(const behavior_function *f)
                         .node_id = context.node_id,
                         .steps = context.steps,
                         .error_steps = context.error_steps,
+                        .pc = activation.pc,
                         .source_function = context.source_function,
                         .frame = context.error_frame,
                         .stack = context.error_stack,
@@ -314,7 +324,7 @@ TEST_CASE(scoped_native_shared_budget_and_pure_fallback)
     REQUIRE(value.status == FLOW_OK && outer.remaining == 9 && inner.remaining == 122);
     return true;
 }
-static bool package_value_body(behavior_function *body)
+static bool package_value_body(behavior_function *body, behavior_function *callee)
 {
     execution_module_plan *plan = execution_module_plan_new();
     plan->id = 881001;
@@ -325,7 +335,15 @@ static bool package_value_body(behavior_function *body)
                                       .kind = EXECUTION_FUNCTION_AUTHORED,
                                       .body = body })
     );
-    plan->function_count = 1;
+    if (callee) {
+        apush(
+            plan->functions,
+            ((execution_module_function){ .id = 881003,
+                                          .kind = EXECUTION_FUNCTION_AUTHORED,
+                                          .body = callee })
+        );
+    }
+    plan->function_count = acount(plan->functions);
     char error[256];
     value_module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
     REQUIRE(value_module);
@@ -362,7 +380,7 @@ static bool prepare_value_host(bool random)
     emit(b, (behavior_function_instruction){ .op = BF_END });
     behavior_function *body = finish(b);
     REQUIRE(body);
-    REQUIRE(package_value_body(body));
+    REQUIRE(package_value_body(body, NULL));
     char error[256];
     value_host = compiler_host_load_values(
         value_artifact,
@@ -521,7 +539,7 @@ TEST_CASE(values_host_byte_entry_query_requires_exact_arity)
     behavior_function_builder_emit(b, (behavior_function_instruction){ .op = BF_RETURN });
     behavior_function_builder_emit(b, (behavior_function_instruction){ .op = BF_END });
     behavior_function *body = finish(b);
-    REQUIRE(body && package_value_body(body));
+    REQUIRE(body && package_value_body(body, NULL));
     char error[256];
     value_host = compiler_host_load_values(
         value_artifact,
@@ -580,7 +598,7 @@ TEST_CASE(values_host_rejects_foreign_compiler_bridge)
     behavior_function_builder_emit(b, (behavior_function_instruction){ .op = BF_RETURN });
     behavior_function_builder_emit(b, (behavior_function_instruction){ .op = BF_END });
     behavior_function *body = finish(b);
-    REQUIRE(body && package_value_body(body));
+    REQUIRE(body && package_value_body(body, NULL));
     value_host = compiler_host_load(value_artifact, value_artifact_size, BEHAVIOR_BYTECODE, error, sizeof error);
     REQUIRE(value_host);
     REQUIRE(compiler_host_invoke(value_host, 881002, "[]", 2, 32, &value_result));
@@ -597,6 +615,93 @@ TEST_CASE(values_host_rejects_foreign_compiler_bridge)
     REQUIRE(!value_host && strstr(error, "missing or incompatible host capability"));
     return true;
 }
+TEST_CASE(scoped_pure_rejects_task_before_suspension)
+{
+    REQUIRE(prepare());
+    behavior_function_free(caller);
+    caller = NULL;
+    behavior_function_builder *b = builder(false);
+    pin_value argument = { .type = PIN_F64, .d = 21 };
+    int call = behavior_function_builder_task(b, scalar, &argument, 1);
+    int slot = behavior_function_builder_slot(b, PIN_F64);
+    emit(b, (behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    emit(
+        b,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .output = slot,
+                                         .value = { .type = PIN_F64, .d = 42 } }
+    );
+    emit(b, (behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = slot });
+    emit(b, (behavior_function_instruction){ .op = BF_RETURN });
+    emit(b, (behavior_function_instruction){ .op = BF_END });
+    caller = finish(b);
+    REQUIRE(caller);
+    for (int compiled = 0; compiled < 2; compiled++) {
+        task_starts = 0;
+        behavior_execution_scope scope = { .remaining = 128,
+                                           .pure = true,
+                                           .prefer_compiled = compiled != 0 };
+        observation value = run(caller, &scope);
+        /* The old path reaches a nonnull sentinel, never a NULL callback.
+         * Fail here before the actual values-host check below on old code. */
+        REQUIRE(!task_starts && !value.pc);
+        REQUIRE(value.status == FLOW_ERR_STEP_BUDGET && !value.returned);
+        REQUIRE(
+            value.message &&
+            !strcmp(value.message, "operation is unavailable during pure evaluation")
+        );
+        REQUIRE(value.source_function == caller && value.source == 1);
+        REQUIRE(value.node_id == caller->instructions[0].node_id && value.error_pin == -1);
+        REQUIRE(value.steps == 5 && value.error_steps == 5);
+        REQUIRE(scope.remaining == 127 && !behavior_execution_scope_active());
+        REQUIRE(value.counts.bytecode_entries == 1 && !value.counts.sljit_entries);
+
+        scope = (behavior_execution_scope){ .remaining = 128,
+                                            .prefer_compiled = compiled != 0 };
+        value = run(caller, &scope);
+        REQUIRE(task_starts == 1 && value.pc > 0);
+        REQUIRE(value.status == FLOW_SUSPENDED_RESULT && scope.remaining == 127);
+        REQUIRE(!behavior_execution_scope_active());
+    }
+    behavior_function *body = caller, *callee = scalar;
+    caller = scalar = NULL;
+    REQUIRE(package_value_body(body, callee));
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        if (!behavior_backend_available(backends[backend])) {
+            continue;
+        }
+        char error[256];
+        value_host = compiler_host_load_values(
+            value_artifact,
+            value_artifact_size,
+            backends[backend],
+            error,
+            sizeof error
+        );
+        REQUIRE(value_host);
+        REQUIRE(!compiler_host_invoke(value_host, 881002, "[]", 2, 128, &value_result));
+        REQUIRE(
+            value_result.flow_status == FLOW_ERR_STEP_BUDGET &&
+            !value_result.json && !value_result.length
+        );
+        REQUIRE(strstr(value_result.diagnostic, "operation is unavailable during pure evaluation"));
+        REQUIRE(
+            value_result.source.present &&
+            !strcmp(value_result.source.asset, "execution-scope.chibi")
+        );
+        REQUIRE(value_result.source.line == 7 && value_result.source.column == 3);
+        REQUIRE(
+            value_result.counts.bytecode_entries == 1 && !value_result.counts.sljit_entries
+        );
+        REQUIRE(!behavior_execution_scope_active());
+        clear_value_result();
+        compiler_host_free(value_host);
+        value_host = NULL;
+    }
+    return true;
+}
 void test_language_execution_scope()
 {
     pu_setup(NULL, cleanup);
@@ -607,5 +712,6 @@ void test_language_execution_scope()
     RUN_TEST_CASE(values_host_target_facts_and_entry_queries_match_profile);
     RUN_TEST_CASE(values_host_byte_entry_query_requires_exact_arity);
     RUN_TEST_CASE(values_host_rejects_foreign_compiler_bridge);
+    RUN_TEST_CASE(scoped_pure_rejects_task_before_suspension);
     pu_clear_setup();
 }

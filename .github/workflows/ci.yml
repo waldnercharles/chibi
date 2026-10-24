@@ -95,6 +95,15 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
       - name: Build products and test drivers (ASan and UBSan)
         run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT="$LLVM"
+      - name: Preserve failed macOS Graph stage log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-graph-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .chibi/logs/*-graph.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.

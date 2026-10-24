@@ -538,6 +538,54 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
     return build.replace(text, "\n", "\\n\"\n\"");
 }
 
+// Builds the existing host tools first, then runs the authored asset generator.
+// Sibling outputs are tracked inputs so deleting one regenerates the resource.
+AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
+    prerequisites: string[] = [];
+    for (target in Targets()) {
+        if (target == "chibi-build-host" || target == "chibi-compiler-host" ||
+            Needed("chibi-build-host", target) || Needed("chibi-compiler-host", target)) {
+            prerequisites.append(target);
+        }
+    }
+    compiled := Build(tools, profile, root, folder, prerequisites);
+    if (compiled < 0) {
+        return -1;
+    }
+    output := Join([folder, "/sdk/generated/assets"]);
+    command := [Executable(folder, "chibi-build-host"), "--compiler", "tools/compiler",
+                "--compiler-core", "packages/core", "--root", root,
+                "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
+                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", "240000", "--",
+                Executable(folder, "chibi-compiler-host"), output];
+    inputs := [Executable(folder, "chibi-build-host"), Executable(folder, "chibi-compiler-host")];
+    for (directory in ["tools/compiler", "packages/core", "packages/game", "tools/graph/asset_compiler"]) {
+        inputs.extend(ChibiSources(Join([root, "/", directory])));
+    }
+    for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
+                  "tools/compiler/asset_compiler/CompilerSources.txt", "tools/toolchain/AssetCompiler.chibi",
+                  "tools/graph/engine/Engine.chibi", "tools/graph/engine/Targets.chibi"]) {
+        inputs.append(Join([root, "/", path]));
+    }
+    for (name in ["asset_compiler.chibip", "asset_compiler_blob.inc", "manifest.json", "sources.sha256",
+                  "inventory.txt", "inventory-directories.txt", "target.json"]) {
+        inputs.append(Join([output, "/", name]));
+    }
+    inventory := Join([output, "/input-inventory.txt"]);
+    listing := build.join(inputs, "\n");
+    if (!build.file_exists(inventory) || build.read_file(inventory) != listing) {
+        build.make_directory(output);
+        if (!build.write_file(inventory, listing)) {
+            return -1;
+        }
+    }
+    inputs.append(inventory);
+    if (c.Step(command, inputs, Join([output, "/asset_compiler_packaged.c"])) < 0) {
+        return -1;
+    }
+    return compiled;
+}
+
 // Whether building the targets runs reflect first: one compiles a source it
 // writes.
 Reflects :: (targets: string[]) -> bool {
@@ -887,6 +935,13 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
         if (generated < 0) {
             return -1;
         }
+    }
+    if (Listed(targets, "chibi_asset_compiler_host")) {
+        assets_built := AssetCompiler(tools, profile, source_root, build_dir);
+        if (assets_built < 0) {
+            return -1;
+        }
+        generated += assets_built;
     }
     for (target in targets) {
         Embed(source_root, build_dir, target);

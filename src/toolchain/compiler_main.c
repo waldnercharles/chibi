@@ -180,8 +180,12 @@ static int usage()
         "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE "
         "--backend bytecode|sljit --budget N --timeout-ms N [--batch | "
         "--output-artifact FILE | --output-bytes FILE]\n"
+        "       chibi-compiler-host --target-json [OUTPUT]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
         "[--seed DIR [--revision TEXT] | --recover FILE]\n"
+        "       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR "
+        "--core DIR "
+        "--input FILE --output-artifact FILE\n"
     );
     return 1;
 }
@@ -204,9 +208,47 @@ static int bootstrap(const compiler_bootstrap *b)
     }
     return 0;
 }
+
+static int reuse_bootstrap(const compiler_bootstrap *b, const char *input, const char *output)
+{
+    size_t length = 0;
+    unsigned char *json = read_binary(input, &length, COMPILER_HOST_MAX_BYTES, INFINITY);
+    if (!json) {
+        fprintf(stderr, "compiler input could not be read\n");
+        return COMPILER_BOOTSTRAP_REUSE_ERROR;
+    }
+    char report[512] = { 0 };
+    compiler_bootstrap_reuse_result
+        result = compiler_bootstrap_reuse(b, (const char *)json, length, output, report, sizeof report);
+    free(json);
+    if (result == COMPILER_BOOTSTRAP_REUSE_ERROR) {
+        fprintf(stderr, "bootstrap reuse: %s\n", report);
+    }
+    return result;
+}
+
 int main(int argc, char **argv)
 {
+    if ((argc == 2 || argc == 3) && !strcmp(argv[1], "--target-json")) {
+        size_t length;
+        char error[256] = { 0 };
+        char *json = compiler_host_compiler_target_json(&length, error, sizeof error);
+        if (!json) {
+            fprintf(stderr, "%s\n", error);
+            return 1;
+        }
+        FILE *output = argc == 3 ? fopen(argv[2], "wb") : stdout;
+        bool ok = output && fwrite(json, 1, length, output) == length &&
+                  !fflush(output);
+        if (output && output != stdout) {
+            ok = !fclose(output) && ok;
+        }
+        free(json);
+        return ok ? 0 : 1;
+    }
+
     const char *artifact = NULL, *input = NULL, *output_artifact = NULL;
+    const char *reuse_folder = NULL;
     /* --output-bytes writes a byte[] result that is not a compiler, such as
      * a game's modules, without loading it as one. */
     bool raw = false;
@@ -234,6 +276,8 @@ int main(int argc, char **argv)
             *bootstrap_value = value;
         } else if (bootstrap_value) {
             return usage();
+        } else if (!strcmp(key, "--reuse-bootstrap") && !reuse_folder && *value) {
+            reuse_folder = value;
         } else if (!strcmp(key, "--artifact") && !artifact) {
             artifact = value;
         } else if (!strcmp(key, "--input") && !input) {
@@ -264,6 +308,14 @@ int main(int argc, char **argv)
         } else {
             return usage();
         }
+    }
+    if (reuse_folder) {
+        bool complete = boot.compiler && boot.core && input && output_artifact &&
+                        !raw && !boot.folder && !boot.seed && !boot.revision &&
+                        !boot.output && !artifact && !entry && !budget &&
+                        !timeout && backend == BEHAVIOR_UNAVAILABLE && !batch;
+        boot.folder = reuse_folder;
+        return complete ? reuse_bootstrap(&boot, input, output_artifact) : usage();
     }
     if (boot.folder || boot.compiler || boot.core || boot.seed ||
         boot.revision || boot.output) {

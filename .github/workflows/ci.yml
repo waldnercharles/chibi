@@ -57,10 +57,8 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
       - name: Verify installed and archived license notices
         run: python3 test/tools/package_licenses.py
-      - name: Build chibi_ctl and the test drivers (ASan and UBSan)
-        run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Build chibi, chibi-compile and chibi-player
-        run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Build products and test drivers (ASan and UBSan)
+        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT=/usr/lib/llvm-18
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
@@ -95,10 +93,8 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-      - name: Build chibi_ctl and the test drivers (ASan and UBSan)
-        run: make test-build LIBCLANG_ROOT="$LLVM"
-      - name: Build chibi, chibi-compile and chibi-player
-        run: make build LIBCLANG_ROOT="$LLVM"
+      - name: Build products and test drivers (ASan and UBSan)
+        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT="$LLVM"
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.

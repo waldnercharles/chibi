@@ -95,6 +95,52 @@ static const char driver_routes
          "policy.GROUPS['language'].count('language-outliner-projection'),\n"
          "          policy.GROUPS['wasm'].count('wasm-outliner-projection'))\n"
          "    sys.exit(0)\n";
+/* Execute the workflow's group commands through the real Makefile, recording
+ * only its build/test boundaries. No engine build is needed for this check. */
+static const char driver_ci
+    [] = "if sys.argv[2] == 'ci-groups':\n"
+         "    import shlex\n"
+         "    root = Path(sys.argv[4])\n"
+         "    trace = root / 'ci-trace'\n"
+         "    recorder = root / 'ci-record'\n"
+         "    recorder.write_text('#!/bin/sh\\n'\n"
+         "        'case \"$1\" in tools/test_policy.py) step=$3;; *) step=$1;; "
+         "esac\\n'\n"
+         "        'printf \"%s\\\\n\" \"$step\" >> \"$CI_TRACE\"\\n'\n"
+         "        '[ \"$step\" != \"$CI_FAIL\" ]\\n')\n"
+         "    recorder.chmod(0o700)\n"
+         "    python = root / 'python3'\n"
+         "    if not python.exists(): python.symlink_to(recorder)\n"
+         "    env = dict(os.environ, PATH=str(root) + os.pathsep + "
+         "os.environ['PATH'],\n"
+         "               CI_TRACE=str(trace), CI_FAIL=sys.argv[5], "
+         "MAKEFLAGS='', MFLAGS='')\n"
+         "    jobs = {'native': [], 'native-macos': []}\n"
+         "    job = None\n"
+         "    for line in "
+         "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
+         "        if line.startswith('  ') and not line.startswith('   '):\n"
+         "            job = line.strip().removesuffix(':')\n"
+         "        command = line.strip().removeprefix('run: ')\n"
+         "        if job in jobs and command.startswith('make ') and any(\n"
+         "            target in shlex.split(command) for target in\n"
+         "            ('test-native', 'test-materials', 'test-projects', "
+         "'test-language-all')):\n"
+         "            jobs[job].append(command)\n"
+         "    for commands in jobs.values():\n"
+         "        trace.write_text('')\n"
+         "        status = 0\n"
+         "        for command in commands:\n"
+         "            result = subprocess.run([*shlex.split(command), 'MAKE=' "
+         "+ str(recorder)],\n"
+         "                env=env, stdout=subprocess.DEVNULL, "
+         "stderr=subprocess.DEVNULL)\n"
+         "            status = result.returncode\n"
+         "            if status: break\n"
+         "        print('status=' + str(status))\n"
+         "        print(trace.read_text(), end='')\n"
+         "    python.unlink()\n"
+         "    sys.exit(0)\n";
 static const char driver_source[] =
     "try:\n"
     "    if sys.argv[2] == '_supervise':\n"
@@ -414,6 +460,28 @@ TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects)
     free(output);
     REQUIRE(exact);
     REQUIRE(row_groups);
+    return true;
+}
+
+TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
+{
+    const char *steps[] = { "build",         "native",   "materials",
+                            "build-release", "projects", "language" };
+    for (int fail = -1; fail < 6; fail++) {
+        REQUIRE(run("ci-groups", fail < 0 ? "-" : steps[fail]) == 0);
+        char expected[512] = "";
+        for (int job = 0; job < 2; job++) {
+            strcat(expected, fail < 0 ? "status=0\n" : "status=2\n");
+            for (int i = 0; i <= (fail < 0 ? 5 : fail); i++) {
+                strcat(expected, steps[i]);
+                strcat(expected, "\n");
+            }
+        }
+        char *output = tool_read(logpath);
+        bool exact = output && !strcmp(output, expected);
+        free(output);
+        REQUIRE(exact);
+    }
     return true;
 }
 
@@ -855,11 +923,13 @@ void test_tool_test_policy()
     assert(fputs(driver_imports, script) >= 0);
     assert(fputs(driver_setup, script) >= 0);
     assert(fputs(driver_routes, script) >= 0);
+    assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
+    RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
     RUN_TEST_CASE(studio_gizmo_requires_forty_two_clean_frames);

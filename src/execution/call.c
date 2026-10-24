@@ -504,6 +504,12 @@ int behavior_function_run_calls(
             }
             invocation_frame *frame = frame_new(calls, active, context);
             if (!frame) {
+                if (context != root) {
+                    root->error_message = context->error_message;
+                    root->failure = context->failure;
+                    root->source_function = context->source_function;
+                    root->error_source = context->error_source;
+                }
                 return settle_calls(
                     calls,
                     context->failure == BEHAVIOR_FUNCTION_DEPTH ? FLOW_ERR_INVALID_GRAPH
@@ -534,6 +540,14 @@ int behavior_function_run_calls(
             context = count > 1 ? &calls->frames[count - 2]->context : root;
         }
         root->wake_time = context->wake_time;
+        if (result < 0 && context != root) {
+            /* Preserve the diagnostic before failure unwinds the owned frames.
+             * Source observers already received the precise callee location. */
+            root->error_message = context->error_message;
+            root->failure = context->failure;
+            root->source_function = context->source_function;
+            root->error_source = context->error_source;
+        }
         return settle_calls(calls, result);
     }
 }

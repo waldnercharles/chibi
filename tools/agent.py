@@ -25,6 +25,7 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-list'
 CPU_SELECTORS = {
+    '--execution-scope': 'execution-scope',
     '--player-url': 'player-url',
     '--player-clock': 'player-clock',
     '--audio-analysis': 'audio-analysis',

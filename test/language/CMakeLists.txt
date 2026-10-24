@@ -261,6 +261,9 @@ target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prep
 include(bounded_compiler_chibi.cmake)
 include(prepared_writer_chibi.cmake)
 include(package_compiler_chibi.cmake)
+target_sources(test_language PRIVATE execution_scope.c)
+set_source_files_properties(execution_scope.c
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

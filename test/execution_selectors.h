@@ -1,5 +1,7 @@
 /* CPU-only entry points reviewed for agent iteration. Unknown/new selectors
  * fail closed until classified; tools/agent.py routes each one. */
+/* Bounded prepared scalar scopes and value-host admission; no source I/O. */
+CHIBI_CPU_SELECTOR("--execution-scope")
 CHIBI_CPU_SELECTOR("--source-presentation")
 CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")

@@ -83,8 +83,9 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool canonical = behavior_function_inspection_required(f, ctx);
-    if (compact && behavior_function_fast_allowed(f, ctx)) {
+    bool canonical = behavior_execution_scope_active() ||
+                     behavior_function_inspection_required(f, ctx);
+    if (compact && !canonical && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
     behavior_function_activation *activation = ctx->activation;

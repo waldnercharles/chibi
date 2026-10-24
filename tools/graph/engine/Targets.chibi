@@ -3450,8 +3450,8 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
 // test/language/CMakeLists.txt gives them.
 LanguageTestsOverSource :: () -> string[] {
     return [
-        "src/language/numeric.c", "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
-        "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
+        "src/host/process.c", "src/language/numeric.c", "src/toolchain/compiler_artifact.c",
+        "src/toolchain/compiler_host.c", "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/binding_benchmark.c",
         "test/language/borrow.c", "test/language/bounded_compiler_chibi.c",
         "test/language/callable_headers_chibi.c", "test/language/capture.c",

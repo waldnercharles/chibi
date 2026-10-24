@@ -1661,7 +1661,8 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_consumer") {
         return ["build/test/language/testing/include", "public/asset_compiler_host", "public/asset_values",
                 "public/support", "public/behavior_runtime", "public/execution", "public/types",
-                "public/execution_contract", "public/ecs", "public/tasks", "public/events"];
+                "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+                "public/scene_document", "public/scene_runtime", "public/prototype_document"];
     }
     if (target == "chibi_asset_compiler_host") {
         return [

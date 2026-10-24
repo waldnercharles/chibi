@@ -8,6 +8,7 @@ typedef struct
     const char *name, *source;
     bool accepted;
     const char *arguments, *expected;
+    bool constant;
 } float_conversion_case;
 static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
     { "implicit-narrow-declaration",
@@ -38,13 +39,15 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "Fold :: (value: double) -> float { return Narrow; }\n",
       false,
       "[1.5]",
-      "[1.5]" },
+      "[1.5]",
+      true },
     { "implicit-narrow-typed-constant-return",
       "package facts\nWide: double : 16777217.0;\npub Fold :: (value: double) "
       "-> float { return Wide; }\n",
       false,
       "[1.5]",
-      "[1.5]" },
+      "[1.5]",
+      true },
     { "explicit-narrow-declaration",
       "package facts\npub Fold :: (value: double) -> float { result: float = "
       "float(value); return result; }\n",
@@ -156,6 +159,7 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "(unused: float) -> float { return Value; }\n",
       true,
       "[1.5]",
-      "[16777216.0]" },
+      "[16777216.0]",
+      true },
 };
 #endif

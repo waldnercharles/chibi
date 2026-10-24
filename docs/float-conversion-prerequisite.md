@@ -7,7 +7,7 @@ to even. Overflow becomes signed infinity, NaN remains NaN without a payload
 promise, and signed zero follows the conversion. There is no added panic,
 clamp or precision check. Ordinary untyped literals remain contextual.
 
-This test-only checkpoint starts at main
+The original test-only checkpoint `dbe4d4f22561e1ab818ebead5c758754c98c379f` starts at main
 `7ffa3ef48b204658ba6d9f95f6b2716039fd8798`. It does not change production
 compiler/runtime behavior, compiler flags, prepared format 20, protocol, ABI or
 bootstrap artifacts, and does not adopt the unmerged M2 work in PR 687.
@@ -48,10 +48,10 @@ package. It does not derive the authored expected answer from the C result.
 These are contract-first fixtures. Admission checks are expected to fail on the
 unmodified main until the separately coordinated production prerequisite lands.
 No expected answer is weakened to make existing production behavior pass.
-Production mutation controls have not run: changing production compiler/runtime
-behavior for those controls requires the same ownership coordination as the fix.
+After ownership coordination, two production mutation controls ran and were
+restored. Their results are recorded in the implementation section below.
 
-## Current-main findings
+## Current-main findings before implementation
 
 - Runtime narrowing and widening oracles pass, including exact ties, nonfinite
   values and signed zero. No runtime numerical change has been demonstrated.
@@ -71,9 +71,12 @@ The current stage-zero conversion is established behavior, not an accidental
 math regression. The new owner decision authorizes changing that language rule;
 its mismatch with stage one was already present before the math candidate.
 
-## Proposed production ownership
+## Production ownership
 
-No file in this section has been edited by this lane.
+The parent subsequently authorized floating-only edits to `catalog.c`,
+`Relations.chibi` and `Steps.chibi`. Those three files now implement the scalar
+slice. `Compile.chibi`, `Scalar.chibi`, `Body.chibi` and `Number.chibi` remain
+unchanged by this lane.
 
 | File | Smallest relevant change to coordinate |
 | --- | --- |
@@ -87,7 +90,7 @@ Do not broaden `Body.chibi`'s exact `SameType` predicate. Numerical admission an
 emitted conversion are separate from type identity. No change to `Number.chibi`
 is justified by these runtime results; contextual literal parsing is preserved.
 Additional literal/folding work requires evidence and coordination with M2.
-No seed regeneration or publication is part of this lane.
+No seed regeneration or bootstrap publication is part of this lane.
 
 ## Compatibility inventory
 
@@ -143,6 +146,61 @@ clang-format 22. Current logs and ordinary build outputs remain under
 `.chibi/float-oracles/`.
 
 Wasm, generated C, native LLVM float execution, broad runtime/project/tooling
-suites, production mutation controls and bootstrap recovery remain unrun. Native
-LLVM float support is not claimed. No PR, merge, release, force push, seed update
-or edit to M2's shared production files has occurred.
+suites and bootstrap recovery remain unrun. Native LLVM float support is not
+claimed. No PR, merge, release, force push or seed update has occurred. The
+three authorized floating-only production edits remain isolated from M2.
+
+
+## Implemented scalar slice, still held for the constant dependency
+
+The source delta changes only floating admission and conversion emission in the
+three authorized production files. Integer admission branches and integer
+folding are preserved. Explicit floating casts use the existing conversion
+instruction, with no finite assertion, clamp or precision check. Implicit float
+to double conversion is actually emitted at local declarations, assignments,
+arguments and returns. Call address temporaries are reserved after any new
+widening temporaries, so admitting an argument does not merely relabel its bits.
+
+Stage zero's shared numeric relation and its authored mirror now reject typed
+double to float implicitly. The existing units test in `semantic.c` explicitly
+spells its deliberate float conversion; its expected units diagnostic is
+unchanged. No asset or user project was migrated.
+
+The exact inspected M2 overlap was PR 687 head
+`7096fdf1d97bad1d5f64b01a7bab8fa7a5ecb99f`, based on
+`8b17a0edb6e67558608a81806882ec1b84bdfe01`. Of the authorized three files, M2
+modified only `Steps.chibi`, including the integer cast path and constant folder.
+No M2 source or semantics were imported. The coordinator must adapt the small
+floating delta to M2's final accepted source, rather than replace that branch's
+whole file. Prepared format remains 20 in this isolated source base.
+
+Typed-float constants remain a separate dependency in `Compile.chibi` and
+potentially `Scalar.chibi`. The fixture table marks those cases explicitly.
+They run in a separate, visibly failing pico case in each compiler mode. Both
+stage-one modes pass the existing import checks and all 22 nonconstant floating
+fixtures, then fail only the positive `constant-round-even` case with
+`constant type is not supported yet`. This is not an overall passing branch.
+
+The implemented-source checks passed stage-zero semantics, all 64 pico cases
+and 850 assertions, and the relation matrix suite, all 5 cases and 15,569
+assertions. Runtime narrowing/widening checks passed 18,693 assertions. Existing
+stage-one typed-package checks passed 3,594 assertions in bytecode compiler mode
+and 3,222 in compiled compiler mode. Existing integer semantics checks passed
+335 assertions while retaining their previously pinned conformance gaps; this
+is not a new claim of complete integer frontend/backend parity.
+
+Both production mutation controls were caught without changing fixture answers:
+
+- Restoring broad implicit native floating admission made all six typed-narrowing
+  rejection fixtures fail.
+- Emitting typed zero instead of the widened value in the production helper and
+  argument path left those cases compilable but produced `[0.0]` for `[1.5]`.
+  The independent runtime answers caught the omitted widening across all four
+  scalar boundaries and both execution backends.
+
+The implementation bytes were restored, their hashes verified, all fixture hashes
+remained unchanged during the controls, and the restored driver was rebuilt.
+Logs and status JSON are in `.chibi/float-oracles/`, including
+`production-results.json`, `mutation-results.json` and `restored-results.json`.
+No bootstrap was regenerated or published. The math-only candidate remains on
+its distinct branch and retains its release hold until coordinator integration.

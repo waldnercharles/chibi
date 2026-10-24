@@ -3643,12 +3643,15 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
     }
     return true;
 }
-static bool approved_float_conversion_admission(int compiler)
+static bool approved_float_conversion_admission(int compiler, bool constants)
 {
     bool agreed = true;
     for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
          i++) {
         const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
+        if (item->constant != constants) {
+            continue;
+        }
         source_package_input source = { "facts/Main.chibi",
                                         item->source,
                                         strlen(item->source) };
@@ -3720,12 +3723,22 @@ TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
     REQUIRE(run_samples(IMPORT_SAMPLES, 0));
-    return approved_float_conversion_admission(0);
+    return approved_float_conversion_admission(0, false);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 {
     REQUIRE(run_samples(IMPORT_SAMPLES, 1));
-    return approved_float_conversion_admission(1);
+    return approved_float_conversion_admission(1, false);
+}
+TEST_CASE(package_compiler_float_constant_dependency)
+{
+    REQUIRE(prepare());
+    return approved_float_conversion_admission(0, true);
+}
+TEST_CASE(package_compiler_float_constant_dependency_compiled)
+{
+    REQUIRE(prepare());
+    return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -6925,6 +6938,7 @@ void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_compiled()
@@ -6955,6 +6969,7 @@ void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()

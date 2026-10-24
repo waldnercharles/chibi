@@ -476,10 +476,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 resolved := ReadType(forest, text, types, names, package, declared);
                 local = Typed(-1, resolved.storage, resolved.container, resolved.record);
             }
-            if (result.container == 0 && local.container == 0 && Widens(result.storage, local.storage)) {
+            if (result.container == 0 && local.container == 0 &&
+                (Widens(result.storage, local.storage) || FloatWidens(result.storage, local.storage))) {
                 widened: Slot = {storage: local.storage, kind: ValueKind};
                 slots.append(widened);
-                code.append(CastCode(ops, local.storage, at.slot + length(slots) - 1, result.slot, 0, node));
+                code.extend(NumberCode(ops, result.storage, local.storage, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, local.storage, 0, -1);
             }
             if (!SameType(local.storage, local.container, local.record, result)) {
@@ -548,10 +549,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             stored := result;
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
-            if (binding.container == 0 && result.container == 0 && Widens(result.storage, binding.storage)) {
+            if (binding.container == 0 && result.container == 0 &&
+                (Widens(result.storage, binding.storage) || FloatWidens(result.storage, binding.storage))) {
                 widened: Slot = {storage: binding.storage, kind: ValueKind};
                 slots.append(widened);
-                code.append(CastCode(ops, binding.storage, at.slot + length(slots) - 1, result.slot, 0, node));
+                code.extend(NumberCode(ops, result.storage, binding.storage, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, binding.storage, 0, -1);
                 stored = result;
             }
@@ -615,10 +617,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.append(SymbolCode(ops, binding.node, node));
             }
         } else if (kind == "return_statement") {
-            if (result.container == 0 && callable.result_container == 0 && Widens(result.storage, callable.result)) {
+            if (result.container == 0 && callable.result_container == 0 &&
+                (Widens(result.storage, callable.result) || FloatWidens(result.storage, callable.result))) {
                 widened: Slot = {storage: callable.result, kind: ValueKind};
                 slots.append(widened);
-                code.append(CastCode(ops, callable.result, at.slot + length(slots) - 1, result.slot, 0, node));
+                code.extend(NumberCode(ops, result.storage, callable.result, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, callable.result, 0, -1);
             }
             if (!SameType(callable.result, callable.result_container, callable.result_record, result)) {
@@ -1578,7 +1581,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (qualifier < 0 && found < 0) {
             conversion = ScalarStorage(callee_name);
         }
-        if (Integer(conversion)) {
+        if (Integer(conversion) || Floating(conversion)) {
+            // Floating conversions use the existing runtime rounding operation.
             // `T(value)` fails when the value does not fit; `T(wrap: value)`
             // keeps its low bits and `T(clamp: value)` saturates.
             argument := FirstMember(forest, Field(forest, item.node, "arguments"));
@@ -1588,6 +1592,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             mode: int = 0;
             value := argument;
             if (Is(forest, argument, "named_argument")) {
+                if (Floating(conversion)) {
+                    return Fail(forest, item.node, document, "wrap and clamp convert between integer types");
+                }
                 label := Text(forest, text, Field(forest, argument, "name"));
                 mode = 1;
                 if (label == "clamp") {
@@ -1799,6 +1806,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (value.storage == item.a) {
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, value, NoValue(), marks);
         }
+        if (Floating(item.a)) {
+            output := at.slot + length(slots);
+            slots.extend(NumberSlots(value.storage, item.a));
+            code.extend(NumberCode(ops, value.storage, item.a, value.slot, output, node));
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                Typed(at.slot + length(slots) - 1, item.a, 0, -1), NoValue(), marks);
+        }
         converted: Slot = {storage: item.a, kind: ValueKind};
         slots.append(converted);
         code.append(CastCode(ops, item.a, at.slot + length(slots) - 1, value.slot, item.b, node));
@@ -1942,8 +1956,6 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
     }
     total := length(arguments);
-    // Slots for the call follow the defaults'.
-    b := at.slot + length(slots);
     index: int = 0;
     while (index < total) {
         argument := arguments[index];
@@ -1981,6 +1993,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 expected = Typed(-1, ReferenceStorage, 0, -1);
             }
         }
+        if (argument.container == 0 && expected.container == 0 && FloatWidens(argument.storage, expected.storage)) {
+            slots.append(ValueLocal(expected.storage));
+            code.append(Instruction(ops.convert, expected.storage, at.slot + length(slots) - 1, argument.slot, 0, 0, node));
+            argument = Typed(at.slot + length(slots) - 1, expected.storage, 0, -1);
+            arguments[index] = argument;
+        }
         if (!SameType(expected.storage, expected.container, expected.record, argument)) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
         }
@@ -1992,6 +2010,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         cells.append(cell);
         index += 1;
     }
+    // Call address slots follow defaults and any floating widening temporaries.
+    b := at.slot + length(slots);
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
     named_results: bool = false;
@@ -3004,11 +3024,13 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
 }
-// Whether a number of type `from` converts to `to` implicitly: an integer
-// widens or becomes a floating value, and the floating types convert to one
-// another.
+// Floating widening is lossless. Narrowing requires an explicit conversion.
+FloatWidens :: (from: int, to: int) -> bool {
+    return from == FloatStorage && to == DoubleStorage;
+}
+// Existing integer admission is unchanged; floating values only widen here.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
+    return Widens(from, to) || (Integer(from) && Floating(to)) || FloatWidens(from, to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a

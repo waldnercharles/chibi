@@ -1903,7 +1903,7 @@ TEST_CASE(language_units_follow_native_signatures_and_task_results)
     native.capabilities = &event;
     native.tick_event = event.id;
     cleanup();
-    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: double) { self.Body.x = Elapsed; } }");
+    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: double) { self.Body.x = float(Elapsed); } }");
     analysis = script_analyze(syntax, &native);
     REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
     measured_source(

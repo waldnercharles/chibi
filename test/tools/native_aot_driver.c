@@ -48,6 +48,23 @@ static bool equals(const char *base, const char *name, const char *expected)
     return same;
 }
 
+/* Contract literals are independent of Driver.chibi and its receipt. The
+ * permissive stand-in only records these arguments; it does not validate them. */
+static bool optimizer_arguments_match(int mode)
+{
+    assert(mode == 0 || mode == 2);
+    char expected[4096];
+    snprintf(
+        expected,
+        sizeof expected,
+        "-S\n-passes=%s\n%s.partial/source.ll\n-o\n%s.partial/module.ll\n",
+        mode == 0 ? "verify" : "verify,default<O2>,verify",
+        output,
+        output
+    );
+    return equals(root, "opt tool.argv", expected);
+}
+
 static void locate()
 {
     path(opt, root, "opt tool");
@@ -201,6 +218,45 @@ TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic)
     return true;
 }
 
+TEST_CASE(optimizer_trace_distinguishes_passes_and_snapshot_paths)
+{
+    reset("optimizer argv");
+    char partial[1024], snapshot[1024], module[1024];
+    path(partial, root, "output with spaces.partial");
+    REQUIRE(!mkdir(partial, 0700));
+    path(snapshot, partial, "source.ll");
+    path(module, partial, "module.ll");
+    tool_write(snapshot, "controlled snapshot\n");
+    const struct
+    {
+        const char *passes;
+        int mode;
+        const char *source, *destination;
+        bool matches;
+    } controls[] = {
+        { "-passes=verify", 0, snapshot, module, true },
+        { "-passes=verify,default<O2>,verify", 2, snapshot, module, true },
+        { "-passes=", 0, snapshot, module, false },
+        { "-passes=default<O2>", 2, snapshot, module, false },
+        { "-passes=default<O2>,verify", 2, snapshot, module, false },
+        { "-passes=verify,default<O2>", 2, snapshot, module, false },
+        { "-passes=verify,verify", 2, snapshot, module, false },
+        { "-passes=verify", 0, input, module, false },
+        { "-passes=verify", 0, snapshot, output, false },
+    };
+    for (int i = 0; i < (int)(sizeof controls / sizeof *controls); i++) {
+        const char *arguments[] = { opt,
+                                    "-S",
+                                    controls[i].passes,
+                                    controls[i].source,
+                                    "-o",
+                                    controls[i].destination };
+        REQUIRE(invoke("InspectInterruption", arguments, 6, true) && result.value == 0);
+        REQUIRE(optimizer_arguments_match(controls[i].mode) == controls[i].matches);
+    }
+    return true;
+}
+
 #ifdef __linux__
 TEST_CASE(publication_preserves_existing_files_and_stale_partial_bytes)
 {
@@ -242,6 +298,7 @@ TEST_CASE(object_relocates_tools_with_spaces_without_a_linker_or_path)
     for (int mode = 0; mode < 2; mode++) {
         path(output, root, mode ? "object O2" : "object O0");
         REQUIRE(run(false, mode ? "2" : "0", 0));
+        REQUIRE(optimizer_arguments_match(mode ? 2 : 0));
         REQUIRE(equals(output, "object.o", "controlled object\n"));
         char receipt[1024];
         path(receipt, output, "receipt.txt");
@@ -382,6 +439,7 @@ void test_native_aot_driver(const char *source)
     RUN_TEST_CASE(tool_admission_resolves_aliases_and_rejects_unusable_paths);
     RUN_TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings);
     RUN_TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic);
+    RUN_TEST_CASE(optimizer_trace_distinguishes_passes_and_snapshot_paths);
 #ifdef __linux__
     char *saved_path = getenv("PATH") ? strdup(getenv("PATH")) : NULL;
     assert(!setenv("PATH", "", 1));

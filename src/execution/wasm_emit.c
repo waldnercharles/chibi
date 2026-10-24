@@ -729,9 +729,10 @@ bool execution_wasm_emit(
             } else if (i->op == BF_COMPONENT_READ) {
                 component_read(&code, i, pc);
             } else if (direct(f, i)) {
-                if (i->op == BF_SHL || i->op == BF_SHR) {
-                    // Wasm masks raw shift counts; reject them before the direct
-                    // operation. The canonical step reports DATA with source metadata.
+                bool shift = i->op == BF_SHL || i->op == BF_SHR;
+                if (shift) {
+                    // Wasm masks raw shift counts, so a count at or past the
+                    // width takes the canonical step instead of the direct one.
                     pin_type type = f->slots[i->left];
                     bool wide = value_type(type) == 0x7e;
                     load(&code, i->right, type);
@@ -741,9 +742,12 @@ bool execution_wasm_emit(
                     byte(&code, 0x04);
                     byte(&code, 0x40);
                     helper(&code, pc);
-                    byte(&code, 0x0b);
+                    byte(&code, 0x05);
                 }
                 emitted_value(&code, f, i);
+                if (shift) {
+                    byte(&code, 0x0b);
+                }
             } else {
                 /* Checked component writes deliberately use the canonical step
                  * import, including its authoritative publication callback. */

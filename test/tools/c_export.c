@@ -211,12 +211,9 @@ static bool exported_casts_match_the_vm()
             REQUIRE(behavior_function_bind(functions[CAST_FIXTURE + i], &vm, NULL, 0));
             int reference = behavior_function_run(functions[CAST_FIXTURE + i], &vm, false);
             int status = generated(&compiled);
-            REQUIRE(status == reference && compiled.failure == vm.failure);
-            REQUIRE(status != FLOW_OK || cast_bits(actual) == cast_bits(expected));
-            REQUIRE(
-                status == FLOW_OK ||
-                (vm.failure == BEHAVIOR_FUNCTION_DATA && compiled.error_pin == 5)
-            );
+            /* No cast fails: EXACT clamps a value that does not fit. */
+            REQUIRE(status == FLOW_OK && reference == FLOW_OK);
+            REQUIRE(cast_bits(actual) == cast_bits(expected));
         }
     }
     return true;
@@ -361,15 +358,24 @@ static bool exported_integer_width_edges()
             };
             uint64_t x = behavior_scalar_bits(arguments[0]),
                      y = behavior_scalar_bits(arguments[1]);
-            bool fails = !y || (sign && samples[sample][0] == high &&
-                                samples[sample][1] == mask);
-            uint64_t expected[7] = { x + y, x - y, x * y };
-            if (!fails) {
-                expected[3] = sign ? (uint64_t)((int64_t)x / (int64_t)y) : x / y;
-                expected[4] = sign ? (uint64_t)((int64_t)x % (int64_t)y) : x % y;
-                expected[5] = sign ? (int64_t)x < (int64_t)y : x < y;
-                expected[6] = sign ? (int64_t)x > (int64_t)y : x > y;
-            }
+            /* x / 0 is 0 with remainder x; x / -1 negates with remainder 0. */
+            int64_t sx = (int64_t)x, sy = (int64_t)y;
+            bool negate = sign && sy == -1;
+            uint64_t expected[7] = {
+                x + y,
+                x - y,
+                x * y,
+                !y       ? 0
+                : negate ? 0 - x
+                : sign   ? (uint64_t)(sx / sy)
+                         : x / y,
+                !y       ? x
+                : negate ? 0
+                : sign   ? (uint64_t)(sx % sy)
+                         : x % y,
+                sign ? sx < sy : x < y,
+                sign ? sx > sy : x > y,
+            };
             for (int backend = 0; backend < 2; backend++) {
                 pin_value results[7];
                 for (int r = 0; r < 7; r++) {
@@ -385,17 +391,14 @@ static bool exported_integer_width_edges()
                 int status = backend
                                ? generated(&context)
                                : behavior_function_run(functions[INTEGER_FIXTURE + i], &context, false);
-                REQUIRE(status == (fails ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
-                if (fails) {
-                    REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA);
-                }
+                REQUIRE(status == FLOW_OK);
                 for (int r = 0; r < 7; r++) {
                     REQUIRE(
                         r < 5 ? behavior_scalar_bits(results[r]) ==
                                     behavior_scalar_bits(
-                                        behavior_scalar_from_bits(type, fails ? 0 : expected[r])
+                                        behavior_scalar_from_bits(type, expected[r])
                                     )
-                              : results[r].b == (!fails && expected[r])
+                              : results[r].b == (expected[r] != 0)
                     );
                 }
                 behavior_function_release_host(&context);
@@ -468,7 +471,7 @@ static bool shift_fixture(int index)
     behavior_function_write_c(functions[INTEGER_FIXTURE + index], source, name);
     return true;
 }
-static bool exported_shifts_check_counts()
+static bool exported_shifts_past_the_width_give_zero_or_sign()
 {
     /* Six count boundaries, eight widths, both directions, VM and generated C. */
     for (int i = 0; i < INTEGER_FIXTURES; i++) {
@@ -486,14 +489,14 @@ static bool exported_shifts_check_counts()
                 pin_value arguments[] = { behavior_scalar_from_bits(type, mask),
                                           behavior_scalar_from_bits(type, counts[c]),
                                           { .type = PIN_BOOL, .b = direction != 0 } };
-                bool fails = c >= 3;
-                uint64_t expected = 0;
-                if (!fails) {
-                    expected = direction ? (behavior_scalar_signed(type)
-                                                ? mask
-                                                : mask >> counts[c])
+                /* A count at or past the width shifts every bit out; the
+                 * signed right shift of -1 keeps filling with ones. */
+                bool past = c >= 3;
+                uint64_t expected = direction ? (behavior_scalar_signed(type) ? mask
+                                                 : past ? 0
+                                                        : mask >> counts[c])
+                                  : past ? 0
                                          : (mask << counts[c]) & mask;
-                }
                 for (int backend = 0; backend < 2; backend++) {
                     pin_value result = { .type = type };
                     behavior_function_context context = { .arguments = arguments,
@@ -509,16 +512,8 @@ static bool exported_shifts_check_counts()
                                                &context,
                                                false
                                            );
-                    REQUIRE(status == (fails ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
-                    if (fails) {
-                        REQUIRE(
-                            context.failure == BEHAVIOR_FUNCTION_DATA &&
-                            context.error_pin == 3
-                        );
-                        REQUIRE(context.node_id == 73);
-                    } else {
-                        REQUIRE((behavior_scalar_bits(result) & mask) == expected);
-                    }
+                    REQUIRE(status == FLOW_OK);
+                    REQUIRE((behavior_scalar_bits(result) & mask) == expected);
                     behavior_function_release_host(&context);
                 }
             }
@@ -1784,23 +1779,22 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
                 int reference = behavior_function_run(functions[i], &vm, false);
                 int status = generated(&compiled_context);
                 REQUIRE(status == reference);
-                REQUIRE(status == (sample >= 3 ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+                REQUIRE(status == FLOW_OK);
                 REQUIRE(number(actual[0]) == number(expected[0]));
                 REQUIRE(number(actual[1]) == number(expected[1]));
-                if (sample >= 3) {
-                    REQUIRE(number(actual[0]) == 77 && number(actual[1]) == 88);
-                    REQUIRE(compiled_context.failure == BEHAVIOR_FUNCTION_DATA);
-                } else {
-                    int64_t quotient = samples[sample][0] / samples[sample][1];
-                    int64_t remainder = samples[sample][0] % samples[sample][1];
-                    bool modulo = i % 6 >= 3;
-                    int64_t primary = modulo ? remainder : quotient;
-                    int64_t secondary = i % 3 == 2
-                                          ? primary
-                                          : (modulo ? quotient : remainder);
-                    REQUIRE(number(actual[0]) == primary);
-                    REQUIRE(number(actual[1]) == secondary);
-                }
+                /* The minimum / -1 wraps to the minimum with remainder 0;
+                 * x / 0 is 0 with remainder x. */
+                int64_t x = samples[sample][0], y = samples[sample][1];
+                int64_t quotient = !y      ? 0
+                                 : y == -1 ? (x == minimum ? minimum : -x)
+                                           : x / y;
+                int64_t remainder = !y ? x : y == -1 ? 0 : x % y;
+                bool modulo = i % 6 >= 3;
+                int64_t primary = modulo ? remainder : quotient;
+                int64_t secondary = i % 3 == 2 ? primary
+                                               : (modulo ? quotient : remainder);
+                REQUIRE(number(actual[0]) == primary);
+                REQUIRE(number(actual[1]) == secondary);
             }
         }
     }
@@ -1814,7 +1808,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(exported_integer_width_edges());
     return true;
 }
-TEST_CASE(generated_c_checks_shift_counts)
+TEST_CASE(generated_c_shifts_every_bit_out_past_the_width)
 {
     REQUIRE(begin_export());
     for (int i = 0; i < INTEGER_FIXTURES; i++) {
@@ -1824,7 +1818,7 @@ TEST_CASE(generated_c_checks_shift_counts)
      * two VM and two generated-C calls, each with a 64-instruction budget. */
     REQUIRE(binary_text_fixture());
     REQUIRE(compile_export(64 * 1024));
-    REQUIRE(exported_shifts_check_counts());
+    REQUIRE(exported_shifts_past_the_width_give_zero_or_sign());
     REQUIRE(exported_binary_text_matches_the_vm());
     return true;
 }
@@ -1832,6 +1826,6 @@ void test_tool_c_export()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations);
-    RUN_TEST_CASE(generated_c_checks_shift_counts);
+    RUN_TEST_CASE(generated_c_shifts_every_bit_out_past_the_width);
     pu_clear_setup();
 }

@@ -294,6 +294,8 @@ TOOLS = {
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
     'language-numeric-exact-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--numeric-exact-core'],
+    'language-integer-semantics': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                   '--integer-semantics'],
     'language-package-graph': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-graph'],
     'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -541,7 +543,7 @@ GROUPS = {
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
-                 'language-shader-source-chibi', 'language-package-compiler-chibi-scalar'],
+                 'language-shader-source-chibi', 'language-package-compiler-chibi-scalar', 'language-integer-semantics'],
 }
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]

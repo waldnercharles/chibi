@@ -1409,7 +1409,8 @@ static bool intrinsic_schema(
             return count == 5 && INPUT(0, PIN_POINTER) && INPUT(2, PIN_U64) &&
                    INPUT(3, PIN_BOOL) && values[4].initial.type == PIN_STRUCT &&
                    values[4].initial.container == PIN_CONTAINER_SINGLE &&
-                   value_type_valid(values[4].initial) && OUTPUT(PIN_POINTER);
+                   value_type_valid(records, values[4].initial) &&
+                   OUTPUT(PIN_POINTER);
         case EXECUTION_INTRINSIC_POINTER_REFERENCE:
             return count == 1 && INPUT(0, PIN_POINTER) && OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:

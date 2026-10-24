@@ -4,6 +4,10 @@
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+#include "authoring/image_prepare.h"
+#endif
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -1712,53 +1716,120 @@ static void setup_installed(const char *binary)
     path(log_path, "output.log");
 }
 
-/* A separate selector because these launches need a native graphics context. */
+/* The guide's idle game draws one centered 24x24 blue square. Decode the
+ * pixels independently of the player, so a blank or wrong scene cannot pass. */
+static bool documented_frame(const char *relative)
+{
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+    char key[256], error[256];
+    snprintf(key, sizeof key, "content/%s", relative);
+    if (!render_image_mount_content(root, error, sizeof error)) {
+        return false;
+    }
+    render_image_loader loader = render_images_loader();
+    shader_image_view image = { 0 };
+    bool loaded = loader.read(loader.context, key, &image, error, sizeof error);
+    bool matches = loaded && image.width == 320 && image.height == 180;
+    for (int y = 0; matches && y < image.height; y++) {
+        for (int x = 0; matches && x < image.width; x++) {
+            bool square = x >= 148 && x < 172 && y >= 78 && y < 102;
+            const unsigned char *pixel = image.pixels + (y * image.width + x) * 4;
+            matches = abs(pixel[0] - (square ? 91 : 0)) <= 1 &&
+                      abs(pixel[1] - (square ? 110 : 0)) <= 1 &&
+                      abs(pixel[2] - (square ? 225 : 0)) <= 1 && pixel[3] == 255;
+        }
+    }
+    free((void *)image.pixels);
+    loader.clear(loader.context);
+    render_images_set_loader((render_image_loader){ 0 });
+    return matches;
+#else
+    (void)relative;
+    fprintf(stderr, "Export pixel assertions require an image-preparation tooling driver\n");
+    return false;
+#endif
+}
+
+/* A separate selector because these launches need a native graphics context.
+ * Only prerequisites below this test's mkdtemp root are removed. The caller's
+ * installation, source checkout and SDK build tree are never modified. */
 TEST_CASE(installed_export_runs_without_the_project)
 {
-    REQUIRE(documented_project("documented game"));
-    char game[256], output[256], destination[256];
-    path(game, "documented game");
+    directory("prerequisites");
+    char prefix[256], sdk[256], cli[256], prerequisites[256];
+    strcpy(prefix, launcher);
+    *strrchr(prefix, '/') = 0;
+    *strrchr(prefix, '/') = 0;
+    path(prerequisites, "prerequisites");
+    path(sdk, "prerequisites/sdk");
+#ifdef __APPLE__
+    const char *clone[] = { "/bin/cp", "-cR", prefix, sdk, NULL };
+#else
+    const char *clone[] = { "/bin/cp", "-R", "--reflink=auto", prefix, sdk, NULL };
+#endif
+    REQUIRE(tool_run_within(clone, root, log_path, 30) == 0);
+    path(cli, "prerequisites/sdk/bin/chibi");
+    REQUIRE(documented_project("prerequisites/documented game"));
+    char game[256], output[256], destination[256], capture[256];
+    path(game, "prerequisites/documented game");
     path(output, "export.log");
-    const char *run[] = { launcher,      "run",      game,      "--",
+    const char *check[] = { cli, "check", game, NULL };
+    REQUIRE(tool_run(check, root, output) == 0);
+    REQUIRE(!exists("prerequisites/documented game/.chibi"));
+    path(capture, "before.png");
+    const char *run[] = { cli,           "run",      game,      "--",
                           "--hidden",    "--frames", "2",       "--fixed-dt",
-                          "0.016666667", "--size",   "320x180", NULL };
+                          "0.016666667", "--size",   "320x180", "--capture",
+                          capture,       NULL };
     REQUIRE(tool_run_within(run, root, output, 30) == 0);
-    REQUIRE(exists("documented game/.chibi/build/game.chibip"));
-    REQUIRE(file_has("export.log", "frames=2 steps=1"));
+    REQUIRE(exists("prerequisites/documented game/.chibi/build/game.chibip"));
+    REQUIRE(file_has("export.log", "frames=2 steps=1\n"));
+    REQUIRE(documented_frame("before.png"));
     path(destination, "exported game");
-    const char *export[] = { launcher,    "export",    game, "--output",
+    const char *export[] = { cli,         "export",    game, "--output",
                              destination, "--archive", NULL };
     REQUIRE(tool_run_within(export, root, output, 30) == 0);
     directory("relocated");
-    char original[256], relocated[256], executable[256], capture[256], cwd[256];
+    char archive[256], original[256], extracted[256], relocated[256],
+        executable[256], cwd[256];
 #ifdef __APPLE__
-    REQUIRE(exists("exported game.app.tar.gz"));
+    path(archive, "exported game.app.tar.gz");
     path(original, "exported game.app");
+    path(extracted, "relocated/exported game.app");
     path(relocated, "relocated/Renamed.app");
     path(executable, "relocated/Renamed.app/Contents/MacOS/My Game");
 #else
-    REQUIRE(exists("exported game.tar.gz"));
+    path(archive, "exported game.tar.gz");
     path(original, "exported game");
+    path(extracted, "relocated/exported game");
     path(relocated, "relocated/Renamed");
     path(executable, "relocated/Renamed/My Game");
 #endif
-    REQUIRE(!rename(original, relocated));
+    path(cwd, "relocated");
+    const char *extract[] = { "tar", "-xzf", archive, "-C", cwd, NULL };
+    REQUIRE(tool_run_within(extract, root, output, 30) == 0);
+    REQUIRE(!rename(extracted, relocated));
+    tool_remove_tree(original);
+    REQUIRE(access(original, F_OK) != 0);
 #ifdef __APPLE__
     const char *verify[] = { "codesign", "--verify", "--deep",
                              "--strict", relocated,  NULL };
     REQUIRE(tool_run(verify, root, output) == 0);
 #endif
-    tool_remove_tree(game);
-    REQUIRE(access(game, F_OK) != 0);
-    path(cwd, "relocated");
+    tool_remove_tree(prerequisites);
+    REQUIRE(!exists("prerequisites"));
+    REQUIRE(access(cli, F_OK) != 0 && access(game, F_OK) != 0);
+    REQUIRE(!exists("prerequisites/documented game/.chibi/build"));
+    directory("unrelated");
+    path(cwd, "unrelated");
     path(capture, "export.png");
     const char *play[] = { executable,   "--hidden",    "--frames", "2",
                            "--fixed-dt", "0.016666667", "--size",   "320x180",
                            "--capture",  capture,       NULL };
     REQUIRE(tool_run_within(play, cwd, output, 30) == 0);
-    REQUIRE(file_has("export.log", "frames=2 steps=1"));
+    REQUIRE(file_has("export.log", "frames=2 steps=1\n"));
     REQUIRE(file_has("export.log", "size=320x180 hidden=true"));
-    REQUIRE(exists("export.png"));
+    REQUIRE(documented_frame("export.png"));
     return true;
 }
 

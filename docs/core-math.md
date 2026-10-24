@@ -1,10 +1,10 @@
 # Core math
 
 This candidate is held from SDK shipping. The raw float arithmetic is tested,
-but the current language silently narrows typed double call arguments. Cross-package
-generic calls are rejected, so the approved type boundary cannot yet be enforced
-without parent coordination. No compiler/runtime fix or policy exception is part
-of this checkpoint.
+but stage zero still silently narrows typed double call arguments. The owner has
+now approved requiring explicit double-to-float conversion while keeping implicit
+float-to-double widening. Its coordinated compiler prerequisite has not landed.
+No compiler/runtime fix or package-only workaround is part of this checkpoint.
 
 The candidate `core:math` package has one pure, authored function:
 
@@ -63,8 +63,9 @@ Stage one rejects the same double call with
 `argument differs from its parameter type` at line 3, column 49 of the focused
 consumer, while stage zero accepts it. Both stage-one compiler modes reproduce
 this mismatch. A public double form is deferred rather than adding a compiler
-feature or a second name. A compiler contract change or an explicit owner exception needs
-parent coordination before this candidate can ship. Checked and clamped
+feature or a second name. The approved global conversion rule is being implemented
+as a separate parent-coordinated prerequisite before this candidate can ship.
+Checked and clamped
 forms need a concrete consumer and a separate small contract. `MoveTowards` is
 excluded while its negative-delta and nonfinite policy remains unsettled.
 
@@ -113,3 +114,25 @@ The broad native, material, project, language-all and tooling groups were not
 run. Independent review and any compiler policy repair remain with the parent.
 Logs and ordinary build/install outputs are retained under `.chibi/math/` for
 continuation. The disposable external consumer is removed after verification.
+
+
+## Resumed current-main candidate
+
+The original checkpoint remains preserved as `d039de3e`. Its four-file change
+applied without conflicts to main
+`7ffa3ef48b204658ba6d9f95f6b2716039fd8798` as source checkpoint
+`553cfedb09fca24c357f860b0a7aa242253850d9` on the separate branch
+`codex/core-math-main-20261024`.
+
+The current-main candidate passed `language-package-core` with 15,798 assertions
+in 0.856 s, stage-one imports with 5,806 assertions in 5.059 s, and compiled
+stage-one imports with 5,578 assertions in 3.917 s. Incremental configuration and
+build took 2.3 s and 2.1 s respectively, separately from test execution. These
+checks retain the documented current-behavior blocker characterization; passing
+them does not establish the newly approved rejection rule.
+
+The global conversion acceptance fixtures and compatibility inventory live on
+the independent `codex/float-conversion-oracles-20261024` branch. They deliberately
+fail admission checks on unmodified current main. No shared compiler, SDK,
+prepared-format, bootstrap, ABI or dispatcher edits were made in this math lane.
+The package remains float-only and held. No PR is open.

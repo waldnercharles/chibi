@@ -43,7 +43,8 @@ Each feature has one of these states:
 | Six signed `int` comparisons | `Steps.chibi` `OperatorStep` | native | other widths, unsigned, `bool` and string equality | none | `language-scalar-native` probes at `INT32_MIN`/`INT32_MAX` |
 | One guard with a returning arm and a final return | `Body.chibi` `if_statement` | native | `else`, several guards, general control flow (M3) | none | `language-scalar-native`, `lazy_arm` IR order |
 | Comparing two untyped literals | `Steps.chibi` `OperatorStep` | native | none | none | `language-package-compiler-chibi-types` against stage zero, corpus `literal_comparison` |
-| Arithmetic, negation, bitwise, shifts | `Steps.chibi` `OperatorStep`, `Number.chibi` | decision (D1) | overflow and division contract, all widths | trap or wrap policy | corpus `arithmetic` rejects today. It is M2's first fixture. |
+| `int` arithmetic, negation, complement, bitwise `&`, `\|`, `^`, parentheses | `Steps.chibi` `OperatorStep` | native | other widths | none: nothing fails (D1) | `language-scalar-native`: corpus `int_operators` probes at `INT32_MIN`, -7, -1 and 0; every emitter operation at eight edge values |
+| Shifts | `Steps.chibi` `OperatorStep`, `Number.chibi` | stage one | unsigned counts in the subset; the emitter already lowers them | none | `language-scalar-native` (emitter only); corpus `shift` rejects |
 | Other integer widths, `float`, `double` | `Number.chibi`, `src/runtime/arithmetic.c` | stage one | type mapping, conversions, float ABI | none | `language-package-compiler-chibi-types` (VM only) |
 | Checked, `wrap:` and `clamp:` conversions | `Number.chibi`, `src/runtime/conversions.c` | stage one | conversion operations; must not become plain casts | trap path | VM only |
 | Locals, assignment, compound assignment | `Body.chibi`, `Steps.chibi` | stage one | slot lowering exists in `llvm_native`, not connected | none | corpus `local` rejects |
@@ -100,7 +101,7 @@ decision.
 
 | ID | Area | Direction set | Still needed | State |
 | --- | --- | --- | --- | --- |
-| D1 | Integer arithmetic | Checked and wrapping arithmetic, approved but not implemented. On the cases where the integer semantics corpus (chibi#682) found the backends or compilers disagree, the owner wrote "My preference is to do what Odin does for each of these" (24 October 2026). | An approved contract for each of those cases, written from Odin's behavior, and an answer where Odin defines none (`MIN / -1` at run time). Conversions were not part of that answer. Until then `llvm_native`'s wrapping and provisional traps decide nothing. | open, needed for M2 |
+| D1 | Integer arithmetic | No integer operation fails at run time (owner, 24 October 2026, approving the integer semantics thread's contract): overflow wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN`, `MIN % -1` is 0, a shift at or past the width gives 0 or the sign fill, `T(v)` between integers clamps and `T(wrap: v)` wraps. Mixed integer types, signed shift counts, inexact or out-of-range constants and a constant zero divisor are compile errors. Development builds report each site; shipped native code has no checks. | none | decided for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
 | D3 | Floating math | Odin-style type-preserving helpers, with no blanket finite checks and no automatic double intermediates. | Typed floating widening and narrowing, where stage zero and stage one disagree. | open, needed for M2 |
 | D4 | Budget and recursion | Execution stays bounded. | Where native checks go, call-depth behavior, cancellation. | open, needed for M3 |
@@ -129,7 +130,7 @@ After M1:
   `most_operands` also has the `Driver.Object` run below. The selector
   takes 11 s in Release and 91 s under ASan.
 - `language-package-compiler-chibi-scalar` also checks 13 malformed variants
-  of guarded rows.
+  of guarded rows and 9 of arithmetic rows.
 - `Run.ps1` passed 96 sources on four crossings in 116 s, and both recovery
   stages reproduced the bootstrap compiler (the owner's independent review
   of `8968748`).

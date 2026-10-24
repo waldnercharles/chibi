@@ -5237,6 +5237,11 @@ static const char GUARD_SOURCE[] = "package scalar\n"
                                    "    return b;\n"
                                    "}\n"
                                    "Id :: (x: int) -> int { return x; }\n";
+/* Calc(3, 4) is -(3 + 4) * ~4, which is 35. */
+static const char ARITHMETIC_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Calc(3, 4); }\n"
+         "Calc :: (a: int, b: int) -> int { return -(a + b) * ~b; }\n";
 /* scalar_facts row kinds and types. */
 enum
 {
@@ -5251,6 +5256,8 @@ enum
     SCALAR_CALL_ROW = 8,
     SCALAR_GUARD_ROW = 9,
     SCALAR_COMPARE_ROW = 10,
+    SCALAR_ARITHMETIC_ROW = 11,
+    SCALAR_UNARY_ROW = 12,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2
 };
@@ -5296,6 +5303,23 @@ typedef struct malformed_guard
 #define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
 static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its int operands",
                   SEGMENT[] = "invalid scalar return row";
+/* The kind of each of ARITHMETIC_SOURCE's rows, and the rows edited. */
+static const int ARITHMETIC_KINDS[] = {
+    SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW,   SCALAR_PARAMETER_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,     SCALAR_READ_ROW,
+    SCALAR_READ_ROW,      SCALAR_ARITHMETIC_ROW, SCALAR_UNARY_ROW,
+    SCALAR_READ_ROW,      SCALAR_UNARY_ROW,      SCALAR_ARITHMETIC_ROW,
+};
+enum
+{
+    ARITHMETIC_SECOND_READ = 12,
+    ARITHMETIC_ADD = 13,
+    ARITHMETIC_NEGATE = 14,
+    ARITHMETIC_LAST_READ = 15,
+    ARITHMETIC_ROWS = (int)(sizeof ARITHMETIC_KINDS / sizeof *ARITHMETIC_KINDS)
+};
 static const malformed_guard MALFORMED_GUARDS[] = {
     /* A guard with no condition, and a second guard past the bound. */
     { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
@@ -5335,6 +5359,26 @@ static const malformed_guard MALFORMED_GUARDS[] = {
         EDIT(GUARD_ID_READ, "value", 0),
         { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
       "scalar module calls are recursive" },
+};
+/* Arithmetic's operator, arity and result, and arithmetic on a bool. */
+static const char
+    ARITHMETIC[] = "scalar arithmetic differs from its int operands";
+static const malformed_guard MALFORMED_ARITHMETIC[] = {
+    { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "value", 9) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "count", 1) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "type", SCALAR_BOOL) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_NEGATE, "value", 0) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_NEGATE, "value", 3) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_NEGATE, "count", 2) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_SECOND_READ, "kind", SCALAR_LITERAL_ROW),
+        EDIT(ARITHMETIC_SECOND_READ, "type", SCALAR_BOOL),
+        EDIT(ARITHMETIC_SECOND_READ, "value", 1) },
+      ARITHMETIC },
+    { { EDIT(ARITHMETIC_LAST_READ, "kind", SCALAR_LITERAL_ROW),
+        EDIT(ARITHMETIC_LAST_READ, "type", SCALAR_BOOL),
+        EDIT(ARITHMETIC_LAST_READ, "value", 0) },
+      ARITHMETIC },
 };
 #undef EDIT
 #undef COPY
@@ -5398,29 +5442,37 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
     }
     return true;
 }
-/* scalar_llvm accepts the producer's guarded rows, rejects each malformed
- * variant of them when its layout, comparison, condition, ranges or calls are
- * not what a producer gives, and emits nothing for it. */
-static bool rejects_malformed_guards(int b, pin_value *rows)
+/* scalar_llvm accepts the producer's rows, of the `kinds` it gives, rejects
+ * each malformed variant of them when its layout, operators, operand types,
+ * ranges or calls are not what a producer gives, and emits nothing for it. */
+static bool rejects_malformed(
+    int b,
+    pin_value *rows,
+    const int *kinds,
+    int count,
+    const malformed_guard *malformed,
+    int variants
+)
 {
-    REQUIRE(((const pin_array *)rows->ptr)->count == GUARD_ROWS);
-    for (int i = 0; i < GUARD_ROWS; i++) {
-        REQUIRE(scalar_field(guard_row(rows, i), "kind").i == GUARD_KINDS[i]);
+    REQUIRE(((const pin_array *)rows->ptr)->count == count);
+    for (int i = 0; i < count; i++) {
+        REQUIRE(scalar_field(guard_row(rows, i), "kind").i == kinds[i]);
     }
     REQUIRE(validated(b, rows, ""));
-    for (size_t i = 0; i < sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS; i++) {
-        REQUIRE(rejects_guard(b, rows, &MALFORMED_GUARDS[i]));
+    for (int i = 0; i < variants; i++) {
+        REQUIRE(rejects_guard(b, rows, &malformed[i]));
     }
     REQUIRE(validated(b, rows, ""));
     return true;
 }
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
- * them as LLVM IR that keeps the call, and validates guarded rows. */
+ * them as LLVM IR that keeps the call, and validates guarded and arithmetic
+ * rows. */
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2], guarded[2];
+    pin_value produced[2], guarded[2], computed[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -5434,6 +5486,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(GUARD_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &guarded[b])
+        );
+        args[2] = text(ARITHMETIC_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &computed[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -5475,7 +5531,22 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
                       strstr(ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)");
         free(ir);
         REQUIRE(called);
-        REQUIRE(rejects_malformed_guards(b, &guarded[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &guarded[b],
+            GUARD_KINDS,
+            GUARD_ROWS,
+            MALFORMED_GUARDS,
+            (int)(sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS)
+        ));
+        REQUIRE(rejects_malformed(
+            b,
+            &computed[b],
+            ARITHMETIC_KINDS,
+            ARITHMETIC_ROWS,
+            MALFORMED_ARITHMETIC,
+            (int)(sizeof MALFORMED_ARITHMETIC / sizeof *MALFORMED_ARITHMETIC)
+        ));
     }
     return true;
 }
@@ -5808,7 +5879,7 @@ static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 30
+    SCALAR_ACCEPTED_CASES = 34
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -5858,6 +5929,10 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "bare_condition", "Positive", 1, { INT32_MIN }, 0 },
     { "bare_condition", "Positive", 1, { 0 }, 0 },
     { "bare_condition", "Positive", 1, { INT32_MAX }, INT32_MAX },
+    { "int_operators", "Mix", 3, { 3, 4, 5 }, 37 },
+    { "int_operators", "Mix", 3, { 4, 3, 5 }, 4 },
+    /* (a + b) * c wraps to -6, and -c % 3 is -2. */
+    { "int_operators", "Mix", 3, { INT32_MAX - 1, INT32_MAX, 2 }, -4 },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
@@ -5872,7 +5947,7 @@ enum
     PROBES = (int)(sizeof SCALAR_PROBES / sizeof *SCALAR_PROBES),
     COMPARISON_COUNT = (int)(sizeof COMPARISONS / sizeof *COMPARISONS),
     PAIRS = (int)(sizeof COMPARED / sizeof *COMPARED),
-    MAX_CASE_PROBES = 64
+    MAX_CASE_PROBES = 160
 };
 static int32_t compared(int comparison, int32_t a, int32_t b)
 {
@@ -5885,6 +5960,46 @@ static int32_t compared(int comparison, int32_t a, int32_t b)
         default: return a != b;
     }
 }
+/* llvm_native's integer operations, by the name the corpus's int_operators
+ * case gives each one's function. */
+static const struct
+{
+    const char *name;
+    int op, parameters;
+} TOTAL_OPERATIONS[] = {
+    { "Add", 7, 2 },     { "Sub", 8, 2 },    { "Mul", 9, 2 },
+    { "Div", 10, 2 },    { "Mod", 11, 2 },   { "Neg", 12, 1 },
+    { "BitAnd", 13, 2 }, { "BitOr", 14, 2 }, { "BitXor", 15, 2 },
+    { "BitNot", 16, 1 }, { "Shl", 17, 2 },   { "Shr", 18, 2 },
+};
+static const int32_t TOTAL_VALUES[] = { INT32_MIN, -7, -1, 0,
+                                        1,         31, 32, INT32_MAX };
+enum
+{
+    TOTAL_OPERATION_COUNT = (int)(sizeof TOTAL_OPERATIONS / sizeof *TOTAL_OPERATIONS),
+    TOTAL_VALUE_COUNT = (int)(sizeof TOTAL_VALUES / sizeof *TOTAL_VALUES),
+    /* INT32_MIN, -7, -1 and 0. */
+    INT_OPERANDS = 4
+};
+/* The language's integer contract for operation `op`: nothing fails. */
+static int32_t total(int op, int32_t a, int32_t b)
+{
+    uint32_t x = (uint32_t)a, y = (uint32_t)b;
+    switch (op) {
+        case 7: return (int32_t)(x + y);
+        case 8: return (int32_t)(x - y);
+        case 9: return (int32_t)(x * y);
+        case 10: return !b ? 0 : b == -1 ? (int32_t)(0u - x) : a / b;
+        case 11: return !b ? a : b == -1 ? 0 : a % b;
+        case 12: return (int32_t)(0u - x);
+        case 13: return a & b;
+        case 14: return a | b;
+        case 15: return a ^ b;
+        case 16: return ~a;
+        case 17: return y >= 32 ? 0 : (int32_t)(x << y);
+        default: return y >= 32 ? (a < 0 ? -1 : 0) : a >> y;
+    }
+}
 /* The probes of one corpus case. */
 static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
 {
@@ -5892,6 +6007,22 @@ static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
     for (int i = 0; i < PROBES; i++) {
         if (!strcmp(SCALAR_PROBES[i].source_case, name)) {
             probes[count++] = SCALAR_PROBES[i];
+        }
+    }
+    /* Each int operator but the shifts, which the corpus does not admit, on
+     * the first values of TOTAL_VALUES. */
+    for (int k = 0; !strcmp(name, "int_operators") && k < TOTAL_OPERATION_COUNT - 2;
+         k++) {
+        int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? INT_OPERANDS : 1;
+        for (int i = 0; i < INT_OPERANDS; i++) {
+            for (int j = 0; j < rights; j++) {
+                int32_t a = TOTAL_VALUES[i], b = n == 2 ? TOTAL_VALUES[j] : 0;
+                probes[count++] = (scalar_probe){ "int_operators",
+                                                  TOTAL_OPERATIONS[k].name,
+                                                  n,
+                                                  { a, b },
+                                                  total(TOTAL_OPERATIONS[k].op, a, b) };
+            }
         }
     }
     for (int c = 0; !strcmp(name, "operators") && c < COMPARISON_COUNT; c++) {
@@ -6187,6 +6318,15 @@ static bool vm_value(const char *function, const char *json, int32_t *out)
         TARGET_BUDGET,
         &result
     );
+    if (!valid || result.flow_status != FLOW_OK) {
+        fprintf(
+            stderr,
+            "scalar closure %s%s failed with status %d\n",
+            function,
+            json,
+            result.flow_status
+        );
+    }
     REQUIRE(valid && result.flow_status == FLOW_OK);
     /* The host's result is the JSON array of the function's one result. */
     if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
@@ -6502,9 +6642,21 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
                          { 0 },
                          instruction_names() };
     REQUIRE(target(b, &args[3]));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
+    bool collected = compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        "CollectScalar",
+        args,
+        5,
+        COMPILE_BUDGET,
+        &detached,
+        &rows
     );
+    if (!collected) {
+        fprintf(stderr, "scalar case %s: CollectScalar failed\n", case_name);
+    }
+    REQUIRE(collected);
     REQUIRE(
         compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
     );
@@ -6627,6 +6779,164 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
     double elapsed = chibi_process_now() - started;
     REQUIRE(remove_native_files(directory) && built);
     REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
+    return true;
+}
+/* A module whose entry returns 0 and whose function k + 1 applies operation
+ * k to its parameters. */
+static bool total_ir(char **ir)
+{
+    native_code code[4 + TOTAL_OPERATION_COUNT * 6];
+    native_function functions[1 + TOTAL_OPERATION_COUNT];
+    int parameters[TOTAL_OPERATION_COUNT * 2], slots[1 + TOTAL_OPERATION_COUNT * 3];
+    int c = 0, p = 0, s = 0;
+    code[c++] = (native_code){ .op = NATIVE_CHECK };
+    code[c++] = (native_code){ .op = NATIVE_CONSTANT, .type = NATIVE_INT };
+    code[c++] = (native_code){ .op = NATIVE_PUBLISH, .type = NATIVE_INT };
+    code[c++] = (native_code){ .op = NATIVE_RETURN };
+    slots[s++] = NATIVE_INT;
+    functions[0] = (native_function){ NATIVE_INT, 0, 0, 0, 1, 0, c, 0, 0 };
+    for (int k = 0; k < TOTAL_OPERATION_COUNT; k++) {
+        int n = TOTAL_OPERATIONS[k].parameters, first = c;
+        functions[k + 1] = (native_function){ NATIVE_INT, p, n, s, n + 1,
+                                              c,          0, 0, 0 };
+        code[c++] = (native_code){ .op = NATIVE_CHECK };
+        for (int i = 0; i < n; i++) {
+            code[c++] = (native_code){ .op = NATIVE_ARGUMENT,
+                                       .type = NATIVE_INT,
+                                       .output = i,
+                                       .left = i };
+            parameters[p++] = NATIVE_INT;
+            slots[s++] = NATIVE_INT;
+        }
+        code[c++] = (native_code){ .op = TOTAL_OPERATIONS[k].op,
+                                   .type = NATIVE_INT,
+                                   .output = n,
+                                   .left = 0,
+                                   .right = n - 1 };
+        slots[s++] = NATIVE_INT;
+        code[c++] = (native_code){ .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = n };
+        code[c++] = (native_code){ .op = NATIVE_RETURN };
+        functions[k + 1].code = c - first;
+    }
+    native_module m = { functions,  1 + TOTAL_OPERATION_COUNT,
+                        parameters, p,
+                        slots,      s,
+                        code,       c,
+                        NULL,       0 };
+    const pin_union *value;
+    REQUIRE(native_emit(0, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, 0, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(
+        !contains(text, "label %trap\n  br") && !contains(text, " nsw ") &&
+        !contains(text, " nuw ")
+    );
+    *ir = xmalloc(text.length + 1);
+    memcpy(*ir, text.bytes, text.length);
+    (*ir)[text.length] = 0;
+    return true;
+}
+/* The validation-only adapter probe_NAME(ptr) of each operation. */
+static char *total_adapters()
+{
+    char *adapters = xmalloc(1);
+    *adapters = 0;
+    for (int k = 0; k < TOTAL_OPERATION_COUNT; k++) {
+        bool binary = TOTAL_OPERATIONS[k].parameters == 2;
+        char text[512];
+        int n = snprintf(
+            text,
+            sizeof text,
+            "\ndefine i32 @probe_%s(ptr %%args) {\n  %%a0 = load i32, ptr "
+            "%%args\n",
+            TOTAL_OPERATIONS[k].name
+        );
+        if (binary) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%p1 = getelementptr i32, ptr %%args, i64 1\n  %%a1 = load i32, ptr %%p1\n");
+        }
+        snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  ret i32 %%r\n}\n",
+            k + 1,
+            binary ? ", i32 %a1" : ""
+        );
+        size_t used = strlen(adapters);
+        adapters = xrealloc(adapters, used + strlen(text) + 1);
+        strcpy(adapters + used, text);
+    }
+    return adapters;
+}
+/* The entry, then operation k on every pair of TOTAL_VALUES, or every value
+ * for a unary one. */
+static int total_calls(int k, scalar_call calls[MAX_CASE_CALLS])
+{
+    int count = 0;
+    calls[count++] = (scalar_call){ .probe = { "total", "Main", 0, { 0 }, 0 },
+                                    .symbol = "chibi_scalar" };
+    int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? TOTAL_VALUE_COUNT : 1;
+    for (int i = 0; i < TOTAL_VALUE_COUNT; i++) {
+        for (int j = 0; j < rights; j++) {
+            int32_t a = TOTAL_VALUES[i], b = n == 2 ? TOTAL_VALUES[j] : 0;
+            scalar_call *call = &calls[count++];
+            *call = (scalar_call){ .probe = { "total",
+                                              TOTAL_OPERATIONS[k].name,
+                                              n,
+                                              { a, b },
+                                              total(TOTAL_OPERATIONS[k].op, a, b) } };
+            snprintf(
+                call->symbol,
+                sizeof call->symbol,
+                "probe_%s",
+                TOTAL_OPERATIONS[k].name
+            );
+        }
+    }
+    assert(count <= MAX_CASE_CALLS);
+    return count;
+}
+
+TEST_CASE(package_compiler_native_arithmetic_is_total)
+{
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    char *ir;
+    REQUIRE(total_ir(&ir));
+    char *adapters = total_adapters(), directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    bool agreed = true;
+    for (int level = 0; agreed && level < 2; level++) {
+        char library[PATH_MAX];
+        agreed = native_library(directory, "total", ir, adapters, level * 2, library);
+        for (int k = 0; agreed && k < TOTAL_OPERATION_COUNT; k++) {
+            scalar_call calls[MAX_CASE_CALLS];
+            int count = total_calls(k, calls);
+            agreed = native_passed(
+                library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
+            );
+            for (int i = 1; agreed && i < count; i++) {
+                const scalar_probe *probe = &calls[i].probe;
+                agreed = calls[i].values[2 + level] == probe->expected;
+                if (!agreed) {
+                    fprintf(
+                        stderr,
+                        "native %s(%d, %d) at O%d gave %d, expected %d\n",
+                        probe->function,
+                        probe->arguments[0],
+                        probe->arguments[1],
+                        level * 2,
+                        calls[i].values[2 + level],
+                        probe->expected
+                    );
+                }
+            }
+        }
+    }
+    free(ir);
+    free(adapters);
+    REQUIRE(remove_native_files(directory) && agreed);
     return true;
 }
 TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
@@ -6774,6 +7084,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
+    RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
     RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);
     pu_clear_setup();
     sigaction(SIGINT, &interrupt, NULL);

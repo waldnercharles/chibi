@@ -214,3 +214,68 @@ provenance/counters were independently bound to the frozen source/artifact
 identities, not independently rerun. This is not broader platform or integration
 acceptance. Foreign allocation, typed memory, output/free, production
 frontend integration and wider toolchain/platform support remain open.
+
+## C regression cases awaiting dispatcher registration
+
+`test/tools/native_aot_driver.c` adds C/pico assertions against the existing
+private build host and authored driver. `Contracts.chibi` contains only adapters
+for the private `Tool` and `Cleanup` helpers. The C runner appends those adapters
+to the unchanged driver text in memory. It does not change the production file,
+compiler, capabilities or platform admission.
+
+The two portable cases check resolved executable aliases with spaces; missing,
+non-executable, directory, dangling, relative and control-character tool paths;
+and cleanup's known-file list, unknown-file preservation and sibling output
+preservation. On macOS arm64, both passed with 26 assertions. A separate negative
+control changed only `Tool`'s final `return resolved` to `return path` in a scratch
+source copy. The alias assertion failed, while the original driver passed.
+
+Six additional Linux-only cases cover:
+
+- Existing final files and stale partial object/receipt bytes for both entries,
+  with no optimizer execution before rejection.
+- Physical relocation of tools and IR, paths with spaces, a resolved tool alias,
+  exact object argv at O0/O2, and `Object` succeeding with empty PATH and no
+  linker file or linker/program receipt fields.
+- Missing opt, llc and, for `Build`, linker capabilities before reservation.
+- An object written before exit71 or SIGTERM, and a zero-exit tool producing no
+  object. Both entries must leave no final or partial output and never link.
+- Mutation of opt or llc bytes after object creation, preventing publication.
+- Cancellation after an object is written, leaving an unpublished partial that
+  a retry refuses without altering its bytes.
+
+`fixtures/stage-tool.sh` supplies controlled executable capabilities for these
+failure paths, following the tooling suite's existing shell stand-in pattern.
+It checks fixed argument shapes, records each argument on its own line, and
+uses absolute utility paths. Its object bytes are deliberately a marker, not an
+ELF object. These cases test orchestration and publication, not LLVM behavior;
+the real LLVM fixtures and authored suites above remain separate coverage.
+The cancellation fixture signals its direct C test parent only after writing the
+object, then waits for host process-group cleanup. Every invocation has a
+10-second deadline. All fixtures live in one disposable directory removed by
+the C runner. Only the bytecode backend is selected.
+
+Shared registration is intentionally pending coordinator ownership approval.
+No shared dispatcher/build/policy file is changed by this checkpoint. The
+proposed route is `python3 tools/test_policy.py tool native-aot-driver`, selecting
+`test_tools --native-aot-driver ABSOLUTE_DRIVER_SOURCE`. Registration needs the
+C file in the existing `chibi_build_host` conditional in
+`test/tools/CMakeLists.txt`, a guarded declaration/selector in
+`test/tools/main.c`, and a tool-command entry in `tools/test_policy.py`.
+The exported test function is `test_native_aot_driver(const char *source)`.
+The source argument also permits the negative control without modifying the
+checked-in driver.
+
+Validation used a scratch CMake parent with the existing SDK and tooling
+subdirectories, adding this C file and a temporary selector adapter to the same
+`test_tools` executable. The original dispatcher was compiled with its main
+symbol renamed; its repository file stayed unchanged. The build used Release,
+assertions enabled, no sanitizers, dead stripping, and at most two jobs. The
+prebuilt third-party store matched the SHA256 pinned by this checkout's unchanged
+`third_party/archives.tsv`; first-party code was built from this checkout.
+The focused C build, portable cases, canonical source formatting and shell syntax
+passed. The Linux C branches passed a syntax-only compile on macOS with
+`__linux__` defined; this does not count as a Linux build or execution.
+Linux publication/interruption execution, real LLVM reruns, standard test-policy
+selection and broader native/material/project/language/tool suites remain
+unexecuted. Registration and Linux execution block landing this draft.

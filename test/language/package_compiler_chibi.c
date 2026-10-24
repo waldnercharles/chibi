@@ -2123,9 +2123,9 @@ static bool put_value(pin_value *row, const char *name, pin_value value)
     REQUIRE(!pin_write_field(&input, row->ptr, field, value));
     return true;
 }
-static pin_value row(int b, const char *name)
+static pin_value record_row(const compiler_fixture *f, int b, const char *identity, const char *name)
 {
-    const pin_record *shape = compiler_fixture_record(&fixture, b, PACKAGE, name, &input);
+    const pin_record *shape = compiler_fixture_record(f, b, identity, name, &input);
     assert(shape);
     pin_value v = { .type = PIN_STRUCT,
                     .ptr = arena_alloc(&input, shape->type.size),
@@ -2133,6 +2133,10 @@ static pin_value row(int b, const char *name)
                     .type_name = shape->type.name };
     memset(v.ptr, 0, shape->type.size);
     return v;
+}
+static pin_value row(int b, const char *name)
+{
+    return record_row(&fixture, b, PACKAGE, name);
 }
 static pin_value rows(const pin_value *items, int count, pin_type type, const pin_record *shape)
 {
@@ -2264,12 +2268,18 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     REQUIRE(!pin_read_field(&input, row->ptr, field, out));
     return true;
 }
-static uint64_t variant_tag(int b, const char *union_name, const char *variant)
+static uint64_t fixture_variant_tag(
+    const compiler_fixture *f,
+    int b,
+    const char *identity,
+    const char *union_name,
+    const char *variant
+)
 {
-    const authoring_package *owner = compiler_fixture_package(&fixture, b, PACKAGE);
+    const authoring_package *owner = compiler_fixture_package(f, b, identity);
     const script_catalog_type *type = script_catalog_type_by_id(
         owner->exports->metadata,
-        compiler_fixture_export(&fixture, b, PACKAGE, union_name)
+        compiler_fixture_export(f, b, identity, union_name)
     );
     for (int i = 0; type && i < type->variant_count; i++) {
         if (!strcmp(type->variants[i].name, variant)) {
@@ -2277,6 +2287,10 @@ static uint64_t variant_tag(int b, const char *union_name, const char *variant)
         }
     }
     return 0;
+}
+static uint64_t variant_tag(int b, const char *union_name, const char *variant)
+{
+    return fixture_variant_tag(&fixture, b, PACKAGE, union_name, variant);
 }
 static uint64_t tag(int b, const char *variant)
 {
@@ -5246,6 +5260,289 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
     }
     return true;
 }
+/* llvm_native's op and type ordinals, and its tables as Emit takes them.
+ * Functions own no locals. */
+enum
+{
+    NATIVE_BOOL = 1,
+    NATIVE_INT = 6,
+    NATIVE_CONSTANT = 0,
+    NATIVE_ARGUMENT = 1,
+    NATIVE_PUBLISH = 4,
+    NATIVE_RETURN = 5,
+    NATIVE_CHECK = 27,
+    NATIVE_CALL = 28
+};
+typedef struct native_code
+{
+    int op, type, output, left, right, target, literal;
+} native_code;
+typedef struct native_function
+{
+    int result, first_parameter, parameters, first_slot, slots, first_code,
+        code, first_argument, arguments;
+} native_function;
+typedef struct native_module
+{
+    const native_function *functions;
+    int function_count;
+    const int *parameters;
+    int parameter_count;
+    const int *slots;
+    int slot_count;
+    const native_code *code;
+    int code_count;
+    const int *arguments;
+    int argument_count;
+} native_module;
+static const char NATIVE_PACKAGE[] = "project:llvm_native";
+static pin_value native_ints(const int *values, int count)
+{
+    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+    for (int i = 0; i < count; i++) {
+        array->items[i] = (pin_value){ .type = PIN_I32, .i = values[i] };
+    }
+    return (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = array };
+}
+static const char *const CODE_FIELDS[] = { "op",    "type",   "output", "left",
+                                           "right", "target", "literal" };
+static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
+                                               "parameters", "first_slot",
+                                               "slots",      "first_code",
+                                               "code",       "first_argument",
+                                               "arguments" };
+_Static_assert(sizeof(native_code) == sizeof CODE_FIELDS / sizeof *CODE_FIELDS * sizeof(int), "");
+_Static_assert(
+    sizeof(native_function) ==
+        sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS * sizeof(int),
+    ""
+);
+/* count Instruction or Function records from their fields' ints, in
+ * declaration order. */
+static bool native_records(int b, const char *name, const int *values, int count, pin_value *out)
+{
+    bool code = !strcmp(name, "Instruction");
+    const char *const *fields = code ? CODE_FIELDS : FUNCTION_FIELDS;
+    int width = code ? 7 : 9;
+    assert(count > 0);
+    pin_value *items = xmalloc(sizeof *items * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        items[i] = record_row(&consumer, b, NATIVE_PACKAGE, name);
+        for (int j = 0; j < width; j++) {
+            REQUIRE(put(&items[i], fields[j], values[i * width + j]));
+        }
+    }
+    *out = rows(items, count, PIN_STRUCT, items[0].record);
+    free(items);
+    return true;
+}
+/* Emits m as a module of internal functions under budget 1. */
+static bool native_emit(int b, const native_module *m, const pin_union **out)
+{
+    pin_value args[9];
+    REQUIRE(compiler_fixture_call(
+        &consumer,
+        b,
+        "project:native_abi",
+        "LinuxX64",
+        NULL,
+        0,
+        COMPILE_BUDGET,
+        &input,
+        &args[0]
+    ));
+    REQUIRE(
+        native_records(b, "Function", (const int *)m->functions, m->function_count, &args[1])
+    );
+    args[2] = native_ints(m->parameters, m->parameter_count);
+    args[3] = native_ints(m->slots, m->slot_count);
+    args[4] = native_ints(NULL, 0);
+    REQUIRE(native_records(b, "Instruction", (const int *)m->code, m->code_count, &args[5]));
+    args[6] = native_ints(m->arguments, m->argument_count);
+    args[7] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[8] = (pin_value){ .type = PIN_I32, .i = 1 };
+    pin_value result;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 9, COMPILE_BUDGET, &input, &result)
+    );
+    REQUIRE(result.type == PIN_UNION && result.ptr);
+    *out = result.ptr;
+    return true;
+}
+static bool native_rejects(int b, const native_module *m, const char *message)
+{
+    const pin_union *value;
+    REQUIRE(native_emit(b, m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
+    pin_string text = pin_text(value->values[1]);
+    REQUIRE(pin_text_equal(text, (pin_string){ message, strlen(message) }));
+    return true;
+}
+/* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
+ * returns its third argument. Slots s0..s2 hold the arguments in call order. */
+static const native_code CALLER_AND_CALLEE[] = {
+    { NATIVE_CHECK },
+    { NATIVE_CONSTANT, NATIVE_INT, 0, 0, 0, 0, 7 },
+    { NATIVE_CONSTANT, NATIVE_BOOL, 1, 0, 0, 0, 1 },
+    { NATIVE_CONSTANT, NATIVE_INT, 2, 0, 0, 0, 9 },
+    { NATIVE_CALL, NATIVE_INT, 3, 1, 0, 3, 0 },
+    { NATIVE_PUBLISH, NATIVE_INT, 0, 3 },
+    { NATIVE_RETURN },
+    { NATIVE_CHECK },
+    { NATIVE_ARGUMENT, NATIVE_INT, 0, 2 },
+    { NATIVE_PUBLISH, NATIVE_INT, 0, 0 },
+    { NATIVE_RETURN },
+};
+enum
+{
+    CALL_CODE = (int)(sizeof CALLER_AND_CALLEE / sizeof *CALLER_AND_CALLEE)
+};
+static const native_function CALL_FUNCTIONS[] = {
+    { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
+    { NATIVE_INT, 0, 3, 4, 1, 7, 4, 3, 0 },
+};
+static const int CALL_PARAMETERS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
+static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_INT, NATIVE_INT };
+static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
+static native_module call_module(const native_code *code, const int *arguments, int argument_count)
+{
+    return (native_module){
+        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
+        CALL_CODE,      arguments, argument_count
+    };
+}
+static bool contains(pin_string haystack, const char *needle)
+{
+    char *text = xmalloc(haystack.length + 1);
+    memcpy(text, haystack.bytes, haystack.length);
+    text[haystack.length] = 0;
+    bool found = strstr(text, needle);
+    free(text);
+    return found;
+}
+/* A call loads its argument slots in order and calls the callee's internal
+ * definition. */
+static bool native_calls_emit_definitions(int b)
+{
+    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
+    const pin_union *value;
+    REQUIRE(native_emit(b, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(contains(text, "define i32 @chibi_scalar() {"));
+    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) {"));
+    REQUIRE(contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2)"));
+    REQUIRE(
+        contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2")
+    );
+    REQUIRE(contains(text, "store i32 %arg2, ptr %s0"));
+    return true;
+}
+typedef struct native_change
+{
+    int index;
+    size_t field;
+    int value;
+} native_change;
+/* The call module with one instruction field changed. */
+static bool native_rejects_change(int b, native_change change, const char *message)
+{
+    native_code code[CALL_CODE];
+    memcpy(code, CALLER_AND_CALLEE, sizeof code);
+    *(int *)((char *)&code[change.index] + change.field) = change.value;
+    native_module m = call_module(code, CALL_ARGUMENTS, 3);
+    return native_rejects(b, &m, message);
+}
+static const char
+    SIGNATURE[] = "native call differs from its callee's signature";
+static const char
+    TABLES[] = "unsupported native scalar signature or table size";
+static const char OUTPUT[] = "native scalar output has an invalid type or "
+                             "multiple definitions";
+static bool native_rejects_malformed_calls(int b)
+{
+    /* Argument slots swapped, so a bool slot sits where an int parameter is;
+     * a missing argument row; an argument slot past the caller's slots. */
+    static const int swapped[] = { 1, 0, 2 }, outside[] = { 0, 1, 4 };
+    native_module m = call_module(CALLER_AND_CALLEE, swapped, 3);
+    REQUIRE(native_rejects(b, &m, SIGNATURE));
+    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 2);
+    REQUIRE(native_rejects(b, &m, TABLES));
+    m = call_module(CALLER_AND_CALLEE, outside, 3);
+    REQUIRE(native_rejects(b, &m, SIGNATURE));
+    static const struct
+    {
+        native_change change;
+        const char *message;
+    } changes[] = {
+        /* The callee is past the module's functions or negative. */
+        { { 4, offsetof(native_code, left), 2 }, SIGNATURE },
+        { { 4, offsetof(native_code, left), -1 }, SIGNATURE },
+        /* Arity, argument range and result type disagree with the callee. */
+        { { 4, offsetof(native_code, target), 2 }, SIGNATURE },
+        { { 4, offsetof(native_code, right), 1 }, SIGNATURE },
+        { { 4, offsetof(native_code, type), NATIVE_BOOL }, OUTPUT },
+        /* The call's output is an argument slot defined before it. */
+        { { 4, offsetof(native_code, output), 2 }, OUTPUT },
+        { { 2, offsetof(native_code, literal), 2 }, "native bool constant is not canonical" },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        REQUIRE(native_rejects_change(b, changes[i].change, changes[i].message));
+    }
+    /* An argument defined after the call that reads it. */
+    native_code late[CALL_CODE];
+    memcpy(late, CALLER_AND_CALLEE, sizeof late);
+    late[3] = CALLER_AND_CALLEE[4];
+    late[4] = CALLER_AND_CALLEE[3];
+    m = call_module(late, CALL_ARGUMENTS, 3);
+    REQUIRE(native_rejects(b, &m, "native call argument is not defined on every path"));
+    return true;
+}
+/* Direct and mutual recursion are rejected, as is a function range that
+ * leaves a code row unowned. */
+static bool native_rejects_cycles(int b)
+{
+    static const native_code recursive[] = {
+        { NATIVE_CHECK },
+        { NATIVE_CALL, NATIVE_INT, 0, 0, 0, 0, 0 },
+        { NATIVE_PUBLISH, NATIVE_INT, 0, 0 },
+        { NATIVE_RETURN },
+        { NATIVE_CHECK },
+        { NATIVE_CALL, NATIVE_INT, 0, 0, 0, 0, 0 },
+        { NATIVE_PUBLISH, NATIVE_INT, 0, 0 },
+        { NATIVE_RETURN },
+    };
+    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 } };
+    static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
+                                           { NATIVE_INT, 0, 0, 1, 1, 4, 4, 0, 0 } };
+    static const int slots[] = { NATIVE_INT, NATIVE_INT };
+    native_module m = { one, 1, NULL, 0, slots, 1, recursive, 4, NULL, 0 };
+    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    native_code mutual[8];
+    memcpy(mutual, recursive, sizeof mutual);
+    mutual[1].left = 1;
+    m = (native_module){ two, 2, NULL, 0, slots, 2, mutual, 8, NULL, 0 };
+    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    static const native_function gap[] = { { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
+                                           { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
+    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
+    m.functions = gap;
+    REQUIRE(native_rejects(b, &m, TABLES));
+    return true;
+}
+/* llvm_native's call contract: definitions, argument order, and the
+ * malformed or cyclic plans it rejects before writing IR. */
+TEST_CASE(package_compiler_native_emitter_checks_calls)
+{
+    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(native_calls_emit_definitions(b));
+        REQUIRE(native_rejects_malformed_calls(b));
+        REQUIRE(native_rejects_cycles(b));
+    }
+    return true;
+}
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -5336,5 +5633,6 @@ void test_language_package_compiler_chibi_scalar()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
+    RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     pu_clear_setup();
 }

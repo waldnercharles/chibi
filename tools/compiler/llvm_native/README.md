@@ -57,9 +57,11 @@ wrapping and clamping conversions must not silently become LLVM casts.
 ## Consumers and checks
 
 - `test/native_aot/emitter/Tests.chibi`: pure `Tests() -> int`, zero on success
-  and 1-8 for a failed group. It checks scalar emission, malformed types/control
-  flow, definition dominance, failure labels, explicit budgets, call
-  definitions, malformed calls and cyclic or misplaced call graphs.
+  and 1-5 for a failed group. It checks scalar emission, malformed types/control
+  flow, definition dominance, failure labels and explicit budgets.
+- `tool language-package-compiler-chibi-scalar` (`test/language`): call
+  definitions and argument order, malformed calls and cyclic or misplaced call
+  graphs, each with its exact rejection, on both VMs.
 - `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see
   `test/native_aot/scalar/README.md`.
 - `test/fixtures/native-abi/Checks.chibi`: pure target/type checks; the adjacent

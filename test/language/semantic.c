@@ -2262,6 +2262,36 @@ TEST_CASE(language_approved_float_conversion_admission)
                                            .identity = "project:facts",
                                            .native = &catalog };
         analysis = script_analyze_package(&options);
+        if (!analysis->valid) {
+            for (int d = 0; d < analysis->diagnostic_count; d++) {
+                const script_diagnostic *diagnostic = &analysis->diagnostics[d];
+                fprintf(
+                    stderr,
+                    "FLOAT_REJECTION stage0 %s %d:%d %s\n",
+                    item->name,
+                    diagnostic->range.line,
+                    diagnostic->range.column,
+                    diagnostic->message
+                );
+            }
+        }
+        if (!item->accepted) {
+            REQUIRE(item->stage_zero.message);
+            const script_diagnostic *narrowing = diagnostic(item->stage_zero.message);
+            if (!narrowing || analysis->diagnostic_count != 1 ||
+                narrowing->range.line != item->stage_zero.line ||
+                narrowing->range.column != item->stage_zero.column) {
+                fprintf(
+                    stderr,
+                    "FLOAT_REJECTION_MISMATCH stage0 %s expected %d:%d %s\n",
+                    item->name,
+                    item->stage_zero.line,
+                    item->stage_zero.column,
+                    item->stage_zero.message
+                );
+                agreed = false;
+            }
+        }
         if (analysis->valid != item->accepted) {
             fprintf(
                 stderr,

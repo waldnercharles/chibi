@@ -3661,6 +3661,48 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
         REQUIRE(out.type == PIN_UNION && value);
         REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
         bool accepted = value->tag == tag(compiler, "Compiled");
+        if (!accepted) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(line.type == PIN_I32 && column.type == PIN_I32);
+            fprintf(
+                stderr,
+                "FLOAT_REJECTION stage1 %s %d:%d %s\n",
+                item->name,
+                line.i,
+                column.i,
+                pin_text(message).bytes
+            );
+            if (!item->accepted) {
+                if (!item->stage_one.message) {
+                    REQUIRE(item->constant);
+                    fprintf(
+                        stderr,
+                        "FLOAT_DEPENDENCY_BLOCKED %s: typed-constant narrowing "
+                        "category is pending; rejection is not policy proof\n",
+                        item->name
+                    );
+                    agreed = false;
+                } else if (
+                    strcmp(pin_text(message).bytes, item->stage_one.message) ||
+                    line.i != item->stage_one.line ||
+                    column.i != item->stage_one.column
+                ) {
+                    fprintf(
+                        stderr,
+                        "FLOAT_REJECTION_MISMATCH stage1 %s expected %d:%d "
+                        "%s\n",
+                        item->name,
+                        item->stage_one.line,
+                        item->stage_one.column,
+                        item->stage_one.message
+                    );
+                    agreed = false;
+                }
+            }
+        }
         if (accepted != item->accepted) {
             fprintf(
                 stderr,

@@ -5,10 +5,16 @@
  * runtime cast helpers. Runtime specials and exact bits also have C-fed tests. */
 typedef struct
 {
+    const char *message;
+    int line, column;
+} float_conversion_rejection;
+typedef struct
+{
     const char *name, *source;
     bool accepted;
     const char *arguments, *expected;
     bool constant;
+    float_conversion_rejection stage_zero, stage_one;
 } float_conversion_case;
 static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
     { "implicit-narrow-declaration",
@@ -16,38 +22,66 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "value; return result; }\n",
       false,
       "[1.5]",
-      "[1.5]" },
+      "[1.5]",
+      .stage_zero = { "Incompatible types: expected float, got double; convert "
+                      "with float(value)",
+                      2,
+                      40 },
+      .stage_one = { "local value differs from its type", 2, 40 } },
     { "implicit-narrow-assignment",
       "package facts\npub Fold :: (value: double) -> float { result: float = "
       "0.0; result = value; return result; }\n",
       false,
       "[1.5]",
-      "[1.5]" },
+      "[1.5]",
+      .stage_zero = { "Incompatible types: expected float, got double; convert "
+                      "with float(value)",
+                      2,
+                      61 },
+      .stage_one = { "assigned value differs from its local", 2, 61 } },
     { "implicit-narrow-return",
       "package facts\npub Fold :: (value: double) -> float { return value; }\n",
       false,
       "[1.5]",
-      "[1.5]" },
+      "[1.5]",
+      .stage_zero = { "Incompatible types: expected float, got double; convert "
+                      "with float(value)",
+                      2,
+                      47 },
+      .stage_one = { "returned value differs from the result type", 2, 40 } },
     { "implicit-narrow-argument",
       "package facts\nTake :: (value: float) -> float { return value; }\npub "
       "Fold :: (value: double) -> float { return Take(value); }\n",
       false,
       "[1.5]",
-      "[1.5]" },
+      "[1.5]",
+      .stage_zero = { "Incompatible types: expected float, got double; convert "
+                      "with float(value)",
+                      3,
+                      52 },
+      .stage_one = { "argument differs from its parameter type", 3, 47 } },
     { "implicit-narrow-typed-constant",
       "package facts\nWide: double : 16777217.0;\nNarrow: float : Wide;\npub "
       "Fold :: (value: double) -> float { return Narrow; }\n",
       false,
       "[1.5]",
       "[1.5]",
-      true },
+      true,
+      .stage_zero = { "Incompatible types: expected float, got double; convert "
+                      "with float(value)",
+                      3,
+                      17 } },
     { "implicit-narrow-typed-constant-return",
       "package facts\nWide: double : 16777217.0;\npub Fold :: (value: double) "
       "-> float { return Wide; }\n",
       false,
       "[1.5]",
       "[1.5]",
-      true },
+      true,
+      .stage_zero = { "Incompatible types: expected float, got double; convert "
+                      "with float(value)",
+                      3,
+                      47 } },
     { "explicit-narrow-declaration",
       "package facts\npub Fold :: (value: double) -> float { result: float = "
       "float(value); return result; }\n",

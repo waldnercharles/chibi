@@ -204,3 +204,24 @@ Logs and status JSON are in `.chibi/float-oracles/`, including
 `production-results.json`, `mutation-results.json` and `restored-results.json`.
 No bootstrap was regenerated or published. The math-only candidate remains on
 its distinct branch and retains its release hold until coordinator integration.
+
+## Independent-review fixture correction and retained receipts
+
+The follow-up fixture correction leaves production source `83f9977b` unchanged.
+Supported scalar rejections now require the intended narrowing diagnostic and
+stable source position in both frontends; stage zero also requires exactly one
+diagnostic. The two stage-one typed-constant negatives explicitly remain blocked
+and earn no narrowing-policy credit. The positive constant-rounding case remains
+red with its original acceptance and numeric expected answer unchanged.
+
+Complete public-safe command/stdout/stderr receipts, the exact production
+mutation driver, source/fixture hashes, and final statuses are retained in
+[evidence/float-conversion-handoff.md](evidence/float-conversion-handoff.md) and
+its linked text/JSON files. The unrelated-rejection production mutation is now
+caught as well as the admission and wrong-emission mutations.
+
+The retained [minimal M2 patch](evidence/float-conversion-m2-ab8c4a58.patch)
+targets `ab8c4a58f6cabc8b74e9d94c37fde41cb634c2ac`. Its read-only textual apply
+check passes and reversing the floating edit blocks restores exact M2 snapshots.
+This is not a combined M2 build or execution claim. `Compile.chibi`,
+`Scalar.chibi`, M2 integer machinery and generation remain coordinator-owned.

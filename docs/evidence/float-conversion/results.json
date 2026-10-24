@@ -1,0 +1,321 @@
+{
+  "production_source_commit": "83f9977baafe0390c6cee09c80e51eb5c19a24fb",
+  "source_base": "7ffa3ef48b204658ba6d9f95f6b2716039fd8798",
+  "combined_m2_not_built": true,
+  "m2_patch_base": "ab8c4a58f6cabc8b74e9d94c37fde41cb634c2ac",
+  "checks": [
+    {
+      "check": "language-semantic",
+      "exit": 0,
+      "summary": "Summary: Passed: 64 Failed: 0 Total: 64 Suites: 0 Asserts: 856",
+      "wall": "Test command wall time: 0.579s; includes in-test fixture setup; external configuration/build excluded."
+    },
+    {
+      "check": "language-type-relations-chibi",
+      "exit": 0,
+      "summary": "Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 15569",
+      "wall": "Test command wall time: 0.155s; includes in-test fixture setup; external configuration/build excluded."
+    },
+    {
+      "check": "language-package-compiler-chibi-imports",
+      "exit": 1,
+      "summary": "Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 9234",
+      "wall": "Test command wall time: 9.146s; includes in-test fixture setup; external configuration/build excluded."
+    },
+    {
+      "check": "language-package-compiler-chibi-imports-compiled",
+      "exit": 1,
+      "summary": "Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 9032",
+      "wall": "Test command wall time: 7.889s; includes in-test fixture setup; external configuration/build excluded."
+    }
+  ],
+  "mutations": {
+    "controls": [
+      {
+        "mutation": "restore broad native floating admission",
+        "exit": 1,
+        "caught": true
+      },
+      {
+        "mutation": "emit typed zero instead of widened values",
+        "exit": 1,
+        "caught": true
+      },
+      {
+        "mutation": "replace narrowing diagnostic with unrelated rejection",
+        "exit": 1,
+        "caught": true
+      }
+    ],
+    "production_sources_restored": true,
+    "fixture_hashes_unchanged": true,
+    "production_sha256": {
+      "src/capabilities/catalog.c": "eb842ae57ff0f595c7a433b19d0368cc785b40114a2cf17f2ba5fc8597242821",
+      "tools/compiler/package_compiler/Steps.chibi": "6da7d3bd85337ae24e5e4498f6cb518e078b47aebdeef69630e9bd11bff026f9"
+    },
+    "fixture_sha256": {
+      "test/language/float_conversion_cases.h": "52d82aacaba6f02990cc8bafe2be71a3bc78ac9cea279b6434e9387bd3387bcf",
+      "test/language/semantic.c": "458e3790dd1af3ff0c0a3d479c0940120a5f977365b2a1597293f6e1f25dc332",
+      "test/language/packed.c": "07509d1e114d48b130bc79bd3cdc886f8a298b680f9a7041f912a76e328c1fda",
+      "test/language/type_relations_chibi.c": "b2aeb37baee3e957348f7199482ce7a72cf85f8bee165093c58b65902556f34b",
+      "test/language/package_compiler_chibi.c": "a9f375f10634b8e1f013d497c9d9ab6e11ef085706112fae0215e0350bff2b9b"
+    }
+  },
+  "m2_adaptation": {
+    "target": "ab8c4a58f6cabc8b74e9d94c37fde41cb634c2ac",
+    "source": "83f9977baafe0390c6cee09c80e51eb5c19a24fb",
+    "paths": [
+      "src/capabilities/catalog.c",
+      "tools/compiler/type_relations/Relations.chibi",
+      "tools/compiler/package_compiler/Steps.chibi"
+    ],
+    "reverse_restores_exact_m2": true,
+    "hunks": [
+      {
+        "path": "src/capabilities/catalog.c",
+        "kind": "replace",
+        "base_lines": [
+          292,
+          293
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 2,
+        "context_score": 72
+      },
+      {
+        "path": "src/capabilities/catalog.c",
+        "kind": "replace",
+        "base_lines": [
+          297,
+          297
+        ],
+        "inserted_lines": 1,
+        "removed_lines": 1,
+        "context_score": 42
+      },
+      {
+        "path": "tools/compiler/type_relations/Relations.chibi",
+        "kind": "replace",
+        "base_lines": [
+          49,
+          49
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 1,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/type_relations/Relations.chibi",
+        "kind": "replace",
+        "base_lines": [
+          53,
+          53
+        ],
+        "inserted_lines": 1,
+        "removed_lines": 1,
+        "context_score": 42
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          479,
+          479
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 1,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          482,
+          482
+        ],
+        "inserted_lines": 1,
+        "removed_lines": 1,
+        "context_score": 39
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          551,
+          551
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 1,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          554,
+          554
+        ],
+        "inserted_lines": 1,
+        "removed_lines": 1,
+        "context_score": 39
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          618,
+          618
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 1,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          621,
+          621
+        ],
+        "inserted_lines": 1,
+        "removed_lines": 1,
+        "context_score": 39
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          1581,
+          1581
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 1,
+        "context_score": 36
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "insert",
+        "base_lines": [
+          1591,
+          1590
+        ],
+        "inserted_lines": 3,
+        "removed_lines": 0,
+        "context_score": 28
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "insert",
+        "base_lines": [
+          1802,
+          1801
+        ],
+        "inserted_lines": 7,
+        "removed_lines": 0,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "delete",
+        "base_lines": [
+          1945,
+          1946
+        ],
+        "inserted_lines": 0,
+        "removed_lines": 2,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "insert",
+        "base_lines": [
+          1984,
+          1983
+        ],
+        "inserted_lines": 6,
+        "removed_lines": 0,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "insert",
+        "base_lines": [
+          1995,
+          1994
+        ],
+        "inserted_lines": 2,
+        "removed_lines": 0,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          3007,
+          3009
+        ],
+        "inserted_lines": 5,
+        "removed_lines": 3,
+        "context_score": 72
+      },
+      {
+        "path": "tools/compiler/package_compiler/Steps.chibi",
+        "kind": "replace",
+        "base_lines": [
+          3011,
+          3011
+        ],
+        "inserted_lines": 1,
+        "removed_lines": 1,
+        "context_score": 37
+      }
+    ]
+  },
+  "raw_receipts": [
+    {
+      "file": "docs/evidence/float-conversion/stage-zero.txt",
+      "selector": "language-semantic",
+      "sha256": "6d676e26be26ea24f59e7177330bb1a39a4e8387632a232cf9b23e65e541d3f5"
+    },
+    {
+      "file": "docs/evidence/float-conversion/type-relations.txt",
+      "selector": "language-type-relations-chibi",
+      "sha256": "46fead12ac87374c8a9777b65c7c9905e8dcb92931680bae5bf1d8a60f3897d8"
+    },
+    {
+      "file": "docs/evidence/float-conversion/stage-one-bytecode.txt",
+      "selector": "language-package-compiler-chibi-imports",
+      "sha256": "ce549b63e57a14cfa1a4d7c907aa9e94f081934262e1ef5d48ef5ec64ff5c5ef"
+    },
+    {
+      "file": "docs/evidence/float-conversion/stage-one-compiled.txt",
+      "selector": "language-package-compiler-chibi-imports-compiled",
+      "sha256": "f74da49d548f6d528edc85705c03a11031c54fe80722ebbe9c3a113df0881f13"
+    },
+    {
+      "file": "docs/evidence/float-conversion/mutation-admission.txt",
+      "selector": "language-semantic",
+      "sha256": "2896ae8205ba699b1783eef4281309b952db6d1b427c9d989de0aa29b76771ca"
+    },
+    {
+      "file": "docs/evidence/float-conversion/mutation-emission.txt",
+      "selector": "language-package-compiler-chibi-imports",
+      "sha256": "79dce02f251349dfc397b441f4c0a62cdff6f4b1a0706ff6a15d164d8033a9f6"
+    },
+    {
+      "file": "docs/evidence/float-conversion/mutation-category.txt",
+      "selector": "language-package-compiler-chibi-imports",
+      "sha256": "179f766fb4db732095d918ee574d03587affef8971f41e8d85ba5eddf98046c9"
+    }
+  ],
+  "raw_captures": {
+    "stage-zero.txt": "FLOAT_REJECTION stage0 implicit-narrow-declaration 2:40 Incompatible types: expected float, got double; convert with float(value)\nFLOAT_REJECTION stage0 implicit-narrow-assignment 2:61 Incompatible types: expected float, got double; convert with float(value)\nFLOAT_REJECTION stage0 implicit-narrow-return 2:47 Incompatible types: expected float, got double; convert with float(value)\nFLOAT_REJECTION stage0 implicit-narrow-argument 3:52 Incompatible types: expected float, got double; convert with float(value)\nFLOAT_REJECTION stage0 implicit-narrow-typed-constant 3:17 Incompatible types: expected float, got double; convert with float(value)\nFLOAT_REJECTION stage0 implicit-narrow-typed-constant-return 3:47 Incompatible types: expected float, got double; convert with float(value)\nsemantic 1:90: Non-exhaustive switch: a union alternative is missing\nsemantic 1:132: Unreachable duplicate union pattern\nsemantic 1:1: 'value' requires a default value\nsemantic 1:1: Expected a value expression\nsemantic 1:70: Missing return\nsemantic 1:68: Union result 'Result' requires a value on every return path\nsemantic 1:72: A nonoptional union requires one of its alternatives\nsemantic 1:74: Optional union requires a presence guard before switching\nsemantic 1:107: Optional union requires a presence guard before switching\nsemantic 1:109: Missing return\nsemantic 1:21: Recursive owned union payloads are not supported\nsemantic 1:21: Recursive owned union payloads are not supported\nsemantic 1:35: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:24: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:23: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:31: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:37: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:57: Missing return\nsemantic 1:23: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:23: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:79: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:98: Non-exhaustive switch: a union alternative is missing\nsemantic 1:122: Non-exhaustive switch: a union alternative is missing\nsemantic 1:118: Operation has no compatible typed operands\nsemantic 1:130: Unknown value 'num_result'\nsemantic 1:108: Operation has no compatible typed operands\nsemantic 1:89: Pattern bindings require a matching if or while condition\nsemantic 1:79: Nested functions require enclosing locals to be passed as parameters\nsemantic 1:62: Incompatible types: expected double?, got int?\nsemantic 1:61: Incompatible types: expected double?, got int\nsemantic 1:76: Await requires a capability call\nsemantic 1:71: Incompatible types: expected bool, got task\nsemantic 1:47: Constant initializer requires compile-time values and operators\nsemantic 1:52: Constant initializer requires compile-time values and operators\nsemantic 1:49: Assignment requires a writable value\nsemantic 1:29: Cyclic value dependency involving 'A'\nsemantic 1:37: Constant initializer requires compile-time values and operators\nsemantic 1:29: Constant initializer requires compile-time values and operators\nsemantic 1:47: Incompatible types: expected int, got double; convert with int(value)\nsemantic 1:56: Numeric literal has a fraction, which int cannot hold\nsemantic 1:32: Expected identifier\nsemantic 1:32: Unexpected syntax\nsemantic 1:32: Unknown type ''\nsemantic 1:43: Expected identifier\nsemantic 1:44: Unexpected syntax\nsemantic 1:43: Compile-time evaluation: requires a terminating authored procedure and constant arguments\nsemantic 1:43: Type expression must construct a compile-time type\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:87: Pass system invocation locals as parameters across callable boundaries\nsemantic 1:49: Pass system invocation locals as parameters across callable boundaries\nsemantic 1:50: Optional component requires a presence guard before member access\nsemantic 1:101: Optional component requires a presence guard before member access\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:52: Incompatible types: expected int, got string\nsemantic 1:56: Incompatible types: expected int, got int?\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:41: Reduction requires a writable scalar numeric component field\nsemantic 1:51: Reduction requires a writable scalar numeric component field\nsemantic 1:47: Reduction requires a writable scalar numeric component field\nsemantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:48: Reduction requires a writable scalar numeric component field\nsemantic 1:57: Optional component requires a presence guard before member access\nsemantic 1:38: Reduction requires a synchronous system body\nsemantic 1:55: Reduction requires a synchronous system body\nsemantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:56: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:60: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:64: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:72: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:83: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:122: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:95: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:50: Reduction producer cannot call an opaque component accessor\nsemantic 1:55: Reduction producer cannot call an opaque component accessor\nsemantic 1:40: Reduction requires a synchronous system body without tasks\nsemantic 1:70: Reduction requires a synchronous system body without tasks\nsemantic 1:74: A component cannot mix ordered and unordered reductions in one system\nsemantic 1:67: A component cannot mix ordered and unordered reductions in one system\nsemantic: Units differ: u = s\nsemantic: Units differ: u = s\nsemantic 1:37: A component cannot be both a parameter and excluded\nsemantic 1:35: Unknown query relationship 'target'\nsemantic 1:52: Optional component requires a presence guard before member access\nsemantic 1:42: Assignment requires a writable value\nsemantic 1:49: Assignment requires a writable value\nsemantic 1:37: Numeric literal is outside the range of int8\nsemantic 1:26: Range bounds descend; count down with for <\nsemantic 1:37: Range bounds descend; for < takes the low bound first, as in for < i in 0..10\nsemantic 1:37: for < reverses only ranges and arrays\nsemantic 1:56: for < reverses only ranges and arrays\nsemantic 1:62: Missing return\nsemantic 1:55: Missing return\nsemantic 1:83: Missing return\nsemantic 1:88: Missing return\nsemantic 1:67: Missing return\nsemantic 1:67: Missing return\nsemantic 1:100: Missing return\nsemantic 1:55: Missing return\nsemantic 1:39: Unknown event 'Begin'\nsemantic 1:55: Missing return\nsemantic 1:70: Union result 'value' requires a value on every return path\nsemantic 1:62: Missing return\nsemantic 1:35: Numeric literal is outside the range of int8\nsemantic 1:36: Numeric literal is outside the range of int64\nsemantic 1:37: Numeric literal is outside the range of int64\nsemantic 1:37: Numeric literal is outside the range of uint64\nsemantic 1:38: Numeric literal is outside the range of uint64\nsemantic 1:29: Character literal is outside the range of byte\nsemantic 1:41: A character literal holds exactly one character\nsemantic 1:41: A character literal holds exactly one character\nsemantic 1:41: Invalid character literal\nsemantic 1:41: Invalid character literal\nsemantic 1:43: Incompatible types: expected string, got char\nsemantic 1:43: A character literal needs an integer or char type\nsemantic 1:48: Incompatible types: expected byte, got char; convert with byte(value)\nsemantic 1:47: Incompatible types: expected char, got int; convert with char(value)\nsemantic 1:47: char converts only with char(value)\nsemantic 1:41: Constant does not fit in char\nsemantic 1:56: Incompatible types: expected char, got int; convert with char(value)\nsemantic 1:50: char converts from an integer\nsemantic 1:128: Incompatible types: expected struct, got struct\nsemantic 1:55: Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)\nsemantic 1:52: A conversion argument may only be named wrap or clamp\nsemantic 1:48: wrap and clamp convert between integer types\nsemantic 1:40: wrap and clamp convert between integer types\nsemantic 1:47: Conversion takes one value\nsemantic 1:46: cast<T>(value) was removed; write T(value)\nsemantic 1:47: Incompatible types: expected byte, got int; convert with byte(value)\nsemantic 1:61: int64 and uint64 operands need an explicit conversion, such as int64(value)\nsemantic 1:30: Numeric literal is outside the range of byte\nsemantic 1:40: VectorAdd returns a new value and changes nothing; assign its result\nsemantic 1:84: sum returns a new value and changes nothing; assign its result\nsemantic 1:24: Binding dependency cycle\nsemantic 1:95: This call has several results; return the ones you need by name, as in return(Hit: r.Hit, Distance: r.Distance)\nsemantic 1:38: Unexpected syntax\nsemantic 1:51: Expected }\nsemantic 1:35: Unexpected syntax\nsemantic 1:29: Type 'struct' requires a type argument\nsemantic 1:29: Type 'struct' requires a type argument\nsemantic 1:1: 'value' requires a default value\nsemantic 1:1: Expected a value expression\nsemantic 1:1: Expected behavior, library or system\nsemantic 1:1: Source has no executable declaration\nsemantic: Units differ: u += u/s\nsemantic: Units differ: u = rad\nsemantic: Units differ: u/s < u\nsemantic: Units differ: u + s\nsemantic: Units differ: *= would turn u into u\u00b7s\nsemantic: Units differ: u = u/s\u00b2\nsemantic: Units differ: u = 1\nsemantic: Units differ: u = rad\nsemantic: Units differ: u/s + u\nsemantic: Units differ: m\u00b3 = kg\nsemantic: Units differ: u = u/s^4\nsemantic: Units differ: u/s = 1/s\nsemantic: Units differ: u % u/s\nsemantic: Units differ: u %= u/s\nsemantic: Units differ: u = u/s\nsemantic: Units differ: u = u/s\nsemantic: Units differ: u = s\nsemantic 1:112: Incompatible result tuple shape\nsemantic: Units differ: u fallback u/s\nRunning: language_approved_float_conversion_admission (OK) (0.002772 secs)\nRunning: language_unions_share_patterns_and_require_exhaustive_switches (OK) (0.000958 secs)\nRunning: language_cancelled_builtin_cannot_be_shadowed (OK) (0.000221 secs)\nRunning: language_switch_exhaustiveness_respects_narrowed_tags (OK) (0.000212 secs)\nRunning: language_type_patterns_narrow_and_invalidate (OK) (0.000701 secs)\nRunning: language_constants_reject_runtime_dependencies_and_writes (OK) (0.000118 secs)\nRunning: language_shadowing_resolves_nearest_declaration (OK) (0.000030 secs)\nRunning: language_pub_marks_only_package_declarations (OK) (0.000094 secs)\nRunning: language_literals_are_typed_by_spelling (OK) (0.000153 secs)\nRunning: language_authored_map_method_names_preserve_callable_identity (OK) (0.000049 secs)\nRunning: language_retained_bindings_preserve_owner_and_value_type (OK) (0.000076 secs)\nRunning: language_system_retention_rejects_non_system_owners_and_tasks (OK) (0.000184 secs)\nRunning: language_system_invocation_locals_cross_calls_only_as_arguments (OK) (0.000111 secs)\nRunning: language_optional_component_requires_presence_guard (OK) (0.000068 secs)\nRunning: language_coalesce_types_its_operands (OK) (0.000201 secs)\nRunning: language_reductions_resolve_stored_fields_and_membership (OK) (0.000086 secs)\nRunning: language_reductions_require_system_component_fields (OK) (0.000114 secs)\nRunning: language_reduction_producers_reject_conflicting_component_values (OK) (0.000340 secs)\nRunning: language_reduction_producers_cannot_suspend_or_start_tasks (OK) (0.000044 secs)\nRunning: language_unordered_reductions_require_unbounded_isolated_components (OK) (0.000117 secs)\nRunning: language_reductions_check_contribution_units (OK) (0.000052 secs)\nRunning: language_query_header_resolves_boolean_filters_and_sources (OK) (0.000207 secs)\nRunning: language_query_joins_and_filters_share_source_rules (OK) (0.000227 secs)\nRunning: language_query_generators_bind_rows_and_pure_value_filters (OK) (0.000086 secs)\nRunning: language_query_filters_reject_effects_and_unbound_variables (OK) (0.000436 secs)\nRunning: language_derived_component_is_read_only (OK) (0.000058 secs)\nRunning: language_numeric_literal_storage_limits (OK) (0.000021 secs)\nRunning: language_loops_reverse_explicitly (OK) (0.000123 secs)\nRunning: language_functions_with_results_must_return (OK) (0.000494 secs)\nRunning: language_hex_literal_fills_integer_storage (OK) (0.000118 secs)\nRunning: language_character_literals_take_their_type_from_context (OK) (0.000311 secs)\nRunning: language_char_widens_to_int_and_narrows_explicitly (OK) (0.000712 secs)\nRunning: language_numeric_conversions_check_modes_and_constants (OK) (0.000315 secs)\nRunning: language_integers_widen_implicitly_and_narrow_explicitly (OK) (0.000176 secs)\nRunning: language_vector_operator_resolves_catalog_identity (OK) (0.000018 secs)\nRunning: language_call_chains_infer_effects_and_purity (OK) (0.000049 secs)\nRunning: language_owned_record_and_index_writes_stay_pure (OK) (0.000105 secs)\nRunning: language_external_record_and_index_writes_are_effects (OK) (0.000172 secs)\nRunning: language_discarded_pure_result_rejected (OK) (0.000110 secs)\nRunning: language_binding_cycle_rejected (OK) (0.000060 secs)\nRunning: language_inferred_return_of_several_results_is_rejected (OK) (0.000100 secs)\nRunning: language_invalid_source_retains_bounded_diagnostics (OK) (0.000140 secs)\nRunning: language_component_declares_measured_fields (OK) (0.000102 secs)\nRunning: language_component_rejects_invalid_fields (OK) (0.000046 secs)\nRunning: language_units_combine_through_arithmetic (OK) (0.000210 secs)\nRunning: language_units_reject_mismatch (OK) (0.000182 secs)\nRunning: language_units_check_struct_field_initializers (OK) (0.000095 secs)\nRunning: language_units_check_empty_struct_defaults (OK) (0.000062 secs)\nRunning: language_units_check_bindings (OK) (0.000040 secs)\nRunning: language_units_skip_invalid_sources (OK) (0.000073 secs)\nRunning: language_units_check_all_fallback_values (OK) (0.000058 secs)\nRunning: language_units_follow_constant_and_state_initisignature units: Units differ: u = s\nsignature units: Units differ: u argument s\nsignature units: Units differ: u = s\nsignature units: Units differ: u argument u/s\nsignature units: Units differ: u = s\nsignature units: Units differ: u default s\nsignature units: Units differ: u default s\nsignature units: Units differ: u = s\nsignature units: Invalid unit 'u^0'\nsignature units: A measured signature requires a numeric storage type\nsignature units: Unknown type 'flaot'\nsignature units: Incompatible types: expected struct, got struct\nsignature units: Units differ: u = s\nsignature units: Units differ: s = u\npackage 2:1: Unknown attribute '@bench'\npackage 2:7: Duplicate attribute '@test'\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:15: @test needs a package-level function\nsemantic 1:21: @test needs a package-level function\npackage 4:1: Duplicate declaration 'Same'\npackage 2:1: Previous declaration 'Same' is here\npackage 4:1: Duplicate declaration 'Same'\npackage 2:1: Previous declaration 'Same' is here\nsymbol reference: Symbol references use identifiers, not string names\nsymbol reference: Incompatible types: expected name, got string\nsymbol reference: Unknown component reference 'Enemy'\nsymbol reference: Unknown prototype reference 'Health'\nsymbol reference: Incompatible types: expected uint64, got int\nsymbol reference: Symbol references use identifiers, not string names\nsymbol reference: A relationship argument must name a relationship symbol\nsymbol reference: Unknown relationship reference 'Targets'\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: Incompatible types: expected name, got string\nalizers (OK) (0.000145 secs)\nRunning: language_units_check_callable_contracts (OK) (0.000246 secs)\nRunning: language_units_reject_callable_mismatches (OK) (0.000379 secs)\nRunning: language_units_follow_native_signatures_and_task_results (OK) (0.000182 secs)\nRunning: language_units_reject_malformed_metadata_and_overflow (OK) (0.000214 secs)\nRunning: language_test_attribute_marks_package_functions (OK) (0.000199 secs)\nRunning: effects_infer_recursive_and_transitive_callables (OK) (0.000189 secs)\nRunning: effects_indexed_writes_follow_retained_and_reference_roots (OK) (0.000075 secs)\nRunning: effects_query_checks_inferred_helpers_and_retained_reads (OK) (0.000102 secs)\nRunning: effects_component_await_is_synchronous_but_host_await_is_not (OK) (0.000072 secs)\nRunning: effects_imports_publish_transitive_effects_before_query_analysis (OK) (0.000990 secs)\nRunning: symbol_references_infer_and_pass_through_typed_parameters (OK) (0.000073 secs)\nRunning: symbol_references_reject_strings_numbers_and_wrong_categories (OK) (0.000213 secs)\n===============================================================\nSummary: Passed: 64 Failed: 0 Total: 64 Suites: 0 Asserts: 856\nTest command wall time: 0.579s; includes in-test fixture setup; external configuration/build excluded.\n",
+    "type-relations.txt": "Running: type_relations_scalar_tables_match_native_oracle (OK) (0.063212 secs)\nRunning: type_relations_catalog_tables_match_native_oracle (OK) (0.001296 secs)\nRunning: type_relations_canonical_tables_match_native_oracle (OK) (0.000185 secs)\nRunning: type_relations_approved_floating_matrix (OK) (0.000054 secs)\nRunning: type_relations_canonical_results_outlive_all_producers (OK) (0.001155 secs)\n===============================================================\nSummary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 15569\nTest command wall time: 0.155s; includes in-test fixture setup; external configuration/build excluded.\n",
+    "stage-one-bytecode.txt": "FLOAT_REJECTION stage1 implicit-narrow-declaration 2:40 local value differs from its type\nFLOAT_REJECTION stage1 implicit-narrow-assignment 2:61 assigned value differs from its local\nFLOAT_REJECTION stage1 implicit-narrow-return 2:40 returned value differs from the result type\nFLOAT_REJECTION stage1 implicit-narrow-argument 3:47 argument differs from its parameter type\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant-return 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant-return: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 constant-round-even 2:8 constant type is not supported yet\nstage-one floating admission constant-round-even: expected accepted, got rejected\n  constant type is not supported yet\n(FAILED: <worktree>/test/language/package_compiler_chibi.c (3737): agreed)\nRunning: package_compiler_builds_runnable_importing_packages (OK) (5.403708 secs)\nRunning: package_compiler_float_constant_dependency \n===============================================================\nSummary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 9234\nTest command wall time: 9.146s; includes in-test fixture setup; external configuration/build excluded.\n",
+    "stage-one-compiled.txt": "FLOAT_REJECTION stage1 implicit-narrow-declaration 2:40 local value differs from its type\nFLOAT_REJECTION stage1 implicit-narrow-assignment 2:61 assigned value differs from its local\nFLOAT_REJECTION stage1 implicit-narrow-return 2:40 returned value differs from the result type\nFLOAT_REJECTION stage1 implicit-narrow-argument 3:47 argument differs from its parameter type\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant-return 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant-return: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 constant-round-even 2:8 constant type is not supported yet\nstage-one floating admission constant-round-even: expected accepted, got rejected\n  constant type is not supported yet\n(FAILED: <worktree>/test/language/package_compiler_chibi.c (3737): agreed)\nRunning: package_compiler_builds_runnable_importing_packages_compiled (OK) (4.149168 secs)\nRunning: package_compiler_float_constant_dependency_compiled \n===============================================================\nSummary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 9032\nTest command wall time: 7.889s; includes in-test fixture setup; external configuration/build excluded.\n",
+    "mutation-admission.txt": "FLOAT_REJECTION_MISMATCH stage0 implicit-narrow-declaration expected 2:40 Incompatible types: expected float, got double; convert with float(value)\nfloating admission implicit-narrow-declaration: expected rejected, got accepted\nFLOAT_REJECTION_MISMATCH stage0 implicit-narrow-assignment expected 2:61 Incompatible types: expected float, got double; convert with float(value)\nfloating admission implicit-narrow-assignment: expected rejected, got accepted\nFLOAT_REJECTION_MISMATCH stage0 implicit-narrow-return expected 2:47 Incompatible types: expected float, got double; convert with float(value)\nfloating admission implicit-narrow-return: expected rejected, got accepted\nFLOAT_REJECTION_MISMATCH stage0 implicit-narrow-argument expected 3:52 Incompatible types: expected float, got double; convert with float(value)\nfloating admission implicit-narrow-argument: expected rejected, got accepted\nFLOAT_REJECTION_MISMATCH stage0 implicit-narrow-typed-constant expected 3:17 Incompatible types: expected float, got double; convert with float(value)\nfloating admission implicit-narrow-typed-constant: expected rejected, got accepted\nFLOAT_REJECTION_MISMATCH stage0 implicit-narrow-typed-constant-return expected 3:47 Incompatible types: expected float, got double; convert with float(value)\nfloating admission implicit-narrow-typed-constant-return: expected rejected, got accepted\n(FAILED: <worktree>/test/language/semantic.c (2306): agreed)\nsemantic 1:90: Non-exhaustive switch: a union alternative is missing\nsemantic 1:132: Unreachable duplicate union pattern\nsemantic 1:1: 'value' requires a default value\nsemantic 1:1: Expected a value expression\nsemantic 1:70: Missing return\nsemantic 1:68: Union result 'Result' requires a value on every return path\nsemantic 1:72: A nonoptional union requires one of its alternatives\nsemantic 1:74: Optional union requires a presence guard before switching\nsemantic 1:107: Optional union requires a presence guard before switching\nsemantic 1:109: Missing return\nsemantic 1:21: Recursive owned union payloads are not supported\nsemantic 1:21: Recursive owned union payloads are not supported\nsemantic 1:35: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:24: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:23: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:31: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:37: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:57: Missing return\nsemantic 1:23: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:23: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:79: 'Cancelled' is reserved for the cancellation singleton\nsemantic 1:98: Non-exhaustive switch: a union alternative is missing\nsemantic 1:122: Non-exhaustive switch: a union alternative is missing\nsemantic 1:118: Operation has no compatible typed operands\nsemantic 1:130: Unknown value 'num_result'\nsemantic 1:108: Operation has no compatible typed operands\nsemantic 1:89: Pattern bindings require a matching if or while condition\nsemantic 1:79: Nested functions require enclosing locals to be passed as parameters\nsemantic 1:62: Incompatible types: expected double?, got int?\nsemantic 1:61: Incompatible types: expected double?, got int\nsemantic 1:76: Await requires a capability call\nsemantic 1:71: Incompatible types: expected bool, got task\nsemantic 1:47: Constant initializer requires compile-time values and operators\nsemantic 1:52: Constant initializer requires compile-time values and operators\nsemantic 1:49: Assignment requires a writable value\nsemantic 1:29: Cyclic value dependency involving 'A'\nsemantic 1:37: Constant initializer requires compile-time values and operators\nsemantic 1:29: Constant initializer requires compile-time values and operators\nsemantic 1:47: Incompatible types: expected int, got double; convert with int(value)\nsemantic 1:56: Numeric literal has a fraction, which int cannot hold\nsemantic 1:32: Expected identifier\nsemantic 1:32: Unexpected syntax\nsemantic 1:32: Unknown type ''\nsemantic 1:43: Expected identifier\nsemantic 1:44: Unexpected syntax\nsemantic 1:43: Compile-time evaluation: requires a terminating authored procedure and constant arguments\nsemantic 1:43: Type expression must construct a compile-time type\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:1: System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals\nsemantic 1:87: Pass system invocation locals as parameters across callable boundaries\nsemantic 1:49: Pass system invocation locals as parameters across callable boundaries\nsemantic 1:50: Optional component requires a presence guard before member access\nsemantic 1:101: Optional component requires a presence guard before member access\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:52: Incompatible types: expected int, got string\nsemantic 1:56: Incompatible types: expected int, got int?\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:46: ?? requires an optional value on its left\nsemantic 1:41: Reduction requires a writable scalar numeric component field\nsemantic 1:51: Reduction requires a writable scalar numeric component field\nsemantic 1:47: Reduction requires a writable scalar numeric component field\nsemantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:48: Reduction requires a writable scalar numeric component field\nsemantic 1:57: Optional component requires a presence guard before member access\nsemantic 1:38: Reduction requires a synchronous system body\nsemantic 1:55: Reduction requires a synchronous system body\nsemantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:56: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:60: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:64: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:72: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:83: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:40: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:61: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:122: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:95: Reduction producer cannot read or write component 'Position' outside reductions\nsemantic 1:50: Reduction producer cannot call an opaque component accessor\nsemantic 1:55: Reduction producer cannot call an opaque component accessor\nsemantic 1:40: Reduction requires a synchronous system body without tasks\nsemantic 1:70: Reduction requires a synchronous system body without tasks\nsemantic 1:74: A component cannot mix ordered and unordered reductions in one system\nsemantic 1:67: A component cannot mix ordered and unordered reductions in one system\nsemantic: Units differ: u = s\nsemantic: Units differ: u = s\nsemantic 1:37: A component cannot be both a parameter and excluded\nsemantic 1:35: Unknown query relationship 'target'\nsemantic 1:52: Optional component requires a presence guard before member access\nsemantic 1:42: Assignment requires a writable value\nsemantic 1:49: Assignment requires a writable value\nsemantic 1:37: Numeric literal is outside the range of int8\nsemantic 1:26: Range bounds descend; count down with for <\nsemantic 1:37: Range bounds descend; for < takes the low bound first, as in for < i in 0..10\nsemantic 1:37: for < reverses only ranges and arrays\nsemantic 1:56: for < reverses only ranges and arrays\nsemantic 1:62: Missing return\nsemantic 1:55: Missing return\nsemantic 1:83: Missing return\nsemantic 1:88: Missing return\nsemantic 1:67: Missing return\nsemantic 1:67: Missing return\nsemantic 1:100: Missing return\nsemantic 1:55: Missing return\nsemantic 1:39: Unknown event 'Begin'\nsemantic 1:55: Missing return\nsemantic 1:70: Union result 'value' requires a value on every return path\nsemantic 1:62: Missing return\nsemantic 1:35: Numeric literal is outside the range of int8\nsemantic 1:36: Numeric literal is outside the range of int64\nsemantic 1:37: Numeric literal is outside the range of int64\nsemantic 1:37: Numeric literal is outside the range of uint64\nsemantic 1:38: Numeric literal is outside the range of uint64\nsemantic 1:29: Character literal is outside the range of byte\nsemantic 1:41: A character literal holds exactly one character\nsemantic 1:41: A character literal holds exactly one character\nsemantic 1:41: Invalid character literal\nsemantic 1:41: Invalid character literal\nsemantic 1:43: Incompatible types: expected string, got char\nsemantic 1:43: A character literal needs an integer or char type\nsemantic 1:48: Incompatible types: expected byte, got char; convert with byte(value)\nsemantic 1:47: Incompatible types: expected char, got int; convert with char(value)\nsemantic 1:47: char converts only with char(value)\nsemantic 1:41: Constant does not fit in char\nsemantic 1:56: Incompatible types: expected char, got int; convert with char(value)\nsemantic 1:50: char converts from an integer\nsemantic 1:128: Incompatible types: expected struct, got struct\nsemantic 1:55: Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)\nsemantic 1:52: A conversion argument may only be named wrap or clamp\nsemantic 1:48: wrap and clamp convert between integer types\nsemantic 1:40: wrap and clamp convert between integer types\nsemantic 1:47: Conversion takes one value\nsemantic 1:46: cast<T>(value) was removed; write T(value)\nsemantic 1:47: Incompatible types: expected byte, got int; convert with byte(value)\nsemantic 1:61: int64 and uint64 operands need an explicit conversion, such as int64(value)\nsemantic 1:30: Numeric literal is outside the range of byte\nsemantic 1:40: VectorAdd returns a new value and changes nothing; assign its result\nsemantic 1:84: sum returns a new value and changes nothing; assign its result\nsemantic 1:24: Binding dependency cycle\nsemantic 1:95: This call has several results; return the ones you need by name, as in return(Hit: r.Hit, Distance: r.Distance)\nsemantic 1:38: Unexpected syntax\nsemantic 1:51: Expected }\nsemantic 1:35: Unexpected syntax\nsemantic 1:29: Type 'struct' requires a type argument\nsemantic 1:29: Type 'struct' requires a type argument\nsemantic 1:1: 'value' requires a default value\nsemantic 1:1: Expected a value expression\nsemantic 1:1: Expected behavior, library or system\nsemantic 1:1: Source has no executable declaration\nsemantic: Units differ: u += u/s\nsemantic: Units differ: u = rad\nsemantic: Units differ: u/s < u\nsemantic: Units differ: u + s\nsemantic: Units differ: *= would turn u into u\u00b7s\nsemantic: Units differ: u = u/s\u00b2\nsemantic: Units differ: u = 1\nsemantic: Units differ: u = rad\nsemantic: Units differ: u/s + u\nsemantic: Units differ: m\u00b3 = kg\nsemantic: Units differ: u = u/s^4\nsemantic: Units differ: u/s = 1/s\nsemantic: Units differ: u % u/s\nsemantic: Units differ: u %= u/s\nsemantic: Units differ: u = u/s\nsemantic: Units differ: u = u/s\nsemantic: Units differ: u = s\nsemantic 1:112: Incompatible result tuple shape\nsemantic: Units differ: u fallback u/s\nRunning: language_approved_float_conversion_admission \nRunning: language_unions_share_patterns_and_require_exhaustive_switches (OK) (0.000697 secs)\nRunning: language_cancelled_builtin_cannot_be_shadowed (OK) (0.000199 secs)\nRunning: language_switch_exhaustiveness_respects_narrowed_tags (OK) (0.000224 secs)\nRunning: language_type_patterns_narrow_and_invalidate (OK) (0.000701 secs)\nRunning: language_constants_reject_runtime_dependencies_and_writes (OK) (0.000171 secs)\nRunning: language_shadowing_resolves_nearest_declaration (OK) (0.000064 secs)\nRunning: language_pub_marks_only_package_declarations (OK) (0.000200 secs)\nRunning: language_literals_are_typed_by_spelling (OK) (0.000332 secs)\nRunning: language_authored_map_method_names_preserve_callable_identity (OK) (0.000101 secs)\nRunning: language_retained_bindings_preserve_owner_and_value_type (OK) (0.000153 secs)\nRunning: language_system_retention_rejects_non_system_owners_and_tasks (OK) (0.000402 secs)\nRunning: language_system_invocation_locals_cross_calls_only_as_arguments (OK) (0.000215 secs)\nRunning: language_optional_component_requires_presence_guard (OK) (0.000152 secs)\nRunning: language_coalesce_types_its_operands (OK) (0.000450 secs)\nRunning: language_reductions_resolve_stored_fields_and_membership (OK) (0.000191 secs)\nRunning: language_reductions_require_system_component_fields (OK) (0.000259 secs)\nRunning: language_reduction_producers_reject_conflicting_component_values (OK) (0.000519 secs)\nRunning: language_reduction_producers_cannot_suspend_or_start_tasks (OK) (0.000043 secs)\nRunning: language_unordered_reductions_require_unbounded_isolated_components (OK) (0.000122 secs)\nRunning: language_reductions_check_contribution_units (OK) (0.000054 secs)\nRunning: language_query_header_resolves_boolean_filters_and_sources (OK) (0.000339 secs)\nRunning: language_query_joins_and_filters_share_source_rules (OK) (0.000279 secs)\nRunning: language_query_generators_bind_rows_and_pure_value_filters (OK) (0.000107 secs)\nRunning: language_query_filters_reject_effects_and_unbound_variables (OK) (0.000478 secs)\nRunning: language_derived_component_is_read_only (OK) (0.000074 secs)\nRunning: language_numeric_literal_storage_limits (OK) (0.000024 secs)\nRunning: language_loops_reverse_explicitly (OK) (0.000143 secs)\nRunning: language_functions_with_results_must_return (OK) (0.000516 secs)\nRunning: language_hex_literal_fills_integer_storage (OK) (0.000128 secs)\nRunning: language_character_literals_take_their_type_from_context (OK) (0.000313 secs)\nRunning: language_char_widens_to_int_and_narrows_explicitly (OK) (0.000617 secs)\nRunning: language_numeric_conversions_check_modes_and_constants (OK) (0.000293 secs)\nRunning: language_integers_widen_implicitly_and_narrow_explicitly (OK) (0.000170 secs)\nRunning: language_vector_operator_resolves_catalog_identity (OK) (0.000017 secs)\nRunning: language_call_chains_infer_effects_and_purity (OK) (0.000047 secs)\nRunning: language_owned_record_and_index_writes_stay_pure (OK) (0.000101 secs)\nRunning: language_external_record_and_index_writes_are_effects (OK) (0.000176 secs)\nRunning: language_discarded_pure_result_rejected (OK) (0.000107 secs)\nRunning: language_binding_cycle_rejected (OK) (0.000052 secs)\nRunning: language_inferred_return_of_several_results_is_rejected (OK) (0.000080 secs)\nRunning: language_invalid_source_retains_bounded_diagnostics (OK) (0.000133 secs)\nRunning: language_component_declares_measured_fields (OK) (0.000200 secs)\nRunning: language_component_rejects_invalid_fields (OK) (0.000131 secs)\nRunning: language_units_combine_through_arithmetic (OK) (0.000473 secs)\nRunning: language_units_reject_mismatch (OK) (0.000358 secs)\nRunning: language_units_check_struct_field_initializers (OK) (0.000199 secs)\nRunning: language_units_check_empty_struct_defaults (OK) (0.000150 secs)\nRunning: language_units_check_bindings (OK) (0.000080 secs)\nRunning: language_units_skip_invalid_sources (OK) (0.000138 secs)\nRunning: language_units_check_all_fallback_values (OK) (0.000108 secs)\nRunning: language_units_follow_constant_and_state_initializers (OK) (0.0002signature units: Units differ: u = s\nsignature units: Units differ: u argument s\nsignature units: Units differ: u = s\nsignature units: Units differ: u argument u/s\nsignature units: Units differ: u = s\nsignature units: Units differ: u default s\nsignature units: Units differ: u default s\nsignature units: Units differ: u = s\nsignature units: Invalid unit 'u^0'\nsignature units: A measured signature requires a numeric storage type\nsignature units: Unknown type 'flaot'\nsignature units: Incompatible types: expected struct, got struct\nsignature units: Units differ: u = s\nsignature units: Units differ: s = u\npackage 2:1: Unknown attribute '@bench'\npackage 2:7: Duplicate attribute '@test'\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:1: A @test function takes no parameters and returns nothing\npackage 2:15: @test needs a package-level function\nsemantic 1:21: @test needs a package-level function\npackage 4:1: Duplicate declaration 'Same'\npackage 2:1: Previous declaration 'Same' is here\npackage 4:1: Duplicate declaration 'Same'\npackage 2:1: Previous declaration 'Same' is here\nsymbol reference: Symbol references use identifiers, not string names\nsymbol reference: Incompatible types: expected name, got string\nsymbol reference: Unknown component reference 'Enemy'\nsymbol reference: Unknown prototype reference 'Health'\nsymbol reference: Incompatible types: expected uint64, got int\nsymbol reference: Symbol references use identifiers, not string names\nsymbol reference: A relationship argument must name a relationship symbol\nsymbol reference: Unknown relationship reference 'Targets'\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: A nonoptional symbol reference must name a declared symbol\nsymbol reference: Incompatible types: expected name, got string\n57 secs)\nRunning: language_units_check_callable_contracts (OK) (0.000417 secs)\nRunning: language_units_reject_callable_mismatches (OK) (0.000664 secs)\nRunning: language_units_follow_native_signatures_and_task_results (OK) (0.000317 secs)\nRunning: language_units_reject_malformed_metadata_and_overflow (OK) (0.000280 secs)\nRunning: language_test_attribute_marks_package_functions (OK) (0.000241 secs)\nRunning: effects_infer_recursive_and_transitive_callables (OK) (0.000234 secs)\nRunning: effects_indexed_writes_follow_retained_and_reference_roots (OK) (0.000109 secs)\nRunning: effects_query_checks_inferred_helpers_and_retained_reads (OK) (0.000113 secs)\nRunning: effects_component_await_is_synchronous_but_host_await_is_not (OK) (0.000075 secs)\nRunning: effects_imports_publish_transitive_effects_before_query_analysis (OK) (0.001015 secs)\nRunning: symbol_references_infer_and_pass_through_typed_parameters (OK) (0.000077 secs)\nRunning: symbol_references_reject_strings_numbers_and_wrong_categories (OK) (0.000222 secs)\n===============================================================\nSummary: Passed: 63 Failed: 1 Total: 64 Suites: 0 Asserts: 856\nTest command wall time: 0.398s; includes in-test fixture setup; external configuration/build excluded.\n",
+    "mutation-emission.txt": "FLOAT_REJECTION stage1 implicit-narrow-declaration 2:40 local value differs from its type\nFLOAT_REJECTION stage1 implicit-narrow-assignment 2:61 assigned value differs from its local\nFLOAT_REJECTION stage1 implicit-narrow-return 2:40 returned value differs from the result type\nFLOAT_REJECTION stage1 implicit-narrow-argument 3:47 argument differs from its parameter type\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\npackage compiler run Fold[1.5]: 0 [0.0] \n(FAILED: <worktree>/test/language/package_compiler_chibi.c (2516): expected)\n(FAILED: <worktree>/test/language/package_compiler_chibi.c (3737): agreed)\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant-return 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant-return: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 constant-round-even 2:8 constant type is not supported yet\nstage-one floating admission constant-round-even: expected accepted, got rejected\n  constant type is not supported yet\n(FAILED: <worktree>/test/language/package_compiler_chibi.c (3737): agreed)\nRunning: package_compiler_builds_runnable_importing_packages \nRunning: package_compiler_float_constant_dependency \n===============================================================\nSummary: Passed: 0 Failed: 2 Total: 2 Suites: 0 Asserts: 9234\nTest command wall time: 9.383s; includes in-test fixture setup; external configuration/build excluded.\n",
+    "mutation-category.txt": "FLOAT_REJECTION stage1 implicit-narrow-declaration 2:40 unrelated conversion failure\nFLOAT_REJECTION_MISMATCH stage1 implicit-narrow-declaration expected 2:40 local value differs from its type\nFLOAT_REJECTION stage1 implicit-narrow-assignment 2:61 assigned value differs from its local\nFLOAT_REJECTION stage1 implicit-narrow-return 2:40 returned value differs from the result type\nFLOAT_REJECTION stage1 implicit-narrow-argument 3:47 argument differs from its parameter type\n(FAILED: <worktree>/test/language/package_compiler_chibi.c (3737): agreed)\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 implicit-narrow-typed-constant-return 2:7 constant type is not supported yet\nFLOAT_DEPENDENCY_BLOCKED implicit-narrow-typed-constant-return: typed-constant narrowing category is pending; rejection is not policy proof\nFLOAT_REJECTION stage1 constant-round-even 2:8 constant type is not supported yet\nstage-one floating admission constant-round-even: expected accepted, got rejected\n  constant type is not supported yet\n(FAILED: <worktree>/test/language/package_compiler_chibi.c (3737): agreed)\nRunning: package_compiler_builds_runnable_importing_packages \nRunning: package_compiler_float_constant_dependency \n===============================================================\nSummary: Passed: 0 Failed: 2 Total: 2 Suites: 0 Asserts: 9234\nTest command wall time: 9.449s; includes in-test fixture setup; external configuration/build excluded.\n"
+  },
+  "presentation": "raw_captures preserve exact stdout/stderr after local worktree-prefix redaction; text views remove trailing whitespace only"
+}

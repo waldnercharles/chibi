@@ -1,0 +1,10 @@
+# Command: env CHIBI_LANGUAGE_BUILD_DIR=.chibi/float-oracles/current/test/language CHIBI_RELEASE_LANGUAGE_BUILD_DIR=.chibi/float-oracles/current/test/language python3 tools/test_policy.py tool language-type-relations-chibi
+# Readable view follows; trailing whitespace is removed. Exact capture is in results.json.
+Running: type_relations_scalar_tables_match_native_oracle (OK) (0.063212 secs)
+Running: type_relations_catalog_tables_match_native_oracle (OK) (0.001296 secs)
+Running: type_relations_canonical_tables_match_native_oracle (OK) (0.000185 secs)
+Running: type_relations_approved_floating_matrix (OK) (0.000054 secs)
+Running: type_relations_canonical_results_outlive_all_producers (OK) (0.001155 secs)
+===============================================================
+Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 15569
+Test command wall time: 0.155s; includes in-test fixture setup; external configuration/build excluded.

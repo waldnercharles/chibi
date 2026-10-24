@@ -1,5 +1,11 @@
 # Native source-built authored asset service. No checked asset bootstrap is used.
 set(asset_output "${CMAKE_CURRENT_BINARY_DIR}/generated/assets")
+set(asset_generator_timeout 240000)
+set(asset_compiler_timeout_arguments "")
+if(CHIBI_ENABLE_SANITIZERS)
+    set(asset_generator_timeout 600000)
+    list(APPEND asset_compiler_timeout_arguments --compiler-timeout-ms=600000)
+endif()
 file(GLOB_RECURSE asset_sources CONFIGURE_DEPENDS
     "${CHIBI_SDK_ROOT}/tools/compiler/*.chibi"
     "${CHIBI_SDK_ROOT}/packages/core/*.chibi"
@@ -13,8 +19,8 @@ add_custom_command(
     COMMAND $<TARGET_FILE:chibi-build-host>
         --compiler tools/compiler --compiler-core packages/core --root "${CHIBI_SDK_ROOT}"
         --source tools/toolchain/AssetCompiler.chibi --core packages/core
-        --collection asset_generator=tools/graph/asset_compiler --entry Build --timeout-ms 240000 --
-        $<TARGET_FILE:chibi-compiler-host> "${asset_output}"
+        --collection asset_generator=tools/graph/asset_compiler --entry Build --timeout-ms ${asset_generator_timeout} --
+        $<TARGET_FILE:chibi-compiler-host> "${asset_output}" ${asset_compiler_timeout_arguments}
     COMMAND "${CMAKE_COMMAND}" -DROOT=${CHIBI_SDK_ROOT} -DRESOURCE=${asset_output}
         -P "${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake"
     WORKING_DIRECTORY "${CHIBI_SDK_ROOT}"

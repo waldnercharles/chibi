@@ -146,13 +146,13 @@ Request :: (first: string, paths: string[], sources: string[], target: string, g
                  ",false,", strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
 }
 
-Invoke :: (host: string, artifact: string, callable: string, input: string, output: string) -> bool {
+Invoke :: (host: string, artifact: string, callable: string, input: string, output: string, timeout: string) -> bool {
     if (build.run([host, "--artifact", artifact, "--entry", callable, "--input", input, "--backend", "sljit",
-                   "--budget", "10000000000", "--timeout-ms", "180000", "--output-bytes", output]) != 0) {
+                   "--budget", "10000000000", "--timeout-ms", timeout, "--output-bytes", output]) != 0) {
         build.report(Join(["asset compiler generation failed: ", build.last_stderr()]));
         if (callable == "0x140a9546d9e8c296") {
             build.run([host, "--artifact", artifact, "--entry", "0x19dfb0cfc681eb4b", "--input", input,
-                       "--backend", "sljit", "--budget", "10000000000", "--timeout-ms", "180000"]);
+                       "--backend", "sljit", "--budget", "10000000000", "--timeout-ms", timeout]);
             build.report(build.last_stdout());
         }
         return false;
@@ -164,7 +164,7 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // resource generation execute ordinary Chibi in the prepared compiler host.
 // Reports are buffered until normal return/unwinding, not live flushed traces;
 // a killed or crashed host may not publish them.
-pub Generate :: (root: string, host: string, folder: string, target: string) -> bool {
+pub Generate :: (root: string, host: string, folder: string, target: string, compiler_timeout: string) -> bool {
     build.report("asset compiler: entered generator");
     inventory := Inventory(root);
     records: string[] = [];
@@ -255,7 +255,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
         // Keep this captured request unchanged when the checked seed cannot be
         // reused: changed sources still compile through the existing path.
         build.report("asset compiler: invoke bootstrap fallback");
-        if (!Invoke(host, seed, closure_entry, inputs, Join([compiler, ".tmp"]))) {
+        if (!Invoke(host, seed, closure_entry, inputs, Join([compiler, ".tmp"]), compiler_timeout)) {
             return false;
         }
     } else if (reused != 0) {
@@ -270,7 +270,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
         return false;
     }
     build.report("asset compiler: invoke facade compiler");
-    if (!Invoke(host, compiler, closure_entry, inputs, Join([facade, ".tmp"])) ||
+    if (!Invoke(host, compiler, closure_entry, inputs, Join([facade, ".tmp"]), compiler_timeout) ||
         !build.rename(Join([facade, ".tmp"]), facade)) {
         return false;
     }
@@ -285,7 +285,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
             return false;
         }
         build.report("asset compiler: invoke target compiler");
-        if (!Invoke(host, compiler, closure_entry, inputs, Join([artifact, ".tmp"])) ||
+        if (!Invoke(host, compiler, closure_entry, inputs, Join([artifact, ".tmp"]), compiler_timeout) ||
             !build.rename(Join([artifact, ".tmp"]), artifact)) {
             return false;
         }
@@ -310,7 +310,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
         id = (id ^ uint64(value)) * uint64(1099511628211);
     }
     build.report("asset compiler: invoke packaging");
-    if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"])) ||
+    if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"]), compiler_timeout) ||
         !build.rename(Join([folder, "/asset_compiler_packaged.c.tmp"]), Join([folder, "/asset_compiler_packaged.c"]))) {
         return false;
     }

@@ -242,4 +242,3 @@ pub Generate :: (root: string, host: string, folder: string, target: string) -> 
     build.remove(native_facts);
     return true;
 }
-

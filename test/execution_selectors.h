@@ -1,5 +1,7 @@
 /* CPU-only entry points reviewed for agent iteration. Unknown/new selectors
  * fail closed until classified; tools/agent.py routes each one. */
+/* Bounded prepared scalar scopes and value-host admission; no source I/O. */
+CHIBI_CPU_SELECTOR("--execution-scope")
 CHIBI_CPU_SELECTOR("--source-presentation")
 CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
@@ -54,6 +56,8 @@ CHIBI_CPU_SELECTOR("--shader-bake")
 CHIBI_CPU_SELECTOR("--shader-source-debug")
 /* Authored provenance policy on two CPU backends, supplied tables only. */
 CHIBI_CPU_SELECTOR("--shader-source-chibi")
+CHIBI_CPU_SELECTOR("--asset-compiler-host")
+CHIBI_CPU_SELECTOR("--asset-packaging-chibi")
 CHIBI_CPU_SELECTOR("--material-bake")
 CHIBI_CPU_SELECTOR("--environment-authoring")
 CHIBI_CPU_SELECTOR("--terrain-seams")

@@ -19,7 +19,6 @@ foreach(pair SCALAR_FACTS=scalar_facts/Facts SCALAR_LLVM=scalar_llvm/Emit LLVM_N
 endforeach()
 configure_file(package_compiler_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_compiler_chibi_source.h" @ONLY)
-target_sources(test_language PRIVATE package_compiler_chibi.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_host.c")
+target_sources(test_language PRIVATE package_compiler_chibi.c)
 set_source_files_properties(package_compiler_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

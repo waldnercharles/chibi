@@ -31,6 +31,7 @@ void test_language_record_runtime();
 void test_language_record_prepared_runtime();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
+void test_language_execution_scope();
 void test_language_wasm();
 void test_language_semantic();
 void test_language_effects();
@@ -52,6 +53,10 @@ void test_numeric_exact_core();
 void test_language_package_graph();
 void test_language_package_graph_chibi();
 void test_language_shader_source_chibi();
+void test_language_asset_packaging_chibi();
+#ifdef CHIBI_TEST_ASSET_COMPILER_HOST
+void test_language_asset_compiler_host();
+#endif
 void test_language_syntax_chibi();
 void test_language_source_tokenizer_chibi();
 void test_language_package_syntax();
@@ -124,6 +129,7 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--inferred-string-array-repro");
     bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
+    bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
     bool activation_benchmark = argc == 2 &&
                                 !strcmp(argv[1], "--activation-benchmark");
@@ -154,6 +160,9 @@ int main(int argc, char **argv)
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
     bool package_graph_chibi = argc == 2 && !strcmp(argv[1], "--package-graph-chibi");
+    bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
+    bool asset_packaging_chibi = argc == 2 &&
+                                 !strcmp(argv[1], "--asset-packaging-chibi");
     bool shader_source_chibi = argc == 2 && !strcmp(argv[1], "--shader-source-chibi");
     bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
     bool source_tokenizer_chibi = argc == 2 &&
@@ -262,20 +271,21 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !compiler_artifact && !record_producer &&
-         !execution && !semantic && !inferred_arrays && !inferred_array_repro &&
-         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
-         !borrow_benchmark && !incremental_benchmark && !record_publication &&
-         !record_publication_repro && !record_values && !record_document &&
-         !record_state && !record_services && !record_compatibility &&
-         !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !runtime_attribution && !wasm &&
-         !program && !query_program && !incremental && !modules && !ranges &&
-         !numeric_exact_core && !package_graph && !package_graph_chibi &&
-         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
-         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
-         !constant_scalar_chibi && !scalar_lowering_chibi && !bounded_compiler_chibi &&
-         !prepared_writer_chibi && !package_compiler_chibi &&
+         !execution && !execution_scope && !semantic && !inferred_arrays &&
+         !inferred_array_repro && !root_state && !benchmark && !activation_benchmark &&
+         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
+         !record_publication && !record_publication_repro && !record_values &&
+         !record_document && !record_state && !record_services &&
+         !record_compatibility && !record_semantic && !record_prepared_runtime &&
+         !outliner_projection && !row_array && !record_runtime &&
+         !runtime_attribution && !wasm && !program && !query_program &&
+         !incremental && !modules && !ranges && !numeric_exact_core &&
+         !package_graph && !package_graph_chibi && !asset_compiler_host &&
+         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
+         !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
+         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
+         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_types && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
@@ -299,12 +309,14 @@ int main(int argc, char **argv)
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
-            "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
+            "Usage: %s --syntax [--corpus manifest] | --execution | "
+            "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
-            "--package-graph-chibi | --shader-source-chibi | --syntax-chibi | "
+            "--package-graph-chibi | --shader-source-chibi | "
+            "--asset-packaging-chibi | --syntax-chibi | "
             "--source-tokenizer-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
@@ -572,6 +584,15 @@ int main(int argc, char **argv)
         test_language_package_files();
     } else if (package_graph_chibi) {
         test_language_package_graph_chibi();
+    } else if (asset_compiler_host) {
+#ifdef CHIBI_TEST_ASSET_COMPILER_HOST
+        test_language_asset_compiler_host();
+#else
+        fprintf(stderr, "asset compiler host component unavailable on this platform/configuration\n");
+        return 1;
+#endif
+    } else if (asset_packaging_chibi) {
+        test_language_asset_packaging_chibi();
     } else if (shader_source_chibi) {
         test_language_shader_source_chibi();
     } else if (syntax_chibi) {
@@ -599,6 +620,8 @@ int main(int argc, char **argv)
         test_language_semantic();
         test_language_effects();
         test_language_symbol_references();
+    } else if (execution_scope) {
+        test_language_execution_scope();
     } else if (execution) {
         test_language_execution();
     } else {

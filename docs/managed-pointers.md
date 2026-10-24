@@ -1,9 +1,9 @@
 # Managed pointers
 
-Approved and implemented locally on 2026-10-22 on
-`codex/managed-pointers-20261022`, based on main `ba8c2851f` and the explicit
-call-site `ref` changes. This branch is not merged. The validation ledger below
-records what has actually passed.
+Approved and implemented on 2026-10-22 on `codex/managed-pointers-20261022`,
+then finished on `claude/project-thread-7x506x` on 2026-10-24 over the shared
+prepared limits of #688. The validation ledger below records what has actually
+passed.
 
 ## Contract
 
@@ -159,7 +159,6 @@ Passed on macOS arm64 in this checkout, using the existing pico-unit dispatchers
 
 Prepared ABI is 21; bootstrap capability version is 6,
 while minimum remains 2 because the compiler sources do not use pointer syntax.
-The artifact manifest records source checkpoint `36f3e9350145242e0c0fc48f9f2e459dbd7c14ef`.
 Local test logs and diagnostic scratch remain in `.chibi/managed-pointers/`;
 the temporary seed and isolated recovery copies were removed after validation.
 

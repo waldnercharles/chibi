@@ -60,6 +60,7 @@ CPU_SELECTORS = {
     '--shader-graphs': 'shader-graphs',
     '--shader-bake': 'shader-bake',
     '--shader-source-debug': 'shader-source-debug',
+    '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',
     '--terrain-seams': 'terrain-seams',

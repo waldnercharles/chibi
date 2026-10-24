@@ -718,7 +718,7 @@ Files :: (target: string) -> string[] {
             "test/language/record_prepared_runtime.c", "test/language/record_runtime.c",
             "test/language/record_semantic.c", "test/language/record_values.c",
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
-            "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c", "test/language/execution_scope.c",
+            "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
             "test/language/query_boundary.c", "test/language/incremental.c", "test/language/modules.c",
             "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
@@ -736,17 +736,15 @@ Files :: (target: string) -> string[] {
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_core.c", "test/language/package_tests.c",
             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
-            "test/language/shader_source_chibi.c",
-            "test/language/asset_packaging_chibi.c",
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
             "test/language/package_paths_chibi.c", "test/language/source_tokenizer_chibi.c",
             "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
 
-            "test/language/compiler_artifact_chibi.c",
-            "test/language/bounded_compiler_chibi.c",
- "test/language/prepared_writer_chibi.c",
-            "test/language/package_compiler_chibi.c", "test/language/scalar_lowering_chibi.c",
+            "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
+            "test/language/prepared_writer_chibi.c", "test/language/shader_source_chibi.c",
+            "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
+            "test/language/execution_scope.c", "test/language/scalar_lowering_chibi.c",
             "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
             "test/language/lexical_binding_chibi.c", "test/language/nominal_binding_chibi.c",
             "test/language/named_binding_chibi.c", "test/language/type_constructors_chibi.c",
@@ -3237,7 +3235,7 @@ pub Defines :: (target: string) -> string[] {
         return ["_POSIX_C_SOURCE=200809L"];
     }
     if (target == "test_language") {
-        return ["CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS", "CHIBI_TEST_ASSET_COMPILER_HOST=1"];
+        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS"];
     }
     if (target == "chibi_sdk_contracts") {
         return [
@@ -3371,6 +3369,9 @@ pub Options :: (target: string) -> string[] {
         return ["-UNDEBUG"];
     }
     if (target == "test_language") {
+        return ["-UNDEBUG"];
+    }
+    if (target == "chibi_asset_compiler_consumer") {
         return ["-UNDEBUG"];
     }
     if (target == "test_behavior_consumer") {
@@ -3899,7 +3900,7 @@ pub LinkedObjects :: (target: string) -> string[] {
         return [];
     }
     if (target == "test_language") {
-        return ["test_behavior_consumer", "chibi_asset_compiler_consumer"];
+        return ["chibi_asset_compiler_consumer", "test_behavior_consumer"];
     }
     if (target == "test_tools") {
         return [

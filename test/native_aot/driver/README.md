@@ -214,3 +214,78 @@ provenance/counters were independently bound to the frozen source/artifact
 identities, not independently rerun. This is not broader platform or integration
 acceptance. Foreign allocation, typed memory, output/free, production
 frontend integration and wider toolchain/platform support remain open.
+
+## C regression cases
+
+`python3 tools/test_policy.py tool native-aot-driver` selects the C/pico cases in
+`test/tools/native_aot_driver.c` through the existing `test_tools` dispatcher.
+It requires the private `chibi_build_host` target. A minimal compiler-enabled SDK
+and tooling build is sufficient; no renderer or GPU is needed. As with other
+tooling selectors, `CHIBI_TOOLS_BUILD_DIR` can name that tooling build directory.
+The dispatcher takes `--native-aot-driver ABSOLUTE_DRIVER_SOURCE`; the policy
+supplies the production driver. An explicit source path permits a temporary
+negative control without changing the checked-in driver.
+
+`Contracts.chibi` contains only adapters for private `Tool`/`Cleanup` helpers and
+the host's process capability. The C runner appends those adapters to unchanged
+driver text in memory. It does not change production source, compiler,
+capabilities or platform admission.
+
+Three portable cases passed on macOS arm64 with 30 assertions:
+
+- Resolved executable aliases with spaces; missing, non-executable, directory,
+  dangling, relative and control-character tool paths.
+- Cleanup's known-file list, unknown-file preservation and sibling output
+  preservation.
+- Cancellation after a controlled tool writes object bytes. This host-capability
+  control requires the exact `build process cancelled` diagnostic. It does not
+  execute the Linux-only `Run` path on macOS.
+
+Two temporary negative controls fail as intended. Changing only `Tool`'s final
+`return resolved` to `return path` in a scratch driver copy fails the alias
+assertion. Disabling the C runner's cancellation pointer in a scratch C copy
+makes the process reach its 10-second deadline, yielding `build process timeout`.
+The cancellation case then fails its exact diagnostic assertion. The original
+source passes. Neither mutation is published.
+
+Six additional Linux-only cases cover:
+
+- Existing final files and stale partial object/receipt bytes for both entries,
+  with no optimizer execution before rejection.
+- Physical relocation of tools and IR, paths with spaces, a resolved tool alias,
+  exact object argv at O0/O2, and `Object` succeeding with empty PATH and no
+  linker file or linker/program receipt fields.
+- Missing opt, llc and, for `Build`, linker capabilities before reservation.
+- An object written before exit71 or SIGTERM, and a zero-exit tool producing no
+  object. Both entries must leave no final or partial output and never link.
+- Mutation of opt or llc bytes after object creation, preventing publication.
+- Cancellation after an object is written, requiring the exact cancellation
+  diagnostic, leaving an unpublished partial that a retry refuses without
+  altering its bytes. A deadline failure cannot satisfy the cancellation check.
+
+`fixtures/stage-tool.sh` supplies controlled executable capabilities for these
+failure paths, following the tooling suite's existing shell stand-in pattern.
+It rejects malformed argument shapes, records each argument on its own line,
+and uses absolute utility paths. Its object bytes are a marker, not an ELF
+object. These cases test orchestration and publication, not LLVM behavior;
+the real LLVM fixtures and authored suites above remain separate coverage.
+The cancellation fixture signals its direct C test parent only after writing
+the object, then waits for host process-group cleanup. Every invocation has a
+10-second deadline. All fixtures live in one disposable directory removed by
+the C runner. Only the bytecode backend is selected.
+
+The coordinator approved minimal registration in `test/tools/main.c`,
+`test/tools/CMakeLists.txt` and `tools/test_policy.py`. Existing selectors,
+group membership, budgets and cleanup policy are unchanged. Registration was
+validated through the normal policy route against a Release compiler-enabled
+SDK/tooling build with assertions, no sanitizers, dead stripping and at most two
+jobs. The prebuilt third-party store matched the SHA256 pinned by this
+checkout's unchanged `third_party/archives.tsv`; first-party code was built from
+this checkout.
+
+The focused C build, portable cases, canonical source formatting and shell syntax
+passed. Linux C branches passed a syntax-only compile on macOS with `__linux__`
+defined; this does not count as a Linux build or execution. Linux driver
+publication/interruption execution, real LLVM reruns and broader
+native/material/project/language/tool suites remain unexecuted. Separate Linux
+verification and independent review remain required before landing this draft.

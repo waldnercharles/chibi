@@ -1,0 +1,498 @@
+package assets
+
+import strings "core:strings"
+
+// Asset source is ordinary compiled Chibi. These values describe the document
+// passed to each asset family's validator; they do not perform external work.
+pub Value :: union {
+    Null | Bool(value: bool) | Int(value: int64) | UInt(value: uint64)
+    | Real(value: double) | Text(value: string)
+    | Array(values: Value[]) | Object(keys: string[], values: Value[])
+}
+
+pub Field :: union {
+    Named(name: string, value: Value)
+}
+
+pub Object :: (fields: Field[]) -> Value {
+    keys: string[] = [];
+    values: Value[] = [];
+    for (field in fields) {
+        switch field {
+            case .Named(name, value):
+                for (previous in keys) {
+                    assert(previous != name, "Duplicate asset object field");
+                }
+                keys.append(name);
+                values.append(value);
+        }
+    }
+    return Value.Object(keys, values);
+}
+
+pub List :: (values: Value[]) -> Value {
+    return Value.Array(values);
+}
+
+pub Get :: (object: Value, name: string) -> Value {
+    switch object {
+        case .Object(keys, values):
+            assert(length(keys) == length(values), "Asset object keys and values must match");
+            index: int = 0;
+            while (index < length(keys)) {
+                if (keys[index] == name) {
+                    return values[index];
+                }
+                index += 1;
+            }
+        case .Null:
+            assert(false, "Asset parameter source must be an object");
+        case .Bool(value):
+            assert(false, "Asset parameter source must be an object");
+        case .Int(value):
+            assert(false, "Asset parameter source must be an object");
+        case .UInt(value):
+            assert(false, "Asset parameter source must be an object");
+        case .Real(value):
+            assert(false, "Asset parameter source must be an object");
+        case .Text(value):
+            assert(false, "Asset parameter source must be an object");
+        case .Array(values):
+            assert(false, "Asset parameter source must be an object");
+    }
+    assert(false, "Asset parameter was not found");
+    return Value.Null;
+}
+
+pub AsInt :: (value: Value) -> int64 {
+    switch value {
+        case .Int(number):
+            return number;
+        case .UInt(number):
+            assert(number <= 9223372036854775807, "Asset integer exceeds int64 range");
+            return int64(number);
+        case:
+            assert(false, "Asset value must be an integer");
+            return 0;
+    }
+    assert(false, "Asset value must be an integer");
+    return 0;
+}
+
+pub AsUInt :: (value: Value) -> uint64 {
+    switch value {
+        case .UInt(number):
+            return number;
+        case .Int(number):
+            assert(number >= 0, "Asset unsigned integer must not be negative");
+            return uint64(number);
+        case:
+            assert(false, "Asset value must be an unsigned integer");
+            return 0;
+    }
+    assert(false, "Asset value must be an unsigned integer");
+    return 0;
+}
+
+pub AsReal :: (value: Value) -> double {
+    switch value {
+        case .Real(number):
+            return number;
+        case:
+            assert(false, "Asset value must be real");
+            return 0.0;
+    }
+    assert(false, "Asset value must be real");
+    return 0.0;
+}
+
+pub AsBool :: (value: Value) -> bool {
+    switch value {
+        case .Bool(flag):
+            return flag;
+        case:
+            assert(false, "Asset value must be boolean");
+            return false;
+    }
+    assert(false, "Asset value must be boolean");
+    return false;
+}
+
+pub AsText :: (value: Value) -> string {
+    switch value {
+        case .Text(text):
+            return text;
+        case:
+            assert(false, "Asset value must be text");
+            return "";
+    }
+    assert(false, "Asset value must be text");
+    return "";
+}
+
+MergeAt :: (base: Value, overlay: Value, depth: int) -> Value {
+    assert(depth <= MaxDepth, "Asset overlay exceeds depth quota");
+    switch base {
+        case .Object(base_keys, base_values):
+            assert(length(base_keys) == length(base_values), "Asset object keys and values must match");
+            switch overlay {
+                case .Object(keys, values):
+                    assert(length(keys) == length(values), "Asset object keys and values must match");
+                    // Validate overlay keys before matching them, so a duplicate
+                    // cannot disappear by replacing the same base key twice.
+                    seen: string[] = [];
+                    for (key in keys) {
+                        for (previous in seen) {
+                            assert(previous != key, "Duplicate asset object field");
+                        }
+                        seen.append(key);
+                    }
+                    out: Field[] = [];
+                    index: int = 0;
+                    while (index < length(base_keys)) {
+                        current := base_values[index];
+                        added: int = 0;
+                        while (added < length(keys)) {
+                            if (keys[added] == base_keys[index]) {
+                                current = MergeAt(current, values[added], depth + 1);
+                            }
+                            added += 1;
+                        }
+                        out.append(Field.Named(base_keys[index], current));
+                        index += 1;
+                    }
+                    index = 0;
+                    while (index < length(keys)) {
+                        found: bool = false;
+                        for (previous in base_keys) {
+                            if (previous == keys[index]) {
+                                found = true;
+                            }
+                        }
+                        if (!found) {
+                            out.append(Field.Named(keys[index], values[index]));
+                        }
+                        index += 1;
+                    }
+                    return Object(out);
+                case:
+                    return overlay;
+            }
+        case:
+            return overlay;
+    }
+    return overlay;
+}
+
+// Objects overlay recursively, keeping base key order and appending new keys in
+// overlay order. Other values, including arrays, are replaced as complete values.
+pub Merge :: (base: Value, overlay: Value) -> Value {
+    return MergeAt(base, overlay, 0);
+}
+
+// Replace object members as complete values. This is the native component
+// field contract: a supplied record field owns its entire reflected value.
+ShallowObject :: (base: Value, overlay: Value) -> Value {
+    switch base {
+        case .Object(base_keys, base_values):
+            assert(length(base_keys) == length(base_values), "Asset object keys and values must match");
+            switch overlay {
+                case .Object(keys, values):
+                    assert(length(keys) == length(values), "Asset object keys and values must match");
+                    seen: string[] = [];
+                    for (key in keys) {
+                        for (previous in seen) {
+                            assert(previous != key, "Duplicate asset object field");
+                        }
+                        seen.append(key);
+                    }
+                    fields: Field[] = [];
+                    index: int = 0;
+                    while (index < length(base_keys)) {
+                        value := base_values[index];
+                        added: int = 0;
+                        while (added < length(keys)) {
+                            if (keys[added] == base_keys[index]) {
+                                value = values[added];
+                            }
+                            added += 1;
+                        }
+                        fields.append(Field.Named(base_keys[index], value));
+                        index += 1;
+                    }
+                    index = 0;
+                    while (index < length(keys)) {
+                        found: bool = false;
+                        for (previous in base_keys) {
+                            if (previous == keys[index]) {
+                                found = true;
+                            }
+                        }
+                        if (!found) {
+                            fields.append(Field.Named(keys[index], values[index]));
+                        }
+                        index += 1;
+                    }
+                    return Object(fields);
+                case:
+                    assert(false, "Asset overlay must be an object");
+                    return Value.Null;
+            }
+        case:
+            assert(false, "Asset base must be an object");
+            return Value.Null;
+    }
+}
+
+ObjectMember :: (object: Value, name: string) -> Value {
+    switch object {
+        case .Object(keys, values):
+            assert(length(keys) == length(values), "Asset object keys and values must match");
+            index: int = 0;
+            while (index < length(keys)) {
+                if (keys[index] == name) {
+                    return values[index];
+                }
+                index += 1;
+            }
+            return Object([]);
+        case:
+            assert(false, "Asset prototype must be an object");
+            return Value.Null;
+    }
+}
+
+// Merge component names and their direct fields, replacing every supplied
+// field as one value. A partial position record therefore does not inherit
+// another axis from the base position; native decoding supplies its default.
+pub OverrideComponents :: (base: Value, overlay: Value) -> Value {
+    switch overlay {
+        case .Object(keys, values):
+            assert(length(keys) == length(values), "Asset object keys and values must match");
+            fields: Field[] = [];
+            index: int = 0;
+            while (index < length(keys)) {
+                previous := ObjectMember(base, keys[index]);
+                fields.append(Field.Named(keys[index], ShallowObject(previous, values[index])));
+                index += 1;
+            }
+            return ShallowObject(base, Object(fields));
+        case:
+            assert(false, "Component overrides must be an object");
+            return Value.Null;
+    }
+}
+
+// Root fields overlay shallowly. Components use their reflected whole-field
+// replacement contract; parameters and explicit override metadata stay intact.
+pub ApplyPrototype :: (base: Value, overlay: Value) -> Value {
+    switch overlay {
+        case .Object(keys, values):
+            assert(length(keys) == length(values), "Asset object keys and values must match");
+            fields: Field[] = [];
+            index: int = 0;
+            while (index < length(keys)) {
+                value := values[index];
+                if (keys[index] == "components") {
+                    value = OverrideComponents(ObjectMember(base, "components"), value);
+                }
+                fields.append(Field.Named(keys[index], value));
+                index += 1;
+            }
+            return ShallowObject(base, Object(fields));
+        case:
+            assert(false, "Prototype overlay must be an object");
+            return Value.Null;
+    }
+}
+
+MaxBytes: int : 16777216;
+MaxValues: int : 1000000;
+MaxDepth: int : 1024;
+
+Work :: union {
+    Visit(value: Value, depth: int) | Token(value: string)
+}
+
+// Reject malformed UTF-8 rather than emitting bytes a strict JSON reader
+// would interpret differently. Escaped source NULs cannot occur in C strings.
+ValidText :: (bytes: int[]) -> bool {
+    at: int = 0;
+    while (at < length(bytes)) {
+        first := bytes[at];
+        if (first < 128) {
+            at += 1;
+            continue;
+        }
+        count: int = 0;
+        low: int = 128;
+        high: int = 191;
+        if (first >= 194 && first <= 223) {
+            count = 2;
+        } else if (first >= 224 && first <= 239) {
+            count = 3;
+            if (first == 224) {
+                low = 160;
+            }
+            if (first == 237) {
+                high = 159;
+            }
+        } else if (first >= 240 && first <= 244) {
+            count = 4;
+            if (first == 240) {
+                low = 144;
+            }
+            if (first == 244) {
+                high = 143;
+            }
+        } else {
+            return false;
+        }
+        if (count > length(bytes) - at || bytes[at + 1] < low || bytes[at + 1] > high) {
+            return false;
+        }
+        index: int = 2;
+        while (index < count) {
+            if (bytes[at + index] < 128 || bytes[at + index] > 191) {
+                return false;
+            }
+            index += 1;
+        }
+        at += count;
+    }
+    return true;
+}
+
+Quoted :: (text: string) -> byte[] {
+    assert(strings.ByteLength(text) <= MaxBytes, "Asset text exceeds byte quota");
+    bytes := strings.Bytes(text);
+    assert(ValidText(bytes), "Asset text must be valid UTF-8");
+    out: byte[] = [34];
+    hex := strings.Bytes("0123456789abcdef");
+    for (value in bytes) {
+        if (value == 34 || value == 92) {
+            assert(length(out) <= MaxBytes - 2, "Asset document exceeds byte quota");
+            out.append(92);
+            out.append(byte(value));
+        } else if (value < 32) {
+            assert(length(out) <= MaxBytes - 6, "Asset document exceeds byte quota");
+            out.extend([92, 117, 48, 48, byte(hex[value >> 4]), byte(hex[value & 15])]);
+        } else {
+            assert(length(out) < MaxBytes, "Asset document exceeds byte quota");
+            out.append(byte(value));
+        }
+    }
+    assert(length(out) < MaxBytes, "Asset document exceeds byte quota");
+    out.append(34);
+    return out;
+}
+
+Raw :: (text: string) -> byte[] {
+    out: byte[] = [];
+    for (value in strings.Bytes(text)) {
+        out.append(byte(value));
+    }
+    return out;
+}
+
+// A versioned private transport preserves numeric kinds around the JSON value.
+// Structure, quoting, scalar conversion and quotas are authored here.
+// The caller's runtime instruction budget/cancellation also covers this code.
+pub Encode :: (value: Value) -> byte[] {
+    out: byte[] = [];
+    numbers: byte[] = [];
+    pending: Work[] = [Work.Visit(value, 0)];
+    visited: int = 0;
+    while (length(pending) > 0) {
+        work := pending[length(pending) - 1];
+        pending.remove_index(length(pending) - 1);
+        bytes: byte[] = [];
+        switch work {
+            case .Token(text):
+                bytes = Raw(text);
+            case .Visit(current, depth):
+                assert(depth <= MaxDepth, "Asset document exceeds depth quota");
+                visited += 1;
+                assert(visited <= MaxValues, "Asset document exceeds value quota");
+                switch current {
+                    case .Null:
+                        bytes = Raw("null");
+                    case .Bool(flag):
+                        if (flag) {
+                            bytes = Raw("true");
+                        } else {
+                            bytes = Raw("false");
+                        }
+                    case .Int(number):
+                        numbers.append(105);
+                        bytes = Raw(format_text("{}", number));
+                    case .UInt(number):
+                        numbers.append(117);
+                        bytes = Raw(format_text("{}", number));
+                    case .Real(number):
+                        numbers.append(114);
+                        assert(number == number && number <= 1.7976931348623157e308 &&
+                               number >= -1.7976931348623157e308,
+                               "Asset real values must be finite");
+                        text := format_text("{:.17g}", number);
+                        bytes = Raw(text);
+                        // Preserve a real's representation when it is integral.
+                        real: bool = false;
+                        for (part in bytes) {
+                            if (part == 46 || part == 101 || part == 69) {
+                                real = true;
+                            }
+                        }
+                        if (!real) {
+                            bytes.extend([46, 48]);
+                        }
+                    case .Text(text):
+                        bytes = Quoted(text);
+                    case .Array(values):
+                        assert(length(values) <= MaxValues - visited, "Asset document exceeds value quota");
+                        bytes = Raw("[");
+                        pending.append(Work.Token("]"));
+                        index := length(values) - 1;
+                        while (index >= 0) {
+                            pending.append(Work.Visit(values[index], depth + 1));
+                            if (index > 0) {
+                                pending.append(Work.Token(","));
+                            }
+                            index -= 1;
+                        }
+                    case .Object(keys, values):
+                        assert(length(keys) == length(values), "Asset object keys and values must match");
+                        assert(length(values) <= MaxValues - visited, "Asset document exceeds value quota");
+                        bytes = Raw("{");
+                        pending.append(Work.Token("}"));
+                        index := length(values) - 1;
+                        while (index >= 0) {
+                            previous: int = 0;
+                            while (previous < index) {
+                                assert(keys[previous] != keys[index], "Duplicate asset object field");
+                                previous += 1;
+                            }
+                            pending.append(Work.Visit(values[index], depth + 1));
+                            pending.append(Work.Token(":"));
+                            pending.append(Work.Visit(Value.Text(keys[index]), depth + 1));
+                            if (index > 0) {
+                                pending.append(Work.Token(","));
+                            }
+                            index -= 1;
+                        }
+                }
+        }
+        assert(length(bytes) <= MaxBytes - length(out), "Asset document exceeds byte quota");
+        out.extend(bytes);
+    }
+    transport := Raw("CHIBI-ASSET1\n{\"value\":");
+    middle := Raw(",\"numbers\":\"");
+    ending := Raw("\"}");
+    assert(length(out) <= MaxBytes - length(transport) - length(middle) -
+           length(numbers) - length(ending), "Asset document exceeds byte quota");
+    transport.extend(out);
+    transport.extend(middle);
+    transport.extend(numbers);
+    transport.extend(ending);
+    return transport;
+}

@@ -25,6 +25,7 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-list'
 CPU_SELECTORS = {
+    '--execution-scope': 'execution-scope',
     '--player-url': 'player-url',
     '--player-clock': 'player-clock',
     '--audio-analysis': 'audio-analysis',
@@ -60,6 +61,8 @@ CPU_SELECTORS = {
     '--shader-graphs': 'shader-graphs',
     '--shader-bake': 'shader-bake',
     '--shader-source-debug': 'shader-source-debug',
+    '--asset-compiler-host': 'language-asset-compiler-host',
+    '--asset-packaging-chibi': 'language-asset-packaging-chibi',
     '--shader-source-chibi': 'language-shader-source-chibi',
     '--material-bake': 'material-bake',
     '--environment-authoring': 'environment-authoring',

@@ -22,9 +22,9 @@ typedef struct
     /* Compiled, but runs on bytecode: the wasm JIT declines a definition past
      * its size budget. */
     bool interpreted;
-    atomic_uint inspection_state;
-    void *code, *system_code, *dispatch, *inspection_code;
-    uintptr_t *resume_addresses, *inspection_addresses;
+    atomic_uint inspection_state, scoped_state;
+    void *code, *system_code, *dispatch, *inspection_code, *scoped_code;
+    uintptr_t *resume_addresses, *inspection_addresses, *scoped_addresses;
     struct execution_wasm_jit *wasm_jit;
 } execution_artifact;
 

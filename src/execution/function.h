@@ -44,6 +44,28 @@ typedef struct behavior_run_scope
 void behavior_run_scope_begin(behavior_run_scope *scope);
 void behavior_run_scope_end(behavior_run_scope *scope);
 void behavior_run_scope_reset(behavior_run_scope *scope);
+/* Thread-confined invocation budget shared by every outlined call. Scoped
+ * execution uses the canonical instruction stream; no context ABI changes. */
+typedef struct behavior_execution_scope
+{
+    uint64_t remaining;
+    bool (*cancelled)(void *user);
+    void *user;
+    bool pure;
+    /* Trusted packaged code may request guarded native execution. Pure scopes
+     * always use the VM. Unsupported native targets fall back to the VM. */
+    bool prefer_compiled;
+    struct behavior_execution_scope *previous;
+    bool active;
+} behavior_execution_scope;
+void behavior_execution_scope_begin(behavior_execution_scope *);
+void behavior_execution_scope_end(behavior_execution_scope *);
+bool behavior_execution_scope_active();
+bool behavior_execution_scope_pure();
+/* Cancellation-only preparation poll: never consumes instruction budget. */
+bool behavior_execution_scope_cancelled();
+/* NULL on success, otherwise a stable diagnostic. Called before each VM op. */
+const char *behavior_execution_scope_step();
 typedef enum
 {
     EXECUTION_REDUCTION_ADD,
@@ -346,6 +368,9 @@ typedef struct behavior_function_context
     /* Keep optional state callbacks after the frequently read context fields. */
     int (*select_state)(void *owner, const behavior_state_selection *selection, int start, int flags);
 } behavior_function_context;
+/* Borrowed prepared-source origin of the last failure, including outlined
+ * callees propagated during unwind. NULL if no origin is available. */
+const behavior_function_source *behavior_function_failure_source(const behavior_function_context *);
 /* Deepest retained invocation, including a suspended or failed callee. */
 /* Visits the root and retained outlined contexts without changing their frames.
  * The visitor must not release or add call frames. */

@@ -759,10 +759,20 @@ static behavior_managed_heap *managed_owner(behavior_managed_heap *heap)
     }
     return heap;
 }
+/* A single value that is neither an aggregate nor a pointer reaches no other
+ * value, so ownership scans and traces need no work list for it. */
+static bool managed_leaf(const pin_value *value)
+{
+    return value->container == PIN_CONTAINER_SINGLE && value->type != PIN_STRUCT &&
+           value->type != PIN_UNION && value->type != PIN_POINTER;
+}
 /* Inline record layouts currently resolve nested types through the mutable
  * catalog. Such shapes cannot escape a module generation in a managed heap. */
 static const char *managed_value_error(behavior_managed_heap *heap, const pin_value *root, bool restricted)
 {
+    if (managed_leaf(root)) {
+        return NULL;
+    }
     typedef struct
     {
         pin_value value;
@@ -908,6 +918,10 @@ void behavior_managed_heap_unroot(behavior_managed_heap *heap, pin_value *value)
  * collection. Walk their value containers explicitly to discover heap edges. */
 void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark, void *user)
 {
+    if (managed_leaf(root)) {
+        pin_value_trace(root, mark, user);
+        return;
+    }
     pin_value *pending = NULL;
     apush(pending, *root);
     while (acount(pending)) {

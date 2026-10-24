@@ -1,11 +1,11 @@
 Weapon :: behavior {
-    macro AdvanceElapsed(elapsed: ref float, dt: double) {
-        elapsed = float(double(elapsed) + dt)
+    macro AdvanceElapsed(elapsed: ^float, dt: double) {
+        elapsed^ = float(double(elapsed^) + dt)
     }
     elapsed: float = 0.125
     // The step the next advance adds.
     step: double = 0
-    action elapsed_dt = AdvanceElapsed(ref elapsed, step)
+    action elapsed_dt = AdvanceElapsed(&elapsed, step)
     on Tick :: (dt: float s) {
         step = dt
         if self.Aim.Manual {

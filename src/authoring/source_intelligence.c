@@ -180,8 +180,14 @@ static void append(char **out, const char *text)
 static void type_text(char **out, const script_catalog *catalog, script_type type)
 {
     if (type.flags & SCRIPT_TYPE_REFERENCE) {
-        append(out, "ref ");
+        /* A scoped pointer parameter shows the `^T` its author wrote. */
         type.flags &= ~SCRIPT_TYPE_REFERENCE;
+        bool compound = type.container != PIN_CONTAINER_SINGLE ||
+                        (type.flags & SCRIPT_TYPE_OPTIONAL);
+        append(out, compound ? "^(" : "^");
+        type_text(out, catalog, type);
+        append(out, compound ? ")" : "");
+        return;
     }
     if (type.container == PIN_CONTAINER_MAP) {
         append(out, "[");
@@ -326,9 +332,10 @@ static char *template_signature(const script_catalog *catalog, const script_cata
         if (parameter->type_value) {
             append(&out, "Type");
         } else if (parameter->binder) {
-            if (parameter->type.flags & SCRIPT_TYPE_REFERENCE) {
-                append(&out, "ref ");
-            }
+            bool pointer = parameter->type.flags & SCRIPT_TYPE_REFERENCE;
+            bool compound = parameter->type.container == PIN_CONTAINER_ARRAY ||
+                            (parameter->type.flags & SCRIPT_TYPE_OPTIONAL);
+            append(&out, !pointer ? "" : compound ? "^(" : "^");
             append(&out, parameter->binds_type ? "$" : "");
             append(&out, parameter->binder);
             if (parameter->type.container == PIN_CONTAINER_ARRAY) {
@@ -337,6 +344,7 @@ static char *template_signature(const script_catalog *catalog, const script_cata
             if (parameter->type.flags & SCRIPT_TYPE_OPTIONAL) {
                 append(&out, "?");
             }
+            append(&out, pointer && compound ? ")" : "");
         } else {
             type_text(&out, catalog, parameter->type);
         }

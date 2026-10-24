@@ -183,6 +183,7 @@ script_type script_analyzer_conversion_operand(const analyzer *, TSNode value);
 script_type script_analyzer_pointer_type(analyzer *, script_type);
 void script_analyzer_invalidate_pointers(analyzer *);
 int script_analyzer_dereference(analyzer *, TSNode, int);
+int script_analyzer_scoped_argument(analyzer *, TSNode value, script_type);
 script_type script_analyzer_collection_type(analyzer *, pin_container, script_type key, script_type value);
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);

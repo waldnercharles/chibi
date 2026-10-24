@@ -6209,8 +6209,6 @@ static void statement(lower *l, int index)
             const script_expression *source = &l->a->expressions[s->expression];
             bool streaming = source->kind == SCRIPT_EXPR_RELATION;
             script_type collection = source->type;
-            bool borrowed = (l->a->symbols[s->symbol].type.flags &
-                             SCRIPT_TYPE_REFERENCE) != 0;
             bool map = collection.container == PIN_CONTAINER_MAP;
             bool text = collection.container == PIN_CONTAINER_SINGLE &&
                         collection.storage == PIN_STR;
@@ -6246,23 +6244,6 @@ static void statement(lower *l, int index)
                 s->range
             );
             int text_bytes = -1;
-            int saved_reference = -1;
-            if (borrowed) {
-                int descriptor = reference(l, s->expression);
-                saved_reference = behavior_function_builder_local(
-                    l->builder,
-                    (pin_value){ .type = BF_POINTER_TYPE }
-                );
-                set_kind(l, BEHAVIOR_BANK_LOCAL, saved_reference, BEHAVIOR_REFERENCE);
-                emit(
-                    l,
-                    (behavior_function_instruction){ .op = BF_SAVE,
-                                                     .type = BF_POINTER_TYPE,
-                                                     .left = descriptor,
-                                                     .target = saved_reference },
-                    s->range
-                );
-            }
             if (text) {
                 int bytes = string_cursor(
                     l,
@@ -6392,59 +6373,16 @@ static void statement(lower *l, int index)
             int end = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range);
             behavior_function_builder_patch_target(l->builder, branch, l->pc);
             script_type element = l->a->symbols[s->symbol].type;
-            if (borrowed) {
-                pin_value headers[] = { { .type = BF_POINTER_TYPE },
-                                        initial(l, element),
-                                        { .type = PIN_I32 },
-                                        { .type = PIN_BOOL, .b = true } };
-                int slots[] = { value_op(
-                                    l,
-                                    (behavior_function_instruction){
-                                        .op = BF_LOCAL,
-                                        .type = BF_POINTER_TYPE,
-                                        .left = saved_reference },
-                                    s->range
-                                ),
-                                -1,
-                                index,
-                                -1 };
-                int descriptor = primitive(
-                    l,
-                    &EXECUTION_reference_field_call,
-                    &EXECUTION_value_access,
-                    headers,
-                    slots,
-                    4,
-                    (script_type){ .storage = BF_POINTER_TYPE },
-                    s->range
-                );
-                if (l->locals[s->symbol] < 0) {
-                    l->locals[s->symbol] = behavior_function_builder_local(
-                        l->builder,
-                        (pin_value){ .type = BF_POINTER_TYPE }
-                    );
-                    set_kind(l, BEHAVIOR_BANK_LOCAL, l->locals[s->symbol], BEHAVIOR_REFERENCE);
-                }
-                emit(
-                    l,
-                    (behavior_function_instruction){ .op = BF_SAVE,
-                                                     .type = BF_POINTER_TYPE,
-                                                     .left = descriptor,
-                                                     .target = l->locals[s->symbol] },
-                    s->range
-                );
-            } else {
-                declare_symbol(
-                    l,
-                    s->symbol,
-                    streaming ? item
-                    : text
-                        ? string_cursor(l, &EXECUTION_string_item_call, array, index, element, s->range)
-                    : map ? map_item(l, array, index, false, collection, element, s->range)
-                          : array_item(l, array, index, element, s->range),
-                    s->range
-                );
-            }
+            declare_symbol(
+                l,
+                s->symbol,
+                streaming ? item
+                : text
+                    ? string_cursor(l, &EXECUTION_string_item_call, array, index, element, s->range)
+                : map ? map_item(l, array, index, false, collection, element, s->range)
+                      : array_item(l, array, index, element, s->range),
+                s->range
+            );
             if (map && s->key_symbol >= 0) {
                 declare_symbol(
                     l,

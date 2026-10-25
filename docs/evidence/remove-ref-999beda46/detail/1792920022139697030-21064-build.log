@@ -1,0 +1,6 @@
+Change Dir: '/home/claude/chibi-ref/build-release'
+
+Run Build Command(s): /usr/bin/ninja -v -j 8 chibi-compiler-host chibi-build-host
+[0/2] /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -P /home/claude/chibi-ref/build-release/CMakeFiles/VerifyGlobs.cmake
+ninja: no work to do.
+

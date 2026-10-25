@@ -8379,8 +8379,8 @@ static const sample native_argument_samples[] = {
                 "return \"abcd\"; }\n"
                 "Run :: () -> int {\n"
                 "  order: int = 0;\n"
-                "  sliced := text_slice(Count: Number(order, 3, 2), Value: "
-                "Text(order), Start: Number(order, 1, 1));\n"
+                "  sliced := text_slice(Count: Number(ref order, 3, 2), Value: "
+                "Text(ref order), Start: Number(ref order, 1, 1));\n"
                 "  if (!text_equal(sliced, \"bc\")) { return -1; }\n"
                 "  return order;\n}",
       .calls = { { "Run", "[]", "[321]", NULL } } },

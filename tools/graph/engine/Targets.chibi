@@ -2571,8 +2571,8 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_sdk_contracts") {
         return [
-            "build/test/tools/testing/include", "public/execution_contract", "public/capabilities", "public/types",
-            "public/support", "public/ecs", "public/value_document", "public/asset_values",
+            "build/test/tools/testing/include", "public/execution_contract", "public/types",
+            "public/support", "public/capabilities", "public/ecs", "public/value_document", "public/asset_values",
             "public/native_types", "public/studio_capabilities", "public/native_capabilities"
         ];
     }
@@ -3955,7 +3955,7 @@ pub LinkOptions :: (target: string) -> string[] {
 // are.
 pub Links :: (target: string) -> string[] {
     if (target == "reflect") {
-        return ["chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
+        return ["chibi_capabilities", "chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
     }
     if (target == "chibi-build-host") {
         return [

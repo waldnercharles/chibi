@@ -1,11 +1,13 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "execution/function.h"
 #include "execution/operation.h"
 #include "execution/status.h"
 #include "runtime/core_definition.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -498,6 +500,37 @@ static uint64_t state(const char *name)
     }
     return 0;
 }
+static bool operation_backend_entries(behavior_run_counts counts, behavior_backend backend, const char *phase)
+{
+    printf(
+        "operations phase=%s backend=%s bytecode=%" PRIu64 " sljit=%" PRIu64
+        " wasm=%" PRIu64 " inspected_sljit=%" PRIu64 " inspected_wasm=%" PRIu64
+        " inspection_fallback=%" PRIu64 " size_fallback=%" PRIu64
+        " overflow=%d\n",
+        phase,
+        backend == BEHAVIOR_BYTECODE ? "bytecode"
+        : backend == BEHAVIOR_SLJIT  ? "sljit"
+                                     : "wasm",
+        counts.bytecode_entries,
+        counts.sljit_entries,
+        counts.wasm_entries,
+        counts.inspected_sljit_entries,
+        counts.inspected_wasm_entries,
+        counts.inspection_bytecode_fallbacks,
+        counts.size_bytecode_fallbacks,
+        counts.overflow
+    );
+    REQUIRE(!counts.overflow);
+    REQUIRE(!counts.inspection_bytecode_fallbacks && !counts.size_bytecode_fallbacks);
+    REQUIRE(!counts.inspected_sljit_entries && !counts.inspected_wasm_entries);
+    REQUIRE(
+        backend == BEHAVIOR_BYTECODE ? counts.bytecode_entries > 0
+                                     : counts.bytecode_entries == 0
+    );
+    REQUIRE(backend == BEHAVIOR_SLJIT ? counts.sljit_entries > 0 : counts.sljit_entries == 0);
+    REQUIRE(backend == BEHAVIOR_WASM ? counts.wasm_entries > 0 : counts.wasm_entries == 0);
+    return true;
+}
 TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -544,9 +577,12 @@ TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
         const double waits[] = { 0, -1, 0.25, NAN };
         for (int i = 0; i < 4; i++) {
             const pin_value argument = { .type = PIN_F64, .d = waits[i] };
-            REQUIRE(
-                execution_instance_dispatch(instance, 1, &argument, 1, i, 0.125, 1000) == FLOW_OK
-            );
+            behavior_run_scope run = { 0 };
+            behavior_run_scope_begin(&run);
+            int status = execution_instance_dispatch(instance, 1, &argument, 1, i, 0.125, 1000);
+            behavior_run_scope_end(&run);
+            REQUIRE(status == FLOW_OK);
+            REQUIRE(operation_backend_entries(run.counts, backends[b], "dispatch"));
             REQUIRE(execution_instance_state(instance, state("before"))->u64 == 7);
             REQUIRE(execution_instance_state(instance, state("same"))->b);
             REQUIRE(execution_instance_pending(instance) == (i >= 2));
@@ -555,7 +591,12 @@ TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
                     pin_text(*execution_instance_state(instance, state("text"))).bytes,
                     "new"
                 ));
-                REQUIRE(execution_program_update(program, i + 0.25, 0.5, 1000) == FLOW_OK);
+                behavior_run_scope_reset(&run);
+                behavior_run_scope_begin(&run);
+                status = execution_program_update(program, i + 0.25, 0.5, 1000);
+                behavior_run_scope_end(&run);
+                REQUIRE(status == FLOW_OK);
+                REQUIRE(operation_backend_entries(run.counts, backends[b], "resume"));
                 REQUIRE(!execution_instance_pending(instance));
             }
             if (i < 3) {

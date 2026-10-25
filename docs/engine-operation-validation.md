@@ -51,7 +51,8 @@ packages all OFF; its prepared consumer object links only `Chibi::behavior_runti
 Emscripten 6.0.9 and Node executed the actual Wasm test binary. The pinned web
 archive was downloaded into a task-local cache; installed Emscripten was reused.
 
-All ten selectors below passed after formatting and restoring mutation controls.
+At checkpoint `422c6569a96a790c7d08d08cdea99028723ec583`, all ten selectors
+below passed after formatting and restoring mutation controls.
 Each ran through `tools/test_policy.py --timeout 60 tool <selector>` with the
 language, tooling, or Wasm build directory selected by its documented environment
 variable.
@@ -104,6 +105,62 @@ capabilities library and relinked the existing dispatcher after an initial full
 target attempt exposed the intentionally broken opaque ABI in the packaged-asset
 build. No changed runtime pin or seed was used to make that control pass.
 
+## Successor: actual backend entries and bounded consumer checks
+
+Independent review found that selecting a compiled backend did not prove entry
+into generated code. The successor wraps actual dispatch and each resume window
+in the existing `behavior_run_scope`. It requires positive intended-backend
+entries, zero entries into either other backend, zero inspection/size fallbacks,
+zero inspected entries, and no counter overflow. Scopes end before assertions,
+and each resume resets the counters. Existing semantic values and step budgets
+are unchanged. An independent review checked these scope lifetimes and assertions.
+
+| Focused successor check | Cases / assertions | Observed entries per backend |
+| --- | ---: | --- |
+| language-operations | 11 / 266 | Bytecode and SLJIT: 1 per dispatch, 1 at positive-delay resume |
+| wasm-operations | 11 / 266 | Bytecode and Wasm: 1 per dispatch, 1 at positive-delay resume |
+| language-prepared producer | 9 / 238 | Producer semantics unchanged |
+| language-prepared runtime-only consumer | 14 / 767 | Bytecode and SLJIT: dispatch 1, resume 1, stored completion 2 |
+| language-prepared process harness | 1 / 5 | Separate producer/consumer processes |
+| c-export-alias | 2 / 8035 | Compiler-enabled tooling; fixed existing C-export assertions |
+| record-c-export | 1 / 1428 | Compiler-enabled tooling; fixed existing record assertions |
+
+All listed successor checks passed. Every observed wrong-backend, inspection,
+fallback, and overflow count was zero. The counters increment at actual
+interpreter/SLJIT/Wasm entry sites; selecting an artifact is insufficient to pass.
+These synchronous cases do not establish direct generated-C, batch/system,
+worker-thread, or browser-embedding coverage.
+
+Compiler-enabled tooling reused the native SDK object cache through a task-local
+CMake inclusion hook; repository CMake configuration was not changed for that
+reuse. Its dry run estimated 65 compilations and five links, with no generation.
+The two-job build completed in 8.76 seconds with maximum child RSS 145,408,000
+bytes. C-export selectors took 2.127 and 1.360 seconds, with peak child RSS
+61,390,848 and 77,447,168 bytes. Backend selectors took 0.967, 0.437, and 0.257
+seconds; their maximum observed child RSS was 144,097,280 bytes.
+
+The full desktop CMake reference was configured from cached dependencies without
+building it. Graph command/link/header comparisons exposed and corrected two
+recovery omissions: SDK-contracts include ordering for seven source files, and
+the repeated capabilities archive required by reflect's direct and transitive
+CMake links. Independent review confirmed both corrections. The reference's
+architecture and SDK were explicitly aligned with Graph's discovered arm64/Mac
+SDK profile. The final bounded Graph run passed all 13 executable link-command
+comparisons and executable header staging. Compile-command parity still fails:
+4 of 982 commands match; each of the other 978 reports Graph `-std=gnu23` versus
+AppleClang/CMake `-std=gnu2x` as its first difference. The flag-selection code in
+`tools/graph/engine/Engine.chibi` is unchanged from main. This is an unresolved
+parity gate, not a passing compile-command check; flags and comparator assertions
+were not weakened. The final comparison took 8.03 seconds with maximum child RSS
+851,853,312 bytes. Graph used a task-local wrapper to cap jobs at two and retained
+its 50-second internal deadline and the test-policy cleanup deadline.
+
+Native-catalog's root `test_tools` dependency closure was estimated at 856
+compilations, 112 links, and 18 generation steps (986 total). This substantial
+build was reported and left unstarted. No claim is made for native-catalog
+fixture execution. Task-local caches, builds, diagnostic commands, and logs remain
+outside the published source tree for independent review.
+
 ## Resources and remaining coverage
 
 Builds used two jobs each (at most two independent builds overlapped). Initial
@@ -116,8 +173,9 @@ pin change, render, Studio session, release, or deployment was performed.
 
 Clang-format 22.1.8 and `git diff --check` passed for changed sources. Full required
 native/materials/projects/language-all/tools groups, native-catalog fixture
-execution, C-export checks, full desktop Graph parity, sanitizers, Linux/Windows,
-and browser embedding were not run. Wasm operation and record-prepared execution
+execution, sanitizers, Linux/Windows, and browser embedding were not run.
+Full desktop Graph compile-command parity remains failing as detailed above.
+Wasm operation and record-prepared execution
 does not establish a separate Wasm runtime-only operation consumer; the separate
 runtime-only proof here is macOS bytecode/SLJIT. These remain explicit coverage
 limits for the integration owner.

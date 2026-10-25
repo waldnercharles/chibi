@@ -1,3 +1,4 @@
+#include "execution/function.h"
 #include "execution/inspection.h"
 #include "execution/log.h"
 #include "execution/prepared.h"
@@ -10,6 +11,7 @@
 #include "types/text.h"
 #include "types/value_wire.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -266,6 +268,37 @@ static bool operation_states(execution_instance *instance, const operation_fixtu
     REQUIRE(count && count->type == PIN_I32 && count->i == (phase == 2 ? 1 : 0));
     return true;
 }
+static bool operation_backend_entries(behavior_run_counts counts, behavior_backend backend, const char *phase)
+{
+    printf(
+        "prepared-operations phase=%s backend=%s bytecode=%" PRIu64
+        " sljit=%" PRIu64 " wasm=%" PRIu64 " inspected_sljit=%" PRIu64
+        " inspected_wasm=%" PRIu64 " inspection_fallback=%" PRIu64
+        " size_fallback=%" PRIu64 " overflow=%d\n",
+        phase,
+        backend == BEHAVIOR_BYTECODE ? "bytecode"
+        : backend == BEHAVIOR_SLJIT  ? "sljit"
+                                     : "wasm",
+        counts.bytecode_entries,
+        counts.sljit_entries,
+        counts.wasm_entries,
+        counts.inspected_sljit_entries,
+        counts.inspected_wasm_entries,
+        counts.inspection_bytecode_fallbacks,
+        counts.size_bytecode_fallbacks,
+        counts.overflow
+    );
+    REQUIRE(!counts.overflow);
+    REQUIRE(!counts.inspection_bytecode_fallbacks && !counts.size_bytecode_fallbacks);
+    REQUIRE(!counts.inspected_sljit_entries && !counts.inspected_wasm_entries);
+    REQUIRE(
+        backend == BEHAVIOR_BYTECODE ? counts.bytecode_entries > 0
+                                     : counts.bytecode_entries == 0
+    );
+    REQUIRE(backend == BEHAVIOR_SLJIT ? counts.sljit_entries > 0 : counts.sljit_entries == 0);
+    REQUIRE(counts.wasm_entries == 0);
+    return true;
+}
 TEST_CASE(prepared_runtime_operations_keep_owner_and_live_values_without_native_callbacks)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -334,12 +367,27 @@ TEST_CASE(prepared_runtime_operations_keep_owner_and_live_values_without_native_
         memcpy(initial, "bad", 3);
         uint64_t begin = execution_module_event(module, "Begin");
         REQUIRE(begin);
-        REQUIRE(execution_instance_dispatch(instance, begin, NULL, 0, 0, 0, 1000) == FLOW_OK);
+        behavior_run_scope run = { 0 };
+        behavior_run_scope_begin(&run);
+        int status = execution_instance_dispatch(instance, begin, NULL, 0, 0, 0, 1000);
+        behavior_run_scope_end(&run);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(operation_backend_entries(run.counts, backends[b], "dispatch"));
         REQUIRE(execution_instance_pending(instance) == 1);
         REQUIRE(operation_states(instance, &fixture, 0));
-        REQUIRE(execution_program_update(program, 0.25, 0.25, 1000) == FLOW_OK);
+        behavior_run_scope_reset(&run);
+        behavior_run_scope_begin(&run);
+        status = execution_program_update(program, 0.25, 0.25, 1000);
+        behavior_run_scope_end(&run);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(operation_backend_entries(run.counts, backends[b], "resume"));
         REQUIRE(operation_states(instance, &fixture, 1));
-        REQUIRE(execution_program_update(program, 0.5, 0.25, 1000) == FLOW_OK);
+        behavior_run_scope_reset(&run);
+        behavior_run_scope_begin(&run);
+        status = execution_program_update(program, 0.5, 0.25, 1000);
+        behavior_run_scope_end(&run);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(operation_backend_entries(run.counts, backends[b], "stored-completion"));
         REQUIRE(operation_states(instance, &fixture, 2));
         REQUIRE(!execution_instance_pending(instance));
     }

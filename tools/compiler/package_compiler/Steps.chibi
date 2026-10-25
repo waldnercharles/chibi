@@ -335,6 +335,14 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (found >= 0) {
                     binding := names[found];
                     expected = Expect(value, binding.storage, binding.container, binding.record);
+                    // A compound write reads a managed target, with its points,
+                    // before its value, as stage zero caches the target.
+                    if (binding.place == ManagedPlace && operator != "") {
+                        code.extend(NamePoints(forest, text, names, ops, destination));
+                        read := PointerContinue(ManagedReadStep(types, binding, ops, target, at, node), expected);
+                        return PointerPrefix(code, [], PointerContinue(read, Resume(item.node, PointerCompoundPhase,
+                                                                                    found, 0)));
+                    }
                     // `xs = append(xs, x)` and `xs = extend(xs, ys)` on a
                     // local array update it in place.
                     update: int = -1;
@@ -577,10 +585,6 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             binding := names[found];
             if (binding.place == ManagedPlace) {
-                if (CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))) != "") {
-                    return PointerContinue(ManagedReadStep(types, binding, ops, target, at, node),
-                                           Resume(item.node, PointerCompoundPhase, found, 0));
-                }
                 return ManagedAssignStep(types, binding, result, ops, target, at, node);
             }
             if (binding.place == ReferencePlace || binding.place == BoxPlace) {

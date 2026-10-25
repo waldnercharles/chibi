@@ -120,9 +120,9 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
         if (!access_valid(world, host->access)) {
             return false;
         }
-        /* Only canonical intrinsics have a managed-heap lifetime contract.
-         * Host services must opt into a distinct contract before accepting
-         * managed pointer inputs or publishing such outputs. */
+        /* Only canonical intrinsics and borrowing kernels have a managed-heap
+         * lifetime contract. Host services must opt into a distinct contract
+         * before accepting managed pointer inputs or publishing such outputs. */
         const node_host_call *canonical = execution_intrinsic_resolve(host->capability_id);
         bool intrinsic = canonical &&
                          host->capability_abi ==
@@ -131,7 +131,7 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
                          host->call->value == canonical->value &&
                          host->call->context == canonical->context &&
                          host->call->action == canonical->action;
-        if (!intrinsic) {
+        if (!intrinsic && !host->call->borrows) {
             for (int bank = host->first; bank < host->result_first + host->result_count;
                  bank++) {
                 if (managed_shape(f->data_values[bank].initial, 0)) {

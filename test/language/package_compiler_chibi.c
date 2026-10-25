@@ -46,13 +46,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #if defined(__linux__) && defined(__x86_64__)
 #include "host/process.h"
 
 #include <dlfcn.h>
 #include <limits.h>
 #include <signal.h>
-#include <unistd.h>
 extern char **environ;
 #endif
 

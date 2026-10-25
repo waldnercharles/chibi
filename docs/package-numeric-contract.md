@@ -30,13 +30,25 @@ can be pruned, and the optimizer may delay stores past one.
 
 ## Compile time
 
-Pending, in stage zero and stage one:
+Implemented in stage zero
+([`semantic_constant.c`](../src/language/semantic_constant.c)); pending in
+stage one:
 
-- Mixing integer types in a binary operation is an error, except a shift count.
-- A shift count must be unsigned.
-- An integer constant expression is evaluated exactly and must fit its type.
-- A constant zero divisor and negating an unsigned constant are errors.
+- Mixing integer types in a binary operation or compound assignment is an
+  error, except a shift count. `char` matches the 32-bit and wider integers.
+- A shift count must be unsigned, and a negative constant count is an error.
+  A shift has its left operand's type; an untyped literal there takes its
+  type from context, never from the count.
+- An integer constant expression is evaluated exactly and must fit its type,
+  including the operand of `T(v)`; `T(wrap: v)` keeps the low bits of a
+  constant that does not fit. In a constant expression, a shift count above
+  4096, the exact evaluator's limit, is an error.
+- A constant zero divisor, including in `/=` and `%=`, and negating an
+  unsigned constant are errors.
 - `T(clamp: v)` is removed, since `T(v)` clamps.
+
+Stage zero folds each integer constant expression to its exact value before
+lowering, and a call evaluated at compile time follows the run-time rules.
 
 ## Development builds
 

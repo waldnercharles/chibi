@@ -359,50 +359,48 @@ FloatFromDouble :: (exponent: int, mantissa: i64) -> i64 {
     return (i64(narrow) << 23) + kept - (i64(1) << 23);
 }
 
-// The binary32 nearest the binary64 `bits`, as an explicit conversion
-// rounds: half to even, a value past the largest binary32 to a signed
-// infinity, and a NaN to a quiet one.
-pub NarrowedBits :: (bits: u64) -> u64 {
-    sign := (bits >> 63) << 31;
-    exponent := int((bits >> 52) & 0x7FF);
-    fraction := bits & 0xFFFFFFFFFFFFF;
-    if (exponent == 0x7FF && fraction != 0) {
-        return sign | 0x7FC00000;
+// Convert already represented floating values. Literal admission is separate:
+// explicit narrowing may overflow to infinity, and preserves signed zero.
+FloatingBits :: (bits: u64, from: int, to: int) -> u64 {
+    if (from == to) {
+        return bits;
     }
-    if (exponent == 0x7FF) {
-        return sign | 0x7F800000;
+    if (from == DoubleStorage) {
+        sign := (bits >> u32(32)) & u64(0x80000000);
+        exponent := int((bits >> u32(52)) & u64(0x7ff));
+        fraction := bits & u64(0xfffffffffffff);
+        if (exponent == 2047 && fraction != 0) {
+            return sign | u64(0x7fc00000);
+        }
+        if (exponent > 1150) {
+            return sign | u64(0x7f800000);
+        }
+        if (exponent == 0) {
+            return sign;
+        }
+        return sign | u64(FloatFromDouble(exponent, i64(fraction)));
     }
-    if (exponent == 0) {
-        // A binary64 subnormal is below half the least binary32 subnormal.
-        return sign;
-    }
-    narrow := FloatFromDouble(exponent, i64(fraction));
-    if (narrow > 0x7F800000) {
-        narrow = 0x7F800000;
-    }
-    return sign | u64(narrow);
-}
-// The binary64 that holds the binary32 `bits` exactly.
-pub WidenedBits :: (bits: u64) -> u64 {
-    sign := (bits >> 31) << 63;
-    exponent := int((bits >> 23) & 0xFF);
-    fraction := bits & 0x7FFFFF;
-    if (exponent == 0xFF) {
-        return sign | 0x7FF0000000000000 | (fraction << 29);
-    }
-    if (exponent == 0 && fraction == 0) {
-        return sign;
+    sign := (bits & u64(0x80000000)) << u32(32);
+    exponent := int((bits >> u32(23)) & u64(0xff));
+    fraction := bits & u64(0x7fffff);
+    if (exponent == 255) {
+        if (fraction != 0) {
+            return sign | u64(0x7ff8000000000000);
+        }
+        return sign | u64(0x7ff0000000000000);
     }
     if (exponent == 0) {
-        // A subnormal is normal in binary64: shift its leading one out.
+        if (fraction == 0) {
+            return sign;
+        }
         exponent = 1;
-        while ((fraction & 0x800000) == 0) {
-            fraction = fraction << 1;
+        while ((fraction & u64(0x800000)) == 0) {
+            fraction = fraction << u32(1);
             exponent -= 1;
         }
-        fraction = fraction & 0x7FFFFF;
+        fraction = fraction & u64(0x7fffff);
     }
-    return sign | (u64(exponent - 127 + 1023) << 52) | (fraction << 29);
+    return sign | (u64(exponent + 896) << u32(52)) | (fraction << u32(29));
 }
 
 // The bit patterns of the decimal, negated when `negative`, as Odin's

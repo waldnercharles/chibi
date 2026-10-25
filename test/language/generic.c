@@ -191,26 +191,33 @@ TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
     }
     return true;
 }
-TEST_CASE(compile_time_conversions_follow_runtime_modes)
+/* A call evaluated at compile time computes what it computes at run time:
+ * conversions clamp unless they wrap, and no integer operation fails. */
+TEST_CASE(compile_time_calls_follow_runtime_semantics)
 {
     const char
         *source = "Conversions :: behavior { wrapped: retain int = 0; clamped: "
-                  "retain int = 0; "
-                  "exact: retain int = 0; "
+                  "retain int = 0; exact: retain int = 0; quotient: retain int "
+                  "= 1; remainder: retain int = 0; shifted: retain int = 1; "
                   "Wrapped :: (n: int) -> i8 { return i8(wrap: n) } "
-                  "Clamped :: (n: int) -> i8 { return i8(clamp: n) } "
-                  "Exact :: (n: int) -> i8 { return i8(n) } "
-                  "W :: Wrapped(300); C :: Clamped(300); E :: Exact(100); "
+                  "Clamped :: (n: int) -> i8 { return i8(n) } "
+                  "Quotient :: (a: int, b: int) -> int { return a / b } "
+                  "Remainder :: (a: int, b: int) -> int { return a % b } "
+                  "Shifted :: (a: int, n: u32) -> int { return a << n } "
+                  "W :: Wrapped(300); C :: Clamped(300); E :: Clamped(100); "
+                  "Q :: Quotient(7, 0); R :: Remainder(7, 0); S :: Shifted(1, "
+                  "40); "
                   "on Run :: () { wrapped = int(W); clamped = int(C); exact = "
-                  "int(E); } }";
-    const char *expected[] = { "wrapped", "clamped", "exact" };
-    const int values[] = { 44, 127, 100 };
+                  "int(E); quotient = Q; remainder = R; shifted = S; } }";
+    const char *expected[] = { "wrapped",  "clamped",   "exact",
+                               "quotient", "remainder", "shifted" };
+    const int values[] = { 44, 127, 100, 0, 7, 0 };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
         execution_instance *instance = invoke();
         REQUIRE(instance);
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < 6; j++) {
             const pin_value *value = execution_instance_state(instance, state_id(expected[j]));
             REQUIRE(value && value->type == PIN_I32 && value->i == values[j]);
         }
@@ -464,8 +471,8 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
         "Value :: Forever(1) }",
         "Bad :: behavior { Identity :: (value:$T)->T{return value} "
         "on Run :: () { x:=Identity(missing:true) } }",
-        "Bad :: behavior { Narrow :: (n: int) -> i8 { return i8(n) } "
-        "Value :: Narrow(300) }",
+        "Bad :: library { Pick :: (A: Type) -> Type { x := i8(clamp: 300); "
+        "return A } Box :: () -> Pick(int) { return 1 } }",
         "Bad :: library { Pick :: (A: Type) -> Type { x := i8(round: 300); "
         "return A } Box :: () -> Pick(int) { return 1 } }",
         "Bad :: library { Pick :: (A: Type) -> Type { x := i8(wrap: 1.5); "
@@ -477,9 +484,9 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
                                "each constant parameter exactly once",
                                "call depth exceeded",
                                "Unknown polymorphic argument",
-                               "constant does not fit the conversion type",
-                               "may only be named wrap or clamp",
-                               "wrap and clamp convert between integer types" };
+                               "may only be named wrap",
+                               "may only be named wrap",
+                               "wrap converts between integer types" };
     for (int i = 0; i < 9; i++) {
         REQUIRE(!analyze(invalid[i]));
         REQUIRE(!syntax->diagnostic_count);
@@ -807,7 +814,7 @@ TEST_SUITE(language_generic_suite)
 {
     RUN_TEST_CASE(generic_argument_types_specialize_once_and_execute);
     RUN_TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls);
-    RUN_TEST_CASE(compile_time_conversions_follow_runtime_modes);
+    RUN_TEST_CASE(compile_time_calls_follow_runtime_semantics);
     RUN_TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type);
     RUN_TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors);
     RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref);

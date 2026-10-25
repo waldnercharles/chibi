@@ -4,6 +4,7 @@
 #include "language/component.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/scalar.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -843,23 +844,24 @@ TEST_CASE(language_numeric_conversions_check_modes_and_constants)
 {
     REQUIRE(converts("u8(x)", BEHAVIOR_CAST_EXACT));
     REQUIRE(converts("u8(wrap: x)", BEHAVIOR_CAST_WRAP));
-    REQUIRE(converts("u8(clamp: x)", BEHAVIOR_CAST_CLAMP));
-    REQUIRE(converts("u8(wrap: 300)", BEHAVIOR_CAST_WRAP));
+    parse("L :: library { F :: (x: int) -> u8 { return u8(clamp: x); } }");
+    REQUIRE(diagnostic("A conversion argument may only be named wrap"));
+    parse("L :: library { F :: () -> u8 { return u8(wrap: 300); } }");
+    REQUIRE(analysis->valid);
     parse("L :: library { X: int : 300; F :: () -> u8 { return u8(X + 1); } }");
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Constant does not fit in u8; use u8(wrap: value) or u8(clamp: value)"));
+    REQUIRE(diagnostic("Constant does not fit in u8; use u8(wrap: value)"));
     parse("L :: library { X: int : 200; F :: () -> u8 { return u8(X); } }");
     REQUIRE(analysis->valid);
     parse("L :: library { F :: (x: int) -> u8 { return u8(round: x); } }");
-    REQUIRE(diagnostic("A conversion argument may only be named wrap or clamp"));
+    REQUIRE(diagnostic("A conversion argument may only be named wrap"));
     parse("L :: library { F :: (x: number) -> int { return int(wrap: x); } }");
-    REQUIRE(diagnostic("wrap and clamp convert between integer types"));
+    REQUIRE(diagnostic("wrap converts between integer types"));
     parse("L :: library { F :: () -> int { return int(wrap: 3.5); } }");
-    REQUIRE(
-        analysis->diagnostic_count == 1 &&
-        diagnostic("wrap and clamp convert between integer types")
-    );
-    parse("L :: library { F :: () -> u64 { return u64(clamp: 18446744073709551615); } }");
+    REQUIRE(analysis->diagnostic_count == 1 && diagnostic("wrap converts between integer types"));
+    parse("L :: library { F :: () -> u64 { return u64(18446744073709551615); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: () -> int { return int(wrap: (0xFFFFFFFFFFFFFFFF)); } }");
     REQUIRE(analysis->valid);
     parse("L :: library { F :: (x: int) -> u8 { return u8(x, x); } }");
     REQUIRE(diagnostic("Conversion takes one value"));
@@ -899,16 +901,155 @@ TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly)
     parse("L :: library { F :: (x: int) -> u8 { return x; } }");
     REQUIRE(!analysis->valid);
     REQUIRE(diagnostic("Incompatible types: expected u8, got int; convert with u8(value)"));
-    parse("L :: library { F :: (x: int, y: u32) -> i64 { return x + y; } }");
+    parse("L :: library { F :: (x: int, y: u32) -> i64 { return i64(x) + i64(y); } }");
     REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
     parse("L :: library { F :: (x: u8, y: i8) -> int { return x + y; } }");
-    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I32));
+    REQUIRE(diagnostic("Mismatched integer types u8 and i8; convert one operand"));
+    parse("L :: library { F :: (x: int, y: u32) -> bool { return x < y; } }");
+    REQUIRE(diagnostic("Mismatched integer types int and u32; convert one operand"));
     parse("L :: library { F :: (x: i64, y: u64) -> i64 { return x + y; } }");
-    REQUIRE(diagnostic("i64 and u64 operands need an explicit conversion, such as i64(value)"));
+    REQUIRE(diagnostic("Mismatched integer types i64 and u64; convert one operand"));
+    parse("L :: library { F :: (x: int, y: u8) -> int { n := x; n += y; return n; } }");
+    REQUIRE(diagnostic("Mismatched integer types int and u8; convert one operand"));
+    parse("L :: library { F :: (x: int, y: u8) -> int { n := x; n += int(y) + 1; return n; } }");
+    REQUIRE(analysis->valid);
     parse("L :: library { Mask: u32 : 0xFF; F :: () -> u32 { return Mask; } }");
     REQUIRE(analysis->valid && constant_of(PIN_U32));
     parse("L :: library { Small: u8 : 300; }");
     REQUIRE(diagnostic("Numeric literal is outside the range of u8"));
+    return true;
+}
+/* A shift has its left operand's type and an unsigned count of any width. */
+TEST_CASE(language_shift_counts_are_unsigned_and_keep_their_type)
+{
+    parse("L :: library { F :: (x: int, n: int) -> int { return x << n; } }");
+    REQUIRE(diagnostic("Shift count must be unsigned; convert it with u32(value)"));
+    parse("L :: library { F :: (x: int) -> int { return x << -1; } }");
+    REQUIRE(diagnostic("Shift count must not be negative"));
+    parse("L :: library { F :: (x: i64, n: u8) -> i64 { return x << n; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
+    parse("L :: library { F :: (a: i8) -> i8 { return a << 200; } }");
+    const script_expression *count = expression_of(SCRIPT_EXPR_CONSTANT, PIN_I64);
+    REQUIRE(analysis->valid && count && count->constant.i64 == 200);
+    parse("L :: library { F :: (x: i64, n: u32) -> bool { return x == (1 << n); } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
+    parse("L :: library { F :: (n: u32) -> int { y := 1 << n; return y; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I32));
+    parse("L :: library { F :: (n: u32) -> bool { return 1.5 << n == 0; } }");
+    REQUIRE(diagnostic("Numeric literal has a fraction, which int cannot hold"));
+    parse("L :: library { F :: (x: u8, n: u64) -> u8 { return x >> n; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_U8));
+    parse("L :: library { F :: (n: u8) -> u64 { return 1 << n; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_U64));
+    /* The count does not type an untyped value: the mask is int, not byte. */
+    parse("L :: library { F :: (n: u8) -> int { mask := (1 << n) - 1; return mask; } }");
+    REQUIRE(
+        analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I32) &&
+        !expression_of(SCRIPT_EXPR_BINARY, PIN_U8)
+    );
+    parse("L :: library { F :: (x: int) -> int { return x << 3; } }");
+    REQUIRE(analysis->valid);
+    return true;
+}
+/* Whether the last parse holds a constant of storage with these bits. */
+static bool folded(pin_type storage, uint64_t bits)
+{
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *e = &analysis->expressions[i];
+        if (e->kind == SCRIPT_EXPR_CONSTANT && e->constant.type == storage &&
+            behavior_scalar_bits(e->constant) == bits) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool rejects(const char *source, const char *message, int column)
+{
+    parse(source);
+    const script_diagnostic *found = diagnostic(message);
+    return !analysis->valid && found && found->range.column == column;
+}
+TEST_CASE(language_integer_constants_are_exact_and_must_fit)
+{
+    parse("L :: library { C: i8 : 127 + 1 - 1; }");
+    REQUIRE(analysis->valid && folded(PIN_I8, 127));
+    parse("L :: library { F :: () -> i8 { return (127 + 1) / 2; } }");
+    REQUIRE(analysis->valid && folded(PIN_I8, 64));
+    parse("L :: library { C: int : (1 << 4000) >> 3990; }");
+    REQUIRE(analysis->valid && folded(PIN_I32, 1024));
+    parse("L :: library { F :: () -> i8 { return (i8(1) << 200) >> 199; } }");
+    REQUIRE(analysis->valid && folded(PIN_I8, 2));
+    parse("L :: library { F :: () -> u64 { return ~0; } }");
+    REQUIRE(analysis->valid && folded(PIN_U64, UINT64_MAX));
+    parse("L :: library { F :: () -> u8 { return ~u8(5); } }");
+    REQUIRE(analysis->valid && folded(PIN_U8, 250));
+    parse("L :: library { C: u8 : u8(wrap: 300); }");
+    REQUIRE(analysis->valid && folded(PIN_U8, 44));
+    parse("L :: library { F :: (x: int) -> int { return x << 40; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (a: u8) -> u8 { return -a; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (f: number) -> number { return f / 0; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (a: u8) -> u8 { return u8(a + 1); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (f: number) -> int { return int(f + 1); } }");
+    REQUIRE(analysis->valid);
+    REQUIRE(
+        rejects("L :: library { C: int : 1 << 32; }", "Constant value is outside the range of int", 25)
+    );
+    REQUIRE(
+        rejects("L :: library { M: int : -2147483648 / -1; }", "Constant value is outside the range of int", 25)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: () -> int { return 1 << 32; } }", "Constant value is outside the range of int", 40)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: () -> u8 { return u8(i8(100) + i8(100)); } }", "Constant value is outside the range of i8", 46)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: () -> int { return 1 << 5000; } }", "Constant shift count is too large", 45)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: (a: int) -> int { return a / 0; } }", "Constant division by zero", 46)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: (a: int) -> int { return a % (2 - 2); } }", "Constant division by zero", 46)
+    );
+    REQUIRE(rejects("L :: library { C :: 1 / 0; }", "Constant division by zero", 21));
+    REQUIRE(
+        rejects("L :: library { F :: (b: int) -> int { b /= 0; return b; } }", "Constant division by zero", 39)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: () -> u8 { return -byte(1); } }", "Cannot negate an unsigned constant", 41)
+    );
+    REQUIRE(
+        rejects("L :: library { U: u32 : 3; F :: () -> u32 { return -U; } }", "Cannot negate an unsigned constant", 54)
+    );
+    REQUIRE(rejects(
+        "L :: library { F :: () -> u8 { return u8(300); } }",
+        "Constant does not fit in u8; use u8(wrap: value)",
+        41
+    ));
+    REQUIRE(rejects(
+        "L :: library { F :: () -> u8 { return u8(200 + 100); } }",
+        "Constant does not fit in u8; use u8(wrap: value)",
+        41
+    ));
+    REQUIRE(rejects(
+        "L :: library { F :: (a: u8) -> bool { return a < -1; } }",
+        "Numeric literal is outside the range of u8",
+        52
+    ));
+    REQUIRE(
+        rejects("L :: library { F :: (x: int) -> int { return x << (2 - 3); } }", "Shift count must not be negative", 52)
+    );
+    REQUIRE(
+        rejects("L :: library { F :: () -> i8 { return i8(1) << 5000; } }", "Constant shift count is too large", 52)
+    );
+    REQUIRE(
+        rejects("L :: library { Grow :: (b: u8) -> int { a: int = 1; a += b; return a; } }", "Mismatched integer types int and u8; convert one operand", 55)
+    );
     return true;
 }
 /* The value of the one character constant the last parse produced. */
@@ -1009,6 +1150,8 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
     parse("L :: library { F :: (c: char, u: u64) -> u64 { return c + u; } }");
     REQUIRE(analysis->valid);
     parse("L :: library { F :: (c: char, b: u8) -> int { return c + b; } }");
+    REQUIRE(diagnostic("Mismatched integer types char and u8; convert one operand"));
+    parse("L :: library { F :: (c: char, b: u8) -> int { return c + int(b); } }");
     REQUIRE(analysis->valid);
     /* A compile-time call keeps its declared char result. */
     parse(
@@ -2271,7 +2414,7 @@ TEST_CASE(language_type_patterns_narrow_and_invalidate)
     return true;
 }
 
-TEST_CASE(language_admits_float_conversions)
+TEST_CASE(language_approved_float_conversion_admission)
 {
     bool agreed = true;
     for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
@@ -2286,6 +2429,36 @@ TEST_CASE(language_admits_float_conversions)
                                            .identity = "project:facts",
                                            .native = &catalog };
         analysis = script_analyze_package(&options);
+        if (!analysis->valid) {
+            for (int d = 0; d < analysis->diagnostic_count; d++) {
+                const script_diagnostic *diagnostic = &analysis->diagnostics[d];
+                fprintf(
+                    stderr,
+                    "FLOAT_REJECTION stage0 %s %d:%d %s\n",
+                    item->name,
+                    diagnostic->range.line,
+                    diagnostic->range.column,
+                    diagnostic->message
+                );
+            }
+        }
+        if (!item->accepted) {
+            REQUIRE(item->stage_zero.message);
+            const script_diagnostic *narrowing = diagnostic(item->stage_zero.message);
+            if (!narrowing || analysis->diagnostic_count != 1 ||
+                narrowing->range.line != item->stage_zero.line ||
+                narrowing->range.column != item->stage_zero.column) {
+                fprintf(
+                    stderr,
+                    "FLOAT_REJECTION_MISMATCH stage0 %s expected %d:%d %s\n",
+                    item->name,
+                    item->stage_zero.line,
+                    item->stage_zero.column,
+                    item->stage_zero.message
+                );
+                agreed = false;
+            }
+        }
         if (analysis->valid != item->accepted) {
             fprintf(
                 stderr,
@@ -2304,7 +2477,7 @@ TEST_CASE(language_admits_float_conversions)
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(language_admits_float_conversions);
+    RUN_TEST_CASE(language_approved_float_conversion_admission);
     RUN_TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches);
     RUN_TEST_CASE(language_cancelled_builtin_cannot_be_shadowed);
     RUN_TEST_CASE(language_switch_exhaustiveness_respects_narrowed_tags);
@@ -2339,6 +2512,8 @@ void test_language_semantic()
     RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
     RUN_TEST_CASE(language_number_is_f32_and_f64_narrows_explicitly);
     RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
+    RUN_TEST_CASE(language_shift_counts_are_unsigned_and_keep_their_type);
+    RUN_TEST_CASE(language_integer_constants_are_exact_and_must_fit);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_call_chains_infer_effects_and_purity);
     RUN_TEST_CASE(language_owned_record_and_index_writes_stay_pure);

@@ -561,8 +561,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             binding := names[found];
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
-            if (operator != "" && binding.container == 0 && MixedIntegers(binding.storage, result)) {
-                return Fail(forest, item.node, document, Mismatched(binding.storage, result.storage));
+            if (binding.container == 0 && MixedCompoundIntegers(operator, binding.storage, result)) {
+                return Fail(forest, item.node, document,
+                            format_text("Mismatched integer types {} and {}; convert one operand",
+                                        TypeName(binding.storage), TypeName(result.storage)));
             }
             if (binding.place == ReferencePlace || binding.place == BoxPlace) {
                 return PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node);
@@ -1636,9 +1638,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             conversion = ScalarStorage(callee_name);
         }
         if (Integer(conversion) || Floating(conversion)) {
-            // `T(value)` clamps the value to an integer T, and rounds it to
-            // a floating T; `T(wrap: value)` keeps an integer's low bits. A
-            // constant value folds before it gets here.
+            // Floating conversions use the existing runtime rounding operation.
+            // `T(value)` clamps the value to T; `T(wrap: value)` keeps its
+            // low bits. A constant value folds before it gets here.
             argument := FirstMember(forest, Field(forest, item.node, "arguments"));
             if (argument < 0 || NextMember(forest, argument) >= 0) {
                 return Fail(forest, item.node, document, "Conversion takes one value");
@@ -1646,12 +1648,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             mode: int = 0;
             value := argument;
             if (Is(forest, argument, "named_argument")) {
+                if (Floating(conversion)) {
+                    return Fail(forest, item.node, document, "wrap and clamp convert between integer types");
+                }
                 if (Text(forest, text, Field(forest, argument, "name")) != "wrap") {
                     return Fail(forest, Field(forest, argument, "name"), document,
                                 "A conversion argument may only be named wrap");
-                }
-                if (Floating(conversion)) {
-                    return Fail(forest, item.node, document, "wrap converts between integer types");
                 }
                 mode = 1;
                 value = Field(forest, argument, "value");
@@ -2446,7 +2448,9 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
         // Two untyped literals compare at their common type.
         common := CommonInteger(left.storage, right.storage);
         if (!spelled || common < 0) {
-            return Fail(forest, item.node, document, Mismatched(left.storage, right.storage));
+            return Fail(forest, item.node, document,
+                        format_text("Mismatched integer types {} and {}; convert one operand", TypeName(left.storage),
+                                    TypeName(right.storage)));
         }
         widened: Slot = {storage: common, kind: ValueKind};
         if (left.storage != common) {
@@ -2530,15 +2534,13 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                         Typed(output, storage, 0, -1), NoValue(), marks);
 }
 
-// Whether `value` is an integer of a type other than the integer type
-// `storage`, which an operator, a compound assignment among them, does not
-// combine with it.
-MixedIntegers :: (storage: int, value: Value) -> bool {
-    return Integer(storage) && Single(value, value.storage) && Integer(value.storage) && value.storage != storage;
-}
-// The error for integers of the types `left` and `right` combined.
-Mismatched :: (left: int, right: int) -> string {
-    return format_text("Mismatched integer types {} and {}; convert one operand", TypeName(left), TypeName(right));
+// Compound arithmetic combines the same typed integers before any assignment
+// widening. Plain assignment and shift-count typing have separate contracts.
+MixedCompoundIntegers :: (operator: string, storage: int, value: Value) -> bool {
+    compound := operator == "+" || operator == "-" || operator == "*" || operator == "/" || operator == "%" ||
+                operator == "&" || operator == "|" || operator == "^";
+    return compound && Integer(storage) && Single(value, value.storage) && Integer(value.storage) &&
+           value.storage != storage;
 }
 // The untyped literal `literal` as a constant of the integer type `storage`.
 ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
@@ -2719,9 +2721,9 @@ ZeroCompoundDivisor :: (forest: snapshot.SnapshotNode[], text: string, document:
            ZeroDivisor(forest, text, document, constants, names, package, statement);
 }
 // A constant expression as one constant of its type, or of the expected one
-// when it is untyped, watched at its node as any expression's value is. An
-// untyped one with no integer type expected takes its type from its use, as a
-// literal does, and that use watches it.
+// when it is untyped. Body watches ordinary expressions; literal-shaped
+// unary expressions keep their watch here. An untyped one with no integer
+// type expected takes its type from its use.
 FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
              package: int, item: Work, ops: Ops, at: Bases) -> Step {
     code: Code[] = [];
@@ -2750,6 +2752,9 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
         case .Folded(bits):
             slots.append(ValueLocal(storage));
             code.append(ConstantCode(ops, storage, bits, at.slot, forest[item.node]));
+            if (NumberLiteral(forest, item.node)) {
+                code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));
+            }
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
@@ -2807,12 +2812,22 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
         if (ExactNegative(exact)) {
             return Fail(forest, Unparenthesized(forest, right.record), document, "Shift count must not be negative");
         }
+        // Observe the written integer before the runtime count conversion.
+        // Its value and type belong to the source expression, not the shift.
+        if (ops.debug && Integer(written)) {
+            slots.append(ValueLocal(written));
+            code.append(ConstantCode(ops, written, bits, count_slot, node));
+            code.extend(LiteralWatch(forest, ops, count_slot, written, right.record));
+            count_slot += 1;
+        }
         if (!ExactFits(exact, value.storage)) {
             exact = ExactMax(value.storage);
         }
         slots.append(ValueLocal(value.storage));
         code.append(ConstantCode(ops, value.storage, ExactWrapped(exact, value.storage), count_slot, node));
-        code.extend(LiteralWatch(forest, ops, count_slot, value.storage, right.record));
+        if (!Integer(written)) {
+            code.extend(LiteralWatch(forest, ops, count_slot, value.storage, right.record));
+        }
         count = Typed(count_slot, value.storage, 0, -1);
     } else if (!Single(right, right.storage) || !Integer(right.storage)) {
         return Fail(forest, item.node, document, "operator does not apply to these operands");
@@ -2943,8 +2958,11 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     next: Work[] = [];
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    if (item.c == 1 && MixedIntegers(field.storage, value)) {
-        return Fail(forest, item.node, document, Mismatched(field.storage, value.storage));
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (item.c == 1 && field.container == 0 && MixedCompoundIntegers(operator, field.storage, value)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(field.storage), TypeName(value.storage)));
     }
     stored := value;
     if (value.container == 0 && value.storage != field.storage && Converts(value.storage, field.storage)) {
@@ -3459,7 +3477,7 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                         Typed(at.slot + length(slots) - 1, storage, 0, -1), NoValue(), marks);
 }
-// Whether a floating value of type `from` widens to `to` without loss.
+// Floating widening is lossless. Narrowing requires an explicit conversion.
 FloatWidens :: (from: int, to: int) -> bool {
     return from == FloatStorage && to == DoubleStorage;
 }
@@ -3467,8 +3485,7 @@ FloatWidens :: (from: int, to: int) -> bool {
 // widens or becomes a floating value, and f32 widens to f64. f64 becomes f32
 // only through an explicit conversion.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || (Integer(from) && Floating(to)) ||
-           (from == FloatStorage && to == DoubleStorage);
+    return Widens(from, to) || (Integer(from) && Floating(to)) || FloatWidens(from, to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a

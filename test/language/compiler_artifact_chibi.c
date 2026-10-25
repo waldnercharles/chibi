@@ -42,9 +42,7 @@ enum
     ARTIFACT_CAP = 16 * 1024 * 1024,
     INPUT_CAP = 8 * 1024,
     OUTPUT_CAP = 256 * 1024,
-    BINARY_CAP = 32 * 1024,
-    /* Each source of the closure; core:strings is just past 16 KiB. */
-    SOURCE_CAP = 32 * 1024
+    BINARY_CAP = 32 * 1024
 };
 static compiler_fixture fixture;
 static const char *directory;
@@ -396,8 +394,9 @@ TEST_CASE(compiler_actual_closure_produces_deterministic_artifact)
     };
     const native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };
-    for (int i = 0; i < 8; i++) {
-        REQUIRE(sources[i].size < SOURCE_CAP);
+    /* Core strings uses the production snapshot limits and full retention checks. */
+    for (int i = 0; i < 7; i++) {
+        REQUIRE(sources[i].size < 16384);
     }
     REQUIRE(compiler_fixture_prepare_packs(&fixture, sources, 8, packs, 2));
     REQUIRE(authoring_packages_count(fixture.owners[0]) == 8);

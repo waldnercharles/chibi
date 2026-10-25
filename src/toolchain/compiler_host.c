@@ -92,10 +92,6 @@ static compiler_host *load(
     }
     return host;
 }
-const execution_module *compiler_host_root(const compiler_host *host)
-{
-    return host->root;
-}
 compiler_host *compiler_host_load(
     const void *bytes,
     size_t length,
@@ -126,6 +122,10 @@ size_t compiler_host_storage_bytes(const compiler_host *host)
     bytes += sizeof *host;
     return host->package_bytes > SIZE_MAX - bytes ? SIZE_MAX
                                                   : bytes + host->package_bytes;
+}
+const execution_module *compiler_host_root(const compiler_host *host)
+{
+    return host->root;
 }
 uint64_t compiler_host_entry(const char *symbol)
 {

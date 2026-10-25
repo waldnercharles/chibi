@@ -43,5 +43,4 @@ char *asset_source_reconcile_native_compiled(
     const asset_compiler_options *,
     asset_compiler_diagnostic *
 );
-char *asset_source_write(const av_value *, const asset_compiler_options *, asset_compiler_diagnostic *);
 #endif

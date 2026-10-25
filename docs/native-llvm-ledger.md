@@ -143,18 +143,21 @@ After M1:
 
 After M2's compile rules (24 October 2026, same container):
 
-- Bootstrap compiler: 13,611,518 bytes, SHA-256 `31d5c893…0a1ab6`, prepared
-  format 21, with stage one's floating conversions and constants. The
-  checked-in format-20 compiler cannot recover the new sources, so
-  `make bootstrap-artifact` built the Release tree through the stage-zero
-  path, with `BUILD_HOST` naming no host. Since #678, building
-  `test_language` generates the asset compiler, which needs a bootstrap that
-  recovers the current compiler, so a compiler whose code generation changes
-  cannot regenerate its own bootstrap in a tree that has the asset compiler.
-  This one was generated from a local commit (the recorded revision
-  `c7b229fab`) that puts the final compiler sources on b947ec4ac, before #678
-  merged in. Every source it records matches this branch byte for byte, as
-  the bootstrap reuse check requires.
+- Historical author-branch artifact at `cf24c7b66`: 13,611,518 bytes,
+  SHA-256 `31d5c893…0a1ab6`, prepared format 21, manifest revision
+  `c7b229fab`. The author generated it from an isolated pre-#678 source
+  composition. These are historical inputs and claims, not the reconciled
+  candidate's artifact or acceptance evidence; that pair was not adopted.
+- The separately verified S candidate `072d9ee157` retains the production
+  artifact from source-equivalent `8d389925`: 13,673,789 bytes, SHA-256
+  `b1d902d3…6e5c71`, with manifest SHA-256 `4256f99d…3a363e`. Current-source
+  self-reproduction, normal default assets and all 17 normal bootstrap cases
+  passed on that source on Mac; root separately reported matching independent
+  Linux results for exact9711 (39 selectors,279 cases,902,801 assertions). The supported
+  direct-host recovery and production writer avoid omitting asset generation.
+  The later compound-assignment/watch source checkpoint changes two compiler
+  files; the retained pair is an honest earlier input and needs a new reviewed
+  generation before combined acceptance. No runtime pin changed.
 - `language-package-compiler-chibi-bootstrap` takes 50 s in Release, by its
   own wall time on this container (164 s before M2). Before the exact
   division stopped copying its arguments it took 842 s, 775 of them in stage

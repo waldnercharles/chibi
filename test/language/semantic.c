@@ -163,7 +163,7 @@ TEST_CASE(language_sequence_views_require_pointer_authority)
           "Mutable array views require a pointer to an array" },
         { "L :: library { F :: (v: view int[]) { other := v.view(0..<0); } }",
           "Mutable array views require a pointer to an array" },
-        { "L :: library { F :: () { v: view int[]; } }",
+        { "B :: behavior { v: view int[]; }",
           "A nonoptional view requires an initializer" },
         { "L :: library { F :: (v: view int) {} }", "view requires an array type" },
     };

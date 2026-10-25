@@ -27,7 +27,9 @@ static bool compile_time_value(
         return false;
     }
     const script_expression *value = &analysis->expressions[index];
-    if (value->effects) {
+    /* Reading an element is no effect here: the kinds below admit only
+     * constant operands, so the element read is of a constant. */
+    if (value->effects & ~SCRIPT_EFFECT_READ) {
         return false;
     }
     if (scalar &&

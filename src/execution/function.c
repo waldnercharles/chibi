@@ -1,4 +1,5 @@
 #include "ecs/execution.h"
+#include "execution/borrow.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/managed.h"
@@ -8,6 +9,7 @@
 #include "execution/wasm_jit.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
@@ -807,10 +809,11 @@ const char *behavior_function_value_call(behavior_function_context *context, int
     bool intrinsic = execution_intrinsic_resolve(spec->capability_id) != NULL;
     bool strict_range = intrinsic && (kind == EXECUTION_INTRINSIC_SEQUENCE_SLICE ||
                                       kind == EXECUTION_INTRINSIC_SEQUENCE_VIEW);
+    /* A view value always has its window; a header without one is a type
+     * schema, such as a reference's. */
     for (int i = 0; i < count; i++) {
-        if (arguments[i].container == PIN_CONTAINER_VIEW &&
-            (!arguments[i].ptr || !pin_array_view_valid(arguments[i].ptr)) &&
-            !(strict_range && i == 0)) {
+        if (arguments[i].container == PIN_CONTAINER_VIEW && arguments[i].ptr &&
+            !pin_array_view_valid(arguments[i].ptr) && !(strict_range && i == 0)) {
             return "Array view is out of range";
         }
     }
@@ -1368,8 +1371,21 @@ const char *behavior_function_value_arguments(behavior_function_context *context
             return error;
         }
     }
-    if (context->argument_count && !storage) {
-        context->arguments = source;
+    /* Scalars are their own copies, and a function proven to leave its
+     * collections unchanged reads an array the caller lends it in place, so
+     * only other arguments that hold storage need copying into an owner. */
+    const behavior_function *f = context->source_function;
+    bool held = false;
+    for (int i = 0; i < context->argument_count; i++) {
+        pin_value lent;
+        held |= pin_value_holds_storage(&source[i]) &&
+                !(f && f->readonly_collections &&
+                  behavior_function_borrow_argument(f, context, &source[i], &lent));
+    }
+    if (!held) {
+        return NULL;
+    }
+    if (!storage) {
         return "Value arguments require invocation storage";
     }
     pin_value *values = context->argument_count
@@ -1468,6 +1484,9 @@ void behavior_managed_heap_unroot(behavior_managed_heap *heap, pin_value *value)
 }
 /* Persistent state and host roots can live in ordinary arenas, outside the
  * collection. Walk their value containers explicitly to discover heap edges. */
+/* The values one collection has traced, so a value that many roots reach is
+ * traced once. */
+static _Thread_local managed_seen *collection_seen;
 void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark, void *user)
 {
     if (managed_leaf(root)) {
@@ -1475,11 +1494,12 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
         return;
     }
     pin_value *pending = NULL;
-    managed_seen seen = { 0 };
+    managed_seen local = { 0 };
+    managed_seen *seen = collection_seen ? collection_seen : &local;
     apush(pending, *root);
     while (acount(pending)) {
         pin_value value = apop(pending);
-        if (managed_seen_before(&seen, value, false)) {
+        if (managed_seen_before(seen, value, false)) {
             continue;
         }
         pin_value_trace(&value, mark, user);
@@ -1524,7 +1544,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
         }
     }
     afree(pending);
-    free(seen.entries);
+    free(local.entries);
 }
 void behavior_managed_heap_trace_roots(const behavior_managed_heap *heap, arena_marker mark, void *user)
 {
@@ -1546,11 +1566,33 @@ void behavior_managed_heap_collect(
         apush(storages, &scope->storage);
     }
     arena_collection collection;
+    managed_seen seen = { 0 };
+    collection_seen = &seen;
     arena_collect_begin(&collection, storages, acount(storages));
     behavior_managed_heap_trace_roots(heap, arena_collect_mark, &collection);
     if (function && context) {
         behavior_function_trace_values(function, context, arena_collect_mark, &collection);
     }
     arena_collect_end(&collection);
+    collection_seen = NULL;
+    free(seen.entries);
     afree(storages);
+}
+void behavior_managed_heap_safepoint(
+    behavior_managed_heap *heap,
+    const behavior_function *function,
+    const behavior_function_context *root
+)
+{
+    if (!heap || !heap->call_collection_bytes || heap->running_calls != 1) {
+        return;
+    }
+    size_t allocated = 0, kept = 0;
+    for (behavior_managed_heap *scope = managed_owner(heap); scope; scope = scope->previous) {
+        allocated += scope->storage.allocated;
+        kept += scope->storage.kept;
+    }
+    if (allocated >= heap->call_collection_bytes && allocated >= kept) {
+        behavior_managed_heap_collect(heap, function, root);
+    }
 }

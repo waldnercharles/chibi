@@ -506,7 +506,9 @@ static const char *sequence_clone(arena *storage, const pin_value *args, int cou
     *out = array_header(copy, PIN_CONTAINER_ARRAY);
     return NULL;
 }
-static const char *sequence_get(arena *storage, const pin_value *args, int count, pin_value *out)
+/* An element as its own value, or, borrowed, the element in place: valid
+ * only while the array it reads stays unchanged. */
+static const char *sequence_element(arena *storage, const pin_value *args, int count, pin_value *out, bool borrowed)
 {
     assert(count == 2);
     (void)count;
@@ -532,9 +534,21 @@ static const char *sequence_get(arena *storage, const pin_value *args, int count
     if (!same_storage(*out, item)) {
         return "Array element does not match result type";
     }
+    if (borrowed) {
+        *out = item;
+        return NULL;
+    }
     return pin_value_snapshot_to_arena(storage, out, &item)
              ? "Cannot retain array element"
              : NULL;
+}
+static const char *sequence_get(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return sequence_element(storage, args, count, out, false);
+}
+static const char *sequence_borrow(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return sequence_element(storage, args, count, out, true);
 }
 static const char *sequence_length(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -561,6 +575,7 @@ static const char *sequence_length(arena *storage, const pin_value *args, int co
     return NULL;
 }
 const node_host_call EXECUTION_sequence_get_call = { .value = sequence_get };
+const node_host_call EXECUTION_sequence_borrow_call = { .value = sequence_borrow };
 const node_host_call EXECUTION_sequence_length_call = { .value = sequence_length };
 static void array_drop_range(pin_array *array, int first, int end)
 {
@@ -1277,11 +1292,20 @@ static void *reference_path_data_mode(
             path->index >= array->count) {
             return NULL;
         }
-        if (writable) {
-            pin_array *root = (pin_array *)pin_array_owner(array);
-            if (!root || pin_array_make_unique(root->storage, root)) {
+        /* A collected array may share its backing, so a write makes it
+         * unique first. Headers can share an arena array, so a write gives
+         * the path a copy of its own in the owner's storage. */
+        pin_array *root = (pin_array *)pin_array_owner(array);
+        if (writable &&
+            (!root || (root->storage && pin_array_make_unique(root->storage, root)))) {
+            return NULL;
+        }
+        if (writable && !root->storage && root == array) {
+            array = pin_array_snapshot_to_arena(storage, array);
+            if (!array) {
                 return NULL;
             }
+            memcpy(data, &array, sizeof array);
         }
         *type = pin_array_get(array, path->index);
         return pin_array_data(array, path->index);
@@ -2374,6 +2398,8 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_sequence_clone_call;
         case EXECUTION_INTRINSIC_SEQUENCE_GET:
             return &EXECUTION_sequence_get_call;
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
+            return &EXECUTION_sequence_borrow_call;
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
             return &EXECUTION_sequence_length_call;
         case EXECUTION_INTRINSIC_VALUE_COPY: return &EXECUTION_value_copy_call;
@@ -2447,7 +2473,7 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
         }
     }
     for (int id = EXECUTION_INTRINSIC_SEQUENCE_SLICE;
-         id <= EXECUTION_INTRINSIC_MAP_DELETE_PLACE;
+         id <= EXECUTION_INTRINSIC_SEQUENCE_BORROW;
          id++) {
         if (call == execution_intrinsic_call((execution_intrinsic)id)) {
             return UINT64_C(0x4348494900000000) | (unsigned)id;
@@ -2571,6 +2597,7 @@ const node_access *execution_intrinsic_access(uint64_t id)
     switch (execution_intrinsic_kind(id)) {
         case EXECUTION_INTRINSIC_VALUE_COPY:
         case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
         case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
         case EXECUTION_INTRINSIC_SEQUENCE_VIEW:

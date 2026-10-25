@@ -151,21 +151,24 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
 }
 // Address expressions may infer a pointer without spelling its type. The
 // compiler's finite type universe supplies those constructor headers before
-// immutable body emission. Each address adds at most one constructor layer.
+// immutable body emission: a pointer to each declared type, spelled pointers
+// included, so an address of a pointer field has its type. The address of a
+// local that holds a pointer an address made declares its own, as the local
+// is boxed.
 DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: TypeDecl[], aliases: Name[],
                            package: int, root: int) -> TypeDecl[] {
     types := input_types;
     pending: int[] = [root];
     spelled: int[] = [];
-    depth: int = 0;
+    addresses := false;
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "address_expression")) { depth += 1; }
+        if (Is(forest, at, "address_expression")) { addresses = true; }
         if (Is(forest, at, "type")) { spelled.append(at); }
         for (child in Members(forest, at)) { pending.append(child); }
     }
-    if (depth == 0) { return types; }
+    if (!addresses) { return types; }
     for (node in spelled) {
         value := ReadType(forest, text, &types, aliases, package, node);
         types = AddPointer(types, value, false, package);
@@ -178,24 +181,28 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
         }
         scalar += 1;
     }
-    while (depth > 0) {
-        count := length(types);
-        index: int = 0;
-        while (index < count) {
-            declared := types[index];
-            storage := declared.storage;
-            container: int = 0;
-            if (declared.kind == RecordDecl) { storage = StructStorage; }
-            if (declared.kind == UnionDecl) { storage = UnionStorage; }
-            if (declared.kind == MapDecl) { storage = UnionStorage; container = MapContainer; }
-            if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
-                types = AddPointer(types, {storage: storage, container: container, record: index}, false, package);
-            }
-            index += 1;
+    count := length(types);
+    index: int = 0;
+    while (index < count) {
+        declared := types[index];
+        storage := declared.storage;
+        container: int = 0;
+        if (declared.kind == RecordDecl) { storage = StructStorage; }
+        if (declared.kind == UnionDecl) { storage = UnionStorage; }
+        if (declared.kind == MapDecl) { storage = UnionStorage; container = MapContainer; }
+        if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
+            types = AddPointer(types, {storage: storage, container: container, record: index}, false, package);
         }
-        depth -= 1;
+        index += 1;
     }
     return types;
+}
+// The pointer type to `value`, declared when none is yet.
+EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType) -> int {
+    found := FindPointer(table^, value, false);
+    if (found >= 0) { return found; }
+    table^ = AddPointer(table^, value, false, 0);
+    return length(table^) - 1;
 }
 // Prefix slots/code have already been numbered by the caller.
 PointerPrefix :: (code: Code[], slots: Slot[], step: Step) -> Step {

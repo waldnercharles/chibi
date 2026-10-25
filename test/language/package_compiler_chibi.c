@@ -553,6 +553,36 @@ static const sample samples[] = {
       .calls = { { .function = "Make", .arguments = "[1,2]", .expected = "[{\"x\":1,\"y\":2,\"title\":\"p\",\"open\":true}]" },
                  { .function = "Moved", .arguments = "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]", .expected = "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { .function = "Total", .arguments = "[5]", .expected = "[123]" } } },
+    { .name = "lent arguments",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "Change :: (note: Note, xs: int[]) -> int {\n"
+                "    note.count = 9;\n    xs.append(7);\n    xs[0] = 9;\n"
+                "    return length(xs) * 10 + note.count;\n}\n"
+                "Same :: (xs: int[]) -> int[] { return xs; }\n"
+                "Read :: (note: Note, xs: int[]) -> int { return note.count * 10 + "
+                "length(xs); }\n"
+                "Grow :: (xs: ref int[]) -> int { xs[0] = 5; return 0; }\n"
+                "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
+                "Writes :: () -> int {\n"
+                "    xs: int[] = [1];\n    note: Note = {text: \"a\", count: 1};\n"
+                "    n := Change(note, xs);\n"
+                "    if (note.count != 1 || xs[0] != 1) { return -1; }\n"
+                "    return n * 100 + note.count * 10 + length(xs);\n}\n"
+                "Returns :: () -> int {\n"
+                "    xs: int[] = [1, 2];\n    kept := Same(xs);\n"
+                "    xs.append(3);\n    xs[0] = 5;\n"
+                "    return kept[0] * 100 + length(kept) * 10 + length(xs);\n}\n"
+                "Temporaries :: () -> int { return Read({text: \"t\", count: 3}, "
+                "Same([4, 5])); }\n"
+                "Referenced :: () -> int {\n"
+                "    a: int[] = [1];\n    n := Observe(a, Grow(ref a));\n"
+                "    return n * 10 + a[0];\n}",
+      .calls = { { .function = "Writes", .arguments = "[]", .expected = "[2911]" },
+                 { .function = "Returns", .arguments = "[]", .expected = "[123]" },
+                 { .function = "Temporaries", .arguments = "[]", .expected = "[32]" },
+                 { .function = "Referenced", .arguments = "[]", .expected = "[15]" } } },
     { .name = "moved values",
       .group = IMPORT_SAMPLES,
       .moves = true,
@@ -614,29 +644,33 @@ static const sample samples[] = {
       .built = true,
       .source = "package facts\n"
                 "Holder :: union { Some(items: int[], name: string) }\n"
-                "BuiltCount :: (n: int) -> int[] {\n"
+                "Counted :: (n: int) -> int[] {\n"
                 "    xs: int[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { xs.append(i); i += 1; }\n"
                 "    return xs;\n}\n"
-                "BuiltPair :: (n: int, ys: int[]) -> Holder {\n"
-                "    xs: int[] = [7];\n    xs.extend(BuiltCount(n));\n    "
+                "Paired :: (n: int, ys: int[]) -> Holder {\n"
+                "    xs: int[] = [7];\n    xs.extend(Counted(n));\n    "
                 "xs[0] = 9;\n"
                 "    if (n == 0) { return Holder.Some(ys, \"none\"); }\n"
                 "    return Holder.Some(xs, \"pair\");\n}\n"
+                "BuiltPair :: (n: int) -> Holder { return Holder.Some([n, n + 1], \"pair\"); }\n"
+                "BuiltOne :: () -> Holder { return Holder.Some([1], \"one\"); }\n"
                 "CopiedCount :: (n: int) -> int[] {\n"
-                "    xs: int[] = [];\n    xs = BuiltCount(n);\n    return "
+                "    xs: int[] = [];\n    xs = Counted(n);\n    return "
                 "xs;\n}\n"
                 "Total :: () -> int {\n"
-                "    a := BuiltCount(3);\n    ys: int[] = [4, 5];\n"
-                "    b := BuiltPair(2, ys);\n    c := BuiltPair(0, ys);\n    "
-                "ys[0] = 6;\n"
+                "    a := Counted(3);\n    ys: int[] = [4, 5];\n"
+                "    b := Paired(2, ys);\n    c := Paired(0, ys);\n    "
+                "ys[0] = 6;\n    d := BuiltPair(3);\n    e := BuiltOne();\n"
                 "    total: int = a[2] * 1000 + CopiedCount(4)[3] * 100;\n"
                 "    switch b { case .Some(items, name): total += items[0] * "
                 "10 + items[2]; }\n"
                 "    switch c { case .Some(items, name): total += items[0] * "
                 "10000; }\n"
+                "    switch d { case .Some(items, name): total += items[1] * 100000; }\n"
+                "    switch e { case .Some(items, name): total += items[0] * 1000000; }\n"
                 "    return total;\n}",
-      .calls = { { .function = "Total", .arguments = "[]", .expected = "[42391]" } } },
+      .calls = { { .function = "Total", .arguments = "[]", .expected = "[1442391]" } } },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -955,14 +989,14 @@ static const sample samples[] = {
           "ReadWindow :: (window: view int[]) -> int { return window.length() * 100 + window[0]; }\n"
           "Follow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { selected[0] = 8; previous := values[1]; pointer^ = [4, 5, 6, 7]; selected[1] = 9; return previous * 1000 + values[1] * 100 + values[2] * 10 + selected.length(); } return -1; }\n"
           "OrdinaryCopy :: () -> int { values: int[] = [1, 2]; copied := values; pointer := &values; selected := pointer.view(0..<2); if selected { selected[1] = 7; return values[1] * 100 + copied[1] * 10 + selected[1]; } return -1; }\n"
-          "Grow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer.append(4); selected[0] = 8; return values[1] * 100 + selected.length() * 10 + values.length(); } return -1; }\n"
+          "Grow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer.append(4); } if selected { selected[0] = 8; return values[1] * 100 + selected.length() * 10 + values.length(); } return -1; }\n"
           "Cloned :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected.clone(); copied[0] = 9; return values[0] * 100 + selected[0] * 10 + copied[0]; } return -1; }\n"
           "Sliced :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected[0..<1]; if copied { copied[0] = 7; return values[0] * 100 + selected[0] * 10 + copied[0]; } } return -1; }\n"
           "Empty :: () -> int { values: int[] = []; pointer := &values; selected := pointer.view(0..<0); if selected { return selected.length() + 1; } return -1; }\n"
           "Escaped :: () -> int { pointer := Owner(); selected := pointer.view(0..<2); if selected { selected[0] = 8; return pointer^[0] * 10 + selected[1]; } return -1; }\n"
           "InvalidRange :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(2..<2); if selected { return 1; } return 0; }\n"
           "Shrunk :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer^ = [9]; return selected.length(); } return -1; }\n"
-          "Parameter :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { Touch(selected); return values[1] * 100 + ReadWindow(selected); } return -1; }\n",
+          "Parameter :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { Touch(selected); } if selected { return values[1] * 100 + ReadWindow(selected); } return -1; }\n",
       .calls = {
           { .function = "Follow", .arguments = "[]",
             .expected = "[8592]" },
@@ -1001,8 +1035,8 @@ static const sample samples[] = {
           "EarlierNested :: () -> int { values: int[][] = [[1]]; observed := ObserveRows(values, ChangeRows(&values)); return observed * 10 + values[0].length(); }\n"
           "EarlierPointer :: () -> int { values: int[] = [1]; return ObservePointer(&values, Change(&values)); }\n"
           "EarlierMap :: () -> int { values: [int: int] = [1: 3]; observed := ObserveMap(values, ChangeMap(&values)); return observed * 10 + values[1]; }\n"
-          "TupleLifetime :: () -> int { p := Multi(); total: int = 0; { q := p; extracted := q.values; extracted[0] = 8; total = extracted[0] + q.values[0]; } return total * 100 + p.values[0] * 10 + p.stamp; }\n"
-          "KeepTupleValue :: () -> int[] { p := Multi(); { q := p; return q.values; } }\n"
+          "TupleLifetime :: () -> int { p := Multi(); total: int = 0; if total == 0 { q := p; extracted := q.values; extracted[0] = 8; total = extracted[0] + q.values[0]; } return total * 100 + p.values[0] * 10 + p.stamp; }\n"
+          "KeepTupleValue :: () -> int[] { p := Multi(); if p.stamp > 0 { q := p; return q.values; } return []; }\n"
           "TupleReturned :: () -> int { values := KeepTupleValue(); values.append(5); return values[0] * 100 + values[2] * 10 + values.length(); }\n",
       .calls = {
           { .function = "EarlierArray", .arguments = "[]",
@@ -1814,6 +1848,16 @@ static const sample samples[] = {
                 "    return length(xs);\n}",
       .updates = true,
       .calls = { { .function = "Build", .arguments = "[3]", .expected = "[6]" } } },
+    { .name = "array updates keep aliases",
+      .source = "package facts\nBuild :: (count: int) -> int {\n"
+                "    xs: int[] = [count, count];\n"
+                "    ys := xs;\n"
+                "    xs = append(xs, count);\n"
+                "    ys = append(ys, count + 1);\n"
+                "    zs := xs;\n"
+                "    xs = extend(xs, ys);\n"
+                "    return xs[2] * 100 + ys[2] * 10 + length(zs);\n}",
+      .calls = { { .function = "Build", .arguments = "[3]", .expected = "[343]" } } },
     { .name = "map updates",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBuild :: (count: int) -> int {\n"
@@ -2278,10 +2322,8 @@ static const sample samples[] = {
       .column = 45 },
     { .name = "element field assignment",
       .source = "package facts\nP :: struct { x: int; }\nOne :: () -> "
-                "int { ps: P[] = []; ps[0].x = 1; return 0; }",
-      .message = "field assignment needs a local record",
-      .line = 3,
-      .column = 34 },
+                "int { ps: P[] = []; ps.append({x: 0}); ps[0].x = 1; return ps[0].x; }",
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[1]" } } },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: (u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",
@@ -2650,9 +2692,10 @@ static bool prepare()
 static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
 {
     int count = 0;
+    const char *probe = getenv("PROBE_SOURCE") ? getenv("PROBE_SOURCE") : s->source;
     inputs[count++] = (source_package_input){ "facts/Main.chibi",
-                                              s->source,
-                                              strlen(s->source) };
+                                              probe,
+                                              strlen(probe) };
     if (s->more) {
         inputs[count++] = (source_package_input){ "facts/More.chibi",
                                                   s->more,
@@ -3102,6 +3145,9 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
     host = NULL;
     return true;
 }
+/* An intrinsic's capability ID is "CHII" and its number. */
+static const uint64_t SEQUENCE_GET_CAPABILITY = UINT64_C(0x4348494900000000) |
+                                                EXECUTION_INTRINSIC_SEQUENCE_GET;
 /* How many of `f`'s instructions load an array's stride. */
 static int stride_loads(const behavior_function *f)
 {
@@ -3112,10 +3158,18 @@ static int stride_loads(const behavior_function *f)
     }
     return loads;
 }
-/* An array of strings, unions or records with a string field is never packed,
- * so stage one reads its elements from `items` alone; any other array may be,
- * so its reads still choose the representation by its stride. In the root
- * module, only the Packed functions load a stride. */
+static bool reads_elements(const behavior_function *f)
+{
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        if (f->host_calls[i].capability_id == SEQUENCE_GET_CAPABILITY) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Stage one reads elements of boxed and packable arrays alike through the
+ * sequence intrinsic, as stage zero does, so the runtime chooses each array's
+ * representation and no function loads a stride itself. */
 static bool reads_boxed(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -3144,11 +3198,10 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
             execution_module_function_info f = execution_module_function_at(module, i);
             bool box = !strncmp(f.entry, "Boxed", 5),
                  pack = !strncmp(f.entry, "Packed", 6);
-            int loads = stride_loads(f.body);
             boxed += box;
             packed += pack;
-            if ((box && loads) || (pack && !loads)) {
-                fprintf(stderr, "package compiler %s loads a stride %d times\n", f.entry, loads);
+            if ((box || pack) && (stride_loads(f.body) || !reads_elements(f.body))) {
+                fprintf(stderr, "package compiler %s reads elements itself\n", f.entry);
                 wrong++;
             }
         }
@@ -3157,7 +3210,6 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
     REQUIRE(boxed == 4 && packed == 1 && !wrong);
     return true;
 }
-/* An intrinsic's capability ID is "CHII" and its number. */
 static const uint64_t SNAPSHOT_CAPABILITY = UINT64_C(0x4348494900000000) |
                                             EXECUTION_INTRINSIC_SNAPSHOT;
 static int snapshots(const behavior_function *f)
@@ -3170,7 +3222,8 @@ static int snapshots(const behavior_function *f)
 }
 /* A literal or an authored function's result is new in the function's
  * storage, so stage one moves it into a local or a return without a snapshot;
- * an element read from an array is still copied. */
+ * an element read from an array is still copied, by the sequence intrinsic
+ * that reads it. */
 static bool moves_fresh_values(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -3202,7 +3255,7 @@ static bool moves_fresh_values(const unsigned char *bytes, size_t length)
             int count = snapshots(f.body);
             moved += move;
             copied += copy;
-            if ((move && count) || (copy && !count)) {
+            if ((move && count) || (copy && !count && !reads_elements(f.body))) {
                 fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
                 wrong++;
             }
@@ -3276,8 +3329,11 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
     REQUIRE(kept == 3 && copied == 1 && !wrong);
     return true;
 }
-/* A function builds a local array it returns in its caller's storage; one
- * whose local it assigns does not. */
+/* A function builds the variant literal it returns in its caller's storage;
+ * one that returns a local it assigns does not. Arrays live on the managed
+ * heap, so a returned one is never copied, and a function that changes its
+ * arrays through their places, as Counted and Paired do, builds nothing
+ * there. */
 static bool builds_results(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -3323,8 +3379,9 @@ static bool builds_results(const unsigned char *bytes, size_t length)
     REQUIRE(built == 2 && copied == 1 && !wrong);
     return true;
 }
-/* A loop over an array nothing changes, and a local that reads an element of
- * it, read in place; a loop whose body changes its array walks a copy. */
+/* Arrays are values a loop retains, so neither a loop over an array nothing
+ * changes nor one whose body changes its array snapshots it; CopiedWalk's
+ * result shows the walk still sees the array as it was. */
 static bool reads_in_place(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -3344,26 +3401,23 @@ static bool reads_in_place(const unsigned char *bytes, size_t length)
         fprintf(stderr, "package compiler aliases load: %s\n", error);
     }
     REQUIRE(packages);
-    int aliased = 0, copied = 0, wrong = 0;
+    int walks = 0, wrong = 0;
     for (int p = 0; p < package_collection_count(packages); p++) {
         const execution_module *module = package_collection_module(packages, p);
         for (int i = 0; execution_module_id(module) == root &&
                         i < execution_module_function_count(module);
              i++) {
             execution_module_function_info f = execution_module_function_at(module, i);
-            bool alias = !strncmp(f.entry, "Aliased", 7),
-                 copy = !strcmp(f.entry, "CopiedWalk");
             int count = snapshots(f.body);
-            aliased += alias;
-            copied += copy;
-            if ((alias && count) || (copy && !count)) {
+            walks += !strcmp(f.entry, "AliasedSum") || !strcmp(f.entry, "CopiedWalk");
+            if (count) {
                 fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
                 wrong++;
             }
         }
     }
     package_collection_free(packages);
-    REQUIRE(aliased == 1 && copied == 1 && !wrong);
+    REQUIRE(walks == 2 && !wrong);
     return true;
 }
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
@@ -3757,9 +3811,10 @@ static bool run_samples(sample_group group, int b)
     }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
-        if (s->group != group) {
+        if (s->group != group || (getenv("PROBE_SKIP") && strstr(getenv("PROBE_SKIP"), s->name)) || (getenv("PROBE_ONLY") && strcmp(getenv("PROBE_ONLY"), s->name))) {
             continue;
         }
+        fprintf(stderr, "PROBE sample %s backend %d\n", s->name, b);
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;

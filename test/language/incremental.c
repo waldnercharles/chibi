@@ -681,8 +681,9 @@ TEST_CASE(struct_default_keys_keep_opaque_bytes_and_do_not_read_malformed_fields
                                  .fields = &reflected_field,
                                  .field_count = shape ? 1 : 0 };
         if (shape == 2) {
-            /* Owning snapshot only knows field.size fits. A typed scalar read
-             * here would read eight bytes at offset fifteen. */
+            /* A typed scalar read here would read eight bytes at offset
+             * fifteen. Defaults keep a frozen layout, so a reflected layout
+             * that cannot freeze is rejected before any field is read. */
             reflected_field.offset = sizeof payload - 1;
             reflected_field.size = 1;
         }
@@ -692,9 +693,21 @@ TEST_CASE(struct_default_keys_keep_opaque_bytes_and_do_not_read_malformed_fields
         type_catalog_set_project(&pack);
         project_types = true;
         generations[0] = prepare(-1, BEHAVIOR_BYTECODE);
+        if (shape == 2) {
+            REQUIRE(!authoring_sources_valid(generations[0]));
+            REQUIRE(authoring_sources_catalog_diagnostic_count(generations[0]) == 1);
+            REQUIRE(!strcmp(
+                authoring_sources_catalog_diagnostic_at(generations[0], 0)->message,
+                "Cannot retain native declaration defaults"
+            ));
+            discard(0);
+            type_catalog_set_project(NULL);
+            project_types = false;
+            continue;
+        }
         generations[1] = prepare(0, BEHAVIOR_BYTECODE);
         REQUIRE(valid(0) && valid(1));
-        REQUIRE(authoring_sources_reused(generations[1]) == (shape == 2 ? 0 : 4));
+        REQUIRE(authoring_sources_reused(generations[1]) == 4);
         payload[1]++;
         generations[2] = prepare(1, BEHAVIOR_BYTECODE);
         REQUIRE(valid(2) && !authoring_sources_reused(generations[2]));

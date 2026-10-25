@@ -1,5 +1,6 @@
 #include "authoring/native_bindings.h"
 #include "backend.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "language/lower.h"
@@ -31,11 +32,13 @@ static execution_module *module;
 static native_capabilities *natives;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap heap;
 
 static void cleanup()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
     execution_module_free(module);
     native_capabilities_free(natives);
     script_analysis_free(analysis);
@@ -48,6 +51,14 @@ static void cleanup()
     natives = NULL;
     analysis = NULL;
     syntax = NULL;
+}
+/* The caller-owned heap a run's arrays live on, made on first use. */
+static behavior_managed_heap *managed_heap()
+{
+    if (!heap.storage.collectable) {
+        behavior_managed_heap_init(&heap);
+    }
+    return &heap;
 }
 static pin_value scalar(pin_type type, int n)
 {
@@ -407,6 +418,7 @@ static bool integer_case(
                                            .argument_count = 2,
                                            .results = &result,
                                            .activation = &activation,
+                                           .managed_heap = managed_heap(),
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
     if (!behavior_function_bind(function, &context, NULL, 0)) {
@@ -480,6 +492,7 @@ TEST_CASE(typed_integer_large_constant_folding_is_exact)
         pin_value result = { .type = PIN_U64 };
         context = (behavior_function_context){ .results = &result,
                                                .activation = &activation,
+                                               .managed_heap = managed_heap(),
                                                .budget = 10000 };
         behavior_function_bind_storage(&context, &storage);
         REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -570,6 +583,7 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
             pin_value result = { .type = type };
             context = (behavior_function_context){ .results = &result,
                                                    .activation = &activation,
+                                                   .managed_heap = managed_heap(),
                                                    .budget = 10000 };
             behavior_function_bind_storage(&context, &storage);
             REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -589,6 +603,7 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
             result = (pin_value){ .type = type };
             context = (behavior_function_context){ .results = &result,
                                                    .activation = &activation,
+                                                   .managed_heap = managed_heap(),
                                                    .budget = 10000 };
             behavior_function_bind_storage(&context, &storage);
             REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -645,6 +660,7 @@ TEST_CASE(float_math_stays_float_and_default_math_stays_double)
                                                    .argument_count = narrow,
                                                    .results = &result,
                                                    .activation = &activation,
+                                                   .managed_heap = managed_heap(),
                                                    .budget = 10000 };
             behavior_function_bind_storage(&context, &storage);
             REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -692,6 +708,7 @@ TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths)
                                                        .argument_count = 1,
                                                        .results = &result,
                                                        .activation = &activation,
+                                                       .managed_heap = managed_heap(),
                                                        .budget = 100000 };
                 behavior_function_bind_storage(&context, &storage);
                 REQUIRE(behavior_function_bind(function, &context, NULL, 0));

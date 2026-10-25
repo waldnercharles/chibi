@@ -349,6 +349,9 @@ const char *behavior_function_host_results(behavior_function_context *ctx, int t
                                            : ctx->value_storage;
         for (int i = 0; i < spec->result_count; i++) {
             pin_value copy;
+            if (!pin_value_holds_storage(&results[i])) {
+                continue;
+            }
             if (!storage || pin_value_collection_copy(storage, &copy, &results[i])) {
                 memset(results, 0, (size_t)spec->result_count * sizeof *results);
                 return "Cannot copy native result bank";

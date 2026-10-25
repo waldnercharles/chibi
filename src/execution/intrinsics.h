@@ -68,6 +68,7 @@ typedef enum
     EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE = 59,
     EXECUTION_INTRINSIC_REFERENCE_UNION = 60,
     EXECUTION_INTRINSIC_MAP_DELETE_PLACE = 61,
+    EXECUTION_INTRINSIC_SEQUENCE_BORROW = 62,
 } execution_intrinsic;
 /* A host capability id with this bit runs its intrinsic in the caller's
  * storage, where a function builds the locals it returns: construct, array
@@ -100,6 +101,9 @@ extern const node_host_call EXECUTION_value_equal_call;
 extern const node_host_call EXECUTION_sequence_slice_call,
     EXECUTION_sequence_view_call, EXECUTION_sequence_clone_call,
     EXECUTION_sequence_get_call, EXECUTION_sequence_length_call;
+/* sequence_get without the element's snapshot: the result stays in the
+ * array, for a reader that finishes before the array can change. */
+extern const node_host_call EXECUTION_sequence_borrow_call;
 typedef enum
 {
     EXECUTION_ARRAY_APPEND = 1,

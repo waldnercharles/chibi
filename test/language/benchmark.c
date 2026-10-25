@@ -337,6 +337,7 @@ TEST_CASE(byte_array_build_benchmark)
 {
     arena storage = { 0 }, result = { 0 };
     for (int trial = 0; trial < TRIAL_COUNT; trial++) {
+        arena_init_collectable(&storage);
         double start = monotonic_seconds();
         pin_value whole = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY }, out;
         for (int i = 0; i < BYTE_PIECES; i++) {

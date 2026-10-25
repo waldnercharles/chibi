@@ -494,16 +494,11 @@ static int behavior_asset_add_call_pin(graph *caller, node *call, int output, co
     if (pin.type_name) {
         pin.type_name = graph_own_str(caller, pin.type_name, strlen(pin.type_name));
     }
-    if (pin.container >= PIN_CONTAINER_ARRAY && pin.default_value.ptr) {
-        pin.default_value.ptr = pin_array_clone_to_graph(
-            caller,
-            (const pin_array *)pin.default_value.ptr
-        );
-    } else if (pin.type == PIN_STR || pin.type == PIN_NAME) {
-        pin_value input = pin.default_value;
-        if (pin_value_copy_to_graph(caller, &pin.default_value, &input)) {
-            return -1;
-        }
+    pin_value input = pin.default_value;
+    if (((pin.container >= PIN_CONTAINER_ARRAY && input.ptr) ||
+         (pin.container == PIN_CONTAINER_SINGLE && (pin.type == PIN_STR || pin.type == PIN_NAME))) &&
+        pin_value_copy_to_graph(caller, &pin.default_value, &input)) {
+        return -1;
     }
     pin.default_value.type_name = pin.type_name;
     return graph_add_pin(caller, call, output, &pin) < 0 ? -1 : 0;

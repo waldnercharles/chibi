@@ -107,7 +107,8 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_SEQUENCE_VIEW: expected = 4; break;
         case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: expected = 1; break;
-        case EXECUTION_INTRINSIC_SEQUENCE_GET: expected = 2; break;
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW: expected = 2; break;
         case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
             if (count < 2 || count > 4 || host->result_count != 1) {
                 return 0;
@@ -500,6 +501,7 @@ static bool predicate_host(const behavior_function *f, int pc, bool local_arrays
         case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
         case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
         case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
             return f->data_values[host->first].initial.container != PIN_CONTAINER_VIEW;
         default: return false;
@@ -1620,6 +1622,7 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
                 cost_add(c, f, pc, id, 0, allocate_copy, "Element access may retain ownership metadata or copy a value payload");
             }
             return;
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH: return;
         case EXECUTION_INTRINSIC_MAP_STORE:
         case EXECUTION_INTRINSIC_MAP_DELETE:
@@ -2164,6 +2167,7 @@ static void share_host(share_flow *s, int pc)
                 }
                 break;
             case EXECUTION_INTRINSIC_SEQUENCE_GET:
+            case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
                 output = s->retyped ||
                          shared_targets(f->data_values[host->result_first].initial, 0);
                 break;

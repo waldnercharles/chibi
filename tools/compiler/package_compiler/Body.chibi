@@ -843,10 +843,11 @@ BuiltLocals :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
     }
     return built;
 }
-// Records, unions and collections use payload pointers. Explicit managed
-// pointers remain scalar values whose assignment preserves target identity.
+// Records and collections are pointers to their storage. A union slot holds
+// the union itself, and explicit managed pointers remain scalar values whose
+// assignment preserves target identity.
 Pointer :: (storage: int, container: int) -> bool {
-    return container != 0 || storage == StructStorage || storage == UnionStorage;
+    return container != 0 || storage == StructStorage;
 }
 SlotStorage :: (storage: int, container: int, target: Target) -> int {
     if (Pointer(storage, container)) {
@@ -1461,14 +1462,15 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return -1;
     }
     callee := Field(forest, value, "function");
-    // Function-form append/extend produce copies even when assigned back to
-    // the input name: another name can still refer to the old root.
-    if (!Is(forest, callee, "member_expression")) {
+    first := ArrayArgument(forest, value);
+    item := ItemArgument(forest, value);
+    if (!Is(forest, first, "identifier") || Text(forest, text, first) != Text(forest, text, destination) ||
+        item < 0 || NextMember(forest, item) >= 0) {
         return -1;
     }
-    first := ArrayArgument(forest, value);
-    if (!Is(forest, first, "identifier") || Text(forest, text, first) != Text(forest, text, destination) ||
-        ItemArgument(forest, value) < 0 || NextMember(forest, ItemArgument(forest, value)) >= 0) {
+    // The copying form reads the array before the item, so an item that
+    // changes the array keeps it.
+    if (Holds(MutatedNames(forest, text, item, []), Text(forest, text, destination))) {
         return -1;
     }
     native: int = -1;
@@ -1582,8 +1584,8 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     hosts: Host[] = [];
     code: Code[] = [];
     // Scalar and string parameters move to locals, so assigning one needs no
-    // other form. Written pointer parameters get local header cells before
-    // the body runs: arrays share their root and records copy their value.
+    // other form. Calls lend their arguments, so written pointer parameters
+    // get local copies before the body runs.
     work: Work[] = [Visit(Field(forest, callable.node, "body"))];
     index: int = 0;
     while (index < callable.count) {
@@ -1791,7 +1793,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};
         step := Fail(forest, item.node, document, "");
-        if (item.phase == CopyValuePhase) {
+        if (item.phase == CopyValuePhase && item.a == 1) {
+            step = LendValueStep(values[value_top - 1], 1, ops, target, at, node);
+        } else if (item.phase == CopyValuePhase) {
             step = CopyValueStep(values[value_top - 1], 1, ops, target, at, node);
         } else if (item.phase == MapDeletePlacePhase || item.phase == MapDeleteDonePhase) {
             step = MapPlaceDeleteStep(forest, document, types, values, value_top, item, ops, target, at);
@@ -1849,24 +1853,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 code.append(Instruction(ops.branch_if, 0, 0, condition.slot, 0, length(code) + 2, node));
                 code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
                 leave := length(code) - 1;
-                if (OptionalElement(types, optional_condition).storage != 0) {
-                    narrow_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                       cell: length(cells), host: length(hosts), call: length(calls)};
-                    switch OptionalConditionNames(types, names, forest, text,
-                                                  Field(forest, item.node, "condition"), optional_condition,
-                                                  ops, target, narrow_at) {
-                        case .Failed(diagnostic): return Body.Failed(diagnostic);
-                        case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
-                                      added_calls, added_names, scheduled, popped, value, kept, marks):
-                            code.extend(added_code);
-                            slots.extend(added_slots);
-                            locals.extend(added_locals);
-                            cells.extend(added_cells);
-                            hosts.extend(added_hosts);
-                            roots.extend(added_roots);
-                            names.extend(added_names);
-                    }
-                }
+                names.extend(OptionalConditionNames(types, names, forest, text, Field(forest, item.node, "condition"),
+                                                    optional_condition));
                 field := "consequence";
                 if (kind == "while_statement") {
                     field = "body";
@@ -2647,10 +2635,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             pass += 1;
         }
         types = table^;
-        // The value an expression produced is watched as its output; the
-        // step that gives a number literal its type watches it.
+        // The value an expression produced is watched as its output, once:
+        // the step that gives a number literal its type watches it, and a
+        // copy or loan of the value for its consumer is not watched again.
+        // A place a write goes through holds no value of its own.
         transient_pointer := length(next) > 0 && next[length(next) - 1].phase == PointerMemberReadPhase;
         if (ops.debug && produced.storage > 0 && Expression(kind) && !negated && !transient_pointer &&
+            item.phase != CopyValuePhase && !produced.place &&
             !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
             code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
                                   0, true, node, target));

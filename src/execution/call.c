@@ -1,6 +1,7 @@
 #include "execution/borrow.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
@@ -322,20 +323,13 @@ static invocation_frame *frame_new(
         .commit_instance = parent->commit_instance
     };
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
+    /* A call lends its caller's values: the callee copies a parameter it
+     * writes. Owned arguments are copies the frame takes over. */
     for (int p = 0; p < call.count; p++) {
+        arguments[p] = parent->data->values[call.first + p];
         if (call.owned_arguments) {
-            arguments[p] = parent->data->values[call.first + p];
             behavior_function_collection_transfer(parent, &frame->context, &arguments[p]);
-            continue;
         }
-        arena *storage = parent->managed_heap ? &parent->managed_heap->storage
-                                              : &frame->storage;
-        if (pin_value_collection_copy(storage, &arguments[p], &parent->data->values[call.first + p])) {
-            frame_free(frame, FLOW_ERR_ARGUMENT);
-            call_error(function, parent, BEHAVIOR_FUNCTION_ARGUMENT, "function argument cannot be retained");
-            return NULL;
-        }
-        behavior_function_collection_retain(&frame->context, &arguments[p]);
     }
     frame->context.arguments_stabilized = true;
     frame->context.arguments = arguments;
@@ -491,11 +485,7 @@ static void copy_failure(behavior_function_context *root, const behavior_functio
     root->error_status = context->error_status;
 }
 
-int behavior_function_run_calls(
-    const behavior_function *function,
-    behavior_function_context *root,
-    bool compiled
-)
+static int run_calls(const behavior_function *function, behavior_function_context *root, bool compiled)
 {
     assert(root->activation && root->activation->values);
     struct behavior_function_calls *calls = root->activation->calls;
@@ -553,6 +543,7 @@ int behavior_function_run_calls(
             if (frame->context.call_enter) {
                 frame->context.call_enter(frame->function, &frame->context);
             }
+            behavior_managed_heap_safepoint(root->managed_heap, function, root);
             continue;
         }
         if (!result && count) {
@@ -567,6 +558,7 @@ int behavior_function_run_calls(
             }
             asetlen(calls->frames, count - 1);
             if (!result) {
+                behavior_managed_heap_safepoint(root->managed_heap, function, root);
                 continue;
             }
             context = count > 1 ? &calls->frames[count - 2]->context : root;
@@ -579,6 +571,22 @@ int behavior_function_run_calls(
         }
         return settle_calls(calls, result);
     }
+}
+int behavior_function_run_calls(
+    const behavior_function *function,
+    behavior_function_context *root,
+    bool compiled
+)
+{
+    behavior_managed_heap *heap = root->managed_heap;
+    if (heap) {
+        heap->running_calls++;
+    }
+    int result = run_calls(function, root, compiled);
+    if (heap) {
+        heap->running_calls--;
+    }
+    return result;
 }
 
 static void trace_value(const pin_value *value, behavior_value_kind kind, arena_marker mark, void *user)

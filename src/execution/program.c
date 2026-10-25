@@ -178,8 +178,9 @@ static bool stream_function(const behavior_function *f, int depth, int *steps)
 
 bool program_same_type(pin_value a, pin_value b)
 {
-    return a.type == b.type && a.container == b.container &&
-           pin_record_same(a.record, b.record) &&
+    /* A native record frozen into one side matches the catalog layout the
+     * other names. */
+    return a.type == b.type && a.container == b.container && pin_value_layout_same(&a, &b) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -1651,24 +1652,36 @@ int execution_instance_dispatch(
     unsigned budget
 )
 {
-    if (!arguments_owned(instance->program, arguments, count)) {
+    execution_program *program = instance->program;
+    if (!arguments_owned(program, arguments, count)) {
         return FLOW_ERR_ARGUMENT;
+    }
+    /* Scalars are their own copies, so only arguments that hold storage need
+     * an owned copy the dispatch roots. */
+    bool held = false;
+    for (int i = 0; i < count; i++) {
+        held |= pin_value_holds_storage(&arguments[i]);
     }
     queued_event values = { 0 };
-    if (event_copy_arguments(instance->program, &values, arguments, count)) {
+    queued_event *events = NULL;
+    queued_event_batch batch = { .previous = program->dispatch_events };
+    if (held) {
+        if (event_copy_arguments(program, &values, arguments, count)) {
+            return FLOW_ERR_ARGUMENT;
+        }
+        apush(events, values);
+        batch.events = events;
+        program->dispatch_events = &batch;
+        arguments = values.arguments;
+    } else if (program_validate_values(program, arguments, count)) {
         return FLOW_ERR_ARGUMENT;
     }
-    queued_event *events = NULL;
-    apush(events, values);
-    execution_program *program = instance->program;
-    queued_event_batch batch = { .previous = program->dispatch_events, .events = events };
-    program->dispatch_events = &batch;
-    int status = dispatch_to(instance, event, instance->owner, values.arguments, count, now, delta, budget);
+    int status = dispatch_to(instance, event, instance->owner, arguments, count, now, delta, budget);
     program->dispatch_events = batch.previous;
     afree(events);
     event_free(&values);
-    program_apply_services(instance->program->owner_program);
-    program_collect_states(instance->program);
+    program_apply_services(program->owner_program);
+    program_collect_states(program);
     return status;
 }
 const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id)
@@ -1809,6 +1822,7 @@ static int query_matches(execution_instance *instance, int index)
             /* Even a non-suspending predicate can reuse its VM scratch. */
             context->activation = &e->activation;
             context->query_variables = instance->query_variables;
+            context->managed_heap = p->owner_program->managed;
             context->results = &result;
             context->now = p->now;
             context->delta_seconds = p->delta;

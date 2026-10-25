@@ -137,6 +137,7 @@ bool compiler_fixture_prepare_packs(
     REQUIRE(additional_count >= 0 && (!additional_count || additional));
     fixture->managed = xmalloc(sizeof *fixture->managed);
     behavior_managed_heap_init(fixture->managed);
+    fixture->managed->call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     native_definition_pack *packs = xmalloc(((size_t)additional_count + 2) * sizeof *packs);
     packs[0] = NATIVE_TEXT_DEFINITION_PACK;
     packs[1] = NATIVE_ARRAY_DEFINITION_PACK;

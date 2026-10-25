@@ -56,6 +56,41 @@ ReferenceArgumentNode :: (forest: snapshot.SnapshotNode[], argument: int) -> int
     }
     return -1;
 }
+// The name a place reads through its fields and elements, or "".
+RootName :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
+    at := node;
+    while (Is(forest, at, "parenthesized_expression") || Is(forest, at, "member_expression") ||
+           Is(forest, at, "index_expression")) {
+        if (Is(forest, at, "parenthesized_expression")) {
+            at = Field(forest, at, "expression");
+        } else {
+            at = Field(forest, at, "object");
+        }
+    }
+    if (!Is(forest, at, "identifier")) {
+        return "";
+    }
+    return Text(forest, text, at);
+}
+// Whether a ref argument anywhere under `node` reaches local `name`. The
+// forest lists each subtree right after its root.
+ReferencesName :: (forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
+    at := node;
+    while (at < length(forest)) {
+        parent := at;
+        while (parent > node) {
+            parent = forest[parent].parent;
+        }
+        if (parent != node) {
+            return false;
+        }
+        if (Is(forest, at, "reference_argument") && RootName(forest, text, Field(forest, at, "value")) == name) {
+            return true;
+        }
+        at += 1;
+    }
+    return false;
+}
 ArgumentExpression :: (forest: snapshot.SnapshotNode[], argument: int) -> int {
     at := argument;
     while (Is(forest, at, "named_argument") || Is(forest, at, "typed_argument") ||
@@ -181,7 +216,7 @@ PlaceReadStep :: (binding: Name, ops: Ops, target: Target, at: Bases, node: snap
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         slots: Slot[] = [address, ValueLocal(binding.storage)];
         return Step.Emitted(CellRead(binding.storage, binding.index, ops, target, at.slot, node), slots, [], [], [],
-                            roots, [], [], [], 0, Typed(at.slot + 1, binding.storage, 0, -1), NoValue(), []);
+                            roots, [], [], [], 0, Typed(at.slot + 1, binding.storage, 0, binding.record), NoValue(), []);
     }
     slots: Slot[] = [DescriptorSlot(target)];
     code: Code[] = [DescriptorCode(ops, target, binding.index, at.slot, node)];
@@ -197,8 +232,8 @@ PlaceReadStep :: (binding: Name, ops: Ops, target: Target, at: Bases, node: snap
     return Step.Emitted(code, slots, [], cells, [ReadThroughHost(at.cell)], roots, [], [], [], 0,
                         Typed(value, binding.storage, binding.container, binding.record), NoValue(), []);
 }
-// `x: T = v` for a number, bool or string local that a ref argument reaches:
-// its cell holds the value.
+// `x: T = v` for a number, bool or string local that a ref argument reaches,
+// or a union something writes: its cell holds the value.
 BoxStep :: (forest: snapshot.SnapshotNode[], text: string, local: Value, value: Value, item: Work, ops: Ops,
             target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     name := Field(forest, item.node, "name");
@@ -207,7 +242,7 @@ BoxStep :: (forest: snapshot.SnapshotNode[], text: string, local: Value, value: 
     code.append(SymbolCode(ops, name, node));
     binding: Name = {owned: false, name: Text(forest, text, name), place: BoxPlace, index: at.cell, storage: local.storage,
                      container: 0, record: local.record, writable: true, node: name};
-    return Step.Emitted(code, [address], [], [TypedCell(local.storage, 0, -1)], [], [], [], [binding], [], 1,
+    return Step.Emitted(code, [address], [], [TypedCell(local.storage, 0, local.record)], [], [], [], [binding], [], 1,
                         NoValue(), NoValue(), []);
 }
 // A number, bool or string parameter that a ref argument reaches moves into

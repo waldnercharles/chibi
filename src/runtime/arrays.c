@@ -211,29 +211,12 @@ pin_value native_array_add_unique(const pin_value *inputs, int count, arena *a)
 
 static int set_item_value(arena *storage, pin_array *out, int index, const pin_value *value)
 {
-    if (out->backing) {
-        return pin_array_snapshot_set(storage, out, index, value);
-    }
-    pin_value owned;
-    if (pin_value_collection_copy(storage, &owned, value)) {
-        return -1;
-    }
-    if (pin_array_snapshot_set(storage, out, index, &owned)) {
-        pin_value_collection_release(&owned);
-        return -1;
-    }
-    return 0;
+    return pin_array_snapshot_set(storage, out, index, value);
 }
 
 static int copy_items(arena *storage, pin_array *out, int to, const pin_array *source, int from, int count)
 {
-    for (int i = 0; i < count; i++) {
-        pin_value item = pin_array_get(source, from + i);
-        if (set_item_value(storage, out, to + i, &item)) {
-            return -1;
-        }
-    }
-    return 0;
+    return pin_array_snapshot_copy(storage, out, to, source, from, count);
 }
 
 pin_value native_array_extend(const pin_value *inputs, int count, arena *a)
@@ -536,7 +519,8 @@ static const char *select_owned(arena *storage, const pin_value *inputs, int cou
                                                    .owned_result = true };      \
     const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call, \
                                                    .language_values = true,     \
-                                                   .owned_result = true };
+                                                   .owned_result = true,        \
+                                                   .borrows = true };
 NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
 #undef ADD
 #undef CALL

@@ -771,6 +771,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     arena storage = { 0 };
     behavior_managed_heap managed;
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     service_binding *services = NULL;
     bool success = false;
     size_t argument_bytes = 0;

@@ -933,11 +933,14 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 );
             }
             if (!ts_node_is_extra(value)) {
+                TSNode changing = a->changing;
+                a->changing = value;
                 result.expression = script_analyzer_expression(
                     a,
                     value,
                     (script_type){ .storage = PIN_FLOW }
                 );
+                a->changing = changing;
                 break;
             }
         }

@@ -378,6 +378,47 @@ TEST_CASE(record_runtime_array_results)
     }
     return true;
 }
+/* A heap its call owns collects at call boundaries, and what the call still
+ * holds survives every collection. */
+TEST_CASE(record_runtime_collects_during_call)
+{
+    static const char source[] = "Rows :: library { " ROW
+                                 "Keep :: (text: string) -> Row[] { kept := Batch(text); "
+                                 "i := 0; while (i < 60) { batch := Batch(\"garbage\"); "
+                                 "if batch[2].label != \"batch\" { return []; } i += 1; } "
+                                 "return kept; } "
+                                 "Batch :: (text: string) -> Row[] { a: Row = {key: text, "
+                                 "label: \"batch\"}; return [a, a, a]; } }";
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile(source, backends[b], false));
+        behavior_managed_heap_init(&heap);
+        heap.call_collection_bytes = 4096;
+        char text[] = "kept";
+        pin_value arg = { .type = PIN_STR,
+                          .text = &(const pin_string){ .bytes = text,
+                                                       .length = (uint32_t)strlen(text) } };
+        REQUIRE(run(backends[b], &arg, 1));
+        REQUIRE(heap.storage.kept);
+        pin_array *array = result.ptr;
+        REQUIRE(result.container == PIN_CONTAINER_ARRAY && array && array->count == 3);
+        for (int i = 0; i < array->count; i++) {
+            REQUIRE(!strcmp(pin_text(array_member(array, i, 0)).bytes, "kept"));
+            REQUIRE(!strcmp(pin_text(array_member(array, i, 1)).bytes, "batch"));
+        }
+        /* A call that runs inside a native of another call never collects:
+         * no collection traces that native's locals. */
+        cleanup();
+        REQUIRE(compile(source, backends[b], false));
+        behavior_managed_heap_init(&heap);
+        heap.call_collection_bytes = 4096;
+        heap.running_calls = 1;
+        REQUIRE(run(backends[b], &arg, 1));
+        REQUIRE(heap.running_calls == 1 && !heap.storage.kept);
+        heap.running_calls = 0;
+    }
+    return true;
+}
 TEST_CASE(record_runtime_fieldwise_equality)
 {
     static const char source[] = "Rows :: library { " ROW
@@ -497,12 +538,16 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         REQUIRE(compile(reference_consumer, backends[b], false));
         reference_owner = (behavior_function_context){ .value_storage = &escaped,
                                                        .managed_heap = &heap };
+        /* References write their values in place, so the row is a value of
+         * its own rather than a header over the array's first item. */
+        pin_value row;
+        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &row, &args[0]));
         pin_value references[] = {
-            execution_reference_value(&escaped, &reference_owner, &args[0], args[0]),
+            execution_reference_value(&escaped, &reference_owner, &row, row),
             execution_reference_value(&escaped, &reference_owner, &saved, saved),
         };
         REQUIRE(run(backends[b], references, 2));
-        REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "reference"));
+        REQUIRE(!strcmp(pin_text(member(&row, 1)).bytes, "reference"));
         pin_array *changed = saved.ptr;
         REQUIRE(changed && changed->count == 2);
         REQUIRE(!strcmp(pin_text(array_member(changed, 0, 1)).bytes, "reference-array"));
@@ -724,6 +769,7 @@ void test_language_record_runtime()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(record_runtime_owned_return_and_value_copy);
     RUN_TEST_CASE(record_runtime_array_results);
+    RUN_TEST_CASE(record_runtime_collects_during_call);
     RUN_TEST_CASE(record_runtime_fieldwise_equality);
     RUN_TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller);
     RUN_TEST_CASE(record_runtime_formatter_layout);

@@ -1398,13 +1398,17 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                  : (script_type){ .storage = PIN_I32 };
         result.right = script_analyzer_expression(a, script_analyzer_field(node, "index"), key_type);
         result.type = script_analyzer_expr_type(a, result.left);
-        if (result.type.container != PIN_CONTAINER_ARRAY &&
+        /* A string's index reads one of its bytes. */
+        bool text = result.type.storage == PIN_STR &&
+                    result.type.container == PIN_CONTAINER_SINGLE;
+        if (!text && result.type.container != PIN_CONTAINER_ARRAY &&
             result.type.container != PIN_CONTAINER_VIEW &&
             result.type.container != PIN_CONTAINER_MAP) {
-            script_analyzer_diagnostic(a, node, "Index requires an array or map");
+            script_analyzer_diagnostic(a, node, "Index requires an array, map or string");
             result.type = script_analyzer_bad_type();
         }
-        result.type = script_catalog_element_type(a->catalog, result.type);
+        result.type = text ? (script_type){ .storage = PIN_I32 }
+                           : script_catalog_element_type(a->catalog, result.type);
         script_analyzer_require(
             a,
             script_analyzer_field(node, "index"),

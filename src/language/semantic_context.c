@@ -608,10 +608,12 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
                 .entry = -1 }
         );
     } else if (ts_node_is_null(node)) {
+        bool view = expected.container == PIN_CONTAINER_VIEW &&
+                    !(expected.flags & SCRIPT_TYPE_OPTIONAL);
         script_analyzer_diagnostic(
             a,
             node,
-            "'%s' requires a default value",
+            view ? "A nonoptional view requires an initializer" : "'%s' requires a default value",
             record->name
         );
         value = script_analyzer_expression(a, node, expected);

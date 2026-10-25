@@ -78,7 +78,9 @@ typedef struct
     const behavior_function *function;
     int first, count, result_first, result_count;
     bool task;
-    bool owned_arguments; /* Released after result adoption, including resumed calls. */
+    /* The callee takes over copies, released after result adoption, including
+     * resumed calls; otherwise the caller lends its values for the call. */
+    bool owned_arguments;
 } behavior_function_invocation;
 enum
 {

@@ -232,8 +232,8 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
          heap = heap->previous) {
         size_t bytes, capacity;
         arena_usage(&heap->storage, &bytes, &capacity);
-        result.payload_bytes += bytes;
-        result.payload_capacity += capacity;
+        result.managed_bytes += bytes;
+        result.managed_capacity += capacity;
     }
     execution_activation **values = activations(p->owner_program, NULL);
     result.activation_bytes = (size_t)acount(values) * sizeof(execution_activation);

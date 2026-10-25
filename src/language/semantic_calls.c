@@ -1798,11 +1798,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                     actual.container != PIN_CONTAINER_VIEW) {
                     continue;
                 }
+                /* The parameter, not the argument, says whether it is a
+                 * reference: `ref xs` binds the element, not a ref element. */
+                unsigned reference = type.flags & SCRIPT_TYPE_REFERENCE;
                 if (type.container == PIN_CONTAINER_SINGLE) {
                     type = script_catalog_element_type(a->catalog, actual);
                 } else if (type.container == PIN_CONTAINER_ARRAY) {
                     type = actual;
                 }
+                type.flags = (type.flags & ~SCRIPT_TYPE_REFERENCE) | reference;
                 break;
             }
         }
@@ -2207,6 +2211,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     }
     result.result_count = acount(result.results);
     if (receiver >= 0 && capability && script_analyzer_array_changer(capability)) {
+        /* The change is the call's whole effect; its value means nothing. */
+        if (!ts_node_eq(a->changing, node)) {
+            char *method = script_analyzer_name_copy(a, script_analyzer_field(target, "member"));
+            script_analyzer_diagnostic(a, target, "%s changes the array; call it as a statement on a name", method);
+            free(method);
+        }
         if (!a->out->expressions[receiver].writable) {
             script_analyzer_diagnostic(a, target, "Array mutation requires a writable receiver");
         }

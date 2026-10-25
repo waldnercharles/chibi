@@ -309,7 +309,9 @@ ArrayElementAssignment :: (forest: snapshot.SnapshotNode[], text: string, names:
     root := RootOf(forest, destination);
     if (Is(forest, root, "identifier")) {
         named := Lookup(names, Text(forest, text, root));
-        return named >= 0 && names[named].place != SelfPlace && names[named].place != AliasPlace;
+        // A name the body may not write reports as stage zero does.
+        return named >= 0 && names[named].writable && names[named].place != SelfPlace &&
+               names[named].place != AliasPlace;
     }
     return Is(forest, root, "dereference_expression");
 }
@@ -322,7 +324,7 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     compound := operator != "";
     if (item.phase == 0) {
         return Step.Emitted([], [], [], [], [], [], [], [],
-                            [PlaceVisit(destination), Resume(item.node, 1, 0, 0)],
+                            [DestinationVisit(destination), Resume(item.node, 1, 0, 0)],
                             0, NoValue(), NoValue(), []);
     }
     if (item.phase == 1) {
@@ -349,20 +351,33 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     if (compound) { count = 3; }
     place := values[top - count];
     value := values[top - 1];
+    code: Code[] = [];
+    slots: Slot[] = [];
+    // A number converts to the destination's type, as stage zero converts it.
+    if (place.container == 0 && value.container == 0 && value.storage != place.storage &&
+        Converts(value.storage, place.storage)) {
+        slots.extend(NumberSlots(value.storage, place.storage));
+        code.extend(NumberCode(ops, value.storage, place.storage, value.slot, at.slot, node));
+        value = Typed(at.slot + length(slots) - 1, place.storage, 0, -1);
+    }
     if (!Accepts(types, place.storage, place.container, place.record, value)) {
         return Fail(forest, destination, document, "assigned value differs from its destination");
     }
-    code: Code[] = [];
-    slots: Slot[] = [];
     if (compound) {
         before := values[top - 2];
         operation := BinaryOp(ops, operator);
         if (!Numeric(place.storage) || place.container != 0 || !Computes(ops, operation, place.storage)) {
             return Fail(forest, destination, document, "compound assignment needs numeric operands");
         }
+        // The destination's current value is watched at it, as stage zero does.
+        if (ops.debug) {
+            code.append(WatchCode(ops, before.slot, before.storage, before.container, before.record, 0, true,
+                                  forest[destination], target));
+        }
         slots.append(ValueLocal(place.storage));
-        code.append(Instruction(operation, place.storage, at.slot, before.slot, value.slot, -1, node));
-        value.slot = at.slot;
+        code.append(Instruction(operation, place.storage, at.slot + length(slots) - 1, before.slot, value.slot, -1,
+                                node));
+        value.slot = at.slot + length(slots) - 1;
     }
     shifted := SlotsPast(at, length(slots));
     emitted := PointerPrefix(code, slots, IgnoreSequenceValue(SequenceCallStep([place, value], ReferenceWriteIntrinsic,
@@ -391,7 +406,6 @@ PlacePointerPhase: int : 45;
 CopyValuePhase: int : 46;
 ReferenceKeyIntrinsic: int : 35;
 ReferenceUnionIntrinsic: int : 60;
-ProjectedPlace: int : 11;
 PlaceComponentPhase: int : 49;
 
 CopyValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases,
@@ -406,8 +420,22 @@ CopyValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases
     return CleanupSequenceValues(copied, [value], ops, target, at, node);
 }
 
+// A call lends its caller's values: a temporary passes as it is, and the
+// call drops it once it returns. Anything else is copied for the call.
+LendValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases,
+                  node: snapshot.SnapshotNode) -> Step {
+    if (value.owned) {
+        return Step.Emitted([], [], [], [], [], [], [], [], [], popped, value, NoValue(), []);
+    }
+    return CopyValueStep(value, popped, ops, target, at, node);
+}
+
 PlaceVisit :: (node: int) -> Work {
     return Resume(node, PlacePhase, 0, 0);
+}
+// The place an assignment writes, which as an array element has no point of its own.
+DestinationVisit :: (node: int) -> Work {
+    return Resume(node, PlacePhase, 0, 1);
 }
 PlaceResult :: (step: Step, element: ValueType) -> Step {
     switch step {
@@ -486,7 +514,11 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         if (!base.place || (base.container != ArrayContainer && base.container != ViewContainer && !IsMap(base))) {
             return Fail(forest, item.node, document, "indexed mutation requires a writable array or map");
         }
-        return Step.Emitted([], [], [], [], [], [], [], [],
+        // A map entry an assignment writes keeps its point, as stage zero
+        // marks a key it stores.
+        points: Code[] = [];
+        if (item.b == 1 && IsMap(base)) { points = [ExpressionCode(ops, node)]; }
+        return Step.Emitted(points, [], [], [], [], [], [], [],
                             [Expect(Field(forest, item.node, "index"), storage, 0, -1),
                              Resume(item.node, PlaceIndexDonePhase, 0, 0)],
                             0, NoValue(), NoValue(), []);
@@ -545,23 +577,42 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         }
     }
     if (node.kind == "member_expression" || node.kind == "index_expression") {
+        // As stage zero marks a place: each field and element, outermost
+        // first, then the name it starts from.
         phase := PlaceFieldPhase;
-        if (node.kind == "index_expression") { phase = PlaceIndexPhase; }
-        return Step.Emitted([], [], [], [], [], [], [], [],
-                            [PlaceVisit(Field(forest, item.node, "object")), Resume(item.node, phase, 0, 0)],
+        points: Code[] = [ExpressionCode(ops, node)];
+        if (node.kind == "index_expression") {
+            phase = PlaceIndexPhase;
+        }
+        if (node.kind == "index_expression" && item.b == 1) {
+            points = [];
+        }
+        return Step.Emitted(points, [], [], [], [], [], [], [],
+                            [PlaceVisit(Field(forest, item.node, "object")), Resume(item.node, phase, 0, item.b)],
                             0, NoValue(), NoValue(), []);
     }
     found := Lookup(names, Text(forest, text, item.node));
     if (node.kind != "identifier" || found < 0 || !names[found].writable) {
         return Fail(forest, item.node, document, "mutation requires a writable place");
     }
+    points := NamePoints(forest, text, names, ops, item.node);
     binding := names[found];
-    element: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
-    if (binding.place == ProjectedPlace) {
-        result := Typed(binding.index, binding.storage, binding.container, binding.record);
-        result.place = true;
-        return Step.Emitted([], [], [], [], [], [], [], [], [], 0, result, NoValue(), []);
+    if (binding.place == NarrowedPlace) {
+        // The payload's place in the optional's, which stage zero marks
+        // again as the payload.
+        points.append(ExpressionCode(ops, node));
+        element: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+        return PointerPrefix(points, [], PayloadPlaceAfter(types, NamePlaceStep(forest, document, types, names[binding.index],
+                                                                                item.node, ops, target, at),
+                                                           element, ops, target, at, node));
     }
+    return PointerPrefix(points, [], NamePlaceStep(forest, document, types, binding, item.node, ops, target, at));
+}
+// The place of the local `binding` that the name `name` reads.
+NamePlaceStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], binding: Name, name: int, ops: Ops,
+                  target: Target, at: Bases) -> Step {
+    node := forest[name];
+    element: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
     if (binding.place == ManagedPlace) {
         pointer := FindPointer(types, element, false);
         code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
@@ -569,8 +620,26 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         return PlaceResult(PointerPrefix(code, slots, PointerPopped(PointerReferenceStep(
                             Typed(at.slot + 1, PointerStorage, 0, pointer), ops, target, SlotsPast(at, 2), node), 0)), element);
     }
+    if (binding.place == LocalPlace && Single(Typed(-1, binding.storage, binding.container, binding.record),
+                                              PointerStorage)) {
+        // A pointer local writes through to its target, whose place it is;
+        // stage zero marks and watches the pointer as the value it
+        // dereferences.
+        pointer := Typed(at.slot, PointerStorage, 0, binding.record);
+        target_type := PointerElement(types, pointer);
+        if (target_type.storage == 0 || types[binding.record].key != 0) {
+            return Fail(forest, name, document, "place requires a present pointer");
+        }
+        code: Code[] = [ExpressionCode(ops, node), Instruction(ops.local, PointerStorage, at.slot, binding.index, 0, 0, node)];
+        if (ops.debug) {
+            code.append(WatchCode(ops, at.slot, PointerStorage, 0, binding.record, 0, true, node, target));
+        }
+        return PlaceResult(PointerPrefix(code, [ValueLocal(PointerStorage)],
+                                         PointerPopped(PointerReferenceStep(
+                            pointer, ops, target, SlotsPast(at, 1), node), 0)), target_type);
+    }
     if (binding.place != CellPlace && binding.place != BoxPlace && binding.place != ReferencePlace) {
-        return Fail(forest, item.node, document, "mutation requires a local value");
+        return Fail(forest, name, document, "mutation requires a local value");
     }
     code: Code[] = [];
     slots: Slot[] = [];
@@ -583,7 +652,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     } else {
         cells = MakeValueCells(target, binding.storage, binding.container, binding.record);
         slots = MakeValueSlots(target);
-        code = MakeValueCode(ops, target, binding.index, at.cell, at.host, at.slot, node);
+        code.extend(MakeValueCode(ops, target, binding.index, at.cell, at.host, at.slot, node));
         hosts = [MakeValueHost(at.cell)];
         descriptor = at.slot + 5;
     }

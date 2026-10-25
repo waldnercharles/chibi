@@ -876,7 +876,9 @@ pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int cou
 /* Whether a copy of `array` may hold its elements inline: a packed array's
  * elements are, and a boxed one's must each be a present value of exactly a
  * packable element type. */
-static bool packable(const pin_array *array)
+/* Whether the items from start fit a packed copy: only they decide, so a
+ * small window of a large array costs its own size. */
+static bool packable_window(const pin_array *array, int start, int count)
 {
     if (pin_array_owner(array)->stride) {
         return true;
@@ -884,13 +886,17 @@ static bool packable(const pin_array *array)
     if (!pin_array_element_stride(array->element_type, array->type_name, array->record)) {
         return false;
     }
-    for (int i = 0; i < array->count; i++) {
+    for (int i = start; i < start + count; i++) {
         pin_value item = pin_array_get(array, i);
         if (!compatible(array, &item) || (item.type == PIN_STRUCT && !item.ptr)) {
             return false;
         }
     }
     return true;
+}
+static bool packable(const pin_array *array)
+{
+    return packable_window(array, 0, array->count);
 }
 static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool packed)
 {
@@ -1122,7 +1128,10 @@ pin_value pin_array_add(const pin_value *inputs, int count, arena *a)
     }
     bool nullable = inputs[1].container == PIN_CONTAINER_SINGLE &&
                     inputs[1].type == PIN_STRUCT && !inputs[1].ptr;
-    pin_array *array = snapshot_like(a, source, source->count + 1, !nullable && packable(source));
+    /* Boxed records accept any value, so the item's layout is checked here. */
+    pin_array *array = !source->record || compatible(source, &inputs[1])
+                         ? snapshot_like(a, source, source->count + 1, !nullable && packable(source))
+                         : NULL;
     if (array) {
         array->storage = a->collectable ? a : NULL;
         for (int i = 0; i <= source->count; i++) {
@@ -1899,12 +1908,23 @@ void pin_value_collection_visit_owners(
     void *user
 )
 {
-    if (!value) {
+    if (!value || !value->ptr) {
+        return;
+    }
+    /* Most values are scalars or one collection, which need no work list. */
+    pin_value root = *value;
+    if (root.container == PIN_CONTAINER_ARRAY || root.container == PIN_CONTAINER_MAP ||
+        root.container == PIN_CONTAINER_SET) {
+        visit(&root, user);
+        return;
+    }
+    if (root.container != PIN_CONTAINER_SINGLE ||
+        (root.type != PIN_UNION && root.type != PIN_STRUCT)) {
         return;
     }
     pin_value *pending = NULL;
     graph_copy visited = { 0 };
-    apush(pending, *value);
+    apush(pending, root);
     while (acount(pending)) {
         pin_value next = apop(pending);
         if (!next.ptr) {
@@ -2095,6 +2115,11 @@ static int collection_copy_value(arena *storage, pin_value *out, const pin_value
     *out = copy;
     return 0;
 }
+bool pin_value_holds_storage(const pin_value *value)
+{
+    return value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT ||
+           value->type == PIN_UNION || value->type == PIN_STR || value->type == PIN_NAME;
+}
 int pin_value_collection_copy(arena *storage, pin_value *out, const pin_value *source)
 {
     static _Thread_local const void **active;
@@ -2130,7 +2155,7 @@ pin_array *pin_array_window_copy(arena *storage, const pin_array *source, int st
         start > source->count || count > source->count - start) {
         return NULL;
     }
-    pin_array *copy = snapshot_like(storage, source, count, packable(source));
+    pin_array *copy = snapshot_like(storage, source, count, packable_window(source, start, count));
     if (!copy) {
         return NULL;
     }

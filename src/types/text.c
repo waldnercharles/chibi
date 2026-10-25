@@ -137,6 +137,13 @@ const char *pin_value_text_slice(arena *storage, pin_value *out, pin_value sourc
         *out = (pin_value){ .type = PIN_STR };
         return NULL;
     }
+    /* Descriptors are immutable and traced, so a whole copy into the arena
+     * that already holds one shares it. */
+    if (storage && source.type == PIN_STR && length == text.length &&
+        arena_contains(storage, source.text)) {
+        *out = (pin_value){ .type = PIN_STR, .text = source.text };
+        return NULL;
+    }
     if (!text.owner) {
         return pin_value_text(storage, out, text.bytes + start, length);
     }

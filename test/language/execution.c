@@ -18,6 +18,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy.h"
 #include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
@@ -594,6 +595,8 @@ TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers
         release_invocation();
         context.budget = 100;
         REQUIRE(behavior_function_bind(function, &context, log_services, 42));
+        /* The run copies the native result out of the fixed buffer. */
+        context.value_storage = &managed;
         behavior_function_prepare_host(function, &context);
         behavior_data_storage *data = context.data;
         fixture_box *box = data->values[0].ptr;
@@ -614,6 +617,7 @@ TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers
             REQUIRE(behavior_function_host_storage_bytes(&context) == bytes);
             context.budget = 100;
             REQUIRE(behavior_function_bind(function, &context, log_services, 43));
+            context.value_storage = &managed;
             behavior_function_prepare_host(function, &context);
             REQUIRE(data->calls[0].service == &service);
         }
@@ -1682,10 +1686,13 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
     arena_free(&storage);
     arena_free(&other);
     /* Both constructors have the same payload costs, independent of the old
-     * KEEP mask: no payload, plain scalar, collection, and named scalar. */
+     * KEEP mask: no payload, plain scalar, collection, and named scalar. The
+     * function returns the union's header bits, so its construction is live. */
     for (int form = 0; form < 3; form++) {
         for (int payload = -1; payload < 3; payload++) {
             builder = behavior_function_builder_new();
+            pin_value bits = { .type = PIN_U64 };
+            behavior_function_builder_signature(builder, NULL, 0, &bits, 1, NULL, 0);
             bool keeping = form != 0;
             pin_value inputs[] = { { .type = PIN_U64, .u64 = 7 },
                                    { .type = PIN_U64, .u64 = (uint64_t)(form - 1) },
@@ -1714,6 +1721,18 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
             emit((behavior_function_instruction){ .op = BF_HOST_CALL,
                                                   .target = host,
                                                   .left = BEHAVIOR_FUNCTION_HOST_DATA });
+            int pointer = address_slot(), held = slot(PIN_U64);
+            emit((behavior_function_instruction){
+                .op = BF_HOST_SLOT,
+                .type = BF_POINTER_TYPE,
+                .output = pointer,
+                .left = behavior_function_builder_host_results(builder, host) });
+            emit((behavior_function_instruction){ .op = BF_READ,
+                                                  .type = PIN_U64,
+                                                  .output = held,
+                                                  .left = pointer,
+                                                  .offset = offsetof(pin_value, u64) });
+            emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_U64, .left = held });
             emit((behavior_function_instruction){ .op = BF_END });
             REQUIRE(finish());
             execution_cost_summary costs = behavior_function_costs(function);
@@ -1997,7 +2016,9 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
 /* A definition of `slots` slots that adds into one of them `additions` times.
  * Its verification matrices grow with both, its retained storage only with
  * its instructions. */
-static behavior_function *sparse_definition(int slots, int additions, char *error, size_t size)
+/* A definition of `additions` additions over `slots` slots; with `jumps`, a
+ * jump to the next addition ends each, so each starts a block. */
+static behavior_function *sparse_blocks(int slots, int additions, bool jumps, char *error, size_t size)
 {
     pin_value number = { .type = PIN_I32 };
     builder = behavior_function_builder_new();
@@ -2013,6 +2034,9 @@ static behavior_function *sparse_definition(int slots, int additions, char *erro
         emit((
             behavior_function_instruction
         ){ .op = BF_ADD, .type = PIN_I32, .output = sum, .left = input, .right = input });
+        if (jumps) {
+            emit((behavior_function_instruction){ .op = BF_JUMP, .target = 3 + 2 * i });
+        }
     }
     emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = sum });
     emit((behavior_function_instruction){ .op = BF_RETURN });
@@ -2021,6 +2045,10 @@ static behavior_function *sparse_definition(int slots, int additions, char *erro
     behavior_function_builder_free(builder);
     builder = NULL;
     return sparse;
+}
+static behavior_function *sparse_definition(int slots, int additions, char *error, size_t size)
+{
+    return sparse_blocks(slots, additions, false, error, size);
 }
 enum
 {
@@ -2226,17 +2254,20 @@ TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
     REQUIRE(all > first && all - first < one.scratch);
     return true;
 }
-/* The verifier admits a definition whose defined-operands matrix is larger
- * than 64 MiB, as the package compiler's EmitBody needs, and refuses one
- * past 256 MiB before allocating it: (count + 1) * 4097 words is 67.2 MB,
- * then 268.5 MB. */
+/* The verifier keeps one defined-slot set per block, so a definition as
+ * long as the package compiler's EmitBody passes, and one whose sets pass
+ * 64 MiB is refused before they are allocated: 4097 words per block is
+ * 49.2 MB for 1500 blocks, then 68.9 MB for 2100. */
 TEST_CASE(execution_verifier_admits_a_large_compiler_function)
 {
     char error[192] = { 0 };
-    function = sparse_definition(64 * 4096, 2047, error, sizeof error);
+    function = sparse_definition(64 * 4096, 8192, error, sizeof error);
     REQUIRE(function);
     behavior_function_free(function);
-    function = sparse_definition(64 * 4096, 8192, error, sizeof error);
+    function = sparse_blocks(64 * 4096, 1500, true, error, sizeof error);
+    REQUIRE(function);
+    behavior_function_free(function);
+    function = sparse_blocks(64 * 4096, 2100, true, error, sizeof error);
     REQUIRE(!function && !strcmp(error, "definition exceeds verifier storage budget"));
     return true;
 }
@@ -2597,8 +2628,9 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     REQUIRE(EXECUTION_construct_call.value(&managed, construct, 3, &result));
     REQUIRE(result.type == PIN_I32 && result.i == 77);
     descriptor = (pin_string){ "after", 5 };
+    /* A valid write then lands in the referenced value itself. */
     REQUIRE(!EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
-    REQUIRE(root.ptr != previous && !strcmp(((fixture_c_text *)root.ptr)->text, "after"));
+    REQUIRE(root.ptr == previous && !strcmp(native.text, "after"));
     construct[2] = writes[1];
     REQUIRE(!EXECUTION_construct_call.value(&managed, construct, 3, &result));
     REQUIRE(result.type == PIN_STRUCT && !strcmp(((fixture_c_text *)result.ptr)->text, "after"));
@@ -3026,10 +3058,10 @@ TEST_CASE(execution_pointer_fields_require_the_full_base_layout)
     make[1] = make[2] = native;
     previous = projected.ptr;
     error = EXECUTION_pointer_make_call.value(&managed, make, 3, &projected);
-    REQUIRE(error && !strcmp(error, "Managed values require authored record layouts"));
+    REQUIRE(error && !strcmp(error, "Managed value requires a resolved record layout"));
     REQUIRE(projected.ptr == previous);
     error = behavior_managed_heap_root(&pointer_heap, &native);
-    REQUIRE(error && !strcmp(error, "Managed values require authored record layouts"));
+    REQUIRE(error && !strcmp(error, "Managed value requires a resolved record layout"));
     REQUIRE(native.type == PIN_STRUCT && !native.ptr && !native.record);
     REQUIRE(!strcmp(native.type_name, "NativeOnly") && !acount(pointer_heap.roots));
     return true;
@@ -3228,8 +3260,8 @@ TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries)
         ":= a; "
         "p.append(2); q.append(3); return length(a) * 100 + length(b) * 10 + "
         "length(q^); }\n"
-        "pub TupleAlias :: () -> int { p := Pair(); { q := p; seen := "
-        "q.left[0]; } "
+        "pub TupleAlias :: () -> int { p := Pair(); if (length(p.left) > 0) { "
+        "q := p; seen := q.left[0]; } "
         "return p.left[0] * 10 + p.right[0]; }\n";
     const sequence_case cases[] = {
         { "Assignment", 112 },   { "Arguments", 12 },
@@ -3285,13 +3317,13 @@ TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions)
         "held := p.view(1..<3); if held { p^ = [9]; expired := "
         "held.slice(0..<0); "
         "if expired { return -2; } p.append(8); p.append(7); "
-        "return held[0] * 10 + held[1]; } return -1; }\n"
+        "if held { return held[0] * 10 + held[1]; } } return -1; }\n"
         "pub EmptyWindow :: () -> int { a: int[] = [1, 2]; p := &a; "
         "held := p.view(2..<2); if held { p^ = [9]; expired := "
         "held.slice(0..<0); "
-        "if expired { return -2; } p.append(8); restored := held.slice(0..<0); "
-        "if restored { return length(held) + length(restored); } } return -1; "
-        "}\n";
+        "if expired { return -2; } p.append(8); if held { "
+        "restored := held.slice(0..<0); "
+        "if restored { return length(held) + length(restored); } } } return -1; }\n";
     const sequence_case cases[] = {
         { "Rebound", 1302 },
         { "Regrown", 87 },
@@ -3304,7 +3336,7 @@ TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order)
     const char *source =
         "package sequences\n"
         "Grow :: (p: ^(int[])) -> int { p.append(9); return 0; }\n"
-        "Observe :: (xs: int[], ignored: int) -> int { return length(xs); }\n"
+        "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
         "Replace :: (p: ^(int[])) -> int { p^ = [8, 9]; return 7; }\n"
         "Index :: (p: ^(int[])) -> int { p^ = [8, 9]; return 0; }\n"
         "Next :: (p: ^int) -> int { n := p^; p^ += 1; return n; }\n"
@@ -3332,6 +3364,203 @@ TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order)
     };
     return sequence_results(source, cases, sizeof cases / sizeof *cases);
 }
+TEST_CASE(execution_calls_lend_arguments_and_callees_copy_writes)
+{
+    const char *source =
+        "package sequences\n"
+        "Row :: struct { key: string; depth: int; }\n"
+        "Change :: (row: Row, xs: int[], nested: int[][]) -> int { "
+        "row.key = \"changed\"; row.depth = 9; nested[0].append(5); "
+        "xs.append(7); xs[0] = 9; return length(xs) * 10 + length(nested[0]); "
+        "}\n"
+        "Same :: (xs: int[]) -> int[] { return xs; }\n"
+        "Read :: (nested: int[][], xs: int[]) -> int { "
+        "return length(nested[0]) * 10 + length(xs); }\n"
+        "Twice :: (xs: int[]) -> int { return Read([xs], xs); }\n"
+        "Reassign :: (xs: int[]) -> int { xs = [7, 8, 9]; xs.append(1); "
+        "return length(xs); }\n"
+        "Bump :: (rows: Row[]) -> int { rows[0].depth += 3; return "
+        "rows[0].depth; }\n"
+        "Through :: (xs: int[], p: ^(int[])) -> int { p.append(9); "
+        "return length(xs); }\n"
+        "pub Writes :: () -> int { xs: int[] = [1]; nested: int[][] = [[1, "
+        "2]]; "
+        "row: Row = {key: \"a\", depth: 1}; n := Change(row, xs, nested); "
+        "if row.key != \"a\" or row.depth != 1 or xs[0] != 1 { return -1; } "
+        "return n * 100 + length(nested[0]) * 10 + length(xs); }\n"
+        "pub Returns :: () -> int { xs: int[] = [1, 2]; kept := Same(xs); "
+        "xs.append(3); xs[0] = 5; "
+        "return kept[0] * 100 + length(kept) * 10 + length(xs); }\n"
+        "pub Temporaries :: () -> int { "
+        "return Read([[1, 2, 3]], Same([4, 5])) + Twice([6]); }\n"
+        "pub Reassigned :: () -> int { xs: int[] = [1]; n := Reassign(xs); "
+        "return n * 10 + length(xs); }\n"
+        "pub Elements :: () -> int { rows: Row[] = [{key: \"a\", depth: 1}]; "
+        "n := Bump(rows); m := Bump(rows); return n * 100 + m * 10 + "
+        "rows[0].depth; }\n"
+        "pub Pointed :: () -> int { a: int[] = [1]; p := &a; n := Through(a, "
+        "p); "
+        "return n * 10 + length(a); }\n"
+        "Behind :: (xs: int[], p: ^(int[][])) -> int { p^[0].append(9); "
+        "return length(xs); }\n"
+        "pub PointedElement :: () -> int { a: int[][] = [[1]]; p := &a; "
+        "n := Behind(p^[0], p); return n * 10 + length(a[0]); }\n"
+        "Grow :: (xs: ref int[]) -> int { xs[0] = 5; return 0; }\n"
+        "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
+        "pub ReferencedLater :: () -> int { a: int[] = [1]; "
+        "n := Observe(a, Grow(ref a)); return n * 10 + a[0]; }\n"
+        "pub LocalAfterWrite :: () -> int { rows: Row[] = [{key: \"a\", depth: "
+        "1}]; "
+        "row := rows[0]; rows[0].depth = 7; nested: int[][] = [[1]]; inner := "
+        "nested[0]; "
+        "nested[0].append(2); return row.depth * 10 + length(inner); }\n"
+        "Later :: (rows: Row[]) -> int { row := rows[0]; rows[0].depth = 9; "
+        "return row.depth; }\n"
+        "pub ParameterAfterWrite :: () -> int { rows: Row[] = [{key: \"a\", "
+        "depth: 1}]; "
+        "return Later(rows); }\n"
+        "pub MovedInLoop :: () -> int { total: int = 0; i: int = 0; "
+        "while (i < 3) { xs: int[] = [i, i]; made: Row = {key: \"k\", depth: "
+        "i}; "
+        "made.depth += 1; total += length(xs) + made.depth - 2; i += 1; } "
+        "return total; }\n"
+        "pub LoopAfterWrite :: () -> int { rows: Row[] = [{key: \"a\", depth: "
+        "1}, "
+        "{key: \"b\", depth: 2}]; total: int = 0; for row in rows { "
+        "rows[1].depth = 9; "
+        "rows.append({key: \"c\", depth: 3}); total = total * 10 + row.depth; "
+        "} "
+        "return total * 10 + length(rows); }\n"
+        "pub FieldAfterWrite :: () -> int { rows: Row[] = [{key: \"a\", depth: "
+        "1}]; "
+        "first := rows[0].depth; rows[0] = {key: \"b\", depth: 5}; "
+        "return first * 10 + rows[0].depth; }\n";
+    const sequence_case cases[] = {
+        { "Writes", 2321 },
+        { "Returns", 123 },
+        { "Temporaries", 43 },
+        { "LocalAfterWrite", 11 },
+        { "ParameterAfterWrite", 1 },
+        { "MovedInLoop", 6 },
+        { "LoopAfterWrite", 124 },
+        { "FieldAfterWrite", 15 },
+        { "Reassigned", 41 },
+        { "Elements", 441 },
+        { "Pointed", 12 },
+        { "PointedElement", 12 },
+        { "ReferencedLater", 15 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
+TEST_CASE(execution_lent_records_copy_nothing)
+{
+    const char *
+        source = "package sequences\n"
+                 "Row :: struct { key: string; label: string; depth: int; }\n"
+                 "Depth :: (row: Row, rows: Row[]) -> int { "
+                 "return row.depth + length(rows) + 1; }\n"
+                 "pub Calls :: (count: int) -> int { "
+                 "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
+                 "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
+                 "while (i < count) { item := row; "
+                 "total += Depth(item, rows); i += 1; } "
+                 "return total; }\n"
+                 "Find :: (rows: Row[], depth: int) -> int { i: int = 0; "
+                 "while (i < length(rows)) { found := rows[i]; "
+                 "if (found.depth == depth) { return i; } i += 1; } return -1; "
+                 "}\n"
+                 "Sum :: (rows: Row[]) -> int { total: int = 0; "
+                 "for row in rows { total += row.depth; } i: int = 0; "
+                 "while (i < length(rows)) { total += rows[i].depth; i += 1; } "
+                 "return total; }\n"
+                 "pub Scans :: (count: int) -> int { "
+                 "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
+                 "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
+                 "while (i < count) { total += Find(rows, 2) + Sum(rows) - 2; "
+                 "i += 1; } return total; }\n"
+                 "pub Natives :: (count: int) -> int { "
+                 "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
+                 "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
+                 "while (i < count) { if (rows.contains(row)) { total += 1; } "
+                 "i += 1; } return total; }\n"
+                 "pub Appends :: (count: int) -> int { "
+                 "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
+                 "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
+                 "while (i < count) { grown := append(rows, row); "
+                 "total += length(grown) - 2; i += 1; } return total; }\n"
+                 "pub Builds :: (count: int) -> int { "
+                 "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
+                 "total: int = 0; i: int = 0; "
+                 "while (i < count) { grown: Row[] = [row, row, row]; "
+                 "total += length(grown) - 2; i += 1; } return total; }\n";
+    source_package_input input = { "sequences/Main.chibi", source, strlen(source) };
+    REQUIRE(compiler_fixture_prepare(&sequences, &input, 1));
+    /* A lent argument or local, an indexed local, a for-each item, a field
+     * read through an index and an argument to a native that only reads it
+     * copy no record. */
+    const char *functions[] = { "Calls", "Scans", "Natives" };
+    const int scales[] = { 4, 1, 1 };
+    for (int f = 0; f < 3; f++) {
+        for (int backend = 0; backend < 2; backend++) {
+            uint64_t records[2];
+            const int counts[] = { 1, 50 };
+            for (int i = 0; i < 2; i++) {
+                pin_value argument = { .type = PIN_I32, .i = counts[i] },
+                          result = { 0 };
+                pin_copy_scope copies = { 0 };
+                pin_copy_scope_begin(&copies);
+                bool called = compiler_fixture_call(
+                    &sequences,
+                    backend,
+                    "project:sequences",
+                    functions[f],
+                    &argument,
+                    1,
+                    100000,
+                    &storage,
+                    &result
+                );
+                pin_copy_scope_end(&copies);
+                REQUIRE(called && result.type == PIN_I32 && result.i == counts[i] * scales[f]);
+                records[i] = copies.counts.record_bytes;
+                arena_free(&storage);
+            }
+            REQUIRE(records[1] == records[0]);
+        }
+    }
+    /* Appending copies only the item it adds, a third of what a literal of
+     * three items copies, and never the lent array. */
+    for (int backend = 0; backend < 2; backend++) {
+        uint64_t grown[2];
+        for (int f = 0; f < 2; f++) {
+            uint64_t records[2];
+            const int counts[] = { 1, 50 };
+            for (int i = 0; i < 2; i++) {
+                pin_value argument = { .type = PIN_I32, .i = counts[i] }, result = { 0 };
+                pin_copy_scope copies = { 0 };
+                pin_copy_scope_begin(&copies);
+                bool called = compiler_fixture_call(
+                    &sequences,
+                    backend,
+                    "project:sequences",
+                    f ? "Builds" : "Appends",
+                    &argument,
+                    1,
+                    100000,
+                    &storage,
+                    &result
+                );
+                pin_copy_scope_end(&copies);
+                REQUIRE(called && result.type == PIN_I32 && result.i == counts[i]);
+                records[i] = copies.counts.record_bytes;
+                arena_free(&storage);
+            }
+            grown[f] = records[1] - records[0];
+        }
+        REQUIRE(grown[0] > 0 && grown[0] * 3 == grown[1]);
+    }
+    return true;
+}
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
@@ -3339,6 +3568,8 @@ void test_language_execution()
     RUN_TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied);
     RUN_TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions);
     RUN_TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order);
+    RUN_TEST_CASE(execution_calls_lend_arguments_and_callees_copy_writes);
+    RUN_TEST_CASE(execution_lent_records_copy_nothing);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);

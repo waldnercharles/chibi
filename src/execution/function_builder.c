@@ -1341,7 +1341,8 @@ static bool intrinsic_schema(
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
             return count == 1 && sequence_bank(records, values[0].initial) &&
                    OUTPUT(PIN_I32);
-        case EXECUTION_INTRINSIC_SEQUENCE_GET: {
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW: {
             if (count != 2 || !sequence_bank(records, values[0].initial) ||
                 !INPUT(1, PIN_I32) || !value_type_valid(records, output)) {
                 return false;
@@ -1928,6 +1929,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
         case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
         case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
         case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
         case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
         case EXECUTION_INTRINSIC_VALUE_COPY:
         case EXECUTION_INTRINSIC_VALUE_DROP:
@@ -2414,7 +2416,7 @@ static bool defined_operands(const behavior_function *f, char *error, size_t siz
                      words * sizeof(uint64_t);
     if (scratch > budget ||
         (size_t)blocks > (budget - scratch) / sizeof(uint64_t) / words) {
-        snprintf(error, size, "definition exceeds verifier storage budget (%d instructions, %d blocks, %d slots)", count, blocks, slots);
+        snprintf(error, size, "definition exceeds verifier storage budget");
         free(block_at);
         free(starts);
         return false;

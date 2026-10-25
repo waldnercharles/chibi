@@ -38,6 +38,9 @@ typedef struct pin_array
  * Raw cyclic ordinary payloads and nesting beyond 256 levels fail recoverably. Managed
  * pointer targets keep identity and are never followed by this operation. */
 int pin_value_collection_copy(arena *, pin_value *out, const pin_value *source);
+/* Whether a value refers to storage a copy must own: numbers, handles and other
+ * scalars are their own copies. */
+bool pin_value_holds_storage(const pin_value *);
 pin_array *pin_array_value_copy(arena *, const pin_array *);
 /* Call on the actual destination shell before exposing mutable payload. */
 int pin_array_make_unique(arena *, pin_array *);

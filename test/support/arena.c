@@ -139,20 +139,22 @@ TEST_CASE(collectable_arena_finds_values_by_address)
     arena_free(&other);
     return true;
 }
-/* An arena remembers its last copy by source until a reset, free or
- * collection, and a later copy replaces it. */
+/* An arena remembers its last ARENA_COPY_CACHE copies by source until a
+ * reset, free or collection; a later copy replaces the oldest. */
 TEST_CASE(arena_remembers_last_copy_until_reset_or_collection)
 {
-    static int sources[2];
+    static int sources[ARENA_COPY_CACHE + 1];
     arena storage = { 0 };
-    void *copy = arena_alloc(&storage, 8), *later = arena_alloc(&storage, 8);
+    void *copies[ARENA_COPY_CACHE + 1];
     REQUIRE(!arena_copy_find(&storage, &sources[0]));
-    arena_copy_remember(&storage, &sources[0], copy);
-    REQUIRE(arena_copy_find(&storage, &sources[0]) == copy);
-    REQUIRE(!arena_copy_find(&storage, &sources[1]));
-    arena_copy_remember(&storage, &sources[1], later);
-    REQUIRE(arena_copy_find(&storage, &sources[1]) == later);
-    REQUIRE(!arena_copy_find(&storage, &sources[0]));
+    for (int i = 0; i <= ARENA_COPY_CACHE; i++) {
+        REQUIRE(!arena_copy_find(&storage, &sources[i]));
+        copies[i] = arena_alloc(&storage, 8);
+        arena_copy_remember(&storage, &sources[i], copies[i]);
+        REQUIRE(arena_copy_find(&storage, &sources[i]) == copies[i]);
+        REQUIRE(arena_copy_find(&storage, &sources[0]) == (i < ARENA_COPY_CACHE ? copies[0] : NULL));
+    }
+    REQUIRE(arena_copy_find(&storage, &sources[1]) == copies[1]);
     arena_reset(&storage);
     REQUIRE(!arena_copy_find(&storage, &sources[1]));
     arena_copy_remember(&storage, &sources[0], arena_alloc(&storage, 8));

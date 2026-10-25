@@ -285,77 +285,62 @@ OptionalUnwrapStep :: (types: TypeDecl[], value: Value, popped: int, ops: Ops, t
     return Step.Emitted(code, slots, [], [held, tag, index, whole, result], [host], roots, [], [], [], popped,
                         Typed(at.slot + 2, element.storage, element.container, element.record), NoValue(), []);
 }
+// The place of the payload of the present optional at `place`, which holds
+// `element`.
+PayloadPlaceStep :: (types: TypeDecl[], place: Value, element: ValueType, ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+    tag := TypedCell(WordStorage, 0, -1);
+    tag.constant = OptionalTag(types, element);
+    cells: Cell[] = [ReferenceCell(target), tag, TypedCell(IntStorage, 0, -1),
+                     TypedCell(element.storage, element.container, element.record), ReferenceCell(target)];
+    code := CellWrite(target.pointer_storage, place.slot, at.cell, ops, target, at.slot, node);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(target.pointer_storage, at.cell + 4, ops, target, at.slot + 1, node));
+    hosts: Host[] = [{owned_arguments: false, intrinsic: ReferenceUnionIntrinsic, linked: -1, first: at.cell,
+                     result_first: at.cell + 4, result_count: 1, written: false}];
+    result := Typed(at.slot + 2, element.storage, element.container, element.record);
+    result.place = true;
+    return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells, hosts,
+                        [], [], [], [], 0, result, NoValue(), []);
+}
+NarrowedPlace: int : 11;
+NarrowedOriginalPhase: int : 50;
+NarrowedReadPhase: int : 51;
+// The place of the payload of the optional place `step` gives.
+PayloadPlaceAfter :: (types: TypeDecl[], step: Step, element: ValueType, ops: Ops, target: Target, at: Bases,
+                      node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, place, retained, marks):
+            shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local + length(locals),
+                              cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call + length(calls)};
+            return SequenceJoined(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped,
+                                               NoValue(), retained, marks),
+                                  PayloadPlaceStep(types, place, element, ops, target, shifted, node));
+    }
+}
 // The successful path of `if name` / `while name` shadows the optional with
 // its payload. The body's scope removes that proof before the next iteration
 // or the alternative branch; the declaration outside that scope stays optional.
+// As stage zero unwraps it, each use reads the optional, through the shadow's
+// `index` naming it, and takes the payload, or its place, from it.
 OptionalConditionNames :: (types: TypeDecl[], names: Name[], forest: snapshot.SnapshotNode[], text: string,
-                           condition: int, value: Value, ops: Ops, target: Target, at: Bases) -> Step {
+                           condition: int, value: Value) -> Name[] {
     subject := condition;
     while (Is(forest, subject, "parenthesized_expression")) {
         subject = Field(forest, subject, "expression");
     }
     element := OptionalElement(types, value);
-    if (element.storage == 0 || !Is(forest, subject, "identifier") ||
-        Lookup(names, Text(forest, text, subject)) < 0) {
-        return Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+    found: int = -1;
+    if (Is(forest, subject, "identifier")) {
+        found = Lookup(names, Text(forest, text, subject));
     }
-    original := names[Lookup(names, Text(forest, text, subject))];
-    if (original.writable && (original.place == CellPlace || original.place == ManagedPlace ||
-                               original.place == ProjectedPlace)) {
-        place_step := SequencePlaceStep(forest, text, -1, types, [], names, [], 0,
-                                        PlaceVisit(subject), ops, target, at);
-        switch place_step {
-            case .Failed(diagnostic): return Step.Failed(diagnostic);
-            case .Emitted(source_code, source_slots, source_locals, source_cells, source_hosts, roots, calls, source_bound, next,
-                          popped, place, retained, marks):
-                code := source_code;
-                slots := source_slots;
-                locals := source_locals;
-                cells := source_cells;
-                hosts := source_hosts;
-                bound := source_bound;
-                first := at.cell + length(cells);
-                base := at.slot + length(slots);
-                tag := TypedCell(WordStorage, 0, -1);
-                tag.constant = OptionalTag(types, element);
-                cells.extend([ReferenceCell(target), tag, TypedCell(IntStorage, 0, -1),
-                              TypedCell(element.storage, element.container, element.record), ReferenceCell(target)]);
-                code.extend(CellWrite(target.pointer_storage, place.slot, first, ops, target, base, forest[condition]));
-                hosts.append({owned_arguments: false, intrinsic: ReferenceUnionIntrinsic, linked: -1, first: first,
-                              result_first: first + 4, result_count: 1, written: false});
-                code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0,
-                                        at.host + length(hosts) - 1, forest[condition]));
-                code.extend(CellRead(target.pointer_storage, first + 4, ops, target, base + 1, forest[condition]));
-                slots.extend([AddressSlot(target), AddressSlot(target), DescriptorSlot(target)]);
-                binding: Name = {owned: false, name: original.name, place: ProjectedPlace, index: base + 2,
-                                 storage: element.storage, container: element.container, record: element.record,
-                                 writable: true, node: subject};
-                bound.append(binding);
-                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
-                                    0, NoValue(), NoValue(), marks);
-        }
+    if (element.storage == 0 || found < 0) {
+        return [];
     }
-    switch OptionalUnwrapStep(types, value, 0, ops, target, at, forest[condition]) {
-        case .Failed(diagnostic):
-            return Step.Failed(diagnostic);
-        case .Emitted(source_code, source_slots, source_locals, source_cells, source_hosts, roots, calls, source_bound, next, popped, produced, held, marks):
-            code := source_code;
-            slots := source_slots;
-            locals := source_locals;
-            cells := source_cells;
-            hosts := source_hosts;
-            bound := source_bound;
-            binding: Name = {owned: false, name: Text(forest, text, subject), place: CellPlace, index: at.cell + 4,
-                             storage: element.storage, container: element.container, record: element.record,
-                             writable: false, node: subject};
-            if (!Pointer(element.storage, element.container)) {
-                locals.append(ValueLocal(element.storage));
-                code.append(Instruction(ops.save, element.storage, 0, produced.slot, 0, at.local, forest[condition]));
-                binding.place = LocalPlace;
-                binding.index = at.local;
-            }
-            bound.append(binding);
-            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
-                                NoValue(), NoValue(), marks);
-    }
+    original := names[found];
+    binding: Name = {owned: false, name: original.name, place: NarrowedPlace, index: found, storage: element.storage,
+                     container: element.container, record: element.record, writable: original.writable,
+                     node: original.node};
+    return [binding];
 }

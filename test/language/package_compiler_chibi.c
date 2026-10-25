@@ -4867,7 +4867,7 @@ TEST_CASE(package_compiler_compiles_itself)
                        json,
                        json_length,
                        SELF_BUDGET,
-                       COMPILER_HOST_MAX_OUTPUT_BYTES,
+                       COMPILER_HOST_MAX_ARTIFACT_BYTES,
                        &again
                    );
     bool same = invoked && again.flow_status == FLOW_OK &&

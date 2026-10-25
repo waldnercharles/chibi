@@ -35,19 +35,7 @@ Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/type
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_wire.c.o.d" is newer than depends file "/home/claude/chibi-ref/build-sdk-reflect/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_types
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_types.dir/build.make sdk/CMakeFiles/chibi_types.dir/build
-[ 23%] Building C object sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/array.c.o
-[ 23%] Building C object sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/record.c.o
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/bin/clang  -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/private/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/support -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -MD -MT sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/array.c.o -MF CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/array.c.o.d -o CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/array.c.o -c /home/claude/chibi-ref/src/types/array.c
-[ 23%] Building C object sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/trace.c.o
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/bin/clang  -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/private/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/support -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -MD -MT sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/record.c.o -MF CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/record.c.o.d -o CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/record.c.o -c /home/claude/chibi-ref/src/types/record.c
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/bin/clang  -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/private/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/support -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -MD -MT sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/trace.c.o -MF CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/trace.c.o.d -o CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/trace.c.o -c /home/claude/chibi-ref/src/types/trace.c
-[ 29%] Building C object sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_wire.c.o
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/bin/clang  -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/private/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/support -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -MD -MT sdk/CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_wire.c.o -MF CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_wire.c.o.d -o CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_wire.c.o -c /home/claude/chibi-ref/src/types/value_wire.c
-[ 29%] Linking C static library libchibi_types.a
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -P CMakeFiles/chibi_types.dir/cmake_clean_target.cmake
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/chibi_types.dir/link.txt --verbose=1
-/usr/bin/llvm-ar qc libchibi_types.a "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/type.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/catalog.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/array.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/text.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/map.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/record.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/copy.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/trace.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/union.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/index.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_format.c.o" "CMakeFiles/chibi_types.dir/home/claude/chibi-ref/src/types/value_wire.c.o"
-/usr/bin/llvm-ranlib libchibi_types.a
+gmake[4]: Nothing to be done for 'sdk/CMakeFiles/chibi_types.dir/build'.
 [ 58%] Built target chibi_types
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_capabilities.dir/build.make sdk/CMakeFiles/chibi_capabilities.dir/depend
 cd /home/claude/chibi-ref/build-sdk-reflect && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi-ref/tools/reflect /home/claude/chibi-ref/sdk /home/claude/chibi-ref/build-sdk-reflect /home/claude/chibi-ref/build-sdk-reflect/sdk /home/claude/chibi-ref/build-sdk-reflect/sdk/CMakeFiles/chibi_capabilities.dir/DependInfo.cmake "--color=" chibi_capabilities
@@ -57,13 +45,7 @@ Dependencies file "sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/s
 Dependencies file "sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/definition.c.o.d" is newer than depends file "/home/claude/chibi-ref/build-sdk-reflect/sdk/CMakeFiles/chibi_capabilities.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_capabilities
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_capabilities.dir/build.make sdk/CMakeFiles/chibi_capabilities.dir/build
-[ 58%] Building C object sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog.c.o
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/bin/clang  -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/capabilities -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/types -I/home/claude/chibi-ref/build-sdk-reflect/sdk/public/support -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -MD -MT sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog.c.o -MF CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog.c.o.d -o CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog.c.o -c /home/claude/chibi-ref/src/capabilities/catalog.c
-[ 58%] Linking C static library libchibi_capabilities.a
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -P CMakeFiles/chibi_capabilities.dir/cmake_clean_target.cmake
-cd /home/claude/chibi-ref/build-sdk-reflect/sdk && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/chibi_capabilities.dir/link.txt --verbose=1
-/usr/bin/llvm-ar qc libchibi_capabilities.a "CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog.c.o" "CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog_snapshot.c.o" "CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/catalog_values.c.o" "CMakeFiles/chibi_capabilities.dir/home/claude/chibi-ref/src/capabilities/definition.c.o"
-/usr/bin/llvm-ranlib libchibi_capabilities.a
+gmake[4]: Nothing to be done for 'sdk/CMakeFiles/chibi_capabilities.dir/build'.
 [ 70%] Built target chibi_capabilities
 /usr/bin/gmake  -f CMakeFiles/reflect.dir/build.make CMakeFiles/reflect.dir/depend
 cd /home/claude/chibi-ref/build-sdk-reflect && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi-ref/tools/reflect /home/claude/chibi-ref/tools/reflect /home/claude/chibi-ref/build-sdk-reflect /home/claude/chibi-ref/build-sdk-reflect /home/claude/chibi-ref/build-sdk-reflect/CMakeFiles/reflect.dir/DependInfo.cmake "--color=" reflect
@@ -77,9 +59,7 @@ Dependencies file "CMakeFiles/reflect.dir/reflect.c.o.d" is newer than depends f
 Dependencies file "CMakeFiles/reflect.dir/link.d" is newer than depends file "/home/claude/chibi-ref/build-sdk-reflect/CMakeFiles/reflect.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target reflect
 /usr/bin/gmake  -f CMakeFiles/reflect.dir/build.make CMakeFiles/reflect.dir/build
-[ 76%] Linking C executable reflect
-/usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/reflect.dir/link.txt --verbose=1
-/usr/bin/clang -O3 -DNDEBUG -Xlinker --dependency-file=CMakeFiles/reflect.dir/link.d CMakeFiles/reflect.dir/reflect.c.o CMakeFiles/reflect.dir/collect.c.o CMakeFiles/reflect.dir/identity.c.o CMakeFiles/reflect.dir/emit.c.o CMakeFiles/reflect.dir/emit_function.c.o CMakeFiles/reflect.dir/emit_component.c.o CMakeFiles/reflect.dir/emit_catalog.c.o -o reflect  -Wl,-rpath,/usr/lib/llvm-18/lib /usr/lib/llvm-18/lib/libclang.so sdk/libchibi_capabilities.a sdk/libchibi_types.a sdk/libchibi_support.a -lm
+gmake[4]: Nothing to be done for 'CMakeFiles/reflect.dir/build'.
 [100%] Built target reflect
 /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_progress_start /home/claude/chibi-ref/build-sdk-reflect/CMakeFiles 0
 

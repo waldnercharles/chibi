@@ -1,10 +1,12 @@
-# Remove authored ref: raw receipts at 999beda46
+# Remove authored ref: raw receipts at d70f1c317
 
-These are the unedited logs of the CI check chain on 999beda46, run once on that
-clean tree. 999beda46 is this branch's round 2 fixes (848517630) merged with the
-managed-pointer branch at 603092073, which already holds #688's head and main
-through #699, followed by a compiler bootstrap regenerated from that merge.
-The commit that adds this directory changes nothing else. None of the frozen
+These are the unedited logs of the CI check chain on d70f1c317, run once on that
+clean tree. d70f1c317 is this branch's round 2 fixes (848517630) merged with the
+managed-pointer branch at 76e6e7cbb, which holds #688's head, main through #699,
+pointer compound float widening and the scoped 32 MiB artifact bound, followed
+by a compiler bootstrap regenerated from that merge. The commit that adds this
+directory changes nothing else. They replace the 999beda46 receipts, which are
+in this branch's history. None of the frozen
 #698 review results at 2a14a3abb are carried over; this is its own run.
 
 Host: Linux x64, 4 CPUs, clang 18, ASan/UBSan for `build`, Release for
@@ -14,7 +16,7 @@ BUILD_HOST=/nonexistent/chibi-build-host`, so no external build host was used.
 
 | Log | Command | Result |
 | --- | --- | --- |
-| `test-build.log` | `make test-build JOBS=4` (265 s, asset compiler rebuilt) | ok |
+| `test-build.log` | `make test-build JOBS=4` (254 s, asset compiler rebuilt) | ok |
 | `release.log` | `make build-release JOBS=4 BUILD_TARGET='chibi_ctl chibi chibi-compiler-host'` | ok |
 | `test-native.log` | `make test-native` | ok |
 | `test-materials.log` | `make test-materials` | ok |
@@ -37,10 +39,10 @@ names the round 2 regressions `program_version_33_ref_becomes_pointers`,
 `.chibi/logs/<id>-<step>.log`. `tools/quiet.py` keeps only the 20 most recent,
 so these four were gone when the chain finished:
 
-- `test-build.log`: `1792918496235023472-10353-configure-native.log` and
-  `1792918498902929504-10384-build.log`.
-- `release.log`: `1792918763526277388-11400-configure-native.log`.
-- `test-tools.log`: `1792919938677977857-20497-graph.log`, which is the
+- `test-build.log`: `1792925435912364923-2129-configure-native.log` and
+  `1792925438386860336-2160-build.log`.
+- `release.log`: `1792925692116056760-2329-configure-native.log`.
+- `test-tools.log`: `1792926876810891514-10973-graph.log`, which is the
   quiet-wrapper fixture in `test/tools/test_policy.c` failing on purpose in a
   temporary directory.
 
@@ -60,14 +62,14 @@ every log here.
 
 ## Artifacts
 
-`tools/compiler/bootstrap/compiler.chibip` at 999beda46 is the downloadable
-compiler: 15,503,399 bytes, SHA-256
-`b22af64c4d966e67d588c6f92ea2ea7a59c97c9dbb295dde697ee2b71b5e8ad9`. The other
+`tools/compiler/bootstrap/compiler.chibip` at d70f1c317 is the downloadable
+compiler: 15,516,993 bytes, SHA-256
+`f22ee6047f5ec7fe5b6e089b3eed0ace2ca6c3b29814c7ce8d58b6d26d18c3b0`. The other
 binaries were built from the same tree and are not checked in:
 
 | File | SHA-256 |
 | --- | --- |
-| Sanitizer `build/sdk/generated/assets/asset_compiler.chibip` (17,873,564 bytes) | `6804e5d9272e1cad91d8910a2e6cd9d3799980d392ee9d977c343905dee9a048` |
-| `build-release/sdk/chibi-compiler-host` | `0c399315f1aa8f8c0b866ec5143b29a0829163d7b122118369a9f4d30a9b93eb` |
+| Sanitizer `build/sdk/generated/assets/asset_compiler.chibip` (17,887,158 bytes) | `7ac6e47e27861430f755fc6d8085164fc5b9205959d7f73ff3b73eba83399dd3` |
+| `build-release/sdk/chibi-compiler-host` | `da16b1e9f39763727b96f375a0f77d6b937c234e752587b3014fe62fb67ef004` |
 | `build-release/bin/chibi_ctl` | `db1d95df87e3936a356c08e12d995f45785a6edf33323692cf84fcf1c65febc4` |
-| Sanitizer `build/test/language/test_language` | `42de92b751e8c0a1146b7a9cb803a03bfc65258bed3a36963a8d904234f3d1c7` |
+| Sanitizer `build/test/language/test_language` | `2c485b46f58a56388963fadcf26a4159e0ab56fa3361abf199b53f7ca95d4865` |

@@ -565,7 +565,9 @@ GROUPS = {
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
-                 'language-shader-source-chibi', 'language-package-compiler-chibi-scalar', 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap'],
+                 'language-shader-source-chibi', 'language-package-compiler-chibi-scalar',
+                 'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
+                 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap'],
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
     GROUPS['language'].append('language-asset-compiler-host')

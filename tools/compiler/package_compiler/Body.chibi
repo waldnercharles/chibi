@@ -2478,7 +2478,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = SequenceStep(forest, text, document, table, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression" &&
                    ArrayMutation(forest, text, names, natives, ports, callable.package, item.node) > 0) {
-            step = MutationStep(forest, text, document, types, members, values, value_top, item,
+            step = MutationStep(forest, text, document, types, members, names, values, value_top, item,
                                 ArrayMutation(forest, text, names, natives, ports, callable.package, item.node),
                                 ops, target, at);
         } else if (item.phase == 0 && Integer(item.storage) &&
@@ -2490,7 +2490,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
-                             names, callable.package, values, value_top, item, ops, target, at);
+                             names, callable.package, referenced, mutated, built, addressed, values, value_top, item,
+                             ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, table, members, values, value_top, built, item, ops, target, at);
         } else if (kind == "map_expression") {

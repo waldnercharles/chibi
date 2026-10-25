@@ -1807,6 +1807,43 @@ TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes)
     return true;
 }
 
+/* The element reads of function `index` that copy the element, or, with
+ * `borrowed`, that read it in place. */
+static int element_reads(int index, bool borrowed)
+{
+    const behavior_function *f = authored_function(index);
+    execution_intrinsic kind = borrowed ? EXECUTION_INTRINSIC_SEQUENCE_BORROW
+                                        : EXECUTION_INTRINSIC_SEQUENCE_GET;
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += execution_intrinsic_kind(f->host_calls[i].capability_id) == kind;
+    }
+    return count;
+}
+
+/* A scalar field, or a text field compared at once, is read from its element
+ * in place: neither copies the record. */
+TEST_CASE(borrow_field_reads_read_elements_in_place)
+{
+    REQUIRE(authored(
+        "Share :: library { Row :: struct { name: string; count: int; }"
+        "Root :: (input: string[]) -> int { rows: Row[] = [{name: \"a\", "
+        "count: 3}, {name: \"b\", count: 4}]; total: int = 0; i: int = 0;"
+        "while i < 2 { if rows[i].name == \"b\" { total += rows[i].count; } "
+        "i += 1; } return total; } }"
+    ));
+    REQUIRE(element_reads(0, false) == 0 && element_reads(0, true) == 2);
+    const char *texts[] = { "a", "b" };
+    pin_value items[2], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 2);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 4);
+    }
+    return true;
+}
+
 /* A callee that writes through a reference argument, and every caller of it,
  * keeps copying: its value argument stays the caller's original. */
 TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
@@ -2505,6 +2542,7 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_union_constructor_tracks_payload_aliases);
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
+    RUN_TEST_CASE(borrow_field_reads_read_elements_in_place);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     RUN_TEST_CASE(borrow_argument_sharing_lends_around_pointer_writes);
     RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);

@@ -8,6 +8,7 @@ SequenceCloneIntrinsic: int : 53;
 ArrayMutateIntrinsic: int : 54;
 SequenceGetIntrinsic: int : 55;
 SequenceLengthIntrinsic: int : 56;
+SequenceBorrowIntrinsic: int : 62;
 
 // Ranges occur only as an index or a sequence method's argument. They never
 // become runtime values. Existing slice(start, count) calls stay native calls.
@@ -79,7 +80,9 @@ SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: uin
     // An index outside the sequence is an argument failure, as stage zero
     // reports it.
     failure := target.data_failure;
-    if (intrinsic == SequenceGetIntrinsic) { failure = target.argument_failure; }
+    if (intrinsic == SequenceGetIntrinsic || intrinsic == SequenceBorrowIntrinsic) {
+        failure = target.argument_failure;
+    }
     code.append(Instruction(ops.host_call, 0, 0, failure, 0, at.host, node));
     slots.append(AddressSlot(target));
     address := at.slot + length(slots) - 1;
@@ -182,7 +185,9 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
 
 ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[],
                   ports: Port[], package: int, node: int) -> int {
-    if (!Is(forest, node, "call_expression")) {
+    // A method that changes its array is a statement of its own; the call
+    // step rejects one used as a value.
+    if (!Is(forest, node, "call_expression") || !Is(forest, forest[node].parent, "expression_statement")) {
         return 0;
     }
     callee := Field(forest, node, "function");
@@ -212,7 +217,8 @@ ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], 
 }
 
 MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
-                 values: Value[], top: int, item: Work, operation: int, ops: Ops, target: Target, at: Bases) -> Step {
+                 names: Name[], values: Value[], top: int, item: Work, operation: int, ops: Ops, target: Target,
+                 at: Bases) -> Step {
     node := forest[item.node];
     receiver := Field(forest, Field(forest, item.node, "function"), "object");
     first := FirstMember(forest, Field(forest, item.node, "arguments"));
@@ -268,7 +274,24 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
             return Fail(forest, item.node, document, "mutating method has the wrong number of arguments");
         }
         next.append(Resume(item.node, 2, count, 0));
-        return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+        // Stage zero watches a named array, not a pointer it follows, where
+        // it evaluates it, before the arguments, which can invoke another body.
+        found: int = -1;
+        if (Is(forest, receiver, "identifier")) { found = Lookup(names, Text(forest, text, receiver)); }
+        if (!ops.debug || found < 0 || (names[found].storage == PointerStorage && names[found].container == 0)) {
+            return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+        }
+        switch ReadSequencePlace(object, 0, ops, target, at, node) {
+            case .Failed(diagnostic): return Step.Failed(diagnostic);
+            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, scheduled, popped, value, retained,
+                          marks):
+                watches: Code[] = [WatchCode(ops, value.slot, value.storage, value.container, value.record, 0, true,
+                                             forest[receiver], target),
+                                   WatchCode(ops, value.slot, value.storage, value.container, value.record, 0, false,
+                                             node, target)];
+                return Step.Emitted(extend(code, watches), slots, locals, cells, hosts, roots, calls, bound, next,
+                                    0, NoValue(), retained, marks);
+        }
     }
     count := item.a + 1;
     arguments := slice(values, top - count, count);
@@ -288,18 +311,29 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         }
         index += 1;
     }
+    // Each argument is the call's next watched input, as stage zero watches it.
+    watches: Code[] = [];
+    index = 1;
+    while (ops.debug && index < count) {
+        argument := arguments[index];
+        watches.append(WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record, index,
+                                 false, node, target));
+        index += 1;
+    }
     // Runtime accepts the operation as its second, int-typed argument.
     operation_slot := at.slot;
     operation_code := ConstantCode(ops, IntStorage, uint64(operation), operation_slot, node);
+    watches.append(operation_code);
     operation_value := Typed(operation_slot, IntStorage, 0, -1);
     arguments = insert(arguments, 1, operation_value);
-    shifted: Bases = {pc: at.pc + 1, slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host, call: at.call};
+    shifted: Bases = {pc: at.pc + length(watches), slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
+                      call: at.call};
     switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), uint64(0), false,
                             count, ops, target, shifted, node) {
         case .Failed(diagnostic):
             return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, names, next, popped, result, retained, marks):
-            emitted := Step.Emitted(extend([operation_code], code), extend([ValueLocal(IntStorage)], slots),
+            emitted := Step.Emitted(extend(watches, code), extend([ValueLocal(IntStorage)], slots),
                                     locals, cells, hosts, roots, calls, names, next, popped, result, retained, marks);
             return CleanupSequenceValues(emitted, arguments, ops, target, at, node);
     }
@@ -357,6 +391,11 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     value := values[top - 1];
     code: Code[] = [];
     slots: Slot[] = [];
+    if (place.container == 0 && MixedCompoundIntegers(operator, place.storage, value)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(place.storage), TypeName(value.storage)));
+    }
     // A number converts to the destination's type, as stage zero converts it.
     if (place.container == 0 && value.container == 0 && value.storage != place.storage &&
         Converts(value.storage, place.storage)) {
@@ -373,8 +412,9 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         if (!Numeric(place.storage) || place.container != 0 || !Computes(ops, operation, place.storage)) {
             return Fail(forest, destination, document, "compound assignment needs numeric operands");
         }
-        // The destination's current value is watched at it, as stage zero does.
-        if (ops.debug) {
+        // The destination's current value is watched at it, as stage zero
+        // does, except an array or view element, which it updates in place.
+        if (ops.debug && (!Is(forest, destination, "index_expression") || place.newkey)) {
             code.append(WatchCode(ops, before.slot, before.storage, before.container, before.record, 0, true,
                                   forest[destination], target));
         }
@@ -565,7 +605,12 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                             [PlaceVisit(Field(forest, item.node, "expression"))], 0, NoValue(), NoValue(), []);
     }
     if (node.kind == "dereference_expression") {
-        return Step.Emitted([], [], [], [], [], [], [], [],
+        // Stage zero marks a pointer it follows to reach an element or field.
+        points: Code[] = [];
+        if (Is(forest, node.parent, "index_expression") || Is(forest, node.parent, "member_expression")) {
+            points = [ExpressionCode(ops, node)];
+        }
+        return Step.Emitted(points, [], [], [], [], [], [], [],
                             [Visit(Field(forest, item.node, "operand")), Resume(item.node, PlacePointerPhase, 0, 0)],
                             0, NoValue(), NoValue(), []);
     }
@@ -587,14 +632,20 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         // first, then the name it starts from.
         phase := PlaceFieldPhase;
         points: Code[] = [ExpressionCode(ops, node)];
+        root := PlaceVisit(Field(forest, item.node, "object"));
         if (node.kind == "index_expression") {
             phase = PlaceIndexPhase;
         }
         if (node.kind == "index_expression" && item.b == 1) {
             points = [];
+            // Stage zero stores an element of a local array in place: it
+            // marks the element, and the array's name at the statement.
+            if (StoresLocalElement(forest, text, names, item.node)) {
+                points = [ExpressionCode(ops, node)];
+                root.b = 2;
+            }
         }
-        return Step.Emitted(points, [], [], [], [], [], [], [],
-                            [PlaceVisit(Field(forest, item.node, "object")), Resume(item.node, phase, 0, item.b)],
+        return Step.Emitted(points, [], [], [], [], [], [], [], [root, Resume(item.node, phase, 0, item.b)],
                             0, NoValue(), NoValue(), []);
     }
     found := Lookup(names, Text(forest, text, item.node));
@@ -603,6 +654,9 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     }
     points := NamePoints(forest, text, names, ops, item.node);
     binding := names[found];
+    if (item.b == 2) {
+        points = [SymbolCode(ops, binding.node, forest[forest[node.parent].parent])];
+    }
     if (binding.place == NarrowedPlace) {
         // The payload's place in the optional's, which stage zero marks
         // again as the payload.
@@ -613,6 +667,20 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                                                            element, ops, target, at, node));
     }
     return PointerPrefix(points, [], NamePlaceStep(forest, document, types, binding, item.node, ops, target, at));
+}
+// Whether the assignment target `node` is an element of a local array that
+// stage zero stores in place: a plain assignment to a writable local's
+// element, not a parameter's.
+StoresLocalElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    object := Field(forest, node, "object");
+    statement := forest[node].parent;
+    if (!Is(forest, object, "identifier") || !Is(forest, statement, "assignment") ||
+        CompoundOperator(Text(forest, text, Field(forest, statement, "operator"))) != "") {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, object));
+    return found >= 0 && names[found].place == CellPlace && names[found].container == ArrayContainer &&
+           names[found].writable && !Parameter(forest, names[found]);
 }
 // The place of the local `binding` that the name `name` reads.
 NamePlaceStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], binding: Name, name: int, ops: Ops,

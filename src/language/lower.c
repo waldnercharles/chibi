@@ -1573,12 +1573,16 @@ static void drop_value(lower *l, int value, script_type type, script_range range
         range
     );
 }
+/* Whether evaluating expression `index` may change an array read before it. */
+static bool may_change(const lower *l, int index)
+{
+    return l->a->expressions[index].effects &
+           (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST |
+            SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_SUSPEND);
+}
 static bool index_needs_snapshot(const lower *l, const script_expression *e)
 {
-    return e->kind == SCRIPT_EXPR_INDEX &&
-           (l->a->expressions[e->right].effects &
-            (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST |
-             SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_SUSPEND));
+    return e->kind == SCRIPT_EXPR_INDEX && may_change(l, e->right);
 }
 static bool owns_expression_value(const lower *l, const script_expression *e)
 {
@@ -1976,7 +1980,8 @@ static const script_function *input_signature(const script_analysis *a, const sc
 }
 static int storage_root(const script_analysis *, int);
 static bool reference_argument(const lower *, const script_expression *, int);
-/* Whether expression `index` changes local `symbol` in place. */
+/* Whether expression `index` changes local `symbol` in place. A call's
+ * `right` is the function it calls, not an operand. */
 static bool changes_local(const lower *l, int index, int symbol)
 {
     if (index < 0) {
@@ -1984,7 +1989,8 @@ static bool changes_local(const lower *l, int index, int symbol)
     }
     const script_expression *e = &l->a->expressions[index];
     if ((e->kind == SCRIPT_EXPR_ARRAY_MUTATE && storage_root(l->a, e->left) == symbol) ||
-        changes_local(l, e->left, symbol) || changes_local(l, e->right, symbol)) {
+        changes_local(l, e->left, symbol) ||
+        (e->kind != SCRIPT_EXPR_CALL && changes_local(l, e->right, symbol))) {
         return true;
     }
     for (int i = 0; i < e->argument_count; i++) {
@@ -4918,6 +4924,16 @@ static int expression_value(lower *l, int index)
             int *slots = NULL;
             apush(headers, ((pin_value){ .type = BF_POINTER_TYPE }));
             apush(headers, ((pin_value){ .type = PIN_I32, .i = (int)e->member }));
+            /* A named array is watched where it is evaluated, before the
+             * arguments, which can invoke another body; its reference keeps
+             * the name's points. */
+            const script_expression *array = &l->a->expressions[e->left];
+            if (array->kind == SCRIPT_EXPR_SYMBOL) {
+                int value = symbol_value(l, array);
+                value_root(l, BEHAVIOR_BANK_SLOT, value, array->type);
+                debug_watch(l, e->left, value, array->type, true, 0);
+                debug_input(l, e, 0, value, array->type);
+            }
             apush(slots, reference(l, e->left));
             apush(slots, -1);
             for (int i = 1; i < e->argument_count; i++) {
@@ -4936,6 +4952,13 @@ static int expression_value(lower *l, int index)
                 }
                 headers[at] = initial(l, l->a->expressions[argument->value].type);
                 slots[at] = expression(l, argument->value);
+                debug_input(
+                    l,
+                    e,
+                    argument->parameter,
+                    slots[at],
+                    l->a->expressions[argument->value].type
+                );
                 slots[at] = copy_value(
                     l,
                     slots[at],
@@ -5196,7 +5219,12 @@ static int expression_value(lower *l, int index)
                     );
                 }
             }
-            int left = expression(l, e->left), right = expression(l, e->right);
+            /* Text compared at once is done with before its array can change,
+             * unless the right operand runs first and changes it. */
+            bool texts = (e->op == SCRIPT_OP_EQ || e->op == SCRIPT_OP_NE) &&
+                         behavior_scalar_string(l->a->expressions[e->left].type.storage);
+            int left = borrowed_place(l, e->left, texts && !may_change(l, e->right));
+            int right = borrowed_place(l, e->right, texts);
             script_type operand = e->type.storage != PIN_BOOL
                                     ? e->type
                                     : l->a->expressions[e->left].type;

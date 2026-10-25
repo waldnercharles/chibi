@@ -114,6 +114,9 @@ typedef struct
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
         same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
+    /* Its calls run with the probe natives linked, take no arguments and
+     * return one int. */
+    bool probe_calls;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -771,7 +774,16 @@ static const sample samples[] = {
                 "    xs := notes;\n    total: int = 0;\n"
                 "    for (note in xs) { xs[1] = {text: \"z\", count: 100}; "
                 "total += note.count; }\n"
-                "    return total;\n}",
+                "    return total;\n}\n"
+                "LentFind :: (notes: Note[], text: string) -> int {\n"
+                "    index: int = 0;\n"
+                "    while (index < notes.length()) {\n"
+                "        note := notes[index];\n"
+                "        if (note.text == text && note.count > 0) { return index; }\n"
+                "        index += 1;\n    }\n    return -1;\n}\n"
+                "CopiedFind :: (notes: Note[]) -> int {\n"
+                "    note := notes[1];\n    notes[1] = {text: \"z\", count: 100};\n"
+                "    return note.count;\n}",
       .calls = { { .function = "AliasedSum",
                    .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
                                 "\"b\",\"count\":2}]]",
@@ -779,7 +791,15 @@ static const sample samples[] = {
                  { .function = "CopiedWalk",
                    .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
                                 "\"y\",\"count\":2}]]",
-                   .expected = "[3]" } } },
+                   .expected = "[3]" },
+                 { .function = "LentFind",
+                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
+                                "\"b\",\"count\":2}],\"b\"]",
+                   .expected = "[1]" },
+                 { .function = "CopiedFind",
+                   .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
+                                "\"y\",\"count\":2}]]",
+                   .expected = "[2]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -1302,6 +1322,7 @@ static const sample samples[] = {
     { .name = "value arguments and result banks",
       .group = COLLECTION_SAMPLES,
       .c_string_probe = true,
+      .probe_calls = true,
       .source =
           "package facts\n"
           "Change :: (pointer: ^(int[])) -> int { pointer^[0] = 9; pointer.append(3); return 7; }\n"
@@ -3774,9 +3795,20 @@ static bool builds_results(const unsigned char *bytes, size_t length)
     REQUIRE(built == 2 && copied == 1 && !wrong);
     return true;
 }
+static int intrinsic_calls(const behavior_function *f, execution_intrinsic kind)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id ==
+                 (UINT64_C(0x4348494900000000) | kind);
+    }
+    return count;
+}
 /* Arrays are values a loop retains, so neither a loop over an array nothing
  * changes nor one whose body changes its array snapshots it; CopiedWalk's
- * result shows the walk still sees the array as it was. */
+ * result shows the walk still sees the array as it was. A local nothing
+ * changes reads its element in place, as stage zero lends it, unless its
+ * array changes. */
 static bool reads_in_place(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -3809,10 +3841,21 @@ static bool reads_in_place(const unsigned char *bytes, size_t length)
                 fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
                 wrong++;
             }
+            int gets = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_GET),
+                drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP),
+                borrows = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_BORROW);
+            bool lent = !strcmp(f.entry, "LentFind"),
+                 copied = !strcmp(f.entry, "CopiedFind");
+            walks += lent || copied;
+            if ((lent && (gets || drops || !borrows)) ||
+                (copied && (!gets || borrows))) {
+                fprintf(stderr, "package compiler %s reads %d, borrows %d, drops %d elements\n", f.entry, gets, borrows, drops);
+                wrong++;
+            }
         }
     }
     package_collection_free(packages);
-    REQUIRE(walks == 2 && !wrong);
+    REQUIRE(walks == 4 && !wrong);
     return true;
 }
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
@@ -4051,6 +4094,70 @@ static package_collection *read_packages(
     }
     return packages;
 }
+/* Runs a call with the probe natives: the compiler host links only its own,
+ * so the closure is read with them and its function run directly. */
+static bool run_probe(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
+{
+    REQUIRE(!strcmp(call->arguments, "[]") && call->expected);
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    const behavior_function *body = NULL;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            execution_module_function_info info = execution_module_function_at(module, f);
+            if (info.id == function_id(call->function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body);
+    arena storage = { 0 };
+    pin_value result = { .type = PIN_I32 };
+    behavior_function_activation activation = { 0 };
+    bool resumable = behavior_function_resumable(body);
+    if (resumable) {
+        behavior_function_activation_init(body, &activation);
+    }
+    behavior_function_prepare_results(body, &result, &storage);
+    behavior_managed_heap heap;
+    behavior_managed_heap_init(&heap);
+    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                          .managed_heap = &heap,
+                                          .results = &result,
+                                          .budget = TARGET_BUDGET };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(body, &context, NULL, 0);
+    int status = bound ? behavior_function_run(body, &context, backend != 0)
+                       : FLOW_ERR_ARGUMENT;
+    char text[32];
+    snprintf(text, sizeof text, "[%d]", result.i);
+    bool expected = status == FLOW_OK && context.returned &&
+                    !strcmp(text, call->expected);
+    if (!expected) {
+        fprintf(stderr, "package compiler probe run %s: %d %s\n", call->function, status, text);
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
+    arena_free(&storage);
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(expected);
+    return true;
+}
+static bool call_sample(
+    const sample *s,
+    const unsigned char *bytes,
+    size_t length,
+    const sample_call *call,
+    int backend
+)
+{
+    return s->probe_calls ? run_probe(bytes, length, call, backend)
+                          : run(bytes, length, call, backend);
+}
 /* The receiver input must be captured before the authored item call. Comparing
  * watch sets alone cannot detect a watch moved across that call. Each fixture
  * function has exactly one update and one authored invocation. */
@@ -4199,7 +4306,11 @@ static bool observes_array_update(const unsigned char *bytes, size_t length, con
             behavior_function_activation_init(body, &activation);
         }
         behavior_function_prepare_results(body, &result, &storage);
+        /* The array values live in the invocation's managed heap. */
+        behavior_managed_heap heap;
+        behavior_managed_heap_init(&heap);
         behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                              .managed_heap = &heap,
                                               .results = &result,
                                               .budget = TARGET_BUDGET,
                                               .source_debug_user = &trace,
@@ -4219,6 +4330,7 @@ static bool observes_array_update(const unsigned char *bytes, size_t length, con
                      pin_array_get(array, 1).i == 7;
         behavior_function_release_host(&context);
         behavior_function_activation_free(&activation);
+        behavior_managed_heap_free(&heap);
         arena_free(&storage);
         package_collection_free(packages);
         native_capabilities_free(native);
@@ -4485,9 +4597,10 @@ static bool run_samples(sample_group group, int b)
                      points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
-                ran = run(bytes, length, &s->calls[c], backend);
+                ran = call_sample(s, bytes, length, &s->calls[c], backend);
             }
-            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
+            ran = ran &&
+                  (b || call_sample(s, expected, expected_length, &s->calls[c], 0));
         }
         if (ran && s->update_order) {
             ran = (b || array_update_order(expected, expected_length, s)) &&

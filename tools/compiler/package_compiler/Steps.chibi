@@ -567,7 +567,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 // itself when it is fresh, or when neither it nor what it
                 // reads ever changes.
                 code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
-                if (Fresh(forest, text, callables, types, names, package, Field(forest, item.node, "value")) ||
+                // A lent element is read in place and never dropped.
+                lent := LendsElement(forest, text, names, referenced, mutated, built, addressed,
+                                     Field(forest, item.node, "value"));
+                if (lent || Fresh(forest, text, callables, types, names, package, Field(forest, item.node, "value")) ||
                     (!Holds(mutated, name) &&
                      Unchanging(forest, text, callables, types, names, package, mutated, Field(forest, item.node, "value")))) {
                     cells.append(MovedCell(result));
@@ -579,7 +582,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 } else {
                     retained = result;
                 }
-                next.append(Resume(item.node, RetainedPhase, 0, 0));
+                lending: int = 0;
+                if (lent) { lending = 1; }
+                next.append(Resume(item.node, RetainedPhase, 0, lending));
             } else if (Holds(referenced, name) || (local.storage == UnionStorage && Holds(mutated, name))) {
                 // A ref argument reaches it, or it is a union a write may
                 // reach through its narrowed payload, so it lives in a data
@@ -766,7 +771,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         kept := values[top - 1];
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         if (kind == "local_declaration") {
-            binding: Name = {owned: true, name: Text(forest, text, Field(forest, item.node, "name")), place: CellPlace,
+            binding: Name = {owned: item.b == 0, name: Text(forest, text, Field(forest, item.node, "name")), place: CellPlace,
                              index: kept.cell, storage: kept.storage, container: kept.container, record: kept.record,
                              writable: true, node: Field(forest, item.node, "name")};
             bound.append(binding);
@@ -977,8 +982,9 @@ ReadIntegerLiteral :: (forest: snapshot.SnapshotNode[], text: string, document: 
 // Literals, names, parentheses, field reads and element reads.
 ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
               params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[],
-              ports: Port[], names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops,
-              target: Target, at: Bases) -> Step {
+              ports: Port[], names: Name[], package: int, referenced: string[], mutated: string[], built: int[],
+              addressed: string[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
+              at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
     code: Code[] = [];
@@ -1402,7 +1408,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, Field(forest, item.node, "index"), document, "index needs an int");
         }
         element_type := SequenceElement(types, {storage: array.storage, container: array.container, record: array.record});
-        emitted := SequenceCallStep([array, position], SequenceGetIntrinsic,
+        read := SequenceGetIntrinsic;
+        if (!array.owned && (BorrowsElement(forest, text, types, members, item.node, element_type) ||
+                             LendsElement(forest, text, names, referenced, mutated, built, addressed, item.node))) {
+            read = SequenceBorrowIntrinsic;
+        }
+        emitted := SequenceCallStep([array, position], read,
                                     Typed(-1, element_type.storage, element_type.container, element_type.record), uint64(0), false,
                                     2, ops, target, at, node);
         return CleanupProjectionStep(emitted, array, natives, ports, ops, target, at, node);
@@ -1414,6 +1425,57 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     return emitted;
 }
 
+// Whether the element `node` reads is done with before its array can change,
+// so it is read in place, as stage zero reads it: one of its scalar fields, or
+// a text field compared at once with a name or a literal.
+BorrowsElement :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                   node: int, element: ValueType) -> bool {
+    member := forest[node].parent;
+    if (!Is(forest, member, "member_expression") || Field(forest, member, "object") != node ||
+        element.storage != StructStorage || element.container != 0 || element.record < 0) {
+        return false;
+    }
+    found := FindField(types, members, element.record, Text(forest, text, Field(forest, member, "member")));
+    if (found < 0 || members[found].container != 0 || members[found].read >= 0 || members[found].c_string) {
+        return false;
+    }
+    storage := members[found].storage;
+    if (storage != TextStorage) {
+        return storage != StructStorage && storage != UnionStorage;
+    }
+    comparison := forest[member].parent;
+    operator := Text(forest, text, Field(forest, comparison, "operator"));
+    other := Field(forest, comparison, "right");
+    if (other == member) {
+        other = Field(forest, comparison, "left");
+    }
+    return Is(forest, comparison, "binary_expression") && (operator == "==" || operator == "!=") &&
+           (Is(forest, other, "identifier") || Is(forest, other, "string"));
+}
+// Whether the element `node` reads initializes a local in place, as stage
+// zero lends a declaration: nothing changes the local, nor the parameter or
+// local whose array holds the element, so the element outlives every read of
+// the local.
+LendsElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[],
+                 mutated: string[], built: int[], addressed: string[], node: int) -> bool {
+    declaration := forest[node].parent;
+    if (!Is(forest, node, "index_expression") || !Is(forest, declaration, "local_declaration") ||
+        Field(forest, declaration, "value") != node || built.contains(Field(forest, declaration, "name"))) {
+        return false;
+    }
+    root := RootOf(forest, node);
+    if (!Is(forest, root, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, root));
+    return found >= 0 && (names[found].place == ParameterPlace || names[found].place == CellPlace) &&
+           Fixed(referenced, mutated, addressed, Text(forest, text, Field(forest, declaration, "name"))) &&
+           Fixed(referenced, mutated, addressed, names[found].name);
+}
+// Whether nothing assigns, changes in place or takes the address of `name`.
+Fixed :: (referenced: string[], mutated: string[], addressed: string[], name: string) -> bool {
+    return !Holds(referenced, name) && !Holds(mutated, name) && !Holds(addressed, name);
+}
 // The phase of an array literal whose element type its first item gives.
 InferPhase: int : 2;
 // Struct and array literals, built by the construct intrinsic: the value's

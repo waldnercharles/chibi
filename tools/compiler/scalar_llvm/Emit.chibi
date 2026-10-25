@@ -46,15 +46,38 @@ Unlocated :: (row: facts.Row) -> bool {
     return row.start == 0 && row.end == 0 && row.line == 0 && row.column == 0;
 }
 Scalar :: (type: int) -> bool {
-    return type >= facts.IntType && type <= facts.WordType;
+    return type >= facts.IntType && type <= facts.DoubleType;
 }
 Integer :: (type: int) -> bool {
     return facts.Bits(type) != 0;
 }
+Number :: (type: int) -> bool {
+    return Integer(type) || facts.Floating(type);
+}
+// Whether the operation `operator` applies to `type`: every arithmetic
+// operator to integers, and +, -, * and / to floats.
+Computes :: (operator: int, type: int) -> bool {
+    if (facts.Floating(type)) {
+        return operator >= facts.Add && operator <= facts.Divide;
+    }
+    return Integer(type) && operator >= facts.Add && operator <= facts.ShiftRight;
+}
+// The conversions the runtime implements: integers to one another and to
+// double, float and double to one another and to the integers.
+Converts :: (from: int, to: int) -> bool {
+    if (to == facts.FloatType) {
+        return from == facts.DoubleType;
+    }
+    if (to == facts.DoubleType) {
+        return Integer(from) || from == facts.FloatType;
+    }
+    return Integer(to) && Number(from);
+}
 // The backend's storage ordinal of a scalar type: the storages of int, bool,
-// int8, byte, int16, uint16, uint, int64 and uint64 in facts type order.
+// int8, byte, int16, uint16, uint, int64, uint64, float and double in facts
+// type order.
 NativeType :: (type: int) -> int {
-    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9];
+    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
     return storages[type - facts.IntType];
 }
 // A rejection keeps exactly its source and one located diagnostic.
@@ -135,7 +158,7 @@ Segments :: (rows: facts.Row[], head: int) -> int[] {
 }
 // The operands after the segment row at `at`, as a typed evaluation stack:
 // each operand pushes one value; a comparison or binary arithmetic pops two
-// integers of one type, unary arithmetic and a conversion one, and a call its
+// numbers of one type, unary arithmetic and a conversion one, and a call its
 // arguments in order. They must leave one value of type `result`, and each
 // lies within `scope`.
 ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: int, scope: facts.Row, starts: int[],
@@ -163,16 +186,15 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
             base := length(stack) - 2;
             if (operand.name != "" || operand.count != 2 || operand.type != facts.BoolType ||
                 operand.value < facts.Less || operand.value > facts.NotEqual || base < 0 ||
-                !Integer(stack[base]) || stack[base + 1] != stack[base]) {
-                return "scalar comparison differs from its integer operands";
+                !Number(stack[base]) || stack[base + 1] != stack[base]) {
+                return "scalar comparison differs from its number operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ArithmeticRow) {
             base := length(stack) - 2;
-            if (operand.name != "" || operand.count != 2 || !Integer(operand.type) ||
-                operand.value < facts.Add || operand.value > facts.ShiftRight || base < 0 ||
+            if (operand.name != "" || operand.count != 2 || !Computes(operand.value, operand.type) || base < 0 ||
                 stack[base] != operand.type || stack[base + 1] != operand.type) {
-                return "scalar arithmetic differs from its integer operands";
+                return "scalar arithmetic differs from its number operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.UnaryRow) {
@@ -180,14 +202,14 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
             if (operand.name != "" || operand.count != 1 || !Integer(operand.type) ||
                 operand.value < facts.Negate || operand.value > facts.Complement || base < 0 ||
                 stack[base] != operand.type) {
-                return "scalar arithmetic differs from its integer operands";
+                return "scalar arithmetic differs from its number operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ConvertRow) {
             base := length(stack) - 1;
-            if (operand.name != "" || operand.count != 1 || !Integer(operand.type) ||
-                (operand.value != facts.Clamp && operand.value != facts.Wrap) || base < 0 || !Integer(stack[base])) {
-                return "scalar conversion is not between integer types";
+            if (operand.name != "" || operand.count != 1 || (operand.value != facts.Clamp && operand.value != facts.Wrap) ||
+                base < 0 || !Converts(stack[base], operand.type)) {
+                return "scalar conversion is not one the runtime implements";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {

@@ -23,16 +23,16 @@ interface, or the complete allocation/memory/output/free native island.
 - A module of at most 32 functions, each a consecutive range of the parameter,
   slot, local, code and argument tables. Function 0 is the exported entry,
   `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
-  `internal` `chibi_scalar.N`. Each takes plain integer and `bool`
-  parameters (`int8` through `uint64`, as `iN` with no sign) and returns one
-  scalar result. Foreign bool ABI is not promised. Storage
+  `internal` `chibi_scalar.N`. Each takes plain integer, `float`, `double`
+  and `bool` parameters (`int8` through `uint64` as `iN` with no sign, and
+  `float` and `double` as themselves) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
 - `Call` defines a slot from another function's result. Its arguments are
   slots of the caller's own argument range, each of the callee's parameter
   type and defined on every path; they load in order, so evaluation order stays
   visible at O0. The call graph must be acyclic: recursion is rejected.
-- Scalar locals, branches, comparisons, bitwise operations, integer
-  arithmetic and integer conversions. Comparisons, division, remainders and
+- Scalar locals, branches, comparisons, bitwise operations, integer and
+  floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. Limits per function are eight parameters, 128 slots, 64 locals,
   256 body instructions and 256 call arguments. These are plan bounds, not a
   source-language acceptance claim.
@@ -47,6 +47,20 @@ interface, or the complete allocation/memory/output/free native island.
   and 1 keeps its low bits. The value is first extended to `i65`, which holds
   every value of every integer type, so a clamp never becomes a plain
   truncation.
+- `float` and `double` follow IEEE at their width, with no fast-math flags:
+  `+`, `-`, `*` and `/` round to nearest, and there is no floating negation
+  or remainder, which the runtime does not compute either. `<`, `<=`, `>`,
+  `>=` and `==` are ordered, so NaN makes them false, and `!=` is unordered,
+  so NaN makes it true. A constant's `literal` is its encoding's bits, a
+  `float`'s zero-extended, emitted through `bitcast` so NaN payloads and
+  signed zeros stay exact.
+- A `float` or `double` converts to an integer type through
+  `llvm.fpto{s,u}i.sat`, in either `literal` mode: it truncates toward zero,
+  saturates at the type's bounds and gives 0 for NaN, as the runtime's casts
+  do. An integer or a `float` converts to `double`, and a `double` to `float`,
+  rounding to nearest. An integer reaches `float` only through `double`, as
+  the runtime converts it, so a direct integer-to-`float` conversion is
+  rejected. Each intrinsic is declared once.
 - An explicit positive CHECK budget is required. Each invocation of each
   function initializes a private counter; every CHECK tests remaining budget before decrementing.
   Budget N admits exactly N CHECKs, not N LLVM/machine instructions. The future
@@ -59,7 +73,7 @@ interface, or the complete allocation/memory/output/free native island.
 The emitter rejects unsupported instructions/types and validates table bounds,
 operand types, constants within their type, unique scalar definitions and
 control flow dominance before writing IR. There are no indirect call, foreign
-call, reference, managed-memory or floating operations. The caller must reject
+call, reference or managed-memory operations. The caller must reject
 nominal/container/reference metadata before reducing types to the backend's
 scalar ordinals.
 
@@ -70,7 +84,9 @@ scalar ordinals.
   flow, definition dominance, total arithmetic and explicit budgets.
 - `tool language-package-compiler-chibi-scalar` (`test/language`): call
   definitions and argument order, malformed calls and cyclic or misplaced call
-  graphs, each with its exact rejection, on both VMs.
+  graphs, floating encodings, comparisons, conversions and intrinsic
+  declarations, and floating operations and conversions the runtime lacks,
+  each with its exact rejection, on both VMs.
 - `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see
   `test/native_aot/scalar/README.md`.
 - `test/fixtures/native-abi/Checks.chibi`: pure target/type checks; the adjacent

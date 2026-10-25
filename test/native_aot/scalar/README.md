@@ -14,19 +14,21 @@ One source document holding one package, no imports, and only ordinary
 function declarations without attributes: at most 32 functions. The first
 function is the module's entry and must be `() -> int`. Every function:
 
-- takes at most eight plain integer or `bool` parameters (`int8`, `byte`,
-  `int16`, `uint16`, `int`, `uint`, `int64` or `uint64`; no `ref`, defaults or
-  managed, nominal or container types) and returns one plain integer or
-  `bool`;
+- takes at most eight plain number or `bool` parameters (`int8`, `byte`,
+  `int16`, `uint16`, `int`, `uint`, `int64`, `uint64`, `float` or `double`; no
+  `ref`, defaults or managed, nominal or container types) and returns one
+  plain number or `bool`;
 - has a body of at most one guard `if (CONDITION) { return EXPR; }`, then
   exactly one final `return EXPR;`, and no other statement, reachable or not;
-- has a `bool` condition and returns expressions of its result type, or of an
-  integer type that widens to it, as a return widens. Each is an integer
-  literal within its type, possibly signed, `true` or `false`, one of its
-  parameters, integer arithmetic `a + b` (or `-`, `*`, `/`, `%`, `&`, `|`,
-  `^`), a shift `a << n` or `a >> n`, a negation `-a` or complement `~a`, a
-  comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of two integers, a
-  conversion `T(a)` or `T(wrap: a)` to an integer type, or a direct call
+- has a `bool` condition and returns expressions of its result type, or of a
+  type that widens to it, as a return widens: a narrower integer, or `float`
+  to `double`. Each is a number literal within its type, possibly signed,
+  `true` or `false`, one of its parameters, integer arithmetic `a + b` (or
+  `-`, `*`, `/`, `%`, `&`, `|`, `^`), floating arithmetic `a + b` (or `-`,
+  `*`, `/`), a shift `a << n` or `a >> n`, an integer negation `-a` or
+  complement `~a`, a comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of
+  two numbers, a conversion `T(a)` or `T(wrap: a)` to an integer type,
+  `float(a)` or `double(a)`, or a direct call
   `F(a, b, ...)` of a function of the same source with exactly its arity and
   parameter types, whose operands are again such expressions: at most 64
   operands per function, counted over its condition and returns.
@@ -41,7 +43,17 @@ width gives 0, or the sign fill for a signed `>>`. A shift's count converts to
 the shifted type first, as `ShiftStep` converts it: a constant count that does
 not fit becomes the type's largest value, and a typed one clamps. `T(a)`
 clamps to T's range and `T(wrap: a)` keeps the low bits. The emitter guards
-the divisor and count with `select`, so no path traps. The arm's
+the divisor and count with `select`, so no path traps.
+
+`float` and `double` are IEEE at their width with no fast-math: arithmetic
+rounds to nearest, overflow gives an infinity, subnormals are kept, and NaN
+makes every comparison false except `!=`. An integer beside a float, or a
+`float` beside a `double`, converts to the floating type first, as
+`OperatorStep` converts it; an integer reaches `float` through `double`, so
+2^60 + 2^36 + 1 rounds twice. A float or double converted to an integer type
+truncates toward zero, saturates at the type's bounds and gives 0 for NaN, in
+either mode. A floating literal is the binary64 nearest it, and a `float` one
+the binary32 nearest that, as stage zero reads it. The arm's
 expression is evaluated only when the condition holds, and the final
 return's only when it does not.
 
@@ -78,7 +90,7 @@ Third :: (a: int, b: int, c: int) -> int { return c; }
 LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
 Everything else is rejected with a located diagnostic and no partial result:
-floats and conversions to them, `&&`, `||` and `!`, `bool` comparisons, `else`
+floating negation and remainder, `&&`, `||` and `!`, `bool` comparisons, `else`
 branches, a second guard, a guard that does not return, loops and other
 control flow, locals and other statements, function values, qualified or imported calls, native or foreign calls
 (`print`), named arguments, strings and other managed values, attributes,
@@ -190,6 +202,19 @@ shift runs on every count from 0 through the width and past it to 255 and
 on every value at the edges of each type that its source type holds. Every
 call must give the integer contract's value, computed in C, on both VMs and
 natively at O0 and O2.
+
+Generated floating modules sit beside them. For `float` and `double`, one
+module runs each operator and comparison on every pair of both zeros, 1,
+-0.1, the largest finite value, the least subnormal, both infinities and NaN,
+adds an `int` operand, and returns a signed, a `+`-prefixed and a rounding
+literal; the `float` module also widens to `double`. Another converts the
+type to and from every integer type, at each integer type's edges with
+fractions on either side, past every type, at the infinities, NaN and the
+least subnormals, and between `float` and `double`. Each call must give the
+value C's IEEE arithmetic gives on both VMs and natively at O0 and O2. The
+adapter passes a float or double as its encoding's bits, zero-extended, and
+returns any NaN as the canonical quiet NaN, since IEEE leaves a NaN's sign
+and payload open.
 
 ## Portable recovery regression
 

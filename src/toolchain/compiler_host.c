@@ -193,6 +193,9 @@ static bool string_size(quota *q, const char *text)
     size_t length = text ? strnlen(text, room + 1) : 0;
     return length <= room && charge(q, length * 6);
 }
+static const yyjson_read_flag READ_FLAGS = COMPILER_HOST_JSON_READ_FLAGS;
+static const yyjson_write_flag WRITE_FLAGS = YYJSON_WRITE_ALLOW_INVALID_UNICODE |
+                                             YYJSON_WRITE_ALLOW_INF_AND_NAN;
 /* Inspect the external JSON tree before recursive av_from_json allocation. */
 static bool json_quota(const yyjson_val *value, int depth, quota *q)
 {
@@ -535,7 +538,7 @@ static bool invoke(
                   "byte[]";
         goto done;
     }
-    parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
+    parsed = yyjson_read(json, length, READ_FLAGS);
     quota q = { 0 };
     if (!parsed || !json_quota(yyjson_doc_get_root(parsed), 0, &q) ||
         !yyjson_is_arr(yyjson_doc_get_root(parsed))) {
@@ -671,7 +674,7 @@ static bool invoke(
     }
     encoded = yyjson_mut_doc_new(NULL);
     yyjson_mut_doc_set_root(encoded, av_to_json(encoded, projected));
-    out->data = yyjson_mut_write(encoded, YYJSON_WRITE_ALLOW_INVALID_UNICODE, &out->length);
+    out->data = yyjson_mut_write(encoded, WRITE_FLAGS, &out->length);
     if (!out->data || out->length > COMPILER_HOST_MAX_BYTES) {
         free(out->data);
         out->data = NULL;
@@ -817,7 +820,7 @@ bool compiler_host_invoke_batch(
     if (!entry_function(host, entry, out->diagnostic, sizeof out->diagnostic)) {
         return false;
     }
-    yyjson_doc *parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
+    yyjson_doc *parsed = yyjson_read(json, length, READ_FLAGS);
     yyjson_val *requests = parsed ? yyjson_doc_get_root(parsed) : NULL;
     quota input_quota = { 0 }, output_quota = { 0 };
     if (!requests || !yyjson_is_arr(requests) || !yyjson_arr_size(requests) ||
@@ -837,7 +840,7 @@ bool compiler_host_invoke_batch(
     yyjson_arr_foreach(requests, index, count, request)
     {
         size_t request_length = 0;
-        char *request_text = yyjson_val_write(request, YYJSON_WRITE_ALLOW_INVALID_UNICODE, &request_length);
+        char *request_text = yyjson_val_write(request, WRITE_FLAGS, &request_length);
         compiler_host_result result = { 0 };
         bool invoked = request_text &&
                        compiler_host_invoke(host, entry, request_text, request_length, budget, &result);
@@ -845,7 +848,7 @@ bool compiler_host_invoke_batch(
         sum_counts(&out->counts, &result.counts);
         out->flow_status = result.flow_status;
         yyjson_doc *result_doc = invoked
-                                   ? yyjson_read(result.json, result.length, YYJSON_READ_ALLOW_INVALID_UNICODE)
+                                   ? yyjson_read(result.json, result.length, READ_FLAGS)
                                    : NULL;
         bool fits = result_doc &&
                     json_quota(yyjson_doc_get_root(result_doc), 1, &output_quota) &&

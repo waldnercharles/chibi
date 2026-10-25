@@ -5958,7 +5958,9 @@ enum
     SCALAR_UINT16 = 6,
     SCALAR_UINT = 7,
     SCALAR_INT64 = 8,
-    SCALAR_WORD = 9
+    SCALAR_WORD = 9,
+    SCALAR_FLOAT = 10,
+    SCALAR_DOUBLE = 11
 };
 /* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
 static const int GUARD_KINDS[] = {
@@ -6000,7 +6002,7 @@ typedef struct malformed_guard
 } malformed_guard;
 #define EDIT(r, f, v) { .row = (r), .field = (f), .value = (v), .from = -1 }
 #define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
-static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its integer operands",
+static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its number operands",
                   SEGMENT[] = "invalid scalar return row";
 /* The kind of each of ARITHMETIC_SOURCE's rows, and the rows edited. */
 static const int ARITHMETIC_KINDS[] = {
@@ -6062,7 +6064,7 @@ static const malformed_guard MALFORMED_GUARDS[] = {
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const char
-    ARITHMETIC[] = "scalar arithmetic differs from its integer operands";
+    ARITHMETIC[] = "scalar arithmetic differs from its number operands";
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_ADD, "value", 11) }, ARITHMETIC },
@@ -6102,7 +6104,7 @@ enum
  * a literal on another row, mixed shift operands, and a return that does not
  * widen to its result. */
 static const char
-    CONVERSION[] = "scalar conversion is not between integer types";
+    CONVERSION[] = "scalar conversion is not one the runtime implements";
 static const malformed_guard MALFORMED_WIDTHS[] = {
     { { EDIT(WIDTH_WIDENED, "value", 2) }, CONVERSION },
     { { EDIT(WIDTH_WIDENED, "count", 2) }, CONVERSION },
@@ -6335,13 +6337,20 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 enum
 {
     NATIVE_BOOL = 1,
+    NATIVE_BYTE = 3,
     NATIVE_INT = 6,
+    NATIVE_FLOAT = 10,
+    NATIVE_DOUBLE = 11,
     NATIVE_CONSTANT = 0,
     NATIVE_ARGUMENT = 1,
     NATIVE_PUBLISH = 4,
     NATIVE_RETURN = 5,
+    NATIVE_MOD = 11,
+    NATIVE_NEG = 12,
+    NATIVE_NE = 24,
     NATIVE_CHECK = 27,
-    NATIVE_CALL = 28
+    NATIVE_CALL = 28,
+    NATIVE_CONVERT = 29
 };
 typedef struct native_code
 {
@@ -6628,8 +6637,135 @@ static bool native_rejects_cycles(int b)
     REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
-/* llvm_native's call contract: definitions, argument order, and the
- * malformed or cyclic plans it rejects before writing IR. */
+/* Returns float(d) for d, a double NaN with a payload: s0 is 1.5f, s2 widens
+ * it, s3 compares it with d, s4 and s5 convert d and s2 to int, s6 narrows d
+ * and s7 converts s0 to byte. */
+static const native_code FLOATS[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_FLOAT, .literal = 0x3fc00000 },
+    { .op = NATIVE_CONSTANT,
+      .type = NATIVE_DOUBLE,
+      .output = 1,
+      .literal = INT64_C(0x7ff8000000000001) },
+    { .op = NATIVE_CONVERT, .type = NATIVE_DOUBLE, .output = 2, .right = NATIVE_FLOAT },
+    { .op = NATIVE_NE, .type = NATIVE_DOUBLE, .output = 3, .left = 2, .right = 1 },
+    { .op = NATIVE_CONVERT, .type = NATIVE_INT, .output = 4, .left = 1, .right = NATIVE_DOUBLE },
+    { .op = NATIVE_CONVERT, .type = NATIVE_INT, .output = 5, .left = 2, .right = NATIVE_DOUBLE },
+    { .op = NATIVE_CONVERT, .type = NATIVE_FLOAT, .output = 6, .left = 1, .right = NATIVE_DOUBLE },
+    { .op = NATIVE_CONVERT, .type = NATIVE_BYTE, .output = 7, .right = NATIVE_FLOAT },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_FLOAT, .left = 6 },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    FLOAT_CODE = (int)(sizeof FLOATS / sizeof *FLOATS)
+};
+static const native_function FLOAT_FUNCTIONS[] = {
+    { NATIVE_FLOAT, 0, 0, 0, 8, 0, FLOAT_CODE, 0, 0 },
+};
+static const int FLOAT_SLOTS[] = { NATIVE_FLOAT, NATIVE_DOUBLE, NATIVE_DOUBLE,
+                                   NATIVE_BOOL,  NATIVE_INT,    NATIVE_INT,
+                                   NATIVE_FLOAT, NATIVE_BYTE };
+static native_module float_module(const native_code *code)
+{
+    return (native_module){
+        FLOAT_FUNCTIONS, 1, NULL, 0, FLOAT_SLOTS, 8, code, FLOAT_CODE, NULL, 0
+    };
+}
+static int occurrences(pin_string haystack, const char *needle)
+{
+    char *text = xmalloc(haystack.length + 1);
+    memcpy(text, haystack.bytes, haystack.length);
+    text[haystack.length] = 0;
+    int count = 0;
+    for (const char *at = strstr(text, needle); at; at = strstr(at + 1, needle)) {
+        count++;
+    }
+    free(text);
+    return count;
+}
+/* Constants are their exact encodings, != is unordered, a float widens and a
+ * double narrows, and each saturating intrinsic is declared once. */
+static bool native_floats_emit(int b)
+{
+    native_module m = float_module(FLOATS);
+    const pin_union *value;
+    REQUIRE(native_emit(b, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(contains(text, "store float 0.0, ptr %result0"));
+    REQUIRE(contains(text, "%v1 = bitcast i32 1069547520 to float"));
+    REQUIRE(contains(text, "%v2 = bitcast i64 9221120237041090561 to double"));
+    REQUIRE(contains(text, "%v3 = fpext float %a3 to double"));
+    REQUIRE(contains(text, "%v4 = fcmp une double %a4, %b4"));
+    REQUIRE(contains(text, "%v5 = call i32 @llvm.fptosi.sat.i32.f64(double %a5)"));
+    REQUIRE(contains(text, "%v6 = call i32 @llvm.fptosi.sat.i32.f64(double %a6)"));
+    REQUIRE(contains(text, "%v7 = fptrunc double %a7 to float"));
+    REQUIRE(contains(text, "%v8 = call i8 @llvm.fptoui.sat.i8.f32(float %a8)"));
+    REQUIRE(occurrences(text, "declare i32 @llvm.fptosi.sat.i32.f64(double)\n") == 1);
+    REQUIRE(occurrences(text, "declare i8 @llvm.fptoui.sat.i8.f32(float)\n") == 1);
+    return true;
+}
+/* The float module with instruction `index` replaced by `item`. */
+static bool native_rejects_float(int b, int index, native_code item, const char *message)
+{
+    native_code code[FLOAT_CODE];
+    memcpy(code, FLOATS, sizeof code);
+    code[index] = item;
+    native_module m = float_module(code);
+    return native_rejects(b, &m, message);
+}
+/* A float constant past 32 bits; float negation and remainder, which the
+ * runtime does not compute; and conversions it has no cast for: an integer
+ * straight to float, and bool to double. */
+static bool native_rejects_floats(int b)
+{
+    static const char OPERAND[] = "native scalar operand type mismatch",
+                      CONVERSION[] = "native conversion is not one the "
+                                     "backend implements";
+    REQUIRE(native_rejects_float(
+        b,
+        1,
+        (native_code){ .op = NATIVE_CONSTANT,
+                       .type = NATIVE_FLOAT,
+                       .literal = INT64_C(1) << 32 },
+        "native constant is outside its type"
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (native_code){ .op = NATIVE_NEG, .type = NATIVE_DOUBLE, .output = 2, .left = 1 },
+        OPERAND
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (native_code){ .op = NATIVE_MOD, .type = NATIVE_DOUBLE, .output = 2, .left = 1, .right = 1 },
+        OPERAND
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (
+            native_code
+        ){ .op = NATIVE_CONVERT, .type = NATIVE_FLOAT, .output = 6, .left = 4, .right = NATIVE_INT },
+        CONVERSION
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (native_code){ .op = NATIVE_CONVERT,
+                       .type = NATIVE_DOUBLE,
+                       .output = 2,
+                       .left = 3,
+                       .right = NATIVE_BOOL },
+        CONVERSION
+    ));
+    return true;
+}
+/* llvm_native's call and float contracts: definitions, argument order,
+ * floating encodings and conversions, and the malformed or cyclic plans it
+ * rejects before writing IR. */
 TEST_CASE(package_compiler_native_emitter_checks_calls)
 {
     const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
@@ -6638,6 +6774,8 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_rejects_cycles(b));
+        REQUIRE(native_floats_emit(b));
+        REQUIRE(native_rejects_floats(b));
     }
     return true;
 }
@@ -7071,14 +7209,16 @@ static int function_row(const pin_value *rows, const char *name, int *ordinal)
     }
     return -1;
 }
-/* A scalar_facts type's bits, 1 for bool, and whether it is unsigned. */
+/* A scalar_facts type's bits, 1 for bool, whether it is unsigned, and
+ * whether it is a float or double. */
 static int scalar_bits(int type)
 {
     static const int BITS[] = { [SCALAR_INT] = 32,   [SCALAR_BOOL] = 1,
                                 [SCALAR_INT8] = 8,   [SCALAR_BYTE] = 8,
                                 [SCALAR_INT16] = 16, [SCALAR_UINT16] = 16,
                                 [SCALAR_UINT] = 32,  [SCALAR_INT64] = 64,
-                                [SCALAR_WORD] = 64 };
+                                [SCALAR_WORD] = 64,  [SCALAR_FLOAT] = 32,
+                                [SCALAR_DOUBLE] = 64 };
     assert(type > 0 && type < (int)(sizeof BITS / sizeof *BITS) && BITS[type]);
     return BITS[type];
 }
@@ -7087,8 +7227,15 @@ static bool scalar_unsigned(int type)
     return type == SCALAR_BOOL || type == SCALAR_BYTE ||
            type == SCALAR_UINT16 || type == SCALAR_UINT || type == SCALAR_WORD;
 }
+static bool scalar_floating(int type)
+{
+    return type == SCALAR_FLOAT || type == SCALAR_DOUBLE;
+}
 static const char *llvm_type(int type)
 {
+    if (scalar_floating(type)) {
+        return type == SCALAR_FLOAT ? "float" : "double";
+    }
     static const char *const NAMES[] = { [1] = "i1",
                                          [8] = "i8",
                                          [16] = "i16",
@@ -7099,7 +7246,10 @@ static const char *llvm_type(int type)
 /* Appends to `adapter` the validation-only probe @probe_<name>(ptr): it reads
  * each parameter as an int64 of its argument array, truncated to the
  * parameter's type, and returns the function's result extended to int64 as
- * its type's value: sign-extended when signed, zero-extended otherwise. */
+ * its type's value: sign-extended when signed, zero-extended otherwise. A
+ * float or double travels as its encoding's bits, zero-extended, and a NaN
+ * result as the canonical quiet NaN, since IEEE leaves a NaN's sign and
+ * payload open. */
 static bool append_adapter(const pin_value *rows, const char *name, char **adapter)
 {
     int ordinal;
@@ -7120,7 +7270,20 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
             i,
             i
         );
-        if (scalar_bits(type) == 64) {
+        if (type == SCALAR_FLOAT) {
+            n += snprintf(
+                text + n,
+                sizeof text - (size_t)n,
+                "  %%t%d = trunc i64 %%w%d to i32\n  %%a%d = bitcast i32 %%t%d "
+                "to float\n",
+                i,
+                i,
+                i,
+                i
+            );
+        } else if (type == SCALAR_DOUBLE) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = bitcast i64 %%w%d to double\n", i, i);
+        } else if (scalar_bits(type) == 64) {
             n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i64 %%w%d, 0\n", i, i);
         } else {
             n += snprintf(
@@ -7143,7 +7306,26 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
         ordinal,
         call
     );
-    if (scalar_bits(result) == 64) {
+    if (scalar_floating(result)) {
+        const char *type = llvm_type(result);
+        int bits = scalar_bits(result);
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%n = fcmp uno %s %%r, 0.0\n  %%c = select i1 %%n, %s "
+            "0x7FF8000000000000, %s %%r\n  %%b = bitcast %s %%c to i%d\n",
+            type,
+            type,
+            type,
+            type,
+            bits
+        );
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            bits == 64 ? "  ret i64 %%b\n}\n" : "  %%z = zext i32 %%b to i64\n  ret i64 %%z\n}\n"
+        );
+    } else if (scalar_bits(result) == 64) {
         n += snprintf(text + n, sizeof text - (size_t)n, "  ret i64 %%r\n}\n");
     } else {
         n += snprintf(
@@ -7160,7 +7342,41 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
     memcpy(*adapter + old, text, (size_t)n + 1);
     return true;
 }
-/* A probe's arguments as the JSON array the compiler host takes. */
+/* The canonical quiet NaN of a float or double, which adapters return for
+ * every NaN. */
+static const int64_t FLOAT_NAN = 0x7fc00000, DOUBLE_NAN = INT64_C(0x7ff8000000000000);
+/* The bits a float or double `value` of `type` travels as: a float's
+ * zero-extended, and a NaN canonical. */
+static int64_t floating_bits(int type, double value)
+{
+    if (isnan(value)) {
+        return type == SCALAR_FLOAT ? FLOAT_NAN : DOUBLE_NAN;
+    }
+    if (type == SCALAR_FLOAT) {
+        float narrow = (float)value;
+        uint32_t bits;
+        memcpy(&bits, &narrow, sizeof bits);
+        return bits;
+    }
+    int64_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+static double floating_value(int type, int64_t bits)
+{
+    if (type == SCALAR_FLOAT) {
+        uint32_t narrow_bits = (uint32_t)bits;
+        float narrow;
+        memcpy(&narrow, &narrow_bits, sizeof narrow);
+        return narrow;
+    }
+    double value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+/* A probe's arguments as the JSON array the compiler host takes. A float or
+ * double is a JSON real, NaN or an infinity, never an integer, so -0 keeps
+ * its sign. */
 static void probe_json(const pin_value *rows, const scalar_probe *probe, char *json, size_t size)
 {
     int ordinal;
@@ -7169,8 +7385,18 @@ static void probe_json(const pin_value *rows, const scalar_probe *probe, char *j
     for (int i = 0; i < probe->count; i++) {
         int type = row_int(rows, head + 1 + i, "type");
         const char *separator = i ? "," : "";
+        double value = scalar_floating(type)
+                         ? floating_value(type, probe->arguments[i])
+                         : 0;
         if (type == SCALAR_BOOL) {
             n += snprintf(json + n, size - (size_t)n, "%s%s", separator, probe->arguments[i] ? "true" : "false");
+        } else if (scalar_floating(type) && (isnan(value) || isinf(value))) {
+            const char *special = isnan(value) ? "NaN"
+                                : value > 0    ? "Infinity"
+                                               : "-Infinity";
+            n += snprintf(json + n, size - (size_t)n, "%s%s", separator, special);
+        } else if (scalar_floating(type)) {
+            n += snprintf(json + n, size - (size_t)n, "%s%.17e", separator, value);
         } else if (type == SCALAR_WORD) {
             n += snprintf(
                 json + n,
@@ -7209,8 +7435,8 @@ static bool vm_load(const unsigned char *bytes, size_t length, int backend)
     return true;
 }
 /* The value of `type` the loaded closure's `function` of package scalar
- * returns for `json`, as the int64 its probe adapter gives: a bool as 0 or 1
- * and a uint64 as its bits. */
+ * returns for `json`, as the int64 its probe adapter gives: a bool as 0 or 1,
+ * a uint64 as its bits, and a float or double as floating_bits. */
 static bool vm_value(const char *function, const char *json, int type, int64_t *out)
 {
     char name[256];
@@ -7236,6 +7462,27 @@ static bool vm_value(const char *function, const char *json, int type, int64_t *
     /* The host's result is the JSON array of the function's one result. */
     if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
         *out = !strcmp(result.json, "[true]");
+    } else if (scalar_floating(type)) {
+        /* The host writes a float as the shortest text that reads back as
+         * it, so a float reads as one, not through a double. */
+        char *end = result.json;
+        double value = 0;
+        if (result.json[0] == '[') {
+            value = type == SCALAR_FLOAT ? strtof(result.json + 1, &end)
+                                         : strtod(result.json + 1, &end);
+        }
+        bool read = end != result.json + 1 && !strcmp(end, "]");
+        if (!read) {
+            fprintf(
+                stderr,
+                "scalar closure %s%s gave %s\n",
+                function,
+                json,
+                result.json
+            );
+        }
+        REQUIRE(read);
+        *out = floating_bits(type, value);
     } else {
         char *end = result.json;
         errno = 0;
@@ -7339,8 +7586,9 @@ typedef struct scalar_call
 enum
 {
     MAX_CASE_CALLS = MAX_CASE_PROBES + 1,
-    /* A width module's entry and probes, the most of any module. */
-    MAX_WIDTH_CALLS = 640
+    /* A width or floating module's entry and probes, the most of any
+     * module. */
+    MAX_WIDTH_CALLS = 1024
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
 static int case_calls(const char *name, const pin_value *rows, int64_t expected, scalar_call calls[MAX_CASE_CALLS])
@@ -7389,8 +7637,9 @@ enum
 };
 /* Runs each call of `library` in order, in a child run of this binary (see
  * test_language_package_compiler_chibi_native_call) that must finish within
- * `seconds`, and stores each value in its call's `column`. The first call is
- * the entry; the others are probe adapters. */
+ * `seconds`, and stores each value in its call's `column`. A call of a
+ * probe_ symbol is a probe adapter, with or without arguments; any other,
+ * such as the entry, takes none and returns an int32. */
 static chibi_process_capture_result library_calls(
     const char *directory,
     const char *library,
@@ -7410,13 +7659,14 @@ static chibi_process_capture_result library_calls(
     argv[1] = "--package-compiler-chibi-native-call";
     argv[2] = library;
     for (int i = 0; i < count; i++) {
-        int n = snprintf(specs[i], CALL_SPEC, "%s", calls[i].symbol);
-        for (int a = 0; i && a < calls[i].probe.count; a++) {
+        bool adapter = !strncmp(calls[i].symbol, "probe_", strlen("probe_"));
+        int n = snprintf(specs[i], CALL_SPEC, "%s%s", calls[i].symbol, adapter ? ":" : "");
+        for (int a = 0; adapter && a < calls[i].probe.count; a++) {
             n += snprintf(
                 specs[i] + n,
                 CALL_SPEC - (size_t)n,
-                "%c%" PRId64,
-                a ? ',' : ':',
+                "%s%" PRId64,
+                a ? "," : "",
                 calls[i].probe.arguments[a]
             );
         }
@@ -7438,8 +7688,8 @@ static chibi_process_capture_result library_calls(
     return result;
 }
 /* The child of library_calls: opens `library`, then calls each spec in order,
- * `symbol` for the entry or `symbol:a,b` for an adapter, and prints each value
- * on its own line as it returns. */
+ * `symbol` for the entry or `symbol:a,b` for an adapter, `symbol:` for one of
+ * no arguments, and prints each value on its own line as it returns. */
 static int library_child(const char *library, int count, char **specs)
 {
     void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
@@ -7455,8 +7705,9 @@ static int library_child(const char *library, int count, char **specs)
         assert(length < sizeof symbol);
         memcpy(symbol, specs[i], length);
         symbol[length] = 0;
+        bool adapter = *at;
         int n = 0;
-        for (char *end; *at; at = end, n++) {
+        for (char *end; adapter && *at && at[1]; at = end, n++) {
             assert(n < MAX_PROBE_ARGUMENTS);
             arguments[n] = strtoll(at + 1, &end, 10);
         }
@@ -7465,8 +7716,8 @@ static int library_child(const char *library, int count, char **specs)
             fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
             return 1;
         }
-        int64_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
-                                         : ((scalar_entry)function)();
+        int64_t value = adapter ? ((scalar_adapter)function)(arguments)
+                                : ((scalar_entry)function)();
         printf("%" PRId64 "\n", value);
         fflush(stdout);
     }
@@ -8316,6 +8567,367 @@ static bool widths_agree(const char *directory)
     return true;
 }
 
+/* The operations float and double take, of WIDTH_OPERATION. */
+static const int FLOATING_OPERATIONS[] = { WIDTH_ADD, WIDTH_SUB, WIDTH_MUL,
+                                           WIDTH_DIV, WIDTH_LT,  WIDTH_LE,
+                                           WIDTH_GT,  WIDTH_GE,  WIDTH_EQ,
+                                           WIDTH_NE };
+enum
+{
+    FLOATING_OPERATION_COUNT = (int)(sizeof FLOATING_OPERATIONS / sizeof *FLOATING_OPERATIONS),
+    FLOATING_SAMPLES = 9
+};
+static const char *floating_name(int type)
+{
+    return type == SCALAR_FLOAT ? "float" : "double";
+}
+/* The values a floating module's operations take: both zeros, a finite value
+ * of each sign, one that rounds, the extremes, both infinities and NaN. */
+static void floating_samples(int type, double samples[FLOATING_SAMPLES])
+{
+    bool narrow = type == SCALAR_FLOAT;
+    const double values[FLOATING_SAMPLES] = { 0.0,
+                                              -0.0,
+                                              1.0,
+                                              narrow ? (double)-0.1f : -0.1,
+                                              narrow ? FLT_MAX : DBL_MAX,
+                                              narrow ? FLT_TRUE_MIN : DBL_TRUE_MIN,
+                                              INFINITY,
+                                              -INFINITY,
+                                              NAN };
+    memcpy(samples, values, sizeof values);
+}
+/* IEEE operation `op` on `a` and `b` at the width of `type`, rounding to
+ * nearest. Every ordered comparison is false for NaN, and != true. */
+static int64_t floating_total(int type, int op, double a, double b)
+{
+    if (type == SCALAR_FLOAT) {
+        float x = (float)a, y = (float)b;
+        switch (op) {
+            case WIDTH_ADD: return floating_bits(type, x + y);
+            case WIDTH_SUB: return floating_bits(type, x - y);
+            case WIDTH_MUL: return floating_bits(type, x * y);
+            case WIDTH_DIV: return floating_bits(type, x / y);
+            case WIDTH_LT: return x < y;
+            case WIDTH_LE: return x <= y;
+            case WIDTH_GT: return x > y;
+            case WIDTH_GE: return x >= y;
+            case WIDTH_EQ: return x == y;
+            default: return x != y;
+        }
+    }
+    switch (op) {
+        case WIDTH_ADD: return floating_bits(type, a + b);
+        case WIDTH_SUB: return floating_bits(type, a - b);
+        case WIDTH_MUL: return floating_bits(type, a * b);
+        case WIDTH_DIV: return floating_bits(type, a / b);
+        case WIDTH_LT: return a < b;
+        case WIDTH_LE: return a <= b;
+        case WIDTH_GT: return a > b;
+        case WIDTH_GE: return a >= b;
+        case WIDTH_EQ: return a == b;
+        default: return a != b;
+    }
+}
+/* The ints a floating module adds to its type: an int becomes a float
+ * through double, so 2^24 + 1 rounds to even. */
+static const int64_t MIXED_INTS[] = { 0, -1, 16777217, INT32_MAX, INT32_MIN };
+/* The operations module of floating `type`: Main, each operation, then the
+ * typing rules around it: literals, an int operand, and for float its
+ * widening to double. */
+static void floating_operations_source(int type, char source[WIDTH_SOURCE_BYTES])
+{
+    const char *name = floating_name(type);
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(Mul(2.5, 3.0)); }\n");
+    for (int i = 0; i < FLOATING_OPERATION_COUNT; i++) {
+        int op = FLOATING_OPERATIONS[i];
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "%s :: (a: %s, b: %s) -> %s { return %s; }\n",
+            WIDTH_OPERATION[op].name,
+            name,
+            name,
+            op >= WIDTH_LT ? "bool" : name,
+            WIDTH_OPERATION[op].expression
+        );
+    }
+    n += snprintf(
+        source + n,
+        WIDTH_SOURCE_BYTES - (size_t)n,
+        "Mixed :: (a: %s, n: int) -> %s { return a + n; }\nSigned :: () -> %s "
+        "{ return -1.5; }\nPlus :: () -> %s { return +1.5; }\nRounded :: () -> "
+        "%s { return %s; }\nHalf :: (a: %s) -> bool { return a != 0.5; }\n",
+        name,
+        name,
+        name,
+        name,
+        name,
+        type == SCALAR_FLOAT ? "1.0000000596046447753906250000001" : "0.1",
+        name
+    );
+    if (type == SCALAR_FLOAT) {
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "Widen :: (a: float) -> double { return a; }\nAddDouble :: (a: "
+            "float, b: double) -> double { return a + b; }\n"
+        );
+    }
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+static scalar_call floating_call(const char *function, int count, int64_t a, int64_t b, int64_t expected)
+{
+    return (scalar_call){ .probe = { "floats", function, count, { a, b }, expected } };
+}
+/* The entry, each operation on every pair of samples, and the typing rules'
+ * calls. A float literal is the binary32 nearest its binary64, so the
+ * literal just past halfway between 1 and the next float rounds to 1. */
+static int floating_operation_calls(int type, scalar_call calls[MAX_WIDTH_CALLS])
+{
+    double samples[FLOATING_SAMPLES];
+    floating_samples(type, samples);
+    int count = 0;
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Main", 0, 0, 0, 7);
+    for (int k = 0; k < FLOATING_OPERATION_COUNT; k++) {
+        int op = FLOATING_OPERATIONS[k];
+        for (int i = 0; i < FLOATING_SAMPLES; i++) {
+            for (int j = 0; j < FLOATING_SAMPLES; j++) {
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = floating_call(
+                    WIDTH_OPERATION[op].name,
+                    2,
+                    floating_bits(type, samples[i]),
+                    floating_bits(type, samples[j]),
+                    floating_total(type, op, samples[i], samples[j])
+                );
+            }
+        }
+    }
+    /* Each function's calls are consecutive, so each gets one adapter. */
+    for (int i = 0; i < FLOATING_SAMPLES; i++) {
+        for (size_t j = 0; j < sizeof MIXED_INTS / sizeof *MIXED_INTS; j++) {
+            double n = (double)MIXED_INTS[j];
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = floating_call(
+                "Mixed",
+                2,
+                floating_bits(type, samples[i]),
+                MIXED_INTS[j],
+                floating_total(type, WIDTH_ADD, samples[i], type == SCALAR_FLOAT ? (float)n : n)
+            );
+        }
+    }
+    for (int i = 0; i < FLOATING_SAMPLES; i++) {
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call("Half", 1, floating_bits(type, samples[i]), 0, samples[i] != 0.5);
+    }
+    for (int i = 0; type == SCALAR_FLOAT && i < FLOATING_SAMPLES; i++) {
+        int64_t a = floating_bits(type, samples[i]);
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call("Widen", 1, a, 0, floating_bits(SCALAR_DOUBLE, samples[i]));
+    }
+    for (int i = 0; type == SCALAR_FLOAT && i < FLOATING_SAMPLES; i++) {
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call(
+            "AddDouble",
+            2,
+            floating_bits(type, samples[i]),
+            floating_bits(SCALAR_DOUBLE, 0.1),
+            floating_bits(SCALAR_DOUBLE, samples[i] + 0.1)
+        );
+    }
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Signed", 0, 0, 0, floating_bits(type, -1.5));
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Plus", 0, 0, 0, floating_bits(type, 1.5));
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Rounded", 0, 0, 0, floating_bits(type, type == SCALAR_FLOAT ? 1.0 : 0.1));
+    return count;
+}
+/* The values floats convert to integers from: each integer type's edges,
+ * with fractions on either side, past every type, the infinities, NaN and the
+ * least subnormals. */
+static const double TRUNCATED[] = { 0.0,
+                                    -0.0,
+                                    0.9,
+                                    -0.9,
+                                    1.5,
+                                    -1.5,
+                                    127.5,
+                                    128.0,
+                                    -128.5,
+                                    -129.0,
+                                    255.5,
+                                    256.0,
+                                    32767.5,
+                                    32768.0,
+                                    -32768.5,
+                                    -32769.0,
+                                    65535.5,
+                                    65536.0,
+                                    2147483647.5,
+                                    2147483648.0,
+                                    -2147483648.5,
+                                    -2147483649.0,
+                                    4294967295.5,
+                                    4294967296.0,
+                                    9223372036854774784.0,
+                                    9223372036854775808.0,
+                                    -9223372036854775808.0,
+                                    -9223372036854777856.0,
+                                    18446744073709549568.0,
+                                    18446744073709551616.0,
+                                    1e30,
+                                    -1e30,
+                                    INFINITY,
+                                    -INFINITY,
+                                    NAN,
+                                    DBL_TRUE_MIN,
+                                    -DBL_TRUE_MIN };
+/* `T(value)` for a float or double `value` and integer type `to`: truncated
+ * toward zero, saturated at the type's bounds, and 0 for NaN. */
+static int64_t truncated(const scalar_width *to, double value)
+{
+    if (isnan(value)) {
+        return 0;
+    }
+    double whole = trunc(value), limit = ldexp(1, to->bits - !to->is_unsigned);
+    if (whole >= limit) {
+        return width_greatest(to);
+    }
+    if (whole < (to->is_unsigned ? 0 : -limit)) {
+        return width_least(to);
+    }
+    return to->is_unsigned ? (int64_t)(uint64_t)whole : (int64_t)whole;
+}
+/* The ints converted to float through double rounding: below 2^53 and 2^24
+ * they are exact, and past them each rounds to nearest, with 2^60 + 2^36 + 1
+ * rounding twice. */
+static const int64_t FLOATED[] = { INT64_C(16777217),
+                                   INT64_C(9007199254740993),
+                                   INT64_C(0x1000001000000001) };
+/* The integer `value` of `from` as floating `type`: an int becomes a double,
+ * then a float. */
+static int64_t floated(int type, const scalar_width *from, int64_t value)
+{
+    double wide = from->is_unsigned ? (double)(uint64_t)value : (double)value;
+    return floating_bits(type, type == SCALAR_FLOAT ? (float)wide : wide);
+}
+/* The conversions module of floating `type`: Main, To<T> and From<T> between
+ * it and each integer type T, and Narrow from double to float or Widen from
+ * float to double. */
+static void floating_conversions_source(int type, char source[WIDTH_SOURCE_BYTES])
+{
+    const char *name = floating_name(type);
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return ToInt(-7.5); }\n");
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *w = &WIDTHS[i];
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "To%s :: (a: %s) -> %s { return %s(a); }\nFrom%s :: (a: %s) -> %s "
+            "{ "
+            "return %s(a); }\n",
+            w->title,
+            name,
+            w->name,
+            w->name,
+            w->title,
+            w->name,
+            name,
+            name
+        );
+    }
+    n += snprintf(
+        source + n,
+        WIDTH_SOURCE_BYTES - (size_t)n,
+        type == SCALAR_FLOAT
+            ? "Narrow :: (a: double) -> float { return float(a); }\n"
+            : "Widen :: (a: float) -> double { return double(a); }\n"
+    );
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+/* The entry, each To<T> of every sample as `type` holds it, each From<T> of
+ * every integer sample T holds, and Narrow or Widen of every sample. */
+static int floating_conversion_calls(int type, scalar_call *calls, char names[][32])
+{
+    int count = 0, samples = (int)(sizeof TRUNCATED / sizeof *TRUNCATED);
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Main", 0, 0, 0, -7);
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *w = &WIDTHS[i];
+        snprintf(names[2 * i], sizeof names[2 * i], "To%s", w->title);
+        snprintf(names[2 * i + 1], sizeof names[2 * i + 1], "From%s", w->title);
+        for (int k = 0; k < samples; k++) {
+            int64_t bits = floating_bits(type, TRUNCATED[k]);
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = floating_call(
+                names[2 * i],
+                1,
+                bits,
+                0,
+                truncated(w, floating_value(type, bits))
+            );
+        }
+        int converted = (int)(sizeof CONVERTED / sizeof *CONVERTED),
+            words = (int)(sizeof CONVERTED_WORDS / sizeof *CONVERTED_WORDS),
+            floated_count = (int)(sizeof FLOATED / sizeof *FLOATED);
+        for (int k = 0; k < converted + words + floated_count; k++) {
+            bool word = k >= converted && k < converted + words;
+            const scalar_width *sampled = word ? &WIDTHS[WIDTH_WORD]
+                                               : &WIDTHS[WIDTH_INT64];
+            int64_t value = k < converted ? CONVERTED[k]
+                          : word          ? CONVERTED_WORDS[k - converted]
+                                          : FLOATED[k - converted - words];
+            if (width_below(sampled, value, w, width_least(w)) ||
+                width_below(w, width_greatest(w), sampled, value)) {
+                continue;
+            }
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = floating_call(names[2 * i + 1], 1, value, 0, floated(type, w, value));
+        }
+    }
+    int other = type == SCALAR_FLOAT ? SCALAR_DOUBLE : SCALAR_FLOAT;
+    for (int k = 0; k < samples; k++) {
+        double value = floating_value(other, floating_bits(other, TRUNCATED[k]));
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call(
+            type == SCALAR_FLOAT ? "Narrow" : "Widen",
+            1,
+            floating_bits(other, value),
+            0,
+            floating_bits(type, value)
+        );
+    }
+    return count;
+}
+/* Float and double operations, conversions to and from every integer type
+ * and between the two, at their boundaries and IEEE's special values, run
+ * natively as C's IEEE arithmetic and both VMs give them. */
+static bool floats_agree(const char *directory)
+{
+    static const int TYPES[] = { SCALAR_FLOAT, SCALAR_DOUBLE };
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    char source[WIDTH_SOURCE_BYTES], name[64], names[2 * SCALAR_WIDTHS][32];
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < 2; i++) {
+        snprintf(name, sizeof name, "%s_operations", floating_name(TYPES[i]));
+        floating_operations_source(TYPES[i], source);
+        int count = floating_operation_calls(TYPES[i], calls);
+        agreed = width_module_agrees(directory, i, name, source, calls, count);
+        snprintf(name, sizeof name, "%s_conversions", floating_name(TYPES[i]));
+        floating_conversions_source(TYPES[i], source);
+        count = floating_conversion_calls(TYPES[i], calls, names);
+        agreed = agreed &&
+                 width_module_agrees(directory, 1 - i, name, source, calls, count);
+    }
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+
 /* A new directory for the native builds' files. */
 static bool native_directory(char directory[PATH_MAX])
 {
@@ -8594,7 +9206,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
         arena_free(&detached);
     }
     agreed = agreed && folded_sources_agree(directory) &&
-             folded_overflow_rejected() && widths_agree(directory);
+             folded_overflow_rejected() && widths_agree(directory) &&
+             floats_agree(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

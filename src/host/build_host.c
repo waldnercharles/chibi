@@ -610,7 +610,7 @@ static void compile_rejection(build_host *host, const char *json, size_t length)
         BUILD_COMPILE_BUDGET,
         &result
     );
-    yyjson_doc *doc = called ? yyjson_read(result.json, result.length, YYJSON_READ_ALLOW_INVALID_UNICODE)
+    yyjson_doc *doc = called ? yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS)
                              : NULL;
     yyjson_val *rejected = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
     yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(rejected, "values"), 0);

@@ -744,6 +744,35 @@ first: `compile: Running = {source: s, handle: h};`.
 Suggestion: type a struct literal from the parameter, element or return type it
 fills, as Odin does.
 
+## Stage one cannot negate a float
+
+Language. Stage one rejects `-x` for a `float` or `double` with "operator does
+not apply to this operand", although the runtime's `BF_NEG` negates floats
+and both VMs implement it. The native scalar path (M2) rejects it too. `0.0 - x` is not a
+substitute: it gives +0 for x = +0 where negation gives -0, and IEEE leaves
+the sign of NaN open for subtraction but defines it for negation.
+
+- Odin, C, Go, Rust and Zig all negate floats; LLVM spells it `fneg`, which
+  only flips the sign bit and is exact for every value, NaN included.
+
+Suggestion: lower floating `-x` to `BF_NEG` in stage one and to `fneg`
+natively. Floating `%` stays rejected, as Odin and Go reject it; `math.mod`
+or an explicit `fmod`-style helper covers it.
+
+## An untyped array element is `int` to stage zero and `double` to stage one
+
+Language. `storages := [6, 1, 2];` is an `int[]` to stage zero but a
+`double[]` to the self-hosted compiler, which then rejects indexing with "an
+untyped number is a double; give the array an integer type". The selectors
+compile the scalar packages with stage zero, so only `Run.ps1` in
+`compiler-recovery.yml` caught it on #700.
+
+- Odin and Go type `[]int{6, 1, 2}` from the element type, and default an
+  untyped constant by spelling: `6` is an integer.
+
+Suggestion: stage one types an untyped integer literal in an array by its
+spelling, as #558 decided for locals, so both compilers agree.
+
 ## A build host reads `Build.chibi` with the syntax it was built with
 
 Toolchain. `make build` runs an existing `build/sdk/chibi-build-host`, which

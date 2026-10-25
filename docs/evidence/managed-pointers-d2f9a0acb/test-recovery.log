@@ -1,0 +1,13 @@
+configure-native: running (log: .chibi/logs/1792940750185380993-5034-configure-native.log)
+configure-native: ok (0.2s; log: .chibi/logs/1792940750185380993-5034-configure-native.log)
+build: running (log: .chibi/logs/1792940750400011584-5048-build.log)
+build: ok (0.2s; log: .chibi/logs/1792940750400011584-5048-build.log)
+configure-native: running (log: .chibi/logs/1792940750688688630-5063-configure-native.log)
+configure-native: ok (2.7s; log: .chibi/logs/1792940750688688630-5063-configure-native.log)
+build: running (log: .chibi/logs/1792940753428105897-5095-build.log)
+build: ok (0.2s; log: .chibi/logs/1792940753428105897-5095-build.log)
+Running: bootstrap_recovers_from_a_clean_checkout (OK) (0.345143 secs)
+Running: bootstrap_load_recovers_changed_sources_without_writing (OK) (280.472285 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 15
+Test command wall time: 298.230s; includes in-test fixture setup; external configuration/build excluded.

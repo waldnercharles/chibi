@@ -569,10 +569,11 @@ Retargeted :: (code: Code[], jumps: int[], targets: int[]) -> Code[] {
     }
     return patched;
 }
-// Whether the work `next` schedules visits `node` again.
+// Whether the work `next` schedules visits `node` again. A directive, whose
+// phase is negative, records a fact about the node without visiting it.
 Resumed :: (next: Work[], node: int) -> bool {
     for (scheduled in next) {
-        if (scheduled.node == node) {
+        if (scheduled.node == node && scheduled.phase >= 0) {
             return true;
         }
     }

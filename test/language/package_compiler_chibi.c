@@ -401,12 +401,12 @@ static const char *action_tiny(void *, const pin_value *arguments, pin_value *re
 }
 static const char *action_real(void *, const pin_value *arguments, pin_value *results)
 {
-    if (arguments[0].type != PIN_F64 || arguments[0].d != 256 ||
+    if (arguments[0].type != PIN_F32 || arguments[0].f != 256 ||
         results[0].type != PIN_I32) {
         return "real numeric overload value or header differs";
     }
     action_number_calls[1]++;
-    results[0].i = (int)arguments[0].d;
+    results[0].i = (int)arguments[0].f;
     return NULL;
 }
 static const char *action_ambiguous(void *, const pin_value *arguments, pin_value *)
@@ -586,7 +586,7 @@ static const native_parameter_definition ACTION_EXEC[] = { CORE_EXEC_INPUTS(NATI
 }, ACTION_TINY_INPUT[] = {
     { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "i8" },
 }, ACTION_REAL_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
 };
 static const native_capability_definition ACTION_DEFINITIONS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -3131,10 +3131,9 @@ static const sample samples[] = {
     { .name = "ambiguous literal overload",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",
-      .message = "no overload of this native takes these arguments, or several "
-                 "do",
-      .oracle_message = "Unknown value 'native'",
-      .same_rejection = true },
+      .message = "Ambiguous function 'native.pair'",
+      .line = 2,
+      .column = 34 },
     { .name = "decimal overload argument",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return "
@@ -8501,15 +8500,15 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
 {
     REQUIRE(prepare());
     const char *identities[] = { "behaviors/Unsupported.chibi", "libraries/Leaf.chibi" };
+    /* number is f32, so number(7) is a supported conversion; char is the
+     * conversion name stage one still rejects. */
     const char *behaviors[] = { "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return char(65) == char(65); } }",
-                                "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return number(7) == number(7); } }" };
+                                "{ return char(65) == char(65); } }" };
     const char
         *library = "Leaf :: library { char :: (value: int) -> int { return "
                    "value + 5; } "
                    "number :: (value: int) -> int { return value + 6; } "
-                   "number :: (value: int) -> int { return value + 7; } "
+                   "f32 :: (value: int) -> int { return value + 7; } "
                    "f64 :: (value: int) -> int { return value + 8; } }";
     native_capability_definition primitive_definitions[2] = {
         LIBRARY_ALIAS_DEFINITIONS[0],

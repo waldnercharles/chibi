@@ -2213,19 +2213,16 @@ static bool reporting_operation(behavior_function_op op, pin_type from, pin_type
     behavior_function_report_integers(function);
     return function->integer_reports && behavior_function_compile(function);
 }
-/* The kind the run marked, in the body or its fast body; -1 for none and -2
- * for more than one. Clears the sites for the next run. */
+/* The kind the run marked; -1 for none and -2 for more than one. Clears the
+ * sites for the next run. */
 static int reported_kind()
 {
     int kind = -1, marks = 0;
-    const behavior_function *bodies[] = { function, function->fast };
-    for (int b = 0; b < 2 && bodies[b]; b++) {
-        int count = bodies[b]->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS;
-        for (int site = 0; site < count; site++) {
-            if (atomic_exchange(&bodies[b]->integer_reports[site], 0)) {
-                kind = site % EXECUTION_INTEGER_REPORT_KINDS;
-                marks++;
-            }
+    int count = function->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS;
+    for (int site = 0; site < count; site++) {
+        if (atomic_exchange(&function->integer_reports[site], 0)) {
+            kind = site % EXECUTION_INTEGER_REPORT_KINDS;
+            marks++;
         }
     }
     return marks > 1 ? -2 : kind;
@@ -2426,66 +2423,76 @@ TEST_CASE(execution_integer_reports_skip_address_arithmetic)
     return true;
 }
 
-/* The guarded fast body folds constant arithmetic, but keeps an operation
- * that reports so a development build still sees it; the value is the same. */
-TEST_CASE(execution_integer_reports_keep_reported_constant_operations)
+/* The guarded fast body shares the same operation across sites, so a body
+ * with report sites drops it, and each site reports on its own. */
+TEST_CASE(execution_integer_reports_run_every_site_without_a_fast_body)
 {
-    for (int overflow = 0; overflow < 2; overflow++) {
-        cleanup();
-        pin_value variable = { .type = PIN_I32 };
-        builder = behavior_function_builder_new();
-        behavior_function_builder_signature(builder, NULL, 0, NULL, 0, &variable, 1);
-        /* An inlined child frame, as in the fast shift case above. */
-        behavior_function *draft = (behavior_function *)
-            behavior_function_builder_definition(builder);
-        apush(
-            draft->frames,
-            ((behavior_function_frame){ .source = { .parent = 0 }, .depth = 1, .stack = -1 })
-        );
+    pin_value variables[3] = { { .type = PIN_I32 },
+                               { .type = PIN_I32 },
+                               { .type = PIN_I32 } };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, NULL, 0, variables, 3);
+    /* An inlined child frame, as in the fast shift case above. */
+    behavior_function *draft = (behavior_function *)
+        behavior_function_builder_definition(builder);
+    apush(
+        draft->frames,
+        ((behavior_function_frame){ .source = { .parent = 0 }, .depth = 1, .stack = -1 })
+    );
+    int x = slot(PIN_I32), one = slot(PIN_I32);
+    emit((behavior_function_instruction){ .op = BF_CHECK });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_VARIABLE, .type = PIN_I32, .output = x, .left = 0 });
+    emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                          .type = PIN_I32,
+                                          .output = one,
+                                          .value = { .type = PIN_I32, .i = 1 } });
+    emit((behavior_function_instruction){ .op = BF_CHECK, .frame = 1 });
+    for (int site = 1; site <= 2; site++) {
         int source = behavior_function_builder_origin(
             builder,
             (
                 behavior_function_source
-            ){ .asset_name = "integers.chibi", .parent = -1, .line = 2, .column = 5 }
+            ){ .asset_name = "integers.chibi", .parent = -1, .line = site, .column = 5 }
         );
-        int left = slot(PIN_I32), right = slot(PIN_I32), sum = slot(PIN_I32);
-        emit((behavior_function_instruction){ .op = BF_CHECK });
-        emit((behavior_function_instruction){
-            .op = BF_CONSTANT,
-            .type = PIN_I32,
-            .output = left,
-            .value = { .type = PIN_I32, .i = overflow ? INT32_MAX : 40 } });
-        emit((behavior_function_instruction){ .op = BF_CONSTANT,
-                                              .type = PIN_I32,
-                                              .output = right,
-                                              .value = { .type = PIN_I32, .i = 2 } });
-        emit((behavior_function_instruction){ .op = BF_CHECK, .frame = 1 });
+        int sum = slot(PIN_I32);
         emit((behavior_function_instruction){ .op = BF_ADD,
                                               .type = PIN_I32,
                                               .output = sum,
-                                              .left = left,
-                                              .right = right,
+                                              .left = x,
+                                              .right = one,
                                               .frame = 1,
                                               .source = source });
         emit((
             behavior_function_instruction
-        ){ .op = BF_STORE, .type = PIN_I32, .left = sum, .target = 0 });
-        emit((behavior_function_instruction){ .op = BF_END });
-        REQUIRE(finish());
-        REQUIRE(function->fast);
-        int adds = 0;
-        for (int pc = 0; pc < acount(function->fast->instructions); pc++) {
-            adds += function->fast->instructions[pc].op == BF_ADD;
+        ){ .op = BF_STORE, .type = PIN_I32, .left = sum, .target = site });
+    }
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(function->fast);
+    int adds = 0;
+    for (int pc = 0; pc < acount(function->fast->instructions); pc++) {
+        adds += function->fast->instructions[pc].op == BF_ADD;
+    }
+    REQUIRE(adds == 1);
+    behavior_function_report_integers(function);
+    REQUIRE(!function->fast);
+    REQUIRE(behavior_function_compile(function));
+    for (int backend = 0; backend < 2; backend++) {
+        variables[0].i = INT32_MAX;
+        REQUIRE(run(NULL, 0, variables, NULL, backend == 1, 16) == FLOW_OK);
+        REQUIRE(variables[1].i == INT32_MIN && variables[2].i == INT32_MIN);
+        int marked = 0;
+        for (int site = 0;
+             site < function->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS;
+             site++) {
+            if (atomic_exchange(&function->integer_reports[site], 0)) {
+                REQUIRE(site % EXECUTION_INTEGER_REPORT_KINDS == EXECUTION_INTEGER_OVERFLOW);
+                marked++;
+            }
         }
-        REQUIRE(adds == overflow);
-        behavior_function_report_integers(function);
-        REQUIRE(behavior_function_compile(function));
-        for (int backend = 0; backend < 2; backend++) {
-            variable.i = 0;
-            REQUIRE(run(NULL, 0, &variable, NULL, backend == 1, 16) == FLOW_OK);
-            REQUIRE(variable.i == (overflow ? INT32_MIN + 1 : 42));
-            REQUIRE(reported_kind() == (overflow ? EXECUTION_INTEGER_OVERFLOW : -1));
-        }
+        REQUIRE(marked == 2);
     }
     cleanup();
     return true;
@@ -2622,6 +2629,6 @@ void test_language_execution()
     RUN_TEST_CASE(execution_integer_reports_mark_overflow_and_zero_divisors);
     RUN_TEST_CASE(execution_integer_reports_mark_clamping_conversions);
     RUN_TEST_CASE(execution_integer_reports_skip_address_arithmetic);
-    RUN_TEST_CASE(execution_integer_reports_keep_reported_constant_operations);
+    RUN_TEST_CASE(execution_integer_reports_run_every_site_without_a_fast_body);
     pu_clear_setup();
 }

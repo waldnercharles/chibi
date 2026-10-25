@@ -45,10 +45,6 @@ static int arithmetic(optimizer *o, behavior_function_instruction i)
         pin_value a = o->values[i.left], b = o->values[i.right],
                   v = { .type = i.type };
         if (i.type >= PIN_I8 && i.type <= PIN_U64) {
-            /* Keep an operation that a development build reports. */
-            if (behavior_integer_event(&i, a, b) >= 0) {
-                return define(o, i);
-            }
             behavior_scalar_integer_op(i.op, a, b, &v, NULL);
         } else if (i.type == PIN_F32) {
             v.f = i.op == BF_ADD ? a.f + b.f

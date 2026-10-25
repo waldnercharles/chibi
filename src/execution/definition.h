@@ -170,8 +170,7 @@ struct behavior_function
     execution_artifact *artifact;
     struct behavior_function *fast;
     /* Development builds only: an occurrence byte per source and report kind,
-     * then the matching delivered bytes. The fast body owns its own sites,
-     * indexed by the sources of the body it was derived from. */
+     * then the matching delivered bytes. Such a body has no fast body. */
     atomic_uchar *integer_reports;
     int integer_report_sites;
     behavior_function_instruction *runtime_instructions;
@@ -273,8 +272,8 @@ bool behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
-/* Gives this definition, its owned definitions and its fast body report sites
- * before any backend compiles them (integer_report.c). */
+/* Gives this definition and its owned definitions report sites, dropping
+ * their fast bodies, before any backend compiles them (integer_report.c). */
 void behavior_function_report_integers(behavior_function *);
 bool behavior_integer_reportable(const behavior_function *, const behavior_function_instruction *);
 /* The report kind these operands cause, or -1 when the operation is exact. */

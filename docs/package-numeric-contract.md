@@ -74,7 +74,9 @@ afterwards carry the checks
 - Generated C, LLVM native code and shipped builds have no checks. Neither do
   the generic arithmetic natives in
   [`src/runtime/arithmetic.c`](../src/runtime/arithmetic.c) yet.
-- The guarded fast body does not fold a constant operation that reports.
+- A function with report sites drops its guarded fast body, which folds,
+  shares and prunes operations across sites, so every site reports on its own.
+  A conversion whose result is unused may still be pruned and not report.
 
 `execution_module_take_integer_reports` returns each site of a module and its
 imports that reported since the last take, with its source range and node.

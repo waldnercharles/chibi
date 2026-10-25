@@ -30,14 +30,6 @@ const char *execution_integer_report_text(execution_integer_report_kind kind)
     }
 }
 
-static void allocate(behavior_function *f, int sites)
-{
-    f->integer_report_sites = sites;
-    f->integer_reports = xcalloc(
-        (size_t)sites * EXECUTION_INTEGER_REPORT_KINDS * 2,
-        sizeof *f->integer_reports
-    );
-}
 void behavior_function_report_integers(behavior_function *f)
 {
     if (!f || f->integer_reports) {
@@ -49,10 +41,16 @@ void behavior_function_report_integers(behavior_function *f)
     if (!acount(f->sources)) {
         return;
     }
-    allocate(f, acount(f->sources));
-    if (f->fast) {
-        allocate(f->fast, acount(f->sources));
-    }
+    /* The guarded fast body folds, shares and prunes operations across
+     * sites, so a body with report sites always runs its canonical code. */
+    assert(!f->artifact->code);
+    behavior_function_free(f->fast);
+    f->fast = NULL;
+    f->integer_report_sites = acount(f->sources);
+    f->integer_reports = xcalloc(
+        (size_t)f->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS * 2,
+        sizeof *f->integer_reports
+    );
 }
 void execution_module_plan_report_integers(execution_module_plan *m)
 {
@@ -220,13 +218,7 @@ static uint64_t node(const behavior_function *f, int source)
     }
     return 0;
 }
-/* Sites index the sources of the body the sites were derived from. */
-static void take_sites(
-    const execution_module *m,
-    const behavior_function *body,
-    const behavior_function *f,
-    execution_integer_report **reports
-)
+static void take_sites(const execution_module *m, const behavior_function *f, execution_integer_report **reports)
 {
     int count = f->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS;
     for (int site = 0; f->integer_reports && site < count; site++) {
@@ -237,12 +229,12 @@ static void take_sites(
         }
         atomic_store_explicit(delivered, 1, memory_order_relaxed);
         int index = site / EXECUTION_INTEGER_REPORT_KINDS;
-        const behavior_function_source *source = &body->sources[index];
+        const behavior_function_source *source = &f->sources[index];
         apush(
             *reports,
             ((execution_integer_report){ .kind = site % EXECUTION_INTEGER_REPORT_KINDS,
                                          .module_id = m->plan.id,
-                                         .node_id = node(body, index),
+                                         .node_id = node(f, index),
                                          .start = source->start,
                                          .end = source->end,
                                          .line = source->line,
@@ -268,16 +260,10 @@ static void visit(const execution_module *m, const behavior_function *f, executi
         visit(m, f->definitions[i], reports);
     }
     if (reports) {
-        take_sites(m, f, f, reports);
-        if (f->fast) {
-            take_sites(m, f, f->fast, reports);
-        }
+        take_sites(m, f, reports);
         return;
     }
     reset_sites(f);
-    if (f->fast) {
-        reset_sites(f->fast);
-    }
 }
 /* Takes when reports is not NULL, otherwise resets. */
 static void visit_module(const execution_module *m, execution_integer_report **reports)

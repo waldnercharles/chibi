@@ -303,6 +303,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if (Is(forest, destination, "member_expression")) {
                 owned = SelfComponent(forest, text, types, names, Field(forest, destination, "object"));
             }
+            other := EntityComponent(forest, text, types, members, names, destination);
+            other_owned: int = -1;
+            if (Is(forest, destination, "member_expression")) {
+                other_owned = EntityComponent(forest, text, types, members, names,
+                                              Field(forest, destination, "object"));
+            }
             if (Is(forest, destination, "identifier")) {
                 found := Lookup(names, Text(forest, text, destination));
                 if (found >= 0) {
@@ -383,8 +389,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 write := Resume(item.node, ComponentAssignPhase, shifted.slot + ComponentReferenceSlot, whole);
                 if (operator == "") {
                     return PrefixSlots([ValueLocal(HandleStorage)],
-                                       ComponentMakeStep(code, types, whole, [Visit(value), write], ops, target, shifted,
-                                                         node));
+                                       ComponentMakeStep(code, types, whole, -1, [Visit(value), write], ops, target,
+                                                         shifted, node));
                 }
                 combine := Resume(item.node, CombinePhase, 0, 0);
                 return PrefixSlots([ValueLocal(HandleStorage)],
@@ -409,8 +415,46 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 code.extend(OwnerWatch(ops, at.slot, forest[TargetRoot(forest, destination)]));
                 return PrefixSlots([ValueLocal(HandleStorage)],
-                                   ComponentReferenceStep(code, types, members, owned, field, value, operator != "",
-                                                          item, ops, target, SlotsPast(at, 1), node));
+                                   ComponentReferenceStep(code, types, members, owned, field, -1, value,
+                                                          operator != "", item, ops, target, SlotsPast(at, 1), node));
+            } else if (other >= 0 || other_owned >= 0) {
+                // `e.C = v` and `e.C.f = v` on a component of another entity:
+                // the entity, then the reference to its component.
+                component := other;
+                field: int = -1;
+                entity := Field(forest, destination, "object");
+                if (other_owned >= 0) {
+                    component = other_owned;
+                    entity = Field(forest, entity, "object");
+                    member := Text(forest, text, Field(forest, destination, "member"));
+                    field = FindField(types, members, component, member);
+                    if (field < 0) {
+                        return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
+                    }
+                    if (members[field].c_string) {
+                        message := CStringMessage(forest, text, value, members[field].name);
+                        if (message != "") {
+                            return Fail(forest, value, document, message);
+                        }
+                    }
+                    if (!members[field].writable) {
+                        return Fail(forest, destination, document, "Assignment requires a writable value");
+                    }
+                }
+                // The members above the entity have points; the entity has
+                // its own as it is evaluated.
+                at_member := destination;
+                while (at_member != entity) {
+                    code.append(ExpressionCode(ops, forest[at_member]));
+                    at_member = Field(forest, at_member, "object");
+                }
+                write := Resume(item.node, EntityComponentPhase, component, field);
+                if (operator != "") {
+                    write.c = 1;
+                }
+                next.extend([Visit(entity), write]);
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                                    NoValue(), retained, marks);
             } else if (Is(forest, destination, "member_expression")) {
                 // `x.f = v` on a local record, written as stage zero writes it.
                 object := Field(forest, destination, "object");
@@ -661,7 +705,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 code.extend(NumberCode(ops, result.storage, callable.result, result.slot, at.slot + length(slots) - 1, node));
                 result = Typed(at.slot + length(slots) - 1, callable.result, 0, -1);
             }
-            if (!SameType(callable.result, callable.result_container, callable.result_record, result)) {
+            if (!Returns(types, callable.result, callable.result_container, callable.result_record, result)) {
                 return Fail(forest, item.node, document, "returned value differs from the result type");
             }
             if (Pointer(result.storage, result.container) &&
@@ -697,8 +741,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     } else if (item.phase == ComponentAssignPhase) {
         return WriteStep(ComponentAssignStep(forest, document, types, values[top - 1], item, ops, target, at, node),
                          item.node, true);
+    } else if (item.phase == EntityComponentPhase) {
+        return EntityComponentStep(forest, types, members, values[top - 1], item, ops, target, at, node);
     } else if (item.phase == ReturnsPhase) {
-        return ResultsStep(forest, document, params, callable, named, values, top, item, ops, target, at, node);
+        return ResultsStep(forest, document, types, params, callable, named, values, top, item, ops, target, at, node);
     } else if (item.phase == MapStorePhase || item.phase == MapDeletePhase) {
         return MapUpdateStep(forest, text, document, types, names, values, top, item, ops, target, at, node);
     } else if (item.phase == RetainedPhase) {
@@ -3415,6 +3461,28 @@ SelfComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
     }
     return component;
 }
+// The component `e.C` names on an entity other than the owner: a handle name
+// or a global's keyed handle; -1 for any other node.
+EntityComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                    names: Name[], node: int) -> int {
+    if (!Is(forest, node, "member_expression")) {
+        return -1;
+    }
+    owner := Field(forest, node, "object");
+    handle := false;
+    if (Is(forest, owner, "identifier")) {
+        found := Lookup(names, Text(forest, text, owner));
+        handle = found >= 0 && names[found].place != SelfPlace && names[found].place != GlobalPlace &&
+                 names[found].storage == HandleStorage && names[found].container == 0;
+    } else if (Is(forest, owner, "member_expression")) {
+        keyed := KeyedMember(forest, text, types, members, names, owner);
+        handle = keyed >= 0 && members[keyed].storage == HandleStorage;
+    }
+    if (!handle) {
+        return -1;
+    }
+    return Component(types, Text(forest, text, Field(forest, node, "member")));
+}
 // The field `g.F` names on the global `g` that a native reads by its key, as
 // an index into `members`; -1 for any other node.
 KeyedMember :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
@@ -3586,9 +3654,10 @@ OwnerSlots :: (target: Target) -> Slot[] {
 // `before`; then the value, and the write in ComponentPhase. A `compound`
 // assignment reads the field through the reference first and combines it
 // with the value. Pushing onto `before` would make this step and its callers
-// copy their arguments.
+// copy their arguments. `e.C.f = v` writes the component of the entity in
+// slot `entity`, which it pops.
 ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMember[], component: int, field: int,
-                           value: int, compound: bool, item: Work, ops: Ops, target: Target, at: Bases,
+                           entity: int, value: int, compound: bool, item: Work, ops: Ops, target: Target, at: Bases,
                            node: snapshot.SnapshotNode) -> Step {
     locals: Slot[] = [];
     roots: Root[] = [];
@@ -3598,7 +3667,11 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
     first := at.cell;
     declared := members[field];
     cells := ReferenceCells(target, component, ComponentFacts(types[component]), declared);
-    code := OwnerCode(ops, target, first, -1, at.slot, node);
+    code := OwnerCode(ops, target, first, entity, at.slot, node);
+    popped: int = 0;
+    if (entity >= 0) {
+        popped = 1;
+    }
     code.extend(ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
     slots := extend(OwnerSlots(target), FieldReferenceSlots(target));
     reference := at.slot + length(slots) - 1;
@@ -3607,7 +3680,7 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
     hosts := FieldReferenceHosts(first);
     if (!compound) {
         next: Work[] = [Expect(value, declared.storage, 0, -1), write];
-        return Step.Emitted(extend(before, code), slots, locals, cells, hosts, roots, calls, bound, next, 0,
+        return Step.Emitted(extend(before, code), slots, locals, cells, hosts, roots, calls, bound, next, popped,
                             NoValue(), NoValue(), marks);
     }
     // The read takes the field reference and returns the field's value, in
@@ -3624,7 +3697,7 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
     code.extend(CellRead(declared.storage, first + 19, ops, target, reference + 2, node));
     slots.extend([address, address, current]);
     next: Work[] = [Visit(value), Resume(item.node, CombinePhase, 0, 0), write];
-    return Step.Emitted(extend(before, code), slots, locals, cells, hosts, roots, calls, bound, next, 0,
+    return Step.Emitted(extend(before, code), slots, locals, cells, hosts, roots, calls, bound, next, popped,
                         Typed(reference + 3, declared.storage, 0, -1), NoValue(), marks);
 }
 // Where ComponentReadStep leaves the make's reference, from its first slot.
@@ -3664,8 +3737,10 @@ ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written
 }
 // `self.C = v`: the reference to the owner's component types[component],
 // made to be written through, after `before`; `next` writes the value.
-ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, next: Work[], ops: Ops, target: Target,
-                      at: Bases, node: snapshot.SnapshotNode) -> Step {
+// `e.C = v` makes the reference to the component of the entity in slot
+// `entity`, which it pops.
+ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, entity: int, next: Work[], ops: Ops,
+                      target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     locals: Slot[] = [];
     roots: Root[] = [];
     calls: Invocation[] = [];
@@ -3674,15 +3749,36 @@ ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, next: W
     first := at.cell;
     make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
                   written: true};
-    code := OwnerCode(ops, target, first, -1, at.slot, node);
+    code := OwnerCode(ops, target, first, entity, at.slot, node);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(target.pointer_storage, first + 9, ops, target, at.slot + 4, node));
+    popped: int = 0;
+    if (entity >= 0) {
+        popped = 1;
+    }
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
     slots := extend(OwnerSlots(target), [address, reference]);
     cells := MakeCells(target, component, ComponentFacts(types[component]));
-    return Step.Emitted(extend(before, code), slots, locals, cells, [make], roots, calls, bound, next, 0, NoValue(),
-                        NoValue(), marks);
+    return Step.Emitted(extend(before, code), slots, locals, cells, [make], roots, calls, bound, next, popped,
+                        NoValue(), NoValue(), marks);
+}
+// The second phase of `e.C = v`, `e.C op= v` and `e.C.f = v`, with the entity
+// on top: the write of the component types[item.a], or of its field
+// members[item.b], as the owner's is written; item.c marks a compound one.
+EntityComponentStep :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[], entity: Value,
+                        item: Work, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    value := Field(forest, item.node, "value");
+    if (item.b >= 0) {
+        return ComponentReferenceStep([], types, members, item.a, item.b, entity.slot, value, item.c != 0, item, ops,
+                                      target, at, node);
+    }
+    write := Resume(item.node, ComponentAssignPhase, at.slot + ComponentReferenceSlot, item.a);
+    if (item.c == 0) {
+        return ComponentMakeStep([], types, item.a, entity.slot, [Visit(value), write], ops, target, at, node);
+    }
+    return ComponentReadStep([], types, item.a, true, entity.slot,
+                             [Visit(value), Resume(item.node, CombinePhase, 0, 0), write], ops, target, at, node);
 }
 // The type a native type stands for, as stage zero's canonical type: its
 // underlying type, followed to the end.
@@ -4036,8 +4132,8 @@ NamedReturnStep :: (forest: snapshot.SnapshotNode[], document: int, before: Code
 }
 // Store one explicitly returned value. A record is retained before the next
 // expression, so later assignments cannot change this result through an alias.
-ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[], callable: Callable, named: int,
-                values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases,
+ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], params: Param[], callable: Callable,
+                named: int, values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases,
                 node: snapshot.SnapshotNode) -> Step {
     if (item.a == callable.results) {
         return NamedResultsStep([CompletionCode(ops, node)], ops, target, params, callable, named, at, node);
@@ -4054,7 +4150,7 @@ ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[],
             slots.extend(NumberSlots(returned.storage, result.storage));
             returned = Typed(at.slot + length(slots) - 1, result.storage, 0, -1);
         }
-        if (!SameType(result.storage, result.container, result.record, returned)) {
+        if (!Returns(types, result.storage, result.container, result.record, returned)) {
             return Fail(forest, returned_nodes[item.a], document, "returned value differs from the result type");
         }
         if (result.storage == StructStorage) {
@@ -4337,6 +4433,12 @@ NativeTakes :: (types: TypeDecl[], expected: Value, value: Value) -> bool {
     }
     canonical := Canonical(types, expected.record);
     return canonical >= 0 && canonical == Canonical(types, value.record);
+}
+// Whether `value` returns as a result of the given type: one of the same
+// type, or a record of a type that stands for the same one, as stage zero
+// takes `return self.Transform + v` for a CF_V2 result.
+Returns :: (types: TypeDecl[], storage: int, container: int, record: int, value: Value) -> bool {
+    return NativeTakes(types, Typed(value.slot, storage, container, record), value);
 }
 // Whether the compiler passes each of a native's ports: a result takes a
 // known or inferred type, never each value's own.

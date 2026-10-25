@@ -5390,6 +5390,24 @@ static const behavior_sample behavior_samples[] = {
     { "Copy", "Copy :: behavior {\n    on Tick :: () {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
     { "Grow", "Grow :: behavior {\n    on Tick :: () {\n        self.Spot.x += 1\n    }\n}\n" },
     { "Swap", "Swap :: behavior {\n    on Tick :: () {\n        self.Spot = self.Spot\n    }\n}\n" },
+    { "OtherComponent",
+      "OtherComponent :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        moved := self.Spot\n"
+      "        moved.x += 1\n"
+      "        globals.Terrain.Spot = moved\n"
+      "        globals.Terrain.Spot.y = moved.x * 2\n"
+      "        target = globals.Terrain\n"
+      "        target.Spot.x += 0.5\n"
+      "    }\n}\n" },
+    { "LocalComponent",
+      "LocalComponent :: behavior {\n"
+      "    on Tick :: () {\n"
+      "        other := globals.Terrain\n"
+      "        other.Spot.y -= 1\n"
+      "        other.Spot = other.Spot\n"
+      "    }\n}\n" },
     { "Turn",
       "Turn :: behavior {\n    angle: float = 0.5\n    on Tick :: "
       "(DeltaSeconds: float) {\n        "
@@ -5483,6 +5501,11 @@ static const behavior_rejection behavior_rejections[] = {
       "Payload field 'x' is listed twice",
       true },
     { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
+      "}\n}\n",
+      "operator does not apply to these operands",
+      false },
+    { "Scale :: behavior {\n    on Tick :: () {\n        globals.Terrain.Spot "
+      "*= 2\n    "
       "}\n}\n",
       "operator does not apply to these operands",
       false },
@@ -7024,16 +7047,18 @@ static bool native_catalog_alike()
     publish_project(&pack);
     script_catalog catalog = native_game_catalog();
     REQUIRE(catalog_export_contract(&catalog));
-    static const char
-        source[] = "NativeProbe :: behavior {\n"
-                   "    on Tick :: () {\n"
-                   "        first := echo_spot(self.Spot)\n"
-                   "        owner := entity_seed()\n"
-                   "        paired := pair_spot(first, owner)\n"
-                   "        alias := alias_spot(paired.point)\n"
-                   "        target := echo_entity(paired.owner)\n"
-                   "        if entity_ok(target) { self.Spot = alias; }\n"
-                   "    }\n}\n";
+    static const char source[] =
+        "NativeProbe :: behavior {\n"
+        "    Plain :: (point: SpotAlias) -> Spot { return point; }\n"
+        "    Named :: (point: Spot) -> (result: SpotAlias) { return point; }\n"
+        "    on Tick :: () {\n"
+        "        first := echo_spot(self.Spot)\n"
+        "        owner := entity_seed()\n"
+        "        paired := pair_spot(first, owner)\n"
+        "        alias := alias_spot(paired.point)\n"
+        "        target := echo_entity(paired.owner)\n"
+        "        if entity_ok(target) { self.Spot = Named(Plain(alias)); }\n"
+        "    }\n}\n";
     script_syntax *syntax = script_parse(source);
     script_analysis *analysis = script_analyze(syntax, &catalog);
     const script_lower_bindings bindings = { .global = game_global,

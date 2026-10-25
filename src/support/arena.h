@@ -10,6 +10,7 @@ typedef struct arena_allocation arena_allocation;
 typedef struct arena_page arena_page;
 typedef void (*arena_marker)(void *user, const void *address);
 typedef void (*arena_tracer)(const void *value, const void *shape, arena_marker mark, void *user);
+typedef void (*arena_finalizer)(void *value);
 typedef struct arena
 {
     arena_block *first;
@@ -21,8 +22,9 @@ typedef struct arena
     size_t page_count;             /* Occupied index slots. */
     size_t allocated;              /* Collectable bytes since the last sweep. */
     size_t kept;                   /* Collectable bytes the last sweep kept. */
-    const void *copied_from;       /* Source of the last copy remembered. */
-    const void *copy;              /* That copy, which this arena holds. */
+    size_t external; /* Retained external payloads, including ownership overhead. */
+    const void *copied_from; /* Source of the last copy remembered. */
+    const void *copy;        /* That copy, which this arena holds. */
     bool collectable;
 } arena;
 
@@ -42,6 +44,12 @@ uint64_t arena_block_allocations();
  * Values no collection marks become reusable; live addresses stay stable. */
 void arena_init_collectable(arena *a);
 void arena_set_trace(arena *a, const void *value, arena_tracer trace, const void *shape);
+/* Releases external ownership before a collectable allocation is swept or
+ * its arena is reset/freed. The callback cannot allocate in this arena. */
+void arena_set_finalizer(arena *, const void *value, arena_finalizer);
+/* Charge an external retained allocation to a collectable owner. Growth counts
+ * toward normal collection admission; release it from that owner's finalizer. */
+void arena_external_resize(arena *, size_t previous, size_t bytes);
 /* One mark and sweep over collectable arenas whose values may point into one
  * another. A mark finds its value by address in logarithmic time, and each
  * marked value is traced once. The arenas must outlive the collection. */

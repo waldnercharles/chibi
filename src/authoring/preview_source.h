@@ -74,7 +74,9 @@ int preview_sources_validate(
 /* A stage retains the exact candidate and prepares every runtime and authoring
  * generation. Keep the world quiescent until commit/discard consumes it. Prepare
  * all participating worlds before committing any. Discard preserves applied
- * generations; commit performs no rejecting operation or dispatch. */
+ * generations; commit performs no rejecting operation or dispatch. Declared
+ * relationship schemas install before executable preflight and remain for the
+ * world's lifetime, including after discard. */
 typedef struct preview_source_staging preview_source_staging;
 preview_source_staging *preview_sources_stage(
     preview_world *,

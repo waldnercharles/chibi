@@ -245,7 +245,7 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 8
+Elsewhere `make build` uses this program when its private host reports protocol version 12
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
@@ -639,7 +639,7 @@ selection, cache and installed-format contracts do not change.
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
 requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
-an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB) octets;
+an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (32 MiB) octets;
 the CLI uses the upper bound.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
@@ -932,5 +932,5 @@ has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
 The standalone SDK program adds `build.reserve_directory` and
 `build.publish_directory`. These private bindings reserve one fresh directory
 and publish without replacement on macOS and Linux. Normal `Build.chibi` is
-unchanged, so its protocol gate remains version 8. Use the matching newly built
+unchanged, so its protocol gate remains version 12. Use the matching newly built
 host to run `SDK.chibi`.

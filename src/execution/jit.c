@@ -309,9 +309,10 @@ static behavior_layout layout(
 {
     bool integers = acount(f->suspensions) > 0;
     for (int i = 0; i < acount(f->slots); i++) {
-        integers |= behavior_scalar_integer(f->slots[i]) || f->slots[i] == PIN_BOOL ||
-                    f->slots[i] == PIN_HANDLE || f->slots[i] == PIN_TASK ||
-                    f->slots[i] == PIN_UNION || f->slots[i] == PIN_POINTER ||
+        integers |= behavior_scalar_integer(f->slots[i]) ||
+                    f->slots[i] == PIN_BOOL || f->slots[i] == PIN_HANDLE ||
+                    f->slots[i] == PIN_TASK || f->slots[i] == PIN_UNION ||
+                    f->slots[i] == PIN_POINTER || f->slots[i] == PIN_QUERY ||
                     behavior_scalar_string(f->slots[i]);
     }
     int saved_float = 0;

@@ -56,7 +56,9 @@ typedef struct
     uint64_t query_rows, query_lookup_steps;
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
- * capacity includes reusable allocation slots. Task result bytes include their
+ * capacity includes reusable allocation slots. Retained external component cell
+ * backing is included once per owning arena; a cell shared by distinct arenas
+ * is conservatively counted once for each owner. Task result bytes include their
  * owned snapshots; task slots include reusable slots. Instance/activation headers,
  * fixed state banks, query history and index slots are logical byte counts and
  * exclude allocator overhead and nested buffers. activation_cache_bytes counts
@@ -68,7 +70,9 @@ typedef struct
  * when idle and at most the executor worker budget (maximum 32 chunks).
  * ecs_change_bytes is shared
  * world-owned storage (do not sum across programs); query counters describe the
- * latest refresh. Stateless streaming retains no instance headers. Binding
+ * latest refresh. system_row_bytes/capacity include staged query row headers;
+ * their payloads belong to the managed heap. Stateless streaming retains no
+ * instance headers. Binding
  * schedule bytes include retained buffers and an upper bound for shared
  * generation keys, which may also belong to another program's cache. */
 execution_memory_usage execution_program_memory_usage(const execution_program *);

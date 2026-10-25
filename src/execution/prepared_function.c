@@ -260,7 +260,7 @@ static void command(prepared_context *c, behavior_function_command *v)
 }
 static bool portable_kind(execution_wire *w, behavior_value_kind kind, const pin_value *value)
 {
-    if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_STRING_CURSOR) {
+    if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_QUERY_CURSOR) {
         w->error = "invalid executable value provenance";
         return false;
     }

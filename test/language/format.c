@@ -147,10 +147,33 @@ TEST_CASE(source_format_keeps_named_payload_fields)
     REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
     REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
     cleanup();
-    REQUIRE(format("Motion :: system(p: Position) on Tick ::(dt:s) {\np.x += dt\n}\n"));
-    REQUIRE(strstr(text, "system(p: Position) on Tick :: (dt: s) {"));
+    REQUIRE(format("Motion :: system(p:^Position) {\np.x += dt\n}\n"));
+    REQUIRE(strstr(text, "system(p: ^Position) {"));
     return true;
 }
+TEST_CASE(source_format_flat_queries_and_iterators)
+{
+    REQUIRE(configured(
+        "DamageTargets::system(damage:Damage,target:entity in self.Targets,"
+        "health:^Health from target,if health.value>0,"
+        "amount:=damage.amount*2,) {health.value-=amount;}\n",
+        (authoring_format_options){ .indent_width = 4, .preferred_width = 65 }
+    ));
+    REQUIRE(strstr(text, "system(\n    damage: Damage,"));
+    REQUIRE(strstr(text, "target: entity in self.Targets,"));
+    REQUIRE(strstr(text, "health: ^Health from target,"));
+    REQUIRE(strstr(text, "if health.value > 0,"));
+    REQUIRE(strstr(text, "amount := damage.amount * 2,\n)"));
+    REQUIRE(map_reproduces_source());
+    cleanup();
+    REQUIRE(format(
+        "Demo::behavior{on Tick::(){rows:=query(d:Damage,h:^Health,"
+        "if h.value>0);for row in rows{row.h.value-=row.d.amount;}}}"
+    ));
+    REQUIRE(strstr(text, "query(d: Damage, h: ^Health, if h.value > 0)"));
+    return true;
+}
+
 TEST_CASE(source_format_spaces_typed_constant_colons)
 {
     REQUIRE(format("L :: library {\n    Limit:int:5\n    Mask :: 255\n}\n"));
@@ -595,13 +618,13 @@ TEST_CASE(source_format_block_layout)
 TEST_CASE(source_format_reductions)
 {
     REQUIRE(format(
-        "Damage :: system(health:Health){reduce health.damage+=2;"
-        "reduce min (health.damage,3);reduce max(health.damage,4);"
-        "reduce unordered health.damage+=5; }"
+        "Damage :: system(health:^Health){reduce health.damage+=2;reduce min "
+        "(health.damage,3);reduce max(health.damage,4);reduce unordered "
+        "health.damage+=5; }"
     ));
     REQUIRE(!strcmp(
         text,
-        "Damage :: system(health: Health) {\n"
+        "Damage :: system(health: ^Health) {\n"
         "    reduce health.damage += 2;\n"
         "    reduce min(health.damage, 3);\n"
         "    reduce max(health.damage, 4);\n"
@@ -682,7 +705,8 @@ TEST_CASE(source_format_preserves_expression_structure)
 TEST_CASE(source_format_system_types_and_control_flow)
 {
     REQUIRE(format(
-        "Move :: system(p:Position) without Disabled{query p;\n"
+        "Move :: system(p:^Position,if "
+        "!Disabled){matches:=query(other:Position);\n"
         "on Tick :: (dt:float){for(i in 0..3){p.x+=float(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
@@ -711,30 +735,30 @@ TEST_CASE(source_format_switch_arm_indentation)
 TEST_CASE(source_format_query_header_words)
 {
     REQUIRE(format(
-        "Move :: system(position:Transform,velocity:Velocity? "
-        ") join aim:Targets.Transform? where not Disabled and "
-        "(Targets.Active or ancestor(ChildOf).Active) and has(Targets)"
+        "Move :: system(position:^Transform,velocity:Velocity?, "
+        "aim:^Transform? from Targets, if not Disabled and "
+        "(Targets.Active or ancestor(ChildOf).Active) and has(Targets))"
         "{on Tick :: (){position.x+=1;}}"
     ));
     REQUIRE(
-        strstr(text, "where not Disabled and (Targets.Active or ancestor(ChildOf).Active) and has(Targets)")
+        strstr(text, "if not Disabled and (Targets.Active or ancestor(ChildOf).Active) and has(Targets)")
     );
     REQUIRE(strstr(text, "velocity: Velocity?"));
-    REQUIRE(strstr(text, "join aim: Targets.Transform?"));
+    REQUIRE(strstr(text, "aim: ^Transform? from Targets"));
     return true;
 }
 
 TEST_CASE(source_format_query_generators_and_value_filters)
 {
     REQUIRE(format(
-        "Follow :: system(p:Position ) join target in self.Targets "
-        "join next in target.Targets join aim:Position? from next "
-        "where aim and aim.x>p.x and changed(aim){p.x=aim.x;}"
+        "Follow :: system(p:^Position, target in self.Targets, "
+        "next in target.Targets, aim:Position? from next, "
+        "if aim and aim.x>p.x and changed(aim)){p.x=aim.x;}"
     ));
-    REQUIRE(strstr(text, "join target in self.Targets"));
-    REQUIRE(strstr(text, "join next in target.Targets"));
-    REQUIRE(strstr(text, "join aim: Position? from next"));
-    REQUIRE(strstr(text, "where aim and aim.x > p.x and changed(aim)"));
+    REQUIRE(strstr(text, "target in self.Targets"));
+    REQUIRE(strstr(text, "next in target.Targets"));
+    REQUIRE(strstr(text, "aim: Position? from next"));
+    REQUIRE(strstr(text, "if aim and aim.x > p.x and changed(aim)"));
     return true;
 }
 
@@ -1742,6 +1766,7 @@ void test_language_format()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_spaces_managed_pointers_and_xor);
     RUN_TEST_CASE(source_format_keeps_named_payload_fields);
+    RUN_TEST_CASE(source_format_flat_queries_and_iterators);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);

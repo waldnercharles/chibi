@@ -17,6 +17,7 @@ typedef struct
     int count;
     uint32_t singleton;
     arena *owned_rows; /* Lazy per-row snapshots, independent of borrowed writes. */
+    ecs_component_cell **cells; /* Lazy retained row identities. */
     unsigned observed; /* Bit per ecs_event with at least one observer. */
     uint64_t *modified; /* Rows awaiting ON_SET; allocated while ON_SET is observed. */
     bool dirty;         /* Some modified bit may be set. */
@@ -77,6 +78,7 @@ struct ecs_world
     uint32_t live_count;
     uint32_t high_water;
     ecs_component *components;
+    ecs_component_cell **cells; /* Retained identities, only while attached. */
     int *component_lookup; /* Component array index + 1; zero is an empty bucket. */
     int component_lookup_capacity;
     ecs_relationship *relationships;

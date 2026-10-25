@@ -20,6 +20,7 @@ struct arena_allocation
     arena_allocation *next;
     size_t size, capacity;
     arena_tracer trace;
+    arena_finalizer finalize;
     const void *shape;
     bool live, marked;
     _Alignas(max_align_t) unsigned char data[];
@@ -184,6 +185,10 @@ static arena_allocation *indexed(const arena *a, uintptr_t address, bool start)
 }
 static void retire(arena *a, arena_allocation *value)
 {
+    if (value->finalize) {
+        value->finalize(value->data);
+        value->finalize = NULL;
+    }
     value->live = false;
     value->size = 0;
     value->trace = NULL;
@@ -288,6 +293,9 @@ static void free_values(arena_allocation *value)
 {
     while (value) {
         arena_allocation *next = value->next;
+        if (value->finalize) {
+            value->finalize(value->data);
+        }
         free(value);
         value = next;
     }
@@ -329,6 +337,26 @@ void arena_set_trace(arena *a, const void *data, arena_tracer trace, const void 
     assert(value);
     value->trace = trace;
     value->shape = shape;
+}
+void arena_set_finalizer(arena *a, const void *data, arena_finalizer finalize)
+{
+    assert(a->collectable);
+    arena_allocation *value = indexed(a, (uintptr_t)data, true);
+    assert(value);
+    value->finalize = finalize;
+}
+void arena_external_resize(arena *a, size_t previous, size_t bytes)
+{
+    assert(
+        a->collectable && a->external >= previous &&
+        bytes <= SIZE_MAX - (a->external - previous)
+    );
+    a->external = a->external - previous + bytes;
+    if (bytes > previous) {
+        size_t growth = bytes - previous;
+        assert(growth <= SIZE_MAX - a->allocated);
+        a->allocated += growth;
+    }
 }
 static int by_address(const void *a, const void *b)
 {
@@ -404,6 +432,7 @@ static void sweep(arena *a)
         free(value);
     }
     fit_pages(a);
+    a->kept += a->external;
 }
 void arena_collect_end(arena_collection *c)
 {
@@ -422,8 +451,8 @@ void arena_collect_end(arena_collection *c)
 }
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
 {
-    *bytes = 0;
-    *capacity = 0;
+    *bytes = a->external;
+    *capacity = a->external;
     for (const arena_allocation *value = a->allocations; value; value = value->next) {
         *bytes += value->size;
         *capacity += value->capacity;
@@ -438,7 +467,7 @@ void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
 }
 size_t arena_storage_bytes(const arena *a)
 {
-    size_t bytes = 0;
+    size_t bytes = a->external;
     for (const arena_allocation *value = a->allocations; value; value = value->next) {
         bytes += sizeof *value + value->capacity;
     }

@@ -5,25 +5,23 @@ then finished on `claude/project-thread-7x506x` on 2026-10-24 over the shared
 prepared limits of #688. The validation ledger below records what has actually
 passed.
 
+The query integration on `codex/query-iterators-20261022` extends this local
+implementation with retained component references and owned native schemas.
+The earlier validation ledger below records the pointer branch's checks;
+query integration needs its own validation evidence.
+
 ## Contract
 
 Assignment copies the value of its type. A pointer assignment copies a
-reference to the same mutable value. Managed pointers keep their targets alive,
-including after a function returns. Users do not select shared or unique
+reference to the same mutable value. Pointers to ordinary language values keep
+their targets alive, including after a function returns. Users do not select shared or unique
 ownership, write `move`, or break reference cycles manually.
 
-The owner subsequently approved shared dynamic-array objects in the sequence
-chat on 2026-10-22: aliases share contents and length; `a[1..<3]` and
-`a.slice(1..<3)` copy the selected elements into independent outer storage.
-`a.view(1..<3)` explicitly retains the array plus a fixed range, growth
-preserves those views, and `view.clone()` copies outer array storage. Pointer
-and nested dynamic-array elements retain their target identities. Fixed arrays
-retain value semantics. That chat owns the collection migration, including
-the explicit views' shrink/removal rules. This
-branch preserves pointer identity through collection copies and traces pointer
-elements; it does not migrate collection assignment or resizing. Explicit
-`ref` still identifies calls that can rebind the caller's variable. Mutating
-shared collection elements follows the collection's reference semantics.
+The separate sequence work owns collection assignment, copy-on-write storage,
+mutable views and resizing. This query candidate preserves pointer identity
+through collection copies and traces pointer elements; it does not establish
+that collection migration. Explicit `ref` still identifies calls that can
+rebind the caller's variable in this candidate.
 
 ```chibi
 actor: Actor = {health: 100}
@@ -48,13 +46,30 @@ q.health = 80   // actor, p and q observe 80.
 - Existing `ref` parameters remain invocation aliases. `F(ref p^)` passes the
   managed pointee as a writable argument. Pointer and integer conversions are
   not implicit, and managed pointers have no address arithmetic.
-- Address-taking initially supports writable locals, value parameters and
-  fields of flat authored records. Managed payloads reject inline nested record
-  layouts and native reflected records until their metadata can be retained
-  independently of a replaceable catalog. Addresses of array/map entries and
+- `&value` supports writable locals, value parameters and fields of flat
+  authored records. Ordinary native record locals and authored records with
+  inline record fields remain outside this address-taking contract. Query
+  bindings provide component references explicitly with `component: ^T`;
+  fields reached through an existing managed pointer can be projected without
+  borrowing a component address. Addresses of array/map entries and
   existing invocation `ref` parameters are rejected until their identity and
   lifetime contracts are implemented. A pointer to an entire array/map variable
   is a separate case.
+- Component references support reflected native layouts, including nested
+  native records, strings and narrow enums. A live reference observes native
+  component writes and publishes its writes through the component's owning
+  write API. Removing the component, destroying its entity or destroying its
+  world permanently invalidates that component incarnation. A later add has a
+  different identity; references never revive or follow a reused entity slot.
+  Reads, writes and field projections on an invalid target return the runtime
+  diagnostic `Component reference target is no longer available`. The embedding
+  caller receives the existing execution failure and diagnostic; the activation
+  stops. Authored code has no catch or checked recovery operation yet. An
+  invalidated reference keeps its identity and does not become `nil`.
+- Native component values and references retain exact layout metadata,
+  including nested schemas, offsets, string representation and write ranges.
+  These schemas do not extend the fields ECS components can contain: managed
+  pointer, query, task and union fields remain unsupported in component storage.
 - Managed pointers are process-local values. Persistence and native/ECS
   boundaries must explicitly support their lifetime or reject them; they must
   never serialize an address as an integer. Native calls reject arguments
@@ -76,6 +91,21 @@ managed heap belongs to the execution owner shared by imports and activations;
 an address-taken local becomes a typed cell from its initialization. Pointer
 copies preserve cell identity, and field projections retain their root cell.
 They must not retain a frame address or an entire invocation.
+
+Component references use retained ECS cells. Each cell resolves its current
+row while valid, so storage movement and suspension do not retain a row address.
+Removal, entity destruction, world destruction or a failed storage lookup
+permanently invalidates the cell. Invalid cells retain their schema metadata
+and identity without retaining a final component payload.
+The pointer descriptor retains the cell; the collector releases that ownership
+through an arena finalizer. The cell's last external release also removes an
+unused attached cell, so the world does not keep unreferenced cells alive.
+Each cell owns an immutable native schema closure from `types/schema.c`.
+The same schema representation travels with native value snapshots, allowing
+copying and tracing to resolve nested types independently of the catalog.
+Retained cell metadata contributes to the owning arena's payload accounting and
+collection admission. Invalidating a cell does not copy its component value.
+A cell shared across owning arenas contributes once to each owner's reported payload.
 
 Collection must trace all live roots: persistent values, current/suspended
 activations, action arguments, task results, cached values and queued work.

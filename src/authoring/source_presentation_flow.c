@@ -565,7 +565,7 @@ static const char *query_title(script_query_kind kind)
         case SCRIPT_QUERY_NOT: return "Not";
         case SCRIPT_QUERY_RELATION: return "Related";
         case SCRIPT_QUERY_GENERATOR: return "Generate";
-        case SCRIPT_QUERY_VALUE: return "Where";
+        case SCRIPT_QUERY_VALUE: return "If";
         case SCRIPT_QUERY_CHANGED: return "Changed";
     }
     assert(false);

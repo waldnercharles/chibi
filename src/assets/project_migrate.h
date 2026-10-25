@@ -143,4 +143,11 @@ int chibi_migrate_array_calls(const char *source, char **migrated, char *error, 
  * Existing markers are retained, so rerunning the step is safe. */
 char **chibi_migrate_ref_calls(const char *const *sources, int count, char *error, size_t error_size);
 
+/* Version 34 uses flat query lists, component pointer bindings and implicit
+ * system dt. Preserves the live component access of version 33 bindings by
+ * spelling every component type ^T. Returns an owned rewrite, or NULL when
+ * unchanged. Refuses removed query declarations instead of changing their
+ * scope. See project_migrate33.h for the source-only migration contract. */
+int chibi_migrate33_queries(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

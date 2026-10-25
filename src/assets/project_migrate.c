@@ -6,6 +6,7 @@
 #include "project_migrate29.h"
 #include "project_migrate30.h"
 #include "project_migrate31.h"
+#include "project_migrate33.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -38,6 +39,7 @@ const TSLanguage *tree_sitter_chibi_project28();
 const TSLanguage *tree_sitter_chibi_project29();
 const TSLanguage *tree_sitter_chibi_project30();
 const TSLanguage *tree_sitter_chibi_project31();
+const TSLanguage *tree_sitter_chibi_project33();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -68,8 +70,7 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
 
 script_syntax *chibi_migrate_parse(const char *text, int version)
 {
-    /* Version 33 adds argument markers without removing version 32 syntax. */
-    if (version >= 32) {
+    if (version >= 34) {
         return script_parse(text);
     }
     script_syntax *syntax = xcalloc(1, sizeof *syntax);
@@ -85,7 +86,8 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 28 ? tree_sitter_chibi_project28()
         : version == 29 ? tree_sitter_chibi_project29()
         : version == 30 ? tree_sitter_chibi_project30()
-                        : tree_sitter_chibi_project31()
+        : version == 31 ? tree_sitter_chibi_project31()
+                        : tree_sitter_chibi_project33()
     );
     assert(compatible);
     (void)compatible;
@@ -5106,6 +5108,7 @@ static int accept_migrated(
                          : version == 29 ? parse29(text)
                          : version == 30 ? parse30(text)
                          : version == 31 ? parse31(text)
+                         : version < 34  ? chibi_migrate_parse(text, version)
                                          : script_parse(text);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
@@ -6230,7 +6233,7 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
     corpus c = { .sources = sources };
     bool valid = true;
     for (int i = 0; i < count && valid; i++) {
-        syntax[i] = script_parse(sources[i]);
+        syntax[i] = chibi_migrate_parse(sources[i], 32);
         if (syntax[i]->diagnostic_count) {
             snprintf(error, size, "Cannot migrate invalid version 32 source %d", i + 1);
             valid = false;
@@ -6475,6 +6478,17 @@ int chibi_project_migrate_content(
                 error[0] = '\0';
                 migrated = chibi_migrate_ref_calls((const char *const *)sources, count, error, error_size);
                 status = migrated ? 0 : -1;
+                break;
+            case 33:
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count && !status; i++) {
+                    status = chibi_migrate33_queries(sources[i], &migrated[i], error, error_size);
+                    if (status) {
+                        char *message = xstrdup(error);
+                        snprintf(error, error_size, "%s: %s", paths[i], message);
+                        free(message);
+                    }
+                }
                 break;
             default: assert(false);
         }

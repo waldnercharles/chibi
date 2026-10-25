@@ -457,7 +457,7 @@ TEST_CASE(binding_schedule_rechecks_query_gates_and_uses_bounded_fallback)
         clear_slot(1);
         clear_slot(0);
         REQUIRE(
-            compile(0, "Gate :: system( p:Position) where p.x > 0 { bind self.Velocity.x = p.x + 1; }", backends[b])
+            compile(0, "Gate :: system( p:^Position , if p.x > 0) { bind self.Velocity.x = p.x + 1; }", backends[b])
         );
         for (int pass = 0; pass < 3; pass++) {
             double x = pass == 1 ? 0 : pass + 2;

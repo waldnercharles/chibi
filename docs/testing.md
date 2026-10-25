@@ -209,7 +209,7 @@ process launches.
 The independently reviewed compiler integration has 137 fixed samples: 90 base,
 13 types, 20 imports and 14 collections, with imports using Release. The Release
 bootstrap also compares all 137 samples between stages and 59 fixed floating
-literals with both signs. Seed verification runs one fixed-point compile with a 16 MiB output
+literals with both signs. Seed verification runs one fixed-point compile with the 32 MiB artifact output
 limit and writes only its closure and manifest; a failed compile may make one
 diagnostic call.
 

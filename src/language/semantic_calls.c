@@ -955,27 +955,27 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
             } else if (candidate->parameters[parameter].reference_kind != SCRIPT_REFERENCE_NONE) {
                 continue;
             } else {
-                if ((*values)[i] < 0) {
-                    TSNode value = ts_node_is_null(key)
-                                     ? argument
-                                     : script_analyzer_field(argument, "value");
-                    if (ts_node_is_null(value)) {
-                        value = script_analyzer_field(argument, "source");
-                    }
-                    (*values)[i] = script_analyzer_expression(
-                        a,
-                        value,
-                        (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
-                    );
+                TSNode value = ts_node_is_null(key)
+                                 ? argument
+                                 : script_analyzer_field(argument, "value");
+                if (ts_node_is_null(value)) {
+                    value = script_analyzer_field(argument, "source");
                 }
-                actual = script_analyzer_expr_type(a, (*values)[i]);
+                /* A literal waits for the chosen parameter's type, so only
+                 * that type can reject its range. */
+                if (!script_analyzer_untyped_literal(a, value, &actual)) {
+                    if ((*values)[i] < 0) {
+                        (*values)[i] = script_analyzer_expression(
+                            a,
+                            value,
+                            (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+                        );
+                    }
+                    actual = script_analyzer_expr_type(a, (*values)[i]);
+                }
             }
-            /* An untyped literal past number's range is an f64, which a
-             * number parameter cannot hold. */
             matches = wanted.container == actual.container &&
-                      script_catalog_type_assignable(a->catalog, wanted, actual) &&
-                      !((actual.flags & SCRIPT_TYPE_UNTYPED) &&
-                        actual.storage == PIN_F64 && wanted.storage == PIN_F32);
+                      script_catalog_type_assignable(a->catalog, wanted, actual);
             if (matches && script_type_numeric(wanted) &&
                 script_type_numeric(actual) && wanted.storage != actual.storage) {
                 /* Concrete operand widths choose the kernel first: 64-bit

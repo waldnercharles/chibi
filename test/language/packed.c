@@ -806,38 +806,50 @@ static bool float_conversion_call(
     return true;
 }
 
-/* A literal past number's range is an f64, so it picks a native's f64
- * overload, signed or named in any order. A number context still rejects it,
- * and a typed f64 never narrows implicitly. */
-TEST_CASE(wide_literals_choose_the_f64_overload)
+/* A literal past number's range needs an f64 context: a typed f64 argument
+ * that selects a native's f64 overload, signed or named in any order, or an
+ * f64 declaration or conversion. Without one it is a number and fails where
+ * it is written, so a number context and an inferred local reject it. */
+TEST_CASE(wide_literals_need_an_f64_context)
 {
     static const struct
     {
         const char *source;
         double expected;
     } chosen[] = {
-        { "Packed :: library { Math :: () -> f64 { return sqrt(1e300); } }", 1e150 },
-        { "Packed :: library { Math :: () -> f64 { return pow(Base: -1e300, "
-          "Exponent: 1); } }",
+        { "Packed :: library { Math :: () -> f64 { x: f64 = 1; return "
+          "pow(Base: -1e300, Exponent: x); } }",
           -1e300 },
-        { "Packed :: library { Math :: () -> f64 { return pow(Exponent: 1, "
-          "Base: -1e300); } }",
+        { "Packed :: library { Math :: () -> f64 { x: f64 = 1; return "
+          "pow(Exponent: x, Base: -1e300); } }",
           -1e300 },
+        { "Packed :: library { Math :: () -> f64 { x: f64 = 1e300; return "
+          "sqrt(x); } }",
+          1e150 },
+        { "Packed :: library { Math :: () -> f64 { return sqrt(f64(1e300)); } "
+          "}",
+          1e150 },
     };
     static const struct
     {
         const char *source, *message;
+        int column;
     } rejected[] = {
         { "Packed :: library { Math :: () -> number { x: number = 1e300; "
           "return x; } }",
-          "Numeric literal is outside the range of number" },
-        { "Packed :: library { Math :: () -> number { return sqrt(1e300); } }",
-          "Incompatible types: expected number, got f64; convert with "
-          "number(value)" },
+          "Numeric literal is outside the range of number",
+          56 },
+        { "Packed :: library { Math :: () -> f64 { x := 1e300; return x; } }",
+          "Numeric literal is outside the range of number",
+          46 },
+        { "Packed :: library { Math :: () -> f64 { return sqrt(1e300); } }",
+          "Numeric literal is outside the range of number",
+          53 },
         { "Packed :: library { Math :: (x: f64) -> number { return sqrt(x); } "
           "}",
           "Incompatible types: expected number, got f64; convert with "
-          "number(value)" },
+          "number(value)",
+          57 },
     };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     char error[256];
@@ -853,6 +865,14 @@ TEST_CASE(wide_literals_choose_the_f64_overload)
             );
             REQUIRE(natives);
             const behavior_function *function = compile_source(chosen[i].source, backends[b]);
+            if (!function || analysis->diagnostic_count) {
+                fprintf(
+                    stderr,
+                    "wide literal %zu: %s\n",
+                    i,
+                    analysis->diagnostic_count ? analysis->diagnostics[0].message : "rejected"
+                );
+            }
             REQUIRE(function && analysis->diagnostic_count == 0);
             REQUIRE(kernel_calls(PIN_F64) == 1);
             pin_value result = { .type = PIN_F64 };
@@ -877,11 +897,14 @@ TEST_CASE(wide_literals_choose_the_f64_overload)
         );
         REQUIRE(natives);
         REQUIRE(!compile_source(rejected[i].source, BEHAVIOR_BYTECODE));
-        bool found = false;
-        for (int d = 0; d < analysis->diagnostic_count; d++) {
-            found |= !strcmp(analysis->diagnostics[d].message, rejected[i].message);
+        REQUIRE(analysis->diagnostic_count == 1);
+        const script_diagnostic *d = &analysis->diagnostics[0];
+        if (strcmp(d->message, rejected[i].message) ||
+            d->range.column != rejected[i].column) {
+            fprintf(stderr, "wide literal rejection %zu: %d %s\n", i, d->range.column, d->message);
         }
-        REQUIRE(found);
+        REQUIRE(!strcmp(d->message, rejected[i].message));
+        REQUIRE(d->range.line == 1 && d->range.column == rejected[i].column);
         cleanup();
     }
     return true;
@@ -989,7 +1012,7 @@ void test_language_packed()
     RUN_TEST_CASE(typed_integer_large_constant_folding_is_exact);
     RUN_TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder);
     RUN_TEST_CASE(float_math_stays_float_and_f64_math_stays_f64);
-    RUN_TEST_CASE(wide_literals_choose_the_f64_overload);
+    RUN_TEST_CASE(wide_literals_need_an_f64_context);
     RUN_TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles);
     RUN_TEST_CASE(float_implicit_widening_preserves_literal_values);
     pu_clear_setup();

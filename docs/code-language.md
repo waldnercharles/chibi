@@ -33,10 +33,10 @@ Example :: library {
 
 A numeric literal takes its type from context. Otherwise, its spelling supplies
 the type. Integer spelling gives `int`, then `i64` or `u64` when needed.
-A decimal point or exponent gives a `number`, a 32-bit float, unless the value
-is past the `number` range: `1e300` is an `f64`, so `sqrt(1e300)` calls the `f64`
-overload and `x: number = 1e300` fails. In an `f64` context, a literal keeps all
-64 bits.
+A decimal point or exponent gives a `number`, a 32-bit float. In an `f64`
+context, a literal keeps all 64 bits. A literal past the `number` range needs
+that context: `x: f64 = 1e300`, `f64(1e300)` and `pow(Base: -1e300, Exponent: x)`
+with an `f64` `x` work, while `x := 1e300` and `sqrt(1e300)` fail.
 
 ```chibi
 Example :: library {

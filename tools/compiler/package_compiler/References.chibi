@@ -142,12 +142,17 @@ KeptTarget :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     }
     return Is(forest, parent, "dereference_expression") || CallArgument(forest, node);
 }
-// Whether `node` is an argument a call passes.
+// Whether `node`, possibly parenthesized, is an argument a call passes.
 CallArgument :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    parent := forest[node].parent;
+    at := node;
+    parent := forest[at].parent;
+    while (Is(forest, parent, "parenthesized_expression")) {
+        at = parent;
+        parent = forest[parent].parent;
+    }
     return Is(forest, parent, "argument_list") ||
            ((Is(forest, parent, "named_argument") || Is(forest, parent, "typed_argument")) &&
-            Field(forest, parent, "value") == node);
+            Field(forest, parent, "value") == at);
 }
 // A `^T` parameter whose callers' addresses never outlive the call, as stage
 // zero decides it: not nullable, and its body only dereferences it, reads its
@@ -539,25 +544,31 @@ MakeValueHost :: (first: int) -> Host {
 // descriptor. The argument's points come first, its members outermost, then
 // its name.
 ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-                          members: TypeMember[], names: Name[], item: Work, ops: Ops, target: Target,
+                          members: TypeMember[], names: Name[], work: Work, ops: Ops, target: Target,
                           at: Bases) -> Step {
+    // `(p)` forwards as `p` does, and `(p^)` lends p's target as `p^` does.
+    item := work;
+    argument := Unparenthesized(forest, item.node);
     forwarded := false;
-    if (item.phase == ScopedPhase && Is(forest, item.node, "identifier")) {
-        found := Lookup(names, Text(forest, text, item.node));
+    if (item.phase == ScopedPhase && Is(forest, argument, "identifier")) {
+        found := Lookup(names, Text(forest, text, argument));
         forwarded = found >= 0 && names[found].place == ReferencePlace;
     }
-    if (item.phase == ScopedPhase && !forwarded && !Is(forest, item.node, "dereference_expression")) {
+    if (forwarded) {
+        item.node = argument;
+    }
+    if (item.phase == ScopedPhase && !forwarded && !Is(forest, argument, "dereference_expression")) {
         // A managed pointer lends its target, as its dereference would.
         resumed := item;
         resumed.phase = PointerBridgePhase;
         return Step.Emitted([ExpressionCode(ops, forest[item.node])], [], [], [], [], [], [], [],
                             [Visit(item.node), resumed], 0, NoValue(), NoValue(), []);
     }
-    if (Is(forest, item.node, "dereference_expression")) {
+    if (Is(forest, argument, "dereference_expression")) {
         resumed := item;
         resumed.phase = PointerBridgePhase;
         return Step.Emitted([ExpressionCode(ops, forest[item.node])], [], [], [], [], [], [], [],
-                            [Visit(Field(forest, item.node, "operand")), resumed], 0, NoValue(), NoValue(), []);
+                            [Visit(Field(forest, argument, "operand")), resumed], 0, NoValue(), NoValue(), []);
     }
     node := forest[item.node];
     code := TargetPoints(forest, text, names, ops, item.node);

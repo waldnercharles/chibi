@@ -54,7 +54,7 @@ Integer :: (type: int) -> bool {
 // The backend's storage ordinal of a scalar type: the storages of int, bool,
 // int8, byte, int16, uint16, uint, int64 and uint64 in facts type order.
 NativeType :: (type: int) -> int {
-    storages := [6, 1, 2, 3, 4, 5, 7, 8, 9];
+    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9];
     return storages[type - facts.IntType];
 }
 // A rejection keeps exactly its source and one located diagnostic.

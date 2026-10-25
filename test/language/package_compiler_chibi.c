@@ -864,40 +864,42 @@ static const sample samples[] = {
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (b: byte) -> int { a: int = 1; Touch(a); a += b; "
+                "Grow :: (b: byte) -> int { a: int = 1; Touch(ref a); a += b; "
                 "return a; }\n",
       .message = "Mismatched integer types int and byte; convert one operand",
       .line = 3,
-      .column = 50 },
+      .column = 54 },
     { .name = "mixed compound boxed parameter assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (a: int, b: byte) -> int { Touch(a); a += b; return "
+                "Grow :: (a: int, b: byte) -> int { Touch(ref a); a += b; "
+                "return "
                 "a; }\n",
       .message = "Mismatched integer types int and byte; convert one operand",
       .line = 3,
-      .column = 46 },
+      .column = 50 },
     { .name = "compound reference and boxed operands preserve effects",
       .debug_metadata = true,
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Note :: struct { count: int; }\n"
-                "Touch :: (v: ref int) { v += 0; }\n"
-                "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
-                "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
-                "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
-                "Ref :: () -> int { n: int = 1; Bump(n, byte(2)); return n; }\n"
-                "RefField :: () -> int { n: Note = {count: 1}; BumpField(n, "
-                "byte(2)); return n.count; }\n"
-                "Box :: () -> int { n: int = 1; Touch(n); n += int(byte(2)); "
-                "return n; }\n"
-                "BoxParam :: (n: int) -> int { Touch(n); n += 2; return n; }\n"
-                "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
-                "n.count += Source(calls); return n.count * 10 + calls; }\n"
-                "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
-                "return n; }\n"
-                "Clamp :: (v: int) -> byte { return byte(v); }\n",
+      .source =
+          "package facts\n"
+          "Note :: struct { count: int; }\n"
+          "Touch :: (v: ref int) { v += 0; }\n"
+          "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
+          "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
+          "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
+          "Ref :: () -> int { n: int = 1; Bump(ref n, byte(2)); return n; }\n"
+          "RefField :: () -> int { n: Note = {count: 1}; BumpField(ref n, "
+          "byte(2)); return n.count; }\n"
+          "Box :: () -> int { n: int = 1; Touch(ref n); n += int(byte(2)); "
+          "return n; }\n"
+          "BoxParam :: (n: int) -> int { Touch(ref n); n += 2; return n; }\n"
+          "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
+          "n.count += Source(ref calls); return n.count * 10 + calls; }\n"
+          "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
+          "return n; }\n"
+          "Clamp :: (v: int) -> byte { return byte(v); }\n",
       .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
                  { .function = "RefField", .arguments = "[]", .expected = "[3]" },
                  { .function = "Box", .arguments = "[]", .expected = "[3]" },

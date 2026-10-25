@@ -59,7 +59,10 @@ q.health = 80   // actor, p and q observe 80.
   boundaries must explicitly support their lifetime or reject them; they must
   never serialize an address as an integer. Native calls reject arguments
   that hold managed pointers, except engine kernels marked `borrows`, such as
-  the array operations, which read them only during the call.
+  the array operations, which read them only during the call. Program load
+  accepts those kernels too. A borrowing call skips the argument walk only
+  through its own callback, and its bank values are validated when the
+  definition freezes.
 - The Chibi-written compiler currently rejects named pointer results and
   arrays of nullable pointers (`^T?[]`). Ordinary pointer results and arrays
   of non-null pointers work. These follow its existing named-result and boxed
@@ -158,6 +161,24 @@ Passed on macOS arm64 in this checkout, using the existing pico-unit dispatchers
   runtime executable, compiler sources and core packages, with an empty
   environment and unavailable external compiler commands. It reproduced all
   13,104,075 artifact bytes and the recorded SHA-256.
+
+Passed on Linux x64 (clang 18, ASan/UBSan) at the review-round head of #695,
+which supersedes the macOS artifact figures above:
+
+- `make test-build`, `test-native`, `test-materials`, `test-projects`,
+  `test-language-all`, `test-tools`, `check-format` and `package-sdk`.
+- Package compiler collections, including compound writes that read their
+  target once before the value (`p^ += Set(p)`, an addressed local, and
+  fields through a pointer and an addressed record), plain-write widening and
+  the same-type rule for compound writes.
+- A program that returns an `append`-built pointer array, holds it across a
+  forced safe-point collection and writes through it; a rebound borrowing
+  callback that fails before it runs; malformed borrowing arguments rejected
+  at definition freeze.
+- `make bootstrap-artifact`, the `compiler-bootstrap` checks and
+  `make test-recovery`. Isolated recovery from `git archive HEAD` sources with
+  an empty environment reproduced all 14,224,585 artifact bytes and SHA-256
+  `faf6bf0a28025ede5782350022ba9c12807697244f6a583813f88d0e405ef4e5`.
 
 Prepared ABI is 21; bootstrap capability version is 6,
 while minimum remains 2 because the compiler sources do not use pointer syntax.

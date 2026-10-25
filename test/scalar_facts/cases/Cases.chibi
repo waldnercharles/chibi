@@ -74,6 +74,18 @@ Padded :: (size: int) -> string {
     }
     return format_text("{}{}", text, strings.Slice(filler, 0, size - strings.ByteLength(text)));
 }
+// Main and a function for each int operator, then Mix, whose guard and
+// operands nest in parentheses.
+IntOperators :: () -> string {
+    text := "package scalar\nMain :: () -> int { return Mix(Id(1 + 2), 4, 5); }\nId :: (x: int) -> int { return x; }\n";
+    names := ["Add", "Sub", "Mul", "Div", "Mod", "BitAnd", "BitOr", "BitXor"];
+    operators := ["+", "-", "*", "/", "%", "&", "|", "^"];
+    for (index in 0..<length(names)) {
+        text = format_text("{}{} :: (a: int, b: int) -> int { return a {} b; }\n", text, names[index], operators[index]);
+    }
+    return format_text("{}Neg :: (a: int) -> int { return -a; }\nBitNot :: (a: int) -> int { return ~a; }\nMix :: (a: int, b: int, c: int) -> int {\n    if ((+a < b)) { return (a + b) * c - -c % 3; }\n    return +a;\n}\n",
+                       text);
+}
 Cases :: () -> Case[] {
     return [
         Accepted("forty_two", "package scalar\nMain :: () -> int { return 42; }", 42, "Main", "42"),
@@ -85,9 +97,11 @@ Cases :: () -> Case[] {
         Rejected("u64_overflow", "package scalar\nMain :: () -> int { return 18446744073709551616; }", "only integer literals of 64 bits are supported", "18446744073709551616"),
         Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "only integer literals of 64 bits are supported", "42.5"),
         Rejected("exponent", "package scalar\nMain :: () -> int { return 1e2; }", "only integer literals of 64 bits are supported", "1e2"),
-        Rejected("negative", "package scalar\nMain :: () -> int { return -1; }", "scalar proof supports only literals, parameters, comparisons and direct calls", "-1"),
-        Rejected("parentheses", "package scalar\nMain :: () -> int { return (42); }", "scalar proof supports only literals, parameters, comparisons and direct calls", "(42)"),
-        Rejected("arithmetic", "package scalar\nMain :: () -> int { return 40 + 2; }", "scalar proof supports only literals, parameters, comparisons and direct calls", "40 + 2"),
+        Accepted("negative", "package scalar\nMain :: () -> int { return -1; }", -1, "Main", "-1"),
+        Accepted("parentheses", "package scalar\nMain :: () -> int { return (42); }", 42, "Main", "42"),
+        // The constant folds exactly, as the ordinary compiler folds it, to one
+        // literal: wrapping rows would give its sum -2^31.
+        Accepted("arithmetic", "package scalar\nMain :: () -> int { return Half(2); }\nHalf :: (x: int) -> int { return x + (2147483647 + 1) / 2; }", 1073741826, "Main,Half", "2 ; Half(2) | x ; (2147483647 + 1) / 2 ; x + (2147483647 + 1) / 2"),
         Accepted("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", 42, "Main", "true ? 42 : 0"),
         Rejected("local", "package scalar\nMain :: () -> int { x: int = 42; return x; }", "scalar proof requires one complete return statement", "x: int = 42;"),
         Rejected("after_return", "package scalar\nMain :: () -> int { return 42; assert(false); }", "scalar proof does not support additional statements", "assert(false);"),
@@ -139,11 +153,11 @@ Cases :: () -> Case[] {
         Rejected("argument_type", "package scalar\nMain :: () -> int { return Id(true); }\nId :: (x: int) -> int { return x; }", "argument differs from its parameter type", "Id(true)"),
         Rejected("call_result_type", "package scalar\nMain :: () -> int { return Yes(); }\nYes :: () -> bool { return true; }", "returned value differs from the result type", "return Yes();"),
         Rejected("function_value", "package scalar\nMain :: () -> int { return Id; }\nId :: (x: int) -> int { return x; }", "Unknown name 'Id'", "Id"),
-        Rejected("conversion", "package scalar\nMain :: () -> int { return int(42); }", "scalar proof calls only functions of its own source", "int"),
+        Rejected("conversion", "package scalar\nMain :: () -> int { return Id(42); }\nId :: (x: int) -> int { return int(x); }", "scalar proof calls only functions of its own source", "int"),
         Rejected("named_argument", "package scalar\nMain :: () -> int { return Id(x: 1); }\nId :: (x: int) -> int { return x; }", "unsupported syntax 'named_argument'", "x: 1"),
         Rejected("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 1) -> int { return x; }", "scalar proof requires int or bool parameters and one int or bool result", "x: int = 1"),
         Rejected("string_parameter", "package scalar\nMain :: () -> int { return Size(\"a\"); }\nSize :: (text: string) -> int { return 1; }", "scalar proof requires int or bool parameters and one int or bool result", "text: string"),
-        Rejected("arithmetic_argument", "package scalar\nMain :: () -> int { return Id(1 + 2); }\nId :: (x: int) -> int { return x; }", "scalar proof supports only literals, parameters, comparisons and direct calls", "1 + 2"),
+        Accepted("int_operators", IntOperators(), 37, "Main,Id,Add,Sub,Mul,Div,Mod,BitAnd,BitOr,BitXor,Neg,BitNot,Mix", "1 + 2 ; Id(1 + 2) ; 4 ; 5 ; Mix(Id(1 + 2), 4, 5) | x | a ; b ; a + b | a ; b ; a - b | a ; b ; a * b | a ; b ; a / b | a ; b ; a % b | a ; b ; a & b | a ; b ; a | b | a ; b ; a ^ b | a ; -a | a ; ~a | a ; b ; +a < b ? a ; b ; a + b ; c ; (a + b) * c ; c ; -c ; 3 ; -c % 3 ; (a + b) * c - -c % 3 : a"),
         Rejected("native_call", "package scalar\nMain :: () -> int { return print(1); }", "Unknown function 'print'", "print"),
         Rejected("qualified_call", "package scalar\nMain :: () -> int { return scalar.Id(1); }\nId :: (x: int) -> int { return x; }", "Unknown function 'scalar.Id'", "Id"),
         Rejected("duplicate_function", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { return x; }\nId :: (y: int) -> int { return y; }", "Duplicate declaration 'Id'", "Id :: (y: int) -> int { return y; }"),
@@ -167,8 +181,8 @@ Cases :: () -> Case[] {
         Rejected("two_guards", "package scalar\nMain :: () -> int {\n    if (true) { return 1; }\n    if (false) { return 2; }\n    return 3;\n}\n", "scalar proof admits at most 1 guard per function", "if (false) { return 2; }"),
         Rejected("guard_without_return", "package scalar\nMain :: () -> int {\n    if (true) { assert(false); }\n    return 1;\n}\n", "scalar proof requires a guard that returns", "assert(false);"),
         Rejected("bool_comparison", "package scalar\nMain :: () -> int { return If(Same(true, false), 1, 2); }\nSame :: (a: bool, b: bool) -> bool { return a == b; }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\n", "scalar proof compares only int operands", "a == b"),
-        Rejected("nested_parentheses", "package scalar\nMain :: () -> int { return Min(1, 2); }\nMin :: (a: int, b: int) -> int {\n    if ((a < b)) { return a; }\n    return b;\n}\n", "scalar proof supports only literals, parameters, comparisons and direct calls", "(a < b)"),
-        Rejected("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", "scalar proof supports only literals, parameters, comparisons and direct calls", "a < b && b < c"),
+        Rejected("shift", "package scalar\nMain :: () -> int { return Shl(1); }\nShl :: (a: int) -> int { return a << 2; }", "scalar proof does not support shifts", "a << 2"),
+        Rejected("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", "scalar proof supports only literals, parameters, arithmetic, comparisons and direct calls", "a < b && b < c"),
         Rejected("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", "scalar proof does not support recursive calls", "Down(0)"),
         Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "7 ; 3 ; 7 < 3 ? 1 : 2"),
         Rejected("too_large", Padded(16385), "scalar proof admits at most 16384 source bytes", "")];
@@ -238,6 +252,45 @@ Compared :: (operator: int, left: int, right: int) -> bool {
     }
     return left != right;
 }
+// The value an arithmetic operator gives for `left` and `right`, as the
+// integer contract defines it: nothing fails, x / 0 is 0, x % 0 is x,
+// MIN / -1 is MIN and MIN % -1 is 0.
+Computed :: (operator: int, left: int, right: int) -> int {
+    if (operator == facts.Add) {
+        return left + right;
+    }
+    if (operator == facts.Subtract) {
+        return left - right;
+    }
+    if (operator == facts.Multiply) {
+        return left * right;
+    }
+    if (operator == facts.And) {
+        return left & right;
+    }
+    if (operator == facts.Or) {
+        return left | right;
+    }
+    if (operator == facts.Xor) {
+        return left ^ right;
+    }
+    if (right == 0) {
+        if (operator == facts.Divide) {
+            return 0;
+        }
+        return left;
+    }
+    if (right == -1) {
+        if (operator == facts.Divide) {
+            return 0 - left;
+        }
+        return 0;
+    }
+    if (operator == facts.Divide) {
+        return left / right;
+    }
+    return left % right;
+}
 // The value function `function` returns for `arguments`: the rows read as
 // the evaluation they record, operand by operand, segment by segment. The
 // first guard whose condition holds returns its arm's value, else the final
@@ -255,6 +308,19 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int[]) -
                 stack.append(operand.value);
             } else if (operand.kind == facts.ReadRow) {
                 stack.append(arguments[operand.value]);
+            } else if (operand.kind == facts.ArithmeticRow) {
+                base := length(stack) - 2;
+                computed := Computed(operand.value, stack[base], stack[base + 1]);
+                stack = slice(stack, 0, base);
+                stack.append(computed);
+            } else if (operand.kind == facts.UnaryRow) {
+                base := length(stack) - 1;
+                computed := ~stack[base];
+                if (operand.value == facts.Negate) {
+                    computed = 0 - stack[base];
+                }
+                stack = slice(stack, 0, base);
+                stack.append(computed);
             } else if (operand.kind == facts.CompareRow) {
                 base := length(stack) - 2;
                 compared: int = 0;
@@ -318,7 +384,7 @@ Trace :: (rows: facts.Row[]) -> string {
             separator = " : ";
             guard = 0;
         } else if (row.kind == facts.LiteralRow || row.kind == facts.ReadRow || row.kind == facts.CallRow ||
-                   row.kind == facts.CompareRow) {
+                   row.kind == facts.CompareRow || row.kind == facts.ArithmeticRow || row.kind == facts.UnaryRow) {
             trace = format_text("{}{}{}", trace, separator, Excerpt(rows[0].text, row));
             separator = " ; ";
         }

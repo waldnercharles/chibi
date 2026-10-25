@@ -152,7 +152,8 @@ static void load_word(const behavior_machine *m, int slot, int reg)
         source ? 0 : slot * sizeof(double)
     );
 }
-/* The mode applies only to source values outside the destination range. */
+/* Wrapping keeps the low bits; the other modes clamp a value outside the
+ * destination range. */
 static void integer_cast(const behavior_machine *m, const behavior_function_instruction *i)
 {
     struct sljit_compiler *c = m->compiler;
@@ -182,17 +183,6 @@ static void integer_cast(const behavior_machine *m, const behavior_function_inst
         return;
     }
     struct sljit_jump *fits = sljit_emit_jump(c, SLJIT_JUMP), *clamped = NULL;
-    if (i->target == BEHAVIOR_CAST_EXACT) {
-        if (below) {
-            bind(c, below);
-        }
-        if (above) {
-            bind(c, above);
-        }
-        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
-        bind(c, fits);
-        return;
-    }
     if (below) {
         bind(c, below);
         sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)low);
@@ -332,31 +322,13 @@ static void arithmetic(
         load(m, i->right, SLJIT_R1);
     }
     if (i->op == BF_DIV || i->op == BF_MOD) {
+        /* x / 0 is 0 with remainder x, and x / -1 negates with remainder 0,
+         * so the signed minimum wraps to itself. Neither reaches the hardware
+         * divide, which would fault on both. */
         struct sljit_jump *zero = sljit_emit_cmp(c, SLJIT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, 0);
-        struct sljit_jump
-            *valid = signed_type
-                       ? sljit_emit_cmp(c, SLJIT_NOT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, -1)
-                       : sljit_emit_jump(c, SLJIT_JUMP);
-        /* SLJIT negates compare immediates, which INT64_MIN cannot survive. */
-        static const sljit_sw wide_minimum = INT64_MIN;
-        bool wide = behavior_scalar_minimum(type) == INT64_MIN;
-        struct sljit_jump *not_min = signed_type
-                                       ? sljit_emit_cmp(
-                                             c,
-                                             SLJIT_NOT_EQUAL | flags,
-                                             SLJIT_R0,
-                                             0,
-                                             wide ? SLJIT_MEM0() : SLJIT_IMM,
-                                             wide ? (sljit_sw)&wide_minimum
-                                                  : (sljit_sw)behavior_scalar_minimum(type)
-                                         )
-                                       : NULL;
-        bind(c, zero);
-        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
-        bind(c, valid);
-        if (not_min) {
-            bind(c, not_min);
-        }
+        struct sljit_jump *minus = signed_type
+                                     ? sljit_emit_cmp(c, SLJIT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, -1)
+                                     : NULL;
         bool modulo = i->op == BF_MOD || i->target >= 0;
         sljit_emit_op0(
             c,
@@ -364,6 +336,18 @@ static void arithmetic(
                          : (modulo ? SLJIT_DIVMOD_UW : SLJIT_DIV_UW)) |
                 flags
         );
+        struct sljit_jump *divided = sljit_emit_jump(c, SLJIT_JUMP), *negated = NULL;
+        bind(c, zero);
+        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_R0, 0);
+        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, 0);
+        if (minus) {
+            negated = sljit_emit_jump(c, SLJIT_JUMP);
+            bind(c, minus);
+            sljit_emit_op2(c, SLJIT_SUB | flags, SLJIT_R0, 0, SLJIT_IMM, 0, SLJIT_R0, 0);
+            sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_IMM, 0);
+            bind(c, negated);
+        }
+        bind(c, divided);
         if (i->target >= 0) {
             /* The secondary definition currently spills; the GP interval
              * allocator assigns the primary result independently. */
@@ -452,25 +436,33 @@ bool behavior_jit_integer(
         if (i->op != BF_BIT_NOT) {
             load(m, i->right, SLJIT_R1);
         }
-        if (i->op == BF_SHL || i->op == BF_SHR) {
-            // An unsigned comparison also rejects sign-extended negative counts.
-            struct sljit_jump *valid = sljit_emit_cmp(
-                c,
-                SLJIT_LESS | (behavior_scalar_size(i->type) == 8 ? 0 : SLJIT_32),
-                SLJIT_R1,
-                0,
-                SLJIT_IMM,
-                behavior_scalar_size(i->type) * CHAR_BIT
-            );
-            behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
-            bind(c, valid);
-        }
         int op = i->op == BF_BIT_AND                        ? SLJIT_AND
                : i->op == BF_BIT_OR                         ? SLJIT_OR
                : i->op == BF_BIT_XOR || i->op == BF_BIT_NOT ? SLJIT_XOR
                : i->op == BF_SHL                            ? SLJIT_SHL
                : behavior_scalar_signed(i->type)            ? SLJIT_ASHR
                                                             : SLJIT_LSHR;
+        if (i->op == BF_SHL || i->op == BF_SHR) {
+            /* A count at or past the width shifts every bit out. SLJIT leaves
+             * such counts undefined, so an arithmetic shift takes width - 1
+             * and the others shift zero by zero. */
+            sljit_sw width = (sljit_sw)behavior_scalar_size(i->type) * CHAR_BIT;
+            struct sljit_jump *within = sljit_emit_cmp(
+                c,
+                SLJIT_LESS | (width == 64 ? 0 : SLJIT_32),
+                SLJIT_R1,
+                0,
+                SLJIT_IMM,
+                width
+            );
+            if (op == SLJIT_ASHR) {
+                sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_IMM, width - 1);
+            } else {
+                sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, 0);
+                sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_IMM, 0);
+            }
+            bind(c, within);
+        }
         sljit_emit_op2(
             c,
             op | (behavior_scalar_size(i->type) == 8 ? 0 : SLJIT_32),

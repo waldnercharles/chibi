@@ -9,6 +9,7 @@
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
+#include "float_conversion_cases.h"
 #include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
@@ -104,13 +105,15 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. */
+ * Copied function, which assigns its array, does not. A `debug_metadata`
+ * sample compares source points and watches with stage zero on both compiler
+ * backends. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects;
+        same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -142,6 +145,19 @@ static const native_parameter_definition CSTRING_INPUT[] = {
       .type_name = "const char *",
       .c_string = true },
 };
+/* The second parameter deliberately carries the C-string boundary. */
+static const native_parameter_definition CSTRING_PAIR_INPUT[] = {
+    { .name = "prefix", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "value",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_STR,
+      .type_name = "const char *",
+      .c_string = true },
+};
+static const char *cstring_pair(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    return cstring_probe(storage, arguments + 1, count - 1, result);
+}
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -157,6 +173,15 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    { .canonical_name = "CString Pair",
+      .source_name = "cstring_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = CSTRING_PAIR_INPUT,
+      .input_count = 2,
+      .outputs = CSTRING_OUTPUT,
+      .output_count = 1,
+      .completion_output = -1,
+      .pure = true },
     PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
     PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
@@ -166,6 +191,7 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
@@ -178,6 +204,7 @@ static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
     }
 static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("CString Pair", CSTRING_PAIR_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
     PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
@@ -193,41 +220,102 @@ static const native_definition_pack CSTRING_PACK = {
     .binding_count = sizeof CSTRING_BINDINGS / sizeof *CSTRING_BINDINGS,
 };
 static const sample samples[] = {
-    { .name = "typed constant shifts discard bits",
+    { .name = "array update debug order",
+      .group = COLLECTION_SAMPLES,
+      .update_order = true,
+      .source = "package facts\n"
+                "Item :: () -> int { return 7; }\n"
+                "Items :: () -> int[] { return [7, 8]; }\n"
+                "AppendLocal :: () -> int[] { xs: int[] = [1]; xs = append(xs, "
+                "Item()); return xs; }\n"
+                "AppendParameter :: (xs: int[]) -> int[] { xs = append(xs, "
+                "Item()); return xs; }\n"
+                "AppendMethod :: () -> int[] { xs: int[] = [1]; "
+                "xs.append(Item()); return xs; }\n"
+                "AppendParameterMethod :: (xs: int[]) -> int[] { "
+                "xs.append(Item()); return xs; }\n"
+                "ExtendLocal :: () -> int[] { xs: int[] = [1]; xs = extend(xs, "
+                "Items()); return xs; }\n"
+                "ExtendParameter :: (xs: int[]) -> int[] { xs = extend(xs, "
+                "Items()); return xs; }\n"
+                "ExtendMethod :: () -> int[] { xs: int[] = [1]; "
+                "xs.extend(Items()); return xs; }\n"
+                "ExtendParameterMethod :: (xs: int[]) -> int[] { "
+                "xs.extend(Items()); return xs; }",
+      .calls = { { .function = "AppendLocal", .arguments = "[]", .expected = "[[1,7]]" },
+                 { .function = "AppendParameter", .arguments = "[[1]]", .expected = "[[1,7]]" },
+                 { .function = "AppendMethod", .arguments = "[]", .expected = "[[1,7]]" },
+                 { .function = "AppendParameterMethod", .arguments = "[[1]]", .expected = "[[1,7]]" },
+                 { .function = "ExtendLocal", .arguments = "[]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendParameter", .arguments = "[[1]]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendMethod", .arguments = "[]", .expected = "[[1,7,8]]" },
+                 { .function = "ExtendParameterMethod",
+                   .arguments = "[[1]]",
+                   .expected = "[[1,7,8]]" } } },
+    { .name = "typed constants fold exactly",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Sign: int : 1 << 31;\n"
-                "Zero: byte : 128 << 1;\n"
-                "Small: int8 : 64 << 1;\n"
-                "Unsigned: uint : 4294967295 << 1;\n"
+                "Sign: int : -1 << 31;\n"
+                "Small: int8 : (64 << 1) - 1;\n"
+                "Unsigned: uint : 4294967295 >> 1;\n"
                 "Floor: int : -3 >> 1;\n"
-                "Wide: int64 : 1 << 63;\n"
+                "Wide: int64 : -1 << 63;\n"
+                "Mask: uint64 : ~0;\n"
+                "Low: byte : ~byte(15);\n"
+                "Big: int : (1 << 100) >> 98;\n"
+                "Half: int8 : (127 + 1) / 2;\n"
+                "Wrapped: byte : byte(wrap: 300);\n"
                 "ReadSign :: () -> int { return Sign; }\n"
-                "ReadZero :: () -> byte { return Zero; }\n"
                 "ReadSmall :: () -> int8 { return Small; }\n"
                 "ReadUnsigned :: () -> uint { return Unsigned; }\n"
                 "ReadFloor :: () -> int { return Floor; }\n"
-                "ReadWide :: () -> int64 { return Wide; }",
+                "ReadWide :: () -> int64 { return Wide; }\n"
+                "ReadMask :: () -> uint64 { return Mask; }\n"
+                "ReadLow :: () -> byte { return Low; }\n"
+                "ReadBig :: () -> int { return Big; }\n"
+                "ReadHalf :: () -> int8 { return Half; }\n"
+                "ReadWrapped :: () -> byte { return Wrapped; }",
       .calls = { { .function = "ReadSign", .arguments = "[]", .expected = "[-2147483648]" },
-                 { .function = "ReadZero", .arguments = "[]", .expected = "[0]" },
-                 { .function = "ReadSmall", .arguments = "[]", .expected = "[-128]" },
-                 { .function = "ReadUnsigned", .arguments = "[]", .expected = "[4294967294]" },
+                 { .function = "ReadSmall", .arguments = "[]", .expected = "[127]" },
+                 { .function = "ReadUnsigned", .arguments = "[]", .expected = "[2147483647]" },
                  { .function = "ReadFloor", .arguments = "[]", .expected = "[-2]" },
-                 { .function = "ReadWide",
-                   .arguments = "[]",
-                   .expected = "[-9223372036854775808]" } } },
+                 { .function = "ReadWide", .arguments = "[]", .expected = "[-9223372036854775808]" },
+                 { .function = "ReadMask", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "ReadLow", .arguments = "[]", .expected = "[240]" },
+                 { .function = "ReadBig", .arguments = "[]", .expected = "[4]" },
+                 { .function = "ReadHalf", .arguments = "[]", .expected = "[64]" },
+                 { .function = "ReadWrapped", .arguments = "[]", .expected = "[44]" } } },
+    { .name = "constant outside its type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: int : 1 << 31;",
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 12 },
     { .name = "constant negative shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nBad: int : 1 << -1;",
-      .message = "Constant shift count is outside the type",
+      .message = "Shift count must not be negative",
       .line = 2,
-      .column = 12 },
-    { .name = "constant shift count at width",
+      .column = 17 },
+    { .name = "constant shift count too large",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nBad: int : 1 >> 32;",
-      .message = "Constant shift count is outside the type",
+      .source = "package facts\nBad: int : 1 >> 4097;",
+      .message = "Constant shift count is too large",
       .line = 2,
-      .column = 12 },
+      .column = 17 },
+    { .name = "parenthesized negative shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nShift :: (a: int) -> int { return a << (2 - "
+                "3); }\n",
+      .message = "Shift count must not be negative",
+      .line = 2,
+      .column = 41 },
+    { .name = "constant signed shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nCount: int : 3;\nBad: int : 1 << Count;",
+      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .line = 3,
+      .column = 17 },
     { .name = "comparisons of untyped literals",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -389,12 +477,10 @@ static const sample samples[] = {
                  { .function = "Alias", .arguments = "[]", .expected = "[7]" },
                  { .function = "Assigned", .arguments = "[127]", .expected = "[127]" },
                  { .function = "Assigned", .arguments = "[-128]", .expected = "[-128]" },
-                 { .function = "Assigned", .arguments = "[300]", .diagnostic = "Value does not fit in int8" },
-                 { .function = "Assigned", .arguments = "[-129]", .diagnostic = "Value does not fit in int8" },
-                 { .function = "Converted", .arguments = "[300]", .diagnostic = "Value does not fit in int8" },
-                 { .function = "Converted",
-                   .arguments = "[-129]",
-                   .diagnostic = "Value does not fit in int8" } } },
+                 { .function = "Assigned", .arguments = "[300]", .expected = "[127]" },
+                 { .function = "Assigned", .arguments = "[-129]", .expected = "[-128]" },
+                 { .function = "Converted", .arguments = "[300]", .expected = "[127]" },
+                 { .function = "Converted", .arguments = "[-129]", .expected = "[-128]" } } },
     { .name = "named struct results",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -700,8 +786,10 @@ static const sample samples[] = {
                 "Narrow :: (a: int8, b: uint16, c: uint, d: int16) -> int64 {\n"
                 "    x: int8 = a - 1;\n    y: uint = c / 2;\n"
                 "    return int64(x) + int64(b) * 2 + int64(y) - int64(d);\n}\n"
-                "Mixed :: (a: int8, b: byte) -> int { return a + b; }\n"
-                "Big :: (a: uint, b: int) -> int64 { return a + b; }\n"
+                "Mixed :: (a: int8, b: byte) -> int { return int(a) + int(b); "
+                "}\n"
+                "Big :: (a: uint, b: int) -> int64 { return int64(a) + "
+                "int64(b); }\n"
                 "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
                 "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
                 "int(p.a) + int(p.b); }\n",
@@ -710,6 +798,196 @@ static const sample samples[] = {
                  { .function = "Big", .arguments = "[4000000000,-1]", .expected = "[3999999999]" },
                  { .function = "Store", .arguments = "[]", .expected = "[65535]" },
                  { .function = "Make", .arguments = "[-2]", .expected = "[5]" } } },
+    { .name = "clamp label",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nClamp :: (v: int) -> byte { return byte(clamp: "
+                "v); }\n",
+      .message = "A conversion argument may only be named wrap",
+      .line = 2,
+      .column = 41 },
+    { .name = "mixed integer types",
+      .source = "package facts\nMixed :: (a: int8, b: byte) -> int { return a "
+                "+ b; }\n",
+      .message = "Mismatched integer types int8 and byte; convert one operand",
+      .line = 2,
+      .column = 45 },
+    /* Compound arithmetic rejects differing typed integers before assignment
+     * widening, both for a local and for a stored field. */
+    { .name = "mixed compound assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
+    { .name = "mixed compound field assignment",
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "b; return n.count; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
+    { .name = "compound assignment preserves contextual and explicit operands",
+      .debug_metadata = true,
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Plain :: (b: byte) -> int { a: int = 1; a = b; return a; }\n"
+                "Local :: (b: byte) -> int { a: int = 1; a += int(b); return "
+                "a; }\n"
+                "Literal :: () -> int { a: int = 1; a += 2; return a; }\n"
+                "Field :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "int(b); return n.count; }\n"
+                "FieldLiteral :: () -> int { n: Note = {count: 1}; n.count += "
+                "2; return n.count; }\n"
+                "Shift :: (a: int, count: byte) -> int { return a << count; "
+                "}\n",
+      .calls = { { .function = "Plain", .arguments = "[2]", .expected = "[2]" },
+                 { .function = "Local", .arguments = "[2]", .expected = "[3]" },
+                 { .function = "Literal", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Field", .arguments = "[2]", .expected = "[3]" },
+                 { .function = "FieldLiteral", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Shift", .arguments = "[3,1]", .expected = "[6]" } } },
+    { .name = "mixed compound reference assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Grow :: (a: ref int, b: byte) { a += b; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 33 },
+    { .name = "mixed compound reference field assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Grow :: (n: ref Note, b: byte) { n.count += b; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 34 },
+    { .name = "mixed compound boxed local assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Grow :: (b: byte) -> int { a: int = 1; Touch(a); a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
+    { .name = "mixed compound boxed parameter assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Grow :: (a: int, b: byte) -> int { Touch(a); a += b; return "
+                "a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 46 },
+    { .name = "compound reference and boxed operands preserve effects",
+      .debug_metadata = true,
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
+                "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
+                "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
+                "Ref :: () -> int { n: int = 1; Bump(n, byte(2)); return n; }\n"
+                "RefField :: () -> int { n: Note = {count: 1}; BumpField(n, "
+                "byte(2)); return n.count; }\n"
+                "Box :: () -> int { n: int = 1; Touch(n); n += int(byte(2)); "
+                "return n; }\n"
+                "BoxParam :: (n: int) -> int { Touch(n); n += 2; return n; }\n"
+                "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
+                "n.count += Source(calls); return n.count * 10 + calls; }\n"
+                "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
+                "return n; }\n"
+                "Clamp :: (v: int) -> byte { return byte(v); }\n",
+      .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
+                 { .function = "RefField", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Box", .arguments = "[]", .expected = "[3]" },
+                 { .function = "BoxParam", .arguments = "[1]", .expected = "[3]" },
+                 { .function = "Once", .arguments = "[]", .expected = "[31]" },
+                 { .function = "Bits", .arguments = "[3]", .expected = "[11]" },
+                 { .function = "Clamp", .arguments = "[300]", .expected = "[255]" } } },
+    { .name = "mixed compound bitwise assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a &= b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
+    { .name = "constant division by zero",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
+                "}\n",
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 34 },
+    { .name = "compound division by zero",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nHalve :: (a: int) -> int { b := a; b /= 0; "
+                "return b; }\n",
+      .message = "Constant division by zero",
+      .line = 2,
+      .column = 36 },
+    { .name = "folded constant outside its type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBig :: () -> int { return 1 << 32; }\n",
+      .message = "Constant value is outside the range of int",
+      .line = 2,
+      .column = 27 },
+    { .name = "conversion outside its type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: byte : byte(300);\n",
+      .message = "Constant does not fit in byte; use byte(wrap: value)",
+      .line = 2,
+      .column = 13 },
+    { .name = "negated unsigned constant",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nBad: byte : -byte(1);\n",
+      .message = "Cannot negate an unsigned constant",
+      .line = 2,
+      .column = 13 },
+    { .name = "signed shift count",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nShift :: (a: int, n: int) -> int { return a << "
+                "n; }\n",
+      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .line = 2,
+      .column = 48 },
+    /* Integer operations never fail at run time: unsigned negation wraps, a
+     * count at or past the width gives 0 and a zero divisor gives 0. */
+    { .name = "total integer operations",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Negate :: (a: byte) -> byte { return -a; }\n"
+                "Wide :: (a: uint64) -> uint64 { return -a; }\n"
+                "Far :: (a: int) -> int { return a << 40; }\n"
+                "Fill :: (a: int) -> int { return a >> 40; }\n"
+                "Divide :: (a: int, b: int) -> int { return a / b + a % b; }\n",
+      .calls = { { .function = "Negate", .arguments = "[1]", .expected = "[255]" },
+                 { .function = "Wide", .arguments = "[1]", .expected = "[18446744073709551615]" },
+                 { .function = "Far", .arguments = "[3]", .expected = "[0]" },
+                 { .function = "Fill", .arguments = "[-5]", .expected = "[-1]" },
+                 { .function = "Fill", .arguments = "[5]", .expected = "[0]" },
+                 { .function = "Divide", .arguments = "[7,0]", .expected = "[7]" } } },
+    /* An untyped constant expression that names a constant takes its type
+     * from its use, and only integer division by zero is an error. */
+    { .name = "untyped constant expressions",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Count: uint : 3;\n"
+                "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
+                "Huge :: (f: double) -> bool { return f / 0 > 1000000.0; }\n",
+      .calls = { { .function = "Eight", .arguments = "[8]", .expected = "[true]" },
+                 { .function = "Huge", .arguments = "[1]", .expected = "[true]" } } },
+    /* A shift has its left operand's type, and a count past that type's
+     * maximum clamps to it. Exact constant shifts retain the written count. */
+    { .name = "shift counts clamp",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Literal :: (a: byte) -> byte { return a << 300; }\n"
+                "Counted :: (a: byte, n: uint) -> byte { return a << n; }\n"
+                "Signed :: (a: int8, n: uint64) -> int8 { return a >> n; }\n",
+      .calls = { { .function = "Literal", .arguments = "[1]", .expected = "[0]" },
+                 { .function = "Counted", .arguments = "[1,300]", .expected = "[0]" },
+                 { .function = "Counted", .arguments = "[1,7]", .expected = "[128]" },
+                 { .function = "Signed", .arguments = "[-5,4096]", .expected = "[-1]" } } },
     /* uint64 and byte have every operator, unsigned ordering and division
      * included, as stage zero computes them. */
     { .name = "unsigned arithmetic",
@@ -968,7 +1246,7 @@ static const sample samples[] = {
           "Twice :: (v: ref int) { Bump(ref v); Bump(ref v); }\n"
           "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
           "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-          "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
+          "Grow :: (xs: ref int[]) { item: int = 7; xs = append(xs, item); }\n"
           "Inc :: (k: int) -> int { Bump(ref k); return k; }\n"
           "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(ref p.x); }\n"
           "Count :: () -> int { c: int = 2; c += 3; Bump(ref c); c = c * 2; "
@@ -1094,15 +1372,19 @@ static const sample samples[] = {
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Widened :: () -> int64 { x: int64 = 0; y: int = 1; p := &x; "
-                "x = y; p^ = y + 1; return x; }\n",
-      .calls = { { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
+                "x = y; p^ = y + 1; return x; }\n"
+                "Floated :: () -> double { x: double = 0; f: float = 1.5; p := "
+                "&x; "
+                "p^ = f; return x; }\n",
+      .calls = { { .function = "Widened", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Floated", .arguments = "[]", .expected = "[1.5]" } } },
     /* A compound assignment does not widen through a pointer: its operands
      * share one type. */
     { .name = "managed pointer compound mixed integers",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nRun :: () -> int64 {\n    x: int64 = 0;\n"
                 "    y: int = 1;\n    p := &x;\n    p^ += y;\n    return x;\n}",
-      .message = "compound assignment needs number operands of its type",
+      .message = "Mismatched integer types int64 and int; convert one operand",
       .line = 6,
       .column = 5 },
     { .name = "imported references",
@@ -1334,8 +1616,8 @@ static const sample samples[] = {
                 "Plain + lib.Step; }\n"
                 "Hidden :: () -> int { Base: int = 1; return Base; }\n"
                 "Limits :: () -> int {\n"
-                "    if (lib.Low < 0 && lib.High > 0) { return lib.High + "
-                "lib.Low; }\n"
+                "    high := lib.High;\n"
+                "    if (lib.Low < 0 && high > 0) { return high + lib.Low; }\n"
                 "    return 0;\n}\n"
                 "Scale :: () -> int { return lib.Scaled(2); }\n"
                 "Tripled :: () -> int { return Triple(2); }",
@@ -1429,26 +1711,26 @@ static const sample samples[] = {
                 "    for (item in bytes) { hash = (hash ^ uint64(item)) * "
                 "1099511628211; }\n"
                 "    return hash;\n}\n"
-                "Bytes :: () -> byte[] {\n"
+                "Bytes :: (n: int) -> byte[] {\n"
                 "    out: byte[] = [1, 2, 255];\n"
-                "    out = append(out, byte(wrap: 300));\n"
+                "    out = append(out, byte(wrap: n));\n"
                 "    out = append(out, Small);\n"
                 "    return out;\n}\n"
-                "High :: (n: int) -> int { return int(wrap: (Mask >> "
-                "56) + uint64(n)); }\n"
-                "Mixed :: (a: int, b: int64) -> int64 { return a + b; "
+                "High :: (n: int) -> int { mask := Mask; return int(wrap: "
+                "(mask >> 56) + uint64(n)); }\n"
+                "Mixed :: (a: int, b: int64) -> int64 { return int64(a) + b; "
                 "}\n"
                 "Store :: (a: int) -> int64 { x: int64 = a; x += 10; x "
                 "*= 3; return x; }\n"
                 "Narrow :: (v: int64) -> int { return int(v); }\n"
-                "Clamp :: (v: int) -> byte { return byte(clamp: v); }",
+                "Clamp :: (v: int) -> byte { return byte(v); }",
       .calls = { { .function = "Hash", .arguments = "[[1,2,3]]", .expected = "[11570874782335668893]" },
-                 { .function = "Bytes", .arguments = "[]", .expected = "[[1,2,255,44,200]]" },
+                 { .function = "Bytes", .arguments = "[300]", .expected = "[[1,2,255,44,200]]" },
                  { .function = "High", .arguments = "[1]", .expected = "[256]" },
                  { .function = "Mixed", .arguments = "[2,5000000000]", .expected = "[5000000002]" },
                  { .function = "Store", .arguments = "[4]", .expected = "[42]" },
                  { .function = "Narrow", .arguments = "[7]", .expected = "[7]" },
-                 { .function = "Narrow", .arguments = "[5000000000]", .expected = NULL },
+                 { .function = "Narrow", .arguments = "[5000000000]", .expected = "[2147483647]" },
                  { .function = "Clamp", .arguments = "[300]", .expected = "[255]" },
                  { .function = "Clamp", .arguments = "[-5]", .expected = "[0]" } } },
     { .name = "wide values",
@@ -1460,7 +1742,7 @@ static const sample samples[] = {
                 "(v << 4) | (v >> 60) & 0xF; }\n"
                 "Equal :: (a: int, b: int) -> bool { return uint64(a) "
                 "== uint64(b) && uint64(a) != 0; }\n"
-                "Twice :: () -> int64 { return Wide * 2; }\n"
+                "Twice :: () -> int64 { wide := Wide; return wide * 2; }\n"
                 "Negative :: (n: int64) -> bool { return n < 0; }\n"
                 "Mk :: (v: uint64) -> Tag { return Tag.Bits(v); }\n"
                 "Pick :: (n: int) -> uint64 {\n"
@@ -1520,7 +1802,8 @@ static const sample samples[] = {
                 "Point :: struct { x: int; y: int; }\n"
                 "Sizes :: (n: int) -> int {\n"
                 "    flags := resize([false], n);\n"
-                "    counts := resize([int(0)], n);\n"
+                "    zero: int = 0;\n"
+                "    counts := resize([zero], n);\n"
                 "    counts[0] = 7;\n"
                 "    total: int = 0;\n"
                 "    for (count in counts) { total += count; }\n"
@@ -1530,7 +1813,8 @@ static const sample samples[] = {
                 "\"yy\", \"zzz\"]; return length(words); }\n"
                 "Points :: () -> int { p: Point = {x: 1, y: 2}; points "
                 ":= [p, p]; return points[1].y + length(points); }\n"
-                "Wide :: () -> uint64 { bits := [uint64(1), 2, 0xFF]; "
+                "Wide :: () -> uint64 { one: uint64 = 1; bits := [one, 2, "
+                "0xFF]; "
                 "return bits[1] + bits[2]; }",
       .calls = { { .function = "Sizes", .arguments = "[3]", .expected = "[73]" },
                  { .function = "Words", .arguments = "[]", .expected = "[3]" },
@@ -1596,8 +1880,8 @@ static const sample samples[] = {
                 "Plain :: () -> string { return format_text(\"plain\"); "
                 "}\n"
                 "Mixed :: (flag: bool) -> string { big: uint64 = "
-                "0xFFFFFFFFFFFFFFFF; return format_text(\"{} {} {}\", flag, "
-                "big, int64(-3)); }",
+                "0xFFFFFFFFFFFFFFFF; small: int64 = -3; return "
+                "format_text(\"{} {} {}\", flag, big, small); }",
       .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
                  { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
                  { .function = "Mixed",
@@ -1650,7 +1934,7 @@ static const sample samples[] = {
                 "    stamped := Stamp(note, 7);\n"
                 "    b: byte = 3;\n"
                 "    copy.count = b;\n"
-                "    copy.count += b;\n"
+                "    copy.count += int(b);\n"
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
                 "note.count, note.open, copy.count, stamped.text, "
                 "stamped.count);\n}",
@@ -1947,7 +2231,7 @@ static const sample samples[] = {
       .line = 2,
       .column = 10 },
     { .name = "constant overflow",
-      .source = "package facts\nA: int : 65536 * 65536 / 65536;",
+      .source = "package facts\nA: int : 65536 * 65536;",
       .message = "Constant value is outside the range of int",
       .line = 2,
       .column = 10 },
@@ -2026,15 +2310,9 @@ static const sample samples[] = {
     { .name = "signed with uint64",
       .source = "package facts\nOne :: (a: int, b: uint64) -> uint64 { "
                 "return a + b; }",
-      .message = "int and uint64 operands need an explicit conversion, such as "
-                 "int(value)",
+      .message = "Mismatched integer types int and uint64; convert one operand",
       .line = 2,
       .column = 47 },
-    { .name = "unsigned negation",
-      .source = "package facts\nOne :: (a: uint64) -> uint64 { return -a; }",
-      .message = "unsupported arithmetic type",
-      .line = 2,
-      .column = 39 },
     { .name = "byte literal range",
       .source = "package facts\nOne :: () -> byte { return 256; }",
       .message = "Numeric literal is outside the range of byte",
@@ -2082,7 +2360,7 @@ static const sample samples[] = {
     { .name = "conversion name",
       .source = "package facts\nOne :: () -> byte { return byte(round: "
                 "1); }",
-      .message = "A conversion argument may only be named wrap or clamp",
+      .message = "A conversion argument may only be named wrap",
       .line = 2,
       .column = 33 },
     { .name = "floating constant",
@@ -2096,12 +2374,19 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
       .column = 31 },
+    /* Unary complements are classified as literal-shaped for debug metadata.
+     * Their folded value still needs one watch, including through grouping. */
+    { .name = "folded complement retains its watch",
+      .source = "package facts\nOne :: () -> int { return ~0; }\n"
+                "Grouped :: () -> int { return (~0); }",
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[-1]" } } },
+    /* An untyped operand of a conversion is int64, or uint64 beyond it,
+     * in parentheses too. */
     { .name = "wrapped literal in parentheses",
       .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
-      .message = "Numeric literal is outside the range of int64",
-      .line = 2,
-      .column = 38 },
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" } } },
     { .name = "untyped empty array",
       .source = "package facts\nOne :: () -> int { xs := []; return "
                 "length(xs); }",
@@ -2247,6 +2532,41 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
+    /* Authored constant support boundaries. Stage zero accepts some of these
+     * forms; require the authored diagnostic at the operand, not parity with
+     * stage zero or an earlier unsupported-declaration failure. */
+    { .name = "floating constant cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: uint64 : "
+                "uint64(Wide);\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 3,
+      .column = 22 },
+    { .name = "floating constant cannot wrap into integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: int : int(wrap: "
+                "Wide);\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 3,
+      .column = 22 },
+    { .name = "floating conversion cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBad: uint64 : uint64(double(1.5));\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 2,
+      .column = 22 },
+    { .name = "floating shift count cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: int : 1 << Wide;\n",
+      .message = "constant value must be an integer expression",
+      .line = 3,
+      .column = 17 },
+    { .name = "floating binary constant initializer remains unsupported",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBad: double : 1.0 + 2.0;\n",
+      .message = "floating constant initializer is not supported yet",
+      .line = 2,
+      .column = 15 },
 };
 enum
 {
@@ -3430,7 +3750,12 @@ static bool literals_agree()
 }
 /* The packages of a closure, linked against the compiler host's natives,
  * which `native` holds; NULL when it does not load. */
-static package_collection *read_packages(const unsigned char *bytes, size_t length, native_capabilities **native)
+static package_collection *read_packages(
+    const unsigned char *bytes,
+    size_t length,
+    native_capabilities **native,
+    behavior_backend backend
+)
 {
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,
@@ -3451,7 +3776,7 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
         bytes,
         length,
         &linker,
-        BEHAVIOR_BYTECODE,
+        backend,
         &remaining,
         &root,
         error,
@@ -3461,6 +3786,189 @@ static package_collection *read_packages(const unsigned char *bytes, size_t leng
         fprintf(stderr, "package compiler load: %s\n", error);
     }
     return packages;
+}
+/* The receiver input must be captured before the authored item call. Comparing
+ * watch sets alone cannot detect a watch moved across that call. Each fixture
+ * function has exactly one update and one authored invocation. */
+static bool array_update_order(const unsigned char *bytes, size_t length, const sample *s)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    for (int c = 0; c < CALLS && s->calls[c].function; c++) {
+        const behavior_function *body = NULL;
+        for (int p = 0; p < package_collection_count(packages); p++) {
+            const execution_module *module = package_collection_module(packages, p);
+            for (int f = 0; f < module->plan.function_count; f++) {
+                if (module->plan.functions[f].id == function_id(s->calls[c].function)) {
+                    body = module->plan.functions[f].body;
+                }
+            }
+        }
+        REQUIRE(body);
+        int receiver = -1, item = -1, invocation = -1;
+        for (int pc = 0; pc < acount(body->instructions); pc++) {
+            const behavior_function_instruction *op = &body->instructions[pc];
+            if (op->op == BF_INVOKE) {
+                REQUIRE(invocation < 0);
+                invocation = pc;
+            }
+            if (op->op != BF_SOURCE_WATCH) {
+                continue;
+            }
+            const behavior_source_watch *watch = &body->source_watches[op->target];
+            if (watch->output) {
+                continue;
+            }
+            if (watch->ordinal == 0 && watch->initial.container == PIN_CONTAINER_ARRAY) {
+                REQUIRE(receiver < 0);
+                receiver = pc;
+            }
+            if (watch->ordinal == 1) {
+                REQUIRE(item < 0);
+                item = pc;
+            }
+        }
+        if (!(receiver >= 0 && receiver < invocation && invocation < item)) {
+            fprintf(
+                stderr,
+                "%s debug order: receiver %d, invocation %d, item %d\n",
+                s->calls[c].function,
+                receiver,
+                invocation,
+                item
+            );
+        }
+        REQUIRE(receiver >= 0 && receiver < invocation && invocation < item);
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    return true;
+}
+typedef struct
+{
+    const behavior_function *item;
+    int start, end, step;
+    bool valid;
+} array_update_trace;
+static int array_update_pause(void *user, behavior_function_context *context, const behavior_source_point *point)
+{
+    array_update_trace *trace = user;
+    if (context->source_function == trace->item &&
+        point->kind == BEHAVIOR_SOURCE_FUNCTION && !point->completion) {
+        trace->valid &= trace->step == 1;
+        trace->step++;
+    }
+    return 0;
+}
+static void array_update_capture(
+    void *user,
+    behavior_function_context *,
+    const behavior_source_watch *watch,
+    const pin_value *value
+)
+{
+    array_update_trace *trace = user;
+    if (watch->origin.start != trace->start || watch->origin.end != trace->end) {
+        return;
+    }
+    if (!value) {
+        trace->valid = false;
+        return;
+    }
+    if (!watch->output && watch->ordinal == 1) {
+        trace->valid &= trace->step == 2 && value->type == PIN_I32 &&
+                        value->container == PIN_CONTAINER_SINGLE && value->i == 7;
+        trace->step++;
+        return;
+    }
+    const pin_array *array = value->ptr;
+    bool valid = value->type == PIN_I32 && value->container == PIN_CONTAINER_ARRAY &&
+                 array && array->count == (watch->output ? 2 : 1);
+    if (valid) {
+        valid = pin_array_get(array, 0).i == 1 &&
+                (!watch->output || pin_array_get(array, 1).i == 7);
+    }
+    trace->valid &= valid && watch->ordinal == 0 &&
+                    trace->step == (watch->output ? 3 : 0);
+    trace->step++;
+}
+/* Observe actual delivery as well as emitted order. Payload pointers belong
+ * to the invocation; the callbacks retain only their checked literal values. */
+static bool observes_array_update(const unsigned char *bytes, size_t length, const sample *s)
+{
+    const char *call = "append(xs, Item())";
+    const char *start = strstr(s->source, call);
+    REQUIRE(start);
+    for (int backend = 0; backend < 2; backend++) {
+        native_capabilities *native;
+        package_collection *packages = read_packages(
+            bytes,
+            length,
+            &native,
+            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE
+        );
+        REQUIRE(packages);
+        const behavior_function *body = NULL, *item = NULL;
+        for (int p = 0; p < package_collection_count(packages); p++) {
+            const execution_module *module = package_collection_module(packages, p);
+            for (int f = 0; f < execution_module_function_count(module); f++) {
+                execution_module_function_info info = execution_module_function_at(module, f);
+                if (info.id == function_id("AppendLocal")) {
+                    body = info.body;
+                }
+                if (info.id == function_id("Item")) {
+                    item = info.body;
+                }
+            }
+        }
+        REQUIRE(body && item);
+        array_update_trace trace = { .item = item,
+                                     .start = (int)(start - s->source),
+                                     .end = (int)(start - s->source + strlen(call)),
+                                     .valid = true };
+        arena storage = { 0 };
+        pin_value result = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+        behavior_function_activation activation = { 0 };
+        bool resumable = behavior_function_resumable(body);
+        if (resumable) {
+            behavior_function_activation_init(body, &activation);
+        }
+        behavior_function_prepare_results(body, &result, &storage);
+        behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                              .results = &result,
+                                              .budget = TARGET_BUDGET,
+                                              .source_debug_user = &trace,
+                                              .source_pause = array_update_pause,
+                                              .source_capture = array_update_capture };
+        behavior_function_bind_storage(&context, &storage);
+        bool bound = behavior_function_bind(body, &context, NULL, 0);
+        behavior_run_scope runs = { 0 };
+        behavior_run_scope_begin(&runs);
+        int status = bound ? behavior_function_run(body, &context, backend != 0)
+                           : FLOW_ERR_ARGUMENT;
+        behavior_run_scope_end(&runs);
+        const pin_array *array = result.ptr;
+        bool valid = status == FLOW_OK && context.returned && trace.valid &&
+                     trace.step == 4 && array && array->count == 2 &&
+                     pin_array_get(array, 0).i == 1 &&
+                     pin_array_get(array, 1).i == 7;
+        behavior_function_release_host(&context);
+        behavior_function_activation_free(&activation);
+        arena_free(&storage);
+        package_collection_free(packages);
+        native_capabilities_free(native);
+        REQUIRE(valid);
+        REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+        REQUIRE(backend != 0 || runs.counts.bytecode_entries > 0);
+        if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_SLJIT) {
+            REQUIRE(runs.counts.inspected_sljit_entries > 0 && !runs.counts.bytecode_entries);
+        }
+        if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_WASM) {
+            REQUIRE(runs.counts.inspected_wasm_entries > 0);
+        }
+    }
+    return true;
 }
 /* Compare serialized function flags, independently of the runtime's derived
  * effect summary. Direct, recursive and imported HOST callers must retain it. */
@@ -3503,7 +4011,7 @@ static bool same_host_effects(const execution_module *expected, const execution_
 static bool points_like_oracle(const unsigned char *bytes, size_t length, bool host_effects)
 {
     native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native);
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
     REQUIRE(packages);
     const authoring_packages *owner = oracle.owners[0];
     bool alike = package_collection_count(packages) == authoring_packages_count(owner);
@@ -3647,6 +4155,9 @@ static bool run_samples(sample_group group, int b)
         const pin_union *value = out.ptr;
         REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
+            if (value->tag != tag(b, "Rejected")) {
+                fprintf(stderr, "package compiler %s: accepted\n", s->name);
+            }
             REQUIRE(value->tag == tag(b, "Rejected"));
             pin_value message, line, column;
             REQUIRE(get(&value->values[0], "message", &message));
@@ -3702,7 +4213,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   ((b && !s->host_effects) ||
+                   ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
@@ -3711,8 +4222,38 @@ static bool run_samples(sample_group group, int b)
             }
             ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
+        if (ran && s->update_order) {
+            ran = (b || array_update_order(expected, expected_length, s)) &&
+                  array_update_order(bytes, length, s) &&
+                  observes_array_update(bytes, length, s);
+            pin_value args[ARGUMENTS], closure;
+            REQUIRE(arguments(b, false, inputs, count, args));
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "CompileClosure",
+                args,
+                ARGUMENTS,
+                COMPILE_BUDGET,
+                &detached,
+                &closure
+            ));
+            const pin_array *array = closure.ptr;
+            REQUIRE(closure.type == PIN_U8 && closure.container == PIN_CONTAINER_ARRAY && array);
+            REQUIRE(length > 0 && (size_t)array->count == length);
+            bool same = true;
+            for (size_t i = 0; i < length; i++) {
+                same &= array->items[i].u8 == bytes[i];
+            }
+            arena_free(&detached);
+            REQUIRE(same);
+        }
         free(bytes);
         free(expected);
+        if (!ran) {
+            fprintf(stderr, "package compiler %s: differs\n", s->name);
+        }
         REQUIRE(ran);
     }
     return true;
@@ -3722,7 +4263,7 @@ static bool run_samples(sample_group group, int b)
 TEST_CASE(package_compiler_omits_debug_info)
 {
     REQUIRE(prepare());
-    const char *const names[] = { "loops", "control" };
+    const char *const names[] = { "loops", "control", "array update debug order" };
     for (size_t n = 0; n < sizeof names / sizeof *names; n++) {
         const sample *s = samples;
         while (strcmp(s->name, names[n])) {
@@ -3742,7 +4283,7 @@ TEST_CASE(package_compiler_omits_debug_info)
         unsigned char *bytes = closure_bytes(value, &length);
         arena_free(&detached);
         native_capabilities *native;
-        package_collection *packages = read_packages(bytes, length, &native);
+        package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
         REQUIRE(packages);
         int debug = 0;
         for (int p = 0; p < package_collection_count(packages); p++) {
@@ -3809,7 +4350,7 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
             unsigned char *bytes = closure_bytes(value, &length);
             arena_free(&detached);
             native_capabilities *native;
-            package_collection *packages = read_packages(bytes, length, &native);
+            package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
             REQUIRE(packages);
             int checked = 0;
             for (int p = 0; p < package_collection_count(packages); p++) {
@@ -3841,6 +4382,122 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
     }
     return true;
 }
+static bool approved_float_conversion_admission(int compiler, bool constants)
+{
+    bool agreed = true;
+    for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
+         i++) {
+        const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
+        if (item->constant != constants) {
+            continue;
+        }
+        source_package_input source = { "facts/Main.chibi",
+                                        item->source,
+                                        strlen(item->source) };
+        pin_value out;
+        REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
+        bool accepted = value->tag == tag(compiler, "Compiled");
+        if (!accepted) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(line.type == PIN_I32 && column.type == PIN_I32);
+            fprintf(
+                stderr,
+                "FLOAT_REJECTION stage1 %s %d:%d %s\n",
+                item->name,
+                line.i,
+                column.i,
+                pin_text(message).bytes
+            );
+            if (!item->accepted) {
+                if (!item->stage_one.message) {
+                    REQUIRE(item->constant);
+                    fprintf(
+                        stderr,
+                        "FLOAT_DEPENDENCY_BLOCKED %s: typed-constant narrowing "
+                        "category is pending; rejection is not policy proof\n",
+                        item->name
+                    );
+                    agreed = false;
+                } else if (
+                    strcmp(pin_text(message).bytes, item->stage_one.message) ||
+                    line.i != item->stage_one.line ||
+                    column.i != item->stage_one.column
+                ) {
+                    fprintf(
+                        stderr,
+                        "FLOAT_REJECTION_MISMATCH stage1 %s expected %d:%d "
+                        "%s\n",
+                        item->name,
+                        item->stage_one.line,
+                        item->stage_one.column,
+                        item->stage_one.message
+                    );
+                    agreed = false;
+                }
+            }
+        }
+        if (accepted != item->accepted) {
+            fprintf(
+                stderr,
+                "stage-one floating admission %s: expected %s, got %s\n",
+                item->name,
+                item->accepted ? "accepted" : "rejected",
+                accepted ? "accepted" : "rejected"
+            );
+            if (!accepted) {
+                pin_value message;
+                REQUIRE(get(&value->values[0], "message", &message));
+                fprintf(stderr, "  %s\n", pin_text(message).bytes);
+            }
+            agreed = false;
+        }
+        if (accepted && item->accepted) {
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
+            arena_free(&detached);
+            sample_call call = { .function = "Fold",
+                                 .arguments = item->arguments,
+                                 .expected = item->expected };
+            bool ran = true;
+            for (int backend = 0; backend < 2; backend++) {
+                ran = run(bytes, length, &call, backend) && ran;
+                compiler_host_free(host);
+                host = NULL;
+                free(result.json);
+                result = (compiler_host_result){ 0 };
+            }
+            free(bytes);
+            agreed = ran && agreed;
+        }
+        arena_free(&detached);
+    }
+    REQUIRE(agreed);
+    return true;
+}
+
+/* The literal diagnostics also hold in the independent stage-zero frontend,
+ * including reference and boxed targets and record fields. */
+TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero)
+{
+    REQUIRE(prepare());
+    int checked = 0;
+    for (int i = 0; i < (int)SAMPLES; i++) {
+        const sample *s = &samples[i];
+        if (!strncmp(s->name, "mixed compound ", strlen("mixed compound "))) {
+            REQUIRE(s->message);
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            checked++;
+        }
+    }
+    REQUIRE(checked == 7);
+    return true;
+}
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -3867,11 +4524,23 @@ TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
-    return run_samples(IMPORT_SAMPLES, 0);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 0));
+    return approved_float_conversion_admission(0, false);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 {
-    return run_samples(IMPORT_SAMPLES, 1);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 1));
+    return approved_float_conversion_admission(1, false);
+}
+TEST_CASE(package_compiler_float_constant_dependency)
+{
+    REQUIRE(prepare());
+    return approved_float_conversion_admission(0, true);
+}
+TEST_CASE(package_compiler_float_constant_dependency_compiled)
+{
+    REQUIRE(prepare());
+    return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -4053,6 +4722,40 @@ static bool stage_two_samples()
  * the compiler host, compiles the same packages to the same bytes, every
  * sample as stage one does, and reads the listed floating literals as stage
  * one does. */
+/* The functions of the package compiler's module `p` that copy their
+ * arguments, other than those that run once per compile, each reported. */
+static int copying_functions(const execution_module_plan *p)
+{
+    const char *const once[] = { "Compile",
+                                 "CompileClosure",
+                                 "CompileWithEffects",
+                                 "CompileClosureWithEffects",
+                                 "CompileBehavior",
+                                 "CompileBehaviors",
+                                 "BehaviorRejection",
+                                 "CollectScalar",
+                                 "Declare",
+                                 "DeclarePackage" };
+    int copying = 0;
+    for (int i = 0; i < p->function_count; i++) {
+        const behavior_function *body = p->functions[i].body;
+        bool allowed = false;
+        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
+            char name[128];
+            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
+            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
+        }
+        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
+            fprintf(
+                stderr,
+                "package compiler function %016llx copies its arguments\n",
+                (unsigned long long)p->functions[i].id
+            );
+            copying++;
+        }
+    }
+    return copying;
+}
 TEST_CASE(package_compiler_compiles_itself)
 {
     REQUIRE(prepare());
@@ -4158,11 +4861,16 @@ TEST_CASE(package_compiler_compiles_itself)
             at
         );
     }
+    /* Stage one's build of the compiler shares arguments as stage zero's
+     * does: a function that copies them made stage two compile itself 20
+     * times slower. */
+    int copying = copying_functions(&compiler_host_root(host)->plan);
     bool seeded = same && write_seed(stage_two, length, json, json_length);
     free(again.bytes);
     free(stage_two);
     free(json);
     REQUIRE(same);
+    REQUIRE(copying == 0);
     REQUIRE(seeded);
     return stage_two_samples() && stage_two_literals();
 }
@@ -4223,7 +4931,8 @@ static const behavior_sample behavior_samples[] = {
       "        active = !active\n"
       "        count += 1\n"
       "        angle += 0.5\n"
-      "        if active { self.Spot.x = count; } else { self.Spot.x = angle; "
+      "        if active { self.Spot.x = count; } else { self.Spot.x = "
+      "float(angle); "
       "}\n"
       "    }\n}\n" },
     { "EntityState",
@@ -5245,36 +5954,11 @@ static bool takes_project_identities(int b)
 TEST_CASE(package_compiler_shares_its_arguments)
 {
     REQUIRE(prepare());
-    const char *const once[] = { "Compile",
-                                 "CompileClosure",
-                                 "CompileWithEffects",
-                                 "CompileClosureWithEffects",
-                                 "CompileBehavior",
-                                 "CompileBehaviors",
-                                 "BehaviorRejection",
-                                 "Declare",
-                                 "DeclarePackage" };
-    const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
-                                          ->module->plan;
-    int copying = 0;
-    for (int i = 0; i < p->function_count; i++) {
-        const behavior_function *body = p->functions[i].body;
-        bool allowed = false;
-        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
-            char name[128];
-            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
-            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
-        }
-        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
-            fprintf(
-                stderr,
-                "package compiler function %016llx copies its arguments\n",
-                (unsigned long long)p->functions[i].id
-            );
-            copying++;
-        }
-    }
-    REQUIRE(copying == 0);
+    REQUIRE(
+        copying_functions(
+            &compiler_fixture_package(&fixture, 1, PACKAGE)->module->plan
+        ) == 0
+    );
     return true;
 }
 /* The behavior samples from `first` before `last` compile alike on both
@@ -5436,6 +6120,11 @@ static const char GUARD_SOURCE[] = "package scalar\n"
                                    "    return b;\n"
                                    "}\n"
                                    "Id :: (x: int) -> int { return x; }\n";
+/* Calc(3, 4) is -(3 + 4) * ~4, which is 35. */
+static const char ARITHMETIC_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Calc(3, 4); }\n"
+         "Calc :: (a: int, b: int) -> int { return -(a + b) * ~b; }\n";
 /* scalar_facts row kinds and types. */
 enum
 {
@@ -5450,6 +6139,8 @@ enum
     SCALAR_CALL_ROW = 8,
     SCALAR_GUARD_ROW = 9,
     SCALAR_COMPARE_ROW = 10,
+    SCALAR_ARITHMETIC_ROW = 11,
+    SCALAR_UNARY_ROW = 12,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2
 };
@@ -5495,6 +6186,23 @@ typedef struct malformed_guard
 #define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
 static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its int operands",
                   SEGMENT[] = "invalid scalar return row";
+/* The kind of each of ARITHMETIC_SOURCE's rows, and the rows edited. */
+static const int ARITHMETIC_KINDS[] = {
+    SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW,   SCALAR_PARAMETER_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,     SCALAR_READ_ROW,
+    SCALAR_READ_ROW,      SCALAR_ARITHMETIC_ROW, SCALAR_UNARY_ROW,
+    SCALAR_READ_ROW,      SCALAR_UNARY_ROW,      SCALAR_ARITHMETIC_ROW,
+};
+enum
+{
+    ARITHMETIC_SECOND_READ = 12,
+    ARITHMETIC_ADD = 13,
+    ARITHMETIC_NEGATE = 14,
+    ARITHMETIC_LAST_READ = 15,
+    ARITHMETIC_ROWS = (int)(sizeof ARITHMETIC_KINDS / sizeof *ARITHMETIC_KINDS)
+};
 static const malformed_guard MALFORMED_GUARDS[] = {
     /* A guard with no condition, and a second guard past the bound. */
     { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
@@ -5534,6 +6242,26 @@ static const malformed_guard MALFORMED_GUARDS[] = {
         EDIT(GUARD_ID_READ, "value", 0),
         { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
       "scalar module calls are recursive" },
+};
+/* Arithmetic's operator, arity and result, and arithmetic on a bool. */
+static const char
+    ARITHMETIC[] = "scalar arithmetic differs from its int operands";
+static const malformed_guard MALFORMED_ARITHMETIC[] = {
+    { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "value", 9) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "count", 1) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "type", SCALAR_BOOL) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_NEGATE, "value", 0) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_NEGATE, "value", 3) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_NEGATE, "count", 2) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_SECOND_READ, "kind", SCALAR_LITERAL_ROW),
+        EDIT(ARITHMETIC_SECOND_READ, "type", SCALAR_BOOL),
+        EDIT(ARITHMETIC_SECOND_READ, "value", 1) },
+      ARITHMETIC },
+    { { EDIT(ARITHMETIC_LAST_READ, "kind", SCALAR_LITERAL_ROW),
+        EDIT(ARITHMETIC_LAST_READ, "type", SCALAR_BOOL),
+        EDIT(ARITHMETIC_LAST_READ, "value", 0) },
+      ARITHMETIC },
 };
 #undef EDIT
 #undef COPY
@@ -5597,29 +6325,37 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
     }
     return true;
 }
-/* scalar_llvm accepts the producer's guarded rows, rejects each malformed
- * variant of them when its layout, comparison, condition, ranges or calls are
- * not what a producer gives, and emits nothing for it. */
-static bool rejects_malformed_guards(int b, pin_value *rows)
+/* scalar_llvm accepts the producer's rows, of the `kinds` it gives, rejects
+ * each malformed variant of them when its layout, operators, operand types,
+ * ranges or calls are not what a producer gives, and emits nothing for it. */
+static bool rejects_malformed(
+    int b,
+    pin_value *rows,
+    const int *kinds,
+    int count,
+    const malformed_guard *malformed,
+    int variants
+)
 {
-    REQUIRE(((const pin_array *)rows->ptr)->count == GUARD_ROWS);
-    for (int i = 0; i < GUARD_ROWS; i++) {
-        REQUIRE(scalar_field(guard_row(rows, i), "kind").i == GUARD_KINDS[i]);
+    REQUIRE(((const pin_array *)rows->ptr)->count == count);
+    for (int i = 0; i < count; i++) {
+        REQUIRE(scalar_field(guard_row(rows, i), "kind").i == kinds[i]);
     }
     REQUIRE(validated(b, rows, ""));
-    for (size_t i = 0; i < sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS; i++) {
-        REQUIRE(rejects_guard(b, rows, &MALFORMED_GUARDS[i]));
+    for (int i = 0; i < variants; i++) {
+        REQUIRE(rejects_guard(b, rows, &malformed[i]));
     }
     REQUIRE(validated(b, rows, ""));
     return true;
 }
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
- * them as LLVM IR that keeps the call, and validates guarded rows. */
+ * them as LLVM IR that keeps the call, and validates guarded and arithmetic
+ * rows. */
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2], guarded[2];
+    pin_value produced[2], guarded[2], computed[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -5633,6 +6369,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(GUARD_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &guarded[b])
+        );
+        args[2] = text(ARITHMETIC_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &computed[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -5674,7 +6414,22 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
                       strstr(ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)");
         free(ir);
         REQUIRE(called);
-        REQUIRE(rejects_malformed_guards(b, &guarded[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &guarded[b],
+            GUARD_KINDS,
+            GUARD_ROWS,
+            MALFORMED_GUARDS,
+            (int)(sizeof MALFORMED_GUARDS / sizeof *MALFORMED_GUARDS)
+        ));
+        REQUIRE(rejects_malformed(
+            b,
+            &computed[b],
+            ARITHMETIC_KINDS,
+            ARITHMETIC_ROWS,
+            MALFORMED_ARITHMETIC,
+            (int)(sizeof MALFORMED_ARITHMETIC / sizeof *MALFORMED_ARITHMETIC)
+        ));
     }
     return true;
 }
@@ -6049,7 +6804,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 30
+    SCALAR_ACCEPTED_CASES = 34
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -6099,6 +6854,20 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "bare_condition", "Positive", 1, { INT32_MIN }, 0 },
     { "bare_condition", "Positive", 1, { 0 }, 0 },
     { "bare_condition", "Positive", 1, { INT32_MAX }, INT32_MAX },
+    { "int_operators", "Mix", 3, { 3, 4, 5 }, 37 },
+    { "int_operators", "Mix", 3, { 4, 3, 5 }, 4 },
+    /* (a + b) * c wraps to -6, and -c % 3 is -2. */
+    { "int_operators", "Mix", 3, { INT32_MAX - 1, INT32_MAX, 2 }, -4 },
+    /* The folded constant is 2^30; only the sum with x wraps. */
+    { "arithmetic", "Half", 1, { 0 }, 1073741824 },
+    { "arithmetic", "Half", 1, { INT32_MAX }, -1073741825 },
+    { "folded_operand", "Add", 1, { INT32_MAX }, -1073741825 },
+    /* The guard compares with 2^29, not the -2^29 wrapping rows give. */
+    { "folded_guard", "Pick", 1, { 0 }, 0 },
+    { "folded_guard", "Pick", 1, { 536870912 }, 0 },
+    { "folded_guard", "Pick", 1, { 536870913 }, INT32_MAX },
+    { "wrapped_operand", "Half", 1, { 1 }, 1 },
+    { "wrapped_operand", "Half", 1, { -3 }, -1 },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
@@ -6113,7 +6882,7 @@ enum
     PROBES = (int)(sizeof SCALAR_PROBES / sizeof *SCALAR_PROBES),
     COMPARISON_COUNT = (int)(sizeof COMPARISONS / sizeof *COMPARISONS),
     PAIRS = (int)(sizeof COMPARED / sizeof *COMPARED),
-    MAX_CASE_PROBES = 64
+    MAX_CASE_PROBES = 160
 };
 static int32_t compared(int comparison, int32_t a, int32_t b)
 {
@@ -6126,6 +6895,46 @@ static int32_t compared(int comparison, int32_t a, int32_t b)
         default: return a != b;
     }
 }
+/* llvm_native's integer operations, by the name the corpus's int_operators
+ * case gives each one's function. */
+static const struct
+{
+    const char *name;
+    int op, parameters;
+} TOTAL_OPERATIONS[] = {
+    { "Add", 7, 2 },     { "Sub", 8, 2 },    { "Mul", 9, 2 },
+    { "Div", 10, 2 },    { "Mod", 11, 2 },   { "Neg", 12, 1 },
+    { "BitAnd", 13, 2 }, { "BitOr", 14, 2 }, { "BitXor", 15, 2 },
+    { "BitNot", 16, 1 }, { "Shl", 17, 2 },   { "Shr", 18, 2 },
+};
+static const int32_t TOTAL_VALUES[] = { INT32_MIN, -7, -1, 0,
+                                        1,         31, 32, INT32_MAX };
+enum
+{
+    TOTAL_OPERATION_COUNT = (int)(sizeof TOTAL_OPERATIONS / sizeof *TOTAL_OPERATIONS),
+    TOTAL_VALUE_COUNT = (int)(sizeof TOTAL_VALUES / sizeof *TOTAL_VALUES),
+    /* INT32_MIN, -7, -1 and 0. */
+    INT_OPERANDS = 4
+};
+/* The language's integer contract for operation `op`: nothing fails. */
+static int32_t total(int op, int32_t a, int32_t b)
+{
+    uint32_t x = (uint32_t)a, y = (uint32_t)b;
+    switch (op) {
+        case 7: return (int32_t)(x + y);
+        case 8: return (int32_t)(x - y);
+        case 9: return (int32_t)(x * y);
+        case 10: return !b ? 0 : b == -1 ? (int32_t)(0u - x) : a / b;
+        case 11: return !b ? a : b == -1 ? 0 : a % b;
+        case 12: return (int32_t)(0u - x);
+        case 13: return a & b;
+        case 14: return a | b;
+        case 15: return a ^ b;
+        case 16: return ~a;
+        case 17: return y >= 32 ? 0 : (int32_t)(x << y);
+        default: return y >= 32 ? (a < 0 ? -1 : 0) : a >> y;
+    }
+}
 /* The probes of one corpus case. */
 static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
 {
@@ -6133,6 +6942,22 @@ static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
     for (int i = 0; i < PROBES; i++) {
         if (!strcmp(SCALAR_PROBES[i].source_case, name)) {
             probes[count++] = SCALAR_PROBES[i];
+        }
+    }
+    /* Each int operator but the shifts, which the corpus does not admit, on
+     * the first values of TOTAL_VALUES. */
+    for (int k = 0; !strcmp(name, "int_operators") && k < TOTAL_OPERATION_COUNT - 2;
+         k++) {
+        int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? INT_OPERANDS : 1;
+        for (int i = 0; i < INT_OPERANDS; i++) {
+            for (int j = 0; j < rights; j++) {
+                int32_t a = TOTAL_VALUES[i], b = n == 2 ? TOTAL_VALUES[j] : 0;
+                probes[count++] = (scalar_probe){ "int_operators",
+                                                  TOTAL_OPERATIONS[k].name,
+                                                  n,
+                                                  { a, b },
+                                                  total(TOTAL_OPERATIONS[k].op, a, b) };
+            }
         }
     }
     for (int c = 0; !strcmp(name, "operators") && c < COMPARISON_COUNT; c++) {
@@ -6442,6 +7267,15 @@ static bool vm_value(const char *function, const char *json, int32_t *out)
         TARGET_BUDGET,
         &result
     );
+    if (!valid || result.flow_status != FLOW_OK) {
+        fprintf(
+            stderr,
+            "scalar closure %s%s failed with status %d\n",
+            function,
+            json,
+            result.flow_status
+        );
+    }
     REQUIRE(valid && result.flow_status == FLOW_OK);
     /* The host's result is the JSON array of the function's one result. */
     if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
@@ -6865,6 +7699,61 @@ static bool emitted_ir(int b, pin_value *rows, char **ir)
     (*ir)[bytes->count] = 0;
     return true;
 }
+/* `source`'s producer rows from CollectScalar on VM b. */
+static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
+{
+    pin_value args[] = { text("/project"),
+                         text("Scalar.chibi"),
+                         source,
+                         { 0 },
+                         instruction_names() };
+    REQUIRE(target(b, &args[3]));
+    bool collected = compiler_fixture_call(
+        &fixture,
+        b,
+        PACKAGE,
+        "CollectScalar",
+        args,
+        5,
+        COMPILE_BUDGET,
+        &detached,
+        rows
+    );
+    if (!collected) {
+        fprintf(stderr, "scalar case %s: CollectScalar failed\n", case_name);
+    }
+    REQUIRE(collected);
+    return true;
+}
+/* An accepted module, `ir` its IR, which this frees: each of its calls must
+ * give one value on both VMs and natively at O0 and O2. */
+static bool module_agrees(
+    const char *directory,
+    int b,
+    const char *case_name,
+    pin_string source,
+    const pin_value *rows,
+    char *ir,
+    int32_t expected,
+    scalar_call calls[MAX_CASE_CALLS]
+)
+{
+    REQUIRE(keeps_guards(case_name, ir));
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(b, source, &closure, &length));
+    int count = case_calls(case_name, rows, expected, calls);
+    bool ran = vm_values(closure, length, calls, count) &&
+               native_values(directory, case_name, rows, ir, calls, count);
+    bool agree = ran && calls_agree(case_name, calls, count);
+    if (agree && !strcmp(case_name, "lazy_arm")) {
+        agree = observes_lazy_arm(directory, rows, ir);
+    }
+    free(closure);
+    free(ir);
+    REQUIRE(agree);
+    return true;
+}
 /* Case `index` of the corpus: its producer rows on VM b must be what the case
  * expects, and an accepted module must run natively as it does on both VMs. */
 static bool scalar_case_agrees(const char *directory, int index, int *accepted, int *deep)
@@ -6882,15 +7771,7 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     REQUIRE(
         compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
     );
-    pin_value args[] = { text("/project"),
-                         text("Scalar.chibi"),
-                         source,
-                         { 0 },
-                         instruction_names() };
-    REQUIRE(target(b, &args[3]));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
-    );
+    REQUIRE(collected_rows(b, case_name, source, &rows));
     REQUIRE(
         compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
     );
@@ -6911,21 +7792,113 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     );
     REQUIRE(expected.type == PIN_I32);
     ++*accepted;
-    REQUIRE(keeps_guards(case_name, ir));
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(vm_closure(b, pin_text(source), &closure, &length));
     scalar_call calls[MAX_CASE_CALLS];
-    int count = case_calls(case_name, &rows, expected.i, calls);
-    bool ran = vm_values(closure, length, calls, count) &&
-               native_values(directory, case_name, &rows, ir, calls, count);
-    bool agree = ran && calls_agree(case_name, calls, count);
-    if (agree && !strcmp(case_name, "lazy_arm")) {
-        agree = observes_lazy_arm(directory, &rows, ir);
+    return module_agrees(
+        directory,
+        b,
+        case_name,
+        pin_text(source),
+        &rows,
+        ir,
+        expected.i,
+        calls
+    );
+}
+/* A scalar module with a constant expression the ordinary compiler folds
+ * exactly, and the value its Main gives. They stay out of the 96-source
+ * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each one:
+ * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
+static const struct
+{
+    const char *name, *source;
+    int32_t entry;
+} FOLDED_SOURCES[] = {
+    { "folded_return",
+      "package scalar\nMain :: () -> int { return (2147483647 + 1) / 2; }\n",
+      1073741824 },
+    { "folded_square", "package scalar\nMain :: () -> int { return (2147483647 * 2147483647) / 2147483647; }\n", INT32_MAX },
+    { "folded_operand",
+      "package scalar\nMain :: () -> int { return Add(1); }\n"
+      "Add :: (x: int) -> int { return x + ((2147483647 + 1) / 2); }\n",
+      1073741825 },
+    /* In an argument, a guard's condition and its arm. */
+    { "folded_guard",
+      "package scalar\nMain :: () -> int { return Pick(Id((2147483647 + 1) / "
+      "2)); }\n"
+      "Id :: (x: int) -> int { return x; }\n"
+      "Pick :: (x: int) -> int {\n"
+      "    if (x > (2147483647 + 1) / 4) { return (2147483647 * 2147483647) / "
+      "2147483647; }\n"
+      "    return 0;\n"
+      "}\n",
+      INT32_MAX },
+    /* Not constant: the sum wraps at run time. */
+    { "wrapped_operand",
+      "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
+      "Half :: (x: int) -> int { return (x + 1) / 2; }\n",
+      -1073741824 },
+};
+enum
+{
+    FOLDED_SOURCE_COUNT = (int)(sizeof FOLDED_SOURCES / sizeof *FOLDED_SOURCES)
+};
+/* Each folded source is accepted, and its Main gives its value on both VMs
+ * and natively at O0 and O2. */
+static bool folded_sources_agree(const char *directory)
+{
+    for (int i = 0; i < FOLDED_SOURCE_COUNT && !native_cancelled; i++) {
+        int b = i % 2;
+        const char *name = FOLDED_SOURCES[i].name;
+        pin_value rows;
+        REQUIRE(collected_rows(b, name, text(FOLDED_SOURCES[i].source), &rows));
+        char *ir;
+        REQUIRE(emitted_ir(b, &rows, &ir));
+        if (!ir) {
+            fprintf(stderr, "scalar case %s: rejected\n", name);
+        }
+        REQUIRE(ir);
+        scalar_call calls[MAX_CASE_CALLS];
+        pin_string source = { FOLDED_SOURCES[i].source,
+                              strlen(FOLDED_SOURCES[i].source) };
+        REQUIRE(module_agrees(
+            directory,
+            b,
+            name,
+            source,
+            &rows,
+            ir,
+            FOLDED_SOURCES[i].entry,
+            calls
+        ));
+        if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
+            fprintf(
+                stderr,
+                "scalar case %s: Main gave %d, not %d\n",
+                name,
+                calls[0].values[0],
+                FOLDED_SOURCES[i].entry
+            );
+        }
+        REQUIRE(calls[0].values[0] == FOLDED_SOURCES[i].entry);
+        arena_free(&detached);
     }
-    free(closure);
-    free(ir);
-    REQUIRE(agree);
+    return true;
+}
+/* A constant that folds outside its type is still a located error. */
+static bool folded_overflow_rejected()
+{
+    static const char SOURCE[] = "package scalar\nMain :: () -> int { return "
+                                 "2147483647 + 1; }\n";
+    pin_value rows;
+    REQUIRE(collected_rows(0, "folded_overflow", text(SOURCE), &rows));
+    const pin_array *array = rows.ptr;
+    REQUIRE(row_count(&rows) == 2 && row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW);
+    const char *message = pin_text(scalar_field(&array->items[1], "text")).bytes;
+    if (!strstr(message, "outside the range of int")) {
+        fprintf(stderr, "scalar case folded_overflow: %s\n", message);
+    }
+    REQUIRE(strstr(message, "outside the range of int"));
+    arena_free(&detached);
     return true;
 }
 
@@ -7024,6 +7997,164 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
     REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
     return true;
 }
+/* A module whose entry returns 0 and whose function k + 1 applies operation
+ * k to its parameters. */
+static bool total_ir(char **ir)
+{
+    native_code code[4 + TOTAL_OPERATION_COUNT * 6];
+    native_function functions[1 + TOTAL_OPERATION_COUNT];
+    int parameters[TOTAL_OPERATION_COUNT * 2], slots[1 + TOTAL_OPERATION_COUNT * 3];
+    int c = 0, p = 0, s = 0;
+    code[c++] = (native_code){ .op = NATIVE_CHECK };
+    code[c++] = (native_code){ .op = NATIVE_CONSTANT, .type = NATIVE_INT };
+    code[c++] = (native_code){ .op = NATIVE_PUBLISH, .type = NATIVE_INT };
+    code[c++] = (native_code){ .op = NATIVE_RETURN };
+    slots[s++] = NATIVE_INT;
+    functions[0] = (native_function){ NATIVE_INT, 0, 0, 0, 1, 0, c, 0, 0 };
+    for (int k = 0; k < TOTAL_OPERATION_COUNT; k++) {
+        int n = TOTAL_OPERATIONS[k].parameters, first = c;
+        functions[k + 1] = (native_function){ NATIVE_INT, p, n, s, n + 1,
+                                              c,          0, 0, 0 };
+        code[c++] = (native_code){ .op = NATIVE_CHECK };
+        for (int i = 0; i < n; i++) {
+            code[c++] = (native_code){ .op = NATIVE_ARGUMENT,
+                                       .type = NATIVE_INT,
+                                       .output = i,
+                                       .left = i };
+            parameters[p++] = NATIVE_INT;
+            slots[s++] = NATIVE_INT;
+        }
+        code[c++] = (native_code){ .op = TOTAL_OPERATIONS[k].op,
+                                   .type = NATIVE_INT,
+                                   .output = n,
+                                   .left = 0,
+                                   .right = n - 1 };
+        slots[s++] = NATIVE_INT;
+        code[c++] = (native_code){ .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = n };
+        code[c++] = (native_code){ .op = NATIVE_RETURN };
+        functions[k + 1].code = c - first;
+    }
+    native_module m = { functions,  1 + TOTAL_OPERATION_COUNT,
+                        parameters, p,
+                        slots,      s,
+                        code,       c,
+                        NULL,       0 };
+    const pin_union *value;
+    REQUIRE(native_emit(0, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, 0, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(
+        !contains(text, "label %trap\n  br") && !contains(text, " nsw ") &&
+        !contains(text, " nuw ")
+    );
+    *ir = xmalloc(text.length + 1);
+    memcpy(*ir, text.bytes, text.length);
+    (*ir)[text.length] = 0;
+    return true;
+}
+/* The validation-only adapter probe_NAME(ptr) of each operation. */
+static char *total_adapters()
+{
+    char *adapters = xmalloc(1);
+    *adapters = 0;
+    for (int k = 0; k < TOTAL_OPERATION_COUNT; k++) {
+        bool binary = TOTAL_OPERATIONS[k].parameters == 2;
+        char text[512];
+        int n = snprintf(
+            text,
+            sizeof text,
+            "\ndefine i32 @probe_%s(ptr %%args) {\n  %%a0 = load i32, ptr "
+            "%%args\n",
+            TOTAL_OPERATIONS[k].name
+        );
+        if (binary) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%p1 = getelementptr i32, ptr %%args, i64 1\n  %%a1 = load i32, ptr %%p1\n");
+        }
+        snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  ret i32 %%r\n}\n",
+            k + 1,
+            binary ? ", i32 %a1" : ""
+        );
+        size_t used = strlen(adapters);
+        adapters = xrealloc(adapters, used + strlen(text) + 1);
+        strcpy(adapters + used, text);
+    }
+    return adapters;
+}
+/* The entry, then operation k on every pair of TOTAL_VALUES, or every value
+ * for a unary one. */
+static int total_calls(int k, scalar_call calls[MAX_CASE_CALLS])
+{
+    int count = 0;
+    calls[count++] = (scalar_call){ .probe = { "total", "Main", 0, { 0 }, 0 },
+                                    .symbol = "chibi_scalar" };
+    int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? TOTAL_VALUE_COUNT : 1;
+    for (int i = 0; i < TOTAL_VALUE_COUNT; i++) {
+        for (int j = 0; j < rights; j++) {
+            int32_t a = TOTAL_VALUES[i], b = n == 2 ? TOTAL_VALUES[j] : 0;
+            scalar_call *call = &calls[count++];
+            *call = (scalar_call){ .probe = { "total",
+                                              TOTAL_OPERATIONS[k].name,
+                                              n,
+                                              { a, b },
+                                              total(TOTAL_OPERATIONS[k].op, a, b) } };
+            snprintf(
+                call->symbol,
+                sizeof call->symbol,
+                "probe_%s",
+                TOTAL_OPERATIONS[k].name
+            );
+        }
+    }
+    assert(count <= MAX_CASE_CALLS);
+    return count;
+}
+
+TEST_CASE(package_compiler_native_arithmetic_is_total)
+{
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    char *ir;
+    REQUIRE(total_ir(&ir));
+    char *adapters = total_adapters(), directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    bool agreed = true;
+    for (int level = 0; agreed && level < 2; level++) {
+        char library[PATH_MAX];
+        agreed = native_library(directory, "total", ir, adapters, level * 2, false, library);
+        for (int k = 0; agreed && k < TOTAL_OPERATION_COUNT; k++) {
+            scalar_call calls[MAX_CASE_CALLS];
+            int count = total_calls(k, calls);
+            agreed = native_passed(
+                library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
+            );
+            for (int i = 1; agreed && i < count; i++) {
+                const scalar_probe *probe = &calls[i].probe;
+                agreed = calls[i].values[2 + level] == probe->expected;
+                if (!agreed) {
+                    fprintf(
+                        stderr,
+                        "native %s(%d, %d) at O%d gave %d, expected %d\n",
+                        probe->function,
+                        probe->arguments[0],
+                        probe->arguments[1],
+                        level * 2,
+                        calls[i].values[2 + level],
+                        probe->expected
+                    );
+                }
+            }
+        }
+    }
+    free(ir);
+    free(adapters);
+    REQUIRE(remove_native_files(directory) && agreed);
+    return true;
+}
 TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
 {
     REQUIRE(prepare());
@@ -7045,6 +8176,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
         agreed = scalar_case_agrees(directory, i, &accepted, &deep);
         arena_free(&detached);
     }
+    agreed = agreed && folded_sources_agree(directory) && folded_overflow_rejected();
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");
@@ -7057,6 +8189,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero);
     RUN_TEST_CASE(package_compiler_builds_runnable_packages);
     RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
     pu_clear_setup();
@@ -7071,6 +8204,7 @@ void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_compiled()
@@ -7101,6 +8235,7 @@ void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()
@@ -7170,6 +8305,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
+    RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
     RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);
     pu_clear_setup();
     sigaction(SIGINT, &interrupt, NULL);
@@ -7178,4 +8314,200 @@ void test_language_package_compiler_chibi_native()
     fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
     abort();
 #endif
+}
+
+/* Fixed primitive-native argument association, checked against literal results
+ * and the independent stage-zero reference. */
+static const sample native_argument_samples[] = {
+    { .name = "native positional control",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native names in declaration order",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Count: 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native reordered names",
+      .source = "package facts\nRun :: () -> string { return text_slice(Count: "
+                "2, Value: \"abcd\", Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native mixed arguments",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Count: 2, Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native unary name",
+      .source = "package facts\nRun :: () -> int { return "
+                "text_byte_length(Value: \"abcd\"); }",
+      .calls = { { "Run", "[]", "[4]", NULL } } },
+    { .name = "native loose label match",
+      .source = "package facts\nRun :: () -> string { return text_slice(count: "
+                "2, value: \"abcd\", start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native arguments evaluate in source order",
+      .source = "package facts\n"
+                "Number :: (order: ref int, digit: int, value: int) -> int { "
+                "order = order * 10 + digit; return value; }\n"
+                "Text :: (order: ref int) -> string { order = order * 10 + 2; "
+                "return \"abcd\"; }\n"
+                "Run :: () -> int {\n"
+                "  order: int = 0;\n"
+                "  sliced := text_slice(Count: Number(order, 3, 2), Value: "
+                "Text(order), Start: Number(order, 1, 1));\n"
+                "  if (!text_equal(sliced, \"bc\")) { return -1; }\n"
+                "  return order;\n}",
+      .calls = { { "Run", "[]", "[321]", NULL } } },
+    { .name = "native unknown name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Missing: 2); }",
+      .message = "Unknown argument 'Missing'",
+      .line = 2,
+      .column = 66 },
+    { .name = "native duplicate name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Start: 2, Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 66 },
+    { .name = "native positional named duplicate",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Value: \"efgh\", Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 49 },
+    { .name = "native named CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_probe(value: "
+                "(\"a\\u0000b\")); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 48 },
+    { .name = "native named positional duplicate",
+      .source = "package facts\nRun :: () -> string { return text_slice(Start: "
+                "1, 2, Value: \"abcd\"); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 51 },
+    { .name = "native reordered CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_pair(value: "
+                "(\"a\\u0000b\"), prefix: 1); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 47 },
+    { .name = "native extra argument",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2, 3); }",
+      .message = "Too many arguments",
+      .line = 2,
+      .column = 55 },
+};
+
+TEST_CASE(native_arguments_reference_contract)
+{
+    /* Every valid call supplies all parameters of the existing text natives. */
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(&native_argument_samples[0], inputs);
+    native_definition_pack packs[] = { CSTRING_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
+    for (int i = 0;
+         i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+         i++) {
+        const sample *s = &native_argument_samples[i];
+        fprintf(stderr, "native arguments reference: %s\n", s->name);
+        if (s->message) {
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            continue;
+        }
+        unsigned char *bytes = NULL;
+        size_t length = 0;
+        REQUIRE(oracle_closure(s, &bytes, &length));
+        bool passed = run(bytes, length, &s->calls[0], 0) &&
+                      run(bytes, length, &s->calls[0], 1);
+        free(bytes);
+        REQUIRE(passed);
+    }
+    return true;
+}
+
+TEST_CASE(native_arguments_authored_contract)
+{
+    REQUIRE(prepare());
+    bool all = true;
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0;
+             i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+             i++) {
+            const sample *s = &native_argument_samples[i];
+            source_package_input inputs[SAMPLE_INPUTS];
+            int count = sample_inputs(s, inputs);
+            pin_value out;
+            REQUIRE(
+                compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
+            );
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            bool passed = false;
+            if (value->tag == tag(b, "Rejected")) {
+                pin_value message, line, column;
+                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(&value->values[0], "line", &line));
+                REQUIRE(get(&value->values[0], "column", &column));
+                passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
+                         line.i == s->line && column.i == s->column;
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: %s at %d:%d (%s)\n",
+                    b,
+                    s->name,
+                    pin_text(message).bytes,
+                    line.i,
+                    column.i,
+                    passed ? "expected" : "MISMATCH"
+                );
+            } else {
+                REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+                size_t length = 0;
+                unsigned char *bytes = closure_bytes(value, &length);
+                unsigned char *expected = NULL;
+                size_t expected_length = 0;
+                passed = !s->message &&
+                         (b || (oracle_closure(s, &expected, &expected_length) &&
+                                points_like_oracle(bytes, length, false))) &&
+                         run(bytes, length, &s->calls[0], 0) &&
+                         run(bytes, length, &s->calls[0], 1);
+                free(expected);
+                free(bytes);
+                /* run() leaves a failed invocation for cleanup; continue the
+                 * remaining fixtures without overwriting that ownership. */
+                compiler_host_free(host);
+                host = NULL;
+                free(result.json);
+                result = (compiler_host_result){ 0 };
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: compiled (%s)\n",
+                    b,
+                    s->name,
+                    passed ? "expected" : "MISMATCH"
+                );
+            }
+            arena_free(&detached);
+            all = passed && all;
+        }
+    }
+    REQUIRE(all);
+    return true;
+}
+
+void test_language_package_compiler_chibi_native_arguments_oracle()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_reference_contract);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_native_arguments()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_authored_contract);
+    pu_clear_setup();
 }

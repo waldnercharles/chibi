@@ -262,6 +262,18 @@ Wasm and typed constant folders. A regression also preserves earlier writes
 when an unused shift fails in an optimized function. Default checked arithmetic
 and lexical wrapping remain pending. See the [numeric contract](package-numeric-contract.md).
 
+Decision (2026-10-24): no integer operation fails at run time, and zero answers
+the cases that have no answer. This replaces both decisions above. Arithmetic
+wraps; `x / 0` is 0 and `x % 0` is `x`; the signed minimum divided by -1 wraps
+to the minimum, with remainder 0; a shift count at or past the width shifts
+every bit out; `T(v)` clamps between integers and `T(wrap: v)` keeps the low
+bits. Safety comes from compile-time rules (no mixed integer types, unsigned
+shift counts, exact constants that must fit, no constant zero divisor) and
+from development builds, which report each overflow, zero divisor and clamp
+once per site without stopping. The runtime part and stage zero's
+compile-time rules are implemented; stage one's compile-time rules and
+development reports follow.
+
 ## Stage one has no character literals
 
 Stage one. Stage zero has character literals and `char` since #530: `'a'`
@@ -347,9 +359,9 @@ after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
 range, keyed and reverse forms too, but not `ref` loops, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step
-hangs (#503). The stage-one tokenizer has no `..<` token, so a build program
-that the tokenizer corpus reads can't use half-open ranges either; the map
-syntax PR counted positions by hand in `Build.chibi`'s `PrivateSources`.
+hangs (#503). The authored tokenizer now recognizes `..<` with independently pinned byte
+spans and inclusive/spaced controls, so its corpus can read those half-open
+ranges too.
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
@@ -598,6 +610,19 @@ over an explicit stack.
 
 Suggestion: a deeper budget, counted in frame bytes rather than calls, or
 guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
+
+## format_text drops arguments past twelve
+
+Runtime. `format_text` renders at most 12 arguments
+(`FMT_TEXT_MAX_ARGS` in `src/runtime/text_format.c`). A thirteenth
+placeholder renders as empty text with no error from the compiler or the
+runtime. M2's native integer work hit this in
+`tools/compiler/llvm_native/Emit.chibi`: a 13-argument instruction template
+lost an operand, so the emitter splits such templates into several calls.
+
+Suggestion: check literal format strings against their arguments and report
+excess placeholders. This is a documented limitation, not a formatter change
+included in the M2 reconciliation.
 
 ## Templates are package-local
 
@@ -867,6 +892,20 @@ needs to break out to a return after it (#518). Stage one compiles only what
 stage zero has checked, but on its own it would accept such a function.
 
 Suggestion: stage one applies the same terminating-statement rule.
+
+### Stage one's element stores into call results copy arguments
+
+Stage one. A function whose local array holds an authored call's result and
+then takes an element store (`rest := Shift(rest); rest[0] = 1`) is one the
+sharing analysis cannot prove safe in stage one's build, though stage zero's
+build of the same source shares. The function then copies every argument on
+each call, and so does every caller. In M2 the exact division in `Number.chibi`
+had this shape, and stage two compiled itself in 775 s instead of 37 s. The
+division now adds the bit instead of storing it, and the self-compile check
+fails when any function of stage one's build of the compiler copies.
+
+Suggestion: stage one's element store keeps the local's array as stage zero's
+does, so the analysis sees that it owns it.
 
 ### Calls and record snapshots are costly
 

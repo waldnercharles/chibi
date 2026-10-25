@@ -1,7 +1,7 @@
 #ifndef CHIBI_LANGUAGE_NUMERIC_H
 #define CHIBI_LANGUAGE_NUMERIC_H
 
-/* Private compiler-only proposal. No frontend/default/cast-policy activation. */
+/* Exact integer and rational constants for compile-time evaluation. */
 #include "language/semantic.h"
 
 #include <stddef.h>
@@ -80,6 +80,8 @@ const script_number *script_number_read(
     script_number_kind,
     script_numeric_error *
 );
+/* An integer scalar's exact value. */
+const script_number *script_number_scalar(script_numeric *, pin_value, script_numeric_error *);
 script_number_kind script_number_kind_read(const script_number *);
 const script_number *script_number_unary(
     script_numeric *,

@@ -741,10 +741,7 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             break;
         case BF_CAST:
-            if (!behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out)) {
-                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
-                goto done;
-            }
+            behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out);
             break;
         case BF_FLAGS: out->b = (a.u & b.u) != 0; break;
         case BF_CONVERT:
@@ -822,11 +819,6 @@ int execution_machine_step(execution_machine *m, int pc)
             goto done;
         default: {
             if (behavior_function_bitwise(i->op)) {
-                if ((i->op == BF_SHL || i->op == BF_SHR) &&
-                    !behavior_scalar_shift_count_valid(i->type, behavior_scalar_bits(b))) {
-                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
-                    goto done;
-                }
                 *out = behavior_scalar_from_bits(
                     i->type,
                     behavior_scalar_bitwise_bits(
@@ -850,10 +842,7 @@ int execution_machine_step(execution_machine *m, int pc)
                 pin_value *other = (i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0
                                      ? &slots[i->target]
                                      : NULL;
-                if (!behavior_scalar_integer_op(i->op, a, b, out, other)) {
-                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
-                    goto done;
-                }
+                behavior_scalar_integer_op(i->op, a, b, out, other);
                 break;
             }
             double x = a.type == PIN_F32 ? a.f : a.d,

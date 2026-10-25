@@ -337,12 +337,6 @@ Operation :: (op: int) -> string {
     if (op == Mul) {
         return "mul";
     }
-    if (op == Div) {
-        return "sdiv";
-    }
-    if (op == Mod) {
-        return "srem";
-    }
     if (op == BitAnd) {
         return "and";
     }
@@ -351,12 +345,6 @@ Operation :: (op: int) -> string {
     }
     if (op == BitXor) {
         return "xor";
-    }
-    if (op == Shl) {
-        return "shl";
-    }
-    if (op == Shr) {
-        return "ashr";
     }
     if (op == Lt) {
         return "icmp slt";
@@ -381,21 +369,30 @@ Load :: (name: string, type: int, bank: string, index: int) -> string {
 Store :: (value: string, type: int, bank: string, index: int) -> string {
     return format_text("  store {} {}, ptr %{}{}\n", abi.ScalarType(type), value, bank, index);
 }
-// Checks are control flow to llvm.trap, never flags that allow LLVM poison.
-// The trap remains observable even when the arithmetic result is unused.
-CheckArithmetic :: (item: Instruction, pc: int) -> string {
-    if (item.op == Shl || item.op == Shr) {
-        return format_text("  %ok{} = icmp ult i32 %b{}, 32\n  br i1 %ok{}, label %safe{}, label %trap\nsafe{}:\n",
-                           pc, pc, pc, pc, pc);
-    }
+// Integer operations never fail: x / 0 is 0, x % 0 is x, MIN / -1 wraps to
+// MIN and MIN % -1 is 0, and a shift count at or past 32, read unsigned,
+// gives 0, or the sign fill for >>. The divisor and count are made safe for
+// LLVM before the operation, so no result is poison and no path traps.
+Total :: (item: Instruction, pc: int) -> string {
     if (item.op == Div || item.op == Mod) {
-        operands := format_text("  %zero{} = icmp eq i32 %b{}, 0\n  %min{} = icmp eq i32 %a{}, -2147483648\n  %negone{} = icmp eq i32 %b{}, -1\n  %overflow{} = and i1 %min{}, %negone{}\n",
-                                pc, pc, pc, pc, pc, pc, pc, pc, pc);
-        guarded := format_text("  %bad{} = or i1 %zero{}, %overflow{}\n  br i1 %bad{}, label %trap, label %safe{}\nsafe{}:\n",
-                               pc, pc, pc, pc, pc, pc);
-        return format_text("{}{}", operands, guarded);
+        guards := format_text("  %zero{} = icmp eq i32 %b{}, 0\n  %negone{} = icmp eq i32 %b{}, -1\n  %unsafe{} = or i1 %zero{}, %negone{}\n  %d{} = select i1 %unsafe{}, i32 1, i32 %b{}\n",
+                              pc, pc, pc, pc, pc, pc, pc, pc, pc, pc);
+        if (item.op == Div) {
+            quotient := format_text("  %q{} = sdiv i32 %a{}, %d{}\n  %negated{} = sub i32 0, %a{}\n  %w{} = select i1 %negone{}, i32 %negated{}, i32 %q{}\n",
+                                    pc, pc, pc, pc, pc, pc, pc, pc, pc);
+            return format_text("{}{}  %v{} = select i1 %zero{}, i32 0, i32 %w{}\n", guards, quotient, pc, pc, pc);
+        }
+        remainder := format_text("  %q{} = srem i32 %a{}, %d{}\n  %w{} = select i1 %negone{}, i32 0, i32 %q{}\n", pc, pc,
+                                 pc, pc, pc, pc);
+        return format_text("{}{}  %v{} = select i1 %zero{}, i32 %a{}, i32 %w{}\n", guards, remainder, pc, pc, pc, pc);
     }
-    return "";
+    wide := format_text("  %wide{} = icmp uge i32 %b{}, 32\n", pc, pc);
+    if (item.op == Shl) {
+        shifted := format_text("  %count{} = and i32 %b{}, 31\n  %q{} = shl i32 %a{}, %count{}\n", pc, pc, pc, pc, pc);
+        return format_text("{}{}  %v{} = select i1 %wide{}, i32 0, i32 %q{}\n", wide, shifted, pc, pc, pc);
+    }
+    return format_text("{}  %count{} = select i1 %wide{}, i32 31, i32 %b{}\n  %v{} = ashr i32 %a{}, %count{}\n", wide, pc,
+                       pc, pc, pc, pc, pc);
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
     out := format_text("p{}:\n", pc);
@@ -436,8 +433,11 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
             }
         } else {
             out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
-            out = format_text("{}{}", out, CheckArithmetic(item, pc));
-            out = format_text("{}{}", out, format_text("  %v{} = {} {} %a{}, %b{}\n", pc, Operation(item.op), type, pc, pc));
+            if (item.op == Div || item.op == Mod || item.op == Shl || item.op == Shr) {
+                out = format_text("{}{}", out, Total(item, pc));
+            } else {
+                out = format_text("{}{}", out, format_text("  %v{} = {} {} %a{}, %b{}\n", pc, Operation(item.op), type, pc, pc));
+            }
         }
         output := item.type;
         if (Comparison(item.op)) {

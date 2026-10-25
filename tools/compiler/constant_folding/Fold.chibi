@@ -83,7 +83,7 @@ Evaluate :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[
                         case .Rejected:
                             return scalar.Result.Failed("unsupported scalar constant conversion");
                         case .Unfit:
-                            return scalar.Result.Failed("constant does not fit its conversion");
+                            return scalar.Result.Failed("integer constant does not fit its conversion");
                         case .Accepted(item):
                             value = item;
                     }

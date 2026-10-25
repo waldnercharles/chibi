@@ -11,12 +11,12 @@ WavePulseBehavior :: behavior {
         age_2()
     }
     after age_2 {
-        if greater_or_equal(divide(age_2.Value, B: plain double = 0.8), 1.0) {
+        if greater_or_equal(float(divide(age_2.Value, B: plain double = 0.8)), 1.0) {
             destroy_entity(self)
         } else {
-            self.SurfaceInfluence.radius = 24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8)
-            self.SurfaceInfluence.inner_radius = max(0.0, 24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8) - 28.0)
-            self.SurfaceInfluence.strength = 0.65 * (1.0 - divide(age_2.Value, B: plain double = 0.8))
+            self.SurfaceInfluence.radius = float(24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8))
+            self.SurfaceInfluence.inner_radius = float(max(0.0, 24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8) - 28.0))
+            self.SurfaceInfluence.strength = float(0.65 * (1.0 - divide(age_2.Value, B: plain double = 0.8)))
         }
     }
 }

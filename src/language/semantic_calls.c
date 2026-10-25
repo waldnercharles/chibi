@@ -1045,11 +1045,15 @@ int script_analyzer_scoped_argument(analyzer *a, TSNode value, script_type type)
     }
     int index = script_analyzer_expression(a, value, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
     const script_expression *e = &a->out->expressions[index];
+    TSNode inner = value;
+    while (script_analyzer_is(inner, "parenthesized_expression")) {
+        inner = script_analyzer_field(inner, "expression");
+    }
     /* `p^` of a scoped `p` reads its target, which a pointer argument then
      * dereferences; only `p` itself passes the location on. */
     if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
         (a->out->symbols[e->symbol].type.flags & SCRIPT_TYPE_REFERENCE) &&
-        !script_analyzer_is(value, "dereference_expression")) {
+        !script_analyzer_is(inner, "dereference_expression")) {
         return index;
     }
     if (e->type.storage == PIN_POINTER && e->type.container == PIN_CONTAINER_SINGLE) {

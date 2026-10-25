@@ -324,7 +324,12 @@ static bool scoped_pointer(
 static bool scoped_forward(const char *source, TSNode argument, scoped_pointer_visit *stack, int depth)
 {
     TSNode list = ts_node_parent(argument), label = { 0 };
-    if (is(list, "named_argument")) {
+    while (is(list, "parenthesized_expression")) {
+        argument = list;
+        list = ts_node_parent(list);
+    }
+    if (is(list, "named_argument") ||
+        (is(list, "typed_argument") && ts_node_eq(field(list, "value"), argument))) {
         label = field(list, "name");
         argument = list;
         list = ts_node_parent(list);
@@ -338,7 +343,9 @@ static bool scoped_forward(const char *source, TSNode argument, scoped_pointer_v
     for (uint32_t i = 0, position = 0; i < named_count(list); i++) {
         TSNode current = ts_node_named_child(list, i);
         if (!ts_node_eq(current, argument)) {
-            position += !ts_node_is_extra(current) && !is(current, "named_argument");
+            position += !ts_node_is_extra(current) &&
+                        !is(current, "named_argument") &&
+                        !is(current, "typed_argument");
             continue;
         }
         for (uint32_t j = 0, slot = 0; j < named_count(parameters); j++) {

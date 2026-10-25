@@ -9251,6 +9251,35 @@ TEST_CASE(program_nested_forwarding_keeps_pointer_scoped)
     }
     return true;
 }
+/* A typed argument and parentheses forward a scoped pointer as a plain
+ * argument does. */
+TEST_CASE(program_typed_and_parenthesized_forwarding_keep_pointer_scoped)
+{
+    const char *
+        source = "R :: behavior { a: double = 0; b: double = 0; c: double = 0; "
+                 "Bump :: (value: ^double) { value^ = 5 } "
+                 "Typed :: (p: ^double) { Bump(value: ^double = p) } "
+                 "Wrapped :: (p: ^double) { Bump((p)) } "
+                 "Through :: (p: ^^double) { Bump((p^)) } "
+                 "on Impulse :: (amount: double, enabled: bool) { Typed(&a); "
+                 "Wrapped(&b); x: double = 0; q := &x; Through(&q); c = x } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "a", 5) && number_state(instance, "b", 5) &&
+            number_state(instance, "c", 5)
+        );
+    }
+    return true;
+}
 TEST_CASE(program_task_keeps_state_and_component_references)
 {
     const char
@@ -10661,6 +10690,7 @@ void test_language_program()
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_library_task_writes_the_callers_state);
     RUN_TEST_CASE(program_nested_forwarding_keeps_pointer_scoped);
+    RUN_TEST_CASE(program_typed_and_parenthesized_forwarding_keep_pointer_scoped);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp);
     RUN_TEST_CASE(program_returns_convert_to_their_result_type);

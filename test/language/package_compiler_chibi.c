@@ -1440,11 +1440,17 @@ static const sample samples[] = {
                 "* 10 + x; }\n"
                 "Copy :: (p: ^^int) -> int { q := p^; q^ += 1; return q^; }\n"
                 "Copied :: () -> int { x: int = 1; q := &x; return Copy(&q) * "
-                "10 + x; }\n",
+                "10 + x; }\n"
+                "Wrapped :: (p: ^int) { Bump((p)); }\n"
+                "Unwrapped :: (p: ^^int) { Bump((p^)); }\n"
+                "Parenthesized :: () -> int { x: int = 1; Wrapped(&x); q := "
+                "&x; "
+                "Unwrapped(&q); return x; }\n",
       .calls = { { .function = "Relayed", .arguments = "[]", .expected = "[2]" },
                  { .function = "Kept", .arguments = "[]", .expected = "[5]" },
                  { .function = "Thrown", .arguments = "[]", .expected = "[65]" },
-                 { .function = "Copied", .arguments = "[]", .expected = "[22]" } } },
+                 { .function = "Copied", .arguments = "[]", .expected = "[22]" },
+                 { .function = "Parenthesized", .arguments = "[]", .expected = "[3]" } } },
     /* A scoped `n^` keeps its own source span. */
     { .name = "scoped pointer spans",
       .group = COLLECTION_SAMPLES,

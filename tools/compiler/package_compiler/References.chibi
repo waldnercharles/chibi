@@ -199,8 +199,13 @@ ScopedForward :: (forest: snapshot.SnapshotNode[], text: string, caller: int, ar
                   visiting: int[]) -> bool {
     at := argument;
     list := forest[at].parent;
+    while (Is(forest, list, "parenthesized_expression")) {
+        at = list;
+        list = forest[list].parent;
+    }
     label: int = -1;
-    if (Is(forest, list, "named_argument")) {
+    if (Is(forest, list, "named_argument") ||
+        (Is(forest, list, "typed_argument") && Field(forest, list, "value") == at)) {
         label = Field(forest, list, "name");
         at = list;
         list = forest[list].parent;
@@ -217,7 +222,7 @@ ScopedForward :: (forest: snapshot.SnapshotNode[], text: string, caller: int, ar
         if (current == at) {
             break;
         }
-        if (!Is(forest, current, "named_argument")) {
+        if (!Is(forest, current, "named_argument") && !Is(forest, current, "typed_argument")) {
             position += 1;
         }
     }

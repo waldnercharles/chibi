@@ -115,7 +115,9 @@ Example :: library {
 No integer operation fails at run time. Arithmetic wraps on overflow. `x / 0`
 is 0 and `x % 0` is `x`. Dividing the signed minimum by -1 wraps to the
 minimum, and its remainder is 0. Floating-to-integer conversions truncate
-toward zero, clamp at the bounds, and map NaN to zero.
+toward zero, clamp at the bounds, and map NaN to zero. A development build
+reports each overflow, zero divisor and clamping conversion once per source
+site, and keeps these values.
 
 Left shifts discard outgoing bits. Signed right shifts extend the sign bit;
 unsigned right shifts insert zeros. A count at or past the operand's bit width

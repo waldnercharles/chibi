@@ -250,7 +250,7 @@ Files :: (target: string) -> string[] {
             "src/execution/c.c", "src/execution/call.c", "src/execution/component.c",
             "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
             "src/execution/fusion.c", "src/execution/host.c", "src/execution/inputs.c",
-            "src/execution/intrinsics.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
+            "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
             "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
             "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
@@ -1099,7 +1099,8 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return [
             "execution/component_write.h", "execution/delay.h", "execution/ecs_reader.h",
-            "execution/function_builder.h", "execution/inspection.h", "execution/intrinsics.h",
+            "execution/function_builder.h", "execution/inspection.h", "execution/integer_report.h",
+            "execution/intrinsics.h",
             "execution/map_intrinsics.h", "execution/module.h", "execution/module_builder.h",
             "execution/prepared.h", "execution/task.h", "execution/update.h"
         ];

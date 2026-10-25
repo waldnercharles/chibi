@@ -945,8 +945,9 @@ ConstantType :: (forest: snapshot.SnapshotNode[], text: string, constants: Const
     }
     return ConstantType(forest, text, constants, aliases, package, Field(forest, value, "right"));
 }
-// An untyped floating literal takes double through grouping and unary signs.
-// Integer operands retain int64, or uint64 for a literal beyond it.
+// An untyped floating literal takes its spelled type, number, through
+// grouping and unary signs. Integer operands retain i64, or u64 for a literal
+// beyond it.
 UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     literal := Unparenthesized(forest, node);
     while (Is(forest, literal, "unary_expression") &&
@@ -954,8 +955,8 @@ UntypedStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> 
             Text(forest, text, Field(forest, literal, "operator")) == "-")) {
         literal = Unparenthesized(forest, Field(forest, literal, "operand"));
     }
-    if (Is(forest, literal, "number") && InferredNumberStorage(forest, text, literal) == DoubleStorage) {
-        return DoubleStorage;
+    if (Is(forest, literal, "number") && Floating(InferredNumberStorage(forest, text, literal))) {
+        return InferredNumberStorage(forest, text, literal);
     }
     switch ParseNumber(forest, text, Unparenthesized(forest, node)) {
         case .Invalid:

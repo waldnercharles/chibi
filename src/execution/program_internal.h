@@ -241,10 +241,12 @@ size_t program_activation_cache_bytes(const execution_program *);
 size_t program_row_worker_bytes(const execution_program *);
 void program_activation_cancel(execution_activation *a);
 void program_bind_tasks(behavior_function_context *);
-/* Retains the supplied targets and the owning task's targets before running
- * any authored instruction. NULL entries, unavailable cells and foreign-world
- * targets produce Cancelled tasks. An empty list adds no targets. The program's
- * world governs admission even when context.world is unset. */
+/* Retains the supplied targets before running any authored instruction. The
+ * new task does not take its parent's targets: an active parent's cancellation
+ * reaches it as the parent's child. NULL entries, unavailable cells and
+ * foreign-world targets produce Cancelled tasks. An empty list adds no
+ * targets. The program's world governs admission even when context.world is
+ * unset. */
 int program_task_start_bound(
     behavior_function_context *,
     int call_index,

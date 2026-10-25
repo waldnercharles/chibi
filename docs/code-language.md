@@ -938,8 +938,11 @@ Effects :: behavior {
 ```
 
 Holding, comparing or returning a pointer does not add a dependency, and
-neither does passing it to another task: that task takes its own. A pointer the
-task reads back from state, a record or another pointer is not tracked yet.
+neither does passing it to another task: that task takes its own. A child
+does not take its parent's dependencies. Cancelling a running parent cancels
+its children, but a parent that finishes leaves them running, each depending
+only on its own components. A pointer the task reads back from state, a record
+or another pointer is not tracked yet.
 
 ## Units
 

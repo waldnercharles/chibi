@@ -18,7 +18,6 @@
 #include "types/union.h"
 
 #include <assert.h>
-#include <limits.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -282,15 +281,11 @@ int program_task_start_bound(
     if (!program_task_check(caller, ctx->now)) {
         return FLOW_SUSPENDED_RESULT;
     }
-    execution_instance *instance = caller->instance;
-    execution_task *own = find(instance, program_owning_task(caller));
-    execution_activation *owner = own ? own->activation : NULL;
-    int inherited = owner ? owner->task_target_count : 0;
-    if (target_count > INT_MAX - inherited ||
-        (size_t)(target_count + inherited) > SIZE_MAX / sizeof *targets) {
+    if ((size_t)target_count > SIZE_MAX / sizeof *targets) {
         ctx->error_message = "too many task lifetime targets";
         return FLOW_ERR_ARGUMENT;
     }
+    execution_instance *instance = caller->instance;
     const behavior_function *function = caller->function;
     behavior_function_active_context(&caller->context, &function);
     const behavior_function_invocation *call = &function->calls[index];
@@ -308,12 +303,14 @@ int program_task_start_bound(
         return FLOW_ERR_ARGUMENT;
     }
     capture_references(a, call);
-    int capacity = inherited + target_count;
-    if (capacity) {
-        a->task_targets = arena_alloc(&a->storage, (size_t)capacity * sizeof *a->task_targets);
-        for (int i = 0; i < inherited; i++) {
-            add_target(a, owner->task_targets[i]);
-        }
+    /* A task binds only its own targets. Its parent's stay the parent's:
+     * cancelling an active parent cancels its children, and a parent that
+     * finishes leaves them running. */
+    if (target_count) {
+        a->task_targets = arena_alloc(
+            &a->storage,
+            (size_t)target_count * sizeof *a->task_targets
+        );
         for (int i = 0; i < target_count; i++) {
             add_target(a, targets[i]);
         }
@@ -499,8 +496,14 @@ bool program_task_check(execution_activation *a, double now)
     if (!owner || a->finished) {
         return true;
     }
-    if (program_task_due(a, now)) {
-        cancel(a->instance, owner);
+    /* An active ancestor that lost a target or ran out of time cancels this
+     * task with it, before this task's next continuation runs. */
+    for (execution_task *t = find(a->instance, owner); t;
+         t = slot(a->instance, t->parent)) {
+        if (t->activation && program_task_due(t->activation, now)) {
+            cancel(a->instance, handle_of(a->instance, t));
+            break;
+        }
     }
     execution_task *t = find(a->instance, owner);
     if (t && t->activation && !t->activation->stopping) {

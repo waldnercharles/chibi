@@ -635,6 +635,21 @@ A handler cannot read unlisted payload fields or `event`. The handler can change
 reference. A written unit must match
 the payload field's unit.
 
+`emit` sends an event to one entity. The target comes first, as the receiver
+of a method call; `emit Damage(target, amount, self)` means the same as
+`emit target.Damage(amount, self)`. `await emit` waits for the target's
+handlers.
+
+```chibi
+Spikes :: behavior {
+    target: entity = 0
+
+    on Begin :: () {
+        emit target.Damage(1, self)
+    }
+}
+```
+
 An explicit `retain` binding keeps private state in the enclosing behavior
 attachment or system registration. A helper call does not create a new owner.
 
@@ -785,7 +800,8 @@ Charger :: behavior {
 }
 ```
 
-Awaiting `task<T>` gives `T | Cancelled`. Cancellation never becomes a default
+A `task(T)` binding holds a task that finishes with `T`, and awaiting it gives
+`T | Cancelled`. Cancellation never becomes a default
 successful value. `if taskHandle` tests whether a task is running.
 
 `yield` resumes on the next update. `cancel taskHandle` stops the task and its

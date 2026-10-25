@@ -63,6 +63,7 @@ const K = Object.fromEntries(
     "relationship",
     "pub",
     "delete",
+    "emit",
   ].map((word) => [word, word]),
 );
 
@@ -138,10 +139,8 @@ module.exports = grammar({
     [$.builtin_reference, $._member_name],
     [$.boolean, $._member_name],
     [$.nil, $._member_name],
-    [$._expression, $._call_target],
     [$.type_name, $._call_target],
     [$.type_name, $._expression],
-    [$.type_name, $._expression, $._call_target],
     [$.reduce_statement, $._name],
     [$._name, $.unary_expression],
   ],
@@ -420,8 +419,7 @@ module.exports = grammar({
               ),
             ),
             choice(
-              seq(field("name", choice($.type_name, $.type_binder)),
-                optional(field("arguments", $.type_argument_list))),
+              field("name", choice($.type_name, $.type_binder)),
               $.type_application,
             ),
           ),
@@ -435,7 +433,6 @@ module.exports = grammar({
     type_binder: ($) => seq("$", field("name", $._name)),
     type_application: ($) =>
       seq(field("function", $.type_name), field("arguments", $.argument_list)),
-    type_argument_list: ($) => seq("<", comma($.type), ">"),
     block: ($) => seq("{", repeat($._statement), "}"),
     _statement: ($) =>
       choice(
@@ -569,6 +566,7 @@ module.exports = grammar({
         $.member_expression,
         $.index_expression,
         $.call_expression,
+        $.emit_expression,
         $.is_expression,
         $.as_expression,
         $.parenthesized_expression,
@@ -604,7 +602,17 @@ module.exports = grammar({
         P.member,
         seq(
           field("function", $._call_target),
-          optional(field("type_arguments", $.type_argument_list)),
+          field("arguments", $.argument_list),
+        ),
+      )),
+    // `emit target.Event(payload)` sends an event to the target entity, as
+    // does `emit Event(target, payload)`.
+    emit_expression: ($) =>
+      prec.dynamic(1, prec(
+        P.member,
+        seq(
+          K.emit,
+          field("event", choice($._name, $.member_expression)),
           field("arguments", $.argument_list),
         ),
       )),

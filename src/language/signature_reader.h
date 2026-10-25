@@ -50,5 +50,8 @@ script_signature_reading script_signature_read(
     int document,
     bool signature
 );
+/* Whether a type application is `task(T)`, which the reader constructs
+ * itself instead of evaluating it at compile time. */
+bool script_signature_task(const char *source, TSNode application);
 
 #endif

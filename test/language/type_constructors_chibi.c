@@ -863,10 +863,10 @@ TEST_CASE(type_constructor_actual_analyzer_facts_match)
     static const char *sources[] = {
         "Facts :: library { Run :: (value: int | number) -> int { return 0; } "
         "}",
-        "Facts :: library { Run :: (pending: task<number>) {} }",
+        "Facts :: library { Run :: (pending: task(number)) {} }",
         "Facts :: library { Work :: () -> (Count: int, Message: string) { "
         "yield; return(3, \"ok\"); } Run :: () { pending := Work(); } }",
-        "Facts :: library { Run :: (pending: task<number>) -> number { result "
+        "Facts :: library { Run :: (pending: task(number)) -> number { result "
         ":= await pending; if result is not Cancelled { return result; } "
         "return 0; } }",
     };

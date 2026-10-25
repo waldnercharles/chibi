@@ -1,6 +1,6 @@
 // Set movement velocity from local input and face the movement direction.
 InputBehavior :: behavior {
-    on Input :: (Direction: struct<CF_V2>) {
+    on Input :: (Direction: CF_V2) {
         if self.Dash {
             if 0.0 < self.Dash.remaining {
             } else {
@@ -12,7 +12,7 @@ InputBehavior :: behavior {
             await Face_Direction(Direction)
         }
     }
-    Face_Direction :: (Direction: struct<CF_V2> = null) {
+    Face_Direction :: (Direction: CF_V2 = null) {
         if self.Orientation {
             if 0.0 >= abs(Direction.x) + abs(Direction.y) {
                 return

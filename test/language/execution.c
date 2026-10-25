@@ -86,7 +86,7 @@ static arena storage, managed;
 static int host_calls;
 static service_binding *log_services;
 static execution_module_plan *prepared_plan;
-static execution_module *prepared_module;
+static execution_module *prepared_module, *imported_module;
 static unsigned char *prepared_bytes, *prepared_mutation;
 
 static void release_invocation()
@@ -102,10 +102,11 @@ static void cleanup()
     release_invocation();
     execution_module_plan_free(prepared_plan);
     execution_module_free(prepared_module);
+    execution_module_free(imported_module);
     free(prepared_bytes);
     afree(prepared_mutation);
     prepared_plan = NULL;
-    prepared_module = NULL;
+    prepared_module = imported_module = NULL;
     prepared_bytes = prepared_mutation = NULL;
     arena_free(&managed);
     afree(log_services);
@@ -1860,11 +1861,17 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
                 size_t live = (count + 1) * ((slots + locals + 63) / 64 + 1) *
                               sizeof(uint64_t);
                 /* Keep all other conservative terms, including phases this
-                 * host-free fixture does not need, separate from the matrices. */
-                size_t fixed = 2 * (sizeof(dyna_hdr) +
-                                    16 * sizeof(behavior_function_instruction)) +
-                               (count + 1) * sizeof(int) +
-                               count * (2 * sizeof(bool) + 3 * sizeof(int)) +
+                 * host-free fixture does not need, separate from the matrices.
+                 * The runtime bodies and their map stay with the definition;
+                 * the rest is verification scratch. */
+                size_t retained = 2 * (sizeof(dyna_hdr) +
+                                       16 * sizeof(behavior_function_instruction)) +
+                                  (count + 1) * sizeof(int);
+                if (pause) {
+                    retained += sizeof(dyna_hdr) +
+                                16 * sizeof(behavior_function_suspension);
+                }
+                size_t fixed = count * (2 * sizeof(bool) + 3 * sizeof(int)) +
                                slots * sizeof(int) +
                                count * (sizeof(int) + 2 * sizeof(bool)) +
                                (slots + 1) * (2 * sizeof(int) + 3 * sizeof(bool)) +
@@ -1876,12 +1883,10 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
                                (slots + 1) *
                                    (2 * sizeof(int) + 2 * sizeof(max_align_t)) +
                                sizeof(bool);
-                if (pause) {
-                    fixed += sizeof(dyna_hdr) +
-                             16 * sizeof(behavior_function_suspension);
-                }
                 size_t expected = fixed + (defined > live ? defined : live);
-                REQUIRE(behavior_function_preparation_bytes(draft) == expected);
+                behavior_function_preparation bytes = behavior_function_preparation_bytes(draft);
+                REQUIRE(bytes.retained == retained);
+                REQUIRE(bytes.scratch == expected);
                 REQUIRE(expected < fixed + defined + live);
             }
         }
@@ -1897,7 +1902,292 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
     emit((behavior_function_instruction){ .op = BF_END });
     /* Malformed descriptors still propagate SIZE_MAX. This does not claim
      * machine-size arithmetic overflow coverage from tiny real banks. */
-    REQUIRE(behavior_function_preparation_bytes(draft) == SIZE_MAX);
+    REQUIRE(behavior_function_preparation_bytes(draft).retained == SIZE_MAX);
+    REQUIRE(behavior_function_preparation_bytes(draft).scratch == SIZE_MAX);
+    return true;
+}
+
+/* A definition of `slots` slots that adds into one of them `additions` times.
+ * Its verification matrices grow with both, its retained storage only with
+ * its instructions. */
+static behavior_function *sparse_definition(int slots, int additions, char *error, size_t size)
+{
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &number, 1, &number, 1, NULL, 0);
+    int input = slot(PIN_I32), sum = slot(PIN_I32);
+    for (int i = 2; i < slots; i++) {
+        slot(PIN_I32);
+    }
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_I32, .output = input, .value = number });
+    for (int i = 0; i < additions; i++) {
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_ADD, .type = PIN_I32, .output = sum, .left = input, .right = input });
+    }
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = sum });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    behavior_function *sparse = behavior_function_builder_finish(builder, error, size);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    return sparse;
+}
+enum
+{
+    SPARSE_SLOTS = 64 * 512,
+    SPARSE_ADDITIONS = 600
+};
+/* The prepared bytes of a module of `count` sparse definitions. */
+static bool sparse_module(int count, unsigned char **bytes, size_t *length)
+{
+    char error[192] = { 0 };
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 1;
+    prepared_plan->valid = true;
+    for (int i = 0; i < count; i++) {
+        behavior_function *sparse = sparse_definition(SPARSE_SLOTS, SPARSE_ADDITIONS, error, sizeof error);
+        if (!sparse) {
+            return false;
+        }
+        apush(
+            prepared_plan->functions,
+            ((execution_module_function){ .id = (uint64_t)i + 1,
+                                          .kind = EXECUTION_FUNCTION_AUTHORED,
+                                          .body = sparse })
+        );
+        prepared_plan->function_count = i + 1;
+    }
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    bool written = prepared_module &&
+                   execution_prepared_write(prepared_module, bytes, length, error, sizeof error);
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    return written;
+}
+/* The least decoded storage limit that loads the module. */
+static size_t least_decoded_limit(const unsigned char *bytes, size_t length)
+{
+    size_t low = 0, high = EXECUTION_WIRE_MAX_BYTES;
+    while (low + 1 < high) {
+        size_t middle = low + (high - low) / 2,
+               remaining = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES;
+        execution_prepared_linker bounded = { .decoded_bytes = middle };
+        char error[192];
+        execution_module *m = execution_prepared_read_budget(
+            bytes,
+            length,
+            &bounded,
+            BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        if (m) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+        execution_module_free(m);
+    }
+    return high;
+}
+/* The bytes of runtime code that preparation leaves the loaded module's
+ * definition `index`, as the vectors it holds report them: an observation of
+ * the result, not the preparation estimate. */
+static size_t observed_retained(const unsigned char *bytes, size_t length, int index)
+{
+    size_t remaining = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES;
+    execution_prepared_linker loose = { .decoded_bytes = EXECUTION_WIRE_MAX_BYTES };
+    char error[192];
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        &loose,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    assert(m);
+    const behavior_function *f = execution_module_function_at(m, index).body;
+    size_t held = (size_t)acap(f->runtime_instructions) * sizeof *f->runtime_instructions +
+                  (size_t)acap(f->runtime_body) * sizeof *f->runtime_body;
+    execution_module_free(m);
+    return held;
+}
+static execution_module *resolve_imported(void *, uint64_t id, uint64_t)
+{
+    if (!imported_module || execution_module_id(imported_module) != id) {
+        return NULL;
+    }
+    execution_module_retain(imported_module);
+    return imported_module;
+}
+/* The prepared bytes of a module of `count` definitions of `additions` each,
+ * importing imported_module when `imports` is set. */
+static bool linked_module(
+    uint64_t id,
+    int count,
+    int additions,
+    bool imports,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    char error[192] = { 0 };
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = id;
+    prepared_plan->valid = true;
+    for (int i = 0; i < count; i++) {
+        behavior_function *f = sparse_definition(2, additions, error, sizeof error);
+        if (!f) {
+            return false;
+        }
+        apush(
+            prepared_plan->functions,
+            ((execution_module_function){ .id = (uint64_t)i + 1,
+                                          .kind = EXECUTION_FUNCTION_AUTHORED,
+                                          .body = f })
+        );
+        prepared_plan->function_count = i + 1;
+    }
+    if (imports) {
+        execution_module_retain(imported_module);
+        apush(prepared_plan->imports, imported_module);
+        prepared_plan->import_count = 1;
+    }
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    bool written = prepared_module &&
+                   execution_prepared_write(prepared_module, bytes, length, error, sizeof error);
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    return written;
+}
+/* The least record limit that loads the module, resolving imported_module. */
+static size_t least_record_limit(const unsigned char *bytes, size_t length)
+{
+    size_t low = 0, high = EXECUTION_WIRE_MAX_RECORDS;
+    while (low + 1 < high) {
+        size_t middle = low + (high - low) / 2;
+        execution_prepared_linker bounded = { .import = resolve_imported,
+                                              .decoded_records = middle };
+        char error[192];
+        execution_module *m = execution_prepared_read(bytes, length, &bounded, BEHAVIOR_BYTECODE, error, sizeof error);
+        if (m) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+        execution_module_free(m);
+    }
+    return high;
+}
+/* Reads the module within `limit` records, resolving imported_module. A
+ * refusal must name the record bound and leave the budget as it was. */
+static execution_module *record_bounded_read(
+    const unsigned char *bytes,
+    size_t length,
+    size_t limit,
+    bool *refused
+)
+{
+    execution_prepared_linker bounded = { .import = resolve_imported,
+                                          .decoded_bytes = 4 * (size_t)EXECUTION_WIRE_MAX_BYTES,
+                                          .decoded_records = limit };
+    size_t remaining = 4 * (size_t)EXECUTION_WIRE_MAX_BYTES, before = remaining;
+    char error[192] = { 0 };
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        &bounded,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    *refused = !m && remaining == before && strstr(error, "record") &&
+               strstr(error, "limit");
+    return m;
+}
+/* An import's fingerprint re-encodes the dependency under the importer's
+ * linker bound, so a bound raised past the default admits a dependency
+ * above it. A small importer of a larger dependency needs the dependency's
+ * records, not only its own. */
+TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
+{
+    unsigned char *dependency = NULL, *alone = NULL, *importer = NULL;
+    size_t dependency_length = 0, alone_length = 0, importer_length = 0;
+    REQUIRE(linked_module(2, 8, 64, false, &dependency, &dependency_length));
+    char error[192];
+    imported_module = execution_prepared_read(
+        dependency,
+        dependency_length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    REQUIRE(imported_module);
+    REQUIRE(linked_module(3, 1, 1, false, &alone, &alone_length));
+    REQUIRE(linked_module(3, 1, 1, true, &importer, &importer_length));
+    size_t own = least_record_limit(dependency, dependency_length),
+           small = least_record_limit(alone, alone_length),
+           linked = least_record_limit(importer, importer_length);
+    free(dependency);
+    free(alone);
+    REQUIRE(small < own && linked >= own);
+    /* The search's bound loads the importer, and one record fewer refuses
+     * it with the record diagnostic and no charge. */
+    bool refused = false;
+    execution_module *m = record_bounded_read(importer, importer_length, linked, &refused);
+    bool loaded = m != NULL;
+    execution_module_free(m);
+    m = record_bounded_read(importer, importer_length, linked - 1, &refused);
+    bool refused_below = !m && refused;
+    execution_module_free(m);
+    free(importer);
+    REQUIRE(loaded && refused_below);
+    return true;
+}
+TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
+{
+    /* Definitions are verified one at a time, so three more of them need
+     * their retained storage and decoded payload, never their scratch. Each
+     * definition's reservation covers the runtime code it is observed to keep
+     * once loaded, so undercharging that code fails here. */
+    char error[192] = { 0 };
+    behavior_function *sparse = sparse_definition(SPARSE_SLOTS, SPARSE_ADDITIONS, error, sizeof error);
+    REQUIRE(sparse);
+    behavior_function_preparation one = behavior_function_preparation_bytes(sparse);
+    behavior_function_free(sparse);
+    unsigned char *single = NULL, *several = NULL;
+    size_t single_length = 0, several_length = 0;
+    REQUIRE(sparse_module(1, &single, &single_length));
+    REQUIRE(sparse_module(4, &several, &several_length));
+    size_t first = least_decoded_limit(single, single_length);
+    size_t all = least_decoded_limit(several, several_length);
+    size_t kept = observed_retained(several, several_length, 3);
+    free(single);
+    free(several);
+    REQUIRE(kept > 0 && one.retained >= kept);
+    REQUIRE(all > first && all - first < one.scratch);
+    return true;
+}
+/* The verifier admits a definition whose defined-operands matrix is larger
+ * than 64 MiB, as the package compiler's EmitBody needs, and refuses one
+ * past 256 MiB before allocating it: (count + 1) * 4097 words is 67.2 MB,
+ * then 268.5 MB. */
+TEST_CASE(execution_verifier_admits_a_large_compiler_function)
+{
+    char error[192] = { 0 };
+    function = sparse_definition(64 * 4096, 2047, error, sizeof error);
+    REQUIRE(function);
+    behavior_function_free(function);
+    function = sparse_definition(64 * 4096, 8192, error, sizeof error);
+    REQUIRE(!function && !strcmp(error, "definition exceeds verifier storage budget"));
     return true;
 }
 
@@ -2296,6 +2586,9 @@ void test_language_execution()
     RUN_TEST_CASE(execution_unary_numeric_operands_ignore_unrelated_address_slot);
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
     RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
+    RUN_TEST_CASE(execution_preparation_reserves_one_definitions_scratch);
+    RUN_TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit);
+    RUN_TEST_CASE(execution_verifier_admits_a_large_compiler_function);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
     RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);

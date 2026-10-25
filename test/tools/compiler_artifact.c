@@ -34,7 +34,7 @@ enum
 /* Asset transports, caches and build-host compiles keep the 16 MiB default.
  * The bootstrap's compiler closure, the CLI's --output-artifact and the
  * format-agnostic --output-bytes pass the artifact bound. Loading the asset
- * compiler charges about 270 M units of layout work to its asset_source
+ * compiler charges about 252 M units of layout work to its asset_source
  * module, which re-fingerprints the package compiler it imports. */
 _Static_assert(COMPILER_HOST_MAX_OUTPUT_BYTES == 16u * 1024u * 1024u, "default byte result bound");
 _Static_assert(COMPILER_HOST_MAX_ARTIFACT_BYTES == 32u * 1024u * 1024u, "compiled closure bound");

@@ -3,8 +3,8 @@ package toolchain
 // Builds a project's artifact as chibi-compile does, with the stage-one
 // compiler compiling its behavior assets. chibi-compile exports stage
 // one's input, the project's sources and the game they link against; the
-// compiler host runs stage one's CompileBehaviors on it; and chibi-compile
-// assembles the artifact from the modules that writes. Stage one is the
+// compiler host runs CompileBehaviorsWithCatalog on it; and chibi-compile
+// assembles the artifact from its modules. Stage one is the
 // compiler the bootstrap artifact recovers from the compiler sources, kept
 // under .chibi/stage-one for the latest digest of them and of the host.
 // CHIBI_COMPILE names chibi-compile and CHIBI_STAGE_ONE_HOST a compiler
@@ -113,10 +113,10 @@ Compile :: () -> int {
         if (closure == "") {
             return 1
         }
-        // CompileBehaviors and BehaviorRejection: package-symbol
+        // CompileBehaviorsWithCatalog and BehaviorRejectionWithCatalog: package-symbol
         // project:package_compiler:1:NAME:callable.
-        if (Stage(host, closure, "d95f9895b7a7a764", input, modules) != 0) {
-            Stage(host, closure, "2921ca5ea316f0b", input, "")
+        if (Stage(host, closure, "976ab7ba3a7fbb4d", input, modules) != 0) {
+            Stage(host, closure, "90cd0d9866e51fd8", input, "")
             build.report(Join(["stage one cannot compile ", project, ": ", build.last_stdout()]))
             return 1
         }

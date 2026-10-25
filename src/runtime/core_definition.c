@@ -79,7 +79,8 @@ static const native_capability_definition DEFINITIONS[] = {
       CORE_DELAY_PRESENTATION,
       IN(DELAY),
       OUT(DELAY_OUT),
-      .effects = SCRIPT_EFFECT_SUSPEND },
+      .effects = SCRIPT_EFFECT_SUSPEND,
+      .operation = SCRIPT_OPERATION_DELAY },
     { ACTION(CORE_PRINT_NAME, CORE_PRINT_SOURCE, 0),
       CORE_PRINT_PRESENTATION,
       IN(PRINT),
@@ -126,15 +127,17 @@ static const native_capability_definition DEFINITIONS[] = {
       .component_access = SCRIPT_COMPONENT_ACCESS_REMOVE,
       .component_entity = -1,
       .component_value = -1 },
-    { FUNCTION(CORE_SELF_NAME, CORE_SELF_SOURCE), CORE_SELF_PRESENTATION, OUT(SELF) },
+    { FUNCTION(CORE_SELF_NAME, CORE_SELF_SOURCE),
+      CORE_SELF_PRESENTATION,
+      OUT(SELF),
+      .effects = SCRIPT_EFFECT_INVOCATION_READ,
+      .operation = SCRIPT_OPERATION_OWNER },
 };
 static const node_access PRINT_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 static const native_definition_binding BINDINGS[] = {
-    { .canonical_name = CORE_DELAY_NAME, .implementation = { .intrinsic = BF_DELAY } },
     { .canonical_name = CORE_PRINT_NAME,
       .implementation = { .call = &EXECUTION_PrintString, .access = &PRINT_ACCESS } },
     { .canonical_name = CORE_ASSERT_NAME, .implementation = { .intrinsic = BF_ASSERT } },
-    { .canonical_name = CORE_SELF_NAME, .implementation = { .intrinsic = BF_OWNER } },
 };
 static const native_global_definition GLOBALS[] = {
     { .canonical_name = "self", .type = SELF },

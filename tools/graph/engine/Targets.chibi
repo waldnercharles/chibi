@@ -128,7 +128,8 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_capabilities") {
         return [
             "src/capabilities/catalog.c", "src/capabilities/catalog_snapshot.c",
-            "src/capabilities/catalog_values.c", "src/capabilities/definition.c"
+            "src/capabilities/catalog_values.c", "src/capabilities/definition.c",
+            "src/capabilities/operation.c"
         ];
     }
     if (target == "chibi_ecs") {
@@ -722,7 +723,8 @@ Files :: (target: string) -> string[] {
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
             "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
-            "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c", "test/language/incremental.c", "test/language/modules.c",
+            "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c", "test/language/incremental.c",
+            "test/language/operations.c", "test/language/modules.c",
             "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
             "test/language/component_write_source.c", "test/language/component_write_ir.c",
             "test/language/borrow.c", "test/language/reductions.c", "test/language/benchmark.c",
@@ -992,8 +994,9 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_execution_contract") {
         return [
             "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/component.h",
-            "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h", "execution/instruction.h",
-            "execution/log.h", "execution/random.h", "execution/request.h", "execution/scalar.h",
+            "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h",
+            "execution/instruction.h", "execution/log.h", "execution/operation.h", "execution/random.h",
+            "execution/request.h", "execution/scalar.h",
             "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
             "execution/value_kind.h"
         ];
@@ -1662,14 +1665,14 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_consumer") {
         return ["build/test/language/testing/include", "public/asset_compiler_host", "public/asset_values",
                 "public/support", "public/behavior_runtime", "public/execution", "public/types",
-                "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+                "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
                 "public/scene_document", "public/scene_runtime", "public/prototype_document"];
     }
     if (target == "chibi_asset_compiler_host") {
         return [
             "public/asset_compiler_host", "private/asset_compiler_host", "build/sdk/generated/assets",
             "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
-            "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract",
+            "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities",
             "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json"
         ];
     }
@@ -1795,7 +1798,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_scheduling") {
         return [
-            "public/scheduling", "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/scheduling", "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/tasks"
         ];
     }
@@ -1856,7 +1859,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return [
             "public/execution", "private/execution", "private/types",
-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks"
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks"
         ];
     }
     if (target == "chibi_core_capabilities") {
@@ -1868,7 +1871,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_behavior_runtime") {
         return [
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/events"
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"
         ];
     }
     if (target == "chibi_native_prepared") {
@@ -1881,7 +1884,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_scene_runtime") {
         return [
             "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/types",
-            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events"
+            "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events"
         ];
     }
     if (target == "chibi_vector_capabilities") {
@@ -1930,7 +1933,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_scene_document") {
         return [
             "public/scene_document", "public/ecs", "public/types", "public/support", "public/asset_values",
-            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
+            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities",
             "public/tasks", "public/events", "public/asset_text"
         ];
     }
@@ -1938,52 +1941,52 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/prototype_document", "public/ecs", "public/types", "public/support", "public/asset_values",
             "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/execution",
-            "public/execution_contract", "public/tasks", "public/events", "public/asset_text"
+            "public/execution_contract", "public/capabilities", "public/tasks", "public/events", "public/asset_text"
         ];
     }
     if (target == "chibi_native_types") {
         return [
-            "public/native_types", "public/ecs", "public/types", "public/support", "public/execution_contract"
+            "public/native_types", "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities"
         ];
     }
     if (target == "chibi_spatial_runtime") {
         return [
             "public/spatial_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract"
+            "public/execution_contract", "public/capabilities"
         ];
     }
     if (target == "chibi_native_bindings") {
         return [
             "public/native_bindings", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract", "public/native_capabilities", "public/capabilities",
+            "public/execution_contract", "public/capabilities", "public/native_capabilities",
             "public/spatial_runtime"
         ];
     }
     if (target == "chibi_entity_runtime") {
         return [
             "public/entity_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract", "public/execution", "public/tasks", "public/scene_runtime",
-            "public/behavior_runtime", "public/events", "public/native_capabilities", "public/capabilities",
+            "public/execution_contract", "public/capabilities", "public/execution", "public/tasks", "public/scene_runtime",
+            "public/behavior_runtime", "public/events", "public/native_capabilities",
             "public/spatial_runtime", "public/tilemap_runtime"
         ];
     }
     if (target == "chibi_rhythm_runtime") {
         return [
             "public/rhythm_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract", "public/native_capabilities", "public/capabilities",
+            "public/execution_contract", "public/capabilities", "public/native_capabilities",
             "public/execution", "public/tasks"
         ];
     }
     if (target == "chibi_particle_runtime") {
         return [
             "public/particle_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract", "public/native_capabilities", "public/capabilities"
+            "public/execution_contract", "public/capabilities", "public/native_capabilities"
         ];
     }
     if (target == "chibi_input_runtime") {
         return [
             "public/input_runtime", "public/input_action", "public/native_types", "public/ecs", "public/types",
-            "public/support", "public/execution_contract", "public/native_capabilities", "public/capabilities",
+            "public/support", "public/execution_contract", "public/capabilities", "public/native_capabilities",
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
             "public/spatial_runtime"
         ];
@@ -2005,15 +2008,15 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_visual_catalog") {
         return [
             "public/visual_catalog", "private/visual_catalog", "public/native_types", "public/ecs",
-            "public/types", "public/support", "public/execution_contract", "public/shader_runtime",
-            "public/model_runtime", "public/mesh_runtime", "public/native_capabilities", "public/capabilities",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/shader_runtime",
+            "public/model_runtime", "public/mesh_runtime", "public/native_capabilities",
             "public/image_catalog"
         ];
     }
     if (target == "chibi_scene_authoring") {
         return [
             "public/scene_authoring", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract", "public/scene_document", "public/asset_values",
+            "public/execution_contract", "public/capabilities", "public/scene_document", "public/asset_values",
             "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/tasks",
             "public/events"
         ];
@@ -2022,7 +2025,7 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/scenario_document", "public/asset_values", "public/support", "public/input_runtime",
             "public/input_action", "public/native_types", "public/ecs", "public/types",
-            "public/execution_contract", "public/native_capabilities", "public/capabilities",
+            "public/execution_contract", "public/capabilities", "public/native_capabilities",
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
             "public/asset_text"
         ];
@@ -2063,9 +2066,9 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_physics_runtime") {
         return [
             "public/physics_runtime", "private/physics", "public/native_types", "public/ecs", "public/types",
-            "public/support", "public/execution_contract", "public/entity_runtime", "public/execution",
+            "public/support", "public/execution_contract", "public/capabilities", "public/entity_runtime", "public/execution",
             "public/tasks", "public/scene_runtime", "public/behavior_runtime", "public/events",
-            "public/native_capabilities", "public/capabilities", "public/material_runtime",
+            "public/native_capabilities", "public/material_runtime",
             "public/field_catalog", "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
             "public/spatial_runtime"
         ];
@@ -2073,32 +2076,30 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_physics3d_runtime") {
         return [
             "public/physics3d_runtime", "public/native_types", "public/ecs", "public/types", "public/support",
-            "public/execution_contract", "public/entity_runtime", "public/execution", "public/tasks",
-            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities",
-            "public/capabilities", "public/task_pool_runtime", "public/spatial_runtime", "public/mesh_runtime"
+            "public/execution_contract", "public/capabilities", "public/entity_runtime", "public/execution", "public/tasks",
+            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities", "public/task_pool_runtime", "public/spatial_runtime", "public/mesh_runtime"
         ];
     }
     if (target == "chibi_visibility_runtime") {
         return [
             "public/visibility_runtime", "public/entity_runtime", "public/native_types", "public/ecs",
-            "public/types", "public/support", "public/execution_contract", "public/execution", "public/tasks",
-            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities",
-            "public/capabilities", "public/physics_runtime", "public/material_runtime", "public/field_catalog",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/execution", "public/tasks",
+            "public/scene_runtime", "public/behavior_runtime", "public/events", "public/native_capabilities", "public/physics_runtime", "public/material_runtime", "public/field_catalog",
             "public/fields", "public/mesh_runtime", "public/task_pool_runtime", "public/spatial_runtime"
         ];
     }
     if (target == "chibi_graph_model") {
         return [
             "public/graph_model", "private/graph", "public/types", "public/support",
-            "public/execution_contract", "public/asset_values"
+            "public/execution_contract", "public/capabilities", "public/asset_values"
         ];
     }
     if (target == "chibi_graph_authoring") {
         return [
             "public/graph_authoring", "private/graph", "public/graph_model", "public/types", "public/support",
-            "public/execution_contract", "public/ecs", "public/events", "public/asset_values",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/events", "public/asset_values",
             "public/asset_text", "public/value_document", "public/conversion_capabilities",
-            "public/native_capabilities", "public/capabilities", "public/core_capabilities",
+            "public/native_capabilities", "public/core_capabilities",
             "public/math_capabilities", "public/arithmetic_capabilities", "public/comparison_capabilities",
             "public/vector_capabilities", "public/text_capabilities", "public/state_capabilities",
             "public/array_capabilities", "public/selection_capabilities", "public/set_capabilities"
@@ -2107,10 +2108,9 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_graph_compilation") {
         return [
             "public/graph_compilation", "private/graph", "public/graph_authoring", "public/graph_model",
-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/events",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/events",
             "public/asset_values", "public/shader_runtime", "public/model_runtime", "public/fields",
-            "public/tasks", "public/field_catalog", "public/field_capabilities", "public/native_capabilities",
-            "public/capabilities"
+            "public/tasks", "public/field_catalog", "public/field_capabilities", "public/native_capabilities"
         ];
     }
     if (target == "chibi_host_native_default") {
@@ -2142,18 +2142,17 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/studio_graph", "private/studio_graph", "public/graph_compilation",
             "public/graph_authoring", "public/graph_model", "public/types", "public/support",
-            "public/execution_contract", "public/ecs", "public/events", "public/asset_values",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/events", "public/asset_values",
             "public/shader_runtime", "public/model_runtime", "public/fields", "public/tasks",
-            "public/field_catalog", "public/studio_capabilities", "public/native_capabilities",
-            "public/capabilities"
+            "public/field_catalog", "public/studio_capabilities", "public/native_capabilities"
         ];
     }
     if (target == "chibi_engine") {
         return [
             "public/engine", "private/engine", "public/behavior_runtime", "public/execution", "public/types",
-            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
+            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
@@ -2192,10 +2191,10 @@ pub Includes :: (target: string) -> string[] {
         return [
             "public/asset_authoring", "public/prototype_document", "public/ecs", "public/types",
             "public/support", "public/asset_values", "public/scene_document", "public/scene_runtime",
-            "public/behavior_runtime", "public/execution", "public/execution_contract", "public/tasks",
+            "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities", "public/tasks",
             "public/events", "public/graph_model", "public/reference_index", "public/field_catalog",
             "public/fields", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/capabilities",
+            "public/language_syntax",
             "public/native_capabilities", "public/asset_text", "public/ui_document", "public/text_source",
             "public/text_search", "public/ui_document_values", "public/graph_authoring",
             "public/graph_compilation", "public/shader_runtime", "public/model_runtime", "public/native_types",
@@ -2216,7 +2215,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_graph_catalog") {
         return [
             "public/graph_catalog", "public/graph_model", "public/types", "public/support",
-            "public/execution_contract", "public/native_capabilities", "public/capabilities", "public/ecs",
+            "public/execution_contract", "public/capabilities", "public/native_capabilities", "public/ecs",
             "public/source_presentation", "public/authoring", "public/compiler", "public/language",
             "public/language_syntax", "public/execution", "public/tasks",
             "public/reference_index", "public/text_source", "public/text_search", "public/graph_compilation",
@@ -2227,9 +2226,9 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_player") {
         return [
             "public/player", "public/engine", "public/behavior_runtime", "public/execution", "public/types",
-            "public/support", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
+            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
@@ -2240,9 +2239,9 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_shader_preparation") {
         return [
             "public/shader_preparation", "third_party/yyjson", "public/visual_catalog", "public/native_types",
-            "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/shader_runtime", "public/model_runtime", "public/mesh_runtime",
-            "public/native_capabilities", "public/capabilities", "public/graph_model", "public/player",
+            "public/native_capabilities", "public/graph_model", "public/player",
             "public/engine", "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
             "public/entity_runtime", "public/scene_runtime", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/task_pool_runtime",
@@ -2256,10 +2255,10 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_model_authoring") {
         return [
             "public/model_authoring", "third_party/yyjson", "public/graph_model", "public/types",
-            "public/support", "public/execution_contract", "public/model_bake", "public/model_runtime",
+            "public/support", "public/execution_contract", "public/capabilities", "public/model_bake", "public/model_runtime",
             "public/shader_runtime", "public/mesh_runtime", "public/image_preparation", "public/image_catalog",
             "public/shader_preparation", "public/visual_catalog", "public/native_types", "public/ecs",
-            "public/native_capabilities", "public/capabilities", "public/player", "public/engine",
+            "public/native_capabilities", "public/player", "public/engine",
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
             "public/entity_runtime", "public/scene_runtime", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/task_pool_runtime",
@@ -2287,14 +2286,14 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_model_import") {
         return [
             "public/model_import", "third_party/yyjson", "public/graph_model", "public/types",
-            "public/support", "public/execution_contract", "public/shader_runtime", "public/platform",
+            "public/support", "public/execution_contract", "public/capabilities", "public/shader_runtime", "public/platform",
             "public/asset_authoring", "public/prototype_document", "public/ecs", "public/asset_values",
             "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/execution",
             "public/tasks", "public/events", "public/reference_index", "public/field_catalog", "public/fields",
             "public/image_preparation", "public/image_catalog", "public/mesh_runtime", "public/native_types",
             "public/graph_authoring", "public/graph_compilation", "public/model_runtime", "public/asset_text",
             "public/json", "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/capabilities",
+            "public/language_syntax",
             "public/native_capabilities", "public/input_map", "public/input_action"
         ];
     }
@@ -2309,9 +2308,9 @@ pub Includes :: (target: string) -> string[] {
             "public/render", "private/render", "public/platform", "public/ui", "public/json",
             "public/ui_document_values", "public/support", "public/ui_documents", "public/text_search",
             "public/engine", "public/behavior_runtime", "public/execution", "public/types",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
+            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
@@ -2394,24 +2393,23 @@ pub Includes :: (target: string) -> string[] {
         return [
             "private/build-host", "private/compiler-host", "third_party/yyjson", "public/compiler_host",
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
-            "public/native_prepared", "public/native_capabilities", "public/capabilities",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
+            "public/native_prepared", "public/native_capabilities",
             "public/text_capabilities", "public/array_capabilities"
         ];
     }
     if (target == "chibi-build-host") {
         return [
             "private/build-host", "public/compiler_host", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
             "public/events"
         ];
     }
     if (target == "chibi_compiler_host") {
         return [
             "private/compiler-host", "third_party/yyjson", "public/compiler_host", "public/behavior_runtime",
-            "public/execution", "public/types", "public/support", "public/execution_contract", "public/ecs",
-            "public/tasks", "public/events", "public/native_prepared", "public/native_capabilities",
-            "public/capabilities", "public/text_capabilities", "public/array_capabilities",
+            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs",
+            "public/tasks", "public/events", "public/native_prepared", "public/native_capabilities", "public/text_capabilities", "public/array_capabilities",
             "public/value_document", "public/asset_values", "public/asset_json", "public/json",
             "public/language_syntax", "public/asset_text"
         ];
@@ -2419,7 +2417,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi-compiler-host") {
         return [
             "private/compiler-host", "third_party/yyjson", "public/compiler_host", "public/behavior_runtime",
-            "public/execution", "public/types", "public/support", "public/execution_contract", "public/ecs",
+            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs",
             "public/tasks", "public/events", "public/asset_text", "public/asset_values", "public/json"
         ];
     }
@@ -2445,11 +2443,10 @@ pub Includes :: (target: string) -> string[] {
         return [
             "build/tools/chibi_ctl/private", "public/asset_authoring", "public/prototype_document",
             "public/ecs", "public/types", "public/support", "public/asset_values", "public/scene_document",
-            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
+            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities",
             "public/tasks", "public/events", "public/graph_model", "public/reference_index",
             "public/field_catalog", "public/fields", "public/asset_json", "public/json", "public/asset_text",
-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/capabilities", "public/native_capabilities",
+            "public/authoring", "public/compiler", "public/language", "public/language_syntax", "public/native_capabilities",
             "public/component_presentation", "public/graph_authoring", "public/graph_compilation",
             "public/shader_runtime", "public/model_runtime", "public/graph_catalog",
             "public/host_native_default", "public/host_native_catalog", "public/image_preparation",
@@ -2473,9 +2470,9 @@ pub Includes :: (target: string) -> string[] {
             "private/player", "public/render", "public/platform", "public/ui", "public/json",
             "public/ui_document_values", "public/support", "public/ui_documents", "public/text_search",
             "public/engine", "public/behavior_runtime", "public/execution", "public/types",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/capabilities", "public/scheduling", "public/physics_runtime",
+            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
@@ -2508,11 +2505,10 @@ pub Includes :: (target: string) -> string[] {
         return [
             "build/tools/chibi_ctl/private", "public/asset_authoring", "public/prototype_document",
             "public/ecs", "public/types", "public/support", "public/asset_values", "public/scene_document",
-            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract",
+            "public/scene_runtime", "public/behavior_runtime", "public/execution", "public/execution_contract", "public/capabilities",
             "public/tasks", "public/events", "public/graph_model", "public/reference_index",
             "public/field_catalog", "public/fields", "public/asset_json", "public/json", "public/asset_text",
-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/capabilities", "public/native_capabilities",
+            "public/authoring", "public/compiler", "public/language", "public/language_syntax", "public/native_capabilities",
             "public/component_presentation", "public/graph_authoring", "public/graph_compilation",
             "public/shader_runtime", "public/model_runtime", "public/graph_catalog",
             "public/host_native_default", "public/host_native_catalog", "public/image_preparation",
@@ -2543,7 +2539,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "test_behavior_consumer") {
         return [
             "build/test/language/testing/include", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
             "public/events"
         ];
     }
@@ -2577,29 +2573,28 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_sdk_contracts") {
         return [
             "build/test/tools/testing/include", "public/execution_contract", "public/types",
-            "public/support", "public/ecs", "public/value_document", "public/asset_values",
-            "public/native_types", "public/studio_capabilities", "public/native_capabilities",
-            "public/capabilities"
+            "public/support", "public/capabilities", "public/ecs", "public/value_document", "public/asset_values",
+            "public/native_types", "public/studio_capabilities", "public/native_capabilities"
         ];
     }
     if (target == "chibi_prepared_consumer") {
         return [
             "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
             "public/events"
         ];
     }
     if (target == "chibi_record_consumer") {
         return [
             "build/test/tools/testing/include", "public/behavior_runtime", "public/execution",
-            "public/types", "public/support", "public/execution_contract", "public/ecs", "public/tasks",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks",
             "public/events"
         ];
     }
     if (target == "chibi_scene_consumer") {
         return [
             "build/test/tools/testing/include", "public/scene_runtime", "public/behavior_runtime",
-            "public/execution", "public/types", "public/support", "public/execution_contract",
+            "public/execution", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/ecs", "public/tasks", "public/events"
         ];
     }
@@ -2609,7 +2604,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_scene_authoring_consumer") {
         return [
             "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
-            "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/scene_document", "public/asset_values", "public/scene_runtime",
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events"
         ];
@@ -2617,9 +2612,9 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_scene_snapshot_read_consumer") {
         return [
             "build/test/tools/testing/include", "public/scene_authoring", "public/native_types",
-            "public/ecs", "public/types", "public/support", "public/execution_contract",
+            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
             "public/source_catalog", "public/authoring", "public/compiler", "public/language",
-            "public/language_syntax", "public/capabilities",
+            "public/language_syntax",
             "public/execution", "public/tasks", "public/native_capabilities", "public/reference_index",
             "public/input_map", "public/input_action", "public/prototype_document",
             "public/asset_values", "public/scene_document", "public/scene_runtime",
@@ -2630,9 +2625,9 @@ pub Includes :: (target: string) -> string[] {
         return [
             "build/test/tools/testing/include", "public/player", "public/engine",
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/capabilities", "public/scheduling",
+            "public/native_capabilities", "public/scheduling",
             "public/physics_runtime", "public/material_runtime", "public/field_catalog",
             "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
             "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
@@ -2665,8 +2660,8 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_particle_consumer") {
         return [
             "build/test/tools/testing/include", "public/particle_runtime", "public/native_types",
-            "public/ecs", "public/types", "public/support", "public/execution_contract",
-            "public/native_capabilities", "public/capabilities"
+            "public/ecs", "public/types", "public/support", "public/execution_contract", "public/capabilities",
+            "public/native_capabilities"
         ];
     }
     if (target == "chibi_png_consumer") {
@@ -2692,9 +2687,9 @@ pub Includes :: (target: string) -> string[] {
             "build/test/tools/testing/include", "public/render", "public/platform", "public/ui",
             "public/json", "public/ui_document_values", "public/support", "public/ui_documents",
             "public/text_search", "public/engine", "public/behavior_runtime", "public/execution",
-            "public/types", "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/types", "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/capabilities", "public/scheduling",
+            "public/native_capabilities", "public/scheduling",
             "public/physics_runtime", "public/material_runtime", "public/field_catalog",
             "public/fields", "public/mesh_runtime", "public/task_pool_runtime",
             "public/physics3d_runtime", "public/visibility_runtime", "public/particle_runtime",
@@ -2715,10 +2710,10 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_mesh_preparation_consumer") {
         return [
             "build/test/tools/testing/include", "public/model_authoring", "public/graph_model",
-            "public/types", "public/support", "public/execution_contract", "public/model_bake",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/model_bake",
             "public/model_runtime", "public/shader_runtime", "public/mesh_runtime",
             "public/shader_preparation", "public/visual_catalog", "public/native_types", "public/ecs",
-            "public/native_capabilities", "public/capabilities", "public/player", "public/engine",
+            "public/native_capabilities", "public/player", "public/engine",
             "public/behavior_runtime", "public/execution", "public/tasks", "public/events",
             "public/entity_runtime", "public/scene_runtime", "public/scheduling",
             "public/physics_runtime", "public/material_runtime", "public/field_catalog",
@@ -2732,7 +2727,7 @@ pub Includes :: (target: string) -> string[] {
     if (target == "chibi_model_import_consumer") {
         return [
             "build/test/tools/testing/include", "public/model_import", "public/graph_model",
-            "public/types", "public/support", "public/execution_contract", "public/shader_runtime",
+            "public/types", "public/support", "public/execution_contract", "public/capabilities", "public/shader_runtime",
             "public/mesh_runtime", "public/graph_authoring", "public/ecs", "public/events",
             "public/asset_values", "public/graph_compilation", "public/model_runtime", "public/fields",
             "public/tasks", "public/field_catalog", "public/native_types", "public/asset_text",
@@ -2808,10 +2803,10 @@ pub Includes :: (target: string) -> string[] {
         return [
             ".", "src", "third_party/yyjson", "third-party/source/cute_framework/tools",
             "public/behavior_runtime", "public/execution", "public/types", "public/support",
-            "public/execution_contract", "public/ecs", "public/tasks", "public/events",
+            "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/scene_runtime", "public/value_document", "public/asset_values", "private/build-host",
             "public/compiler_host", "public/shader_runtime", "public/authoring", "public/compiler",
-            "public/language", "public/language_syntax", "public/capabilities",
+            "public/language", "public/language_syntax",
             "public/native_capabilities", "public/reference_index", "public/array_capabilities",
             "public/audio_runtime", "public/scene_authoring", "public/native_types",
             "public/scene_document", "public/source_catalog", "public/input_map", "public/input_action",
@@ -3964,7 +3959,7 @@ pub LinkOptions :: (target: string) -> string[] {
 // are.
 pub Links :: (target: string) -> string[] {
     if (target == "reflect") {
-        return ["chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
+        return ["chibi_capabilities", "chibi_capabilities", "chibi_types", "chibi_support", "-lm"];
     }
     if (target == "chibi-build-host") {
         return [
@@ -4029,9 +4024,9 @@ pub Links :: (target: string) -> string[] {
             "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lc++",
             "chibi_entity_runtime", "chibi_tilemap_runtime", "chibi_scene_runtime",
             "third-party/lib/chibi-vendor/libchibi_vendor_box2d.a", "chibi_input_runtime",
-            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities", "chibi_capabilities",
+            "chibi_spatial_runtime", "chibi_native_types", "chibi_native_capabilities",
             "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_capabilities", "chibi_events", "chibi_types",
             "chibi_support", "-lm"
         ];
     }
@@ -4067,8 +4062,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_scenario_document", "chibi_input_runtime", "chibi_behavior_runtime", "chibi_events",
             "chibi_native_capabilities", "chibi_spatial_runtime", "chibi_input_map", "chibi_asset_text",
             "chibi_asset_kdl", "chibi_asset_values", "chibi_declared_components", "chibi_execution",
-            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_capabilities", "chibi_native_types",
-            "chibi_ecs", "chibi_types", "chibi_support", "-lm"
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_types",
+            "chibi_ecs", "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
         ];
     }
     if (target == "chibi_ctl" && build.platform() == "Darwin") {
@@ -4125,7 +4120,7 @@ pub Links :: (target: string) -> string[] {
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_ui_document",
             "chibi_text_source", "chibi_text_search", "chibi_ui_document_values", "chibi_ui_runtime",
             "chibi_value_document", "chibi_asset_values", "chibi_visual_catalog", "chibi_model_runtime",
-            "chibi_native_capabilities", "chibi_capabilities", "chibi_native_types", "chibi_ecs",
+            "chibi_native_capabilities", "chibi_native_types", "chibi_ecs", "chibi_capabilities",
             "chibi_image_catalog", "chibi_shader_runtime", "chibi_mesh_runtime", "chibi_types", "chibi_support",
             "-lm", "-framework", "Metal", "-framework", "Foundation"
         ];
@@ -4167,8 +4162,8 @@ pub Links :: (target: string) -> string[] {
             "chibi_builtin_fonts", "chibi_ui_documents", "chibi_image_preparation", "chibi_image_catalog",
             "chibi_shader_runtime", "chibi_compiler_syntax", "chibi_language_syntax",
             "third-party/lib/chibi-vendor/libchibi_vendor_tree_sitter.a", "chibi_compiler_json", "chibi_json",
-            "chibi_native_capabilities", "chibi_capabilities", "chibi_behavior_runtime", "chibi_execution",
-            "chibi_ecs", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
+            "chibi_native_capabilities", "chibi_behavior_runtime", "chibi_execution",
+            "chibi_ecs", "chibi_capabilities", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events", "chibi_types",
             "chibi_support", "-lm"
         ];
     }

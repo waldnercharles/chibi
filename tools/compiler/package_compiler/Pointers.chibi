@@ -6,7 +6,7 @@ import strings "core:strings"
 
 PointerStorage: int : 19;
 PointerDecl: int : 6;
-ManagedPlace: int : 10;
+ManagedPlace: int : 11;
 PointerMakeIntrinsic: int : 46;
 PointerReadIntrinsic: int : 47;
 PointerWriteIntrinsic: int : 48;

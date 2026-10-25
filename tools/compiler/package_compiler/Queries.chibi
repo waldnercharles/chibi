@@ -521,7 +521,7 @@ QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], 
 // execution; its inferred result follows exactly the same operators, calls,
 // indexing, dereferences and aggregate rules as an ordinary local initializer.
 QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
-                   callables: Callable[], params: Param[], natives: Native[], ports: Port[], queries: QuerySpec[],
+                   callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], queries: QuerySpec[],
                    names: Name[], entity: uint64, node: int, ops: Ops, target: Target) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (node < 0) {
@@ -543,7 +543,8 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     expressions := ops;
     expressions.debug = false;
     switch EmitBody(forest, text, 0, functions, params, types, members, [], natives, ports, [], [], [], [], names,
-                    "", SolidOffsets(text), 0, 0, length(functions) - 1, [], [], [], expressions, target, queries) {
+                    "", SolidOffsets(text), 0, 0, length(functions) - 1, [], [], [], BodyContext.Unknown, [],
+                    expressions, target, queries) {
         case .Inferred(value):
             if (value.storage == NumberStorage) {
                 return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
@@ -551,7 +552,8 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
             return value;
         case .Failed(diagnostic):
             return none;
-        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects):
+        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
+                      direct_write, facts):
             return none;
     }
 }
@@ -626,7 +628,7 @@ QueryPatternNames :: (forest: snapshot.SnapshotNode[], text: string, types: Type
 // Names visible at the query's creation site, in declaration order. Only
 // lexical ancestors contribute, so sibling blocks, loops and arms stay out.
 QueryScope :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
-               callables: Callable[], params: Param[], natives: Native[], ports: Port[], queries: QuerySpec[],
+               callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], queries: QuerySpec[],
                globals: Name[], entity: uint64, node: int, ops: Ops, target: Target) -> Name[] {
     names := globals;
     for (callable in callables) {
@@ -765,7 +767,7 @@ QueryHelperLocal :: (forest: snapshot.SnapshotNode[], text: string, callables: C
     return false;
 }
 QueryImpure :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                natives: Native[], names: Name[], root: int, system_header: bool) -> int {
+                natives: ResolvedNative[], names: Name[], root: int, system_header: bool) -> int {
     pending: int[] = [root];
     visited: int[] = [];
     while (length(pending) > 0) {
@@ -896,8 +898,8 @@ QueryExcludes :: (forest: snapshot.SnapshotNode[], text: string, condition: int,
 // Each declaration pass extends copies of its inputs: assigning to a
 // parameter would make every caller copy its arguments.
 CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string, input_types: TypeDecl[],
-                 input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: Native[],
-                 ports: Port[], input_queries: QuerySpec[], globals: Name[], enclosing: Name[], entity: uint64,
+                 input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: ResolvedNative[],
+                 ports: ResolvedPort[], input_queries: QuerySpec[], globals: Name[], enclosing: Name[], entity: uint64,
                  node: int, system_header: bool, target: Target, ops: Ops) -> QueryDeclarations {
     types := input_types;
     members := input_members;
@@ -1193,16 +1195,17 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     queries.append(described);
     return QueryDeclarations.Collected(types, members, callables, params, queries);
 }
-CollectQueries :: (forest: snapshot.SnapshotNode[], text: string, identity: string, input_types: TypeDecl[],
-                   input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: Native[],
-                   ports: Port[], globals: Name[], entity: uint64, target: Target, ops: Ops) -> QueryDeclarations {
+// Collects the queries among the first `node_end` nodes, the first source's.
+CollectQueries :: (forest: snapshot.SnapshotNode[], text: string, identity: string, node_end: int, input_types: TypeDecl[],
+                   input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: ResolvedNative[],
+                   ports: ResolvedPort[], globals: Name[], entity: uint64, target: Target, ops: Ops) -> QueryDeclarations {
     types := input_types;
     members := input_members;
     callables := input_callables;
     params := input_params;
     queries: QuerySpec[] = [];
     node: int = 0;
-    while (node < length(forest)) {
+    while (node < node_end) {
         if (forest[node].is_named && (Is(forest, node, "query_expression") ||
                                       (Is(forest, node, "system") && length(Members(forest, Field(forest, node, "parameters"))) > 0))) {
             switch CollectQuery(forest, text, identity, types, members, callables, params, natives, ports,

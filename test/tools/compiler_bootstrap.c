@@ -435,6 +435,31 @@ TEST_CASE(bootstrap_load_rejects_damaged_artifacts_and_old_versions)
     return true;
 }
 
+/* The compiler's own closure may pass the 16 MiB byte bound; the reader takes
+ * a closure up to the artifact bound and no longer. Sparse files keep this
+ * cheap; the recorded digest never matches, so the error reports what was
+ * read. */
+TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound)
+{
+    REQUIRE(api_bytes && api_target);
+    const size_t sizes[] = { COMPILER_HOST_MAX_OUTPUT_BYTES + 1u,
+                             COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
+    const size_t read[] = { COMPILER_HOST_MAX_OUTPUT_BYTES + 1u, 0 };
+    char file[256], expected[64];
+    path(file, "api-bootstrap/compiler.chibip");
+    for (int i = 0; i < 2; i++) {
+        write_binary("api-bootstrap/compiler.chibip", "", 0);
+        REQUIRE(!truncate(file, (off_t)sizes[i]));
+        REQUIRE(!load(api_folder));
+        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", read[i]);
+        REQUIRE(strstr(api_error, expected));
+    }
+    write_binary("api-bootstrap/compiler.chibip", api_bytes, api_length);
+    REQUIRE(load(api_folder));
+    cleanup_load();
+    return true;
+}
+
 TEST_CASE(bootstrap_load_rejects_another_prepared_abi)
 {
     REQUIRE(api_target);
@@ -899,6 +924,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
     pu_setup(NULL, cleanup_load);
     RUN_TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation);
     RUN_TEST_CASE(bootstrap_load_rejects_damaged_artifacts_and_old_versions);
+    RUN_TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound);
     RUN_TEST_CASE(bootstrap_load_rejects_another_prepared_abi);
     RUN_TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness);
     RUN_TEST_CASE(bootstrap_load_does_not_cache_source_hashes);

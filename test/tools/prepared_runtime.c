@@ -1,3 +1,4 @@
+#include "execution/function.h"
 #include "execution/inspection.h"
 #include "execution/log.h"
 #include "execution/prepared.h"
@@ -7,8 +8,10 @@
 #include "test/prepared_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/value_wire.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -234,6 +237,163 @@ static bool count_is(execution_instance *instance, ecs_entity entity, int expect
     return value && value->type == PIN_I32 && value->i == expected &&
            component && component->value == expected;
 }
+typedef struct
+{
+    uint64_t entity, before, resumed, same, text, count;
+} operation_fixture;
+static bool operation_type(void *user, uint64_t id, execution_prepared_type *out)
+{
+    const operation_fixture *fixture = user;
+    if (id != fixture->entity) {
+        return false;
+    }
+    *out = (execution_prepared_type){ .name = "ecs.entity",
+                                      .storage = PIN_HANDLE,
+                                      .size = sizeof(uint64_t) };
+    return true;
+}
+static bool operation_states(execution_instance *instance, const operation_fixture *fixture, int phase)
+{
+    const pin_value *before = execution_instance_state(instance, fixture->before);
+    const pin_value *resumed = execution_instance_state(instance, fixture->resumed);
+    const pin_value *same = execution_instance_state(instance, fixture->same);
+    const pin_value *text = execution_instance_state(instance, fixture->text);
+    const pin_value *count = execution_instance_state(instance, fixture->count);
+    REQUIRE(before && before->type == PIN_HANDLE && before->u64 == 7);
+    REQUIRE(resumed && resumed->type == PIN_HANDLE && resumed->u64 == (phase ? 7 : 0));
+    REQUIRE(same && same->type == PIN_BOOL && same->b == (phase != 0));
+    REQUIRE(text && text->type == PIN_STR);
+    pin_string value = pin_text(*text);
+    REQUIRE(value.length == 3 && !memcmp(value.bytes, phase ? "old" : "new", 3));
+    REQUIRE(count && count->type == PIN_I32 && count->i == (phase == 2 ? 1 : 0));
+    return true;
+}
+static bool operation_backend_entries(behavior_run_counts counts, behavior_backend backend, const char *phase)
+{
+    printf(
+        "prepared-operations phase=%s backend=%s bytecode=%" PRIu64
+        " sljit=%" PRIu64 " wasm=%" PRIu64 " inspected_sljit=%" PRIu64
+        " inspected_wasm=%" PRIu64 " inspection_fallback=%" PRIu64
+        " size_fallback=%" PRIu64 " overflow=%d\n",
+        phase,
+        backend == BEHAVIOR_BYTECODE ? "bytecode"
+        : backend == BEHAVIOR_SLJIT  ? "sljit"
+                                     : "wasm",
+        counts.bytecode_entries,
+        counts.sljit_entries,
+        counts.wasm_entries,
+        counts.inspected_sljit_entries,
+        counts.inspected_wasm_entries,
+        counts.inspection_bytecode_fallbacks,
+        counts.size_bytecode_fallbacks,
+        counts.overflow
+    );
+    REQUIRE(!counts.overflow);
+    REQUIRE(!counts.inspection_bytecode_fallbacks && !counts.size_bytecode_fallbacks);
+    REQUIRE(!counts.inspected_sljit_entries && !counts.inspected_wasm_entries);
+    REQUIRE(
+        backend == BEHAVIOR_BYTECODE ? counts.bytecode_entries > 0
+                                     : counts.bytecode_entries == 0
+    );
+    REQUIRE(backend == BEHAVIOR_SLJIT ? counts.sljit_entries > 0 : counts.sljit_entries == 0);
+    REQUIRE(counts.wasm_entries == 0);
+    return true;
+}
+TEST_CASE(prepared_runtime_operations_keep_owner_and_live_values_without_native_callbacks)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(read_file("operations.prepared", &bytes, &length));
+        unsigned char *metadata = NULL;
+        size_t size = 0;
+        REQUIRE(read_file("operations-state.txt", &metadata, &size));
+        if (size > 160) {
+            free(metadata);
+            REQUIRE(false);
+        }
+        metadata[size] = 0;
+        unsigned long long ids[6] = { 0 };
+        char tail;
+        int fields = sscanf(
+            (char *)metadata,
+            "%llu %llu %llu %llu %llu %llu %c",
+            &ids[0],
+            &ids[1],
+            &ids[2],
+            &ids[3],
+            &ids[4],
+            &ids[5],
+            &tail
+        );
+        free(metadata);
+        REQUIRE(fields == 6);
+        for (int i = 0; i < 6; i++) {
+            REQUIRE(ids[i]);
+        }
+        const operation_fixture fixture = { .entity = ids[0],
+                                            .before = ids[1],
+                                            .resumed = ids[2],
+                                            .same = ids[3],
+                                            .text = ids[4],
+                                            .count = ids[5] };
+        /* Owner and inline Delay are instructions; the stored timer resolves
+         * through its built-in runtime identity, without a native catalog. */
+        const execution_prepared_linker link = { .user = (void *)&fixture,
+                                                 .type = operation_type };
+        char error[256];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "prepared operations: %s\n", error);
+        }
+        REQUIRE(module && !execution_module_import_count(module));
+        free(bytes);
+        bytes = NULL;
+        program = execution_program_new(module, NULL, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, 7);
+        REQUIRE(instance);
+        /* Give the saved string independent runtime ownership before the
+         * authored state overwrite and suspension. */
+        char initial[] = "old";
+        const pin_string initial_text = { .bytes = initial, .length = 3 };
+        REQUIRE(
+            execution_instance_set_state(
+                instance,
+                fixture.text,
+                (pin_value){ .type = PIN_STR, .text = &initial_text }
+            ) == FLOW_OK
+        );
+        memcpy(initial, "bad", 3);
+        uint64_t begin = execution_module_event(module, "Begin");
+        REQUIRE(begin);
+        behavior_run_scope run = { 0 };
+        behavior_run_scope_begin(&run);
+        int status = execution_instance_dispatch(instance, begin, NULL, 0, 0, 0, 1000);
+        behavior_run_scope_end(&run);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(operation_backend_entries(run.counts, backends[b], "dispatch"));
+        REQUIRE(execution_instance_pending(instance) == 1);
+        REQUIRE(operation_states(instance, &fixture, 0));
+        behavior_run_scope_reset(&run);
+        behavior_run_scope_begin(&run);
+        status = execution_program_update(program, 0.25, 0.25, 1000);
+        behavior_run_scope_end(&run);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(operation_backend_entries(run.counts, backends[b], "resume"));
+        REQUIRE(operation_states(instance, &fixture, 1));
+        behavior_run_scope_reset(&run);
+        behavior_run_scope_begin(&run);
+        status = execution_program_update(program, 0.5, 0.25, 1000);
+        behavior_run_scope_end(&run);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(operation_backend_entries(run.counts, backends[b], "stored-completion"));
+        REQUIRE(operation_states(instance, &fixture, 2));
+        REQUIRE(!execution_instance_pending(instance));
+    }
+    return true;
+}
+
 TEST_CASE(prepared_runtime_state_events_bindings_and_imports)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -1104,6 +1264,7 @@ void test_tool_prepared_runtime(const char *path)
 {
     directory = path;
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prepared_runtime_operations_keep_owner_and_live_values_without_native_callbacks);
     RUN_TEST_CASE(prepared_runtime_state_events_bindings_and_imports);
     RUN_TEST_CASE(prepared_runtime_rejects_missing_or_incompatible_linkage);
     RUN_TEST_CASE(prepared_runtime_rejects_malformed_wire);

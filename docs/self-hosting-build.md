@@ -643,7 +643,7 @@ selection, cache and installed-format contracts do not change.
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
 requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
-an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB) octets;
+an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (32 MiB) octets;
 the CLI uses the upper bound.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes

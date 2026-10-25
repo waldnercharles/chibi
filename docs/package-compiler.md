@@ -574,4 +574,8 @@ Stage two needs the compiler host's larger closure bounds. On 2026-10-19 the
 package compiler's module needed about 113 M units of record-layout work and decoded to
 about 80 MB with its verification scratch, past the 64 MiB defaults of every
 prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, was
-past the host's former 1,000,000-value byte result.
+past the host's former 1,000,000-value byte result. On 2026-10-25, with the
+query sources, it needed about 222 M units, and the asset compiler's
+`asset_source` module, which spends that again fingerprinting the package
+compiler it imports, went past the former 256 M bound, so the host now allows
+512 M.

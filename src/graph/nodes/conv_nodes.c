@@ -121,7 +121,9 @@ static int to_string_source(pin_type t)
  * truncation, integer-to-real, bool-to-number, integer widening, and
  * scalar-to-string.
  * TYPE-10 makes F32 and F64 one Real category, so an integer feeds either
- * width through To Real; the output is F64 and the boundary coerces it. */
+ * width through To Real, whose output is a number. A behavior wire becomes
+ * source, where an integer widens to f64 exactly; graphs that compile their
+ * edges reject numeric conversions. */
 const node_desc *conversion_for(pin_type from, pin_type to)
 {
     if (from == PIN_STR && to == PIN_NAME) {

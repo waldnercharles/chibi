@@ -833,7 +833,18 @@ components {
 and text that is not a finite JSON decimal, or that a `number` cannot hold,
 return `Found=false` and the default. `await set_saved_number(Key, Number)`
 stages a finite number using decimal text that preserves its exact value. It shares the store with `read_saved_text` and
-`set_saved_text`. Reads include staged changes. `await commit_save()` writes
+`set_saved_text`.
+
+Both calls carry a `number`, so the store keeps 32-bit values. A behavior can
+still declare `f64` variables, such as a long-running accumulator, but saving
+one narrows it with an explicit `number(value)`, and reading it back gives only
+that precision. Save a value that needs every `f64` digit as text.
+
+Rejecting a nonfinite number is the save store's data validation:
+`set_saved_number` refuses NaN and infinities, and `read_saved_number` reports a
+missing value for them. It is separate from numeric conversions, where
+`number(value)` turns an `f64` past the `number` range into a signed infinity
+and keeps NaN. Reads include staged changes. `await commit_save()` writes
 them to storage; its `Failed` outcome keeps the previous committed save intact.
 `await discard_save_changes()` restores that commit.
 

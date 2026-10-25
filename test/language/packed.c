@@ -806,6 +806,86 @@ static bool float_conversion_call(
     return true;
 }
 
+/* A literal past number's range is an f64, so it picks a native's f64
+ * overload, signed or named in any order. A number context still rejects it,
+ * and a typed f64 never narrows implicitly. */
+TEST_CASE(wide_literals_choose_the_f64_overload)
+{
+    static const struct
+    {
+        const char *source;
+        double expected;
+    } chosen[] = {
+        { "Packed :: library { Math :: () -> f64 { return sqrt(1e300); } }", 1e150 },
+        { "Packed :: library { Math :: () -> f64 { return pow(Base: -1e300, "
+          "Exponent: 1); } }",
+          -1e300 },
+        { "Packed :: library { Math :: () -> f64 { return pow(Exponent: 1, "
+          "Base: -1e300); } }",
+          -1e300 },
+    };
+    static const struct
+    {
+        const char *source, *message;
+    } rejected[] = {
+        { "Packed :: library { Math :: () -> number { x: number = 1e300; "
+          "return x; } }",
+          "Numeric literal is outside the range of number" },
+        { "Packed :: library { Math :: () -> number { return sqrt(1e300); } }",
+          "Incompatible types: expected number, got f64; convert with "
+          "number(value)" },
+        { "Packed :: library { Math :: (x: f64) -> number { return sqrt(x); } "
+          "}",
+          "Incompatible types: expected number, got f64; convert with "
+          "number(value)" },
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    char error[256];
+    for (int b = 0; b < 2; b++) {
+        for (size_t i = 0; i < sizeof chosen / sizeof *chosen; i++) {
+            natives = native_capabilities_from_definition_packs(
+                NULL,
+                0,
+                &NATIVE_MATH_DEFINITION_PACK,
+                1,
+                error,
+                sizeof error
+            );
+            REQUIRE(natives);
+            const behavior_function *function = compile_source(chosen[i].source, backends[b]);
+            REQUIRE(function && analysis->diagnostic_count == 0);
+            REQUIRE(kernel_calls(PIN_F64) == 1);
+            pin_value result = { .type = PIN_F64 };
+            context = (behavior_function_context){ .results = &result,
+                                                   .activation = &activation,
+                                                   .budget = 10000 };
+            behavior_function_bind_storage(&context, &storage);
+            REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+            REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
+            REQUIRE(result.type == PIN_F64 && result.d == chosen[i].expected);
+            cleanup();
+        }
+    }
+    for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
+        natives = native_capabilities_from_definition_packs(
+            NULL,
+            0,
+            &NATIVE_MATH_DEFINITION_PACK,
+            1,
+            error,
+            sizeof error
+        );
+        REQUIRE(natives);
+        REQUIRE(!compile_source(rejected[i].source, BEHAVIOR_BYTECODE));
+        bool found = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            found |= !strcmp(analysis->diagnostics[d].message, rejected[i].message);
+        }
+        REQUIRE(found);
+        cleanup();
+    }
+    return true;
+}
 TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles)
 {
     /* Answers are exact literals, never a production cast helper or host cast
@@ -909,6 +989,7 @@ void test_language_packed()
     RUN_TEST_CASE(typed_integer_large_constant_folding_is_exact);
     RUN_TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder);
     RUN_TEST_CASE(float_math_stays_float_and_f64_math_stays_f64);
+    RUN_TEST_CASE(wide_literals_choose_the_f64_overload);
     RUN_TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles);
     RUN_TEST_CASE(float_implicit_widening_preserves_literal_values);
     pu_clear_setup();

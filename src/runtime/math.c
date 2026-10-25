@@ -139,10 +139,15 @@ pin_value native_math_F32_RandomRangeReal(const pin_value *inputs, int count, ar
 {
     assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
     (void)count;
-    float min = fminf(inputs[0].f, inputs[1].f);
-    float max = fmaxf(inputs[0].f, inputs[1].f);
+    float min = inputs[0].f;
+    float max = inputs[1].f;
     if (!isfinite(min) || !isfinite(max)) {
         return (pin_value){ .type = PIN_FLOW };
+    }
+    if (max < min) {
+        float swap = min;
+        min = max;
+        max = swap;
     }
     return (pin_value){ .type = PIN_F32, .f = (float)behavior_random_range(min, max) };
 }

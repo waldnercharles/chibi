@@ -210,11 +210,13 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
 
 /* Without a type from context a literal is typed by its spelling, as in C#:
  * an integer is int, or the first of i64 and u64 that holds it, and a
- * decimal point or exponent makes a number. Hex digits include e. */
+ * decimal point or exponent makes a number, or an f64 past number's range.
+ * Hex digits include e. */
 static script_type untyped_number(const char *text, long double value)
 {
     script_type type = { .storage = PIN_F32, .flags = SCRIPT_TYPE_UNTYPED };
     if (!strpbrk(text, "xX") && strpbrk(text, ".eE")) {
+        type.storage = fabsl(value) <= FLT_MAX ? PIN_F32 : PIN_F64;
         return type;
     }
     type.storage = value >= -0x1p31L && value < 0x1p31L ? PIN_I32

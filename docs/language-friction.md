@@ -530,6 +530,19 @@ over an explicit stack.
 Suggestion: a deeper budget, counted in frame bytes rather than calls, or
 guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
 
+## format_text drops arguments past twelve
+
+Runtime. `format_text` renders at most 12 arguments
+(`FMT_TEXT_MAX_ARGS` in `src/runtime/text_format.c`). A thirteenth
+placeholder renders as empty text with no error from the compiler or the
+runtime. M2's native integer work hit this in
+`tools/compiler/llvm_native/Emit.chibi`: a 13-argument instruction template
+lost an operand, so the emitter splits such templates into several calls.
+
+Suggestion: check literal format strings against their arguments and report
+excess placeholders. This is a documented limitation, not a formatter change
+included in the M2 reconciliation.
+
 ## Templates are package-local
 
 Language. A template with `$T` parameters cannot be called from another

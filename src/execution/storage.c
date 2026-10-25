@@ -74,6 +74,9 @@ static size_t own_bytes(const behavior_function *f)
             )
         );
     }
+    if (f->integer_reports) {
+        bytes = add(bytes, behavior_integer_report_bytes(f->integer_report_sites));
+    }
     if (f->runtime_map) {
         bytes = add(bytes, ((size_t)acount(f->instructions) + 1) * sizeof *f->runtime_map);
     }

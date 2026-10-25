@@ -1,5 +1,6 @@
 #include "execution/preparation_budget.h"
 
+#include "execution/integer_report.h"
 #include "execution/module_internal.h"
 #include "support/array.h"
 
@@ -68,6 +69,11 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     /* Live value and root sets are counted after liveness and allocated
      * exactly from the bounded owned arena, so only the table is reserved. */
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
+    /* Publication allocates definition-owned report banks before compilation.
+     * The host chooses reports once at startup, before this preflight. */
+    if (execution_integer_reports_enabled() && !f->integer_reports) {
+        retained = sum(retained, behavior_integer_report_bytes(acount(f->sources)));
+    }
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));

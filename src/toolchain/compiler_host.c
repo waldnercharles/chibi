@@ -31,7 +31,9 @@ struct compiler_host
     native_capabilities *native;
     package_collection *packages;
     execution_module *root;
+    size_t package_bytes;
     behavior_backend backend;
+    bool values_only;
 };
 static void message(char *out, size_t size, const char *text)
 {
@@ -39,10 +41,11 @@ static void message(char *out, size_t size, const char *text)
         snprintf(out, size, "%s", text);
     }
 }
-compiler_host *compiler_host_load(
+static compiler_host *load(
     const void *bytes,
     size_t length,
     behavior_backend backend,
+    bool values_only,
     char *error,
     size_t error_size
 )
@@ -57,7 +60,8 @@ compiler_host *compiler_host_load(
                                              COMPILER_SYNTAX_DEFINITION_PACK };
     compiler_host *host = xcalloc(1, sizeof *host);
     host->backend = backend;
-    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, error_size);
+    host->values_only = values_only;
+    host->native = native_capabilities_from_definition_packs(NULL, 0, packs, values_only ? 2 : 4, error, error_size);
     if (!host->native) {
         compiler_host_free(host);
         return NULL;
@@ -74,6 +78,7 @@ compiler_host *compiler_host_load(
         compiler_host_free(host);
         return NULL;
     }
+    host->package_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES - remaining;
     for (int i = 0; i < package_collection_count(host->packages); i++) {
         execution_module *module = package_collection_module(host->packages, i);
         if (execution_module_id(module) == root) {
@@ -88,6 +93,37 @@ compiler_host *compiler_host_load(
     }
     return host;
 }
+compiler_host *compiler_host_load(
+    const void *bytes,
+    size_t length,
+    behavior_backend backend,
+    char *error,
+    size_t size
+)
+{
+    return load(bytes, length, backend, false, error, size);
+}
+compiler_host *compiler_host_load_values(
+    const void *bytes,
+    size_t length,
+    behavior_backend backend,
+    char *error,
+    size_t size
+)
+{
+    return load(bytes, length, backend, true, error, size);
+}
+size_t compiler_host_storage_bytes(const compiler_host *host)
+{
+    assert(host);
+    size_t bytes = native_capabilities_storage_bytes(host->native);
+    if (bytes > SIZE_MAX - sizeof *host) {
+        return SIZE_MAX;
+    }
+    bytes += sizeof *host;
+    return host->package_bytes > SIZE_MAX - bytes ? SIZE_MAX
+                                                  : bytes + host->package_bytes;
+}
 uint64_t compiler_host_entry(const char *symbol)
 {
     return script_catalog_id("package-symbol", symbol);
@@ -95,6 +131,34 @@ uint64_t compiler_host_entry(const char *symbol)
 char *compiler_host_target_json(const compiler_host *host, size_t *length)
 {
     return compiler_target_json(native_capabilities_catalog(host->native), length);
+}
+char *compiler_host_values_target_json(size_t *length, char *error, size_t size)
+{
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK };
+    native_capabilities
+        *native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, size);
+    if (!native) {
+        return NULL;
+    }
+    char *json = compiler_target_json(native_capabilities_catalog(native), length);
+    native_capabilities_free(native);
+    return json;
+}
+char *compiler_host_compiler_target_json(size_t *length, char *error, size_t size)
+{
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_JSON_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    native_capabilities
+        *native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, size);
+    if (!native) {
+        return NULL;
+    }
+    char *json = compiler_target_json(native_capabilities_catalog(native), length);
+    native_capabilities_free(native);
+    return json;
 }
 void compiler_host_free(compiler_host *host)
 {
@@ -349,11 +413,38 @@ typedef struct
     int flow_status;
     behavior_run_counts counts;
     char diagnostic[256];
+    compiler_host_source source;
 } invocation_result;
 static bool byte_type(const pin_value *value, pin_container container)
 {
     return value->type == PIN_U8 && value->container == container &&
            !value->record && !value->type_name;
+}
+bool compiler_host_accepts_byte_entry(
+    compiler_host *host,
+    uint64_t entry,
+    int arguments,
+    char *error,
+    size_t error_size
+)
+{
+    if (!host || !entry || arguments < 0) {
+        message(error, error_size, "invalid compiler byte entry query");
+        return false;
+    }
+    const behavior_function *function = entry_function(host, entry, error, error_size);
+    if (!function) {
+        return false;
+    }
+    int argument_count, result_count;
+    behavior_function_arguments(function, &argument_count);
+    const pin_value *results = behavior_function_results(function, &result_count);
+    if (argument_count != arguments || result_count != 1 ||
+        !byte_type(&results[0], PIN_CONTAINER_ARRAY)) {
+        message(error, error_size, "compiler byte entry has an incompatible signature");
+        return false;
+    }
+    return true;
 }
 /* A byte result's storage: its header, its items as values with growth's spare
  * capacity, and the copy of its octets. */
@@ -420,6 +511,11 @@ static bool invoke(
     if (!host || !entry || !json || !length ||
         length > COMPILER_HOST_MAX_BYTES || !budget) {
         failure = "invalid compiler host invocation";
+        goto done;
+    }
+    if (host->values_only && behavior_execution_scope_active() &&
+        !behavior_execution_scope_pure()) {
+        failure = "values-only invocation requires a pure execution scope";
         goto done;
     }
     function = entry_function(host, entry, out->diagnostic, sizeof out->diagnostic);
@@ -529,7 +625,15 @@ static bool invoke(
     }
     behavior_run_scope scope = { 0 };
     behavior_run_scope_begin(&scope);
+    behavior_execution_scope execution = { .remaining = budget, .pure = true };
+    bool owned_scope = host->values_only && !behavior_execution_scope_active();
+    if (owned_scope) {
+        behavior_execution_scope_begin(&execution);
+    }
     out->flow_status = behavior_function_run(function, &context, host->backend != BEHAVIOR_BYTECODE);
+    if (owned_scope) {
+        behavior_execution_scope_end(&execution);
+    }
     behavior_run_scope_end(&scope);
     out->counts = scope.counts;
     if (out->flow_status != FLOW_OK || !context.returned) {
@@ -572,6 +676,20 @@ static bool invoke(
         failure = "compiler result cannot be encoded within byte limit";
     }
 done:
+    if (failure && out->flow_status < 0) {
+        const behavior_function_source *source = behavior_function_failure_source(&context);
+        if (source) {
+            out->source = (compiler_host_source){ .present = true,
+                                                  .start = source->start,
+                                                  .end = source->end,
+                                                  .line = source->line,
+                                                  .column = source->column };
+            const char *asset = source->asset_name ? source->asset_name : "";
+            int count = snprintf(out->source.asset, sizeof out->source.asset, "%s", asset);
+            out->source.truncated = count < 0 ||
+                                    (size_t)count >= sizeof out->source.asset;
+        }
+    }
     if (failure && !out->diagnostic[0]) {
         message(out->diagnostic, sizeof out->diagnostic, failure);
     }
@@ -606,6 +724,7 @@ bool compiler_host_invoke(
     out->length = result.length;
     out->flow_status = result.flow_status;
     out->counts = result.counts;
+    out->source = result.source;
     memcpy(out->diagnostic, result.diagnostic, sizeof out->diagnostic);
     return ok;
 }
@@ -633,6 +752,7 @@ bool compiler_host_invoke_bytes(
     out->length = result.length;
     out->flow_status = result.flow_status;
     out->counts = result.counts;
+    out->source = result.source;
     memcpy(out->diagnostic, result.diagnostic, sizeof out->diagnostic);
     return ok;
 }
@@ -730,6 +850,7 @@ bool compiler_host_invoke_batch(
                     result.length <= COMPILER_HOST_MAX_BYTES - used - 2;
         yyjson_doc_free(result_doc);
         if (!invoked || !fits) {
+            out->source = result.source;
             snprintf(
                 out->diagnostic,
                 sizeof out->diagnostic,

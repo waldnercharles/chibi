@@ -244,35 +244,60 @@ target_sources(test_language PRIVATE source_tokenizer_chibi.c)
 set_source_files_properties(source_tokenizer_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
-target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c")
+target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c)
 set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c package_routes_chibi.c package_snapshot_chibi.c docs_markdown.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::json Chibi::language_syntax)
-target_sources(test_language PRIVATE compiler_artifact_chibi.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c")
+target_sources(test_language PRIVATE compiler_artifact_chibi.c)
 set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prepared)
+if(TARGET Chibi::compiler_host)
+    target_link_libraries(test_language PRIVATE Chibi::compiler_host)
+else()
+    target_sources(test_language PRIVATE
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_host.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_target.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c")
+    set_source_files_properties(
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_host.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_target.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
+        "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
+        PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+endif()
+if(TARGET Chibi::asset_compiler_host)
+    add_library(chibi_asset_compiler_consumer OBJECT asset_compiler_host.c)
+    target_include_directories(chibi_asset_compiler_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime
+        Chibi::scene_document Chibi::prototype_document)
+    target_compile_options(chibi_asset_compiler_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_language PRIVATE $<TARGET_OBJECTS:chibi_asset_compiler_consumer>)
+    target_link_libraries(test_language PRIVATE Chibi::asset_compiler_host)
+    target_compile_definitions(test_language PRIVATE CHIBI_TEST_ASSET_COMPILER_HOST=1)
+endif()
 include(bounded_compiler_chibi.cmake)
 include(prepared_writer_chibi.cmake)
 include(shader_source_chibi.cmake)
+include(asset_packaging_chibi.cmake)
 include(package_compiler_chibi.cmake)
-# Integer semantics compile with stage zero and with the authored compiler its
-# bootstrap artifact holds, which loads from the checked-in sources at run time.
-target_sources(test_language PRIVATE integer_semantics.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c")
-set_source_files_properties(integer_semantics.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_bootstrap.c"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
+target_sources(test_language PRIVATE execution_scope.c)
+set_source_files_properties(execution_scope.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+# Integer semantics uses the checked authored compiler through the same host
+# archive as other compiler fixtures. Older SDKs retain the direct-source
+# fallback above; normal and installed compiler-host builds own these once.
+target_sources(test_language PRIVATE integer_semantics.c)
 set_source_files_properties(integer_semantics.c
-    PROPERTIES COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
+    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

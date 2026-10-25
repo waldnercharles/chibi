@@ -11,7 +11,7 @@ WavePulseBehavior :: behavior {
         age_2()
     }
     after age_2 {
-        if greater_or_equal(float(divide(age_2.Value, B: plain double = 0.8)), 1.0) {
+        if float(divide(age_2.Value, B: plain double = 0.8)) >= 1.0 {
             destroy_entity(self)
         } else {
             self.SurfaceInfluence.radius = float(24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8))

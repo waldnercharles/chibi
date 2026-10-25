@@ -222,6 +222,76 @@ static script_type untyped_number(const char *text, long double value)
                                                         : PIN_U64;
     return type;
 }
+/* A decimal spelling such as 2.0 or -1e3 read exactly at an integer type,
+ * digit by digit with no floating rounding: whole with its magnitude, past
+ * 64 bits, or else with a fraction. */
+typedef enum
+{
+    DECIMAL_WHOLE,
+    DECIMAL_LARGE,
+    DECIMAL_FRACTION
+} decimal_integral;
+static decimal_integral decimal_integer(const char *text, uint64_t *magnitude)
+{
+    static const long exponent_limit = 1000000;
+    const char *at = text + (*text == '-' || *text == '+');
+    char *digits = xmalloc(strlen(at) + 1);
+    /* Significant digits before the decimal point; leading zeros after it
+     * make this negative. */
+    long point = 0;
+    int count = 0;
+    bool dot = false;
+    for (; (*at >= '0' && *at <= '9') || *at == '.'; at++) {
+        if (*at == '.') {
+            dot = true;
+        } else if (*at == '0' && count == 0) {
+            point -= dot;
+        } else {
+            digits[count++] = *at;
+            point += !dot;
+        }
+    }
+    if (*at == 'e' || *at == 'E') {
+        long exponent = strtol(at + 1, NULL, 10);
+        exponent = exponent > exponent_limit ? exponent_limit : exponent;
+        point += exponent < -exponent_limit ? -exponent_limit : exponent;
+    }
+    while (count > 0 && digits[count - 1] == '0') {
+        count--;
+    }
+    *magnitude = 0;
+    decimal_integral read = count == 0 ? DECIMAL_WHOLE
+                          : point > 20 ? DECIMAL_LARGE
+                                       : DECIMAL_WHOLE;
+    for (long i = 0; read == DECIMAL_WHOLE && i < point; i++) {
+        uint64_t digit = i < count ? (uint64_t)(digits[i] - '0') : 0;
+        if (*magnitude > (UINT64_MAX - digit) / 10) {
+            read = DECIMAL_LARGE;
+            break;
+        }
+        *magnitude = *magnitude * 10 + digit;
+    }
+    free(digits);
+    if (read == DECIMAL_WHOLE && count > point) {
+        return DECIMAL_FRACTION;
+    }
+    return read;
+}
+/* The largest value of an integer type. */
+static uint64_t integer_maximum(uint8_t storage)
+{
+    switch (storage) {
+        case PIN_I8: return INT8_MAX;
+        case PIN_U8: return UINT8_MAX;
+        case PIN_I16: return INT16_MAX;
+        case PIN_U16: return UINT16_MAX;
+        case PIN_I32:
+        case PIN_ENUM: return INT32_MAX;
+        case PIN_U32: return UINT32_MAX;
+        case PIN_I64: return INT64_MAX;
+        default: return UINT64_MAX;
+    }
+}
 /* A union such as `number | Cancelled` gives a literal its one numeric
  * alternative's type. */
 static script_type numeric_alternative(const analyzer *a, script_type expected)
@@ -323,20 +393,25 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
             break;
         default: integer = false; break;
     }
-    bool fits = isfinite(value);
-    if (integer) {
-        fits = fits && truncl(value) == value && value < limit &&
-               value >= (unsigned_integer ? 0 : -limit);
-    } else {
-        fits = fits && fabsl(value) <=
-                           (result.type.storage == PIN_F32 ? FLT_MAX : DBL_MAX);
-    }
+    bool fits = isfinite(value) &&
+                fabsl(value) <= (result.type.storage == PIN_F32 ? FLT_MAX : DBL_MAX);
     /* Hex digits include e, so only decimal literals have an exponent. */
     int base = strpbrk(text, "xX") ? 16 : 10;
     bool exact_integer = integer && (base == 16 || !strpbrk(text, ".eE"));
+    bool fraction = false;
     uint64_t exact = 0;
     int64_t exact_signed = 0;
-    if (exact_integer && !unsigned_integer) {
+    if (integer && !exact_integer) {
+        /* A decimal such as 2.0 is the integer it spells, exactly. */
+        decimal_integral read = decimal_integer(text, &exact);
+        bool negative = text[0] == '-' && exact;
+        uint64_t maximum = integer_maximum(result.type.storage);
+        fraction = read == DECIMAL_FRACTION;
+        fits = read == DECIMAL_WHOLE &&
+               (negative ? !unsigned_integer && exact - 1 <= maximum : exact <= maximum);
+        exact_signed = negative ? -(int64_t)(exact - 1) - 1 : (int64_t)exact;
+        value = negative ? -(long double)exact : (long double)exact;
+    } else if (exact_integer && !unsigned_integer) {
         errno = 0;
         intmax_t parsed = strtoimax(text, &end, base);
         fits = parsed >= INT64_MIN && parsed <= INT64_MAX;
@@ -348,19 +423,8 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         errno = 0;
         uintmax_t parsed = strtoumax(text, &end, base);
         exact = parsed <= UINT64_MAX ? (uint64_t)parsed : 0;
-        uint64_t maximum = UINT64_MAX;
-        switch (result.type.storage) {
-            case PIN_I8: maximum = INT8_MAX; break;
-            case PIN_U8: maximum = UINT8_MAX; break;
-            case PIN_I16: maximum = INT16_MAX; break;
-            case PIN_U16: maximum = UINT16_MAX; break;
-            case PIN_I32: maximum = INT32_MAX; break;
-            case PIN_U32: maximum = UINT32_MAX; break;
-            case PIN_I64: maximum = INT64_MAX; break;
-            default: break;
-        }
         fits = parsed <= UINT64_MAX && text[0] != '-' && !*end &&
-               errno != ERANGE && exact <= maximum;
+               errno != ERANGE && exact <= integer_maximum(result.type.storage);
     }
     if (script_type_char(result.type) && fits) {
         fits = (value >= 0 && value < 0xD800) || (value > 0xDFFF && value <= 0x10FFFF);
@@ -371,9 +435,8 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         script_analyzer_diagnostic(
             a,
             node,
-            integer && isfinite(value) && truncl(value) != value
-                ? "Numeric literal has a fraction, which %s cannot hold"
-                : "Numeric literal is outside the range of %s",
+            fraction ? "Numeric literal has a fraction, which %s cannot hold"
+                     : "Numeric literal is outside the range of %s",
             script_numeric_name(result.type)
         );
         value = 0;
@@ -384,16 +447,10 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         case PIN_I16: result.constant.i16 = (int16_t)value; break;
         case PIN_U16: result.constant.u16 = (uint16_t)value; break;
         case PIN_I32: result.constant.i = (int32_t)value; break;
-        case PIN_ENUM:
-            result.constant.e = exact_integer ? (int32_t)exact_signed : (int32_t)value;
-            break;
+        case PIN_ENUM: result.constant.e = (int32_t)exact_signed; break;
         case PIN_U32: result.constant.u = (uint32_t)value; break;
-        case PIN_I64:
-            result.constant.i64 = exact_integer ? exact_signed : (int64_t)value;
-            break;
-        case PIN_U64:
-            result.constant.u64 = exact_integer ? exact : (uint64_t)value;
-            break;
+        case PIN_I64: result.constant.i64 = exact_signed; break;
+        case PIN_U64: result.constant.u64 = exact; break;
         case PIN_F32: result.constant.f = (float)value; break;
         default: result.constant.d = value; break;
     }

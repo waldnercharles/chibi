@@ -74,7 +74,12 @@ import:
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
   gives, as in `x := 5`, is an `int` in stage zero, and stage one rejects it.
-  A literal outside its type, such as `u8` 256, is rejected;
+  A literal outside its type, such as `u8` 256, is rejected. A decimal at an
+  integer type is read exactly, digit by digit, in both stages: `2.0` and
+  `1e3` are the integers they spell, `9007199254740993.0` at `i64` keeps its
+  last unit, and `2.0000000000000000001` is rejected as a fraction. Stage zero
+  used to read it as a long double first, so whether a long fraction or a
+  unit past 2^53 survived depended on the platform;
 - `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types,
   of an integer or a floating value: the checked form fails the call when the
   value does not fit, `wrap` keeps its low bits and `clamp` saturates. Mixed

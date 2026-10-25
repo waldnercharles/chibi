@@ -2439,10 +2439,8 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[1]" },
                  { .function = "Stops", .arguments = "[]" },
                  { .function = "Local", .arguments = "[]", .expected = "[2]" } } },
-#if LDBL_MANT_DIG >= 64
-    /* An integer type reads a decimal exactly, as stage zero does where long
-     * double holds 64 mantissa bits: no binary64 rounding drops a fraction
-     * or an integer unit. */
+    /* Both stages read a decimal at an integer type exactly, digit by digit:
+     * no floating rounding drops a fraction, an integer unit or the range. */
     { .name = "exact whole decimals",
       .traced = true,
       .source = "package facts\n"
@@ -2450,15 +2448,28 @@ static const sample samples[] = {
                 "}\n"
                 "Negative :: () -> i64 { return -9007199254740993.0; }\n"
                 "Largest :: () -> u64 { return 18446744073709551615.0; }\n"
-                "Scaled :: () -> i64 { return 9007199254740993e0; }\n",
+                "Scaled :: () -> i64 { return 9007199254740993e0; }\n"
+                "Least :: () -> i64 { return -9223372036854775808.0; }\n",
       .calls = { { .function = "Sum", .arguments = "[]", .expected = "[9007199254740993]" },
                  { .function = "Negative", .arguments = "[]", .expected = "[-9007199254740993]" },
                  { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
-                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" } } },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Least", .arguments = "[]", .expected = "[-9223372036854775808]" } } },
+    { .name = "decimal past the largest integer",
+      .source = "package facts\nRun :: () -> u64 { return "
+                "18446744073709551616.0; }",
+      .message = "Numeric literal is outside the range of u64",
+      .same_rejection = true },
     { .name = "small fraction overload argument",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return "
                 "native.overload(2.0000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "smaller fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000000001); }",
       .message = "Numeric literal has a fraction, which int cannot hold",
       .same_rejection = true },
     { .name = "small fraction integer",
@@ -2466,7 +2477,6 @@ static const sample samples[] = {
                 "9007199254740992.5; }",
       .message = "Numeric literal has a fraction, which i64 cannot hold",
       .same_rejection = true },
-#endif
     { .name = "ambiguous literal overload",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",

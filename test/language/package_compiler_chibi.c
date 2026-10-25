@@ -105,13 +105,15 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. */
+ * Copied function, which assigns its array, does not. A `debug_metadata`
+ * sample compares source points and watches with stage zero on both compiler
+ * backends. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, update_order;
+        same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -809,6 +811,106 @@ static const sample samples[] = {
       .message = "Mismatched integer types int8 and byte; convert one operand",
       .line = 2,
       .column = 45 },
+    /* Compound arithmetic rejects differing typed integers before assignment
+     * widening, both for a local and for a stored field. */
+    { .name = "mixed compound assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
+    { .name = "mixed compound field assignment",
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "b; return n.count; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
+    { .name = "compound assignment preserves contextual and explicit operands",
+      .debug_metadata = true,
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Plain :: (b: byte) -> int { a: int = 1; a = b; return a; }\n"
+                "Local :: (b: byte) -> int { a: int = 1; a += int(b); return "
+                "a; }\n"
+                "Literal :: () -> int { a: int = 1; a += 2; return a; }\n"
+                "Field :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "int(b); return n.count; }\n"
+                "FieldLiteral :: () -> int { n: Note = {count: 1}; n.count += "
+                "2; return n.count; }\n"
+                "Shift :: (a: int, count: byte) -> int { return a << count; "
+                "}\n",
+      .calls = { { .function = "Plain", .arguments = "[2]", .expected = "[2]" },
+                 { .function = "Local", .arguments = "[2]", .expected = "[3]" },
+                 { .function = "Literal", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Field", .arguments = "[2]", .expected = "[3]" },
+                 { .function = "FieldLiteral", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Shift", .arguments = "[3,1]", .expected = "[6]" } } },
+    { .name = "mixed compound reference assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Grow :: (a: ref int, b: byte) { a += b; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 33 },
+    { .name = "mixed compound reference field assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Grow :: (n: ref Note, b: byte) { n.count += b; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 34 },
+    { .name = "mixed compound boxed local assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Grow :: (b: byte) -> int { a: int = 1; Touch(a); a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
+    { .name = "mixed compound boxed parameter assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Grow :: (a: int, b: byte) -> int { Touch(a); a += b; return "
+                "a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 46 },
+    { .name = "compound reference and boxed operands preserve effects",
+      .debug_metadata = true,
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
+                "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
+                "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
+                "Ref :: () -> int { n: int = 1; Bump(n, byte(2)); return n; }\n"
+                "RefField :: () -> int { n: Note = {count: 1}; BumpField(n, "
+                "byte(2)); return n.count; }\n"
+                "Box :: () -> int { n: int = 1; Touch(n); n += int(byte(2)); "
+                "return n; }\n"
+                "BoxParam :: (n: int) -> int { Touch(n); n += 2; return n; }\n"
+                "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
+                "n.count += Source(calls); return n.count * 10 + calls; }\n"
+                "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
+                "return n; }\n"
+                "Clamp :: (v: int) -> byte { return byte(v); }\n",
+      .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
+                 { .function = "RefField", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Box", .arguments = "[]", .expected = "[3]" },
+                 { .function = "BoxParam", .arguments = "[1]", .expected = "[3]" },
+                 { .function = "Once", .arguments = "[]", .expected = "[31]" },
+                 { .function = "Bits", .arguments = "[3]", .expected = "[11]" },
+                 { .function = "Clamp", .arguments = "[300]", .expected = "[255]" } } },
+    { .name = "mixed compound bitwise assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a &= b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -3909,7 +4011,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   ((b && !s->host_effects) ||
+                   ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
@@ -4177,6 +4279,23 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
     return true;
 }
 
+/* The literal diagnostics also hold in the independent stage-zero frontend,
+ * including reference and boxed targets and record fields. */
+TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero)
+{
+    REQUIRE(prepare());
+    int checked = 0;
+    for (int i = 0; i < (int)SAMPLES; i++) {
+        const sample *s = &samples[i];
+        if (!strncmp(s->name, "mixed compound ", strlen("mixed compound "))) {
+            REQUIRE(s->message);
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            checked++;
+        }
+    }
+    REQUIRE(checked == 7);
+    return true;
+}
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -7867,6 +7986,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero);
     RUN_TEST_CASE(package_compiler_builds_runnable_packages);
     RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
     pu_clear_setup();

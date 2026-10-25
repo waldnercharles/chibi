@@ -560,11 +560,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, destination, document, "Assignment requires a writable value");
             }
             binding := names[found];
+            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+            if (binding.container == 0 && MixedCompoundIntegers(operator, binding.storage, result)) {
+                return Fail(forest, item.node, document,
+                            format_text("Mismatched integer types {} and {}; convert one operand",
+                                        TypeName(binding.storage), TypeName(result.storage)));
+            }
             if (binding.place == ReferencePlace || binding.place == BoxPlace) {
                 return PlaceAssignStep(forest, text, document, binding, result, item, ops, target, at, node);
             }
             stored := result;
-            operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
             if (binding.container == 0 && result.container == 0 &&
                 (Widens(result.storage, binding.storage) || FloatWidens(result.storage, binding.storage))) {
                 widened: Slot = {storage: binding.storage, kind: ValueKind};
@@ -2502,6 +2507,14 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                         Typed(output, storage, 0, -1), NoValue(), marks);
 }
 
+// Compound arithmetic combines the same typed integers before any assignment
+// widening. Plain assignment and shift-count typing have separate contracts.
+MixedCompoundIntegers :: (operator: string, storage: int, value: Value) -> bool {
+    compound := operator == "+" || operator == "-" || operator == "*" || operator == "/" || operator == "%" ||
+                operator == "&" || operator == "|" || operator == "^";
+    return compound && Integer(storage) && Single(value, value.storage) && Integer(value.storage) &&
+           value.storage != storage;
+}
 // The untyped literal `literal` as a constant of the integer type `storage`.
 ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
                  package: int, literal: Value, storage: int, ops: Ops, at: Bases, node: snapshot.SnapshotNode) -> Step {
@@ -2849,6 +2862,12 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     next: Work[] = [];
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (item.c == 1 && field.container == 0 && MixedCompoundIntegers(operator, field.storage, value)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(field.storage), TypeName(value.storage)));
+    }
     stored := value;
     if (value.container == 0 && value.storage != field.storage && Converts(value.storage, field.storage)) {
         slots.extend(NumberSlots(value.storage, field.storage));

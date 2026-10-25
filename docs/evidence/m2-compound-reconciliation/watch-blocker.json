@@ -13,5 +13,5 @@
     "log": "green/language-package-compiler-chibi-collections.log",
     "sha256": "4c62de4fe0e0036498dfab8328d3796a3268dbaf74367feb51a26ca496738f34"
   },
-  "independent_review": "/root/review_array_order verified parameter declaration identity and stagezero reference-write path; no runtime/effects change needed."
+  "independent_review": "Independent source review of the References.chibi proposal identified by sha256 above verified parameter declaration identity and the stage-zero reference-write path; no runtime/effects change needed."
 }

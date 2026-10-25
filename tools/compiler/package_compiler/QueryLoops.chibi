@@ -45,9 +45,9 @@ QueryIteratorStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         QueryCell(QueryStorage, row_type, 0),
     ];
     hosts: Host[] = [
-        {intrinsic: QueryBeginIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+        {command: 0, syntax_node: 0, intrinsic: QueryBeginIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
          result_count: 1, written: false},
-        {intrinsic: QueryNextIntrinsic, linked: -1, first: at.cell + 3, result_first: at.cell + 5,
+        {command: 0, syntax_node: 0, intrinsic: QueryNextIntrinsic, linked: -1, first: at.cell + 3, result_first: at.cell + 5,
          result_count: 2, written: false},
     ];
 
@@ -117,7 +117,7 @@ QueryIteratorEndStep :: (cursor_local: int, ops: Ops, target: Target, at: Bases,
     code.extend(CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
     code.append(Instruction(ops.local, target.pointer_storage, at.slot + 2, cursor_local, 0, 0, node));
     code.extend(CellWrite(target.pointer_storage, at.slot + 2, at.cell + 1, ops, target, at.slot + 3, node));
-    host: Host = {intrinsic: QueryEndIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    host: Host = {command: 0, syntax_node: 0, intrinsic: QueryEndIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], 0, NoValue(), NoValue(), []);

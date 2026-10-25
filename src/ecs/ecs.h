@@ -295,9 +295,14 @@ void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id c
 /* Retained component identity. Attached cells resolve current native storage;
  * component removal, entity destruction or world destruction permanently
  * invalidates the target. A later add is a different cell. Callers release
- * each successful acquisition. */
+ * each successful acquisition or retain. Retaining an invalidated identity
+ * does not revive it. */
 ecs_component_cell *ecs_component_cell_acquire(ecs_world *, ecs_entity, ecs_component_id);
+void ecs_component_cell_retain(ecs_component_cell *);
 void ecs_component_cell_release(ecs_component_cell *);
+/* Checks the original incarnation, including its current layout and storage.
+ * A missing target stays invalid even if the component is added again. */
+bool ecs_component_cell_alive(ecs_component_cell *);
 /* Associate the acquired reference with a collectable owner for resource
  * accounting. Each retain_storage pairs with release_storage, which also
  * releases that acquisition. Shared cells are counted once per owner. */

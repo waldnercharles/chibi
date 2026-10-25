@@ -534,7 +534,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
         }
         callable: Callable = {name: Text(forest, source, Field(forest, declaration, "name")), package: 0,
                               document: 0, node: declaration, first: 0, count: 0, result: 0,
-                              result_container: 0, result_record: -1, results: 0};
+                              result_container: 0, result_record: -1, results: 0, waits: false};
         callables.append(callable);
         handled.append(tick);
     }
@@ -583,7 +583,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             }
             callable: Callable = {name: handled_name, package: 0, document: 0, node: member, first: first,
                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
-                                  results: 0};
+                                  results: 0, waits: false};
             callables.append(callable);
             handled.append(found);
         } else if (Is(forest, member, "function_declaration")) {
@@ -627,7 +627,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             query_specs = descriptions;
     }
     switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
-                    callables, params, declared_types, members, constants, natives, ports, native_ids,
+                    WaitingCallables(forest, callables), params, declared_types, members, constants, natives, ports, native_ids,
                     resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
                                   make_fields), query_specs) {

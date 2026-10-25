@@ -4339,6 +4339,9 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     pin_value alias = pointer_root;
     REQUIRE(!EXECUTION_component_pointer_call.value(&managed, make, 6, &alias));
     REQUIRE(pin_pointer_equal(pointer_root.ptr, alias.ptr));
+    ecs_component_cell *retained = ((pin_pointer *)pointer_root.ptr)->component;
+    ecs_component_cell_retain(retained);
+    REQUIRE(ecs_component_cell_alive(retained));
     pin_value project[] = { pointer_root,
                             { .type = PIN_I32 },
                             { .type = PIN_U64, .u64 = offsetof(fixture_box, value) },
@@ -4352,6 +4355,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     }
     REQUIRE(ecs_world_apply_commands(pointer_world) == ECS_OK);
     ((fixture_box *)ecs_component_data(pointer_world, entity, id))->value = 12;
+    REQUIRE(ecs_component_cell_alive(retained));
     pin_value read[] = { field, { .type = PIN_I32 } };
     REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &result));
     REQUIRE(result.i == 12);
@@ -4362,6 +4366,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     REQUIRE(ecs_component_version(pointer_world, entity, id) > before);
     REQUIRE(ecs_world_record_remove(pointer_world, entity, id, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(pointer_world) == ECS_OK);
+    REQUIRE(!ecs_component_cell_alive(retained));
     const char *error = EXECUTION_pointer_read_call.value(&managed, read, 2, &result);
     REQUIRE(error && !strcmp(error, "Component reference target is no longer available"));
     REQUIRE(EXECUTION_pointer_write_call.value(&managed, write, 2, &written));
@@ -4371,6 +4376,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     pin_value replacement = pointer_root;
     REQUIRE(!EXECUTION_component_pointer_call.value(&managed, make, 6, &replacement));
     REQUIRE(!pin_pointer_equal(pointer_root.ptr, replacement.ptr));
+    REQUIRE(!ecs_component_cell_alive(retained));
     write[1].i = 20;
     REQUIRE(EXECUTION_pointer_write_call.value(&managed, write, 2, &written));
     REQUIRE(((fixture_box *)ecs_component_data(pointer_world, entity, id))->value == 100);
@@ -4384,6 +4390,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
     ecs_world_free(pointer_world);
     pointer_world = NULL;
+    REQUIRE(!ecs_component_cell_alive(retained));
     REQUIRE(EXECUTION_pointer_read_call.value(&managed, read, 2, &result));
     pin_value whole_read[] = { replacement, type }, whole = type;
     error = EXECUTION_pointer_read_call.value(&managed, whole_read, 2, &whole);
@@ -4398,6 +4405,8 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     size_t bytes, capacity;
     arena_usage(&pointer_heap.storage, &bytes, &capacity);
     REQUIRE(bytes == 0);
+    REQUIRE(!ecs_component_cell_alive(retained));
+    ecs_component_cell_release(retained);
     return true;
 }
 

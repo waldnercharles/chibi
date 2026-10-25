@@ -14,6 +14,8 @@ struct execution_module
     uint64_t *effect_ids;
     size_t effect_bytes;
 };
+/* Gives every definition report sites when development reports are enabled. */
+void execution_module_plan_report_integers(execution_module_plan *);
 /* Decoder-owned payloads already belong to their canonical arenas. */
 execution_module *execution_module_finish_decoded(
     execution_module_plan **,

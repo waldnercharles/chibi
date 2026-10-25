@@ -2007,11 +2007,13 @@ takes about 6 s.
     is the assembly a stage-one route uses for modules stage one compiled.
     `chibi-compile --modules` refuses a file that is no closure and writes no
     artifact.
-  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports stage
-    one's `CompileBehaviors` input for a story: its executable sources' identities
-    and texts, then what they link against. For Counter, the test checks the
+  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports the
+    eighteen-argument `CompileBehaviorsWithCatalog` input: executable source
+    identities and texts, followed by their catalog and native effects. The
+    focused `test_tools --game-input CHIBI_COMPILE` selector checks this
+    transport without compiler recovery. For Counter, it checks the
     behavior's identity and source. It compares the types with the
-    requirements of the module stage zero writes (all 112, in order: ID,
+    requirements of the module stage zero writes (in order: ID,
     layout, storage, size and name), and the module's events (ID, ABI and
     payload fields) and entity type, that the operators that combine
     records hold `+` as the native `add`, that the globals hold `self` of
@@ -2033,9 +2035,9 @@ every story with `chibi-compile` and with stage one's route,
    keeps it under `.chibi/stage-one` for the digest of those sources, the
    artifact and the host, replacing the closure kept for an older digest;
 2. exports stage one's input with `chibi-compile --stage-one-input`;
-3. runs stage one's `CompileBehaviors` on it with `chibi-compiler-host
-   --output-bytes`. When stage one rejects a behavior, the route reports
-   `BehaviorRejection`'s identity, line, column and message;
+3. runs `CompileBehaviorsWithCatalog` with `chibi-compiler-host
+   --output-bytes`. A rejected executable source reports
+   `BehaviorRejectionWithCatalog`'s identity, line, column and message;
 4. assembles the artifact with `chibi-compile --modules`.
 
 `CHIBI_COMPILE` and `CHIBI_STAGE_ONE_HOST` name the two tools. The selector
@@ -2106,7 +2108,7 @@ Nine added tooling cases cover these finite binary operations:
   are compared. Exact selected-backend entry counts are checked without fallback.
 - Two direct calls return 256 bytes against a 255-byte limit and fail atomically;
   the 256-byte successes above cover the exact boundary. Two invalid API limits
-  (zero and `COMPILER_HOST_MAX_OUTPUT_BYTES + 1`) reject before execution.
+  (zero and `COMPILER_HOST_MAX_ARTIFACT_BYTES + 1`) reject before execution.
 - Two wrong return signatures reject before malformed JSON parsing; malformed
   JSON and wrong argument count add two more pre-execution rejections.
 - The reference-argument fixture adds one bytes-API rejection. The new result

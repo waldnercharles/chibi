@@ -1,0 +1,9 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-collections-compiled
+revision 27f8aeaabeeefe19abe03c6e16c15ef93d199ed3 0 modified
+package compiler scoped pointer relays rejected: Pointer parameter requires &value or a pointer at 11:29
+(FAILED: /home/claude/chibi-ref/test/language/package_compiler_chibi.c (4231): value->tag == tag(b, "Compiled") && value->count == 2)
+Running: package_compiler_builds_runnable_collection_packages_compiled 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 3770
+Test command wall time: 129.848s; includes in-test fixture setup; external configuration/build excluded.
+exit 1

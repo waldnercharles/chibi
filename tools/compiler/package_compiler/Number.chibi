@@ -515,6 +515,60 @@ pub LiteralBits :: (spelling: string, negative: bool) -> FloatBits {
     }
 }
 
+// A decimal literal's exact value at an integer type, with no binary
+// rounding: Whole with its magnitude, Large when its integer part needs more
+// than 64 bits, else Fraction when it has one.
+pub Integral :: union {
+    Whole(magnitude: u64) | Large | Fraction
+}
+// The digits of the largest uint64, 18446744073709551615.
+LargestWholeDigits: int : 20;
+LargestWholeDigit :: (index: int) -> int {
+    return strings.ByteAt("18446744073709551615", index) - 48;
+}
+
+// The decimal spelling `spelling` read exactly at an integer type. Stage zero
+// reads it as a long double, which holds these exactly where it has 64
+// mantissa bits.
+pub IntegralOf :: (spelling: string) -> Integral {
+    switch DecimalOf(spelling) {
+        case .Malformed:
+            return Integral.Large;
+        case .Value(digits, count, point, trunc):
+            if (count == 0) {
+                return Integral.Whole(0);
+            }
+            if (point > LargestWholeDigits) {
+                return Integral.Large;
+            }
+            magnitude: u64 = 0;
+            // Compared with the largest uint64 digit by digit while equal.
+            below := point < LargestWholeDigits;
+            index: int = 0;
+            while (index < point) {
+                digit: int = 0;
+                if (index < count) {
+                    digit = digits[index];
+                }
+                if (!below && digit > LargestWholeDigit(index)) {
+                    return Integral.Large;
+                }
+                below = below || digit < LargestWholeDigit(index);
+                magnitude = magnitude * 10 + u64(digit);
+                index += 1;
+            }
+            fraction := trunc;
+            while (index < count) {
+                fraction = fraction || (index >= 0 && digits[index] != 0);
+                index += 1;
+            }
+            if (fraction) {
+                return Integral.Fraction;
+            }
+            return Integral.Whole(magnitude);
+    }
+}
+
 // Exact integers, as stage zero's numeric.c evaluates constant expressions.
 // Element 0 is 1 for a negative value, else 0; the magnitude follows in
 // 32-bit limbs, least significant first, without a high zero limb. Zero is

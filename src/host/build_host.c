@@ -653,6 +653,7 @@ static package_collection *prepare(build_host *host, const native_capabilities *
         native_prepared_context context = { .native = native };
         execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
         linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+        linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
         linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
         size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
         char error[256] = { 0 };

@@ -107,13 +107,16 @@ typedef enum
  * functions build the arrays they return in their caller's storage, and its
  * Copied function, which assigns its array, does not. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
- * backends. */
+ * backends. A `traced` sample's calls take no arguments and deliver the
+ * watches stage zero's do, in its order and with its values; a traced
+ * `c_string_probe` sample's calls run only that way, because the compiler
+ * host does not link the probe natives, and return int. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
+    bool core, updates, boxed, game, moves, aliases, variants, built, same_rejection,
+        c_string_probe, host_effects, update_order, debug_metadata, traced;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -158,6 +161,32 @@ static const char *cstring_pair(arena *storage, const pin_value *arguments, int 
 {
     return cstring_probe(storage, arguments + 1, count - 1, result);
 }
+/* Overloads that report which one ran: number or f64, and an int and an f64
+ * in either order. */
+static const char *first_kernel(arena *, const pin_value *, int, pin_value *result)
+{
+    result->i = 1;
+    return NULL;
+}
+static const char *second_kernel(arena *, const pin_value *, int, pin_value *result)
+{
+    result->i = 2;
+    return NULL;
+}
+static const native_parameter_definition NUMBER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
+};
+static const native_parameter_definition DOUBLE_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_parameter_definition INTEGER_DOUBLE_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_parameter_definition DOUBLE_INTEGER_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -166,7 +195,7 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .source_name = SOURCE,                                                   \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .inputs = INPUT,                                                         \
-      .input_count = 1,                                                        \
+      .input_count = sizeof INPUT / sizeof *INPUT,                             \
       .outputs = CSTRING_OUTPUT,                                               \
       .output_count = 1,                                                       \
       .completion_output = -1,                                                 \
@@ -188,11 +217,17 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Number Kernel", "native.kernel", NUMBER_INPUT, true),
+    PROBE_DEFINITION("Double Kernel", "native.kernel", DOUBLE_INPUT, true),
+    PROBE_DEFINITION("Integer Double Pair", "native.pair", INTEGER_DOUBLE_INPUT, true),
+    PROBE_DEFINITION("Double Integer Pair", "native.pair", DOUBLE_INTEGER_INPUT, true),
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
 static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
+static const node_host_call FIRST_CALL = { .value = first_kernel };
+static const node_host_call SECOND_CALL = { .value = second_kernel };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 #define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
@@ -211,6 +246,10 @@ static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Number Kernel", FIRST_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Double Kernel", SECOND_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Integer Double Pair", FIRST_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Double Integer Pair", SECOND_CALL, CSTRING_ACCESS),
 };
 #undef PROBE_BINDING
 static const native_definition_pack CSTRING_PACK = {
@@ -2363,12 +2402,146 @@ static const sample samples[] = {
                 "}\n",
       .calls = { { .function = "Scale", .arguments = "[2]", .expected = "[2.0]" },
                  { .function = "Half", .arguments = "[4]", .expected = "[-2.0]" } } },
+    /* A signed literal's outer signs are each watched once. */
+    { .name = "grouped signed literal results",
+      .traced = true,
+      .source = "package facts\n"
+                "Half :: () -> f64 { return -(1.5); }\n"
+                "Back :: () -> f64 { return -(-(1.5)); }\n"
+                "Two :: () -> int { return -(2); }\n"
+                "Three :: () -> int { return -(+(-(3))); }\n"
+                "Plus :: () -> int { return +(-(4)); }\n",
+      .calls = { { .function = "Half", .arguments = "[]", .expected = "[-1.5]" },
+                 { .function = "Back", .arguments = "[]", .expected = "[1.5]" },
+                 { .function = "Two", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Three", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Plus", .arguments = "[]", .expected = "[-4]" } } },
     /* An overloaded native's untyped literal argument takes the overload
      * stage zero picks (native_overload_reference_contract) and that
-     * overload's type, grouped or signed. The host has no native.overload, so
-     * these compare closures with stage zero's instead of running. */
-    { .name = "untyped literal overload argument", .c_string_probe = true, .source = "package facts\nRun :: () -> int { return native.overload(2); }" },
-    { .name = "grouped negative overload argument", .c_string_probe = true, .source = "package facts\nRun :: () -> int { return native.overload((-(2))); }" },
+     * overload's type, grouped, signed or a whole decimal. */
+    { .name = "untyped literal overload argument",
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\n"
+                "Run :: () -> int { return native.overload(2); }\n"
+                "Grouped :: () -> int { return native.overload((-(2))); }\n"
+                "Whole :: () -> int { return native.overload(2.0); }\n"
+                "Exponent :: () -> int { return native.overload(1e0); }\n",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1]" } } },
+    /* Typed arguments choose the kernel their width prefers, i64 the f64
+     * one and the rest number, and literals take the number one. */
+    { .name = "typed overload kernels",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Literal :: () -> int { return native.kernel(2); }\n"
+          "Decimal :: () -> int { return native.kernel(2.5); }\n"
+          "Integer :: () -> int { v: int = 3; return native.kernel(v * 2); }\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(v * 2); }\n"
+          "Single :: () -> int { v: number = 1.5; return native.kernel(v); }\n"
+          "Double :: () -> int { v: f64 = 1.5; return native.kernel(v); }\n",
+      .calls = { { .function = "Literal", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Integer", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Single", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Double", .arguments = "[]", .expected = "[2]" } } },
+    /* An argument before a call the overload depends on is still typed,
+     * converted and watched first, when the call has an effect and when it
+     * fails. */
+    { .name = "overload argument order",
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\n"
+                "Later :: () -> int { return native.probe(\"ab\"); }\n"
+                "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+                "Before :: () -> int { return native.pair(2, Later()); }\n"
+                "After :: () -> int { return native.pair(Later(), 2); }\n"
+                "Stops :: () -> int { return native.pair(-(2), Fails()); }\n"
+                "Local :: () -> int { v: f64 = 2.5; return native.pair(v, "
+                "Later()); }\n"
+                "Widened :: () -> int { v: number = 1.5; return native.pair(v, "
+                "Later()); }\n",
+      .calls = { { .function = "Before", .arguments = "[]", .expected = "[2]" },
+                 { .function = "After", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
+    /* Parentheses produce no value: a grouped argument is typed, converted
+     * and watched once the expression inside has produced it. */
+    { .name = "grouped overload arguments",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Later :: () -> int { return native.probe(\"ab\"); }\n"
+          "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+          "Typed :: () -> int { v: number = 1.5; return "
+          "native.kernel((v)); }\n"
+          "Converted :: () -> int { v: int = 3; return native.kernel((v)); "
+          "}\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(((v))); }\n"
+          "Effect :: () -> int { return native.pair(2, (Later())); }\n"
+          "First :: () -> int { return native.pair((Later()), (2)); }\n"
+          "Stops :: () -> int { return native.pair((-(2)), (Fails())); }\n"
+          "Local :: () -> int { v: f64 = 2.5; return native.pair((v), "
+          "(Later())); }\n",
+      .calls = { { .function = "Typed", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Converted", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Effect", .arguments = "[]", .expected = "[2]" },
+                 { .function = "First", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" } } },
+    /* Both stages read a decimal at an integer type exactly, digit by digit:
+     * no floating rounding drops a fraction, an integer unit or the range. */
+    { .name = "exact whole decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Sum :: () -> i64 { x: i64 = 0; return x + 9007199254740993.0; "
+                "}\n"
+                "Negative :: () -> i64 { return -9007199254740993.0; }\n"
+                "Largest :: () -> u64 { return 18446744073709551615.0; }\n"
+                "Scaled :: () -> i64 { return 9007199254740993e0; }\n"
+                "Least :: () -> i64 { return -9223372036854775808.0; }\n",
+      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[-9007199254740993]" },
+                 { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Least", .arguments = "[]", .expected = "[-9223372036854775808]" } } },
+    { .name = "decimal past the largest integer",
+      .source = "package facts\nRun :: () -> u64 { return "
+                "18446744073709551616.0; }",
+      .message = "Numeric literal is outside the range of u64",
+      .same_rejection = true },
+    { .name = "small fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "smaller fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "small fraction integer",
+      .source = "package facts\nRun :: () -> i64 { x: i64 = 0; return x + "
+                "9007199254740992.5; }",
+      .message = "Numeric literal has a fraction, which i64 cannot hold",
+      .same_rejection = true },
+    { .name = "ambiguous literal overload",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",
+      .message = "no overload of this native takes these arguments, or several "
+                 "do",
+      .oracle_message = "Unknown value 'native'",
+      .same_rejection = true },
     { .name = "decimal overload argument",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return "
@@ -3607,6 +3780,7 @@ static package_collection *read_packages(
     native_prepared_context context = { .native = *native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
     linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.decoded_records = COMPILER_HOST_MAX_CLOSURE_RECORDS;
     linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
     uint64_t root = 0;
@@ -3970,6 +4144,218 @@ static bool rejects_malformed_effects()
     }
     return true;
 }
+enum
+{
+    TRACED_WATCHES = 64
+};
+typedef struct
+{
+    int start, end, ordinal;
+    bool output;
+    pin_type type;
+    uint64_t bits;
+} traced_watch;
+/* The watches one call delivers, in order, with each scalar payload's bits. */
+typedef struct
+{
+    traced_watch watches[TRACED_WATCHES];
+    int count;
+    bool overflow;
+} watch_trace;
+static uint64_t scalar_bits(const pin_value *value)
+{
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        return 0;
+    }
+    uint32_t single;
+    switch (value->type) {
+        case PIN_BOOL: return value->b;
+        case PIN_I32: return (uint32_t)value->i;
+        case PIN_F32: memcpy(&single, &value->f, sizeof single); return single;
+        case PIN_I64:
+        case PIN_U64:
+        case PIN_F64: return value->u64;
+        default: return 0;
+    }
+}
+static void trace_watch(
+    void *user,
+    behavior_function_context *,
+    const behavior_source_watch *watch,
+    const pin_value *value
+)
+{
+    watch_trace *trace = user;
+    if (trace->count == TRACED_WATCHES) {
+        trace->overflow = true;
+        return;
+    }
+    trace->watches[trace->count++] = (traced_watch){
+        .start = watch->origin.start,
+        .end = watch->origin.end,
+        .ordinal = watch->ordinal,
+        .output = watch->output,
+        .type = value ? value->type : PIN_FLOW,
+        .bits = value ? scalar_bits(value) : 0,
+    };
+}
+/* Runs `function`, which takes no arguments and returns one value, from a
+ * closure linked with the probe natives, tracing the watches it delivers. */
+static bool traced_call(
+    const unsigned char *bytes,
+    size_t length,
+    const char *function,
+    int backend,
+    watch_trace *trace,
+    int *status,
+    pin_value *output
+)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    const behavior_function *body = NULL;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            execution_module_function_info info = execution_module_function_at(module, f);
+            if (info.id == function_id(function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body && body->argument_count == 0 && body->result_count == 1);
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    bool resumable = behavior_function_resumable(body);
+    if (resumable) {
+        behavior_function_activation_init(body, &activation);
+    }
+    *output = body->result_defaults[0];
+    behavior_function_prepare_results(body, output, &storage);
+    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                          .results = output,
+                                          .budget = TARGET_BUDGET,
+                                          .source_debug_user = trace,
+                                          .source_capture = trace_watch };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(body, &context, NULL, 0);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    *status = bound ? behavior_function_run(body, &context, backend != 0)
+                    : FLOW_ERR_ARGUMENT;
+    behavior_run_scope_end(&runs);
+    if (*status == FLOW_OK && !context.returned) {
+        *status = FLOW_ERR_ARGUMENT;
+    }
+    *output = (pin_value){ .type = output->type, .u64 = scalar_bits(output) };
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(bound && !trace->overflow);
+    /* The call ran on the backend it selected, inspected, with no fallback. */
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t compiled = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        backend ? compiled > 0 && !n->bytecode_entries &&
+                      n->inspected_sljit_entries + n->inspected_wasm_entries == compiled
+                : n->bytecode_entries > 0 && !compiled
+    );
+    return true;
+}
+static bool same_traced(const traced_watch *x, const traced_watch *y)
+{
+    return x->start == y->start && x->end == y->end && x->ordinal == y->ordinal &&
+           x->output == y->output && x->type == y->type && x->bits == y->bits;
+}
+static void print_traced(const char *compiler, int index, const traced_watch *w)
+{
+    fprintf(
+        stderr,
+        "  %s watch %d at %d..%d ordinal %d%s type %d bits %llx\n",
+        compiler,
+        index,
+        w->start,
+        w->end,
+        w->ordinal,
+        w->output ? " output" : "",
+        (int)w->type,
+        (unsigned long long)w->bits
+    );
+}
+static bool same_trace(const watch_trace *expected, const watch_trace *actual)
+{
+    bool same = expected->count == actual->count;
+    for (int i = 0; same && i < expected->count; i++) {
+        same = same_traced(&expected->watches[i], &actual->watches[i]);
+    }
+    for (int i = 0; !same && i < expected->count; i++) {
+        print_traced("stage zero", i, &expected->watches[i]);
+    }
+    for (int i = 0; !same && i < actual->count; i++) {
+        print_traced("stage one", i, &actual->watches[i]);
+    }
+    return same;
+}
+/* Each traced call returns what stage zero's does and delivers its watches,
+ * on both backends. */
+static bool traces_like_oracle(const unsigned char *bytes, size_t length, const sample *s)
+{
+    unsigned char *expected = NULL;
+    size_t expected_length = 0;
+    REQUIRE(oracle_closure(s, &expected, &expected_length));
+    bool same = true;
+    for (int c = 0; same && c < CALLS && s->calls[c].function; c++) {
+        const sample_call *call = &s->calls[c];
+        REQUIRE(!strcmp(call->arguments, "[]"));
+        for (int backend = 0; same && backend < 2; backend++) {
+            watch_trace traces[2] = { 0 };
+            int statuses[2];
+            pin_value results[2];
+            REQUIRE(traced_call(
+                expected,
+                expected_length,
+                call->function,
+                backend,
+                &traces[0],
+                &statuses[0],
+                &results[0]
+            ));
+            REQUIRE(
+                traced_call(bytes, length, call->function, backend, &traces[1], &statuses[1], &results[1])
+            );
+            char returned[32] = "";
+            if (results[1].type == PIN_I32) {
+                snprintf(returned, sizeof returned, "[%d]", results[1].i);
+            }
+            bool result = call->expected ? statuses[1] == FLOW_OK &&
+                                               results[0].type == results[1].type &&
+                                               results[0].u64 == results[1].u64 &&
+                                               (!s->c_string_probe ||
+                                                !strcmp(returned, call->expected))
+                                         : statuses[1] != FLOW_OK;
+            same = traces[0].count > 0 && statuses[0] == statuses[1] &&
+                   result && same_trace(&traces[0], &traces[1]);
+            if (!same) {
+                fprintf(
+                    stderr,
+                    "package compiler traced %s on backend %d: status %d and "
+                    "%d, %s\n",
+                    call->function,
+                    backend,
+                    statuses[0],
+                    statuses[1],
+                    returned
+                );
+            }
+        }
+    }
+    free(expected);
+    return same;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare());
@@ -4051,12 +4437,14 @@ static bool run_samples(sample_group group, int b)
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
-        for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+        bool hosted = !s->traced || !s->c_string_probe;
+        for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
             }
             ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
+        ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
         if (ran && s->update_order) {
             ran = (b || array_update_order(expected, expected_length, s)) &&
                   array_update_order(bytes, length, s) &&
@@ -8270,7 +8658,8 @@ TEST_CASE(native_arguments_reference_contract)
 
 /* Stage zero picks native.overload's integer or text overload by the
  * argument; an untyped number never converts to text, so it cannot pick the
- * text one. */
+ * text one. native.kernel's number overload takes literals and typed values
+ * other than i64, which takes the f64 one. */
 TEST_CASE(native_overload_reference_contract)
 {
     static const struct
@@ -8282,6 +8671,16 @@ TEST_CASE(native_overload_reference_contract)
     } cases[] = {
         { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
         { "package facts\nRun :: () -> int { return native.overload((-(2))); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2.0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(1e0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
+        { "package facts\nRun :: (v: int) -> int { return native.kernel(v * "
+          "2); }",
+          PIN_F32 },
+        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v * "
+          "2); }",
+          PIN_F64 },
+        { "package facts\nRun :: (v: f64) -> int { return native.kernel(v); }", PIN_F64 },
         { "package facts\nRun :: (v: int) -> int { return native.overload(v); "
           "}",
           PIN_I32 },

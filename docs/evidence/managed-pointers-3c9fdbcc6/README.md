@@ -54,8 +54,25 @@ The recorded revision reads `1109d8e…-dirty` because the manifest keeps the
 revision of the seed it was regenerated from; its source entries match
 3c9fdbcc6 byte for byte (`compiler-bootstrap`).
 
-`detail/` holds the per-step logs that the `make` wrappers name as
-`.chibi/logs/<id>-<step>.log`. `SHA256SUMS` covers every log here.
+`detail/` holds 20 of the 29 per-step logs that the `make` wrappers name as
+`.chibi/logs/<id>-<step>.log`; it is not complete. `tools/quiet.py` keeps only
+the 20 most recent step logs, so these nine were gone before the handoff:
+
+- `807a50bdf/test-build.log`, `807a50bdf/release.log` and
+  `807a50bdf/recovery.log` name eight earlier `configure-native` and `build`
+  logs (ids `1792900401…`, `1792900403…`, `1792900601…`, `1792900603…`,
+  `1792900606…` twice, `1792900607…`, `1792900609…`). The wrapper logs keep
+  each step's status and duration.
+- `807a50bdf/test-tools.log` names `1792901598…-graph.log`. That line, and its
+  `graph: FAILED`, are the output of `test/tools/test_policy.c`'s quiet-wrapper
+  fixture, which fails on purpose in a temporary directory; the run passed
+  172 of 172.
+
+`SHA256SUMS` covers every log here.
+
+The `program_borrowing_kernel_results_survive_collection` case and the
+169-case `language-program` run at 27d62a8ff were reported in a #695 comment
+only; no log of that run is checked in. Later heads carry their own receipts.
 
 ## Compiler artifact
 

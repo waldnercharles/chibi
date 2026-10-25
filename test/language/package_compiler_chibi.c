@@ -2295,6 +2295,15 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
+    /* Red until stage one resolves an overloaded native's untyped literal
+     * argument: its call step rejects NumberStorage ("a number needs an
+     * integer type here") before Overload runs. Stage zero returns 2. Last,
+     * so the samples before it still run. */
+    { .name = "untyped literal overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return native.overload(2); "
+                "}",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" } } },
 };
 enum
 {

@@ -1,6 +1,7 @@
 #include "backend.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
+#include "execution/integer_report.h"
 #include "execution/intrinsics.h"
 #include "execution/log.h"
 #include "execution/module_effects.h"
@@ -2171,6 +2172,325 @@ TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp)
     return true;
 }
 
+/* One reportable operation with its own source in a fresh definition with
+ * report sites: two typed arguments, or one for a unary operation or a cast. */
+static bool reporting_operation(behavior_function_op op, pin_type from, pin_type to, int mode)
+{
+    bool binary = op != BF_NEG && op != BF_ABS && op != BF_CAST;
+    pin_value arguments[2] = { { .type = from }, { .type = from } },
+              returned = { .type = to };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, arguments, binary ? 2 : 1, &returned, 1, NULL, 0);
+    int source = behavior_function_builder_origin(
+        builder,
+        (
+            behavior_function_source
+        ){ .asset_name = "integers.chibi", .parent = -1, .line = 4, .column = 9 }
+    );
+    int left = slot(from), right = binary ? slot(from) : 0, output = slot(to);
+    for (int a = 0; a < (binary ? 2 : 1); a++) {
+        emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                              .type = from,
+                                              .output = a ? right : left,
+                                              .left = a,
+                                              .value = arguments[a] });
+    }
+    emit((behavior_function_instruction){ .op = op,
+                                          .type = to,
+                                          .output = output,
+                                          .left = left,
+                                          .right = right,
+                                          .target = op == BF_CAST ? mode
+                                                  : op == BF_DIV || op == BF_MOD ? -1
+                                                                                 : 0,
+                                          .source = source });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = to, .left = output });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    if (!finish()) {
+        return false;
+    }
+    behavior_function_report_integers(function);
+    return function->integer_reports && behavior_function_compile(function);
+}
+/* The kind the run marked, in the body or its fast body; -1 for none and -2
+ * for more than one. Clears the sites for the next run. */
+static int reported_kind()
+{
+    int kind = -1, marks = 0;
+    const behavior_function *bodies[] = { function, function->fast };
+    for (int b = 0; b < 2 && bodies[b]; b++) {
+        int count = bodies[b]->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS;
+        for (int site = 0; site < count; site++) {
+            if (atomic_exchange(&bodies[b]->integer_reports[site], 0)) {
+                kind = site % EXECUTION_INTEGER_REPORT_KINDS;
+                marks++;
+            }
+        }
+    }
+    return marks > 1 ? -2 : kind;
+}
+typedef struct
+{
+    pin_type type;
+    behavior_function_op op;
+    uint64_t left, right;
+    int kind;
+} integer_report_vector;
+/* Each integer operation reports exactly when its declared-width result
+ * differs from the exact one, or its divisor is zero, on both backends. The
+ * values are those a shipped build computes. */
+TEST_CASE(execution_integer_reports_mark_overflow_and_zero_divisors)
+{
+    enum
+    {
+        O = EXECUTION_INTEGER_OVERFLOW,
+        Z = EXECUTION_INTEGER_ZERO_DIVISOR,
+        N = -1
+    };
+    const uint64_t i8_min = (uint64_t)INT8_MIN, i32_min = (uint64_t)INT32_MIN,
+                   i64_min = (uint64_t)INT64_MIN, ones = UINT64_MAX,
+                   p31 = UINT64_C(1) << 31, p32 = UINT64_C(1) << 32;
+    const integer_report_vector vectors[] = {
+        { PIN_I8, BF_ADD, 127, 1, O },
+        { PIN_I8, BF_ADD, 126, 1, N },
+        { PIN_I8, BF_ADD, i8_min, ones, O },
+        { PIN_I8, BF_SUB, i8_min, 1, O },
+        { PIN_I8, BF_SUB, 0, i8_min, O },
+        { PIN_I8, BF_MUL, 16, 8, O },
+        { PIN_I8, BF_MUL, (uint64_t)-16, 8, N },
+        { PIN_I8, BF_MUL, i8_min, ones, O },
+        { PIN_U8, BF_ADD, 255, 1, O },
+        { PIN_U8, BF_SUB, 0, 1, O },
+        { PIN_U8, BF_SUB, 1, 1, N },
+        { PIN_U8, BF_MUL, 16, 16, O },
+        { PIN_U8, BF_MUL, 15, 17, N },
+        { PIN_I16, BF_MUL, 256, 128, O },
+        { PIN_U16, BF_MUL, 65535, 65535, O },
+        { PIN_U16, BF_ADD, 65535, 0, N },
+        { PIN_I32, BF_ADD, INT32_MAX, 1, O },
+        { PIN_I32, BF_SUB, i32_min, 1, O },
+        { PIN_I32, BF_MUL, 65536, 32768, O },
+        { PIN_I32, BF_MUL, (uint64_t)-65536, 32768, N },
+        { PIN_I32, BF_MUL, i32_min, ones, O },
+        { PIN_U32, BF_ADD, UINT32_MAX, 1, O },
+        { PIN_U32, BF_SUB, 0, 1, O },
+        { PIN_U32, BF_MUL, 65536, 65536, O },
+        { PIN_U32, BF_MUL, 65535, 65537, N },
+        { PIN_I64, BF_ADD, INT64_MAX, 1, O },
+        { PIN_I64, BF_ADD, INT64_MAX, ones, N },
+        { PIN_I64, BF_SUB, i64_min, 1, O },
+        { PIN_I64, BF_MUL, p32, p31, O },
+        { PIN_I64, BF_MUL, (uint64_t)-(int64_t)p32, p31, N },
+        { PIN_I64, BF_MUL, i64_min, ones, O },
+        { PIN_I64, BF_MUL, ones, i64_min, O },
+        { PIN_I64, BF_MUL, ones, INT64_MAX, N },
+        { PIN_I64, BF_MUL, 3, UINT64_C(1) << 62, O },
+        { PIN_U64, BF_ADD, UINT64_MAX, 1, O },
+        { PIN_U64, BF_SUB, 0, 1, O },
+        { PIN_U64, BF_MUL, p32, p32, O },
+        { PIN_U64, BF_MUL, p32 - 1, p32 + 1, N },
+        { PIN_I32, BF_DIV, 7, 0, Z },
+        { PIN_I32, BF_DIV, i32_min, ones, O },
+        { PIN_I32, BF_DIV, i32_min, 1, N },
+        { PIN_U8, BF_DIV, 9, 0, Z },
+        { PIN_I8, BF_DIV, i8_min, ones, O },
+        { PIN_I64, BF_DIV, i64_min, ones, O },
+        { PIN_U64, BF_DIV, 5, 0, Z },
+        { PIN_I32, BF_MOD, 7, 0, Z },
+        { PIN_I32, BF_MOD, i32_min, ones, N },
+        { PIN_I8, BF_MOD, i8_min, ones, N },
+        { PIN_U16, BF_MOD, 3, 0, Z },
+        { PIN_I8, BF_NEG, i8_min, 0, O },
+        { PIN_I8, BF_NEG, 127, 0, N },
+        { PIN_U8, BF_NEG, 0, 0, N },
+        { PIN_U8, BF_NEG, 1, 0, O },
+        { PIN_I32, BF_NEG, i32_min, 0, O },
+        { PIN_U32, BF_NEG, 0, 0, N },
+        { PIN_I64, BF_NEG, i64_min, 0, O },
+        { PIN_U64, BF_NEG, 5, 0, O },
+        { PIN_I16, BF_ABS, (uint64_t)INT16_MIN, 0, O },
+        { PIN_I16, BF_ABS, (uint64_t)-32767, 0, N },
+        { PIN_I64, BF_ABS, i64_min, 0, O },
+    };
+    for (size_t v = 0; v < sizeof vectors / sizeof *vectors; v++) {
+        const integer_report_vector *c = &vectors[v];
+        cleanup();
+        REQUIRE(reporting_operation(c->op, c->type, c->type, 0));
+        pin_value arguments[2] = { behavior_scalar_from_bits(c->type, c->left),
+                                   behavior_scalar_from_bits(c->type, c->right) },
+                  expected;
+        behavior_scalar_integer_op(c->op, arguments[0], arguments[1], &expected, NULL);
+        for (int backend = 0; backend < 2; backend++) {
+            pin_value result = { .type = c->type };
+            int flow = run(arguments, 2, NULL, &result, backend == 1, 16);
+            int kind = reported_kind();
+            if (flow != FLOW_OK || kind != c->kind ||
+                behavior_scalar_bits(result) != behavior_scalar_bits(expected)) {
+                fprintf(
+                    stderr,
+                    "integer report vector %zu backend %d: flow %d kind %d\n",
+                    v,
+                    backend,
+                    flow,
+                    kind
+                );
+            }
+            REQUIRE(flow == FLOW_OK && kind == c->kind);
+            REQUIRE(behavior_scalar_bits(result) == behavior_scalar_bits(expected));
+        }
+    }
+    cleanup();
+    return true;
+}
+
+/* EXACT conversions report a value that clamps, including NaN, and a float
+ * that truncates into range does not; wrapping conversions never report. */
+TEST_CASE(execution_integer_reports_mark_clamping_conversions)
+{
+    enum
+    {
+        E = BEHAVIOR_CAST_EXACT,
+        W = BEHAVIOR_CAST_WRAP,
+        C = EXECUTION_INTEGER_CLAMP,
+        N = -1
+    };
+    const struct
+    {
+        pin_value input;
+        pin_type to;
+        int mode, kind;
+    } vectors[] = {
+        { cast_input(PIN_I64, UINT64_C(1) << 40), PIN_I32, E, C },
+        { cast_input(PIN_I64, 300), PIN_I32, E, N },
+        { cast_input(PIN_I64, UINT64_C(1) << 40), PIN_I32, W, N },
+        { cast_input(PIN_U64, 300), PIN_U8, E, C },
+        { cast_input(PIN_I32, (uint64_t)-1), PIN_U64, E, C },
+        { cast_input(PIN_I32, 5), PIN_U64, E, N },
+        { cast_input(PIN_U64, UINT64_C(1) << 63), PIN_I64, E, C },
+        { cast_input(PIN_I8, (uint64_t)-1), PIN_I32, E, N },
+        { cast_input(PIN_U32, 0x80000000u), PIN_I32, E, C },
+        { cast_real(PIN_F64, NAN), PIN_I32, E, C },
+        { cast_real(PIN_F64, -128), PIN_I8, E, N },
+        { cast_real(PIN_F64, -128.9), PIN_I8, E, N },
+        { cast_real(PIN_F64, -129), PIN_I8, E, C },
+        { cast_real(PIN_F64, 127.9), PIN_I8, E, N },
+        { cast_real(PIN_F64, 128), PIN_I8, E, C },
+        { cast_real(PIN_F64, -0.5), PIN_U8, E, N },
+        { cast_real(PIN_F64, -1), PIN_U8, E, C },
+        { cast_real(PIN_F64, 2147483647), PIN_I32, E, N },
+        { cast_real(PIN_F64, -2147483648.9), PIN_I32, E, N },
+        { cast_real(PIN_F64, -2147483649.0), PIN_I32, E, C },
+        { cast_real(PIN_F32, 2.75), PIN_I32, E, N },
+        { cast_real(PIN_F32, 0x1p31), PIN_I32, E, C },
+        { cast_real(PIN_F64, 0x1p63), PIN_I64, E, C },
+        { cast_real(PIN_F64, -0x1p63), PIN_I64, E, N },
+        { cast_real(PIN_F64, 0x1p64), PIN_U64, E, C },
+        { cast_real(PIN_F64, 0x1.fffffffffffffp63), PIN_U64, E, N },
+    };
+    for (size_t v = 0; v < sizeof vectors / sizeof *vectors; v++) {
+        cleanup();
+        pin_type from = vectors[v].input.type, to = vectors[v].to;
+        REQUIRE(reporting_operation(BF_CAST, from, to, vectors[v].mode));
+        pin_value expected;
+        behavior_scalar_cast(
+            vectors[v].input,
+            to,
+            (behavior_cast_mode)vectors[v].mode,
+            &expected
+        );
+        for (int backend = 0; backend < 2; backend++) {
+            pin_value result = { .type = to };
+            int flow = run(&vectors[v].input, 1, NULL, &result, backend == 1, 16);
+            int kind = reported_kind();
+            if (flow != FLOW_OK || kind != vectors[v].kind) {
+                fprintf(stderr, "cast report vector %zu backend %d: flow %d kind %d\n", v, backend, flow, kind);
+            }
+            REQUIRE(flow == FLOW_OK && kind == vectors[v].kind);
+            REQUIRE(behavior_scalar_bits(result) == behavior_scalar_bits(expected));
+        }
+    }
+    cleanup();
+    return true;
+}
+
+/* Address arithmetic belongs to the runtime and never reports. */
+TEST_CASE(execution_integer_reports_skip_address_arithmetic)
+{
+    REQUIRE(reporting_operation(BF_ADD, BF_POINTER_TYPE, BF_POINTER_TYPE, 0));
+    const behavior_function_instruction *add = &function->instructions[2];
+    REQUIRE(add->op == BF_ADD && behavior_integer_reportable(function, add));
+    function->slot_kinds[add->left] = BEHAVIOR_ADDRESS;
+    REQUIRE(!behavior_integer_reportable(function, add));
+    cleanup();
+    return true;
+}
+
+/* The guarded fast body folds constant arithmetic, but keeps an operation
+ * that reports so a development build still sees it; the value is the same. */
+TEST_CASE(execution_integer_reports_keep_reported_constant_operations)
+{
+    for (int overflow = 0; overflow < 2; overflow++) {
+        cleanup();
+        pin_value variable = { .type = PIN_I32 };
+        builder = behavior_function_builder_new();
+        behavior_function_builder_signature(builder, NULL, 0, NULL, 0, &variable, 1);
+        /* An inlined child frame, as in the fast shift case above. */
+        behavior_function *draft = (behavior_function *)
+            behavior_function_builder_definition(builder);
+        apush(
+            draft->frames,
+            ((behavior_function_frame){ .source = { .parent = 0 }, .depth = 1, .stack = -1 })
+        );
+        int source = behavior_function_builder_origin(
+            builder,
+            (
+                behavior_function_source
+            ){ .asset_name = "integers.chibi", .parent = -1, .line = 2, .column = 5 }
+        );
+        int left = slot(PIN_I32), right = slot(PIN_I32), sum = slot(PIN_I32);
+        emit((behavior_function_instruction){ .op = BF_CHECK });
+        emit((behavior_function_instruction){
+            .op = BF_CONSTANT,
+            .type = PIN_I32,
+            .output = left,
+            .value = { .type = PIN_I32, .i = overflow ? INT32_MAX : 40 } });
+        emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                              .type = PIN_I32,
+                                              .output = right,
+                                              .value = { .type = PIN_I32, .i = 2 } });
+        emit((behavior_function_instruction){ .op = BF_CHECK, .frame = 1 });
+        emit((behavior_function_instruction){ .op = BF_ADD,
+                                              .type = PIN_I32,
+                                              .output = sum,
+                                              .left = left,
+                                              .right = right,
+                                              .frame = 1,
+                                              .source = source });
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_STORE, .type = PIN_I32, .left = sum, .target = 0 });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        REQUIRE(function->fast);
+        int adds = 0;
+        for (int pc = 0; pc < acount(function->fast->instructions); pc++) {
+            adds += function->fast->instructions[pc].op == BF_ADD;
+        }
+        REQUIRE(adds == overflow);
+        behavior_function_report_integers(function);
+        REQUIRE(behavior_function_compile(function));
+        for (int backend = 0; backend < 2; backend++) {
+            variable.i = 0;
+            REQUIRE(run(NULL, 0, &variable, NULL, backend == 1, 16) == FLOW_OK);
+            REQUIRE(variable.i == (overflow ? INT32_MIN + 1 : 42));
+            REQUIRE(reported_kind() == (overflow ? EXECUTION_INTEGER_OVERFLOW : -1));
+        }
+    }
+    cleanup();
+    return true;
+}
+
 TEST_CASE(execution_string_equality_and_iteration_use_full_bytes)
 {
     pin_value args[] = { { .type = PIN_STR }, { .type = PIN_STR } };
@@ -2299,5 +2619,9 @@ void test_language_execution()
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
     RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
+    RUN_TEST_CASE(execution_integer_reports_mark_overflow_and_zero_divisors);
+    RUN_TEST_CASE(execution_integer_reports_mark_clamping_conversions);
+    RUN_TEST_CASE(execution_integer_reports_skip_address_arithmetic);
+    RUN_TEST_CASE(execution_integer_reports_keep_reported_constant_operations);
     pu_clear_setup();
 }

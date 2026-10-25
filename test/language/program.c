@@ -9,6 +9,7 @@
 #include "execution/delay.h"
 #include "execution/function_builder.h"
 #include "execution/inspection.h"
+#include "execution/integer_report.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
 #include "execution/program_internal.h"
@@ -825,6 +826,83 @@ TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
         REQUIRE(execution_instance_state(instance, state_id("total"))->d == 7);
         REQUIRE(execution_instance_pending(instance) == 0);
     }
+    return true;
+}
+
+static int take_reports(execution_integer_report *found)
+{
+    execution_integer_report *reports = NULL;
+    execution_module_take_integer_reports(module, &reports);
+    int count = acount(reports);
+    for (int i = 0; i < count && i < EXECUTION_INTEGER_REPORT_KINDS; i++) {
+        found[reports[i].kind] = reports[i];
+    }
+    afree(reports);
+    return count;
+}
+/* A development build reports each overflow, zero divisor and clamping
+ * conversion once per source line until the sites reset, and keeps the
+ * values a shipped build computes; a module published without reports has
+ * none. Checks the compiler adds, like char's scalar test, never report. */
+TEST_CASE(program_integer_reports_are_taken_once_per_site_until_reset)
+{
+    const char *source = "Counter :: behavior {\n"
+                         "    total: int = 2147483647;\n"
+                         "    small: byte = 0;\n"
+                         "    quotient: int = 5;\n"
+                         "    zero: int = 0;\n"
+                         "    letter: char = 'a';\n"
+                         "\n"
+                         "    on Impulse :: (amount: double, enabled: bool) {\n"
+                         "        total *= 3;\n"
+                         "        small = byte(amount);\n"
+                         "        quotient = 7 / zero;\n"
+                         "        letter = char(zero + 98);\n"
+                         "    }\n"
+                         "}\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int development = 0; development < 2; development++) {
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            execution_integer_reports_enable(development);
+            bool compiled = compile(source, backends[b]);
+            execution_integer_reports_enable(false);
+            REQUIRE(compiled);
+            ecs_entity owner = ecs_world_create_entity(world);
+            uint64_t handle = ecs_entity_to_u64(owner);
+            execution_instance *instance = execution_program_attach(program, handle);
+            REQUIRE(instance);
+            pin_value payload[] = { { .type = PIN_F64, .d = 300 },
+                                    { .type = PIN_BOOL, .b = true } };
+            execution_integer_report found[EXECUTION_INTEGER_REPORT_KINDS] = { 0 };
+            for (int round = 0; round < 3; round++) {
+                if (round == 2) {
+                    execution_module_reset_integer_reports(module);
+                }
+                REQUIRE(execution_program_emit(program, 11, handle, payload, 2) == FLOW_OK);
+                REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+                int count = take_reports(found);
+                REQUIRE(count == (development && round != 1 ? EXECUTION_INTEGER_REPORT_KINDS : 0));
+                REQUIRE(execution_instance_state(instance, state_id("small"))->u8 == 255);
+                REQUIRE(execution_instance_state(instance, state_id("quotient"))->i == 0);
+                REQUIRE(execution_instance_state(instance, state_id("letter"))->i == 'b');
+            }
+            /* Each round triples the total and wraps: 3 * (2^31 - 1) - 2^32, twice more. */
+            REQUIRE(execution_instance_state(instance, state_id("total"))->i == 2147483621);
+            if (!development) {
+                continue;
+            }
+            REQUIRE(found[EXECUTION_INTEGER_OVERFLOW].line == 9);
+            REQUIRE(found[EXECUTION_INTEGER_CLAMP].line == 10);
+            REQUIRE(found[EXECUTION_INTEGER_ZERO_DIVISOR].line == 11);
+            for (int k = 0; k < EXECUTION_INTEGER_REPORT_KINDS; k++) {
+                REQUIRE(found[k].kind == (execution_integer_report_kind)k);
+                REQUIRE(found[k].module_id == execution_module_id(module));
+                REQUIRE(found[k].start < found[k].end);
+            }
+        }
+    }
+    cleanup();
     return true;
 }
 
@@ -2943,8 +3021,8 @@ TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars)
     }
     return true;
 }
-/* A char beside an int compares as an int, and ASCII steps pass the scalar
- * check, whose surrogate test wraps below 0xD800; -c is no scalar. */
+/* A char beside an int compares as an int, and ASCII steps below the
+ * surrogates pass the scalar check; -c is no scalar. */
 TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
 {
     const char
@@ -9788,6 +9866,7 @@ void test_language_program()
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_integer_reports_are_taken_once_per_site_until_reset);
     RUN_TEST_CASE(program_handlers_name_payload_fields);
     RUN_TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source);
     RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);

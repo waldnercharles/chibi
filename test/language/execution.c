@@ -2411,6 +2411,80 @@ TEST_CASE(execution_integer_reports_mark_clamping_conversions)
     return true;
 }
 
+/* Results written out by hand, independent of the scalar helpers the vectors
+ * above compare both backends against: a development build keeps each value a
+ * shipped build computes while it reports. */
+TEST_CASE(execution_integer_reports_keep_literal_shipped_values)
+{
+    enum
+    {
+        O = EXECUTION_INTEGER_OVERFLOW,
+        Z = EXECUTION_INTEGER_ZERO_DIVISOR,
+        C = EXECUTION_INTEGER_CLAMP,
+        N = -1,
+        E = BEHAVIOR_CAST_EXACT,
+        W = BEHAVIOR_CAST_WRAP
+    };
+    const struct
+    {
+        behavior_function_op op;
+        pin_value left;
+        int64_t right;
+        pin_type to;
+        int mode;
+        int64_t expected;
+        int kind;
+    } cases[] = {
+        { BF_ADD, cast_input(PIN_I32, INT32_MAX), 1, PIN_I32, 0, INT32_MIN, O },
+        { BF_SUB, cast_input(PIN_U8, 0), 1, PIN_U8, 0, 255, O },
+        { BF_MUL, cast_input(PIN_I8, 16), 8, PIN_I8, 0, INT8_MIN, O },
+        { BF_MUL, cast_input(PIN_I64, (uint64_t)INT64_MIN), -1, PIN_I64, 0, INT64_MIN, O },
+        { BF_NEG, cast_input(PIN_I32, (uint64_t)INT32_MIN), 0, PIN_I32, 0, INT32_MIN, O },
+        { BF_ABS, cast_input(PIN_I16, (uint64_t)INT16_MIN), 0, PIN_I16, 0, INT16_MIN, O },
+        { BF_DIV, cast_input(PIN_I32, (uint64_t)INT32_MIN), -1, PIN_I32, 0, INT32_MIN, O },
+        { BF_MOD, cast_input(PIN_I32, (uint64_t)INT32_MIN), -1, PIN_I32, 0, 0, N },
+        { BF_DIV, cast_input(PIN_I32, 7), 0, PIN_I32, 0, 0, Z },
+        { BF_MOD, cast_input(PIN_I32, 7), 0, PIN_I32, 0, 7, Z },
+        { BF_MOD, cast_input(PIN_I8, (uint64_t)-9), 0, PIN_I8, 0, -9, Z },
+        { BF_DIV, cast_input(PIN_U64, 5), 0, PIN_U64, 0, 0, Z },
+        { BF_CAST, cast_input(PIN_I64, UINT64_C(1) << 40), 0, PIN_I32, E, INT32_MAX, C },
+        { BF_CAST, cast_input(PIN_I64, (uint64_t)-(INT64_C(1) << 40)), 0, PIN_I32, E, INT32_MIN, C },
+        { BF_CAST, cast_input(PIN_I32, (uint64_t)-1), 0, PIN_U64, E, 0, C },
+        { BF_CAST, cast_input(PIN_U64, 300), 0, PIN_U8, E, 255, C },
+        { BF_CAST, cast_input(PIN_I64, (UINT64_C(1) << 40) + 5), 0, PIN_I32, W, 5, N },
+        { BF_CAST, cast_real(PIN_F64, NAN), 0, PIN_I32, E, 0, C },
+        { BF_CAST, cast_real(PIN_F64, -129), 0, PIN_I8, E, INT8_MIN, C },
+        { BF_CAST, cast_real(PIN_F64, 1e10), 0, PIN_U16, E, UINT16_MAX, C },
+        { BF_CAST, cast_real(PIN_F64, -128.9), 0, PIN_I8, E, INT8_MIN, N },
+        { BF_CAST, cast_real(PIN_F32, 2.75), 0, PIN_I32, E, 2, N },
+    };
+    for (size_t v = 0; v < sizeof cases / sizeof *cases; v++) {
+        cleanup();
+        pin_type from = cases[v].left.type, to = cases[v].to;
+        behavior_function_op op = cases[v].op;
+        int count = op == BF_NEG || op == BF_ABS || op == BF_CAST ? 1 : 2;
+        REQUIRE(reporting_operation(op, from, to, cases[v].mode));
+        pin_value arguments[2] = { cases[v].left },
+                  expected = behavior_scalar_from_bits(to, (uint64_t)cases[v].expected);
+        if (count == 2) {
+            arguments[1] = behavior_scalar_from_bits(from, (uint64_t)cases[v].right);
+        }
+        for (int backend = 0; backend < 2; backend++) {
+            pin_value result = { .type = to };
+            int flow = run(arguments, count, NULL, &result, backend == 1, 16);
+            int kind = reported_kind();
+            if (flow != FLOW_OK || kind != cases[v].kind ||
+                behavior_scalar_bits(result) != behavior_scalar_bits(expected)) {
+                fprintf(stderr, "literal integer case %zu backend %d: flow %d kind %d\n", v, backend, flow, kind);
+            }
+            REQUIRE(flow == FLOW_OK && kind == cases[v].kind);
+            REQUIRE(behavior_scalar_bits(result) == behavior_scalar_bits(expected));
+        }
+    }
+    cleanup();
+    return true;
+}
+
 /* Address arithmetic belongs to the runtime and never reports. */
 TEST_CASE(execution_integer_reports_skip_address_arithmetic)
 {
@@ -2628,6 +2702,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
     RUN_TEST_CASE(execution_integer_reports_mark_overflow_and_zero_divisors);
     RUN_TEST_CASE(execution_integer_reports_mark_clamping_conversions);
+    RUN_TEST_CASE(execution_integer_reports_keep_literal_shipped_values);
     RUN_TEST_CASE(execution_integer_reports_skip_address_arithmetic);
     RUN_TEST_CASE(execution_integer_reports_run_every_site_without_a_fast_body);
     pu_clear_setup();

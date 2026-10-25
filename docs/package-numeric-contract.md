@@ -61,8 +61,9 @@ afterwards carry the checks
 ([`src/execution/integer_report.c`](../src/execution/integer_report.c)):
 
 - Integer add, subtract, multiply, divide, remainder, negation and absolute
-  value report, and so does `T(v)` to an integer type. `T(wrap: v)` and
-  address arithmetic never report.
+  value report, and so does `T(v)` to an integer type. Address arithmetic
+  never reports. `T(wrap: v)` keeps its own conversion silent, but an
+  overflow inside `v` still reports.
 - A conversion from a float reports NaN and a value whose truncation does not
   fit.
 - The VM checks the operands. SLJIT emits the checks inline: the overflow or
@@ -81,7 +82,10 @@ afterwards carry the checks
 `execution_module_take_integer_reports` returns each site of a module and its
 imports that reported since the last take, with its source range and node.
 `execution_module_reset_integer_reports` lets every site report again, as at
-the start of a Play session.
+the start of a Play session. Report sites live only in memory: a prepared
+module read in a development build reports from its decoded sources, and
+writing it back produces the same bytes. An inspected run reports as an
+uninspected one does.
 
 Intentional wrapping, such as a hash, reports too. Marking the operations
 inside `T(wrap: ...)` as intentional is the next step.

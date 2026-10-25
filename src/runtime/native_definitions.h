@@ -31,7 +31,10 @@ typedef struct
     int layout_count;
 } native_definition_pack;
 
-/* Owns the same immutable table as native_capabilities_new. Shared definition
+/* Known engine operations generate their binding from the definition; supplying
+ * a second implementation for one is an error. Other operations need an
+ * explicit generic binding and acquire no checked-operation guarantees.
+ * Owns the same immutable table as native_capabilities_new. Shared definition
  * defaults and names are snapshotted; kernel/access descriptors remain borrowed
  * for the lifetime of every module that binds them. */
 native_capabilities *native_capabilities_from_definition_packs(

@@ -1,5 +1,6 @@
 #include "runtime/native_definitions.h"
 
+#include "execution/operation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -103,6 +104,10 @@ static bool prepare(
             valid = fail(error, size, binding->canonical_name, "Binding has no shared definition");
             break;
         }
+        if (definitions[found].operation != SCRIPT_OPERATION_UNKNOWN) {
+            valid = fail(error, size, binding->canonical_name, "Engine operation binding is generated from its definition");
+            break;
+        }
         for (int j = 0; j < i; ++j) {
             if (!strcmp(source->bindings[j].canonical_name, binding->canonical_name)) {
                 valid = fail(error, size, binding->canonical_name, "Duplicate native binding");
@@ -140,6 +145,23 @@ static bool prepare(
         b.result_pins = native_definition_result_pins(*catalog, b.id, &b.result_count);
         assert(b.result_count >= 0);
         apush(*bindings, b);
+    }
+    const script_catalog *view = native_definition_catalog_view(*catalog);
+    for (int i = 0; i < view->capability_count; i++) {
+        const script_catalog_capability *declaration = &view->capabilities[i];
+        if (declaration->operation == SCRIPT_OPERATION_UNKNOWN) {
+            continue;
+        }
+        native_capability_binding binding = {
+            .id = declaration->id,
+            .intrinsic = behavior_operation_instruction(declaration->operation),
+        };
+        binding.result_pins = native_definition_result_pins(
+            *catalog,
+            binding.id,
+            &binding.result_count
+        );
+        apush(*bindings, binding);
     }
     for (int i = 0; i < source->global_binding_count; ++i) {
         const native_definition_global_binding *binding = &source->global_bindings[i];

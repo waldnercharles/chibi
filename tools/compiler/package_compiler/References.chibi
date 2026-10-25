@@ -30,7 +30,7 @@ AnyReference :: (params: Param[]) -> bool {
     return false;
 }
 // The function a call names, of this package or an import, -1 for any other.
-CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], aliases: Name[],
+CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[], aliases: Name[],
                    package: int, call: int) -> int {
     callee := Field(forest, call, "function");
     qualifier: int = -1;
@@ -42,7 +42,11 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     if (home < 0 || !Is(forest, callee, "identifier")) {
         return -1;
     }
-    return FindCallable(callables, home, Text(forest, text, callee));
+    if (qualifier < 0) {
+        return SourceCallable(callables, natives, aliases, home, Text(forest, text, callee));
+    }
+    return QualifiedCallable(callables, natives, aliases, home, Text(forest, text, callee),
+                             NativeCallName(forest, text, call));
 }
 // Call-site wrappers are syntax, not expressions. Keep the marker separate
 // from the value so by-value calls cannot silently discard it.
@@ -85,7 +89,7 @@ ArgumentRoot :: (forest: snapshot.SnapshotNode[], text: string, argument: int) -
 // The names the body `node` passes to ref parameters, which then live in data
 // cells. Shadowing is ignored: boxing a value nothing references costs only
 // its speed.
-ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[], natives: ResolvedNative[],
                     aliases: Name[], package: int, node: int) -> string[] {
     found: string[] = [];
     pending: int[] = [node];
@@ -94,7 +98,7 @@ ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         top -= 1;
         at := pending[top];
         if (Is(forest, at, "call_expression")) {
-            called := CalledFunction(forest, text, callables, aliases, package, at);
+            called := CalledFunction(forest, text, callables, natives, aliases, package, at);
             index: int = 0;
             for (argument in Members(forest, Field(forest, at, "arguments"))) {
                 if (called >= 0 && index < callables[called].count && params[callables[called].first + index].reference) {
@@ -392,7 +396,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
         return PointerPrefix(code, slots, PointerPopped(PointerReferenceStep(
             Typed(at.slot + 1, PointerStorage, 0, pointer), ops, target, SlotsPast(at, 2), node), 0));
     }
-    if (found < 0 || !names[found].writable || names[found].place == AliasPlace) {
+    if (found < 0 || !names[found].writable || Alias(names[found].place)) {
         return Fail(forest, item.node, document, "Reference argument requires a writable value");
     }
     binding := names[found];

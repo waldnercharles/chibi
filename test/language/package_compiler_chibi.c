@@ -1056,6 +1056,55 @@ static const sample samples[] = {
                  { .function = "Grouped", .arguments = "[]", .expected = "[4]" },
                  { .function = "Widened", .arguments = "[]", .expected = "[5]" },
                  { .function = "WholeArray", .arguments = "[]", .expected = "[390]" } } },
+    /* A compound write reads its pointer target once, before its value, as
+     * stage zero caches the target. Each call adds to `calls`, so receivers
+     * and values evaluate exactly once. */
+    { .name = "managed pointer compound order",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Set :: (q: ^int, calls: ^int) -> int { calls^ += 10; "
+                "q^ = 10; return 2; }\n"
+                "SetX :: (q: ^Point, calls: ^int) -> int { calls^ += 10; "
+                "q.x = 10; return 2; }\n"
+                "Pick :: (p: ^int, calls: ^int) -> ^int { calls^ += 1; "
+                "return p; }\n"
+                "PickPoint :: (p: ^Point, calls: ^int) -> ^Point { "
+                "calls^ += 1; return p; }\n"
+                "Through :: () -> int { value: int = 1; calls: int = 0; "
+                "p := &value; Pick(p, &calls)^ += Set(p, &calls); "
+                "return value * 100 + calls; }\n"
+                "Local :: () -> int { value: int = 1; calls: int = 0; "
+                "p := &value; value += Set(p, &calls); "
+                "return value * 100 + calls; }\n"
+                "Member :: () -> int { value: Point = {x: 1, y: 0}; "
+                "calls: int = 0; p := &value; "
+                "PickPoint(p, &calls).x += SetX(p, &calls); "
+                "return value.x * 100 + calls; }\n"
+                "Owned :: () -> int { value: Point = {x: 1, y: 0}; "
+                "calls: int = 0; p := &value; value.x += SetX(p, &calls); "
+                "return value.x * 100 + calls; }\n",
+      .calls = { { .function = "Through", .arguments = "[]", .expected = "[311]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[310]" },
+                 { .function = "Member", .arguments = "[]", .expected = "[311]" },
+                 { .function = "Owned", .arguments = "[]", .expected = "[310]" } } },
+    /* A narrower integer widens when it is stored through a pointer or into
+     * an addressed local, as ordinary assignment widens it. */
+    { .name = "managed pointer widening",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Widened :: () -> int64 { x: int64 = 0; y: int = 1; p := &x; "
+                "x = y; p^ = y + 1; return x; }\n",
+      .calls = { { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
+    /* A compound assignment does not widen through a pointer: its operands
+     * share one type. */
+    { .name = "managed pointer compound mixed integers",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> int64 {\n    x: int64 = 0;\n"
+                "    y: int = 1;\n    p := &x;\n    p^ += y;\n    return x;\n}",
+      .message = "compound assignment needs number operands of its type",
+      .line = 6,
+      .column = 5 },
     { .name = "imported references",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"

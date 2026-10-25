@@ -2469,11 +2469,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         count: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
         while (argument >= 0) {
-            if (Is(forest, argument, "named_argument")) {
-                return Fail(forest, argument, document, "named arguments are not supported yet");
-            }
-            if (Is(forest, argument, "typed_argument")) {
-                return Fail(forest, argument, document, "typed arguments are not supported yet");
+            // A callable takes neither, as before managed pointers; reject
+            // them before a ref marker inside one is read positionally.
+            if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument")) {
+                return Fail(forest, argument, document, format_text("unsupported syntax '{}'", forest[argument].kind));
             }
             marker := ReferenceArgumentNode(forest, argument);
             expected := Visit(argument);

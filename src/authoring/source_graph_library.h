@@ -17,6 +17,17 @@
  * An array.h vector of owned assets, freed with
  * authoring_source_graph_libraries_free. */
 behavior_asset **authoring_source_graph_libraries(const authoring_sources *);
+/* The same native field/shader graph projection from a checked declaration
+ * snapshot. Analyzes only library sources with that snapshot's identities,
+ * catalog and specialization requests; never lowers executable modules.
+ * Graphs own their names and defaults after the temporary analyses are freed.
+ * `out` starts empty and stays empty on failure. */
+bool authoring_source_graph_libraries_catalog(
+    const source_catalog *,
+    behavior_asset ***out,
+    char *error,
+    size_t size
+);
 void authoring_source_graph_libraries_free(behavior_asset **);
 
 #endif

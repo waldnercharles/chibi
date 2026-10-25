@@ -4,6 +4,7 @@
 #include "execution/delay.h"
 #include "execution/intrinsics.h"
 #include "execution/map_intrinsics.h"
+#include "execution/operation.h"
 #include "execution/scalar.h"
 #include "execution/state.h"
 #include "execution/task.h"
@@ -322,8 +323,8 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
 }
 /* Fails unless the integer is a Unicode scalar, 0 through 0x10FFFF outside
- * the surrogates. As a uint64 a negative value lies above the range, and
- * value - 0xD800 falls below 0x800 only for a surrogate. */
+ * the surrogates. As a uint64 a negative value lies above the range, and the
+ * surrogates are the one 0x800 block starting at 0xD800. */
 static void char_check(lower *l, int slot, pin_type storage, script_range range)
 {
     static const char message[] = "Value does not fit in char";
@@ -353,20 +354,20 @@ static void char_check(lower *l, int slot, pin_type storage, script_range range)
                                          .message = message },
         range
     );
-    int first = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
-    int offset = value_op(
+    int mask = constant(l, (pin_value){ .type = PIN_U64, .u64 = ~(uint64_t)0x7FF }, range);
+    int block = value_op(
         l,
         (
             behavior_function_instruction
-        ){ .op = BF_SUB, .type = PIN_U64, .left = wide, .right = first },
+        ){ .op = BF_BIT_AND, .type = PIN_U64, .left = wide, .right = mask },
         range
     );
-    int count = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x800 }, range);
+    int surrogates = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
     int scalar = value_op(
         l,
         (
             behavior_function_instruction
-        ){ .op = BF_GE, .type = PIN_U64, .left = offset, .right = count },
+        ){ .op = BF_NE, .type = PIN_U64, .left = block, .right = surrogates },
         range
     );
     emit(
@@ -3207,6 +3208,13 @@ static int call(lower *l, const script_expression *e)
                     !host.query && host.intrinsic != BF_DELAY &&
                     host.intrinsic != BF_OWNER && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
+        return -1;
+    }
+    if (cap->operation != SCRIPT_OPERATION_UNKNOWN
+            ? host.intrinsic != behavior_operation_instruction(cap->operation) ||
+                  host.call || host.function || host.command || host.query || host.access
+            : host.intrinsic && host.intrinsic != BF_ASSERT) {
+        error(l, e->range, "Linked native binding differs from engine operation contract");
         return -1;
     }
     if (host.function) {
@@ -7345,6 +7353,24 @@ static execution_module_plan *lower_analysis(
             apush(m->diagnostics, diagnostic);
         }
         m->diagnostic_count = acount(m->diagnostics);
+        return m;
+    }
+    /* Analysis can rewrite specialized calls into non-call expressions. Check
+     * the entire operation catalog before lowering any of those expressions. */
+    for (int i = 0; i < catalog->capability_count; i++) {
+        if (!script_catalog_operation_valid(&catalog->capabilities[i])) {
+            execution_module_diagnostic diagnostic = { 0 };
+            snprintf(
+                diagnostic.message,
+                sizeof diagnostic.message,
+                "Invalid engine operation declaration: %s",
+                catalog->capabilities[i].name
+            );
+            apush(m->diagnostics, diagnostic);
+        }
+    }
+    m->diagnostic_count = acount(m->diagnostics);
+    if (m->diagnostic_count) {
         return m;
     }
     assert(a->identity);

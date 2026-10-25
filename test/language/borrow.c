@@ -2415,8 +2415,9 @@ TEST_CASE(borrow_proof_bounds_nested_callee_facts)
     }
     REQUIRE(!links[NESTED_LINKS]->readonly_collections);
     /* Whatever an accepted walk keeps live fits the scratch it reserves. */
-    size_t scratch;
-    REQUIRE(behavior_function_preparation_bytes(links[NESTED_LINKS - 1], &scratch) != SIZE_MAX);
+    size_t scratch = behavior_function_preparation_bytes(links[NESTED_LINKS - 1])
+                         .scratch;
+    REQUIRE(scratch != SIZE_MAX);
     REQUIRE(
         scratch >= behavior_function_borrow_bytes(links[NESTED_LINKS - 1]) + BEHAVIOR_BORROW_NESTED_BYTES
     );

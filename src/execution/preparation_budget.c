@@ -1,5 +1,6 @@
 #include "execution/preparation_budget.h"
 
+#include "execution/integer_report.h"
 #include "execution/module_internal.h"
 #include "support/array.h"
 
@@ -26,9 +27,9 @@ static size_t bank(size_t n, size_t width)
     }
     return sum(sizeof(dyna_hdr), product(n < 16 ? 16 : n * 2, width));
 }
-size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *scratch_bytes)
+behavior_function_preparation behavior_function_preparation_bytes(const behavior_function *f)
 {
-    *scratch_bytes = SIZE_MAX;
+    const behavior_function_preparation unsupported = { SIZE_MAX, SIZE_MAX };
     size_t count = acount(f->instructions), slots = acount(f->slots);
     size_t locals = acount(f->locals), data = acount(f->data_values);
     size_t values = sum(slots, locals), pauses = 0;
@@ -50,14 +51,14 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
             continue;
         }
         if (op->target < 0 || op->target >= acount(f->host_calls)) {
-            return SIZE_MAX;
+            return unsupported;
         }
         const node_access *a = f->host_calls[op->target].access;
         if (!a) {
             continue;
         }
         if (a->read_count < 0 || a->write_count < 0) {
-            return SIZE_MAX;
+            return unsupported;
         }
         reads = sum(reads, (size_t)a->read_count);
         writes = sum(writes, (size_t)a->write_count);
@@ -66,11 +67,16 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
         }
     }
     if (values > INT_MAX) {
-        return SIZE_MAX;
+        return unsupported;
     }
     /* Live value and root sets are counted after liveness and allocated
      * exactly from the bounded owned arena, so only the table is reserved. */
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
+    /* Publication allocates definition-owned report banks before compilation.
+     * The host chooses reports once at startup, before this preflight. */
+    if (execution_integer_reports_enabled() && !f->integer_reports) {
+        retained = sum(retained, behavior_integer_report_bytes(acount(f->sources)));
+    }
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
@@ -123,12 +129,12 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
             const behavior_function_instruction *i = &f->instructions[pc];
             if (i->op == BF_HOST_CALL) {
                 if (i->target < 0 || i->target >= acount(f->host_calls)) {
-                    return SIZE_MAX;
+                    return unsupported;
                 }
                 const behavior_function_host_call *h = &f->host_calls[i->target];
                 if (h->first < 0 || h->result_first < h->first ||
                     h->result_first > acount(f->data_values)) {
-                    return SIZE_MAX;
+                    return unsupported;
                 }
                 scratch = sum(scratch, bank((size_t)(h->result_first - h->first), fact));
             }
@@ -141,12 +147,11 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
     /* Host outcome duplicate checks allocate one sorted ID buffer. */
     for (int i = 0; i < acount(f->host_calls); i++) {
         if (f->host_calls[i].outcome_count < 0) {
-            return SIZE_MAX;
+            return unsupported;
         }
         scratch = sum(scratch, product((size_t)f->host_calls[i].outcome_count, sizeof(uint64_t)));
     }
-    *scratch_bytes = scratch;
-    return retained;
+    return (behavior_function_preparation){ retained, scratch };
 }
 
 static void *copy_bytes(arena *storage, const void *source, size_t bytes, size_t budget)

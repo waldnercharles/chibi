@@ -1,16 +1,17 @@
 #pragma once
 #include "execution/definition.h"
 #include "execution/module_builder.h"
-/* Additional peak allocation bound for decoded verification/finalization:
- * the bytes the prepared definition keeps, and in *scratch the bytes its
- * preparation frees before returning. Definitions prepare one at a time, so
- * a module needs its definitions' kept bytes plus their largest scratch.
+/* Additional peak allocation bound for decoded verification/finalization.
  * Decoded payloads stay owned; no source lowering or payload snapshot is run.
- * Derived runtime optimization storage is included in the kept bytes.
- * Installed descriptor copies use a separate bounded arena allocation path.
- * SIZE_MAX, returned or in *scratch, reports an unsupported count or
- * overflow. */
-size_t behavior_function_preparation_bytes(const behavior_function *, size_t *scratch);
+ * `retained` is derived runtime optimization storage the definition keeps;
+ * `scratch` is verification storage freed before the next definition is
+ * prepared. Installed descriptor copies use a separate bounded arena
+ * allocation path. SIZE_MAX in both reports an unsupported count or overflow. */
+typedef struct
+{
+    size_t retained, scratch;
+} behavior_function_preparation;
+behavior_function_preparation behavior_function_preparation_bytes(const behavior_function *);
 bool behavior_function_own_decoded(behavior_function *, size_t arena_budget);
 
 /* Allocation-free closure walk bounds publication scratch before allocation.

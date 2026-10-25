@@ -98,7 +98,7 @@ static bool pointer_root_registered;
 static int host_calls;
 static service_binding *log_services;
 static execution_module_plan *prepared_plan;
-static execution_module *prepared_module;
+static execution_module *prepared_module, *imported_module;
 static unsigned char *prepared_bytes, *prepared_mutation;
 
 static void release_invocation()
@@ -121,10 +121,11 @@ static void cleanup()
     pointer_root = (pin_value){ 0 };
     execution_module_plan_free(prepared_plan);
     execution_module_free(prepared_module);
+    execution_module_free(imported_module);
     free(prepared_bytes);
     afree(prepared_mutation);
     prepared_plan = NULL;
-    prepared_module = NULL;
+    prepared_module = imported_module = NULL;
     prepared_bytes = prepared_mutation = NULL;
     arena_free(&managed);
     afree(log_services);
@@ -2016,10 +2017,133 @@ static size_t least_decoded_limit(const unsigned char *bytes, size_t length)
     }
     return high;
 }
+/* The bytes of runtime code that preparation leaves the loaded module's
+ * definition `index`, as the vectors it holds report them: an observation of
+ * the result, not the preparation estimate. */
+static size_t observed_retained(const unsigned char *bytes, size_t length, int index)
+{
+    size_t remaining = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES;
+    execution_prepared_linker loose = { .decoded_bytes = EXECUTION_WIRE_MAX_BYTES };
+    char error[192];
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        &loose,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    assert(m);
+    const behavior_function *f = execution_module_function_at(m, index).body;
+    size_t held = (size_t)acap(f->runtime_instructions) * sizeof *f->runtime_instructions +
+                  (size_t)acap(f->runtime_body) * sizeof *f->runtime_body;
+    execution_module_free(m);
+    return held;
+}
+static execution_module *resolve_imported(void *, uint64_t id, uint64_t)
+{
+    if (!imported_module || execution_module_id(imported_module) != id) {
+        return NULL;
+    }
+    execution_module_retain(imported_module);
+    return imported_module;
+}
+/* The prepared bytes of a module of `count` definitions of `additions` each,
+ * importing imported_module when `imports` is set. */
+static bool linked_module(
+    uint64_t id,
+    int count,
+    int additions,
+    bool imports,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    char error[192] = { 0 };
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = id;
+    prepared_plan->valid = true;
+    for (int i = 0; i < count; i++) {
+        behavior_function *f = sparse_definition(2, additions, error, sizeof error);
+        if (!f) {
+            return false;
+        }
+        apush(
+            prepared_plan->functions,
+            ((execution_module_function){ .id = (uint64_t)i + 1,
+                                          .kind = EXECUTION_FUNCTION_AUTHORED,
+                                          .body = f })
+        );
+        prepared_plan->function_count = i + 1;
+    }
+    if (imports) {
+        execution_module_retain(imported_module);
+        apush(prepared_plan->imports, imported_module);
+        prepared_plan->import_count = 1;
+    }
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    bool written = prepared_module &&
+                   execution_prepared_write(prepared_module, bytes, length, error, sizeof error);
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    return written;
+}
+/* The least record limit that loads the module, resolving imported_module. */
+static size_t least_record_limit(const unsigned char *bytes, size_t length)
+{
+    size_t low = 0, high = EXECUTION_WIRE_MAX_RECORDS;
+    while (low + 1 < high) {
+        size_t middle = low + (high - low) / 2;
+        execution_prepared_linker bounded = { .import = resolve_imported,
+                                              .decoded_records = middle };
+        char error[192];
+        execution_module *m = execution_prepared_read(bytes, length, &bounded, BEHAVIOR_BYTECODE, error, sizeof error);
+        if (m) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+        execution_module_free(m);
+    }
+    return high;
+}
+/* An import's fingerprint re-encodes the dependency under the importer's
+ * linker bound, so a bound raised past the default admits a dependency
+ * above it. A small importer of a larger dependency needs the dependency's
+ * records, not only its own. */
+TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
+{
+    unsigned char *dependency = NULL, *alone = NULL, *importer = NULL;
+    size_t dependency_length = 0, alone_length = 0, importer_length = 0;
+    REQUIRE(linked_module(2, 8, 64, false, &dependency, &dependency_length));
+    char error[192];
+    imported_module = execution_prepared_read(
+        dependency,
+        dependency_length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    REQUIRE(imported_module);
+    REQUIRE(linked_module(3, 1, 1, false, &alone, &alone_length));
+    REQUIRE(linked_module(3, 1, 1, true, &importer, &importer_length));
+    size_t own = least_record_limit(dependency, dependency_length),
+           small = least_record_limit(alone, alone_length),
+           linked = least_record_limit(importer, importer_length);
+    free(dependency);
+    free(alone);
+    free(importer);
+    REQUIRE(small < own && linked >= own);
+    return true;
+}
 TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
 {
     /* Definitions are verified one at a time, so three more of them need
-     * their retained storage and decoded payload, never their scratch. */
+     * their retained storage and decoded payload, never their scratch. Each
+     * definition's reservation covers the runtime code it is observed to keep
+     * once loaded, so undercharging that code fails here. */
     char error[192] = { 0 };
     behavior_function *sparse = sparse_definition(SPARSE_SLOTS, SPARSE_ADDITIONS, error, sizeof error);
     REQUIRE(sparse);
@@ -2031,8 +2155,10 @@ TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
     REQUIRE(sparse_module(4, &several, &several_length));
     size_t first = least_decoded_limit(single, single_length);
     size_t all = least_decoded_limit(several, several_length);
+    size_t kept = observed_retained(several, several_length, 3);
     free(single);
     free(several);
+    REQUIRE(kept > 0 && one.retained >= kept);
     REQUIRE(all > first && all - first < one.scratch);
     return true;
 }
@@ -2973,6 +3099,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
     RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
     RUN_TEST_CASE(execution_preparation_reserves_one_definitions_scratch);
+    RUN_TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit);
     RUN_TEST_CASE(execution_verifier_admits_a_large_compiler_function);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);

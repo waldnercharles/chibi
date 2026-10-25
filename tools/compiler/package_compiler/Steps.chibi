@@ -934,8 +934,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     popped: int = 0;
     produced := NoValue();
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    if (kind == "nil") {
-        if (item.storage != PointerStorage || item.container != 0 || item.record < 0 || types[item.record].key == 0) {
+    // `nil` where a pointer is expected; `null` for an entity is below.
+    if (kind == "nil" && item.storage == PointerStorage) {
+        if (item.container != 0 || item.record < 0 || types[item.record].key == 0) {
             return Fail(forest, item.node, document, "nil requires a nullable pointer type");
         }
         constant := ConstantCode(ops, PointerStorage, 0, at.slot, node);

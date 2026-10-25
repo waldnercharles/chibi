@@ -26,8 +26,14 @@ static char expected[8192];
 static int expected_length;
 static const char PACKAGE[] = "project:asset_packaging";
 static char *generator_prefix;
-static char *source_texts[32];
-static size_t source_lengths[32];
+/* CompilerSources.txt lists the bootstrap compiler; the facade adds its own. */
+enum
+{
+    COMPILER_SOURCES = 21,
+    SOURCES = COMPILER_SOURCES + 12
+};
+static char *source_texts[SOURCES];
+static size_t source_lengths[SOURCES];
 static int source_count;
 static void cleanup()
 {
@@ -383,7 +389,7 @@ static char *read_source(const char *relative, size_t *length)
 }
 static bool add_source(const char *relative)
 {
-    REQUIRE(source_count < 32);
+    REQUIRE(source_count < SOURCES);
     source_texts[source_count] = read_source(relative, &source_lengths[source_count]);
     REQUIRE(source_texts[source_count]);
     source_count++;
@@ -408,7 +414,7 @@ static bool compiler_sources()
         line = end ? end + 1 : line + strlen(line);
     }
     free(manifest);
-    REQUIRE(ok && source_count == 20);
+    REQUIRE(ok && source_count == COMPILER_SOURCES);
     return true;
 }
 static bool generator_array(int backend)
@@ -445,7 +451,7 @@ static bool generator_array(int backend)
     formatted_bytes = 0;
     formatted_calls = 0;
     /* New bounded real-source fixture; existing small packaging allowances are
-     * unchanged. This call covers at most 32 explicitly named source files. */
+     * unchanged. This call covers at most SOURCES explicitly named files. */
     bool called = compiler_fixture_call(
         &fixture,
         backend,
@@ -544,13 +550,14 @@ static bool generator(int backend)
     for (int i = 0; i < (int)(sizeof additions / sizeof *additions); i++) {
         REQUIRE(add_source(additions[i]));
     }
-    REQUIRE(source_count == 32);
+    REQUIRE(source_count == SOURCES);
     /* Request moves its entry to index zero, preserving all other sources.
-     * The facade entry follows the 20 bootstrap files and Cache.chibi. */
-    char *entry = source_texts[21];
-    size_t entry_length = source_lengths[21];
-    memmove(source_texts + 1, source_texts, 21 * sizeof *source_texts);
-    memmove(source_lengths + 1, source_lengths, 21 * sizeof *source_lengths);
+     * The facade entry follows the bootstrap files and Cache.chibi. */
+    const int at = COMPILER_SOURCES + 1;
+    char *entry = source_texts[at];
+    size_t entry_length = source_lengths[at];
+    memmove(source_texts + 1, source_texts, at * sizeof *source_texts);
+    memmove(source_lengths + 1, source_lengths, at * sizeof *source_lengths);
     source_texts[0] = entry;
     source_lengths[0] = entry_length;
     REQUIRE(generator_array(backend));

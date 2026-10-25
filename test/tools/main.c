@@ -1012,6 +1012,7 @@ int main(int argc, char **argv)
     bool desktop_dependencies = argc == 2 &&
                                 !strcmp(argv[1], "--desktop-dependencies");
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
+    bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool test_runner = argc == 2 && !strcmp(argv[1], "--test-runner");
     bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
@@ -1199,7 +1200,7 @@ int main(int argc, char **argv)
     if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
         !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
         !tilemap && !package && !desktop_dependencies && !third_party_publish &&
-        !package_ownership && !unit && !test_runner && !validation_plan &&
+        !collab && !package_ownership && !unit && !test_runner && !validation_plan &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
@@ -1223,7 +1224,7 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --package | "
-            "--desktop-dependencies | --third-party-publish | "
+            "--desktop-dependencies | --third-party-publish | --collab | "
             "--package-ownership | --unit | "
             "--test-runner | --validation-plan | "
             "--reflect-ranges | --c-export-alias | "
@@ -1594,6 +1595,8 @@ int main(int argc, char **argv)
         test_tool_package_ownership();
     } else if (third_party_publish) {
         test_tool_third_party_publish();
+    } else if (collab) {
+        test_tool_collab();
     } else if (desktop_dependencies) {
         test_tool_desktop_dependencies();
     } else if (package) {

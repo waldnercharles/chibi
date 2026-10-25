@@ -60,7 +60,9 @@ q.health = 80   // actor, p and q observe 80.
   is a separate case.
 - Managed pointers are process-local values. Persistence and native/ECS
   boundaries must explicitly support their lifetime or reject them; they must
-  never serialize an address as an integer.
+  never serialize an address as an integer. Native calls reject arguments
+  that hold managed pointers, except engine kernels marked `borrows`, such as
+  the array operations, which read them only during the call.
 - The Chibi-written compiler currently rejects named pointer results and
   arrays of nullable pointers (`^T?[]`). Ordinary pointer results and arrays
   of non-null pointers work. These follow its existing named-result and boxed

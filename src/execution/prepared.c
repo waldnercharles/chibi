@@ -743,6 +743,9 @@ static bool write_depth(
                            .record_work_limit = record_work_limit };
     c.wire.storage = &c.plan->storage;
     c.wire.hash = hash;
+    /* A dependency's fingerprint re-encodes a module its importer's linker
+     * admitted, so it takes that linker's record bound, not the default. */
+    c.wire.record_limit = budget ? budget->record_limit : 0;
     for (int i = 0; i < c.plan->function_count && !c.wire.error; i++) {
         add_function(&c, c.plan->functions[i].body, 0);
         add_function(&c, c.plan->functions[i].subscription, 0);

@@ -630,6 +630,14 @@ PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, names: Nam
         return false;
     }
     object := Field(forest, destination, "object");
+    // `self.C.f` writes the owner's component, not through a pointer.
+    owner := Field(forest, object, "object");
+    if (Is(forest, object, "member_expression") && Is(forest, owner, "identifier")) {
+        bound := Lookup(names, Text(forest, text, owner));
+        if (bound >= 0 && names[bound].place == SelfPlace) {
+            return false;
+        }
+    }
     if (!Is(forest, object, "identifier")) {
         return true;
     }

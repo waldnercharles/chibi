@@ -958,6 +958,20 @@ absent, not passed. Select this complete group for affected tooling contracts.
 CI runs `make test-tools`; the planner's `--tools` also selects that complete group.
 Retired script suites have not been reproduced completely.
 
+The focused room-service check is
+`CHIBI_TOOLS_BUILD_DIR=build-tools python3 tools/test_policy.py --timeout 60 tool collab`
+after `make tools-build`. It runs the real Node server from the C dispatcher.
+Health readiness must succeed before the existing 401/201/403 authority checks.
+Unexpected responses report the method, path, expected and actual status, byte
+count, transport errno or parse error, and the server's JSON error code when
+available. A failed case prints its server output and retains the temporary
+`server.log` at the reported path; passing cases remove their files. Failure
+cases exercise invalid server configuration, an occupied port, a live process
+without health readiness, and real receive timeout/connection refusal. They
+use process signals and sockets rather than replacement server responses.
+These cases also remain in `make test-tools`; the focused command does not
+certify that complete group or the native/material/project/language groups.
+
 For reflection range metadata, `python3 tools/test_policy.py tool reflect-ranges`
 selects two existing C cases with unchanged assertions: numeric units and range
 generation, malformed and nonnumeric annotations, unsafe endpoints, distinct

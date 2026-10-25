@@ -21,7 +21,7 @@
   },
   "new_generation": "not performed; required before acceptance",
   "publication": "local only; no source/seed/pin/release push",
-  "independent_review": "Three-file source and raw receipts accepted by /root/review_array_order; normal-merge composition accepted at staged tree80ecce4635d40d7de6dd63b115b4eca42aea0c68. Independently checked2467 non-doc entries, all57 conflict-hunk hashes, frozen cf24 MERGE_HEAD, seed/pin hashes. Later updates are documentation-only: this verdict, precise stale manifest records and Linux evidence attribution.",
+  "independent_review": "Three-file source and raw receipts accepted in the independent review recorded in final-three-file-review.md; normal-merge composition accepted at staged tree80ecce4635d40d7de6dd63b115b4eca42aea0c68. Independently checked2467 non-doc entries, all57 conflict-hunk hashes, frozen cf24 MERGE_HEAD, seed/pin hashes. Later updates are documentation-only: this verdict, precise stale manifest records and Linux evidence attribution.",
   "retained_inputs": [
     {
       "path": "tools/compiler/bootstrap/compiler.chibip",

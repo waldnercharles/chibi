@@ -74,8 +74,10 @@ the same adapter object and libraries; only the mutant translation unit differs.
 
 ## Recorded result
 
-The final end-to-end replay and exact source/host hashes are in `receipt.json`.
-The longest final runtime was **1.707 seconds**; maximum `time -l` RSS was
+`receipt.json` contains selected observations and exact source/host hashes from
+the owner-executed replay. It is not a complete raw log archive or an independent
+reviewer rerun. The recorded resource evidence below applies to the single-process
+adapter cases only. The longest final runtime was **1.707 seconds**; maximum `time -l` RSS was
 **253,607,936 bytes**, and maximum sampled aggregate descendant RSS was
 **248,848 KiB**, below the 768 MiB ceiling. Each case passed: emission **45 assertions**, restored-before **18**, expected
 mutant rejection **9**, restored-after **18**. The mutant process exits zero
@@ -83,11 +85,12 @@ because its expected-rejection assertions pass; its combined loader returns
 failure and leaves **268,435,456 bytes** remaining. Both restored runs load 13
 modules and charge **111,625,778 bytes**, leaving **156,809,678**.
 
-The execution worker ran the tests. A separate AI source reviewer inspected the
+The execution owner ran the tests. Independent source/receipt review inspected the
 adapter, typed DTO construction, fingerprint comparison, single-line mutation,
-link commands, backend assertions and raw receipts. The reviewer did not run
-builds or tests. The reviewer also identified resource-wrapper failure paths;
-they were corrected and tested before publication. No verification of that separately reported
+link commands, backend assertions and retained raw receipts. Reviewers did not
+run builds or tests. Review identified resource-wrapper failure paths that were
+corrected and tested before publication; the remaining scope limitation is
+documented below. No verification of that separately reported
 artifact is claimed by either review.
 
 ## Reproduce on macOS
@@ -143,12 +146,15 @@ mutant --check-mutant PUBLIC_CLOSURE IMPORTER_OUTPUT
 restored --check PUBLIC_CLOSURE IMPORTER_OUTPUT
 ```
 
-Every stage is sequential and bounded to **768 MiB aggregate descendant RSS** and
-**120 seconds**. Loading keeps **4,000,000 records**, **256 MiB** per-module and
+The wrapper is configured for **768 MiB aggregate observed descendant RSS** and
+**120 seconds** per sequential stage. Loading keeps **4,000,000 records**, **256 MiB** per-module and
 aggregate storage, **256M layout-work units**, and the existing **256 MiB verifier
-ceiling**. The wrapper follows descendants across process groups and treats any
-resource or monitoring stop as failure. Runtime RSS sampling and `time -l` peaks
-are reported separately; short processes can escape a polling sample.
+ceiling**. The wrapper tracks observed descendants across process groups and
+treats any resource or monitoring stop as failure. It does not guarantee
+accounting or cleanup of detached or reparented children after normal root exit;
+it is not a general process supervisor. This recorded resource evidence is
+limited to the single-process adapter cases. Runtime RSS sampling and `time -l`
+peaks are reported separately; short processes can escape a polling sample.
 
 Full commands, raw logs, identities and generated files stay in the chosen work
 area; do not publish logs containing local paths. Executable hashes can change

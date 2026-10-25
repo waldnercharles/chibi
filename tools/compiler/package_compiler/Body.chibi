@@ -397,9 +397,15 @@ NumberLiteral :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
            (Is(forest, node, "unary_expression") && Is(forest, Field(forest, node, "operand"), "number"));
 }
 // Whether `node` is an argument of a call that `work[0, top)` will resume as
-// an overloaded native.
+// an overloaded native, within any parentheses, which produce no value.
 OverloadArgument :: (forest: snapshot.SnapshotNode[], work: Work[], top: int, node: int) -> bool {
+    if (Is(forest, node, "parenthesized_expression")) {
+        return false;
+    }
     at := forest[node].parent;
+    while (Is(forest, at, "parenthesized_expression")) {
+        at = forest[at].parent;
+    }
     if (Is(forest, at, "named_argument")) {
         at = forest[at].parent;
     }
@@ -450,7 +456,7 @@ OverloadArguments :: (forest: snapshot.SnapshotNode[], text: string, document: i
         if (Is(forest, member, "named_argument")) {
             written = Field(forest, member, "value");
         }
-        jump := jumps[LastIndexOf(nodes, written)];
+        jump := jumps[LastIndexOf(nodes, Unparenthesized(forest, written))];
         reserved.append(jump);
         starts.append(at.pc + length(code));
         argument := values[first + index];

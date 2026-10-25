@@ -874,7 +874,25 @@ IntegerLiteralResult :: union {
 }
 ReadIntegerLiteral :: (forest: snapshot.SnapshotNode[], text: string, document: int, node: int,
                        storage: int) -> IntegerLiteralResult {
-    switch ParseNumber(forest, text, node) {
+    parsed := ParseNumber(forest, text, node);
+    if (!Floating(storage) && InferredNumberStorage(forest, text, node) == FloatStorage) {
+        // A whole decimal such as 2.0 or 1e3 is the integer it spells.
+        digits := node;
+        if (Is(forest, node, "unary_expression")) {
+            digits = Field(forest, node, "operand");
+        }
+        switch IntegralOf(Text(forest, text, digits)) {
+            case .Fraction:
+                return IntegerLiteralResult.Rejected(Diagnose(forest, node, document,
+                                                              format_text("Numeric literal has a fraction, which {} cannot hold", TypeName(storage))));
+            case .Large:
+                return IntegerLiteralResult.Rejected(Diagnose(forest, node, document,
+                                                              format_text("Numeric literal is outside the range of {}", TypeName(storage))));
+            case .Whole(whole):
+                parsed = Literal.Number(digits != node && whole != 0, whole);
+        }
+    }
+    switch parsed {
         case .Invalid:
             return IntegerLiteralResult.Rejected(Diagnose(forest, node, document,
                                                           "only integer literals of 64 bits are supported"));
@@ -2565,34 +2583,17 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                             Typed(at.slot, storage, 0, -1), NoValue(), marks);
     }
-    negative := false;
-    magnitude: u64 = 0;
-    parsed := ParseNumber(forest, text, spelled);
-    if (InferredNumberStorage(forest, text, spelled) == FloatStorage) {
-        if (Fractional(forest, text, spelled)) {
-            return Fail(forest, spelled, document,
-                        format_text("Numeric literal has a fraction, which {} cannot hold", TypeName(storage)));
-        }
-        parsed = WholeDecimal(forest, text, spelled);
-    }
-    switch parsed {
-        case .Invalid:
-            if (InferredNumberStorage(forest, text, spelled) == FloatStorage) {
-                return Fail(forest, spelled, document,
-                            format_text("Numeric literal is outside the range of {}", TypeName(storage)));
-            }
-            return Fail(forest, spelled, document, "only integer literals of 64 bits are supported");
-        case .Number(parsed_negative, parsed_magnitude):
-            negative = parsed_negative;
-            magnitude = parsed_magnitude;
-    }
-    if (!Fits(negative, magnitude, storage)) {
-        return Fail(forest, spelled, document, format_text("Numeric literal is outside the range of {}", TypeName(storage)));
+    value_bits: u64 = 0;
+    switch ReadIntegerLiteral(forest, text, document, spelled, storage) {
+        case .Rejected(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Checked(checked):
+            value_bits = checked;
     }
     // The literal is watched once its use gives it a type, and so is each
     // sign around it, as stage zero lowers a grouped one.
     slots.append(ValueLocal(storage));
-    code = extend([ConstantCode(ops, storage, Bits(negative, magnitude), at.slot, node)],
+    code = extend([ConstantCode(ops, storage, value_bits, at.slot, node)],
                   LiteralWatch(forest, ops, at.slot, storage, spelled));
     code.extend(SignCode(forest, text, ops, literal.record, storage, at.slot, node));
     slots.extend(SignSlots(forest, text, ops, literal.record, storage));
@@ -2686,45 +2687,6 @@ NegationCode :: (ops: Ops, storage: int, input: int, output: int, node: snapshot
         return [Instruction(ops.neg, storage, output, input, 0, 0, node)];
     }
     return [ConstantCode(ops, storage, 0, output, node), Instruction(ops.sub, storage, output + 1, output, input, -1, node)];
-}
-// The integer a whole decimal literal such as 2.0 or 1e3 spells, as stage
-// zero reads one at an integer type; Invalid past 64 bits. Negative zero is
-// zero.
-WholeDecimal :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Literal {
-    switch NumberBits(forest, text, node) {
-        case .OutOfRange:
-            return Literal.Invalid;
-        case .Finite(bits, float_fits, float_bits):
-            exponent := int((bits >> 52) & 0x7FF) - 1023;
-            if (exponent >= 64) {
-                return Literal.Invalid;
-            }
-            magnitude: u64 = 0;
-            mantissa := (bits & 0xFFFFFFFFFFFFF) | (u64(1) << 52);
-            if (exponent >= 52) {
-                magnitude = mantissa << u32(exponent - 52);
-            } else if (exponent >= 0) {
-                magnitude = mantissa >> u32(52 - exponent);
-            }
-            return Literal.Number(magnitude != 0 && (bits >> 63) != 0, magnitude);
-    }
-}
-// Whether the decimal literal `node` has a fraction as a double, which no
-// integer type holds.
-Fractional :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    if (InferredNumberStorage(forest, text, node) != FloatStorage) {
-        return false;
-    }
-    switch NumberBits(forest, text, node) {
-        case .OutOfRange:
-            return false;
-        case .Finite(bits, float_fits, float_bits):
-            exponent := int((bits >> 52) & 0x7FF) - 1023;
-            if ((bits & 0x7FFFFFFFFFFFFFFF) == 0 || exponent >= 52) {
-                return false;
-            }
-            return exponent < 0 || (bits & ((u64(1) << u32(52 - exponent)) - 1)) != 0;
-    }
 }
 // Whether `node` is a constant integer expression that folds to one
 // constant: an operator or conversion over constants, but not a literal, a

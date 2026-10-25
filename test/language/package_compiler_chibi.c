@@ -2413,6 +2413,60 @@ static const sample samples[] = {
                  { .function = "Stops", .arguments = "[]" },
                  { .function = "Local", .arguments = "[]", .expected = "[2]" },
                  { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
+    /* Parentheses produce no value: a grouped argument is typed, converted
+     * and watched once the expression inside has produced it. */
+    { .name = "grouped overload arguments",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Later :: () -> int { return native.probe(\"ab\"); }\n"
+          "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+          "Typed :: () -> int { v: number = 1.5; return "
+          "native.kernel((v)); }\n"
+          "Converted :: () -> int { v: int = 3; return native.kernel((v)); "
+          "}\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(((v))); }\n"
+          "Effect :: () -> int { return native.pair(2, (Later())); }\n"
+          "First :: () -> int { return native.pair((Later()), (2)); }\n"
+          "Stops :: () -> int { return native.pair((-(2)), (Fails())); }\n"
+          "Local :: () -> int { v: f64 = 2.5; return native.pair((v), "
+          "(Later())); }\n",
+      .calls = { { .function = "Typed", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Converted", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Effect", .arguments = "[]", .expected = "[2]" },
+                 { .function = "First", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" } } },
+#if LDBL_MANT_DIG >= 64
+    /* An integer type reads a decimal exactly, as stage zero does where long
+     * double holds 64 mantissa bits: no binary64 rounding drops a fraction
+     * or an integer unit. */
+    { .name = "exact whole decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Sum :: () -> i64 { x: i64 = 0; return x + 9007199254740993.0; "
+                "}\n"
+                "Negative :: () -> i64 { return -9007199254740993.0; }\n"
+                "Largest :: () -> u64 { return 18446744073709551615.0; }\n"
+                "Scaled :: () -> i64 { return 9007199254740993e0; }\n",
+      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[-9007199254740993]" },
+                 { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" } } },
+    { .name = "small fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "small fraction integer",
+      .source = "package facts\nRun :: () -> i64 { x: i64 = 0; return x + "
+                "9007199254740992.5; }",
+      .message = "Numeric literal has a fraction, which i64 cannot hold",
+      .same_rejection = true },
+#endif
     { .name = "ambiguous literal overload",
       .c_string_probe = true,
       .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",
@@ -4123,7 +4177,16 @@ static bool traced_call(
     arena_free(&storage);
     package_collection_free(packages);
     native_capabilities_free(native);
-    REQUIRE(bound && !runs.counts.overflow && !trace->overflow);
+    REQUIRE(bound && !trace->overflow);
+    /* The call ran on the backend it selected, inspected, with no fallback. */
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t compiled = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        backend ? compiled > 0 && !n->bytecode_entries &&
+                      n->inspected_sljit_entries + n->inspected_wasm_entries == compiled
+                : n->bytecode_entries > 0 && !compiled
+    );
     return true;
 }
 static bool same_traced(const traced_watch *x, const traced_watch *y)

@@ -275,6 +275,8 @@ void *behavior_function_jit(const behavior_function *function, bool inspected);
 /* Gives this definition and its owned definitions report sites, dropping
  * their fast bodies, before any backend compiles them (integer_report.c). */
 void behavior_function_report_integers(behavior_function *);
+/* Occurrence and delivered arrays for these source sites; SIZE_MAX on overflow. */
+size_t behavior_integer_report_bytes(int sites);
 bool behavior_integer_reportable(const behavior_function *, const behavior_function_instruction *);
 /* The report kind these operands cause, or -1 when the operation is exact. */
 int behavior_integer_event(const behavior_function_instruction *, pin_value left, pin_value right);

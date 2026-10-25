@@ -4729,7 +4729,8 @@ static const behavior_sample behavior_samples[] = {
       "        active = !active\n"
       "        count += 1\n"
       "        angle += 0.5\n"
-      "        if active { self.Spot.x = count; } else { self.Spot.x = angle; "
+      "        if active { self.Spot.x = count; } else { self.Spot.x = "
+      "float(angle); "
       "}\n"
       "    }\n}\n" },
     { "EntityState",

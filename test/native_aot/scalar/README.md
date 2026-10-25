@@ -19,17 +19,21 @@ function is the module's entry and must be `() -> int`. Every function:
 - has a body of at most one guard `if (CONDITION) { return EXPR; }`, then
   exactly one final `return EXPR;`, and no other statement, reachable or not;
 - has a `bool` condition and returns expressions of its result type. Each is
-  an integer literal within `int`, `true` or `false`, one of its parameters, a
-  comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of two `int` expressions,
-  or a direct call `F(a, b, ...)` of a function of the same source with exactly
-  its arity and parameter types, whose operands are again such expressions: at
-  most 64 operands per function, counted over its condition and returns.
+  an integer literal within `int`, possibly signed, `true` or `false`, one of
+  its parameters, `int` arithmetic `a + b` (or `-`, `*`, `/`, `%`, `&`, `|`,
+  `^`), a negation `-a` or complement `~a`, a comparison `a < b` (or `<=`,
+  `>`, `>=`, `==`, `!=`) of two `int` expressions, or a direct call
+  `F(a, b, ...)` of a function of the same source with exactly its arity and
+  parameter types, whose operands are again such expressions: at most 64
+  operands per function, counted over its condition and returns.
 
-The guard's condition may be written with or without its own parentheses;
-no other parentheses are admitted. Comparisons are signed 32-bit and admit
-only `int` operands, so `bool` equality is rejected. The arm's expression is
-evaluated only when the condition holds, and the final return's only when it
-does not.
+Any expression may be parenthesized. Arithmetic and comparisons are signed
+32-bit and admit only `int` operands, so `bool` equality is rejected.
+Arithmetic follows the language's integer contract and never fails: it
+wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN` and `MIN % -1` is 0.
+The emitter guards the divisor with `select`, so no path traps. The arm's
+expression is evaluated only when the condition holds, and the final
+return's only when it does not.
 
 Calls form a bounded acyclic set, so recursion (direct or mutual) is rejected.
 Calls may repeat and nest. Arguments evaluate left to right, each operand
@@ -64,15 +68,19 @@ Third :: (a: int, b: int, c: int) -> int { return c; }
 LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
 Everything else is rejected with a located diagnostic and no partial result:
-arithmetic, negation, other parentheses, `&&`, `||` and `!`, `bool`
-comparisons, `else` branches, a second guard, a guard that does not return,
+shifts, which need the unsigned counts the subset does not have yet, `&&`,
+`||` and `!`, `bool` comparisons, `else` branches, a second guard, a guard that does not return,
 loops and other control flow, locals and other statements, conversions such as
 `int(x)`, function values, qualified or imported calls, native or foreign calls
 (`print`), named arguments, strings and other managed values, attributes,
 structs and constants. Sources are at most 16,384 bytes.
-`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (31
+`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (35
 accepted) with each accepted value and operand trace and each rejection's
 exact message and source excerpt, including both sides of every bound.
+
+A constant expression, such as `(2147483647 + 1) / 2` or `int(42)`, is one
+literal row holding the value the ordinary compiler folds it to exactly, so
+native code never computes it with wrapping rows.
 
 Two untyped literals compared, as in `if (7 < 3)`, take their common
 spelled type, as stage zero types them; the ordinary compiler's
@@ -109,7 +117,8 @@ rows own their strings and, once snapshotted, their record shape.
   It also validates a guarded module's rows and 13 malformed variants of them:
   guard layout, comparison operator, arity, result and operand types, the
   condition's stack, guard, arm and final-return ranges, and an arm call that
-  closes a cycle.
+  closes a cycle. An arithmetic module's rows get 9 more: binary and unary
+  operators, arity, result type and bool operands.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks, callee signatures
@@ -159,7 +168,7 @@ false path.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 30 accepted sources build, run and agree at O0 and O2.
+other 34 accepted sources build, run and agree at O0 and O2.
 
 ## Portable recovery regression
 

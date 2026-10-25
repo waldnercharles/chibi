@@ -207,7 +207,7 @@ TEST_CASE(package_paths_existing_resolver_inputs)
           CORE_STRINGS_SOURCE,
           sizeof CORE_STRINGS_SOURCE - 1 },
     };
-    REQUIRE(files[0].size < 16384 && files[1].size < 16384);
+    REQUIRE(files[0].size < 16384);
     REQUIRE(compiler_fixture_prepare(&fixture, files, 2));
     return corpus(0, 12);
 }

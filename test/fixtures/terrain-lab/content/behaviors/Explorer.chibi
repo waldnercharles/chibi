@@ -24,7 +24,7 @@ Explorer :: behavior {
     }
 
     DigPoint :: () -> (Point: CF_V2) {
-        return self.Transform + vec2(facing * 22, 12)
+        return self.Transform + vec2(float(facing * 22), 12)
     }
 
     Dig :: () {
@@ -96,7 +96,7 @@ Explorer :: behavior {
     }
 
     Present :: () {
-        globals.Visor.Transform = self.Transform + vec2(facing * 3, -4)
+        globals.Visor.Transform = self.Transform + vec2(float(facing * 3), -4)
         globals.DigTarget.Transform = DigPoint()
     }
 

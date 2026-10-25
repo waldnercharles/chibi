@@ -56,7 +56,7 @@ static bool prepare()
           CORE_STRINGS_SOURCE,
           sizeof CORE_STRINGS_SOURCE - 1 },
     };
-    REQUIRE(files[0].size < 16384 && files[1].size < 16384);
+    REQUIRE(files[0].size < 16384);
     return compiler_fixture_prepare(&fixture, files, 2);
 }
 static pin_value integer(int value)

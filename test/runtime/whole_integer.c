@@ -103,8 +103,14 @@ static pin_value reference(behavior_function_op op, pin_type type, const pin_val
         case BF_ADD: bits = (uint64_t)x + (uint64_t)y; break;
         case BF_SUB: bits = (uint64_t)x - (uint64_t)y; break;
         case BF_MUL: bits = (uint64_t)x * (uint64_t)y; break;
-        case BF_DIV: bits = (uint64_t)(x / y); break;
-        case BF_MOD: bits = (uint64_t)(x % y); break;
+        /* x / 0 is 0 with remainder x; x / -1 negates, so the minimum wraps to
+         * itself, with remainder 0. */
+        case BF_DIV:
+            bits = !y ? 0 : y == -1 ? 0 - (uint64_t)x : (uint64_t)(x / y);
+            break;
+        case BF_MOD:
+            bits = !y ? (uint64_t)x : y == -1 ? 0 : (uint64_t)(x % y);
+            break;
         case BF_NEG: bits = 0 - (uint64_t)x; break;
         case BF_ABS: bits = x < 0 ? 0 - (uint64_t)x : (uint64_t)x; break;
         case BF_MIN: bits = (uint64_t)(x < y ? x : y); break;
@@ -161,16 +167,11 @@ static bool primitive(behavior_function_op op, pin_type type, int count, bool co
             args[i] = integer(type, (uint64_t)values[index % 16]);
             index /= 16;
         }
-        int64_t x = signed_value(args[0]), y = signed_value(args[1]);
-        bool invalid = (op == BF_DIV || op == BF_MOD) && (!y || (x == lo && y == -1));
-        pin_value expected = invalid ? result : reference(op, type, args);
+        pin_value expected = reference(op, type, args);
         for (int native = 0; native < 2; native++) {
             pin_value out = result;
-            int status = run(args, count, &out, native);
-            REQUIRE(status == (invalid ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
-            if (!invalid) {
-                REQUIRE(same(out, expected));
-            }
+            REQUIRE(run(args, count, &out, native) == FLOW_OK);
+            REQUIRE(same(out, expected));
         }
     }
     cleanup();

@@ -320,7 +320,8 @@ static bool conversion_type(analyzer *a, TSNode call, compile_binding *bindings,
     free(name);
     return !callable && script_type_numeric(*out);
 }
-/* Integer narrowing is EXACT unless the argument is named wrap or clamp. */
+/* A call evaluated at compile time converts as at run time: integer
+ * narrowing clamps unless the argument is named wrap. */
 static bool compile_conversion(
     analyzer *a,
     TSNode call,
@@ -346,12 +347,10 @@ static bool compile_conversion(
     pin_type operand = type;
     if (script_analyzer_is(value, "named_argument")) {
         TSNode label = script_analyzer_field(value, "name");
-        mode = script_analyzer_text_is(a, label, "wrap")  ? BEHAVIOR_CAST_WRAP
-             : script_analyzer_text_is(a, label, "clamp") ? BEHAVIOR_CAST_CLAMP
-                                                          : BEHAVIOR_CAST_EXACT;
-        if (mode == BEHAVIOR_CAST_EXACT) {
-            return fail(a, label, "a conversion argument may only be named wrap or clamp");
+        if (!script_analyzer_text_is(a, label, "wrap")) {
+            return fail(a, label, "a conversion argument may only be named wrap");
         }
+        mode = BEHAVIOR_CAST_WRAP;
         value = script_analyzer_field(value, "value");
         operand = script_analyzer_conversion_operand(a, value).storage;
     }
@@ -362,14 +361,14 @@ static bool compile_conversion(
     bool integers = !out->is_type && from >= PIN_I8 && from <= PIN_U64 &&
                     type >= PIN_I8 && type <= PIN_U64;
     if (!integers && mode != BEHAVIOR_CAST_EXACT) {
-        return fail(a, call, "wrap and clamp convert between integer types");
+        return fail(a, call, "wrap converts between integer types");
     }
     if (!integers) {
         return scalar_cast(out, type) ||
                fail(a, call, "unsupported scalar conversion");
     }
-    return behavior_scalar_cast(out->value, type, mode, &out->value) ||
-           fail(a, call, "constant does not fit the conversion type");
+    behavior_scalar_cast(out->value, type, mode, &out->value);
+    return true;
 }
 /* A false assert while the compiler evaluates is a compile error, with the
  * message, or else the condition's text, that it fails a call with at run

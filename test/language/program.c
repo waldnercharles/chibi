@@ -2858,20 +2858,20 @@ static bool int_state(execution_instance *instance, const char *name, pin_type t
     return value && value->type == type &&
            (int64_t)behavior_scalar_bits(*value) == expected;
 }
-/* T(value) fails when an integer does not fit; wrap and clamp choose the bits. */
-TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
+/* T(value) clamps an integer that does not fit; T(wrap: value) keeps its low bits. */
+TEST_CASE(program_integer_conversions_clamp_or_wrap)
 {
     const char
         *source = "Convert :: behavior {\n"
                   "  wide: int = -300; wrapped: int = 0; clamped: int = 0;\n"
-                  "  mixed: int64 = 0; narrow: byte = 0;\n"
+                  "  mixed: int64 = 0; narrow: byte = 7;\n"
                   "  same: bool = true; below: bool = false; small: int = 0;\n"
                   "  on Impulse :: (enabled: bool) {\n"
-                  "    wrapped = byte(wrap: wide); clamped = byte(clamp: "
-                  "-wide);\n"
-                  "    mixed = wide + uint(7);\n"
-                  "    same = wide == uint(0); below = wide < uint(7);\n"
-                  "    small = byte(200) + int8(-100);\n"
+                  "    wrapped = byte(wrap: wide); clamped = byte(-wide);\n"
+                  "    mixed = wide + int(uint(7));\n"
+                  "    same = wide == int(uint(0)); below = wide < "
+                  "int(uint(7));\n"
+                  "    small = int(byte(200)) + int(int8(-100));\n"
                   "    if (enabled) { narrow = byte(wide); }\n"
                   "  }\n"
                   "}";
@@ -2894,13 +2894,9 @@ TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
             int_state(instance, "below", PIN_BOOL, 1)
         );
         REQUIRE(int_state(instance, "small", PIN_I32, 100));
+        REQUIRE(int_state(instance, "narrow", PIN_U8, 7));
         args[1].b = true;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
-        const execution_program_failure *failure = execution_program_error(program);
-        int start = (int)(strstr(source, "byte(wide)") - source);
-        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
-        REQUIRE(!strcmp(failure->message, "Value does not fit in byte"));
-        REQUIRE(failure->start == start && failure->end == start + (int)strlen("byte(wide)"));
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) >= 0);
         REQUIRE(int_state(instance, "narrow", PIN_U8, 0));
         execution_program_free(program);
         program = NULL;
@@ -9823,7 +9819,7 @@ void test_language_program()
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_assert_fails_with_its_message_or_condition);
     RUN_TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure);
-    RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_integer_conversions_clamp_or_wrap);
     RUN_TEST_CASE(program_loops_count_half_open_and_in_reverse);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);

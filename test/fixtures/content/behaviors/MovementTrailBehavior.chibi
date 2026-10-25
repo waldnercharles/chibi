@@ -22,7 +22,7 @@ MovementTrailBehavior :: behavior {
         return
     }
     Emission_Budget :: (dt: float = 0.0) -> (Result: float = 0.0) {
-        return clamp(dt, real(0.0), real(0.10000000149011612)) * real(64.0)
+        return float(clamp(dt, real(0.0), real(0.10000000149011612)) * real(64.0))
     }
     Is_Stationary :: (Direction: struct<CF_V2> = null) -> (Stationary: bool = false) {
 

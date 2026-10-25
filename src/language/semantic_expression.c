@@ -1,3 +1,4 @@
+#include "language/scalar_constant.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -249,6 +250,8 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
                                  .left = -1,
                                  .right = -1,
                                  .range = script_analyzer_range(a, node) };
+    /* A negated literal's range starts at its minus sign. */
+    TSNode literal = negate ? ts_node_parent(node) : node;
     char *text = script_analyzer_text_copy(a, node);
     if (negate) {
         size_t size = strlen(text);
@@ -260,7 +263,7 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
     errno = 0;
     long double value = strtold(text, &end);
     if (*end || !isfinite(value) || errno == ERANGE) {
-        script_analyzer_diagnostic(a, node, "Numeric literal must be finite");
+        script_analyzer_diagnostic(a, literal, "Numeric literal must be finite");
     }
     result.kind = SCRIPT_EXPR_CONSTANT;
     bool enumeration = expected.storage == PIN_ENUM &&
@@ -370,7 +373,7 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         exact_signed = 0;
         script_analyzer_diagnostic(
             a,
-            node,
+            literal,
             integer && isfinite(value) && truncl(value) != value
                 ? "Numeric literal has a fraction, which %s cannot hold"
                 : "Numeric literal is outside the range of %s",
@@ -484,6 +487,83 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
 }
 
+static bool typed_integer(script_type type)
+{
+    return script_type_numeric(type) && !(type.flags & SCRIPT_TYPE_UNTYPED) &&
+           type.storage >= PIN_I8 && type.storage <= PIN_U64;
+}
+/* Integer operands of a binary operation share one type; the author converts
+ * one of them, as in Odin. A char holds every Unicode scalar in 32 bits, so it
+ * takes part beside any 32- or 64-bit integer as that integer. */
+bool script_analyzer_integers_match(script_type x, script_type y)
+{
+    if (script_type_char(x) != script_type_char(y)) {
+        return behavior_scalar_size(script_type_char(x) ? y.storage : x.storage) >= 4;
+    }
+    return x.storage == y.storage;
+}
+void script_analyzer_mismatched_integers(analyzer *a, TSNode node, script_type x, script_type y)
+{
+    script_analyzer_diagnostic(
+        a,
+        node,
+        "Mismatched integer types %s and %s; convert one operand",
+        script_numeric_name(x),
+        script_numeric_name(y)
+    );
+}
+/* A shift has its left operand's type; the count keeps its own unsigned
+ * type, and lowering converts it, so a count past the width stays past it.
+ * An untyped left operand takes the expected type. An untyped integer beside
+ * a typed count stays untyped, so the other operand of a comparison or an
+ * arithmetic operation types it as it would type the literal alone; any other
+ * untyped left operand is an int. */
+static int shift_expression(analyzer *a, TSNode node, script_expression result, script_type expected)
+{
+    TSNode count = script_analyzer_field(node, "right");
+    script_type x = script_analyzer_expr_type(a, result.left),
+                y = script_analyzer_expr_type(a, result.right);
+    const script_expression *right = &a->out->expressions[result.right];
+    bool negative = right->kind == SCRIPT_EXPR_CONSTANT &&
+                    behavior_scalar_integer(right->constant.type) &&
+                    behavior_scalar_signed(right->constant.type) &&
+                    (int64_t)behavior_scalar_bits(right->constant) < 0;
+    /* A negative constant count is reported with the other constants. */
+    if (!negative && typed_integer(y) && !script_type_char(y) &&
+        behavior_scalar_signed(y.storage)) {
+        script_analyzer_diagnostic(a, count, "Shift count must be unsigned; convert it with uint(value)");
+    } else if (!negative && !(y.flags & SCRIPT_TYPE_UNTYPED) && (!typed_integer(y) || script_type_char(y))) {
+        script_analyzer_diagnostic(a, count, "Shift count must be an unsigned integer");
+    }
+    script_type value = x;
+    if (x.flags & SCRIPT_TYPE_UNTYPED) {
+        bool both = y.flags & SCRIPT_TYPE_UNTYPED,
+             typed = script_type_numeric(expected) &&
+                     !(expected.flags & SCRIPT_TYPE_UNTYPED),
+             open = !typed && !both && x.storage >= PIN_I8 && x.storage <= PIN_U64;
+        value = typed        ? expected
+              : both || open ? x
+                             : (script_type){ .storage = PIN_I32 };
+        if (!open && (!both || script_type_numeric(expected))) {
+            value.flags &= ~SCRIPT_TYPE_UNTYPED;
+        }
+        contextual_numeric(a, result.left, value);
+        value = script_analyzer_expr_type(a, result.left);
+    }
+    if (!typed_integer(value) && !(value.flags & SCRIPT_TYPE_UNTYPED)) {
+        script_analyzer_diagnostic(a, node, "Shift requires an integer value");
+    }
+    if ((y.flags & SCRIPT_TYPE_UNTYPED) && !negative) {
+        /* Counts keep their exact expression and an independent type until
+         * constant folding. Lowering converts runtime counts to the value's
+         * type only after the constant checks have finished. */
+        contextual_numeric(a, result.right, script_analyzer_conversion_operand(a, count));
+    }
+    result.effects = script_analyzer_expr_effects(a, result.left) |
+                     script_analyzer_expr_effects(a, result.right);
+    result.type = value;
+    return script_analyzer_expr_add(a, result);
+}
 /* Awaiting a task handle waits for that task and takes the results of the
  * function that started it, when the handle's type names one. */
 static int join_task(analyzer *a, TSNode node, int value)
@@ -1169,22 +1249,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.right = script_analyzer_expression(a, right, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
         script_type x = script_analyzer_expr_type(a, result.left),
                     y = script_analyzer_expr_type(a, result.right);
-        if (script_type_numeric(x) && script_type_numeric(y) &&
-            !((x.flags | y.flags) & SCRIPT_TYPE_UNTYPED) &&
-            x.storage <= PIN_U64 && y.storage <= PIN_U64 &&
-            behavior_scalar_common_integer(
-                script_analyzer_char_operand(x, y).storage,
-                script_analyzer_char_operand(y, x).storage
-            ) == PIN_FLOW) {
-            script_analyzer_diagnostic(
-                a,
-                node,
-                "%s and %s operands need an explicit conversion, such as "
-                "%s(value)",
-                script_numeric_name(x),
-                script_numeric_name(y),
-                script_numeric_name(x)
-            );
+        bool shift = result.op == SCRIPT_OP_SHIFT_LEFT ||
+                     result.op == SCRIPT_OP_SHIFT_RIGHT;
+        if (shift && script_type_numeric(x) && script_type_numeric(y)) {
+            return shift_expression(a, node, result, expected);
+        }
+        if (typed_integer(x) && typed_integer(y) &&
+            !script_analyzer_integers_match(x, y)) {
+            script_analyzer_mismatched_integers(a, node, x, y);
         }
         if (script_type_numeric(x) && script_type_numeric(y)) {
             script_type operands = script_analyzer_arithmetic_type(x, y);

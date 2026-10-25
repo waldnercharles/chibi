@@ -248,9 +248,9 @@ PlaceAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int
         code.append(ScalarWatch(ops, current, binding.storage, 0, true, destination));
         slots.append(ValueLocal(binding.storage));
         code.append(Instruction(op, binding.storage, current + 1, current, stored.slot, -1, node));
-        // A local's target is watched again as the value it stores; stage zero
-        // reads a ref parameter's target once.
-        if (!reference) {
+        // A local's target is watched again as the value it stores. Parameters,
+        // including boxed value parameters, write through a reference in stage zero.
+        if (!reference && !Parameter(forest, binding)) {
             code.append(ScalarWatch(ops, current + 1, binding.storage, 0, true, destination));
         }
         stored = Typed(current + 1, binding.storage, 0, -1);

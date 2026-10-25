@@ -120,21 +120,21 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record:
     names: Name[] = [];
     index: int = 0;
     while (index < length(globals)) {
-        bound: Name = {name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
+        bound: Name = {owned: false, name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
                        container: 0, record: globals[index].record, writable: false, node: -1};
         names.append(bound);
         index += 1;
     }
     index = 0;
     while (index < length(kept_states)) {
-        kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
+        kept: Name = {owned: false, name: kept_states[index].name, place: StatePlace, index: index,
                       storage: kept_states[index].storage, container: 0, record: kept_states[index].record,
                       writable: true,
                       node: kept_states[index].node};
         names.append(kept);
         index += 1;
     }
-    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
+    owner: Name = {owned: false, name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
                    record: owner_record,
                    writable: false, node: -1};
     return append(names, owner);
@@ -355,7 +355,7 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
     return WordStorage;
 }
 // The written scalar type, or a literal initializer's natural type.
-StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: uint64,
+StateType :: (forest: snapshot.SnapshotNode[], source: string, types: ^(TypeDecl[]), entity: uint64,
               member: int) -> ValueType {
     written := Field(forest, member, "type");
     value := Field(forest, member, "value");
@@ -379,7 +379,7 @@ StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[]
         if (spelled == "number") {
             return {storage: DoubleStorage, container: 0, record: -1};
         }
-        return {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
+        return {storage: HandleStorage, container: 0, record: TypeWithId(types^, entity)};
     }
     no_names: Name[] = [];
     return ReadType(forest, source, types, no_names, 0, written);
@@ -494,7 +494,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
     while (member >= 0) {
         if (Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
-            declared := StateType(forest, source, declared_types, entity, member);
+            declared := StateType(forest, source, &declared_types, entity, member);
             if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
                  declared.storage != HandleStorage) || declared.container != 0 ||
                 (declared.storage == HandleStorage && declared.record < 0)) {
@@ -542,7 +542,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
         } else if (Is(forest, member, "function_declaration")) {
             // A member procedure, which the behavior's handlers call.
             name := Text(forest, source, Field(forest, member, "name"));
-            switch FunctionSignature(forest, source, identity, solid, declared_types, no_names, 0, 0, member, name,
+            switch FunctionSignature(forest, source, identity, solid, &declared_types, no_names, 0, 0, member, name,
                                      length(params)) {
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);

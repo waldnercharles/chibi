@@ -12,11 +12,17 @@
 static void struct_fields(const type_desc *type, const void *data, arena_marker mark, void *user, int depth)
 {
     assert(type && data && depth < 16);
+    if (type->alias_of || type->alias) {
+        const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
+        assert(target && target->size == type->size);
+        struct_fields(target, data, mark, user, depth + 1);
+        return;
+    }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         const unsigned char *member = (const unsigned char *)data + field->offset;
         if (field->type == PIN_STRUCT) {
-            struct_fields(type_catalog_find(field->type_name), member, mark, user, depth + 1);
+            struct_fields(type_field_type(field, (type_resolver){ 0 }), member, mark, user, depth + 1);
         }
         if (field->type == PIN_STR || field->type == PIN_NAME ||
             field->type == PIN_UNION || field->type == PIN_POINTER) {
@@ -57,6 +63,15 @@ static void trace_struct(const void *data, const void *shape, arena_marker mark,
 static void trace_array(const void *data, const void *, arena_marker mark, void *user)
 {
     const pin_array *array = data;
+    if (pin_array_trace_backing(array, mark, user)) {
+        return;
+    }
+    if (array->pointer) {
+        mark(user, array->pointer);
+        mark(user, array->record);
+        mark(user, array->type_name);
+        return;
+    }
     mark(user, array->type_name);
     mark(user, array->record);
     mark(user, array->items);
@@ -122,8 +137,8 @@ static bool boundary_layout_valid(const type_desc *type, int depth)
         (type->field_count && !type->fields) || depth >= 64) {
         return false;
     }
-    if (type->alias_of) {
-        const type_desc *nested = type_catalog_find(type->alias_of);
+    if (type->alias_of || type->alias) {
+        const type_desc *nested = type_alias_type(type, (type_resolver){ 0 });
         return nested && nested->size == type->size &&
                boundary_layout_valid(nested, depth + 1);
     }
@@ -133,7 +148,7 @@ static bool boundary_layout_valid(const type_desc *type, int depth)
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (!nested || nested->size != field->size ||
                 !boundary_layout_valid(nested, depth + 1)) {
                 return false;
@@ -156,8 +171,8 @@ static bool boundary_layout_pointer_free(const type_desc *type, int depth)
     if (!type || !type->size || type->field_count <= 0 || !type->fields || depth >= 64) {
         return false;
     }
-    if (type->alias_of) {
-        const type_desc *nested = type_catalog_find(type->alias_of);
+    if (type->alias_of || type->alias) {
+        const type_desc *nested = type_alias_type(type, (type_resolver){ 0 });
         return nested && nested->size == type->size &&
                boundary_layout_pointer_free(nested, depth + 1);
     }
@@ -167,7 +182,7 @@ static bool boundary_layout_pointer_free(const type_desc *type, int depth)
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (!nested || nested->size != field->size ||
                 !boundary_layout_pointer_free(nested, depth + 1)) {
                 return false;
@@ -197,11 +212,18 @@ static bool boundary_array_pointer_free(const pin_array *array, int depth)
  * pointer. No native callback has run when this rejects a value. */
 static const char *managed_boundary_error(const pin_value *value, int depth)
 {
+    if (value->container == PIN_CONTAINER_VIEW) {
+        return value->ptr ? "Native calls cannot retain live array views" : NULL;
+    }
     if (value->type == PIN_POINTER) {
         return "Native calls cannot retain managed pointer arguments";
     }
     if (depth >= 64) {
         return "Cannot retain language value";
+    }
+    if (value->record && value->record->native &&
+        !pin_record_native_current(value->record)) {
+        return "Native record layout is retired or incompatible";
     }
     if (value->container == PIN_CONTAINER_MAP) {
         const pin_map *map = value->ptr;
@@ -220,6 +242,10 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
         const pin_array *array = value->ptr;
         if (array && !pin_array_valid(array)) {
             return "Cannot retain language value";
+        }
+        if (array && array->record && array->record->native &&
+            !pin_record_native_current(array->record)) {
+            return "Native record layout is retired or incompatible";
         }
         bool pointer_free = boundary_array_pointer_free(array, depth);
         if (pointer_free && array->stride) {
@@ -261,8 +287,8 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
             return "Cannot retain language value";
         }
         /* Validation already proves this alias chain finite and size-matched. */
-        while (type->alias_of) {
-            type = type_catalog_find(type->alias_of);
+        while (type->alias_of || type->alias) {
+            type = type_alias_type(type, (type_resolver){ 0 });
         }
         for (int i = 0; i < type->field_count; i++) {
             const type_field *field = &type->fields[i];
@@ -273,7 +299,9 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
             const char *member = (const char *)value->ptr + field->offset;
             pin_value item = { .type = field->type, .type_name = field->type_name };
             if (field->type == PIN_STRUCT) {
+                const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
                 item.ptr = (void *)member;
+                item.record = nested ? nested->carrier : NULL;
             } else {
                 memcpy(&item.ptr, member, sizeof item.ptr);
             }

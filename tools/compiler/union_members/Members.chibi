@@ -125,7 +125,7 @@ Edges :: (definition: Definition, variants: Variant[], fields: Field[]) -> int[]
 // of definitions open above it.
 Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
          root: named.Value, states: int[]) -> Validation {
-    updated := states;
+    updated := slice(states, 0, length(states));
     open: int[] = [];
     cursors: int[] = [];
     depth: int = 0;
@@ -169,7 +169,7 @@ Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants
 }
 pub Validate :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
                  roots: int[], states: int[]) -> Validation {
-    updated := states;
+    updated := slice(states, 0, length(states));
     index: int = 0;
     while (index < length(roots)) {
         switch Walk(types, ids, definitions, variants, fields, CycleType(types, ids, roots[index]), updated) {
@@ -223,15 +223,15 @@ EligibleUnion :: (environment: Environment, tree: reader.Tree, node: int, scope:
 // an earlier declaration. Tagged child payload spans remain raw catalog facts.
 Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
     switch plan {
-        case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics, element_type, element_collection):
+        case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics, element_type, element_collection, collection_container, key_type, key_collection):
             if (!publish) {
                 return environment;
             }
             switch environment {
                 case .Tables(reading, types, ids, definitions, variants, fields, capabilities, capability_fields):
                     new_types := types;
-                    new_ids := ids;
-                    new_variants := variants;
+                    new_ids := slice(ids, 0, length(ids));
+                    new_variants := slice(variants, 0, length(variants));
                     variant_start := length(new_variants);
                     index: int = 0;
                     while (index < length(selected)) {
@@ -257,7 +257,7 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                         }
                         index += 1;
                     }
-                    new_fields := fields;
+                    new_fields := slice(fields, 0, length(fields));
                     field_start := length(new_fields);
                     index = 0;
                     while (index < length(selected_fields)) {
@@ -318,9 +318,9 @@ Combine :: (earlier: Members, later: Members) -> Members {
         case .Built(old_environment, old_updates, old_diagnostics, old_uses):
             switch later {
                 case .Built(environment, updates, diagnostics, uses):
-                    all_updates := old_updates;
-                    all_diagnostics := old_diagnostics;
-                    all_uses := old_uses;
+                    all_updates := slice(old_updates, 0, length(old_updates));
+                    all_diagnostics := slice(old_diagnostics, 0, length(old_diagnostics));
+                    all_uses := slice(old_uses, 0, length(old_uses));
                     for (item in updates) {
                         all_updates.append(item);
                     }
@@ -337,7 +337,7 @@ Combine :: (earlier: Members, later: Members) -> Members {
 Errors :: (result: Members, errors: syntax.Diagnostic[]) -> Members {
     switch result {
         case .Built(environment, updates, diagnostics, uses):
-            all_diagnostics := diagnostics;
+            all_diagnostics := slice(diagnostics, 0, length(diagnostics));
             for (item in errors) {
                 all_diagnostics.append(item);
             }
@@ -356,7 +356,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
         case .Tables(reading, types, ids, definitions, variants, fields, capabilities, capability_fields):
             new_types := types;
             new_ids := ids;
-            new_fields := fields;
+            new_fields := slice(fields, 0, length(fields));
             field_start := length(new_fields);
             for (item in declared_fields) {
                 switch reader.AddTypeCollection(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type), payload_types[item.type].collection) {
@@ -367,7 +367,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                         new_fields.append(row);
                 }
             }
-            new_variants := variants;
+            new_variants := slice(variants, 0, length(variants));
             variant_start := length(new_variants);
             for (item in declared_variants) {
                 switch reader.AddTypeCollection(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type), payload_types[item.type].collection) {
@@ -379,7 +379,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                         new_variants.append(row);
                 }
             }
-            new_definitions := definitions;
+            new_definitions := slice(definitions, 0, length(definitions));
             index: int = 0;
             while (index < length(new_definitions)) {
                 item := new_definitions[index];
@@ -396,7 +396,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                         case .Tables(ctor_types, ctor_ids, ctor_definitions, ctor_variants, ctor_capabilities, functions, symbols, results):
                             rows := ctor_types;
                             pool := ctor_ids;
-                            alternatives := ctor_variants;
+                            alternatives := slice(ctor_variants, 0, length(ctor_variants));
                             start := length(alternatives);
                             for (item in declared_variants) {
                                 switch reader.AddTypeCollection(rows, pool, named.TypeAt(payload_types, payload_ids, item.type), payload_types[item.type].collection) {
@@ -408,7 +408,7 @@ Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVar
                                         alternatives.append(row);
                                 }
                             }
-                            definitions_copy := ctor_definitions;
+                            definitions_copy := slice(ctor_definitions, 0, length(ctor_definitions));
                             index = 0;
                             while (index < length(definitions_copy)) {
                                 item := definitions_copy[index];

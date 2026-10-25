@@ -143,6 +143,8 @@ void behavior_function_builder_limits(behavior_function_builder *builder, unsign
 /* HOST_SLOT indexes this contiguous value bank; result values follow arguments. */
 int behavior_function_builder_host_first(const behavior_function_builder *builder, int host);
 int behavior_function_builder_host_results(const behavior_function_builder *builder, int host);
+void behavior_function_builder_host_owned_arguments(behavior_function_builder *, int host);
+void behavior_function_builder_call_owned_arguments(behavior_function_builder *, int call);
 behavior_function *behavior_function_builder_finish(
     behavior_function_builder *builder,
     char *error,

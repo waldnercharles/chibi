@@ -321,36 +321,23 @@ static invocation_frame *frame_new(
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
     };
-    bool direct = !behavior_function_inspection_required(function, parent) &&
-                  program_call_views_allowed(parent);
-    bool shared = direct && call.function->argument_sharing == BEHAVIOR_SHARING_SAFE;
-    bool views = direct && call.function->readonly_collections;
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     for (int p = 0; p < call.count; p++) {
-        /* The callee and its callees leave the caller's storage untouched, and
-         * the caller waits for the call, so the arguments need no copies. */
-        if (shared) {
+        if (call.owned_arguments) {
             arguments[p] = parent->data->values[call.first + p];
+            behavior_function_collection_transfer(parent, &frame->context, &arguments[p]);
             continue;
         }
-        if (views && behavior_function_borrow_argument(
-                         call.function,
-                         &frame->context,
-                         &parent->data->values[call.first + p],
-                         &arguments[p]
-                     )) {
-            continue;
-        }
-        if (pin_value_snapshot_to_arena(
-                &frame->storage,
-                &arguments[p],
-                &parent->data->values[call.first + p]
-            )) {
+        arena *storage = parent->managed_heap ? &parent->managed_heap->storage
+                                              : &frame->storage;
+        if (pin_value_collection_copy(storage, &arguments[p], &parent->data->values[call.first + p])) {
             frame_free(frame, FLOW_ERR_ARGUMENT);
             call_error(function, parent, BEHAVIOR_FUNCTION_ARGUMENT, "function argument cannot be retained");
             return NULL;
         }
+        behavior_function_collection_retain(&frame->context, &arguments[p]);
     }
+    frame->context.arguments_stabilized = true;
     frame->context.arguments = arguments;
     frame->context.argument_count = call.count;
     frame->context.results = arena_alloc(
@@ -429,6 +416,11 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
     /* A function without results may end anywhere, as a void function does;
        one with results must reach Return to produce them. */
     if (!context->returned) {
+        if (!call.result_count && call.owned_arguments) {
+            for (int p = 0; p < call.count; p++) {
+                behavior_function_collection_drop(parent, &parent->data->values[call.first + p]);
+            }
+        }
         return call.result_count
                  ? call_error(parent_function, parent, BEHAVIOR_FUNCTION_NO_RETURN, "function completed without Return")
                  : FLOW_OK;
@@ -456,11 +448,30 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
         if (frame->function->builds_results && pointer && result->ptr &&
             context->value_storage != parent->value_storage &&
             arena_contains(parent->value_storage, result->ptr)) {
+            if (out->ptr != result->ptr) {
+                behavior_function_collection_drop(parent, out);
+            }
             out->ptr = result->ptr;
+            behavior_function_collection_transfer(context, parent, out);
             continue;
         }
-        if (pin_value_snapshot_to_arena(parent->value_storage, out, &context->results[p])) {
+        pin_value retained;
+        if (pin_value_snapshot_to_arena(
+                parent->value_storage,
+                &retained,
+                &context->results[p]
+            )) {
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
+        }
+        if (out->ptr != retained.ptr) {
+            behavior_function_collection_drop(parent, out);
+        }
+        *out = retained;
+        behavior_function_collection_transfer(context, parent, out);
+    }
+    if (call.owned_arguments) {
+        for (int p = 0; p < call.count; p++) {
+            behavior_function_collection_drop(parent, &parent->data->values[call.first + p]);
         }
     }
     return FLOW_OK;
@@ -499,6 +510,14 @@ int behavior_function_run_calls(
             if (call->task) {
                 result = context->start_task(context, (int)(call - active->calls));
                 if (!result) {
+                    if (call->owned_arguments) {
+                        for (int p = 0; p < call->count; p++) {
+                            behavior_function_collection_drop(
+                                context,
+                                &context->data->values[call->first + p]
+                            );
+                        }
+                    }
                     continue;
                 }
                 root->wake_time = context->wake_time;
@@ -583,6 +602,8 @@ static void trace_context(
             }
         }
     }
+    /* Imported argument banks may themselves live in the managed heap. */
+    mark(user, ctx->arguments);
     trace_values(ctx->arguments, f->argument_kinds, ctx->argument_count, mark, user);
     trace_values(ctx->results, f->result_kinds, f->result_count, mark, user);
     trace_values(ctx->variables, NULL, f->variable_count, mark, user);
@@ -608,11 +629,13 @@ void behavior_function_trace_values(
 )
 {
     trace_context(f, ctx, mark, user);
+    behavior_function_collection_trace(ctx, mark, user);
     const struct behavior_function_calls *calls = ctx->activation
                                                     ? ctx->activation->calls
                                                     : NULL;
     for (int i = 0; calls && i < acount(calls->frames); i++) {
         trace_context(calls->frames[i]->function, &calls->frames[i]->context, mark, user);
+        behavior_function_collection_trace(&calls->frames[i]->context, mark, user);
     }
 }
 static void visit_bank(

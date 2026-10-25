@@ -1,9 +1,29 @@
 #include "execution/program_internal.h"
 #include "execution/scalar.h"
+#include "execution/status.h"
 #include "support/array.h"
+#include "types/array.h"
 #include "types/trace.h"
 
 #include <assert.h>
+
+/* Check ingress before a final VALUE copy, without retaining an intermediate
+ * imported graph whose owners would survive until the next collection. */
+int program_validate_values(execution_program *program, const pin_value *values, int count)
+{
+    if (count < 0 || (count && !values)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    for (int i = 0; i < count; i++) {
+        if (behavior_managed_storage_value_error(
+                &program->owner_program->managed->storage,
+                &values[i]
+            )) {
+            return FLOW_ERR_ARGUMENT;
+        }
+    }
+    return FLOW_OK;
+}
 
 /* Collect once the payload allocated since the last collection outgrows what
  * it kept, so many live tasks don't each trace every task on every run. */

@@ -124,6 +124,10 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
 {
     execution_wire *w = &c->wire;
     struct prepared_record_cache *cache = &c->records[index];
+    if (!w->reading && v->record && v->record->native) {
+        w->error = "native type requirements use linked descriptors";
+        return;
+    }
     bool authored = !w->reading && v->record;
     execution_wire_bool(w, &authored);
     if (w->error) {
@@ -162,6 +166,11 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         return;
     }
     if (!w->reading) {
+        if (!pin_record_fields_current(v->record)) {
+            w->error = "prepared authored nested layout is retired or "
+                       "incompatible";
+            return;
+        }
         cache->validation_work = validate(c, v->record);
         if (w->error) {
             return;
@@ -379,6 +388,15 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
         w->error = "prepared authored/native type identity differs";
         return NULL;
     }
+    if (!w->reading && v->record && v->record->native) {
+        if (authored || !pin_record_valid(v->record) ||
+            v->record->layout != type->layout || v->record->type.size != type->size ||
+            strcmp(v->record->type.name, type->name)) {
+            w->error = "prepared native value layout differs";
+            return NULL;
+        }
+        return v->record;
+    }
     if (!w->reading) {
         if (v->record) {
             validate(c, v->record);
@@ -470,7 +488,7 @@ static bool header_work(
     bool diagnostic
 )
 {
-    if (!value.record) {
+    if (!value.record || value.record->native) {
         return true;
     }
     int at = requirement(c, &value);

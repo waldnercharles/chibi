@@ -8,8 +8,17 @@
 typedef struct arena_block arena_block;
 typedef struct arena_allocation arena_allocation;
 typedef struct arena_page arena_page;
+typedef struct arena_cleanup arena_cleanup;
+typedef struct arena_resource arena_resource;
 typedef void (*arena_marker)(void *user, const void *address);
 typedef void (*arena_tracer)(const void *value, const void *shape, arena_marker mark, void *user);
+/* Recent copies an arena remembers; values often alternate a few layouts. */
+#define ARENA_COPY_CACHE 8
+typedef struct arena_copy
+{
+    const void *source;
+    const void *copy; /* Held by the arena. */
+} arena_copy;
 typedef struct arena
 {
     arena_block *first;
@@ -19,10 +28,14 @@ typedef struct arena
     arena_page *pages;             /* Live values by each page they touch. */
     size_t page_capacity;          /* Index slots, a power of two. */
     size_t page_count;             /* Occupied index slots. */
-    size_t allocated;              /* Collectable bytes since the last sweep. */
-    size_t kept;                   /* Collectable bytes the last sweep kept. */
-    const void *copied_from;       /* Source of the last copy remembered. */
-    const void *copy;              /* That copy, which this arena holds. */
+    size_t allocated; /* Value and new resource bytes since the last sweep. */
+    size_t kept;      /* Value and resource bytes the last sweep kept. */
+    arena_cleanup *cleanups; /* Ordinary allocations with external ownership. */
+    arena_resource *resources; /* Unique resources retained by live allocations. */
+    size_t resource_capacity, resource_count, retained_bytes;
+    size_t cleanup_count;
+    arena_copy copies[ARENA_COPY_CACHE];
+    int next_copy; /* The entry the next remembered copy replaces. */
     bool collectable;
 } arena;
 
@@ -42,6 +55,32 @@ uint64_t arena_block_allocations();
  * Values no collection marks become reusable; live addresses stay stable. */
 void arena_init_collectable(arena *a);
 void arena_set_trace(arena *a, const void *value, arena_tracer trace, const void *shape);
+/* Transfers one retained reference to an allocation. Attach at most once, using
+ * its starting address and non-null resource/release. Release runs exactly once
+ * when that allocation retires, before its storage is reused or freed. It must
+ * not mutate this arena or depend on other arena allocations remaining live.
+ * Shared resource identities must report the same retained_bytes; accounting
+ * charges their bytes once per arena until the last attachment retires. */
+void arena_set_cleanup(
+    arena *a,
+    const void *allocation,
+    void (*release)(void *),
+    void *resource,
+    size_t retained_bytes
+);
+/* Replace an allocation's attachment, releasing the previous reference. The
+ * caller transfers one already-retained reference to the replacement, even
+ * when its resource identity is unchanged. A null release/resource pair removes
+ * the attachment. An unchanged resource keeps its accounting entry; changing
+ * its byte size requires this to be its only attachment. Release callbacks
+ * obey arena_set_cleanup's restrictions. */
+void arena_replace_cleanup(
+    arena *a,
+    const void *allocation,
+    void (*release)(void *),
+    void *resource,
+    size_t retained_bytes
+);
 /* One mark and sweep over collectable arenas whose values may point into one
  * another. A mark finds its value by address in logarithmic time, and each
  * marked value is traced once. The arenas must outlive the collection. */
@@ -60,7 +99,7 @@ uint64_t arena_collect_marks();
 /* Traces what the marks reach and sweeps the rest. */
 void arena_collect_end(arena_collection *);
 /* The copy of source that a remembers, or NULL. An arena remembers its last
- * copy until a reset, free or collection. Source's address may since hold
+ * ARENA_COPY_CACHE copies until a reset, free or collection. Source's address may since hold
  * another object, so the caller checks that the copy still matches it. */
 const void *arena_copy_find(const arena *a, const void *source);
 void arena_copy_remember(arena *a, const void *source, const void *copy);

@@ -1,3 +1,10 @@
+> Current sequence decision (2026-10-22): ordinary arrays/maps/builders are
+> independent values with copy-on-write; explicit pointers share mutable access.
+> This supersedes the earlier shared-array draft below. See
+> [the revised sequence plan](docs/value-sequences.md). Mutable views require an
+> explicit array pointer and follow its current pointee at fixed indices. The
+> earlier draft source is preserved and unpublished.
+
 # Chibi toolchain consolidation and self-hosting
 
 ## Coordinated named struct results, 2026-10-22
@@ -287,6 +294,14 @@ unknown values before native effects. Existing boolean APIs return failure and
 existing diagnostic APIs fail the invocation. New APIs accepting external data
 must expose recoverable errors. Shared slices follow the descriptor cutover.
 Track language friction and discuss each package's semantics before porting it.
+
+The owner revised the collection decision on 2026-10-22: ordinary arrays, maps
+and builders are independent values with copy-on-write storage. Explicit
+pointers share mutable access. Range slicing copies into a new array, and
+`clone()` allocates independent outer storage. `p.view(range)` requires an array
+pointer and follows its current pointee at fixed indices, including after
+reassignment. [Value sequence plan](docs/value-sequences.md) tracks implementation
+and the managed-pointer dependency. This remains unpublished draft work.
 
 ### Bootstrap terms
 

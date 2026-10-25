@@ -399,7 +399,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     indices: int[] = [];
     aliases: Name[] = [];
     empty_names: string[] = [];
-    switch EmitBody(forest, text, 0, callables, params, types, members, constants, natives, ports, identities,
+    table := types;
+    switch EmitBody(forest, text, 0, callables, params, &table, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
                     empty_names, indices, ops, target) {
         case .Failed(diagnostic):

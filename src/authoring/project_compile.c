@@ -8,6 +8,7 @@
 #include "authoring/source_package_files.h"
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/native_default.h"
@@ -529,7 +530,10 @@ static bool generate(
         behavior_function_activation_init(function, &activation);
     }
     pin_value result = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY };
-    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+    behavior_managed_heap managed;
+    behavior_managed_heap_init(&managed);
+    behavior_function_context context = { .managed_heap = &managed,
+                                          .activation = resumable ? &activation : NULL,
                                           .arguments = arguments,
                                           .argument_count = count,
                                           .results = &result,
@@ -559,6 +563,7 @@ static bool generate(
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
+    behavior_managed_heap_free(&managed);
     return written;
 }
 

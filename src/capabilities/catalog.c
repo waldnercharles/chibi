@@ -647,5 +647,7 @@ uint64_t script_catalog_capability_abi(const script_catalog *catalog, const scri
     hash = abi_word(hash, capability->variadic);
     hash = abi_word(hash, capability->variadic_optional);
     hash = abi_word(hash, capability->event_sender);
+    hash = abi_word(hash, capability->language_values);
+    hash = abi_word(hash, capability->owned_result);
     return abi_word(hash, capability->numeric_aggregate);
 }

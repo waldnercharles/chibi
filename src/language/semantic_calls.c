@@ -970,7 +970,12 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
                 }
                 actual = script_analyzer_expr_type(a, (*values)[i]);
             }
-            matches = wanted.container == actual.container &&
+            /* An untyped number never converts to text, so it cannot pick a
+             * text overload. */
+            bool text = wanted.storage == PIN_STR &&
+                        script_type_numeric(actual) && !script_type_char(actual) &&
+                        (actual.flags & SCRIPT_TYPE_UNTYPED);
+            matches = !text && wanted.container == actual.container &&
                       script_catalog_type_assignable(a->catalog, wanted, actual);
             if (matches && script_type_numeric(wanted) &&
                 script_type_numeric(actual) && wanted.storage != actual.storage) {

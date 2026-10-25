@@ -686,6 +686,16 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
         { "Packed :: library { Math :: (value:int) -> number { return "
           "sqrt(value); } }",
           PIN_F32 },
+        /* Literals rank by their default: number, unless a typed operand
+         * chooses. */
+        { "Packed :: library { Math :: () -> number { return sqrt(2.0); } }", PIN_F32 },
+        { "Packed :: library { Math :: () -> number { return sqrt(-(2)); } }", PIN_F32 },
+        { "Packed :: library { Math :: () -> number { return pow(2, 3); } }", PIN_F32 },
+        { "Packed :: library { Math :: (x:f64) -> f64 { return pow(x, 3); } }", PIN_F64 },
+        { "Packed :: library { Math :: (x:f64) -> f64 { return pow(Exponent: "
+          "x, "
+          "Base: (2.5)); } }",
+          PIN_F64 },
     };
     for (size_t i = 0; i < sizeof integers / sizeof *integers; i++) {
         char error[256];

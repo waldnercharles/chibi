@@ -2297,13 +2297,24 @@ static const sample samples[] = {
       .same_rejection = true },
     /* Red until stage one resolves an overloaded native's untyped literal
      * argument: its call step rejects NumberStorage ("a number needs an
-     * integer type here") before Overload runs. Stage zero returns 2. Last,
-     * so the samples before it still run. */
-    { .name = "untyped literal overload argument",
+     * integer type here" at 2:43) before Overload runs. Stage zero picks the
+     * integer overload (native_overload_reference_contract); the host has no
+     * native.overload, so these compare closures with stage zero's instead of
+     * running. Last, so the samples before them still run. */
+    { .name = "untyped literal overload argument", .c_string_probe = true, .source = "package facts\nRun :: () -> int { return native.overload(2); }" },
+    { .name = "grouped negative overload argument", .c_string_probe = true, .source = "package facts\nRun :: () -> int { return native.overload((-(2))); }" },
+    { .name = "decimal overload argument",
       .c_string_probe = true,
-      .source = "package facts\nRun :: () -> int { return native.overload(2); "
-                "}",
-      .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" } } },
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.5); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "wide overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(4294967296); }",
+      .message = "Numeric literal is outside the range of int",
+      .same_rejection = true },
 };
 enum
 {
@@ -3786,7 +3797,9 @@ static bool watched_once(const unsigned char *bytes, size_t length, const sample
 }
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
-static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+/* Stage zero's packages for the sample, linked against the fixture's
+ * natives, and its facts package. */
+static authoring_packages *oracle_packages(const sample *s, const authoring_package **root)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
@@ -3794,7 +3807,7 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
                                                 .files = inputs,
                                                 .file_count = count };
     source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    assert(snapshot && !source_package_snapshot_error_at(snapshot));
     script_lower_bindings bindings = authoring_native_bindings(fixture.native);
     authoring_packages *packages = authoring_packages_prepare(
         snapshot,
@@ -3803,15 +3816,23 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
         BEHAVIOR_BYTECODE,
         NULL
     );
-    REQUIRE(packages && !authoring_packages_valid(packages));
-    const authoring_package *root = NULL;
+    assert(packages);
+    *root = NULL;
     for (int p = 0; p < authoring_packages_count(packages); p++) {
         const authoring_package *candidate = authoring_packages_at(packages, p);
         if (!strcmp(candidate->identity, "project:facts")) {
-            root = candidate;
+            *root = candidate;
         }
     }
-    REQUIRE(root && root->diagnostic_count);
+    assert(*root);
+    return packages;
+}
+static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+{
+    const authoring_package *root;
+    authoring_packages *packages = oracle_packages(s, &root);
+    REQUIRE(!authoring_packages_valid(packages));
+    REQUIRE(root->diagnostic_count);
     const script_diagnostic *expected = &root->diagnostics[0];
     bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
                 expected->range.line == line && expected->range.column == column;
@@ -8100,6 +8121,95 @@ TEST_CASE(native_arguments_reference_contract)
     return true;
 }
 
+/* Stage zero picks native.overload's integer or text overload by the
+ * argument; an untyped number never converts to text, so it cannot pick the
+ * text one. */
+TEST_CASE(native_overload_reference_contract)
+{
+    static const struct
+    {
+        const char *source;
+        pin_type parameter;
+        const char *message;
+        int column;
+    } cases[] = {
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload((-(2))); }", PIN_I32 },
+        { "package facts\nRun :: (v: int) -> int { return native.overload(v); "
+          "}",
+          PIN_I32 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload(\"three\"); }",
+          PIN_STR },
+        { "package facts\nRun :: () -> int { return native.overload(2.5); }",
+          PIN_FLOW,
+          "Numeric literal has a fraction, which int cannot hold",
+          43 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload(4294967296); }",
+          PIN_FLOW,
+          "Numeric literal is outside the range of int",
+          43 },
+    };
+    native_definition_pack packs[] = { CSTRING_PACK };
+    source_package_input inputs[SAMPLE_INPUTS];
+    sample first = { .source = cases[0].source };
+    int count = sample_inputs(&first, inputs);
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
+    const script_catalog *catalog = native_capabilities_catalog(fixture.native);
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        sample s = { .source = cases[i].source };
+        const authoring_package *root;
+        authoring_packages *packages = oracle_packages(&s, &root);
+        if (cases[i].message) {
+            const script_diagnostic *d = root->diagnostic_count
+                                           ? &root->diagnostics[0]
+                                           : NULL;
+            if (d) {
+                fprintf(
+                    stderr,
+                    "native overload %zu: %s at %d:%d\n",
+                    i,
+                    d->message,
+                    d->range.line,
+                    d->range.column
+                );
+            }
+            bool same = d && !strcmp(d->message, cases[i].message) &&
+                        d->range.line == 2 && d->range.column == cases[i].column;
+            authoring_packages_free(packages);
+            REQUIRE(same);
+            continue;
+        }
+        const script_analysis *analysis = root->analysis;
+        int chosen = 0;
+        for (int e = 0; e < analysis->expression_count; e++) {
+            const script_expression *expression = &analysis->expressions[e];
+            const script_catalog_capability *capability = expression->kind == SCRIPT_EXPR_CALL
+                                                            ? script_catalog_capability_by_id(
+                                                                  catalog,
+                                                                  expression->capability
+                                                              )
+                                                            : NULL;
+            if (capability && capability->parameter_count == 1 &&
+                capability->parameters[0].type.storage == cases[i].parameter) {
+                chosen++;
+            }
+        }
+        bool valid = root->valid && chosen == 1;
+        if (!valid) {
+            fprintf(
+                stderr,
+                "native overload %zu: %s\n",
+                i,
+                root->diagnostic_count ? root->diagnostics[0].message : "other overload"
+            );
+        }
+        authoring_packages_free(packages);
+        REQUIRE(valid);
+    }
+    return true;
+}
 TEST_CASE(native_arguments_authored_contract)
 {
     REQUIRE(prepare());
@@ -8174,6 +8284,7 @@ void test_language_package_compiler_chibi_native_arguments_oracle()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(native_arguments_reference_contract);
+    RUN_TEST_CASE(native_overload_reference_contract);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_native_arguments()

@@ -7515,17 +7515,14 @@ static void native_file(const char *path)
     strcpy(copy, path);
     apush(native_files, copy);
 }
-/* `ir` and then `adapter`, built at `level` as the driver builds an object,
- * then linked as `directory`/`name`.so, which `library` names. Only observed
- * modules request PIC for their added counter globals; ordinary modules keep
- * the driver's exact object arguments. */
+/* `ir` and then `adapter`, built at `level` with the driver's exact object
+ * arguments, then linked as `directory`/`name`.so, which `library` names. */
 static bool native_library(
     const char *directory,
     const char *name,
     const char *ir,
     const char *adapter,
     int level,
-    bool pic,
     char library[PATH_MAX]
 )
 {
@@ -7545,25 +7542,18 @@ static bool native_library(
     const char *passes = level ? "-passes=verify,default<O2>,verify" : "-passes=verify";
     const char *const optimize[] = { opt,  "-S",   passes, source,
                                      "-o", module, NULL };
-    const char *const emit[] = {
-        llc, "-filetype=obj", level ? "-O=2" : "-O=0", module, "-o", object,
-        NULL
-    };
-    const char *const observed_emit[] = { llc,
-                                          "-filetype=obj",
-                                          level ? "-O=2" : "-O=0",
-                                          "-relocation-model=pic",
-                                          module,
-                                          "-o",
-                                          object,
-                                          NULL };
+    const char *const emit[] = { llc,
+                                 "-filetype=obj",
+                                 level ? "-O=2" : "-O=0",
+                                 "-relocation-model=pic",
+                                 module,
+                                 "-o",
+                                 object,
+                                 NULL };
     const char *const symbols[] = { nm, "--undefined-only", object, NULL };
     const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
     char out[NATIVE_OUTPUT];
-    REQUIRE(
-        run_tool(optimize, directory, out) &&
-        run_tool(pic ? observed_emit : emit, directory, out)
-    );
+    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
     REQUIRE(run_tool(symbols, directory, out));
     if (*out) {
         fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
@@ -8162,7 +8152,7 @@ static bool native_values(
     }
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
-        REQUIRE(native_library(directory, name, ir, adapter, level * 2, false, library));
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
         REQUIRE(native_passed(
             library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
         ));
@@ -8261,7 +8251,6 @@ static bool observes_lazy_arm(const char *directory, const pin_value *rows, cons
                 observed,
                 adapter,
                 level * 2,
-                true,
                 library
             );
             for (int condition = 0; valid && condition < 2; condition++) {
@@ -10135,7 +10124,7 @@ static bool endless_loops_hang(const char *directory)
     free(closure);
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
-        REQUIRE(native_library(directory, "spin", ir, adapter, level * 2, false, library));
+        REQUIRE(native_library(directory, "spin", ir, adapter, level * 2, library));
         scalar_call call = { .probe = { "spin", "Spin", 1, { 0 }, 0 },
                              .symbol = "probe_Spin" };
         chibi_process_capture_result spun = library_calls(directory, library, &call, 1, 2, SPIN_SECONDS);
@@ -10263,6 +10252,28 @@ static bool process_ended(pid_t pid, double seconds)
  * which allows for a slow sanitized host. */
 static const double PROMPT_SECONDS = 10;
 
+/* A dense switch, which O2 lowers through a table, links into a shared
+ * library and runs: the driver's objects are position independent. */
+static bool lookup_tables_link(const char *directory)
+{
+    static const char
+        TABLE[] = "@index = internal global i32 3\n"
+                  "define i32 @table() {\n"
+                  "entry:\n"
+                  "  %x = load volatile i32, ptr @index\n"
+                  "  switch i32 %x, label %other [ i32 0, label %a\n"
+                  "    i32 1, label %b\n    i32 2, label %c\n"
+                  "    i32 3, label %d\n    i32 4, label %e ]\n"
+                  "a:\n  ret i32 11\nb:\n  ret i32 23\nc:\n  ret i32 5\n"
+                  "d:\n  ret i32 47\ne:\n  ret i32 9\nother:\n  ret i32 0\n"
+                  "}\n";
+    char library[PATH_MAX];
+    REQUIRE(native_library(directory, "table", TABLE, "", 2, library));
+    scalar_call call = { .symbol = "table" };
+    REQUIRE(native_passed(library_calls(directory, library, &call, 1, 2, CALLS_SECONDS)));
+    REQUIRE(call.values[2] == 47);
+    return true;
+}
 TEST_CASE(package_compiler_native_runs_are_bounded)
 {
     char out[NATIVE_OUTPUT];
@@ -10302,12 +10313,13 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
                        "  ret i32 0\n"
                        "}\n";
     scalar_call call = { .symbol = "hang" };
-    bool built = native_library(directory, "hang", loop, "", 0, false, library);
+    bool linked = lookup_tables_link(directory);
+    bool built = native_library(directory, "hang", loop, "", 0, library);
     started = chibi_process_now();
     result = built ? library_calls(directory, library, &call, 1, 2, 1)
                    : (chibi_process_capture_result){ 0 };
     double elapsed = chibi_process_now() - started;
-    REQUIRE(remove_native_files(directory) && built);
+    REQUIRE(remove_native_files(directory) && linked && built);
     REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
     return true;
 }
@@ -10441,7 +10453,7 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
     bool agreed = true;
     for (int level = 0; agreed && level < 2; level++) {
         char library[PATH_MAX];
-        agreed = native_library(directory, "total", ir, adapters, level * 2, false, library);
+        agreed = native_library(directory, "total", ir, adapters, level * 2, library);
         for (int k = 0; agreed && k < TOTAL_OPERATION_COUNT; k++) {
             scalar_call calls[MAX_CASE_CALLS];
             int count = total_calls(k, calls);

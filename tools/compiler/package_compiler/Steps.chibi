@@ -2940,11 +2940,8 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
     next: Work[] = [];
     marks: int[] = [];
     bits: uint64 = 0;
-    operands: Code[] = [];
-    slots.append(ValueLocal(storage));
     if (!ParsedLiteral(forest, text, literal.record)) {
-        // An untyped constant expression folds at the type its use gives it,
-        // after its operands.
+        // An untyped constant expression folds at the type its use gives it.
         switch FoldConstant(forest, text, document, constants, names, package, literal.record, storage) {
             case .Failed(diagnostic):
                 return Step.Failed(diagnostic);
@@ -2952,14 +2949,6 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                 return Fail(forest, literal.record, document, "an untyped constant names no constant");
             case .Folded(folded):
                 bits = folded;
-        }
-        switch OperandCode(forest, text, document, constants, names, package, literal.record, storage, ops,
-                           at.slot + 1) {
-            case .Failed(diagnostic):
-                return Step.Failed(diagnostic);
-            case .Emitted(operand_code, operand_slots):
-                operands = operand_code;
-                slots.extend(operand_slots);
         }
     } else {
         switch ParseNumber(forest, text, literal.record) {
@@ -2973,9 +2962,11 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                 bits = Bits(negative, magnitude);
         }
     }
+    slot: Slot = {storage: storage, kind: ValueKind};
+    slots.append(slot);
     // The literal is watched once its use gives it a type.
-    code = extend(operands, [ConstantCode(ops, storage, bits, at.slot, node)]);
-    code.extend(LiteralWatch(forest, ops, at.slot, storage, Unparenthesized(forest, literal.record)));
+    code = extend([ConstantCode(ops, storage, bits, at.slot, node)],
+                  LiteralWatch(forest, ops, at.slot, storage, literal.record));
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
                         NoValue(), marks);
 }
@@ -3022,97 +3013,6 @@ ShadowedConversion :: (forest: snapshot.SnapshotNode[], text: string, callables:
         return true;
     }
     return ShadowedConversion(forest, text, callables, package, ConversionArgument(forest, value));
-}
-// The operands and conversion argument of the constant expression `node`
-// that stage zero evaluates as expressions of their own. A sign on a literal
-// is part of the literal.
-FoldOperands :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int[] {
-    value := Unparenthesized(forest, node);
-    if (Is(forest, value, "unary_expression")) {
-        operand := Field(forest, value, "operand");
-        operator := Text(forest, text, Field(forest, value, "operator"));
-        if ((operator == "-" || operator == "+") && Is(forest, operand, "number")) {
-            return [];
-        }
-        return [Unparenthesized(forest, operand)];
-    }
-    if (Is(forest, value, "binary_expression")) {
-        return [Unparenthesized(forest, Field(forest, value, "left")),
-                Unparenthesized(forest, Field(forest, value, "right"))];
-    }
-    if (ConversionType(forest, text, value) != 0) {
-        return [Unparenthesized(forest, ConversionArgument(forest, value))];
-    }
-    return [];
-}
-// The points of the operands within the constant expression `node`, each
-// before its own operands.
-FoldPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ops: Ops, node: int) -> Code[] {
-    code: Code[] = [];
-    for (operand in FoldOperands(forest, text, node)) {
-        if (Is(forest, operand, "identifier")) {
-            code.extend(NamePoints(forest, text, names, ops, operand));
-        } else {
-            code.append(ExpressionCode(ops, forest[operand]));
-        }
-        code.extend(FoldPoints(forest, text, names, ops, operand));
-    }
-    return code;
-}
-// An operand of a folded constant and the type stage zero gives it.
-FoldLevel :: struct {
-    node: int;
-    storage: int;
-}
-// The operands within the constant expression `node` of type `storage`, each
-// after its own operands. An operand has its own type, else an exact
-// conversion's or, under wrap and clamp, int64 or uint64 beyond it, else the
-// type of the expression it is an operand of.
-FoldOrder :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
-              node: int, storage: int) -> FoldLevel[] {
-    levels: FoldLevel[] = [];
-    value := Unparenthesized(forest, node);
-    conversion := ConversionType(forest, text, value);
-    for (operand in FoldOperands(forest, text, value)) {
-        typed := ConstantType(forest, text, constants, names, package, operand);
-        if (typed == 0 && conversion != 0 &&
-            Is(forest, FirstMember(forest, Field(forest, value, "arguments")), "named_argument")) {
-            typed = UntypedStorage(forest, text, operand);
-        } else if (typed == 0 && conversion != 0) {
-            typed = conversion;
-        } else if (typed == 0) {
-            typed = storage;
-        }
-        levels.extend(FoldOrder(forest, text, constants, names, package, operand, typed));
-        level: FoldLevel = {node: operand, storage: typed};
-        levels.append(level);
-    }
-    return levels;
-}
-OperandFolding :: union {
-    Failed(diagnostic: syntax.Diagnostic)
-    | Emitted(code: Code[], slots: Slot[])
-}
-// The operands within the constant expression `node` of type `storage`,
-// each folded into its own slot from `base` and watched, innermost first.
-OperandCode :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
-                package: int, node: int, storage: int, ops: Ops, base: int) -> OperandFolding {
-    code: Code[] = [];
-    slots: Slot[] = [];
-    for (level in FoldOrder(forest, text, constants, names, package, node, storage)) {
-        switch FoldConstant(forest, text, document, constants, names, package, level.node, level.storage) {
-            case .Failed(diagnostic):
-                return OperandFolding.Failed(diagnostic);
-            case .Waiting:
-                return OperandFolding.Failed(Diagnose(forest, level.node, document, "a constant is not folded yet"));
-            case .Folded(bits):
-                slot := base + length(slots);
-                slots.append(ValueLocal(level.storage));
-                code.append(ConstantCode(ops, level.storage, bits, slot, forest[level.node]));
-                code.extend(LiteralWatch(forest, ops, slot, level.storage, level.node));
-        }
-    }
-    return OperandFolding.Emitted(code, slots);
 }
 // The one argument of the conversion `node`, named or not.
 ConversionArgument :: (forest: snapshot.SnapshotNode[], node: int) -> int {
@@ -3180,9 +3080,6 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
     next: Work[] = [];
     marks: int[] = [];
     storage := ConstantType(forest, text, constants, names, package, item.node);
-    // Stage zero places each operand's point outermost first; the step that
-    // gives an untyped constant its type evaluates it.
-    code.extend(FoldPoints(forest, text, names, ops, item.node));
     if (storage == 0 && (!Integer(item.storage) || item.container != 0)) {
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                             Typed(-1, NumberStorage, 0, item.node), NoValue(), marks);
@@ -3197,14 +3094,6 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
             return Fail(forest, item.node, document, "a constant is not folded yet");
         case .Folded(bits):
             slots.append(ValueLocal(storage));
-            switch OperandCode(forest, text, document, constants, names, package, item.node, storage, ops,
-                               at.slot + 1) {
-                case .Failed(diagnostic):
-                    return Step.Failed(diagnostic);
-                case .Emitted(operand_code, operand_slots):
-                    code.extend(operand_code);
-                    slots.extend(operand_slots);
-            }
             code.append(ConstantCode(ops, storage, bits, at.slot, forest[item.node]));
             if (NumberLiteral(forest, item.node)) {
                 code.extend(LiteralWatch(forest, ops, at.slot, storage, item.node));

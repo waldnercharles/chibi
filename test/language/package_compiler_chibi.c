@@ -7873,7 +7873,7 @@ static bool append_sample_alike(const sample *s, bool writing)
 }
 /* A folded conversion keeps stage zero's points and watches for each
  * argument it converts, innermost first. */
-TEST_CASE(package_compiler_folds_constant_operands_as_stage_zero_does)
+TEST_CASE(package_compiler_folds_constants_as_stage_zero_does)
 {
     REQUIRE(prepare());
     const char *identity = "behaviors/Nested.chibi";
@@ -11526,7 +11526,7 @@ void test_language_package_compiler_chibi_libraries()
     RUN_TEST_CASE(package_compiler_resolves_library_array_updates);
     RUN_TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions);
     RUN_TEST_CASE(package_compiler_rejects_invalid_library_closures);
-    RUN_TEST_CASE(package_compiler_folds_constant_operands_as_stage_zero_does);
+    RUN_TEST_CASE(package_compiler_folds_constants_as_stage_zero_does);
     RUN_TEST_CASE(package_compiler_preserves_receiver_before_writing_item);
     RUN_TEST_CASE(package_compiler_preserves_pure_reversed_append_debug);
     pu_clear_setup();

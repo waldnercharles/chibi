@@ -2,7 +2,8 @@ package scalar_facts
 
 // Internal opt-in owned result for one source document holding a bounded,
 // acyclic set of ordinary pure functions over numbers and bool. A function's
-// body is locals, assignments, if statements and returns. Values and
+// body is locals, assignments, if statements, while loops, loops over int
+// ranges, breaks, continues and returns. Values and
 // conditions are literals, variables, arithmetic, shifts, conversions,
 // comparisons, logic and direct calls of functions of the set, whose
 // operands are such expressions. This is not a general IR, and no
@@ -21,10 +22,11 @@ package scalar_facts
 //   declaration range;
 // - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
 // - its body's statement rows in source order, each with its statement's
-//   range. The body ends in a terminating statement: a return, or an if
-//   statement with an else whose two branches end in terminating statements.
-//   Statements after a terminating one are still recorded, though they never
-//   run.
+//   range. The body ends in a terminating statement: a return, an if
+//   statement with an else whose two branches end in terminating statements,
+//   or a while loop whose condition is the literal true and whose own body
+//   has no break. Statements after a terminating one are still recorded,
+//   though they never run.
 // The statements:
 // - a Local row declares variable `value` of `type`, its `name`, and its
 //   `count` operand rows follow, its initial value. The variables are the
@@ -37,10 +39,24 @@ package scalar_facts
 //   its alternative, and the alternative's statements, then an End row with
 //   the If row's range. An else-if is an Else row whose one statement is an
 //   If;
+// - a While row is followed by its `count` condition operands, then the
+//   statements of its body, then an End row with the While row's range. The
+//   condition runs before each pass;
+// - a For row declares variable `value`, an int named `name`, and its
+//   `count` operands follow: its first bound's, then its last bound's, each
+//   an int, run once before the loop. Its `literal` is the sum of
+//   RangeExclusive for `..<` and RangeReverse for `for <`. The statements of
+//   its body follow, then an End row with the For row's range. The variable
+//   takes each value from the first bound up to the last, the last itself
+//   only for `..`, or the same values from the last down, and the body cannot
+//   assign it. A bound evaluated once cannot change, so neither end wraps;
+// - a Break or Continue row leaves, or ends the pass of, the innermost loop
+//   it is in. It has no operands;
 // - a Return row is followed by its `count` operands, the returned value.
 // A variable is visible from the end of its declaration to the end of the
-// statements it is declared among; locals of a consequence or alternative
-// are not visible after it.
+// statements it is declared among; locals of a consequence, an alternative
+// or a loop body are not visible after it, and a For row's variable is
+// visible only in its body.
 //
 // Operand rows are in evaluation order, each after the operands it consumes:
 // a Literal's `literal` is its value, or 0 and 1 for false and true, and a
@@ -103,6 +119,10 @@ pub AssignRow: int : 15;
 pub ElseRow: int : 16;
 pub EndRow: int : 17;
 pub LogicalRow: int : 18;
+pub WhileRow: int : 19;
+pub ForRow: int : 20;
+pub BreakRow: int : 21;
+pub ContinueRow: int : 22;
 
 // The scalar types: int and bool, then the other integer types, then the
 // floating ones. The facts carry no compiler storage ordinal.
@@ -153,6 +173,10 @@ pub Not: int : 3;
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
+
+// A For row's range flags.
+pub RangeExclusive: int : 1;
+pub RangeReverse: int : 2;
 
 // Conversions between integer types: `T(value)` clamps the value to T, and
 // `T(wrap: value)` keeps its low bits. A floating value converts to an

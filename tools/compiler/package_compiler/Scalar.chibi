@@ -11,17 +11,18 @@ import strings "core:strings"
 // ordinary compiler's decisions, not a second parser or evaluator. The checks
 // here only reject forms the bounded subset cannot express: every function
 // takes and returns numbers or bool, and its body is locals, assignments, if
-// statements, with else and else-if, and returns, ending in a terminating
-// statement as stage zero requires. Values and conditions are literals,
+// statements, with else and else-if, while loops, loops over int ranges,
+// breaks, continues and returns, ending in a terminating statement as stage
+// zero requires. Values and conditions are literals,
 // variables, arithmetic and shifts, comparisons of two numbers or two bools,
 // `&&`, `||` and `!`, conversions between number types or direct calls of
 // functions of the same source, with such operands, in any parentheses. Each
 // operand has the type the ordinary compiler gives it and converts as it
 // converts it: an integer beside a floating value becomes one, a float beside
 // a double, passed for a double or returned as one becomes a double, and an
-// integer returned, assigned or declared as a wider one widens. Loops,
-// switches, other statements, attributes, imports, defaults and recursion
-// are excluded.
+// integer returned, assigned or declared as a wider one widens, and so does
+// a range bound. Loops over arrays, switches, other statements, attributes,
+// imports, defaults and recursion are excluded.
 //
 // Each body must also pass EmitBody with no effects, host calls or roots,
 // and no cells but its calls' argument and result cells. Its calls go only to
@@ -620,23 +621,54 @@ ScalarBlock :: (forest: snapshot.SnapshotNode[], block: int, mark: int) -> Scala
     }
     return work;
 }
-// Whether `node` is a terminating statement, as stage zero requires at the
-// end of a function with a result: a return, a block that ends in one, or an
-// if statement with an else whose branches both end in one.
-ScalarEnds :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    if (Is(forest, node, "return_statement")) {
+// Whether a break in `node` leaves the loop `node` is the body of: one not
+// inside a loop of its own.
+ScalarBreaks :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    if (Is(forest, node, "break_statement")) {
         return true;
+    }
+    if (Is(forest, node, "while_statement") || Is(forest, node, "for_statement")) {
+        return false;
     }
     if (Is(forest, node, "if_statement")) {
         alternative := Field(forest, node, "alternative");
-        return alternative >= 0 && ScalarEnds(forest, Field(forest, node, "consequence")) &&
-               ScalarEnds(forest, alternative);
+        return ScalarBreaks(forest, Field(forest, node, "consequence")) ||
+               (alternative >= 0 && ScalarBreaks(forest, alternative));
+    }
+    if (!Is(forest, node, "block")) {
+        return false;
+    }
+    for (member in Members(forest, node)) {
+        if (ScalarBreaks(forest, member)) {
+            return true;
+        }
+    }
+    return false;
+}
+// Whether `node` is a terminating statement, as stage zero requires at the
+// end of a function with a result: a return, a block that ends in one, an if
+// statement with an else whose branches both end in one, or a while loop on
+// the literal true that nothing breaks out of. Stage zero also counts a
+// condition it folds to true; the scalar proof takes only the literal.
+ScalarEnds :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    if (Is(forest, node, "return_statement")) {
+        return true;
+    }
+    if (Is(forest, node, "while_statement")) {
+        condition := Unparenthesized(forest, Field(forest, node, "condition"));
+        return Is(forest, condition, "boolean") && Text(forest, text, condition) == "true" &&
+               !ScalarBreaks(forest, Field(forest, node, "body"));
+    }
+    if (Is(forest, node, "if_statement")) {
+        alternative := Field(forest, node, "alternative");
+        return alternative >= 0 && ScalarEnds(forest, text, Field(forest, node, "consequence")) &&
+               ScalarEnds(forest, text, alternative);
     }
     if (!Is(forest, node, "block") && !Is(forest, node, "callable_body")) {
         return false;
     }
     members := Members(forest, node);
-    return length(members) > 0 && ScalarEnds(forest, members[length(members) - 1]);
+    return length(members) > 0 && ScalarEnds(forest, text, members[length(members) - 1]);
 }
 // The storage of the variable a local declaration declares, as StatementStep
 // types it: its declared type, or its value's storage where its value's
@@ -683,13 +715,16 @@ ScalarAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return ScalarAppend(forest, node, ScalarAt(forest, node, facts.ArithmeticRow, type, operator, 2, ""), output);
 }
 // How a statement's operand rows are built: its value converted from
-// `context` to `storage`, or a compound assignment's combination.
+// `context` to `storage`, a compound assignment's combination, a range's two
+// bounds, or none.
 ScalarPlan :: union {
-    Failed(diagnostic: syntax.Diagnostic) | Converted(value: int, context: int, storage: int) | Compound(storage: int)
+    Failed(diagnostic: syntax.Diagnostic) | Converted(value: int, context: int, storage: int) | Compound(storage: int) |
+    Range(first: int, last: int) | Bare
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
 // as the return step widens it; a local's initial value; an assignment's
-// value; or an if statement's condition. EmitBody has rejected any other
+// value; an if statement's or a while loop's condition; a range loop's
+// bounds; or none for a break or a continue. EmitBody has rejected any other
 // mismatch. ScalarFunction converts the value itself, so a statement adds no
 // frame under the nesting its operands may take.
 ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -702,8 +737,18 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         return ScalarPlan.Converted(value, callable.result, callable.result);
     }
-    if (Is(forest, statement, "if_statement")) {
+    if (Is(forest, statement, "if_statement") || Is(forest, statement, "while_statement")) {
         return ScalarPlan.Converted(Field(forest, statement, "condition"), BoolStorage, BoolStorage);
+    }
+    if (Is(forest, statement, "for_statement")) {
+        first := Field(forest, statement, "first");
+        if (first < 0) {
+            return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof iterates only int ranges"));
+        }
+        return ScalarPlan.Range(first, Field(forest, statement, "last"));
+    }
+    if (Is(forest, statement, "break_statement") || Is(forest, statement, "continue_statement")) {
+        return ScalarPlan.Bare;
     }
     if (Is(forest, statement, "assignment")) {
         destination := Field(forest, statement, "target");
@@ -718,7 +763,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (!Is(forest, statement, "local_declaration")) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
-                                          "scalar proof supports only locals, assignments, if statements and returns"));
+                                          "scalar proof supports only locals, assignments, if statements, loops and returns"));
     }
     storage := ScalarDeclared(forest, text, callables, params, types, callable, names, statement);
     if (ScalarTypeOf(storage) == 0) {
@@ -801,6 +846,20 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             case .Converted(value, context, storage):
                 built = ScalarConvert(forest, text, callables, params, callable, names, value, value, context, storage,
                                       facts.Clamp, operands);
+            case .Range(first_bound, last_bound):
+                // As the range step types them: each bound an int, an
+                // untyped one taking int and a narrower one widening.
+                built = ScalarConvert(forest, text, callables, params, callable, names, first_bound, first_bound,
+                                      IntStorage, IntStorage, facts.Clamp, operands);
+                switch built {
+                    case .Failed(diagnostic):
+                        return ScalarOperands.Failed(diagnostic);
+                    case .Built(first_rows):
+                        built = ScalarConvert(forest, text, callables, params, callable, names, last_bound, last_bound,
+                                              IntStorage, IntStorage, facts.Clamp, first_rows);
+                }
+            case .Bare:
+                built = ScalarOperands.Built(operands);
         }
         switch built {
             case .Failed(diagnostic):
@@ -810,7 +869,38 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         }
         count := length(operands) - first;
         row := ScalarAt(forest, statement, facts.ReturnRow, 0, 0, count, "");
-        if (Is(forest, statement, "if_statement")) {
+        if (Is(forest, statement, "while_statement") || Is(forest, statement, "for_statement")) {
+            mark := length(names);
+            close: ScalarWork = {node: statement, phase: ScalarClose, mark: mark};
+            work.append(close);
+            if (Is(forest, statement, "while_statement")) {
+                row.kind = facts.WhileRow;
+            } else {
+                if (variables - callable.count >= facts.MaxLocals) {
+                    message := format_text("scalar proof admits at most {} locals per function", facts.MaxLocals);
+                    return ScalarOperands.Failed(Diagnose(forest, statement, 0, message));
+                }
+                declared := Field(forest, statement, "name");
+                name := Text(forest, text, declared);
+                row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
+                if (Text(forest, text, Field(forest, statement, "bound")) == "..<") {
+                    row.literal += int64(facts.RangeExclusive);
+                }
+                if (Field(forest, statement, "reverse") >= 0) {
+                    row.literal += int64(facts.RangeReverse);
+                }
+                // As the range step binds it, read-only, for the body alone.
+                binding: Name = {name: name, place: LocalPlace, index: variables, storage: IntStorage, container: 0,
+                                 record: -1, writable: false, node: declared};
+                names.append(binding);
+                variables += 1;
+            }
+            work.extend(ScalarBlock(forest, Field(forest, statement, "body"), mark));
+        } else if (Is(forest, statement, "break_statement")) {
+            row.kind = facts.BreakRow;
+        } else if (Is(forest, statement, "continue_statement")) {
+            row.kind = facts.ContinueRow;
+        } else if (Is(forest, statement, "if_statement")) {
             row.kind = facts.IfRow;
             mark := length(names);
             close: ScalarWork = {node: statement, phase: ScalarClose, mark: mark};
@@ -843,7 +933,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             rows.append(operands[at]);
         }
     }
-    if (!ScalarEnds(forest, body)) {
+    if (!ScalarEnds(forest, text, body)) {
         return ScalarOperands.Failed(Diagnose(forest, body, 0, "Missing return"));
     }
     return ScalarOperands.Built(rows);

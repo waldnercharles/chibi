@@ -76,9 +76,9 @@ pub Convert: int : 29;
 // Module bounds: these are plan bounds, not a source-language acceptance claim.
 MaxFunctions: int : 32;
 MaxParameters: int : 8;
-MaxSlots: int : 128;
-MaxLocals: int : 64;
-MaxCode: int : 512;
+MaxSlots: int : 256;
+MaxLocals: int : 128;
+MaxCode: int : 1024;
 MaxArguments: int : 256;
 
 Index :: (value: int, count: int) -> bool {
@@ -152,6 +152,19 @@ Converts :: (from: int, to: int) -> bool {
     }
     return Integer(to) && (Integer(from) || abi.Floating(from));
 }
+// The instructions control may reach next from `pc` of valid code, whose
+// last instruction cannot fall through.
+Successors :: (code: Instruction[], pc: int) -> int[] {
+    item := code[pc];
+    next: int[] = [];
+    if (item.op == Jump || item.op == Branch) {
+        next.append(item.target);
+    }
+    if (item.op != Jump && item.op != Return && item.op != End) {
+        next.append(pc + 1);
+    }
+    return next;
+}
 // Every scalar slot is single-definition in the shared frontend's code.
 // Check dominance too: an arbitrary branch may not bypass its definition.
 // This check includes every reachable input edge, not just lexical instruction order.
@@ -171,18 +184,46 @@ Dominates :: (code: Instruction[], definition: int, use: int) -> bool {
             return false;
         }
         seen[pc] = true;
-        op := code[pc].op;
-        if (op == Return || op == End) {
-            continue;
-        }
-        if (op == Jump || op == Branch) {
-            pending.append(code[pc].target);
-        }
-        if (op != Jump && pc + 1 < length(code)) {
-            pending.append(pc + 1);
-        }
+        pending.extend(Successors(code, pc));
     }
     return true;
+}
+// Whether every cycle of the control in valid code passes a CHECK, as the
+// runtime's verifier requires: without its CHECKs, control is acyclic, so no
+// loop runs unbounded.
+Checked :: (code: Instruction[]) -> bool {
+    zero: int[] = [0];
+    incoming := resize(zero, length(code));
+    vertices: int = 0;
+    for (pc in 0..<length(code)) {
+        if (code[pc].op != Check) {
+            vertices += 1;
+            for (target in Successors(code, pc)) {
+                if (code[target].op != Check) {
+                    incoming[target] += 1;
+                }
+            }
+        }
+    }
+    ready: int[] = [];
+    for (pc in 0..<length(code)) {
+        if (incoming[pc] == 0 && code[pc].op != Check) {
+            ready.append(pc);
+        }
+    }
+    at: int = 0;
+    while (at < length(ready)) {
+        for (target in Successors(code, ready[at])) {
+            if (code[target].op != Check) {
+                incoming[target] -= 1;
+                if (incoming[target] == 0) {
+                    ready.append(target);
+                }
+            }
+        }
+        at += 1;
+    }
+    return length(ready) == vertices;
 }
 // values[first, first + count), which the caller has bounded.
 Part :: (values: int[], first: int, count: int) -> int[] {
@@ -335,6 +376,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native scalar code falls outside its body");
         }
         pc += 1;
+    }
+    if (!Checked(code)) {
+        return Result.Rejected(base, "native control cycle requires a CHECK");
     }
     pc = 0;
     while (pc < length(code)) {

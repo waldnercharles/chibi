@@ -21,9 +21,12 @@ function is the module's entry and must be `() -> int`. Every function:
 - has a body of locals (`x := EXPR;` or `x: T = EXPR;`), assignments to its
   parameters and locals (`x = EXPR;`, or compound, `x += EXPR;` and the other
   arithmetic and shift operators), if statements with any `else` or
-  `else if`, and returns, at most 32 statements and 16 locals. It ends in a
-  terminating statement, as stage zero requires: a return, or an if
-  statement with an `else` whose branches both end in one; otherwise it is
+  `else if`, `while` loops, `for` loops over an `int` range (`a..b`, `a..<b`,
+  either counted down with `for <`; bounds of a narrower integer type widen),
+  `break`, `continue` and returns, at most 32 statements and 16 locals,
+  counting each loop's index. It ends in a terminating statement, as stage
+  zero requires: a return, an if statement with an `else` whose branches both
+  end in one, or a `while (true)` that no `break` leaves; otherwise it is
   rejected with stage zero's "Missing return". Statements after a return are
   kept, though they never run; any other statement is rejected, reachable or
   not;
@@ -141,8 +144,8 @@ The compiler host passes arrays of flat records, so a module is one array of
 rows: its source, then either one rejection or its document key and each
 function's signature, parameters and statements in source order, each
 followed by its operands in evaluation order; an if statement's rows bracket
-its consequence and any alternative with Else and End rows
-(`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
+its consequence and any alternative with Else and End rows, and a loop's
+body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
 rows own their strings and, once snapshotted, their record shape.
 
 - Across processes, `Run.ps1` passes the producer's exact stdout file as the
@@ -158,7 +161,12 @@ rows own their strings and, once snapshotted, their record shape.
   result type and bool operands. A module with locals, an else and a logical
   gets 18: logical counts, operators and right sides, a `!` of an int, reads
   of a local in its own initializer and out of its block, local and
-  assignment rows, else and end layout and ranges, and return paths.
+  assignment rows, else and end layout and ranges, and return paths. A
+  module of a `for` loop that breaks and an endless `while` loop that
+  continues gets 17: break and continue outside a loop or with fields, an
+  endless loop that breaks or tests false, condition and bound types, index
+  rows, an assignment to the index, reads of it in its bound and after its
+  loop, and loop end and body ranges.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks, callee signatures
@@ -168,11 +176,18 @@ the bound. It does not prove that fabricated rows match their source;
 the caller binds the trusted producer artifact, source bytes and envelope.
 `Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
 `EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
-under budget 1; neither the export name nor the budget comes from source.
-Each variable is a native local, the parameters moved into theirs first. An if
+and each loop head has another, under a budget of 2^20 CHECKs per call;
+neither the export name nor the budget comes from source. An exhausted budget
+traps (provisional until decision D4 settles the native failure model). Each
+variable is a native local, the parameters moved into theirs first. An if
 statement branches into its consequence or jumps past it, and a logical saves
 its left operand in a local that its right operand replaces only on the path
-that evaluates it, as stage one emits it.
+that evaluates it, as stage one emits it. Loops lower as stage one emits
+them: a range's bounds are evaluated once into locals, a reversed exclusive
+range starts at `last - 1` only after `first < last` shows that cannot wrap,
+and an inclusive or reversed range leaves when its index reaches the bound,
+before stepping, so no index wraps. `continue` jumps to a `while` loop's head
+or a `for` loop's step.
 
 ## Native objects
 
@@ -248,6 +263,16 @@ width, `&&`,
 `||`, `!` and `bool` equality on every combination of their operands, and a
 condition mixing them. Each call must give the value C gives on both VMs and
 natively at O0 and O2.
+
+A generated loop module runs each range form on every pair of ends near zero
+and both ends of `int` at most 16 apart, every empty range among them, folding
+the indices into a hash so their order and count show; a range over `byte`
+bounds; a `while` loop that may not run; an endless loop that only a return
+leaves; and nested loops whose `break` and `continue` leave or restart the
+innermost. Each call must give the value C gives on both VMs and natively at
+O0 and O2. A function that never returns fails both VMs at their instruction
+budget and traps natively at O0 and O2 once its loop exhausts the CHECK
+budget.
 
 ## Portable recovery regression
 

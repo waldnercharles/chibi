@@ -34,8 +34,8 @@ interface, or the complete allocation/memory/output/free native island.
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,
-  its `!`. Limits per function are eight parameters, 128 slots, 64 locals,
-  512 body instructions and 256 call arguments. These are plan bounds, not a
+  its `!`. Limits per function are eight parameters, 256 slots, 128 locals,
+  1,024 body instructions and 256 call arguments. These are plan bounds, not a
   source-language acceptance claim.
 - Integer operations never fail, as the language's integer contract says.
   Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.
@@ -62,6 +62,8 @@ interface, or the complete allocation/memory/output/free native island.
   rounding to nearest. An integer reaches `float` only through `double`, as
   the runtime converts it, so a direct integer-to-`float` conversion is
   rejected. Each intrinsic is declared once.
+- Every control cycle must pass a CHECK: without its CHECKs a function's
+  control is acyclic, as the runtime's verifier requires of a loop.
 - An explicit positive CHECK budget is required. Each invocation of each
   function initializes a private counter; every CHECK tests remaining budget before decrementing.
   Budget N admits exactly N CHECKs, not N LLVM/machine instructions. The future

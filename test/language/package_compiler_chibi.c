@@ -5955,8 +5955,14 @@ enum
     SCALAR_ELSE_ROW = 16,
     SCALAR_END_ROW = 17,
     SCALAR_LOGICAL_ROW = 18,
+    SCALAR_WHILE_ROW = 19,
+    SCALAR_FOR_ROW = 20,
+    SCALAR_BREAK_ROW = 21,
+    SCALAR_CONTINUE_ROW = 22,
+    SCALAR_RANGE_EXCLUSIVE = 1,
     SCALAR_MAX_LOCALS = 16,
     SCALAR_MAX_STATEMENTS = 32,
+    SCALAR_MAX_OPERANDS = 64,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2,
     SCALAR_INT8 = 3,
@@ -6038,6 +6044,57 @@ enum
     CONTROL_FINAL = 31,
     CONTROL_FINAL_READ = 32,
     CONTROL_ROWS = (int)(sizeof CONTROL_KINDS / sizeof *CONTROL_KINDS)
+};
+/* Sum sums a for loop's indices until a break, then counts up in an endless
+ * while loop whose continue returns to its head. Sum(3) is 2. */
+static const char
+    LOOP_ROWS_SOURCE[] = "package scalar\n"
+                         "Main :: () -> int { return Sum(3); }\n"
+                         "Sum :: (n: int) -> int {\n"
+                         "    total := 0;\n"
+                         "    for (i in 0..<n) {\n"
+                         "        if (i == 1) { break; }\n"
+                         "        total += i;\n"
+                         "    }\n"
+                         "    while (true) {\n"
+                         "        if (total > 1) { return total; }\n"
+                         "        total += 1;\n"
+                         "        if (total < 0) { continue; }\n"
+                         "    }\n"
+                         "}\n";
+/* The kind of each of LOOP_ROWS_SOURCE's rows, and the rows edited. */
+static const int LOOP_KINDS[] = {
+    SCALAR_SOURCE_ROW,     SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,     SCALAR_LITERAL_ROW,    SCALAR_CALL_ROW,
+    SCALAR_FUNCTION_ROW,   SCALAR_PARAMETER_ROW,  SCALAR_LOCAL_ROW,
+    SCALAR_LITERAL_ROW,    SCALAR_FOR_ROW,        SCALAR_LITERAL_ROW,
+    SCALAR_READ_ROW,       SCALAR_IF_ROW,         SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW,    SCALAR_COMPARE_ROW,    SCALAR_BREAK_ROW,
+    SCALAR_END_ROW,        SCALAR_ASSIGN_ROW,     SCALAR_READ_ROW,
+    SCALAR_READ_ROW,       SCALAR_ARITHMETIC_ROW, SCALAR_END_ROW,
+    SCALAR_WHILE_ROW,      SCALAR_LITERAL_ROW,    SCALAR_IF_ROW,
+    SCALAR_READ_ROW,       SCALAR_LITERAL_ROW,    SCALAR_COMPARE_ROW,
+    SCALAR_RETURN_ROW,     SCALAR_READ_ROW,       SCALAR_END_ROW,
+    SCALAR_ASSIGN_ROW,     SCALAR_READ_ROW,       SCALAR_LITERAL_ROW,
+    SCALAR_ARITHMETIC_ROW, SCALAR_IF_ROW,         SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW,    SCALAR_COMPARE_ROW,    SCALAR_CONTINUE_ROW,
+    SCALAR_END_ROW,        SCALAR_END_ROW,
+};
+enum
+{
+    LOOP_FOR = 10,
+    LOOP_FIRST = 11,
+    LOOP_LAST = 12,
+    LOOP_GUARD = 13,
+    LOOP_BREAK = 17,
+    LOOP_ADD = 19,
+    LOOP_FOR_END = 23,
+    LOOP_WHILE = 24,
+    LOOP_TRUE = 25,
+    LOOP_COUNT_READ = 34,
+    LOOP_CONTINUE = 41,
+    LOOP_WHILE_END = 43,
+    LOOP_ROWS = (int)(sizeof LOOP_KINDS / sizeof *LOOP_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -6175,6 +6232,41 @@ static const malformed_guard MALFORMED_CONTROL[] = {
         EDIT(CONTROL_FINAL, "type", SCALAR_INT),
         EDIT(CONTROL_FINAL, "value", 2) },
       "scalar function can end without returning" },
+};
+static const char LOCAL[] = "invalid scalar local row",
+                  NO_RETURN[] = "scalar function can end without returning";
+static const malformed_guard MALFORMED_LOOPS[] = {
+    /* A continue that breaks out of the endless loop, an endless loop on
+     * false, and a while row that becomes an if statement, which leaves the
+     * continue outside every loop. */
+    { { EDIT(LOOP_CONTINUE, "kind", SCALAR_BREAK_ROW) }, NO_RETURN },
+    { { EDIT(LOOP_TRUE, "literal", 0) }, NO_RETURN },
+    { { EDIT(LOOP_WHILE, "kind", SCALAR_IF_ROW) }, LAYOUT },
+    /* A break with an operand, a type or a value. */
+    { { EDIT(LOOP_BREAK, "count", 1) }, LAYOUT },
+    { { EDIT(LOOP_BREAK, "type", SCALAR_INT) }, SEGMENT },
+    { { EDIT(LOOP_CONTINUE, "value", 1) }, SEGMENT },
+    /* A while condition that is an int and a range bound that is a bool. */
+    { { EDIT(LOOP_TRUE, "type", SCALAR_INT) }, "scalar condition is not one bool" },
+    { { EDIT(LOOP_FIRST, "type", SCALAR_BOOL) }, "scalar range differs from its int bounds" },
+    /* An index that is not the next variable, is not an int, has unknown
+     * flags or no name. */
+    { { EDIT(LOOP_FOR, "value", 5) }, LOCAL },
+    { { EDIT(LOOP_FOR, "type", SCALAR_BOOL) }, LOCAL },
+    { { EDIT(LOOP_FOR, "literal", 4) }, LOCAL },
+    { { { .row = LOOP_FOR, .field = "name", .text = "", .from = -1 } }, LOCAL },
+    /* An assignment to the index, and reads of the index in its own bound
+     * and after its loop. */
+    { { EDIT(LOOP_ADD, "value", 2) }, "scalar assignment differs from its variable" },
+    { { EDIT(LOOP_LAST, "value", 2) }, READ },
+    { { EDIT(LOOP_COUNT_READ, "value", 2) }, READ },
+    /* A loop end of another range, and a body statement that starts inside
+     * the bounds. */
+    { { COPY(LOOP_FOR_END, "end", LOOP_WHILE_END) }, SEGMENT },
+    { { COPY(LOOP_GUARD, "start", LOOP_LAST),
+        COPY(LOOP_GUARD, "line", LOOP_LAST),
+        COPY(LOOP_GUARD, "column", LOOP_LAST) },
+      SEGMENT },
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
@@ -6346,6 +6438,19 @@ static bool widened_rows(const pin_value *rows)
     }
     return true;
 }
+/* LOOP_ROWS_SOURCE's for row: an exclusive range over int bounds that
+ * declares i, Sum's third variable. */
+static bool looped_rows(const pin_value *rows)
+{
+    pin_value *row = guard_row(rows, LOOP_FOR);
+    REQUIRE(scalar_field(row, "type").i == SCALAR_INT);
+    REQUIRE(scalar_field(row, "value").i == 2);
+    REQUIRE(scalar_field(row, "count").i == 2);
+    REQUIRE(scalar_field(row, "literal").i64 == SCALAR_RANGE_EXCLUSIVE);
+    REQUIRE(retained_text(row, "name", "i"));
+    REQUIRE(scalar_field(guard_row(rows, LOOP_TRUE), "literal").i64 == 1);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -6353,7 +6458,8 @@ static bool widened_rows(const pin_value *rows)
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2];
+    pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
+        looped[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -6388,6 +6494,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             &detached,
             &controlled[b]
         ));
+        args[2] = text(LOOP_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &looped[b])
+        );
     }
     compiler_fixture_free(&fixture);
     arena_free(&input);
@@ -6461,6 +6571,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_CONTROL,
             (int)(sizeof MALFORMED_CONTROL / sizeof *MALFORMED_CONTROL)
         ));
+        REQUIRE(looped_rows(&looped[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &looped[b],
+            LOOP_KINDS,
+            LOOP_ROWS,
+            MALFORMED_LOOPS,
+            (int)(sizeof MALFORMED_LOOPS / sizeof *MALFORMED_LOOPS)
+        ));
     }
     return true;
 }
@@ -6480,6 +6599,8 @@ enum
     NATIVE_MOD = 11,
     NATIVE_NEG = 12,
     NATIVE_NE = 24,
+    NATIVE_BRANCH = 25,
+    NATIVE_JUMP = 26,
     NATIVE_CHECK = 27,
     NATIVE_CALL = 28,
     NATIVE_CONVERT = 29
@@ -6769,6 +6890,29 @@ static bool native_rejects_cycles(int b)
     REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
+/* A loop whose back edge skips the entry CHECK is rejected; pointing it at
+ * the CHECK makes every cycle pass one. */
+static bool native_cycles_need_checks(int b)
+{
+    native_code loop[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .literal = 1 },
+        { .op = NATIVE_BRANCH, .target = 4 },
+        { .op = NATIVE_JUMP, .target = 1 },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1 },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 2, 0, 7, 0, 0 } };
+    static const int slots[] = { NATIVE_BOOL, NATIVE_INT };
+    native_module m = { one, 1, NULL, 0, slots, 2, loop, 7, NULL, 0 };
+    REQUIRE(native_rejects(b, &m, "native control cycle requires a CHECK"));
+    loop[3].target = 0;
+    const pin_union *value;
+    REQUIRE(native_emit(b, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    return true;
+}
 /* Returns float(d) for d, a double NaN with a payload: s0 is 1.5f, s2 widens
  * it, s3 compares it with d, s4 and s5 convert d and s2 to int, s6 narrows d
  * and s7 converts s0 to byte. */
@@ -6906,6 +7050,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_rejects_cycles(b));
+        REQUIRE(native_cycles_need_checks(b));
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));
     }
@@ -9388,6 +9533,323 @@ static bool control_agrees(const char *directory)
     return true;
 }
 
+/* Every loop form: ranges up and down, inclusive and exclusive, to the ends
+ * of int and over byte bounds; a while loop with a condition, an endless one
+ * that only a return leaves, nested loops whose break and continue leave or
+ * restart the innermost, and an outer break and continue that pass over an
+ * inner loop. Each range folds its indices into a hash, so
+ * their order and count both show. */
+static const char LOOP_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Up(0, 5) + Nested(3); }\n"
+         "Up :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for i in a..<b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "Through :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for i in a..b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "Down :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for < i in a..<b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "DownThrough :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for < i in a..b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "Bytes :: (a: byte, b: byte) -> int {\n"
+         "    sum := 0;\n"
+         "    for i in a..<b { sum += i; }\n"
+         "    return sum;\n"
+         "}\n"
+         "Halve :: (n: int) -> int {\n"
+         "    steps := 0;\n"
+         "    while (n > 1) {\n"
+         "        n /= 2;\n"
+         "        steps += 1;\n"
+         "    }\n"
+         "    return steps;\n"
+         "}\n"
+         "Collatz :: (n: int) -> int {\n"
+         "    steps := 0;\n"
+         "    while (true) {\n"
+         "        if (n <= 1) { return steps; }\n"
+         "        if (n % 2 == 0) { n /= 2; } else { n = 3 * n + 1; }\n"
+         "        steps += 1;\n"
+         "    }\n"
+         "}\n"
+         "Outer :: (n: int) -> int {\n"
+         "    h := 0;\n"
+         "    for i in 0..<n {\n"
+         "        if (i % 3 == 0) { continue; }\n"
+         "        if (i > 7) { break; }\n"
+         "        j := 0;\n"
+         "        while (j < i) { j += 1; }\n"
+         "        h = h * 5 + j;\n"
+         "    }\n"
+         "    return h;\n"
+         "}\n"
+         "Nested :: (n: int) -> int {\n"
+         "    h := 0;\n"
+         "    for i in 0..<n {\n"
+         "        if (i == 2) { continue; }\n"
+         "        j := 0;\n"
+         "        while (j < n) {\n"
+         "            j += 1;\n"
+         "            if (j == 3) { continue; }\n"
+         "            if (j > i + 2) { break; }\n"
+         "            h = h * 7 + i * 10 + j;\n"
+         "        }\n"
+         "        if (h > 100000) { break; }\n"
+         "    }\n"
+         "    return h;\n"
+         "}\n";
+static int32_t loop_hash(int32_t h, int64_t i)
+{
+    return (int32_t)((uint32_t)h * 31u + (uint32_t)i);
+}
+/* What LOOP_SOURCE's functions give, as C computes them with the integer
+ * contract. Indices are int64, so no C loop wraps at an end of int. */
+static int64_t loop_int(const char *function, int64_t a, int64_t b)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b, h = 7;
+    if (!strcmp(function, "Up")) {
+        for (int64_t i = x; i < y; i++) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "Through")) {
+        for (int64_t i = x; i <= y; i++) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "Down")) {
+        for (int64_t i = (int64_t)y - 1; i >= x; i--) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "DownThrough")) {
+        for (int64_t i = y; i >= x; i--) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "Bytes")) {
+        return a < b ? (b - a) * (a + b - 1) / 2 : 0;
+    }
+    int32_t steps = 0;
+    if (!strcmp(function, "Halve")) {
+        for (; x > 1; x /= 2) {
+            steps++;
+        }
+        return steps;
+    }
+    if (!strcmp(function, "Collatz")) {
+        for (; x > 1; steps++) {
+            x = x % 2 == 0 ? x / 2 : total(7, total(9, 3, x), 1);
+        }
+        return steps;
+    }
+    uint32_t hash = 0;
+    if (!strcmp(function, "Outer")) {
+        for (int64_t i = 0; i < x; i++) {
+            if (i % 3 == 0) {
+                continue;
+            }
+            if (i > 7) {
+                break;
+            }
+            hash = hash * 5u + (uint32_t)i;
+        }
+        return (int32_t)hash;
+    }
+    assert(!strcmp(function, "Nested"));
+    for (int64_t i = 0; i < x; i++) {
+        if (i == 2) {
+            continue;
+        }
+        for (int64_t j = 1; j <= x; j++) {
+            if (j == 3) {
+                continue;
+            }
+            if (j > i + 2) {
+                break;
+            }
+            hash = hash * 7u + (uint32_t)(i * 10 + j);
+        }
+        if ((int32_t)hash > 100000) {
+            break;
+        }
+    }
+    return (int32_t)hash;
+}
+/* The entry, each range function on every pair of RANGE_ENDS at most 16
+ * apart, which includes every empty range, Bytes on every pair of bytes, and
+ * the while loops on their samples. */
+static int loop_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const char *const RANGES[] = { "Up", "Through", "Down", "DownThrough" };
+    static const int64_t RANGE_ENDS[] = {
+        INT32_MIN, INT32_MIN + 1, INT32_MIN + 3, -3,       -1, 0, 1,
+        5,         INT32_MAX - 3, INT32_MAX - 1, INT32_MAX
+    };
+    static const int64_t BYTES[] = { 0, 1, 85, 127, 128, 200, 255 };
+    static const struct
+    {
+        const char *function;
+        int64_t samples[11];
+    } WHILES[] = {
+        { "Halve", { INT32_MIN, -1, 0, 1, 2, 3, 1024, 1025, INT32_MAX } },
+        { "Collatz", { INT32_MIN, -5, 0, 1, 2, 3, 6, 7, 27, 97, 871 } },
+        { "Nested", { INT32_MIN, -1, 0, 1, 2, 3, 4, 5, 8, 20 } },
+        { "Outer", { INT32_MIN, 0, 1, 2, 4, 5, 8, 9, 12, 100 } },
+    };
+    static const int WHILE_SAMPLES[] = { 9, 11, 10, 10 };
+    int count = 0, ends = (int)(sizeof RANGE_ENDS / sizeof *RANGE_ENDS);
+    calls[count++] = (scalar_call){
+        .probe = { "loop", "Main", 0, { 0 }, loop_int("Up", 0, 5) + loop_int("Nested", 3, 0) }
+    };
+    for (int f = 0; f < 4; f++) {
+        for (int i = 0; i < ends; i++) {
+            for (int j = 0; j < ends; j++) {
+                if (RANGE_ENDS[j] - RANGE_ENDS[i] > 16) {
+                    continue;
+                }
+                int64_t a = RANGE_ENDS[i], b = RANGE_ENDS[j];
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = (scalar_call){
+                    .probe = { "loop", RANGES[f], 2, { a, b }, loop_int(RANGES[f], a, b) }
+                };
+            }
+        }
+    }
+    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
+        for (int j = 0; j < (int)(sizeof BYTES / sizeof *BYTES); j++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = (scalar_call){
+                .probe = { "loop",
+                           "Bytes",
+                           2,
+                           { BYTES[i], BYTES[j] },
+                           loop_int("Bytes", BYTES[i], BYTES[j]) }
+            };
+        }
+    }
+    for (int f = 0; f < (int)(sizeof WHILES / sizeof *WHILES); f++) {
+        for (int i = 0; i < WHILE_SAMPLES[f]; i++) {
+            int64_t n = WHILES[f].samples[i];
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = (scalar_call){
+                .probe = { "loop",
+                           WHILES[f].function,
+                           1,
+                           { n },
+                           loop_int(WHILES[f].function, n, 0) }
+            };
+        }
+    }
+    return count;
+}
+/* Loops, break and continue run natively as C and both VMs give them. */
+static bool loops_agree(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = loop_calls(calls);
+    bool agreed = width_module_agrees(directory, 1, "loop", LOOP_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+/* A function at the facts bounds whose loops take the most native slots:
+ * eight parameters, SCALAR_MAX_LOCALS reversed exclusive ranges of 13 slots
+ * each, then an assignment of a logical chain that fills the remaining
+ * operands, then a return, 248 of llvm_native's 256 slots. Its native
+ * lowering must still fit llvm_native's tables. */
+static bool widest_loops_agree(const char *directory)
+{
+    char source[2048];
+    int at = snprintf(
+        source,
+        sizeof source,
+        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, 0, "
+        "0, 0); }\n"
+        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, h: "
+        "int) -> int {\n"
+    );
+    for (int i = 0; i < SCALAR_MAX_LOCALS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    for < i in a..<b {}\n");
+    }
+    /* Each range has two operands, the chain 2k - 1 for k reads of c, and the
+     * return one. */
+    at += snprintf(source + at, sizeof source - (size_t)at, "    c = c");
+    for (int i = 1; i < (SCALAR_MAX_OPERANDS - 2 * SCALAR_MAX_LOCALS) / 2; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, " && c");
+    }
+    snprintf(source + at, sizeof source - (size_t)at, ";\n    return a;\n}\n");
+    scalar_call call = { .probe = { "widest", "Main", 0, { 0 }, 1 } };
+    REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));
+    return true;
+}
+/* Spin never returns. Both VMs fail its call at their instruction budget, and
+ * natively its loop head's CHECK exhausts the call's budget and traps, at O0
+ * and O2, well before the call's deadline. */
+static const char SPIN_SOURCE[] = "package scalar\n"
+                                  "Main :: () -> int { return 0; }\n"
+                                  "Spin :: (n: int) -> int {\n"
+                                  "    while (true) { n += 1; }\n"
+                                  "}\n";
+static bool endless_loops_trap(const char *directory)
+{
+    pin_value rows;
+    REQUIRE(collected_rows(0, "spin", text(SPIN_SOURCE), &rows));
+    char *ir, *adapter = xmalloc(1);
+    *adapter = 0;
+    REQUIRE(emitted_ir(0, &rows, &ir));
+    REQUIRE(ir && append_adapter(&rows, "Spin", &adapter));
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(0, (pin_string){ SPIN_SOURCE, strlen(SPIN_SOURCE) }, &closure, &length));
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(vm_load(closure, length, backend));
+        compiler_host_invoke(
+            host,
+            script_catalog_id("package-symbol", "project:scalar:1:Spin:callable"),
+            "[0]",
+            3,
+            TARGET_BUDGET,
+            &result
+        );
+        int status = result.flow_status;
+        free(result.json);
+        result = (compiler_host_result){ 0 };
+        compiler_host_free(host);
+        host = NULL;
+        REQUIRE(status == FLOW_ERR_STEP_BUDGET);
+    }
+    free(closure);
+    for (int level = 0; level < 2; level++) {
+        char library[PATH_MAX];
+        REQUIRE(native_library(directory, "spin", ir, adapter, level * 2, false, library));
+        scalar_call call = { .probe = { "spin", "Spin", 1, { 0 }, 0 },
+                             .symbol = "probe_Spin" };
+        chibi_process_capture_result
+            trapped = library_calls(directory, library, &call, 1, 2, CALLS_SECONDS);
+        REQUIRE(trapped.error == CHIBI_PROCESS_OK && trapped.status == -SIGILL);
+    }
+    free(adapter);
+    free(ir);
+    arena_free(&detached);
+    return true;
+}
+
 /* A function of `locals` locals, then `assignments` assignments, then a
  * return: one statement each. */
 static void bounded_source(char *source, size_t size, int locals, int assignments)
@@ -9737,7 +10199,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
     agreed = agreed && folded_sources_agree(directory) &&
              folded_overflow_rejected() && widths_agree(directory) &&
              floats_agree(directory) && control_agrees(directory) &&
-             statement_bounds_agree();
+             statement_bounds_agree() && loops_agree(directory) &&
+             widest_loops_agree(directory) && endless_loops_trap(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

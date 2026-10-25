@@ -184,7 +184,8 @@ TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Valu
 // authored await returns its declared values; handle await returns the typed
 // success-or-Cancelled union supplied by TaskResults.
 TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-             params: Param[], types: TypeDecl[], names: Name[], package: int, values: Value[], top: int,
+             natives: ResolvedNative[], params: Param[], types: TypeDecl[], names: Name[], package: int,
+             values: Value[], top: int,
              item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     kind := forest[item.node].kind;
     if (kind == "yield_statement") {
@@ -203,7 +204,7 @@ TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(Resume(item.node, phase, 0, 0));
         } else {
             value := Unparenthesized(forest, Field(forest, item.node, "value"));
-            if (Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, names, package, value) < 0) {
+            if (Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, natives, names, package, value) < 0) {
                 callee := Field(forest, value, "function");
                 if (Is(forest, callee, "identifier") && NameMatches(Text(forest, text, callee), "Delay")) {
                     arguments := Members(forest, Field(forest, value, "arguments"));
@@ -233,7 +234,7 @@ TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     awaited := Unparenthesized(forest, Field(forest, item.node, "value"));
     value := values[top - 1];
-    if (Is(forest, awaited, "call_expression") && CalledFunction(forest, text, callables, names, package, awaited) >= 0) {
+    if (Is(forest, awaited, "call_expression") && CalledFunction(forest, text, callables, natives, names, package, awaited) >= 0) {
         return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
     }
     if (!Single(value, TaskStorage) || value.record < 0 || value.record >= length(callables)) {

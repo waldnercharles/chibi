@@ -7,11 +7,11 @@
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
- * compiler's module holds about a million records and needs about 222 M units
- * of record-layout work, which a module importing it spends again
- * fingerprinting it. Loading allows each module, and the closure together,
- * this much storage, each module this many records and this much layout work.
- * Its closure, about 20 MB, is returned as a byte[] of that length, so the
+ * compiler's module holds about a million records. A module importing it
+ * spends its record-layout work again fingerprinting it: the asset compiler's
+ * asset_source module needs about 252 M units in all. Loading allows each
+ * module, and the closure together, this much storage, each module this many
+ * records and this much layout work. Its closure, about 23 MB, is returned as a byte[] of that length, so the
  * bootstrap compiles and reads it back with COMPILER_HOST_MAX_ARTIFACT_BYTES.
  * The command-line host's file outputs allow that bound too: --output-artifact
  * writes a validated compiler closure, and --output-bytes writes any byte[]

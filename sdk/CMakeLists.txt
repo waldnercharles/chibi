@@ -192,7 +192,8 @@ target_link_libraries(chibi_value_document PUBLIC chibi_types chibi_asset_values
 add_library(chibi_capabilities STATIC "${CHIBI_SDK_ROOT}/src/capabilities/catalog.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/catalog_snapshot.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/catalog_values.c"
-    "${CHIBI_SDK_ROOT}/src/capabilities/definition.c")
+    "${CHIBI_SDK_ROOT}/src/capabilities/definition.c"
+    "${CHIBI_SDK_ROOT}/src/capabilities/operation.c")
 add_library(Chibi::capabilities ALIAS chibi_capabilities)
 set_target_properties(chibi_capabilities PROPERTIES EXPORT_NAME capabilities)
 chibi_sdk_headers(chibi_capabilities PUBLIC capabilities/catalog.h capabilities/definition.h
@@ -203,10 +204,10 @@ add_library(chibi_execution_contract INTERFACE)
 add_library(Chibi::execution_contract ALIAS chibi_execution_contract)
 set_target_properties(chibi_execution_contract PROPERTIES EXPORT_NAME execution_contract)
 chibi_sdk_headers(chibi_execution_contract INTERFACE execution/host.h execution/status.h
-    execution/service.h execution/log.h execution/instruction.h execution/state.h execution/function.h execution/managed.h
+    execution/service.h execution/log.h execution/instruction.h execution/operation.h execution/state.h execution/function.h execution/managed.h
     execution/diagnostic.h execution/backend.h execution/component.h execution/scalar.h execution/borrow.h
     execution/request.h execution/source_debug.h execution/value_kind.h execution/arguments.h execution/random.h)
-target_link_libraries(chibi_execution_contract INTERFACE chibi_types)
+target_link_libraries(chibi_execution_contract INTERFACE chibi_types chibi_capabilities)
 
 add_library(chibi_native_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/native_capabilities.c"
     "${CHIBI_SDK_ROOT}/src/runtime/native_definitions.c"

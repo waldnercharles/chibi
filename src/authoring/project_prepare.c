@@ -601,7 +601,7 @@ static bool prepare(
         }
         catalog = authoring_sources_source_catalog(sources);
     }
-    if (!authoring_native_graphs_prepare(project.content, sources, fields, error, size)) {
+    if (!authoring_native_graphs_prepare(project.content, sources, catalog, fields, error, size)) {
         goto done;
     }
     native_prepared_context event_context = { .native = options->native };

@@ -173,4 +173,7 @@ Every corpus source then crosses all four producer/consumer VM combinations:
 which must define every function and call each recorded callee. The runner
 only transports, checks identity and requires selected-backend counters with
 no fallback. Rejected sources must publish no raw IR and preserve a prior
-output. Its 180-second budget covers at most 96 sources.
+output. Its finite 240-second total budget covers at most 96 sources (970 child
+invocations), retaining a 120-second per-command limit clamped to the remaining
+time. Deadline failures report completed invocations/crossings and the next
+invocation, including when the corpus has not yet been enumerated.

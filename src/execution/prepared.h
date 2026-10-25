@@ -48,9 +48,9 @@ typedef struct
     bool (*type)(void *, uint64_t id, execution_prepared_type *);
     /* Returns a retained immutable dependency matching the saved fingerprint. */
     execution_module *(*import)(void *, uint64_t id, uint64_t fingerprint);
-    /* Optional bounds for each module read: its decoded storage and its
-     * record-layout validation work. Zero keeps the defaults. */
-    size_t decoded_bytes, layout_work;
+    /* Optional bounds for each module read: its decoded storage, its decoded
+     * records and its record-layout validation work. Zero keeps the defaults. */
+    size_t decoded_bytes, decoded_records, layout_work;
 } execution_prepared_linker;
 /* The header's target ABI: this build's context layout and instruction names at
  * their ordinals. A producer outside C writes it as supplied. */

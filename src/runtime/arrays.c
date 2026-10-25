@@ -528,7 +528,8 @@ static const char *select_owned(arena *storage, const pin_value *inputs, int cou
     const node_host_call NATIVE_ARRAY_##KERNEL##_CALL = { .value = KERNEL##_snapshot,                           \
                                                           .variadic = VARIADIC,                                 \
                                                           .language_values = true,                              \
-                                                          .owned_result = true };
+                                                          .owned_result = true,                                 \
+                                                          .borrows = true };
 #define ADD(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                    \
     const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call, \
                                                    .language_values = true,     \

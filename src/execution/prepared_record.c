@@ -461,8 +461,7 @@ void prepared_value(prepared_context *c, pin_value *v)
                        "requirement";
             return;
         }
-        if (++w->records > EXECUTION_WIRE_MAX_RECORDS) {
-            w->error = "Prepared value nesting or record limit exceeded";
+        if (!execution_wire_record(w)) {
             return;
         }
         int tag = PIN_STRUCT, container = PIN_CONTAINER_SINGLE, fields = 0;

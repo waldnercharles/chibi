@@ -271,6 +271,8 @@ void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
 bool behavior_function_compile_inspection(const behavior_function *function);
+bool behavior_function_compile_scoped(const behavior_function *function);
+void *behavior_function_jit_scoped(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);

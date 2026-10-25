@@ -1081,14 +1081,14 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
     execution_wire_u64(&inspect, &value);
     REQUIRE(value == EXECUTION_PREPARED_VERSION);
     size_t pointer = inspect.offset;
-    /* Modes 3 and 4 bound one module's decoded storage and its record-layout
-     * work below what this module needs. */
-    static const char *const failures[] = { "rebuild prepared code",
-                                            "target ABI",
-                                            "aggregate storage budget",
-                                            "decoded storage limit",
-                                            "layout work limit" };
-    for (int mode = 0; mode < 5; mode++) {
+    /* Modes 3, 4 and 5 bound one module's decoded storage, its record-layout
+     * work and its records below what this module needs. */
+    static const char *const failures[] = {
+        "rebuild prepared code",    "target ABI",
+        "aggregate storage budget", "decoded storage limit",
+        "layout work limit",        "record"
+    };
+    for (int mode = 0; mode < 6; mode++) {
         input = malloc(image_size);
         REQUIRE(input);
         memcpy(input, image, image_size);
@@ -1103,6 +1103,7 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
                                      : EXECUTION_WIRE_MAX_BYTES;
         size_t before = remaining;
         execution_prepared_linker bounded = { .decoded_bytes = mode == 3 ? 1024 : 0,
+                                              .decoded_records = mode == 5 ? 1 : 0,
                                               .layout_work = mode == 4 ? 1 : 0 };
         module = execution_prepared_read_budget(
             input,
@@ -1122,6 +1123,7 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
     size_t remaining = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES;
     execution_prepared_linker generous = {
         .decoded_bytes = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES,
+        .decoded_records = 2 * (size_t)EXECUTION_WIRE_MAX_RECORDS,
         .layout_work = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES
     };
     module = execution_prepared_read_budget(
@@ -1134,6 +1136,33 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
         sizeof error
     );
     REQUIRE(module);
+    return true;
+}
+/* A wire's record bound replaces the default, above it as below it, up to
+ * the largest count. */
+TEST_CASE(wire_record_limit)
+{
+    for (int raised = 0; raised < 2; raised++) {
+        execution_wire w = { .record_limit = raised ? 2 * (size_t)EXECUTION_WIRE_MAX_RECORDS
+                                                    : 0 };
+        int count = EXECUTION_WIRE_MAX_RECORDS;
+        execution_wire_count(&w, &count, 0);
+        REQUIRE(!w.error);
+        REQUIRE(execution_wire_record(&w) == (bool)raised);
+        REQUIRE(!w.error == (bool)raised);
+        afree(w.data);
+    }
+    execution_wire small = { .record_limit = 2 };
+    int count = 3;
+    execution_wire_count(&small, &count, 0);
+    REQUIRE(small.error && strstr(small.error, "record count limit"));
+    afree(small.data);
+    /* The largest bound admits its last record and refuses the next without
+     * wrapping the count. */
+    execution_wire full = { .record_limit = SIZE_MAX, .records = SIZE_MAX - 1 };
+    REQUIRE(execution_wire_record(&full) && !full.error && full.records == SIZE_MAX);
+    REQUIRE(!execution_wire_record(&full) && full.error && full.records == SIZE_MAX);
+    afree(full.data);
     return true;
 }
 TEST_CASE(string_wire_bytes)
@@ -1240,6 +1269,7 @@ TEST_CASE(string_wire_bytes)
 void test_language_record_prepared_runtime()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(wire_record_limit);
     RUN_TEST_CASE(string_wire_bytes);
     RUN_TEST_CASE(record_prepared_scalar_owners);
     RUN_TEST_CASE(record_prepared_array_owners);

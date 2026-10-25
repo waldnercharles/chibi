@@ -82,6 +82,10 @@ typedef struct
      * nested fields. Text bytes and explicit pointer targets may be shared.
      * The runtime adopts these owners; borrowed selections must be copied. */
     bool owned_result;
+    /* Reads its arguments only during the call and returns fresh snapshots
+     * that keep managed pointer identity, so arguments may hold managed
+     * pointers and are not walked at the native boundary. */
+    bool borrows;
 } node_host_call;
 /* Synchronous commands may append deferred host effects, but cannot dispatch
  * graphs, flush structural effects or invalidate behavior/column storage. The

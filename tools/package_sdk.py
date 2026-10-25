@@ -22,22 +22,24 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = Path('share/chibi/package.json')
 CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents', 'input_action'}
-COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'compiler_syntax', 'compiler_json', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
+COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
-NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'project_format', 'scene_authoring', 'asset_authoring', 'model_authoring', 'scenario_document'}
+NATIVE_AUTHORING_TARGETS = {'compiler_syntax', 'compiler_json', 'shader_preparation', 'project_compilation', 'project_format', 'scene_authoring', 'asset_authoring', 'model_authoring', 'scenario_document'}
 DESKTOP_AUTHORING_TARGETS = {'project_preparation', 'model_import'}
 
 
-# Private product tools own their directly linked implementation objects; neither
-# implementation headers nor an independently installed archive enter the SDK.
+# Private tools retain their compiled identity. Build-host implementation objects
+# link directly; the compiler host consumes its separately installed runtime.
 PRIVATE_TOOL_PATHS = {
     'chibi-build-host': 'libexec/chibi/chibi-build-host',
     'chibi-compiler-host': 'libexec/chibi/chibi-compiler-host',
 }
 PRIVATE_OBJECT_OWNERS = {
     'chibi_build_host': 'chibi-build-host',
+}
+PRIVATE_ARCHIVE_OWNERS = {
     'chibi_compiler_host': 'chibi-compiler-host',
 }
 
@@ -557,6 +559,15 @@ def build_identity(build, cache):
             linked = private_executables[owner]['link_inputs']
             if linked.get(name) != evidence['sha256']:
                 raise ValueError(f'Private host object has no installed executable owner: {name}')
+    for target, owner in PRIVATE_ARCHIVE_OWNERS.items():
+        if owner not in allowed_tools:
+            continue
+        owned = [name for name, name_target in archive_targets.items() if name_target == target]
+        if len(owned) != 1:
+            raise ValueError(f'Private tool has no unique runtime archive: {owner}')
+        name = owned[0]
+        if private_executables[owner]['link_inputs'].get(name) != archives[name]:
+            raise ValueError(f'Compiler runtime archive has no installed executable consumer: {name}')
     return {'configured_engine': configured,
             'object_count': len(objects), 'objects': objects, 'archives': archives,
             'private_executables': private_executables,
@@ -597,6 +608,17 @@ def previous_package(output, kind):
     return manifest
 
 
+def host_compiler_components(kind, cache, system):
+    if kind != 'sdk' or cache.get('CHIBI_SDK_BUILD_COMPILER') != 'ON':
+        return set()
+    components = {'compiler_host'} if system in ('Linux', 'Darwin', 'Windows') else set()
+    if cache.get('CHIBI_SDK_HAS_ASSET_COMPILER_HOST') == 'ON':
+        if system not in ('Linux', 'Darwin'):
+            raise ValueError(f'Asset compiler host is unavailable on {system}')
+        components.add('asset_compiler_host')
+    return components
+
+
 def check_exports(stage, kind, cache, build):
     cmake = stage / 'lib/cmake/Chibi'
     config = cmake / 'ChibiConfig.cmake'
@@ -605,12 +627,14 @@ def check_exports(stage, kind, cache, build):
         raise ValueError('Installation has no Chibi CMake package exports')
     target_text = targets_file.read_text()
     targets = set(re.findall(r'add_library\(Chibi::([A-Za-z_0-9]+)\s', target_text))
-    expected = CORE_TARGETS | (COMPILER_TARGETS if kind == 'sdk' else set())
+    system = cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME')
+    host_components = host_compiler_components(kind, cache, system)
+    expected = CORE_TARGETS | (COMPILER_TARGETS if kind == 'sdk' else set()) | host_components
     if kind == 'sdk' or cache.get('CHIBI_SDK_BUILD_NATIVE') == 'ON':
         expected |= VALUE_TARGETS
     if cache.get('CHIBI_SDK_BUILD_NATIVE') == 'ON':
         expected |= NATIVE_TARGETS
-        if cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME') != 'Emscripten' or cache.get('CHIBI_WEB_THREADS') == 'ON':
+        if system != 'Emscripten' or cache.get('CHIBI_WEB_THREADS') == 'ON':
             expected |= {'task_scheduler'}
         if kind == 'sdk':
             expected |= {'studio_catalog'} | NATIVE_AUTHORING_TARGETS
@@ -629,7 +653,7 @@ def check_exports(stage, kind, cache, build):
         if kind == 'runtime' and re.search(r'Chibi::(?:syntax_runtime|language\w*|compiler|authoring|asset_text|asset_kdl)\b|tree.sitter', text, re.I):
             raise ValueError(f'Runtime export contains a compiler/parser dependency: {path.name}')
     includes = stage / 'include/chibi'
-    header_owners = CORE_TARGETS | (COMPILER_TARGETS if kind == 'sdk' else set())
+    header_owners = CORE_TARGETS | (COMPILER_TARGETS if kind == 'sdk' else set()) | host_components
     if kind == 'sdk' or cache.get('CHIBI_SDK_BUILD_NATIVE') == 'ON':
         header_owners |= VALUE_TARGETS
     if cache.get('CHIBI_SDK_BUILD_NATIVE') == 'ON':

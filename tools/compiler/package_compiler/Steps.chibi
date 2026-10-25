@@ -533,8 +533,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 initial.container = local.container;
                 initial.record = local.record;
                 return PointerPrefix(code, slots,
-                    ManagedBoxStep(types, members, initial, name, Field(forest, item.node, "name"),
-                                   1, ops, target, SlotsPast(at, length(slots)), node));
+                                     ManagedBoxStep(types, members, initial, name, Field(forest, item.node, "name"), 1,
+                                                    ops, target, SlotsPast(at, length(slots)), node));
             } else if (Pointer(local.storage, local.container)) {
                 // The local is the cell that holds its own copy, or the value
                 // itself when it is fresh, or when neither it nor what it
@@ -960,8 +960,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     if (kind == "nil" && item.container == ViewContainer) {
         return Fail(forest, item.node, document, "view requires an initialized value");
     }
+    // `nil` where a pointer is expected; `null` for an entity is below.
     if (kind == "nil" && item.storage == PointerStorage) {
-        if (item.storage != PointerStorage || item.container != 0 || item.record < 0 || types[item.record].key == 0) {
+        if (item.container != 0 || item.record < 0 || types[item.record].key == 0) {
             return Fail(forest, item.node, document, "nil requires a nullable pointer type");
         }
         constant := ConstantCode(ops, PointerStorage, 0, at.slot, node);
@@ -1082,12 +1083,16 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         }
         if (binding.place == ManagedPlace) {
             read := ManagedReadStep(types, binding, ops, target, at, node);
-            if (narrowed >= 0) { return PointerNarrow(read, narrowed); }
+            if (narrowed >= 0) {
+                return PointerNarrow(read, narrowed);
+            }
             return read;
         }
         if (binding.place == ReferencePlace || binding.place == BoxPlace) {
             read := PlaceReadStep(binding, ops, target, at, node);
-            if (narrowed >= 0) { return PointerNarrow(read, narrowed); }
+            if (narrowed >= 0) {
+                return PointerNarrow(read, narrowed);
+            }
             return read;
         }
         if (binding.place == LocalPlace || binding.place == StatePlace || binding.place == SelfPlace) {
@@ -1120,7 +1125,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             roots.append(root);
         }
         produced = Typed(at.slot + length(slots) - 1, binding.storage, binding.container, binding.record);
-        if (narrowed >= 0) { produced.record = narrowed; }
+        if (narrowed >= 0) {
+            produced.record = narrowed;
+        }
     } else if (kind == "parenthesized_expression") {
         next.append(Expect(Field(forest, item.node, "expression"), item.storage, item.container, item.record));
     } else if (item.phase == 0 && kind == "member_expression" &&
@@ -1214,8 +1221,8 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (Single(object, PointerStorage)) {
             receiver := forest[Field(forest, item.node, "object")];
             return PointerPrefix([ExpressionCode(ops, receiver)], [],
-                PointerContinue(PointerReadStep(types, object, 1, ops, target, at, receiver),
-                                Resume(item.node, PointerMemberReadPhase, 0, 0)));
+                                 PointerContinue(PointerReadStep(types, object, 1, ops, target, at, receiver),
+                                                 Resume(item.node, PointerMemberReadPhase, 0, 0)));
         }
         if (item.phase == PointerMemberReadPhase && ops.debug) {
             code.append(WatchCode(ops, object.slot, object.storage, object.container, object.record, 0, true,
@@ -1469,7 +1476,9 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
                 field := members[field_index];
                 provided := false;
                 for (given in Members(forest, item.node)) {
-                    if (Text(forest, text, Field(forest, given, "name")) == field.name) { provided = true; }
+                    if (Text(forest, text, Field(forest, given, "name")) == field.name) {
+                        provided = true;
+                    }
                 }
                 if (!provided && (field.storage != PointerStorage || field.record < 0 || types[field.record].key == 0)) {
                     return Fail(forest, item.node, document, "Struct literal needs every field");
@@ -2345,9 +2354,14 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         if ((operator == "==" || operator == "!=") && (Is(forest, left, "nil") || Is(forest, right, "nil"))) {
             nil_node := right;
             value := left;
-            if (Is(forest, left, "nil")) { nil_node = left; value = right; }
+            if (Is(forest, left, "nil")) {
+                nil_node = left;
+                value = right;
+            }
             finish := Resume(item.node, PointerNilPhase, nil_node, 0);
-            if (operator == "!=") { finish.c = 1; }
+            if (operator == "!=") {
+                finish.c = 1;
+            }
             return Step.Emitted([], [], [], [], [], [], [], [], [Visit(value), finish], 0, NoValue(), NoValue(), []);
         }
     }

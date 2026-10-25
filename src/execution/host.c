@@ -252,13 +252,17 @@ void behavior_function_rebind_host(
     }
 }
 
+static bool bound_to(const behavior_data_binding *binding, const node_host_call *call)
+{
+    return binding->invoke == call->invoke && binding->value == call->value &&
+           binding->context == call->context && binding->action == call->action;
+}
 static bool language_values(const behavior_function_host_call *spec, const behavior_data_binding *binding)
 {
     const node_host_call *call = spec->call;
     return call->language_values && call->value && !call->service &&
            spec->capability_abi && binding->capability_abi == spec->capability_abi &&
-           binding->invoke == call->invoke && binding->value == call->value &&
-           binding->context == call->context && binding->action == call->action;
+           bound_to(binding, call);
 }
 const char *behavior_function_host_arguments(behavior_function_context *ctx, int target)
 {
@@ -269,8 +273,10 @@ const char *behavior_function_host_arguments(behavior_function_context *ctx, int
     const node_host_call *canonical = execution_intrinsic_resolve(spec->capability_id);
     if (canonical &&
         spec->capability_abi == execution_intrinsic_abi(spec->capability_id) &&
-        binding->invoke == canonical->invoke && binding->value == canonical->value &&
-        binding->context == canonical->context && binding->action == canonical->action) {
+        bound_to(binding, canonical)) {
+        return NULL;
+    }
+    if (spec->call->borrows && bound_to(binding, spec->call)) {
         return NULL;
     }
     bool language = language_values(spec, binding);

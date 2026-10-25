@@ -68,7 +68,7 @@ typedef struct
     const behavior_function *system_root;
     struct sljit_label *system_loop;
     struct sljit_jump **system_exits;
-    bool countdown, inspected, system_registers;
+    bool countdown, inspected, scoped, system_registers;
 } behavior_machine;
 void behavior_jit_system_enter(behavior_machine *machine);
 void behavior_jit_system_begin(behavior_machine *machine);

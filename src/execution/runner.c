@@ -10,6 +10,57 @@
 #endif
 
 static _Thread_local behavior_run_scope *run_scope;
+static _Thread_local behavior_execution_scope *execution_scope;
+
+const behavior_function_source *behavior_function_failure_source(const behavior_function_context *ctx)
+{
+    const behavior_function *f = ctx ? ctx->source_function : NULL;
+    return f && ctx->error_source >= 0 && ctx->error_source < acount(f->sources)
+             ? &f->sources[ctx->error_source]
+             : NULL;
+}
+
+void behavior_execution_scope_begin(behavior_execution_scope *scope)
+{
+    assert(scope && !scope->active);
+    scope->previous = execution_scope;
+    scope->active = true;
+    execution_scope = scope;
+}
+void behavior_execution_scope_end(behavior_execution_scope *scope)
+{
+    assert(scope && scope->active && execution_scope == scope);
+    execution_scope = scope->previous;
+    scope->previous = NULL;
+    scope->active = false;
+}
+bool behavior_execution_scope_active()
+{
+    return execution_scope != NULL;
+}
+bool behavior_execution_scope_pure()
+{
+    return execution_scope && execution_scope->pure;
+}
+bool behavior_execution_scope_cancelled()
+{
+    return execution_scope && execution_scope->cancelled &&
+           execution_scope->cancelled(execution_scope->user);
+}
+const char *behavior_execution_scope_step()
+{
+    if (!execution_scope) {
+        return NULL;
+    }
+    if (behavior_execution_scope_cancelled()) {
+        return "execution cancelled";
+    }
+    if (!execution_scope->remaining) {
+        return "shared instruction budget exhausted";
+    }
+    execution_scope->remaining--;
+    return NULL;
+}
 
 void behavior_run_scope_begin(behavior_run_scope *scope)
 {
@@ -100,6 +151,11 @@ static int run_compiled(const behavior_function *f, behavior_function_context *c
 
 int behavior_function_run_once(const behavior_function *f, behavior_function_context *ctx, bool compiled)
 {
+    bool scoped = execution_scope && execution_scope->prefer_compiled &&
+                  !execution_scope->pure &&
+                  !behavior_function_inspection_required(f, ctx) &&
+                  behavior_function_compile_scoped(f);
+    compiled &= !behavior_execution_scope_active();
     ctx->source_function = f;
     ctx->source_points = f->source_points;
     ctx->source_watches = f->source_watches;
@@ -115,9 +171,16 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
         ctx->owned_host = true;
     }
     ctx->error_message = behavior_function_value_arguments(ctx);
-    int result = ctx->error_message ? FLOW_ERR_ARGUMENT
-               : compiled           ? run_compiled(f, ctx)
-                                    : behavior_function_run_interpreted(f, ctx);
+    int result;
+    if (ctx->error_message) {
+        result = FLOW_ERR_ARGUMENT;
+    } else if (scoped) {
+        behavior_run_record(EXECUTION_RUN_SLJIT);
+        result = ((int (*)(behavior_function_context *))f->artifact->scoped_code)(ctx);
+    } else {
+        result = compiled ? run_compiled(f, ctx)
+                          : behavior_function_run_interpreted(f, ctx);
+    }
     if (result < 0 && ctx->failure_observer) {
         ctx->failure_observer(f, ctx, result);
     }

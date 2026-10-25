@@ -8357,7 +8357,8 @@ TEST_CASE(program_version_32_ref_calls_mark_resolved_arguments)
     return true;
 }
 /* Version 34 spells ref parameters as pointers, their uses as `^` reads and
- * their arguments as addresses or forwarded pointers. */
+ * their arguments as addresses or forwarded pointers, and reference loops as
+ * `for &item`. */
 TEST_CASE(program_version_33_ref_becomes_pointers)
 {
     static const struct
@@ -8384,6 +8385,10 @@ TEST_CASE(program_version_33_ref_becomes_pointers)
           "row: ^Row, d: ^float u, p: ^^int, o: ^(int?)) { xs^ = "
           "append(xs^, row.x); row.x += xs^[0]; Bump(&row.x); Keep(xs: "
           "xs); d^ += 1; p^^ = 2; } }" },
+        { "L :: library { F :: (items: int[]) { for item : ref in items { "
+          "item += 1 } } }",
+          "L :: library { F :: (items: int[]) { for &item in items { "
+          "item += 1 } } }" },
     };
     char error[256] = { 0 };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
@@ -8401,8 +8406,6 @@ TEST_CASE(program_version_33_ref_becomes_pointers)
     {
         const char *source, *message;
     } refused[] = {
-        { "L :: library { F :: (items: int[]) { for item: ref in items {} } }",
-          "iterates by ref" },
         { "L :: library { F :: (n: ref int) { if true { n := 2; } } }",
           "shadows a ref parameter" },
         { "L :: library { F :: (n: plain ref int) {} }", "another trait" },

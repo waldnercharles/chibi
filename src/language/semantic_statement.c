@@ -1094,6 +1094,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.kind = range ? SCRIPT_STMT_FOR : SCRIPT_STMT_FOREACH;
         result.key_symbol = -1;
         TSNode item_name = script_analyzer_field(node, "name");
+        bool reference_iteration = !ts_node_is_null(script_analyzer_field(node, "reference"));
         result.reverse = !ts_node_is_null(script_analyzer_field(node, "reverse"));
         script_type element;
         if (range) {
@@ -1178,8 +1179,24 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             }
             element = text ? (script_type){ .storage = PIN_STR }
                            : script_catalog_element_type(a->catalog, element);
+            if (reference_iteration) {
+                const script_expression *source = &a->out->expressions[result.expression];
+                const script_symbol *binding = source->kind == SCRIPT_EXPR_SYMBOL &&
+                                                       source->symbol >= 0
+                                                 ? &a->out->symbols[source->symbol]
+                                                 : NULL;
+                if (source->type.container != PIN_CONTAINER_ARRAY || !binding ||
+                    !binding->writable ||
+                    (binding->type.flags & SCRIPT_TYPE_REFERENCE) ||
+                    (binding->kind != SCRIPT_LOCAL && binding->kind != SCRIPT_STATE &&
+                     binding->kind != SCRIPT_SHARED_STATE) ||
+                    result.key_symbol >= 0) {
+                    script_analyzer_diagnostic(a, collection, "Reference iteration requires one item and a mutable owned array binding");
+                }
+                element.flags |= SCRIPT_TYPE_REFERENCE;
+            }
         }
-        result.symbol = script_analyzer_symbol_new(a, item_name, SCRIPT_LOCAL, element, false);
+        result.symbol = script_analyzer_symbol_new(a, item_name, SCRIPT_LOCAL, element, reference_iteration);
         a->loops++;
         result.body = script_analyzer_statement(a, script_analyzer_field(node, "body"));
         a->loops--;

@@ -442,6 +442,38 @@ static void finish_reductions(analyzer *a)
     }
     afree(checked);
 }
+static void finish_reference_iteration(analyzer *a)
+{
+    const script_analysis *out = a->out;
+    for (int i = 0; i < acount(out->statements); i++) {
+        const script_statement *loop = &out->statements[i];
+        if (loop->kind != SCRIPT_STMT_FOREACH || loop->symbol < 0 ||
+            !(out->symbols[loop->symbol].type.flags & SCRIPT_TYPE_REFERENCE) ||
+            loop->body < 0) {
+            continue;
+        }
+        const script_statement *body = &out->statements[loop->body];
+        const script_expression *source = &out->expressions[loop->expression];
+        bool unsafe = (body->effects & (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_HOST |
+                                        SCRIPT_EFFECT_STRUCTURAL)) != 0;
+        for (int j = 0; j < acount(out->expressions); j++) {
+            const script_expression *e = &out->expressions[j];
+            if (e->range.start < body->range.start || e->range.end > body->range.end) {
+                continue;
+            }
+            /* While borrowed, the source can only be reached through item.
+             * Other bindings hold snapshots, not aliases to its mutable bank. */
+            unsafe |= e->kind == SCRIPT_EXPR_SYMBOL && e->symbol == source->symbol;
+            unsafe |= e->kind == SCRIPT_EXPR_CALL &&
+                      (e->effects & SCRIPT_EFFECT_WRITE);
+        }
+        if (unsafe) {
+            script_diagnostic d = { .range = loop->range };
+            snprintf(d.message, sizeof d.message, "Reference iteration cannot suspend, start tasks, call mutating procedures or access its borrowed source binding");
+            apush(a->out->diagnostics, d);
+        }
+    }
+}
 void script_analyzer_finish_effects(analyzer *a)
 {
     script_analysis *out = a->out;
@@ -504,6 +536,7 @@ void script_analyzer_finish_effects(analyzer *a)
         }
     }
     finish_reductions(a);
+    finish_reference_iteration(a);
     const unsigned impure = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND |
                             SCRIPT_EFFECT_RANDOM;

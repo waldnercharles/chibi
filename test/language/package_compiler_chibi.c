@@ -1712,6 +1712,12 @@ static const sample samples[] = {
       .message = "index needs an int",
       .line = 2,
       .column = 39 },
+    { .name = "reference for",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for &x in xs { } "
+                "return 0; }",
+      .message = "`for &item` loops are not supported yet",
+      .line = 2,
+      .column = 29 },
     { .name = "descending range",
       .source = "package facts\nTop :: 3;\nOne :: () -> int { for i in Top..1 "
                 "{ } "

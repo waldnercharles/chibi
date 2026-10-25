@@ -125,15 +125,14 @@ TEST_CASE(iteration_unicode_strings_keep_scalar_values_and_snapshot)
     }
     return true;
 }
-TEST_CASE(iteration_indexed_writes_update_source_and_preserve_copied_alias)
+TEST_CASE(iteration_reference_items_write_source_and_preserve_copied_alias)
 {
     const char
         *source = "Loop :: behavior { sum: retain int = 0; items: retain int[] "
                   "= [2,4,6]; "
-                  "on Run :: () { alias := items; for i in 0..<length(items) { "
-                  "items[i] += 10; "
-                  "if items[i] == 14 { continue; } if items[i] == 16 { break; "
-                  "} } "
+                  "on Run :: () { alias := items; for &item in items { "
+                  "item += 10; "
+                  "if item == 14 { continue; } if item == 16 { break; } } "
                   "for item in alias { sum += item; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -147,6 +146,32 @@ TEST_CASE(iteration_indexed_writes_update_source_and_preserve_copied_alias)
         for (int i = 0; i < 3; i++) {
             REQUIRE(pin_array_get(items->ptr, i).i == 12 + 2 * i);
         }
+    }
+    return true;
+}
+TEST_CASE(iteration_reference_lifetimes_reject_invalidation_and_suspension)
+{
+    const char *sources[] = {
+        "Bad :: behavior { on Run :: () { for &item in [1,2] { item = 3; } "
+        "} }",
+        "Bad :: behavior { on Run :: () { for &item in \"text\" {} } }",
+        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { "
+        "for i, &item in items {} } }",
+        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { for &item "
+        "in items { items = [2]; } } }",
+        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { for &item "
+        "in items { yield; } } }",
+        "Bad :: behavior { items: retain int[] = [1]; Wait :: () { yield; } "
+        "on Run :: () { for &item in items { pending := Wait(); } } }",
+        "Bad :: behavior { items: retain int[] = [1]; Change :: () { items[0] "
+        "= 2; } "
+        "on Run :: () { for &item in items { Change(); } } }",
+    };
+    for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
+        cleanup();
+        syntax = script_parse(sources[i]);
+        analysis = script_analyze(syntax, &catalog);
+        REQUIRE(!syntax->diagnostic_count && !analysis->valid);
     }
     return true;
 }
@@ -288,7 +313,8 @@ void test_language_iteration()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(iteration_array_items_and_indices_keep_snapshot);
     RUN_TEST_CASE(iteration_unicode_strings_keep_scalar_values_and_snapshot);
-    RUN_TEST_CASE(iteration_indexed_writes_update_source_and_preserve_copied_alias);
+    RUN_TEST_CASE(iteration_reference_items_write_source_and_preserve_copied_alias);
+    RUN_TEST_CASE(iteration_reference_lifetimes_reject_invalidation_and_suspension);
     RUN_TEST_CASE(iteration_unicode_intrinsics_reject_invalid_scalars);
     RUN_TEST_CASE(iteration_cursor_provenance_rejects_forged_inputs);
     RUN_TEST_CASE(iteration_cursor_survives_suspension);

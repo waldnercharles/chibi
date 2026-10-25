@@ -138,8 +138,11 @@ static void rewrite(pointer_rewrite *s, TSNode node)
     if (is(node, "type") && !ts_node_is_null(ref_token(node))) {
         rewrite_type(s, node);
     }
+    /* `for item: ref in items` becomes `for &item in items`. */
     if (is(node, "for_statement") && !ts_node_is_null(field(node, "reference"))) {
-        refuse(s, node, "iterates by ref; index the array instead");
+        TSNode name = field(node, "name");
+        edit(s, ts_node_start_byte(name), ts_node_start_byte(name), "&");
+        edit(s, ts_node_end_byte(name), ts_node_end_byte(field(node, "reference")), "");
     }
     if (is(node, "reference_argument") && !forwarded(s, node)) {
         edit(s, ts_node_start_byte(node), ts_node_start_byte(field(node, "value")), "&");

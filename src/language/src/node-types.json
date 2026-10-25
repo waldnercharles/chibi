@@ -2759,6 +2759,16 @@
           }
         ]
       },
+      "reference": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "&",
+            "named": false
+          }
+        ]
+      },
       "reverse": {
         "multiple": false,
         "required": false,

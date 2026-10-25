@@ -515,7 +515,7 @@ module.exports = grammar({
       ),
     _foreach_header: ($) =>
       seq(optional(seq(field("key", $._name), ",")),
-        field("name", $._name),
+        optional(field("reference", "&")), field("name", $._name),
         K.in, field("value", $._expression)),
     switch_statement: ($) =>
       seq(K.switch, field("value", $._expression), "{", repeat($.switch_arm), "}"),

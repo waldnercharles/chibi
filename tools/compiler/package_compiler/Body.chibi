@@ -1861,6 +1861,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
         } else if (kind == "for_statement") {
             if (item.phase == 0) {
+                if (Field(forest, item.node, "reference") >= 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "`for &item` loops are not supported yet"));
+                }
                 stepped = false;
                 code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
                 if (Field(forest, item.node, "first") >= 0) {

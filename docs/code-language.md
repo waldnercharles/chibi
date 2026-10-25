@@ -395,14 +395,16 @@ Example :: library {
 }
 ```
 
-To change the items of an array, write them by index.
+`for &value in scores` changes the items of a mutable owned array: `value`
+names each item itself. The loop cannot take a key, access the source array
+directly or suspend.
 
 ```chibi
 Example :: library {
     Run :: () {
         scores: int[] = [10, 20, 30]
-        for i in 0..<length(scores) {
-            scores[i] += 10
+        for &value in scores {
+            value += 10
         }
     }
 }

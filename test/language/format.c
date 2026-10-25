@@ -1667,7 +1667,7 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
     return true;
 }
 
-TEST_CASE(source_format_generic_types_and_maps)
+TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
 {
     REQUIRE(format(
         "Types::library{Vector::struct($ Element:Type,$ "
@@ -1676,7 +1676,7 @@ TEST_CASE(source_format_generic_types_and_maps)
         "Product::(left:$ L,right:$ R)->ProductType(L,R){return left;}"
         "Use::(){scores:[string:int]=[\"Ada\":1,key:2];empty:[int:int]=[ : ];"
         "delete scores [key];gone:=key not  in scores;kept:=maybe??other??0;"
-        "for item in items{item+=1;}}}"
+        "for & item in items{item+=1;}}}"
     ));
     REQUIRE(strstr(text, "Vector :: struct($Element: Type, $Size: int) {"));
     REQUIRE(strstr(text, "Identity :: (value: $T) -> T => {"));
@@ -1686,7 +1686,7 @@ TEST_CASE(source_format_generic_types_and_maps)
     REQUIRE(strstr(text, "delete scores[key]"));
     REQUIRE(strstr(text, "gone := key not in scores"));
     REQUIRE(strstr(text, "kept := maybe ?? other ?? 0"));
-    REQUIRE(strstr(text, "for item in items {"));
+    REQUIRE(strstr(text, "for &item in items {"));
     return true;
 }
 
@@ -1751,7 +1751,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_aligns_operator_continuations);
     RUN_TEST_CASE(source_format_hugs_struct_braces);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
-    RUN_TEST_CASE(source_format_generic_types_and_maps);
+    RUN_TEST_CASE(source_format_generic_types_maps_and_reference_iteration);
     RUN_TEST_CASE(source_format_preserves_pointer_arguments);
     RUN_TEST_CASE(source_format_authored_prototypes_and_relationships);
     RUN_TEST_CASE(source_format_configures_indentation);

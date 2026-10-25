@@ -303,12 +303,12 @@ bool script_type_numeric(script_type type)
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
-/* Integers widen to integers and to floating types; a floating value
- * becomes an integer only through an explicit conversion. */
+/* Integers widen to integers and to floating types. Float widens to double;
+ * double narrows to float, and floating values become integers, only explicitly. */
 bool script_numeric_implicit(pin_type from, pin_type to)
 {
     if (to > PIN_U64) {
-        return true;
+        return !(from == PIN_F64 && to == PIN_F32);
     }
     return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
 }

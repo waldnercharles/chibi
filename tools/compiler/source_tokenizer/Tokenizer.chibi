@@ -262,7 +262,10 @@ pub Tokenize :: (text: string) -> Tokens {
             kind = Keyword(keywords, names, bytes, start, end);
         } else {
             kind = Pair(c, next);
-            if (kind == GtEq && start + 2 < count && bytes[start + 2] == 62) {
+            if (kind == Ellipsis && ByteAt(bytes, start + 2) == 60) {
+                kind = HalfOpenRange;
+                end = start + 3;
+            } else if (kind == GtEq && start + 2 < count && bytes[start + 2] == 62) {
                 // `>=>` closes type arguments before `=>`.
                 kind = Gt;
             } else if (kind == Ellipsis && start + 2 < count && bytes[start + 2] == 60) {
@@ -338,7 +341,7 @@ pub Tokenize :: (text: string) -> Tokens {
         }
         // A word after `.` is a member name, which can end a statement; an
         // attribute's name cannot.
-        ends := endings[kind] || dereference || (previous == Period && kind >= Package);
+        ends := endings[kind] || dereference || (previous == Period && kind >= Package && kind <= Delete);
         insert = (ends && previous != At) || (kind == CloseBrace && closed == Literal) ||
                  (kind == Colon && label);
         if (kind == Invalid) {

@@ -499,6 +499,7 @@ static const struct
       "xor := value ^ +value\n"
       "F(ref pointer^)\n"
       "}\n" },
+    { "half-open range", "package p\nRange :: () { for i in 0..<9 {} }\n" },
     { "numbers",
       "package p\n"
       "\n"
@@ -696,6 +697,20 @@ static const struct
     expected_token tokens[12];
     lex_error errors[3];
 } CASES[] = {
+    { "0..<9",
+      { { "Integer", 0, 1 }, { "..<", 1, 4 }, { "Integer", 4, 5 }, { ";", 5, 5 }, { "EOF", 5, 5 } },
+      { { 0 } } },
+    { "0..9",
+      { { "Integer", 0, 1 }, { "..", 1, 3 }, { "Integer", 3, 4 }, { ";", 4, 4 }, { "EOF", 4, 4 } },
+      { { 0 } } },
+    { "0.. <9",
+      { { "Integer", 0, 1 },
+        { "..", 1, 3 },
+        { "<", 4, 5 },
+        { "Integer", 5, 6 },
+        { ";", 6, 6 },
+        { "EOF", 6, 6 } },
+      { { 0 } } },
     { "on X { y := 1}",
       { { "on", 0, 2 },
         { "Ident", 3, 4 },

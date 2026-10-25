@@ -1148,13 +1148,18 @@ void script_analyzer_finish_boxes(analyzer *a)
         }
     }
 }
-/* T(value) converts to T. Integer narrowing is EXACT unless the argument is
- * named wrap or clamp. A non-numeric T only supplies the expected type. */
-/* An exact conversion types a literal as T. wrap and clamp read an integer
- * literal as int64, or uint64 above int64, and leave a fraction untyped so the
- * integer check rejects it; other operands give their literals int64. */
+/* T(value) converts to T. Integer narrowing clamps unless the argument is
+ * named wrap, and a constant must fit T. A non-numeric T only supplies the
+ * expected type. */
+/* A conversion to an integer type reads an integer literal, in parentheses
+ * too, as int64, or uint64 above int64. It leaves a fraction untyped, which
+ * wrap rejects and an exact conversion types as T; other operands give their
+ * literals int64. */
 script_type script_analyzer_conversion_operand(const analyzer *a, TSNode value)
 {
+    while (script_analyzer_is(value, "parenthesized_expression")) {
+        value = script_analyzer_field(value, "expression");
+    }
     if (!script_analyzer_is(value, "number")) {
         return (script_type){ .storage = PIN_I64 };
     }
@@ -1168,6 +1173,19 @@ script_type script_analyzer_conversion_operand(const analyzer *a, TSNode value)
     }
     free(text);
     return type;
+}
+/* A literal, or a unary or binary expression, converted to an integer type
+ * from a typed operand. */
+static bool integer_operand(TSNode value, script_type operand, script_type type)
+{
+    while (script_analyzer_is(value, "parenthesized_expression")) {
+        value = script_analyzer_field(value, "expression");
+    }
+    return !(operand.flags & SCRIPT_TYPE_UNTYPED) && type.storage >= PIN_I8 &&
+           type.storage <= PIN_U64 &&
+           (script_analyzer_is(value, "number") ||
+            script_analyzer_is(value, "unary_expression") ||
+            script_analyzer_is(value, "binary_expression"));
 }
 static int conversion(analyzer *a, TSNode node, script_type type)
 {
@@ -1196,11 +1214,10 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     }
     if (script_analyzer_is(value, "named_argument")) {
         TSNode label = script_analyzer_field(value, "name");
-        mode = script_analyzer_text_is(a, label, "wrap")  ? BEHAVIOR_CAST_WRAP
-             : script_analyzer_text_is(a, label, "clamp") ? BEHAVIOR_CAST_CLAMP
-                                                          : BEHAVIOR_CAST_EXACT;
+        mode = script_analyzer_text_is(a, label, "wrap") ? BEHAVIOR_CAST_WRAP
+                                                         : BEHAVIOR_CAST_EXACT;
         if (mode == BEHAVIOR_CAST_EXACT) {
-            script_analyzer_diagnostic(a, label, "A conversion argument may only be named wrap or clamp");
+            script_analyzer_diagnostic(a, label, "A conversion argument may only be named wrap");
         }
         value = script_analyzer_field(value, "value");
     }
@@ -1209,11 +1226,15 @@ static int conversion(analyzer *a, TSNode node, script_type type)
         script_analyzer_diagnostic(a, node, "char converts only with char(value)");
         mode = BEHAVIOR_CAST_EXACT;
     }
-    /* char(literal) checks the literal as the conversion would check it. */
+    /* char(literal) checks the literal as the conversion would check it.
+     * An untyped integer operand converted to an integer type is an int64,
+     * or uint64 beyond it, so a constant outside T does not fit T. */
+    script_type operand = script_analyzer_conversion_operand(a, value);
     script_type literal = character ? (script_type){ .storage = PIN_I64 }
-                        : mode == BEHAVIOR_CAST_EXACT
+                        : mode == BEHAVIOR_CAST_EXACT &&
+                                  !integer_operand(value, operand, type)
                             ? type
-                            : script_analyzer_conversion_operand(a, value);
+                            : operand;
     script_expression result = { .kind = SCRIPT_EXPR_CAST,
                                  .type = type,
                                  .range = script_analyzer_range(a, node),
@@ -1227,7 +1248,7 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     bool integers = numeric && actual.storage <= PIN_U64 && type.storage <= PIN_U64;
     if (mode != BEHAVIOR_CAST_EXACT && !integers &&
         !(actual.flags & SCRIPT_TYPE_ERROR)) {
-        script_analyzer_diagnostic(a, node, "wrap and clamp convert between integer types");
+        script_analyzer_diagnostic(a, node, "wrap converts between integer types");
     }
     if (character && numeric && !integers) {
         script_analyzer_diagnostic(a, node, "char converts from an integer");
@@ -1238,8 +1259,8 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     if (!numeric && !(actual.flags & SCRIPT_TYPE_ERROR)) {
         script_analyzer_diagnostic(a, node, "Conversion requires numeric values or the value's own type");
     }
-    /* A compile-time integer that does not fit is an error, not a runtime trap. */
-    pin_value constant, converted;
+    /* Constant integer conversions are checked with the other constants. */
+    pin_value constant;
     if (character && integers && !script_type_char(actual) &&
         !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant)) {
         uint64_t bits = behavior_scalar_bits(constant);
@@ -1247,20 +1268,6 @@ static int conversion(analyzer *a, TSNode node, script_type type)
         if (negative || bits > 0x10FFFF || (bits >= 0xD800 && bits <= 0xDFFF)) {
             script_analyzer_diagnostic(a, node, "Constant does not fit in char");
         }
-    } else if (
-        integers && mode == BEHAVIOR_CAST_EXACT &&
-        !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant) &&
-        !behavior_scalar_cast(constant, type.storage, mode, &converted)
-    ) {
-        script_analyzer_diagnostic(
-            a,
-            node,
-            "Constant does not fit in %s; use %s(wrap: value) or %s(clamp: "
-            "value)",
-            script_scalar_name(type.storage),
-            script_scalar_name(type.storage),
-            script_scalar_name(type.storage)
-        );
     }
     result.effects = script_analyzer_expr_effects(a, result.left);
     return script_analyzer_expr_add(a, result);

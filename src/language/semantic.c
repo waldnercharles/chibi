@@ -35,6 +35,7 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
         script_analyzer_finish_boxes(a);
         finish_joins(a);
         script_analyzer_finish_bindings(a);
+        script_analyzer_check_constants(a);
     }
     for (int i = 0; i < acount(out->functions); i++) {
         if (out->functions[i].parent >= 0 &&
@@ -61,6 +62,9 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
         script_analyzer_units(a);
         out->diagnostic_count = acount(out->diagnostics);
         out->valid = !out->diagnostic_count;
+    }
+    if (out->valid && !declarations) {
+        script_analysis_fold_constants(out);
     }
     out->warning_count = acount(out->warnings);
     afree(a->initializers);

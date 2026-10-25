@@ -145,7 +145,7 @@ static bool prepare(int index, int previous, int native, behavior_backend backen
         { "/explicit/sdk/core/strings/Strings.chibi", source, strlen(source) },
         { "app/Main.chibi", app, strlen(app) },
     };
-    REQUIRE(files[0].size < 16384 && files[1].size < 4096);
+    REQUIRE(files[1].size < 4096);
     source_package_collection collections[] = { { "core", core } };
     source_package_snapshot_options options = {
         .project_root = root,
@@ -171,6 +171,11 @@ static bool prepare(int index, int previous, int native, behavior_backend backen
         previous >= 0 ? owners[previous] : NULL
     );
     REQUIRE(owners[index]);
+    int document_count = 0;
+    const script_package_document *documents = source_package_snapshot_documents(snapshot, &document_count);
+    REQUIRE(document_count == 2);
+    REQUIRE(strlen(documents[0].syntax->text) == sizeof CORE_STRINGS_SOURCE - 1);
+    REQUIRE(!memcmp(documents[0].syntax->text, CORE_STRINGS_SOURCE, sizeof CORE_STRINGS_SOURCE));
     if (!authoring_packages_valid(owners[index])) {
         const char *error = authoring_packages_error(owners[index]);
         if (error) {

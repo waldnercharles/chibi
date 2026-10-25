@@ -3,6 +3,7 @@
 #include "execution/component.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
+#include "execution/integer_report.h"
 #include "execution/intrinsics.h"
 #include "execution/module_effects.h"
 #include "execution/module_internal.h"
@@ -955,6 +956,9 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             }
             q->row_type = retained;
         }
+        if (execution_integer_reports_enabled()) {
+            behavior_function_report_integers(q->evaluate);
+        }
         behavior_function_prepare_borrows(q->evaluate);
         if (backend != BEHAVIOR_BYTECODE && !behavior_function_compile(q->evaluate)) {
             snprintf(error, size, "query row evaluator emission failed");
@@ -977,6 +981,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
         snprintf(error, size, "query term is not reachable from a verified description");
         return FLOW_ERR_COMPILE;
     }
+    execution_module_plan_report_integers(m);
     for (int i = 0; i < m->query_count; i++) {
         behavior_function *predicate = m->queries[i].predicate;
         behavior_function_prepare_borrows(predicate);

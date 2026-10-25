@@ -179,7 +179,7 @@ script_type script_analyzer_read_type(analyzer *, TSNode, bool signature, char *
 script_type script_analyzer_type_node(analyzer *a, TSNode node);
 /* The type a conversion callee names, or an error type with nothing recorded. */
 script_type script_analyzer_conversion_type(analyzer *a, TSNode node, const char *name);
-/* The type a wrap or clamp conversion reads its operand as. */
+/* The type a wrap conversion reads its operand as. */
 script_type script_analyzer_conversion_operand(const analyzer *, TSNode value);
 script_type script_analyzer_pointer_type(analyzer *, script_type);
 void script_analyzer_invalidate_pointers(analyzer *);
@@ -219,6 +219,8 @@ const script_catalog_capability *script_analyzer_array_method(analyzer *, TSNode
 bool script_analyzer_array_changer(const script_catalog_capability *);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
 script_type script_analyzer_char_operand(script_type operand, script_type other);
+bool script_analyzer_integers_match(script_type, script_type);
+void script_analyzer_mismatched_integers(analyzer *, TSNode, script_type, script_type);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
@@ -281,6 +283,8 @@ void script_analyzer_record_types(analyzer *, TSNode);
 void script_analyzer_record_fields(analyzer *, TSNode);
 bool script_analyzer_compile_time_value(analyzer *, int, int *steps, bool scalar);
 const char *script_analyzer_scalar_constant(analyzer *, int, pin_type, pin_value *);
+void script_analyzer_check_constants(analyzer *);
+void script_analysis_fold_constants(script_analysis *);
 void script_analyzer_union_declarations(analyzer *, TSNode);
 void script_analyzer_union_types(analyzer *, TSNode);
 void script_analyzer_union_fields(analyzer *, TSNode);

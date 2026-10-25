@@ -3,19 +3,24 @@
 
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/module.h"
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module holds about a million records and needs about 113 M units
  * of record-layout work. Loading allows each module, and the closure
  * together, this much storage, each module this many records and this much
- * layout work. Its closure, over 16 MB, is returned as a byte[] of that
- * length; a byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON
- * invocations keep COMPILER_HOST_MAX_BYTES. */
+ * layout work. Its closure, about 20 MB, is returned as a byte[] of that
+ * length. Compiling and reading back a compiler's closure, and the
+ * command-line host's file outputs, which write the authored compilers'
+ * compiled closures, allow COMPILER_HOST_MAX_ARTIFACT_BYTES; every other byte
+ * result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON invocations keep
+ * COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (256u * 1024u * 1024u)
-#define COMPILER_HOST_MAX_OUTPUT_BYTES (32u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_ARTIFACT_BYTES (32u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000
 #define COMPILER_HOST_MAX_DEPTH 64
 #define COMPILER_HOST_MAX_BATCH 64
@@ -74,6 +79,8 @@ bool compiler_host_accepts_byte_entry(compiler_host *, uint64_t entry, int argum
 char *compiler_host_target_json(const compiler_host *, size_t *length);
 char *compiler_host_values_target_json(size_t *length, char *, size_t);
 char *compiler_host_compiler_target_json(size_t *length, char *, size_t);
+/* The artifact's root module, which the host owns, for inspection. */
+const execution_module *compiler_host_root(const compiler_host *);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);
@@ -95,9 +102,10 @@ bool compiler_host_invoke(
 
 /* Exactly one owned primitive byte[] result, copied before runtime teardown.
  * Input and instruction-budget rules match invoke. max_bytes must be in
- * [1, COMPILER_HOST_MAX_OUTPUT_BYTES]. Empty success is {NULL, 0}; every failure also
- * has null/zero output, with a diagnostic and actual execution counts/status.
- * This bounds represented output storage, not all runtime arena allocations. */
+ * [1, COMPILER_HOST_MAX_ARTIFACT_BYTES]. Empty success is {NULL, 0}; every
+ * failure also has null/zero output, with a diagnostic and actual execution
+ * counts/status. max_bytes also bounds represented output storage, not all
+ * runtime arena allocations. */
 bool compiler_host_invoke_bytes(
     compiler_host *,
     uint64_t entry,

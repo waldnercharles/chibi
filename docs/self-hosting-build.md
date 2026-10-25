@@ -255,6 +255,8 @@ natives under `build.`, version 5 runs programs as packages that may import
 needs: `build.replace`, `build.byte_list` and steps of up to 1,023
 arguments. Version 8 uses the validated Chibi compiler generation to compile
 build programs and adds the separate compiler source/core options above.
+Version 9 runs prepared format 21, which that compiler now writes, so an older
+host that cannot load the code it compiled is rebuilt.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
@@ -639,8 +641,13 @@ selection, cache and installed-format contracts do not change.
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
 requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
-an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (32 MiB) octets;
-the CLI uses the upper bound.
+an output limit from 1 through `COMPILER_HOST_MAX_ARTIFACT_BYTES` (32 MiB)
+octets, and the limit also bounds the result's represented storage. In-process
+callers pass `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB), except the compiler
+bootstrap, which compiles and reads back the package compiler's closure of
+about 20 MB. The CLI's `--output-artifact` and `--output-bytes` also pass the
+artifact bound, because they write the authored compiler's compiled closures to
+files, and the asset compiler's is about 18 MB.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
 before releasing runtime storage. Empty success is a null pointer and zero

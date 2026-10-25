@@ -330,19 +330,31 @@ ManagedReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Target, 
 PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: int, ops: Ops,
                      target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     element := PointerElement(types, pointer);
-    if (!Accepts(types, element.storage, element.container, element.record, value)) {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    stored := value;
+    // A narrower integer or a float widens to its target, as ordinary
+    // assignment widens it.
+    if (element.container == 0 && value.container == 0 &&
+        (Widens(value.storage, element.storage) || FloatWidens(value.storage, element.storage))) {
+        code.extend(NumberCode(ops, value.storage, element.storage, value.slot, at.slot, node));
+        slots.append(ValueLocal(element.storage));
+        stored = Typed(at.slot, element.storage, 0, -1);
+    }
+    if (!Accepts(types, element.storage, element.container, element.record, stored)) {
         return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
                             document: -1, message: "assigned value differs from its pointer target"});
     }
-    code := CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, at.slot, node);
-    code.extend(ValueWriteCode(value, at.cell + 1, ops, target, at.slot + 1, node));
+    address := at.slot + length(slots);
+    code.extend(CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, address, node));
+    code.extend(ValueWriteCode(stored, at.cell + 1, ops, target, address + 1, node));
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
-    cells: Cell[] = [PointerCell(pointer.record), TypedCell(value.storage, value.container, value.record),
+    slots.extend([AddressSlot(target), AddressSlot(target)]);
+    cells: Cell[] = [PointerCell(pointer.record), TypedCell(stored.storage, stored.container, stored.record),
                      TypedCell(BoolStorage, 0, -1)];
     host: Host = {intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
-    return Step.Emitted(code, [AddressSlot(target), AddressSlot(target)], [], cells, [host], [], [], [], [],
-                        popped, NoValue(), NoValue(), []);
+    return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], popped, NoValue(), NoValue(), []);
 }
 ManagedAssignStep :: (types: TypeDecl[], binding: Name, value: Value, ops: Ops, target: Target, at: Bases,
                       node: snapshot.SnapshotNode) -> Step {
@@ -509,22 +521,51 @@ PointerCompoundPhase: int : 35;
 ManagedCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                         binding: Name, current: Value, right: Value, item: Work, ops: Ops, target: Target,
                         at: Bases) -> Step {
+    pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+    code := CellRead(PointerStorage, binding.index, ops, target, at.slot, forest[item.node]);
+    slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+    return PointerPrefix(code, slots, PointerCompoundStep(forest, text, document, types,
+                                                          Typed(at.slot + 1, PointerStorage, 0, pointer), current,
+                                                          right, 2, item, ops, target, SlotsPast(at, 2)));
+}
+// `target op= right` writes `current op right` through the pointer. Stage zero
+// reads `current` before it evaluates `right`. Mixed integers reject; a
+// narrower operand widens to the target's type, and narrowing rejects.
+PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                        pointer: Value, current: Value, right: Value, popped: int, item: Work, ops: Ops,
+                        target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
-    if (op < 0 || Comparison(ops, op) || !Numeric(binding.storage) || binding.container != 0 ||
-        !SameType(binding.storage, 0, binding.record, right)) {
-        return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (current.container == 0 && MixedCompoundIntegers(operator, current.storage, right)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(current.storage), TypeName(right.storage)));
     }
     code: Code[] = [];
+    slots: Slot[] = [];
+    operand := right;
+    // A float or narrower operand widens as it does for an ordinary local.
+    if (current.container == 0 && right.container == 0 &&
+        (Widens(right.storage, current.storage) || FloatWidens(right.storage, current.storage))) {
+        code.extend(NumberCode(ops, right.storage, current.storage, right.slot, at.slot, node));
+        slots.append(ValueLocal(current.storage));
+        operand = Typed(at.slot, current.storage, 0, -1);
+    }
+    op := BinaryOp(ops, operator);
+    if (op < 0 || Comparison(ops, op) || !Numeric(current.storage) || current.container != 0 ||
+        !SameType(current.storage, 0, current.record, operand)) {
+        return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
+    }
     if (ops.debug) {
         code.append(WatchCode(ops, current.slot, current.storage, current.container, current.record, 0, true,
                               forest[StatementTarget(forest, item.node)], target));
     }
-    code.append(Instruction(op, binding.storage, at.slot, current.slot, right.slot, -1, node));
-    slots: Slot[] = [{storage: binding.storage, kind: ValueKind}];
-    value := Typed(at.slot, binding.storage, 0, binding.record);
-    return PointerPrefix(code, slots, PointerPopped(ManagedAssignStep(types, binding, value, ops, target,
-                                                                      SlotsPast(at, 1), node), 2));
+    result := at.slot + length(slots);
+    code.append(Instruction(op, current.storage, result, current.slot, operand.slot, -1, node));
+    slots.append(ValueLocal(current.storage));
+    return PointerPrefix(code, slots,
+                         PointerWriteStep(types, pointer, Typed(result, current.storage, 0, current.record),
+                                          popped, ops, target, SlotsPast(at, length(slots)), node));
 }
 PointerLvaluePhase: int : 36;
 PointerAssignPhase: int : 37;
@@ -555,33 +596,17 @@ PointerAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
         if (types[values[top - 1].record].key != 0) {
             return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
         }
-        return Step.Emitted([], [], [], [], [], [], [], [],
-                            [Expect(StatementValue(forest, item.node), element.storage, element.container, element.record),
-                             Resume(item.node, PointerAssignPhase, 0, 1)],
+        value := Expect(StatementValue(forest, item.node), element.storage, element.container, element.record);
+        if (CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))) != "") {
+            read := PointerContinue(PointerReadStep(types, values[top - 1], 0, ops, target, at, node), value);
+            return PointerContinue(read, Resume(item.node, PointerAssignPhase, 0, 2));
+        }
+        return Step.Emitted([], [], [], [], [], [], [], [], [value, Resume(item.node, PointerAssignPhase, 0, 1)],
                             0, NoValue(), NoValue(), []);
     }
-    if (item.b == 1 && CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))) != "") {
-        return PointerContinue(PointerReadStep(types, values[top - 2], 0, ops, target, at, node),
-                               Resume(item.node, PointerAssignPhase, 0, 2));
-    }
     if (item.b == 2) {
-        pointer := values[top - 3];
-        current := values[top - 1];
-        right := values[top - 2];
-        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
-        if (op < 0 || Comparison(ops, op) || !Numeric(current.storage) || current.container != 0 ||
-            !SameType(current.storage, 0, current.record, right)) {
-            return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
-        }
-        code: Code[] = [];
-        if (ops.debug) {
-            code.append(WatchCode(ops, current.slot, current.storage, current.container, current.record, 0, true,
-                                  forest[StatementTarget(forest, item.node)], target));
-        }
-        code.append(Instruction(op, current.storage, at.slot, current.slot, right.slot, -1, node));
-        return PointerPrefix(code, [{storage: current.storage, kind: ValueKind}],
-                             PointerWriteStep(types, pointer, Typed(at.slot, current.storage, 0, current.record),
-                                              3, ops, target, SlotsPast(at, 1), node));
+        return PointerCompoundStep(forest, text, document, types, values[top - 3], values[top - 2],
+                                   values[top - 1], 3, item, ops, target, at);
     }
     return PointerWriteStep(types, values[top - 2], values[top - 1], 2, ops, target, at, node);
 }
@@ -903,8 +928,8 @@ PointerStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
         return PointerParameterStep(types, members, params[first + item.a], values, top, item, ops, target, at, node);
     }
     if (item.phase == PointerCompoundPhase) {
-        return ManagedCompoundStep(forest, text, document, types, names[item.a], values[top - 1],
-                                   values[top - 2], item, ops, target, at);
+        return ManagedCompoundStep(forest, text, document, types, names[item.a], values[top - 2],
+                                   values[top - 1], item, ops, target, at);
     }
     if (item.phase == PointerBridgePhase) {
         pointer := values[top - 1];

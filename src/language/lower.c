@@ -442,20 +442,6 @@ static void store_symbol(lower *, int, int, script_range);
 static int query_context(lower *, script_range);
 static int query_not(lower *, int, script_range);
 static int union_wrap(lower *, int, script_type, script_type, uint64_t, script_range);
-static const char *fit_message(pin_type type)
-{
-    static const char *const messages[] = {
-        [PIN_I8] = "Value does not fit in int8",
-        [PIN_U8] = "Value does not fit in byte",
-        [PIN_I16] = "Value does not fit in int16",
-        [PIN_U16] = "Value does not fit in uint16",
-        [PIN_I32] = "Value does not fit in int",
-        [PIN_U32] = "Value does not fit in uint",
-        [PIN_I64] = "Value does not fit in int64",
-        [PIN_U64] = "Value does not fit in uint64",
-    };
-    return type >= PIN_I8 && type <= PIN_U64 ? messages[type] : NULL;
-}
 static int convert_mode(
     lower *l,
     int slot,
@@ -469,8 +455,8 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
 }
 /* Fails unless the integer is a Unicode scalar, 0 through 0x10FFFF outside
- * the surrogates. As a uint64 a negative value lies above the range, and
- * value - 0xD800 falls below 0x800 only for a surrogate. */
+ * the surrogates. As a uint64 a negative value lies above the range, and the
+ * surrogates are the one 0x800 block starting at 0xD800. */
 static void char_check(lower *l, int slot, pin_type storage, script_range range)
 {
     static const char message[] = "Value does not fit in char";
@@ -500,20 +486,20 @@ static void char_check(lower *l, int slot, pin_type storage, script_range range)
                                          .message = message },
         range
     );
-    int first = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
-    int offset = value_op(
+    int mask = constant(l, (pin_value){ .type = PIN_U64, .u64 = ~(uint64_t)0x7FF }, range);
+    int block = value_op(
         l,
         (
             behavior_function_instruction
-        ){ .op = BF_SUB, .type = PIN_U64, .left = wide, .right = first },
+        ){ .op = BF_BIT_AND, .type = PIN_U64, .left = wide, .right = mask },
         range
     );
-    int count = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x800 }, range);
+    int surrogates = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
     int scalar = value_op(
         l,
         (
             behavior_function_instruction
-        ){ .op = BF_GE, .type = PIN_U64, .left = offset, .right = count },
+        ){ .op = BF_NE, .type = PIN_U64, .left = block, .right = surrogates },
         range
     );
     emit(
@@ -649,11 +635,9 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
     }
     return value_op(
         l,
-        (behavior_function_instruction){ .op = BF_CAST,
-                                         .type = target,
-                                         .left = slot,
-                                         .target = mode,
-                                         .message = fit_message(target) },
+        (
+            behavior_function_instruction
+        ){ .op = BF_CAST, .type = target, .left = slot, .target = mode },
         range
     );
 }
@@ -662,8 +646,8 @@ static const char *range_text(const lower *l, script_range range)
 {
     return l->a->document_count ? l->a->documents[range.document].text : l->a->text;
 }
-/* assert fails the call, as a checked conversion does, with its message or,
- * as Odin's #caller_expression, its condition's source text. */
+/* assert fails the call with its message or, as Odin's #caller_expression,
+ * its condition's source text. */
 static int assertion(lower *l, const script_expression *e)
 {
     int condition = -1;

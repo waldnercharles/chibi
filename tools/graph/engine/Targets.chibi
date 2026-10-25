@@ -250,7 +250,7 @@ Files :: (target: string) -> string[] {
             "src/execution/c.c", "src/execution/call.c", "src/execution/component.c",
             "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
             "src/execution/fusion.c", "src/execution/host.c", "src/execution/inputs.c",
-            "src/execution/intrinsics.c", "src/execution/query.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
+            "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/query.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
             "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
             "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
@@ -494,7 +494,7 @@ Files :: (target: string) -> string[] {
             "src/language/semantic_effects.c", "src/language/semantic_units.c",
             "src/language/semantic_recovery.c", "src/language/semantic_union.c",
             "src/language/semantic_record.c", "src/language/semantic_constant.c",
-            "src/language/constant_proof.c", "src/language/scalar_constant.c",
+            "src/language/constant_proof.c", "src/language/scalar_constant.c", "src/language/numeric.c",
             "src/language/lexical_binding.c", "src/language/nominal_binding.c", "src/language/named_binding.c",
             "src/language/type_constructors.c", "src/language/unit_algebra.c",
             "src/language/signature_reader.c", "src/language/callable_headers.c",
@@ -756,7 +756,7 @@ Files :: (target: string) -> string[] {
             "test/language/signature_fixture.c", "test/language/signature_reader_chibi.c",
             "test/language/callable_headers_chibi.c", "test/language/unit_analysis_chibi.c",
             "test/language/union_members_chibi.c", "test/language/effect_analysis_chibi.c",
-            "test/language/record_members_chibi.c", "test/language/numeric.c", "src/language/numeric.c",
+            "test/language/record_members_chibi.c", "test/language/numeric.c",
             "test/language/effects.c", "test/language/maps.c", "test/language/generic.c",
             "test/language/symbol_references.c", "test/language/packed.c", "test/language/iteration.c",
             "test/language/source_assets.c", "test/language/record_services.c"
@@ -1098,7 +1098,8 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_execution") {
         return [
             "execution/component_write.h", "execution/delay.h", "execution/ecs_reader.h",
-            "execution/function_builder.h", "execution/inspection.h", "execution/intrinsics.h",
+            "execution/function_builder.h", "execution/inspection.h", "execution/integer_report.h",
+            "execution/intrinsics.h",
             "execution/map_intrinsics.h", "execution/module.h", "execution/module_builder.h",
             "execution/prepared.h", "execution/task.h", "execution/update.h"
         ];
@@ -1480,7 +1481,8 @@ pub PrivateHeaders :: (target: string) -> string[] {
         return [
             "language/callable_headers.h", "language/constant_proof.h",
             "language/effect_analysis.h", "language/lexical_binding.h", "language/named_binding.h",
-            "language/nominal_binding.h", "language/record_members.h", "language/scalar_constant.h",
+            "language/nominal_binding.h", "language/numeric.h", "language/record_members.h",
+            "language/scalar_constant.h",
             "language/semantic_internal.h", "language/signature_reader.h",
             "language/type_constructors.h", "language/union_members.h", "language/unit_algebra.h",
             "language/unit_analysis.h"
@@ -3486,7 +3488,7 @@ pub SourceOptions :: (target: string, file: string) -> string[] {
 // test/language/CMakeLists.txt gives them.
 LanguageTestsOverSource :: () -> string[] {
     return [
-        "src/host/process.c", "src/language/numeric.c",
+        "src/host/process.c",
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/binding_benchmark.c",

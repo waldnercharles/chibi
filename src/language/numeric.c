@@ -2,6 +2,7 @@
 
 #include "support/arena.h"
 #include "support/xalloc.h"
+#include "types/scalar.h"
 
 #include <assert.h>
 #include <float.h>
@@ -9,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Source-only private-core draft. No semantic/default/cast-policy wiring. */
 #define LIMBS (SCRIPT_NUMERIC_MAX_BITS / 32)
 #define SCRATCH 16
 
@@ -570,6 +570,22 @@ static const script_number *publish(
     }
     n->published++;
     return out;
+}
+const script_number *script_number_scalar(script_numeric *n, pin_value value, script_numeric_error *e)
+{
+    assert(value.type >= PIN_I8 && value.type <= PIN_U64);
+    if (!script_numeric_visit(n, 0, e)) {
+        return NULL;
+    }
+    uint64_t word = behavior_scalar_bits(value);
+    bool negative = behavior_scalar_signed(value.type) && (int64_t)word < 0;
+    word = negative ? UINT64_C(0) - word : word;
+    magnitude *a = &n->scratch[0], *b = &n->scratch[1];
+    a->words[0] = (uint32_t)word;
+    a->words[1] = (uint32_t)(word >> 32);
+    a->count = 2;
+    trim(a);
+    return publish(n, a, b, SCRIPT_NUMBER_INTEGER, negative, e);
 }
 script_number_kind script_number_kind_read(const script_number *value)
 {

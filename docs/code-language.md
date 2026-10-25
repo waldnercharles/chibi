@@ -92,29 +92,33 @@ Arithmetic uses `+`, `-`, `*`, `/` and `%`. Comparisons use `==`, `!=`, `<`,
 `<=`, `>` and `>=`. Boolean expressions use `&&`, `||` and `!`.
 
 An explicit conversion calls the destination type. Floating-to-integer
-conversion requires a call such as `int(value)`. Integer narrowing checks
-that the value fits. `wrap` keeps the low bits. `clamp` limits the value to the
-integer type's bounds.
+conversion requires a call such as `int(value)`. Integer narrowing clamps a
+value that does not fit to the nearest bound. `wrap` keeps the low bits
+instead.
 
 ```chibi
 Example :: library {
     Run :: () {
         value: int = 300
-        checked := byte(value)        // Fails: 300 does not fit in a byte.
-        wrapped := byte(wrap: value)   // 44
-        limited := byte(clamp: value)  // 255
+        limited := byte(value)        // 255
+        wrapped := byte(wrap: value)  // 44
     }
 }
 ```
 
-Integer arithmetic wraps on overflow. Floating-to-integer conversions truncate
-toward zero, clamp at the bounds, and map NaN to zero.
+No integer operation fails at run time. Arithmetic wraps on overflow. `x / 0`
+is 0 and `x % 0` is `x`. Dividing the signed minimum by -1 wraps to the
+minimum, and its remainder is 0. Floating-to-integer conversions truncate
+toward zero, clamp at the bounds, and map NaN to zero. A development build
+reports each overflow, zero divisor and clamping conversion once per source
+site, and keeps these values.
 
-Integer shifts require a count from zero through one less than the operand's
-bit width. A negative or larger count fails, including inside `T(wrap: value)`.
 Left shifts discard outgoing bits. Signed right shifts extend the sign bit;
-unsigned right shifts insert zeros. The operation uses its resolved operand
-type, even when its result is then converted to a wider type.
+unsigned right shifts insert zeros. A count at or past the operand's bit width
+shifts every bit out: the result is 0, or -1 for a signed right shift of a
+negative value. The count is read as unsigned, so a negative count is past the
+width. The operation uses its resolved operand type, even when its result is
+then converted to a wider type.
 
 A character literal contains one Unicode scalar. A string contains text.
 Runtime strings cannot contain embedded NUL bytes.

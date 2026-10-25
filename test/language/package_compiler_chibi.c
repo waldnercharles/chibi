@@ -990,6 +990,15 @@ static const sample samples[] = {
                  { .function = "Inc", .arguments = "[1]", .expected = "[2]" },
                  { .function = "Count", .arguments = "[]", .expected = "[12]" },
                  { .function = "Moved", .arguments = "[]", .expected = "[1007]" } } },
+    /* Engine array kernels take arrays of managed pointers without retaining
+     * them, so the native argument boundary does not reject or walk them. */
+    { .name = "managed pointer arrays",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Count :: () -> int { x: int = 1; y: int = 2; "
+                "ps: ^int[] = [&x]; ps.append(&y); ps[1]^ = 7; "
+                "return length(ps) * 10 + y; }\n",
+      .calls = { { .function = "Count", .arguments = "[]", .expected = "[27]" } } },
     /* Fixed scalar-result calls exercise aliases, escaping storage,
      * grouped types, widening, aggregate replacement, and one two-node cycle. */
     { .name = "managed pointers",

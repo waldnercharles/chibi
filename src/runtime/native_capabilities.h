@@ -6,6 +6,8 @@
 #include "execution/instruction.h"
 #include "types/type.h"
 
+#include <stddef.h>
+
 /* Kernels and access descriptors have native declaration lifetime. The table
  * owns its copied catalog, service names and result maps. */
 typedef struct
@@ -53,6 +55,10 @@ native_capabilities *native_capabilities_new(
  * native implementation creates a new table. References are thread-confined. */
 native_capabilities *native_capabilities_retain(native_capabilities *);
 void native_capabilities_free(native_capabilities *);
+/* Owned table, arena and vector capacities; borrowed kernel descriptors are
+ * excluded. Canonical allocation bytes, not allocator overhead or process RSS.
+ * Saturates at SIZE_MAX on overflow. */
+size_t native_capabilities_storage_bytes(const native_capabilities *);
 const script_catalog *native_capabilities_catalog(const native_capabilities *);
 /* Process-unique immutable table generation, independent of allocator reuse. */
 uint64_t native_capabilities_generation(const native_capabilities *);

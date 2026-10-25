@@ -1,5 +1,6 @@
 #include "language/semantic.h"
 
+#include "float_conversion_cases.h"
 #include "language/component.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -1902,7 +1903,7 @@ TEST_CASE(language_units_follow_native_signatures_and_task_results)
     native.capabilities = &event;
     native.tick_event = event.id;
     cleanup();
-    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: double) { self.Body.x = Elapsed; } }");
+    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: double) { self.Body.x = float(Elapsed); } }");
     analysis = script_analyze(syntax, &native);
     REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
     measured_source(
@@ -2246,9 +2247,40 @@ TEST_CASE(language_type_patterns_narrow_and_invalidate)
     return true;
 }
 
+TEST_CASE(language_admits_float_conversions)
+{
+    bool agreed = true;
+    for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
+         i++) {
+        const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
+        cleanup();
+        syntax = script_parse(item->source);
+        REQUIRE(syntax->diagnostic_count == 0);
+        script_package_document document = { "facts/Main.chibi", "facts/Main.chibi", syntax };
+        script_package_options options = { .documents = &document,
+                                           .document_count = 1,
+                                           .identity = "project:facts",
+                                           .native = &catalog };
+        analysis = script_analyze_package(&options);
+        if (analysis->valid != item->accepted) {
+            fprintf(
+                stderr,
+                "floating admission %s: expected %s, got %s\n",
+                item->name,
+                item->accepted ? "accepted" : "rejected",
+                analysis->valid ? "accepted" : "rejected"
+            );
+            agreed = false;
+        }
+    }
+    REQUIRE(agreed);
+    return true;
+}
+
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(language_admits_float_conversions);
     RUN_TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches);
     RUN_TEST_CASE(language_cancelled_builtin_cannot_be_shadowed);
     RUN_TEST_CASE(language_switch_exhaustiveness_respects_narrowed_tags);

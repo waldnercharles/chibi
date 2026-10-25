@@ -23,6 +23,7 @@ execution_artifact *execution_artifact_new()
 {
     execution_artifact *artifact = xcalloc(1, sizeof *artifact);
     atomic_init(&artifact->inspection_state, 0);
+    atomic_init(&artifact->scoped_state, 0);
     return artifact;
 }
 void execution_artifact_free(execution_artifact *artifact)
@@ -34,6 +35,8 @@ void execution_artifact_free(execution_artifact *artifact)
     behavior_jit_free(artifact->system_code);
     behavior_jit_free(artifact->dispatch);
     behavior_jit_free(artifact->inspection_code);
+    behavior_jit_free(artifact->scoped_code);
+    free(artifact->scoped_addresses);
     free(artifact->resume_addresses);
     free(artifact->inspection_addresses);
     execution_wasm_jit_free(artifact->wasm_jit);

@@ -33,7 +33,7 @@ DecimalValue :: (text: string, negative: bool) -> Decimal {
         if (digit < 0 || digit > 9) {
             return Decimal.Invalid;
         }
-        magnitude = magnitude * 10 + digit;
+        magnitude = magnitude * 10 + int64(digit);
         if (magnitude > 2147483648) {
             return Decimal.Invalid;
         }

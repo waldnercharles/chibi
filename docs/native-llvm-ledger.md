@@ -103,7 +103,7 @@ decision.
 | --- | --- | --- | --- | --- |
 | D1 | Integer arithmetic | No integer operation fails at run time (owner, 24 October 2026, approving the integer semantics thread's contract): overflow wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN`, `MIN % -1` is 0, a shift at or past the width gives 0 or the sign fill, `T(v)` between integers clamps and `T(wrap: v)` wraps. Mixed integer types, signed shift counts, inexact or out-of-range constants and a constant zero divisor are compile errors. Development builds report each site; shipped native code has no checks. | none | decided for M2 |
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
-| D3 | Floating math | `number` is a 32-bit float everywhere, on the CPU and the GPU, and `f64` appears only where a type spells it, such as long timers and the engine's total time. Float arithmetic is IEEE at its type's width: nothing computes at reduced precision or is fast-math-like. Typed `float` to `double` widening may be implicit. Typed `double` to `float` narrowing needs an explicit `float(value)` at assignments, arguments and returns alike, and rounds to nearest, ties to even: overflow gives a signed infinity, and NaN stays NaN with no payload guarantee. Nothing panics, clamps or checks precision. Untyped literals stay contextual. This is Chibi's choice; Odin does not widen implicitly. Helpers stay Odin-style, with no blanket finite checks. Game code spells `number` and `int`, and sized types later take Odin's names (`i8`-`u64`, `f32`, `f64`) in a separate rename. (Owner, 24 October 2026.) | Implementing it, which a separate math and float lane owns, apart from M2's integer rules. Changing `number` from 64 to 32 bits moves recorded results in their low bits. | decided; implementation open |
+| D3 | Floating math | `number` is a 32-bit float everywhere, on the CPU and the GPU, and `f64` appears only where a type spells it, such as long timers and the engine's total time. Float arithmetic is IEEE at its type's width: nothing computes at reduced precision or is fast-math-like. Typed `float` to `double` widening may be implicit. Typed `double` to `float` narrowing needs an explicit `float(value)` at assignments, arguments and returns alike, and rounds to nearest, ties to even: overflow gives a signed infinity, and NaN stays NaN with no payload guarantee. Nothing panics, clamps or checks precision. Untyped literals stay contextual. This is Chibi's choice; Odin does not widen implicitly. Helpers stay Odin-style, with no blanket finite checks. Game code spells `number` and `int`, and sized types later take Odin's names (`i8`-`u64`, `f32`, `f64`) in a separate rename. (Owner, 24 October 2026.) | In #687, stage one gains `float(value)` and `double(value)`, implicit float-to-double widening and typed floating constants, as stage zero has them. Rejecting implicit double-to-float narrowing waits for the change that makes `number` a 32-bit float: while `number` is a double, `x := -1.0` is a double local, and rejecting it would break ordinary game code. That change also moves recorded results in their low bits. Native float lowering is open. | decided; implementation open |
 | D4 | Budget and recursion | Execution stays bounded. | Where native checks go, call-depth behavior, cancellation. | open, needed for M3 |
 | D5 | Native ABI | An explicit target, ownership and effect contract. `bool` stays internal for now, and probes use a validation-only adapter. | Pointer, collection and query ABI, and foreign `bool`. | open, needed for M4 and M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. | Native diagnostics, unwinding, status and termination. A provisional trap is not the final answer. | open |
@@ -143,10 +143,18 @@ After M1:
 
 After M2's compile rules (24 October 2026, same container):
 
-- Bootstrap compiler: 13,390,570 bytes, SHA-256 `58d17229…f77c06`, prepared
-  format 21. The checked-in format-20 compiler cannot recover the new
-  sources, so `make bootstrap-artifact` built the Release tree through the
-  stage-zero path, with `BUILD_HOST` naming no host.
+- Bootstrap compiler: 13,611,518 bytes, SHA-256 `31d5c893…0a1ab6`, prepared
+  format 21, with stage one's floating conversions and constants. The
+  checked-in format-20 compiler cannot recover the new sources, so
+  `make bootstrap-artifact` built the Release tree through the stage-zero
+  path, with `BUILD_HOST` naming no host. Since #678, building
+  `test_language` generates the asset compiler, which needs a bootstrap that
+  recovers the current compiler, so a compiler whose code generation changes
+  cannot regenerate its own bootstrap in a tree that has the asset compiler.
+  This one was generated from a local commit (the recorded revision
+  `c7b229fab`) that puts the final compiler sources on b947ec4ac, before #678
+  merged in. Every source it records matches this branch byte for byte, as
+  the bootstrap reuse check requires.
 - `language-package-compiler-chibi-bootstrap` takes 50 s in Release, by its
   own wall time on this container (164 s before M2). Before the exact
   division stopped copying its arguments it took 842 s, 775 of them in stage

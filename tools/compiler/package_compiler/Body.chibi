@@ -2765,8 +2765,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (item.phase == 0 && Integer(item.storage) &&
                    ZeroCompoundDivisor(forest, text, document, constants, names, callable.package, item.node)) {
             return Body.Failed(Diagnose(forest, forest[item.node].parent, document, "Constant division by zero"));
-        } else if (item.phase == 0 && Folds(forest, text, constants, names, callable.package, item.node, item.storage) &&
+        } else if (item.phase == 0 && kind != "parenthesized_expression" &&
+                   Folds(forest, text, constants, names, callable.package, item.node, item.storage) &&
                    !ShadowedConversion(forest, text, callables, callable.package, item.node)) {
+            // A parenthesized fold folds inside its parentheses, where its
+            // point and watch are.
             step = FoldStep(forest, text, document, constants, names, callable.package, item, ops, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {

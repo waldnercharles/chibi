@@ -22,5 +22,7 @@ void test_language_package_compiler_chibi_native();
 int test_language_package_compiler_chibi_native_call(int count, char **arguments);
 
 void test_language_package_compiler_chibi_libraries();
+void test_language_package_compiler_chibi_native_arguments_oracle();
+void test_language_package_compiler_chibi_native_arguments();
 
 #endif

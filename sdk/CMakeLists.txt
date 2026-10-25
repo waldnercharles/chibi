@@ -658,7 +658,7 @@ endif()
 # Private prepared-compiler runtime. Its link closure excludes source authoring,
 # semantic analysis and lowering; Tree-sitter supplies raw syntax facts only.
 if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Windows)$")
-    add_library(chibi_compiler_host OBJECT
+    add_library(chibi_compiler_host STATIC
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_artifact.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
@@ -673,17 +673,24 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
     endforeach()
     configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/sha256.h" COPYONLY)
-    target_include_directories(chibi_compiler_host PUBLIC
+    target_include_directories(chibi_compiler_host PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host")
     target_include_directories(chibi_compiler_host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_compiler_host PUBLIC chibi_behavior_runtime
         PRIVATE chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
         chibi_value_document chibi_asset_json chibi_language_syntax chibi_asset_text chibi_json)
     target_compile_options(chibi_compiler_host PRIVATE -Wall -Wextra -Werror)
+    if(NOT CHIBI_SDK_COMPILER_HOST_ONLY)
+        add_library(Chibi::compiler_host ALIAS chibi_compiler_host)
+        set_target_properties(chibi_compiler_host PROPERTIES EXPORT_NAME compiler_host)
+        chibi_sdk_headers(chibi_compiler_host PUBLIC toolchain/compiler_host.h)
+        list(APPEND CHIBI_SDK_TARGETS chibi_compiler_host)
+    endif()
     add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c")
     target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_text chibi_asset_values
         chibi_json)
-    target_include_directories(chibi-compiler-host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
+    target_include_directories(chibi-compiler-host PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host" "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_compile_options(chibi-compiler-host PRIVATE -Wall -Wextra -Werror)
     if(APPLE)
         target_link_options(chibi-compiler-host PRIVATE -Wl,-dead_strip)
@@ -694,6 +701,12 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
     endif()
     chibi_windows_manifest(chibi-compiler-host)
     install(TARGETS chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
+endif()
+set(CHIBI_SDK_HAS_ASSET_COMPILER_HOST OFF CACHE INTERNAL "Native authored asset compiler component" FORCE)
+if(TARGET chibi-build-host AND TARGET Chibi::compiler_host AND
+   CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT CMAKE_CROSSCOMPILING)
+    include(asset_compiler_host.cmake)
+    set(CHIBI_SDK_HAS_ASSET_COMPILER_HOST ON CACHE INTERNAL "Native authored asset compiler component" FORCE)
 endif()
 if(CHIBI_SDK_COMPILER_HOST_ONLY)
     return()

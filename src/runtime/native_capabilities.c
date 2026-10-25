@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdatomic.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -605,6 +606,36 @@ void native_capabilities_free(native_capabilities *n)
     afree(n->globals);
     afree(n->layouts);
     free(n);
+}
+static size_t storage_add(size_t bytes, size_t more)
+{
+    return more > SIZE_MAX - bytes ? SIZE_MAX : bytes + more;
+}
+static size_t vector_bytes(const void *values, size_t item)
+{
+    if (!values) {
+        return 0;
+    }
+    size_t capacity = (size_t)acap(values);
+    return capacity > (SIZE_MAX - sizeof(dyna_hdr)) / item
+             ? SIZE_MAX
+             : sizeof(dyna_hdr) + capacity * item;
+}
+size_t native_capabilities_storage_bytes(const native_capabilities *n)
+{
+    assert(n);
+    size_t bytes = storage_add(sizeof *n, arena_storage_bytes(&n->storage));
+#define COUNT(field)                                                           \
+    bytes = storage_add(bytes, vector_bytes(n->field, sizeof *n->field))
+    COUNT(types);
+    COUNT(capabilities);
+    COUNT(declarations);
+    COUNT(relationships);
+    COUNT(bindings);
+    COUNT(globals);
+    COUNT(layouts);
+#undef COUNT
+    return bytes;
 }
 const script_catalog *native_capabilities_catalog(const native_capabilities *n)
 {

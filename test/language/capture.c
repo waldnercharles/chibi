@@ -4,6 +4,8 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
+#include "types/union.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -113,37 +115,61 @@ static bool write_value(pin_value reference, pin_value value, bool success)
 }
 TEST_CASE(capture_whole_value_shrink_preserves_escaped_and_self_values)
 {
-    REQUIRE(begin((pin_value){ .type = PIN_STR, .str = large_text, .type_name = "CaptureText" }));
+    REQUIRE(begin((pin_value){
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = large_text, .length = LARGE_TEXT_BYTES },
+        .type_name = "CaptureText" }));
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &box.kept));
     REQUIRE(write_value(root_reference, box.kept, true));
-    REQUIRE(strlen(box.kept.str) == LARGE_TEXT_BYTES);
+    REQUIRE(strlen(pin_text(box.kept).bytes) == LARGE_TEXT_BYTES);
     REQUIRE(write_value(
         root_reference,
-        (pin_value){ .type = PIN_STR, .str = "small", .type_name = "CaptureText" },
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "small",
+                                                  .length = sizeof("small") - 1 },
+                     .type_name = "CaptureText" },
         true
     ));
-    REQUIRE(!strcmp(box.kept.str, "small") && !strcmp(box.kept.type_name, "CaptureText"));
+    REQUIRE(
+        !strcmp(pin_text(box.kept).bytes, "small") &&
+        !strcmp(box.kept.type_name, "CaptureText")
+    );
     REQUIRE(arena_storage_bytes(&box.storage) < 512);
-    REQUIRE(write_value(root_reference, (pin_value){ .type = PIN_STR, .str = "" }, true));
-    REQUIRE(!strcmp(box.kept.str, "") && arena_storage_bytes(&box.storage) < 512);
+    REQUIRE(write_value(
+        root_reference,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "", .length = sizeof("") - 1 } },
+        true
+    ));
+    REQUIRE(!strcmp(pin_text(box.kept).bytes, "") && arena_storage_bytes(&box.storage) < 512);
     size_t idle = arena_storage_bytes(&box.storage);
     for (int i = 0; i < 4; i++) {
-        REQUIRE(!strcmp(box.kept.str, "") && arena_storage_bytes(&box.storage) == idle);
-        REQUIRE(!strcmp(saved.str, large_text) && !strcmp(saved.type_name, "CaptureText"));
+        REQUIRE(
+            !strcmp(pin_text(box.kept).bytes, "") &&
+            arena_storage_bytes(&box.storage) == idle
+        );
+        REQUIRE(
+            !strcmp(pin_text(saved).bytes, large_text) &&
+            !strcmp(saved.type_name, "CaptureText")
+        );
     }
     REQUIRE(write_value(
         root_reference,
         (pin_value){ .type = PIN_STRUCT, .type_name = "MissingCaptureType", .ptr = large_text },
         false
     ));
-    REQUIRE(!strcmp(box.kept.str, ""));
+    REQUIRE(!strcmp(pin_text(box.kept).bytes, ""));
     return true;
 }
 TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
 {
-    pin_value items[] = { { .type = PIN_STR, .str = large_text },
-                          { .type = PIN_STR, .str = "tail" } };
+    pin_value items[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = large_text, .length = LARGE_TEXT_BYTES } },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "tail", .length = sizeof("tail") - 1 } }
+    };
     pin_array values = { .element_type = PIN_STR, .count = 2, .capacity = 2, .items = items };
     pin_value root = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = &values };
     REQUIRE(begin(root));
@@ -154,17 +180,35 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
     execution_reference_capture(&references, &origin, &first, &box);
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &box.kept));
-    REQUIRE(write_value(first, ((pin_array *)box.kept.ptr)->items[1], true));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, "tail"));
-    REQUIRE(write_value(second, ((pin_array *)box.kept.ptr)->items[1], true));
+    REQUIRE(write_value(first, pin_array_get(box.kept.ptr, 1), true));
+    REQUIRE(!strcmp(pin_text(pin_array_get(box.kept.ptr, 0)).bytes, "tail"));
+    REQUIRE(write_value(second, pin_array_get(box.kept.ptr, 1), true));
     values.count = 1;
     REQUIRE(write_value(root_reference, root, true));
-    REQUIRE(write_value(first, (pin_value){ .type = PIN_STR, .str = "short" }, true));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, "short"));
-    REQUIRE(write_value(second, (pin_value){ .type = PIN_STR, .str = "bad" }, false));
+    REQUIRE(write_value(
+        first,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "short",
+                                                  .length = sizeof("short") - 1 } },
+        true
+    ));
+    REQUIRE(!strcmp(pin_text(pin_array_get(box.kept.ptr, 0)).bytes, "short"));
+    REQUIRE(write_value(
+        second,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "bad",
+                                                  .length = sizeof("bad") - 1 } },
+        false
+    ));
     values.count = 0;
     REQUIRE(write_value(root_reference, root, true));
-    REQUIRE(write_value(first, (pin_value){ .type = PIN_STR, .str = "bad" }, false));
+    REQUIRE(write_value(
+        first,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "bad",
+                                                  .length = sizeof("bad") - 1 } },
+        false
+    ));
     size_t idle = arena_storage_bytes(&box.storage);
     for (int i = 0; i < 4; i++) {
         REQUIRE(
@@ -179,9 +223,9 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
         (pin_value){ .type = PIN_STRUCT, .type_name = "MissingCaptureType", .ptr = large_text },
         false
     ));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, large_text));
-    REQUIRE(!strcmp(((pin_array *)saved.ptr)->items[0].str, large_text));
-    REQUIRE(!strcmp(((pin_array *)saved.ptr)->items[1].str, "tail"));
+    REQUIRE(!strcmp(pin_text(pin_array_get(box.kept.ptr, 0)).bytes, large_text));
+    REQUIRE(!strcmp(pin_text(pin_array_get(saved.ptr, 0)).bytes, large_text));
+    REQUIRE(!strcmp(pin_text(pin_array_get(saved.ptr, 1)).bytes, "tail"));
     return true;
 }
 
@@ -254,11 +298,117 @@ TEST_CASE(capture_nested_scalar_writes_retain_only_current_managed_root)
     REQUIRE(!strcmp(original->label, "sibling"));
     return true;
 }
+/* Reads through reference with result declared as the read's result header:
+ * fails with error, or with no error succeeds into *out. */
+static bool read_value(pin_value reference, pin_value declared, const char *error, pin_value *out)
+{
+    *out = declared;
+    const char *failure = EXECUTION_reference_read_call.value(&references, &reference, 1, out);
+    if (error && (!failure || strcmp(failure, error))) {
+        fprintf(stderr, "reference read: %s\n", failure ? failure : "succeeded");
+    }
+    REQUIRE(error ? failure && !strcmp(failure, error) : !failure);
+    return true;
+}
+/* A reference copies by the type it was made with, and a read's result goes to
+ * code checked against its declared header, so a reference whose type is not
+ * its root's, a read declared as another type, a field path naming no such
+ * field and a write of another type all fail and leave the root as it was. */
+TEST_CASE(capture_references_refuse_another_type)
+{
+    type_catalog_set_project(&record_pack);
+    project_types = true;
+    capture_record value = { .inner = { .number = 2, .text = "inner" },
+                             .label = "label" };
+    pin_value record = { .type = PIN_STRUCT, .type_name = "CaptureRecord" };
+    REQUIRE(begin(
+        (pin_value){ .type = PIN_STRUCT, .type_name = "CaptureRecord", .ptr = &value }
+    ));
+    pin_value read;
+    REQUIRE(read_value(root_reference, record, NULL, &read));
+    REQUIRE(((const capture_record *)read.ptr)->inner.number == 2);
+    REQUIRE(read_value(
+        root_reference,
+        (pin_value){ .type = PIN_F64 },
+        "Reference read differs from its declared result",
+        &read
+    ));
+    pin_value inner = { .type = PIN_STRUCT, .type_name = "CaptureInner" };
+    pin_value claimed = execution_reference_value(&references, &origin, &box.kept, inner);
+    REQUIRE(read_value(claimed, inner, "Reference type differs from its storage", &read));
+    pin_value label;
+    REQUIRE(
+        path(root_reference, (pin_value){ .type = PIN_F64 }, offsetof(capture_record, label), false, &label)
+    );
+    REQUIRE(
+        read_value(label, (pin_value){ .type = PIN_F64 }, "Referenced storage is unavailable", &read)
+    );
+    REQUIRE(
+        path(root_reference, (pin_value){ .type = PIN_STR }, offsetof(capture_record, label), false, &label)
+    );
+    REQUIRE(read_value(label, (pin_value){ .type = PIN_STR }, NULL, &read));
+    REQUIRE(!strcmp(pin_text(read).bytes, "label"));
+    REQUIRE(write_value(root_reference, (pin_value){ .type = PIN_F64, .d = 1 }, false));
+    REQUIRE(
+        box.kept.type == PIN_STRUCT &&
+        !strcmp(((const capture_record *)box.kept.ptr)->label, "label")
+    );
+    return true;
+}
+/* Lowered union headers carry no declaration name: an unnamed union reference
+ * reads and writes unnamed unions, and a named one still refuses another. */
+TEST_CASE(capture_unnamed_union_references_read_and_write)
+{
+    pin_value payload = { .type = PIN_I32, .i = 4 }, first, second;
+    REQUIRE(!pin_union_value(&escaped, 11, &payload, 1, &first));
+    REQUIRE(!pin_union_value(&escaped, 12, NULL, 0, &second));
+    REQUIRE(begin(first));
+    pin_value read;
+    REQUIRE(read_value(root_reference, (pin_value){ .type = PIN_UNION }, NULL, &read));
+    REQUIRE(((const pin_union *)read.ptr)->tag == 11);
+    REQUIRE(write_value(root_reference, second, true));
+    REQUIRE(((const pin_union *)box.kept.ptr)->tag == 12);
+    pin_value named = first;
+    named.type_name = "Shape";
+    REQUIRE(write_value(root_reference, named, false));
+    return true;
+}
+/* An element write must match both the element type its reference claims and
+ * the array's own item: a string array's element stays a string. */
+TEST_CASE(capture_element_writes_keep_the_item_type)
+{
+    pin_value items[] = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "first", .length = sizeof("first") - 1 } }
+    };
+    pin_array values = { .element_type = PIN_STR, .count = 1, .capacity = 1, .items = items };
+    REQUIRE(begin((pin_value){ .type = PIN_STR,
+                               .container = PIN_CONTAINER_ARRAY,
+                               .ptr = &values }));
+    pin_value text, number;
+    REQUIRE(path(root_reference, (pin_value){ .type = PIN_STR }, 0, true, &text));
+    REQUIRE(write_value(text, (pin_value){ .type = PIN_F64, .d = 1 }, false));
+    REQUIRE(path(root_reference, (pin_value){ .type = PIN_F64 }, 0, true, &number));
+    REQUIRE(write_value(number, (pin_value){ .type = PIN_F64, .d = 1 }, false));
+    REQUIRE(((const pin_array *)box.kept.ptr)->items[0].type == PIN_STR);
+    REQUIRE(write_value(
+        text,
+        (pin_value){ .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = "second",
+                                                  .length = sizeof("second") - 1 } },
+        true
+    ));
+    REQUIRE(!strcmp(pin_text(((const pin_array *)box.kept.ptr)->items[0]).bytes, "second"));
+    return true;
+}
 void test_language_capture()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(capture_whole_value_shrink_preserves_escaped_and_self_values);
     RUN_TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically);
     RUN_TEST_CASE(capture_nested_scalar_writes_retain_only_current_managed_root);
+    RUN_TEST_CASE(capture_references_refuse_another_type);
+    RUN_TEST_CASE(capture_element_writes_keep_the_item_type);
+    RUN_TEST_CASE(capture_unnamed_union_references_read_and_write);
     pu_clear_setup();
 }

@@ -6,19 +6,19 @@ Normal detail changes shading. It does not move the SDF surface, its depth or
 its compiled bounds. The existing material Height input separately adds relief
 to the 2.5D height/shadow representation.
 
-The saved examples live in `projects/modeling_lab/content`. Edit their model,
-material, prototype and scene KDL directly, or use Studio. The former
-`author-detail.mjs` recipe and MCP transport are retired; there is no replacement
-command that recreates the study or regenerates its images from an empty project.
+The `PolaroidSurfaceDetail` study this page describes was retired with the
+example projects on 2026-10-17 ([examples](examples.md)). Edit a project's
+model, material, prototype and scene KDL directly, or use Studio. The former
+`author-detail.mjs` recipe and MCP transport are retired as well.
 
 Format and validate saved assets with the native controller:
 
 ```sh
-build/chibi_ctl --project-root projects/modeling_lab --format
+build/chibi_ctl --project-root <root> --format
 printf '%s\n' '{"contract":1,"operation":"validate_asset","kind":"model","name":"PolaroidSurfaceDetail"}' | \
-  build/chibi_ctl --project-root projects/modeling_lab
+  build/chibi_ctl --project-root <root>
 printf '%s\n' '{"contract":1,"operation":"inspect_graph","kind":"model","name":"PolaroidSurfaceDetail"}' | \
-  build/chibi_ctl --project-root projects/modeling_lab
+  build/chibi_ctl --project-root <root>
 ```
 
 Use the bounded hidden-window scene preview route in

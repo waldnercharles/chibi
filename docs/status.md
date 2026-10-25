@@ -9,7 +9,7 @@ owning docs; [PLAN](../PLAN.md), the [Arena plan](arena-roadmap.md) and the
 [RML migration record](studio-rml-migration.md) retain dated history.
 
 Implementation means the reviewed source contains the capability. Coverage means
-checked-in assertions exist, subject to [test admission](test-quarantine.md).
+checked-in assertions exist, as cataloged in the [test inventory](test-inventory.md).
 Execution evidence names the revision and checks actually run. None implies the
 other two. The combined candidate's final execution evidence belongs in its
 integration PR; the historical results below do not validate that combination.
@@ -25,7 +25,7 @@ integration PR; the historical results below do not validate that combination.
 | glTF/GLB import | [Import contract and limits](rendering-3d.md#importing-gltf-models), [importer](../src/assets/model_import.c) and [import cases](../test/authoring/model_import.c). Meshes, materials, images and prototype output already exist. | `KHR_texture_transform` is implemented for all five material texture slots, with import/render cases. Other UV sets, sampler fidelity, skinning and animation remain outside that slice. |
 | Directional, point and spot shadows | [Shadow contracts](rendering-3d.md#shadows), [directional](../src/render/scene3d_shadow.c) and [local-light](../src/render/scene3d_light_shadow.c) paths, [scene3d assertions](../test/render/scene3d.c). | Point/spot shadow edges remain hard. Authored rendering fixtures now cover the previously listed rendering group; remaining exclusions stay explicit. |
 | Studio undo, dirty prompts and asset selection | [Acceptance inventory](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/README.md) describes production history, SDL keyboard input, dirty-prompt pointer clicks and list/grid selection cases. | New graph-pointer and asset-pointer cases use SDL hit testing. Debugger-source-history covers invalid drafts against a retained paused generation; valid live replacement and broader debugger gestures remain outside that case. |
-| Browser publishing | Engine [release workflow](../.github/workflows/publish.yml), Studio [distribution workflow](https://github.com/waldnercharles/chibi-studio/blob/d10222dc73e01340dd3ccd193ab016c706708ffc/.github/workflows/publish.yml), and Celeste's player plus `/dev/` publication are implemented. | [Serial browser acceptance](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/BROWSER.md) records those interactions on named revisions. Pending browser saves now retain unload protection and retry until durable; worker mode and cross-browser acceptance remain separate. `make publish-web` is still unavailable; Actions owns publication. |
+| Browser publishing | Engine [release workflow](../.github/workflows/publish.yml), Studio [distribution workflow](https://github.com/waldnercharles/chibi-studio/blob/d10222dc73e01340dd3ccd193ab016c706708ffc/.github/workflows/publish.yml), and the [game web workflow](game-web-workflow.yml) that publishes a game's player plus `/dev/` workspace are implemented. | [Serial browser acceptance](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/BROWSER.md) records those interactions on named revisions. Pending browser saves now retain unload protection and retry until durable; worker mode and cross-browser acceptance remain separate. Actions owns publication; the engine has no local publisher. |
 
 ## Execution evidence
 
@@ -42,7 +42,7 @@ These are recorded results, not tests re-run by this documentation change.
   on GLES 3.2. This is a recorded focused run; GLES does not establish browser
   product acceptance, and this audit did not re-run either backend.
 - [Studio PR #53](https://github.com/waldnercharles/chibi-studio/pull/53) reports
-  all 16 acceptance selectors at `243fdc6`, each below 60 seconds. At `64c0b3b`
+  all 16 acceptance selectors at `243fdc6`. At `64c0b3b`
   it re-ran source-edit, code-keys, kdl-keys, code-followups, code-glyphs and smoke.
   Neither report establishes all interactions on `d10222d`.
 - Engine [release run 38099495996](https://github.com/waldnercharles/chibi/actions/runs/38099495996)
@@ -54,10 +54,9 @@ These are recorded results, not tests re-run by this documentation change.
   against that engine. These runs do not validate the `d10222d`/`f3ff608c` pair
   or establish browser interaction or threaded-product acceptance.
 
-Admitted native/language drivers and focused GPU selectors do not release the
-[quarantined full suites and historical oracles](test-quarantine.md). A workflow's
-configured steps, an installed package, or an old screenshot cannot substitute
-for current runtime evidence.
+The [test inventory](test-inventory.md) records checks and their evidence limits.
+A workflow's configured steps, an installed package, or an old screenshot cannot
+substitute for current runtime evidence.
 
 ## Reviewed work and remaining scope
 
@@ -74,16 +73,14 @@ engine, interactions in Studio, and game rules/composition in game assets.
 | glTF texture UV transforms | [Import contract](rendering-3d.md#importing-gltf-models), import cases and rendered controls cover nonidentity transforms across PBR slots and normal-map conventions. | Other UV sets, sampler fidelity, skinning and animation stay outside this slice. |
 | Visible Studio panel idle work | Studio caches selection-derived lists and constructs field/debug-target choices only when visible. Its panel-idle acceptance case checks construction counts, invalidation and reopen behavior. | Small-fixture counts do not establish a whole-application speedup or large-list behavior. Held panel conversion stays out of scope. |
 | Studio pointer and debugger interactions | Studio's graph-pointer, asset-pointer and debugger-source-history cases cover rendered selection/search/filter input and paused-source history. | Valid edits replacing a live generation, broader stepping/gestures and web pointer parity are not established by those cases. |
-| Installed example players | [Installed-example contract](installed-example-acceptance.md) and [C cases](../test/tools/installed_examples.c) cover pinned package inventories, resource closure, relocation and four-frame visual assertions for five external labs. | Runs require the exact reviewed external trees and real package pins. Historical SpaceCadet evidence does not validate these labs or the combined candidate. |
+| Installed player rendering | [`--terrain-playable-render`](../test/tools/terrain_playable_render.c) runs an installed player on an artifact the installed compiler prepared from `test/fixtures/terrain-lab`: four hidden frames and a PNG check. | Package-pin, resource-closure relocation and lab landmark checks were retired with the example projects on 2026-10-17 ([examples](examples.md)). |
 | Moving-platform characters | [Physics contract](runtime-authoring.md#simulate-3d-bodies), physics cases and neutral MovingPlatforms3D fixture cover support translation/rotation, separation, filters and lifetime. | No general character-controller redesign or automatic momentum inheritance. |
 | Outliner hierarchy editing | [Shared scene-move contract](scene-authoring.md) and Studio scene-move/outliner-move cases cover moves, ordering, transforms, stable identity, grouped history, persistence and collaboration/checkpoints. Studio #54's parent/path preservation is included through merged #60. | Authored path references remain text. Runtime sessions reject editing; separate hierarchy coverage owns Play/Stop restoration. |
 | Gap documentation | This entrypoint and engine/Studio status references describe the combined reviewed source and preserve historical evidence. | Validation claims must remain attached to the actual tested revision. |
 
-The [chibi-tetris](https://github.com/waldnercharles/chibi-tetris) game is
-separate from this engine/Studio batch. Its complete play, polish and local co-op
-acceptance are not established here. Existing `cwaldner/3d-starter` work in the
-primary engine/Studio checkouts is also outside this integration; preserve those
-checkouts and do not infer its acceptance from these changes.
+Existing `cwaldner/3d-starter` work in the primary engine/Studio checkouts is
+outside this integration; preserve those checkouts and do not infer its
+acceptance from these changes.
 
 ## Unassigned work and holds
 

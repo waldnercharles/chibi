@@ -108,7 +108,7 @@ controllers. Header-described work is not assumed to run on a worker thread.
 Every row needs identical visible state, action/document/history outputs and
 deterministic same-platform pixels where applicable. The selectors named below
 are only narrow available contracts; none was run in this report. See
-`selectors.csv` for admitted commands, missing routes and exclusions.
+`selectors.csv` for configured commands, missing routes and exclusions.
 
 | Feature family | Available narrow evidence surface | Still missing for conversion acceptance |
 | --- | --- | --- |
@@ -116,11 +116,11 @@ are only narrow available contracts; none was run in this report. See
 | Outliner | `studio-outliner-move`, `studio-scene-move`; exact shared filter/range fields | Full filter/range/rename/hide/lock/spawn, duplicates, large scroll, error traces and rendered goldens |
 | Assets | `studio-asset-pointer`; partial panel-idle work counts | Open/delete/import/batch undo/stale thumbnails, large virtualization and cache/retry ownership |
 | Properties/Members | `studio-source-edit`, `studio-panel-idle`; source edit/presentation CPU contracts | Mixed/computed/override fields, every scrub/type/cancel edge, identity/reacquisition and all types |
-| Text/code | Source edit, publication/navigation/format prerequisites; paused source-history selector | Code/KDL keys and follow-up selectors are unadmitted; complete IME/Unicode/Vim/typing groups and native platform input |
+| Text/code | Source edit, publication/navigation/format prerequisites; paused source-history selector | Code/KDL keys and follow-up selectors have no configured engine routes; complete IME/Unicode/Vim/typing groups and native platform input |
 | Graph | Graph visibility/pointer/source-edit plus graph model/presentation prerequisites | Complete wire/search/refactor/fold/context/pointer workflows, hidden input and large live-debug graphs |
 | Debugger | `studio-debugger-source-history` | Valid live generation replacement, alias IDs, all pause/step/error/owner states |
 | Designer/Inspector/UI buffers | Shared buffer/history declarations; UI-document/authoring/format prerequisites; bounded Inspector reads in panel-idle | Live edit/slots/styles, stale targets, tree/multi-part history, editor arbitration and pixels |
-| Scene/viewport/gizmos/colliders | Scene move/camera/gizmo routes; collider route has 26/28 mismatch | Repair admission independently, complete gesture matrix, transforms, projection, source-vs-runtime selection and pixels |
+| Scene/viewport/gizmos/colliders | Scene move/camera/gizmo routes; collider route has 26/28 mismatch | Reconcile source/wrapper mismatch, complete gesture matrix, transforms, projection, source-vs-runtime selection and pixels |
 | Runtime/playback/keep changes | Engine execution/publication prerequisites | Actual Studio play/pause/step/stop, world/task lifetime, keep-changes, source/runtime changes and cancellation |
 | Document authority/save/reload/history | Header contracts and limited scene/source integration | All active/inactive tabs, invalid drafts, external writes, conflicts, failed saves, multi-file transactions and checkpoints |
 | Export/platform dialogs | Export body and historical CI game export | Current-pair process/persistence failures, folder action, cancellation disposition, native dialogs and browser limitations |

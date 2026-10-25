@@ -82,7 +82,8 @@ static const char *const names[] = { "Constant",
                                      "Triplanar Texture",
                                      "Triplanar Texture Alpha",
                                      "Decal Mask",
-                                     "Sampled SDF" };
+                                     "Sampled SDF",
+                                     "Star Field" };
 _Static_assert(sizeof names / sizeof *names == SHADER_OP_COUNT, "shader operation names");
 const char *shader_op_name(shader_op op)
 {
@@ -102,6 +103,9 @@ int shader_op_inputs(shader_op op)
     }
     if (op >= SHADER_MAPPING && op <= SHADER_FRACTAL_NOISE) {
         return 4;
+    }
+    if (op == SHADER_STAR_FIELD) {
+        return 3;
     }
     if (op == SHADER_VORONOI || op == SHADER_VORONOI_COLOR) {
         return 3;
@@ -302,6 +306,9 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
                 }
                 valid = n->width == (n->op == SHADER_COLOR_RAMP ? 3 : 1) &&
                         a == 1 && b == 1;
+                break;
+            case SHADER_STAR_FIELD:
+                valid = n->width == 3 && a == 3 && b == 1 && c == 1;
                 break;
             case SHADER_SAMPLED_SDF:
                 valid = n->width == 1 && a == 3 && shader_volume_contract(n) &&
@@ -519,9 +526,11 @@ static bool eval_values(
         if (n->op == SHADER_SAMPLED_SDF) {
             shader_image_view image = { 0 };
             if (!sample->resolve_image ||
-                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image) ||
-                !shader_volume_eval(n, &image, a, &v[i][0])) {
+                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image)) {
                 return fail(error, n->source_id, "Sampled SDF image could not be resolved");
+            }
+            if (!shader_volume_eval(n, &image, a, &v[i][0], error)) {
+                return false;
             }
             continue;
         }
@@ -548,7 +557,8 @@ static bool eval_values(
             );
             continue;
         }
-        if (n->op >= SHADER_MAPPING && n->op <= SHADER_COLOR_RAMP_ALPHA) {
+        if ((n->op >= SHADER_MAPPING && n->op <= SHADER_COLOR_RAMP_ALPHA) ||
+            n->op == SHADER_STAR_FIELD) {
             shader_effect_eval(g, n, (const float (*)[4])v, v[i]);
             continue;
         }
@@ -1241,6 +1251,12 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
         }
     }
     for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i].op == SHADER_STAR_FIELD && (!gradient || reachable[i])) {
+            append(&s, "%s", shader_star_field_glsl());
+            break;
+        }
+    }
+    for (int i = 0; i < acount(g->nodes); i++) {
         if (gradient && !reachable[i]) {
             continue;
         }
@@ -1512,6 +1528,9 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
                 break;
             case SHADER_SAMPLED_SDF:
                 append(&s, "vec4(%s_volume_%d(%s.xyz))", prefix, i, a);
+                break;
+            case SHADER_STAR_FIELD:
+                append(&s, "vec4(sgx_star_field(%s.xyz,%s.x,%s.x),0.0)", a, b, c);
                 break;
             case SHADER_IMAGE_TEXTURE:
                 append(&s, "vec4(%s_image_%d(%s.xy).rgb,0.0)", prefix, n->image, a);

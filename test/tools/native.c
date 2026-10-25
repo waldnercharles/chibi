@@ -12,11 +12,14 @@
 #include "runtime/physics_native.h"
 #include "runtime/player.h"
 #include "runtime/player_prepared.h"
+#include "runtime/save.h"
+#include "runtime/save_native.h"
 #include "runtime/world.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #ifdef CHIBI_TEST_PREPARATION
 #include "assets/scenario_document.h"
@@ -69,8 +72,28 @@ type_catalog_pack test_native_catalog_pack()
 {
     return TYPE_PACK;
 }
+static arena native_scratch;
+static save *boundary_save;
+static const char *invoke_host(
+    const node_host_call *call,
+    void *service,
+    const pin_value *inputs,
+    pin_value *outputs
+)
+{
+    behavior_function_context context = { 0 };
+    behavior_function_bind_storage(&context, &native_scratch);
+    return call->context ? call->context(&context, service, inputs, outputs)
+                         : call->invoke(service, inputs, outputs);
+}
+
 static void cleanup()
 {
+    if (boundary_save) {
+        save_free(boundary_save);
+        boundary_save = NULL;
+    }
+    arena_free(&native_scratch);
     if (test_player) {
         player_free(test_player);
     }
@@ -534,11 +557,14 @@ static struct
 /* Reads the service the engine bound, the way Action Held and Pressed do. */
 static const char *observe_jump(void *service, const pin_value *, pin_value *)
 {
-    const pin_value action = { .type = PIN_STR, .str = "Jump" };
+    const pin_value action = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = "Jump", .length = sizeof("Jump") - 1 }
+    };
     pin_value held = { .type = PIN_BOOL }, pressed = { .type = PIN_BOOL };
-    const char *error = INPUT_HELD_CALL.invoke(service, &action, &held);
+    const char *error = invoke_host(&INPUT_HELD_CALL, service, &action, &held);
     if (!error) {
-        error = INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
+        error = invoke_host(&INPUT_PRESSED_CALL, service, &action, &pressed);
     }
     jump.steps++;
     jump.held = held.b;
@@ -824,13 +850,16 @@ static const char *observe_controllers(void *service, const pin_value *, pin_val
     controllers.steps++;
     controllers.held = controllers.pressed = controllers.connected = 0;
     for (int i = 0; i < 2; i++) {
-        pin_value action = { .type = PIN_STR, .str = names[i] };
+        pin_value action = { .type = PIN_STR,
+                             .text = &(const pin_string){
+                                 .bytes = names[i],
+                                 .length = (uint32_t)strlen(names[i]) } };
         pin_value slot = { .type = PIN_I32, .i = i };
         pin_value held = { .type = PIN_BOOL }, pressed = { .type = PIN_BOOL },
                   connected = { .type = PIN_BOOL };
-        const char *error = INPUT_HELD_CALL.invoke(service, &action, &held);
+        const char *error = invoke_host(&INPUT_HELD_CALL, service, &action, &held);
         if (!error) {
-            error = INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
+            error = invoke_host(&INPUT_PRESSED_CALL, service, &action, &pressed);
         }
         if (!error) {
             error = INPUT_CONTROLLER_CONNECTED_CALL.invoke(service, &slot, &connected);
@@ -849,6 +878,34 @@ static const char *observe_controllers(void *service, const pin_value *, pin_val
     const char *error = INPUT_POINTER_RAY_CALL.invoke(service, NULL, pointer);
     controllers.pointer.active = pointer[0].b;
     return error;
+}
+/* player_prepared_modules finds the one module record between the sections
+ * before it and the prototype after it, borrowing its bytes, and refuses an
+ * artifact cut inside the record. */
+static bool modules_located(const unsigned char *bytes, size_t length, const void *module_data, size_t module_length)
+{
+    arena names = { 0 };
+    package_module *modules = NULL;
+    size_t first = 0, end = 0;
+    char error[192];
+    REQUIRE(
+        player_prepared_modules(bytes, length, &names, &modules, &first, &end, error, sizeof error)
+    );
+    bool located = acount(modules) == 1 && !strcmp(modules[0].name, "Initial") &&
+                   modules[0].id == 992 && modules[0].length == module_length &&
+                   !memcmp(modules[0].data, module_data, module_length) &&
+                   (const unsigned char *)modules[0].data > bytes + first &&
+                   (const unsigned char *)modules[0].data + module_length ==
+                       bytes + end &&
+                   end < length;
+    afree(modules);
+    REQUIRE(located);
+    REQUIRE(
+        !player_prepared_modules(bytes, end - 1, &names, &modules, &first, &end, error, sizeof error)
+    );
+    REQUIRE(!modules);
+    arena_free(&names);
+    return true;
 }
 /* Read the saved map before attaching an observer, so the same sequence tests
  * runtime sampling and the prepared player's controller binding format. */
@@ -1360,7 +1417,9 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         char field_name[] = "message", default_text[] = "Saved payload";
         execution_module_event_field_info custom_field = {
             .name = field_name,
-            .initial = { .type = PIN_STR, .str = default_text },
+            .initial = { .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = default_text,
+                                                      .length = (uint32_t)strlen(default_text) } },
             .has_default = true
         };
         event_declaration declarations[] = {
@@ -1402,6 +1461,7 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(!strcmp(read.project_name, "native-project"));
         REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
         player_application_free(&read);
+        REQUIRE(modules_located(player_bytes, player_length, module_bytes, length));
         /* An icon outside the resource root is refused, as on reading. */
         application.icon = "../outside.png";
         unsigned char *unsafe = NULL;
@@ -1464,7 +1524,7 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(source_event_field(sources, "Unhandled", 0, &saved_field));
         REQUIRE(
             !strcmp(saved_field.name, "message") &&
-            !strcmp(saved_field.initial.str, "Saved payload")
+            !strcmp(pin_text(saved_field.initial).bytes, "Saved payload")
         );
         event_declaration wrong = { .event = { .id = 993, .abi = 999, .name = "Begin" } };
         wrong_events = event_catalog_new(&wrong, 1, NULL, error, sizeof error);
@@ -1478,7 +1538,10 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
             .fields = &invalid_field
         };
         REQUIRE(!event_catalog_new(&invalid, 1, NULL, error, sizeof error));
-        invalid_field.initial = (pin_value){ .type = PIN_STR, .str = "owner" };
+        invalid_field.initial = (pin_value){
+            .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = "owner", .length = sizeof("owner") - 1 }
+        };
         invalid_field.has_default = true;
         invalid_field.default_owner = true;
         REQUIRE(!event_catalog_new(&invalid, 1, NULL, error, sizeof error));
@@ -1545,8 +1608,10 @@ static float first_x(const player *p)
 static bool follow(const char *name, char *error, size_t size)
 {
     scene_flow *flow = world_scenes(player_world(test_player));
-    pin_value in = { .type = PIN_STR, .str = name };
-    if (SCENE_LOAD_CALL.invoke(flow, &in, NULL)) {
+    pin_value in = { .type = PIN_STR,
+                     .text = &(const pin_string){ .bytes = name,
+                                                  .length = (uint32_t)strlen(name) } };
+    if (invoke_host(&SCENE_LOAD_CALL, flow, &in, NULL)) {
         return false;
     }
     char *next = scene_flow_take(flow);
@@ -1612,8 +1677,11 @@ TEST_CASE(native_player_loads_named_scenes)
     uint64_t steps = engine_last_timing(runtime)->simulation_steps;
     REQUIRE(steps > 0);
 
-    pin_value missing = { .type = PIN_STR, .str = "Missing" };
-    REQUIRE(!strcmp(SCENE_LOAD_CALL.invoke(flow, &missing, NULL), "No scene named 'Missing'"));
+    pin_value missing = { .type = PIN_STR,
+                          .text = &(const pin_string){
+                              .bytes = "Missing",
+                              .length = sizeof("Missing") - 1 } };
+    REQUIRE(!strcmp(invoke_host(&SCENE_LOAD_CALL, flow, &missing, NULL), "No scene named 'Missing'"));
     REQUIRE(!scene_flow_take(flow));
 
     REQUIRE(save_set(save, "level", "1") && save_commit(save));
@@ -1662,7 +1730,76 @@ static void drop_sounds(void *, void *) {}
 static const char *call(const node_host_call *host, audio *audio, pin_value a, pin_value b)
 {
     pin_value in[] = { a, b, { .type = PIN_F32, .f = 0.5f } };
-    return host->invoke(audio, in, NULL);
+    return invoke_host(host, audio, in, NULL);
+}
+static const ecs_relationship_desc player_panic = { .id = UINT64_C(0x706c617965725061),
+                                                    .key = "test.player_panic",
+                                                    .name = "PlayerPanic",
+                                                    .on_delete_target = ECS_CLEANUP_PANIC };
+static bool prepare_panic_player(bool disabled, ecs_entity *target, ecs_entity *external)
+{
+    char error[192];
+    test_scene = one_object_scene("Hero", 1, "Player");
+    other_scene = one_object_scene("Goal", 2, NULL);
+    REQUIRE(test_scene && other_scene);
+    const player_named_scene next = { "Next", other_scene };
+    const player_spec spec = {
+        .world = { .components = { .components = REGISTRY_COMPONENTS,
+                                   .component_count = REGISTRY_COMPONENT_COUNT } },
+        .scene = test_scene,
+        .scene_name = "Start",
+        .scenes = &next,
+        .scene_count = 1
+    };
+    test_player = player_new(&spec, error, sizeof error);
+    REQUIRE(test_player);
+    ecs_world *ecs = world_ecs(player_world(test_player));
+    *target = scene_instance_entity(player_scene(test_player), 0);
+    *external = ecs_world_create_entity(ecs);
+    REQUIRE(external->slot);
+    REQUIRE(ecs_world_register_relationship(ecs, &player_panic, NULL) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(ecs, *external, player_panic.id, *target, 0) == ECS_OK);
+    if (disabled) {
+        REQUIRE(ecs_world_record_add(ecs, *external, ECS_DISABLED, NULL, 0) == ECS_OK);
+    }
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    return true;
+}
+TEST_CASE(native_player_refused_scene_release_preserves_current_state)
+{
+    ecs_entity target, external;
+    REQUIRE(prepare_panic_player(false, &target, &external));
+    world *world = player_world(test_player);
+    ecs_world *ecs = world_ecs(world);
+    const scene_instance *before = player_scene(test_player);
+    save *save = world_modules(world)->save;
+    REQUIRE(save_set(save, "unsaved", "keep"));
+    char error[192];
+    REQUIRE(!player_load_scene(test_player, "Next", error, sizeof error));
+    REQUIRE(strstr(error, "external Panic"));
+    REQUIRE(player_scene(test_player) == before && first_x(test_player) == 1);
+    REQUIRE(!strcmp(scene_flow_current(world_scenes(world)), "Start"));
+    REQUIRE(entities_global_name_count(world_entities(world)) == 1);
+    REQUIRE(!strcmp(save_get(save, "unsaved"), "keep"));
+    REQUIRE(ecs_world_live_count(ecs) == 2 && ecs_entity_is_alive(ecs, target));
+    REQUIRE(ecs_has_pair(ecs, external, player_panic.id, target));
+    REQUIRE(ecs_world_record_remove_pair(ecs, external, player_panic.id, target, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    REQUIRE(player_load_scene(test_player, "Next", error, sizeof error));
+    REQUIRE(!ecs_entity_is_alive(ecs, target) && first_x(test_player) == 2);
+    REQUIRE(!strcmp(scene_flow_current(world_scenes(world)), "Next"));
+    return true;
+}
+TEST_CASE(native_player_shutdown_releases_external_panic_sources_including_disabled)
+{
+    for (int disabled = 0; disabled < 2; disabled++) {
+        ecs_entity target, external;
+        REQUIRE(prepare_panic_player(disabled, &target, &external));
+        player_free(test_player);
+        test_player = NULL;
+        cleanup();
+    }
+    return true;
 }
 TEST_CASE(native_player_plays_sounds)
 {
@@ -1737,8 +1874,13 @@ TEST_CASE(native_player_plays_sounds)
     REQUIRE(!player_new(&spec, error, sizeof error) && budget == used - 1);
     REQUIRE(!strcmp(error, "Prepared player retained storage budget exceeded"));
 
-    pin_value jump = { .type = PIN_STR, .str = "Jump" },
-              missing = { .type = PIN_STR, .str = "Missing" };
+    pin_value jump = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = "Jump",
+                                                    .length = sizeof("Jump") - 1 } },
+              missing = { .type = PIN_STR,
+                          .text = &(const pin_string){
+                              .bytes = "Missing",
+                              .length = sizeof("Missing") - 1 } };
     pin_value quarter = { .type = PIN_F32, .f = 0.25f },
               two = { .type = PIN_F32, .f = 2 };
     REQUIRE(!call(&AUDIO_SOUND_CALL, sounds, jump, quarter));
@@ -2107,15 +2249,61 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(!type_catalog_find("Charge"));
     return true;
 }
+TEST_CASE(native_save_rejects_invalid_text_without_mutating_store)
+{
+    boundary_save = save_new();
+    REQUIRE(boundary_save && save_set(boundary_save, "key", "kept"));
+    uint64_t revision = save_revision(boundary_save);
+    const pin_string key = { "key", 3 }, value = { "replacement", 11 };
+    const char nul_key[] = "key\0other", nul_value[] = "replace\0other";
+    const pin_string invalid[] = { { nul_key, sizeof nul_key - 1 },
+                                   { nul_value, sizeof nul_value - 1 } };
+    for (int i = 0; i < 2; i++) {
+        pin_value in[] = { { .type = PIN_STR, .text = i == 0 ? &invalid[0] : &key },
+                           { .type = PIN_STR, .text = i == 1 ? &invalid[1] : &value } };
+        const char *error = invoke_host(&SAVE_SET_CALL, boundary_save, in, NULL);
+        REQUIRE(error && !strcmp(error, "String contains embedded NUL"));
+        REQUIRE(save_count(boundary_save) == 1 && save_revision(boundary_save) == revision);
+        REQUIRE(!strcmp(save_get(boundary_save, "key"), "kept"));
+    }
+    const char invalid_utf8[] = { (char)0xff, 0 };
+    REQUIRE(!save_set(boundary_save, "key", invalid_utf8));
+    REQUIRE(!save_set(boundary_save, invalid_utf8, "replacement"));
+    REQUIRE(save_count(boundary_save) == 1 && save_revision(boundary_save) == revision);
+    REQUIRE(!strcmp(save_get(boundary_save, "key"), "kept"));
+    const char fallback[] = { 'A', 0, (char)0xff, 'B', 0 };
+    const pin_string missing = { "missing", 7 },
+                     bytes = { fallback, sizeof fallback - 1 };
+    pin_value arguments[] = { { .type = PIN_STR, .text = &missing },
+                              { .type = PIN_STR, .text = &bytes } };
+    const char *declared_name = "const char *";
+    pin_value output[] = { { .type = PIN_BOOL },
+                           { .type = PIN_STR, .type_name = declared_name } };
+    REQUIRE(!invoke_host(&SAVE_READ_CALL, boundary_save, arguments, output));
+    REQUIRE(output[1].type == PIN_STR && output[1].type_name == declared_name);
+    REQUIRE(!output[0].b && pin_text(output[1]).length == sizeof fallback - 1);
+    REQUIRE(!memcmp(pin_text(output[1]).bytes, fallback, sizeof fallback - 1));
+    REQUIRE(pin_text(output[1]).bytes != fallback);
+    arguments[0].text = &key;
+    REQUIRE(!invoke_host(&SAVE_READ_CALL, boundary_save, arguments, output));
+    REQUIRE(output[0].b && output[1].type == PIN_STR && output[1].type_name == declared_name);
+    REQUIRE(pin_text(output[1]).length == 4 && !memcmp(pin_text(output[1]).bytes, "kept", 4));
+    REQUIRE(save_count(boundary_save) == 1 && save_revision(boundary_save) == revision);
+    return true;
+}
+
 void test_tool_native()
 {
     test_native_catalog_enable();
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_save_rejects_invalid_text_without_mutating_store);
     RUN_TEST_CASE(native_prepared_spawn_generations);
     RUN_TEST_CASE(native_prepared_spawn_whole_tree);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
     RUN_TEST_CASE(native_player_loads_named_scenes);
+    RUN_TEST_CASE(native_player_refused_scene_release_preserves_current_state);
+    RUN_TEST_CASE(native_player_shutdown_releases_external_panic_sources_including_disabled);
     RUN_TEST_CASE(native_player_plays_sounds);
     RUN_TEST_CASE(native_player_reads_declared_components);
     RUN_TEST_CASE(native_ranges_distinguish_contracts_from_valid_wider_domains);

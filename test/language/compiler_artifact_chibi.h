@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_COMPILER_ARTIFACT_CHIBI_H
+#define CHIBI_TEST_COMPILER_ARTIFACT_CHIBI_H
+void test_language_compiler_artifact_write(const char *directory);
+#endif

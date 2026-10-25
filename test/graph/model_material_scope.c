@@ -7,6 +7,7 @@
 #include "runtime/component_catalog.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <math.h>
 #include <string.h>
@@ -165,11 +166,13 @@ TEST_CASE(scoped_material_parameters)
     Shader binding = { .material = material->name };
     REQUIRE(ecs_world_record_add(world, entity, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    pin_value inputs[] = { { .type = PIN_HANDLE,
-                             .type_name = "ecs.entity",
-                             .u64 = ecs_entity_to_u64(entity) },
-                           { .type = PIN_STR, .str = "Roughness" },
-                           { .type = PIN_F32, .f = .9f } };
+    pin_value inputs[] = {
+        { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = ecs_entity_to_u64(entity) },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "Roughness",
+                                       .length = sizeof("Roughness") - 1 } },
+        { .type = PIN_F32, .f = .9f }
+    };
     REQUIRE(!RENDER_MATERIAL_PARAMETER_CALL.invoke(world, inputs, NULL));
     REQUIRE(
         render_shader_material_parameters_scoped_cached(id, world, entity, text, "ImageSlot", values, &cache, &error)

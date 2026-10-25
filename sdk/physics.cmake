@@ -1,112 +1,8 @@
 # Real physics and task dependencies; no Cute renderer or SDL target enters this closure.
-function(chibi_physics_source target header output)
-    if(TARGET ${target})
-        get_target_property(paths ${target} INTERFACE_INCLUDE_DIRECTORIES)
-        foreach(path IN LISTS paths)
-            if(EXISTS "${path}/${header}")
-                get_filename_component(root "${path}" DIRECTORY)
-                set(${output} "${root}" PARENT_SCOPE)
-                return()
-            endif()
-        endforeach()
-    endif()
-endfunction()
-
-if(NOT box2d_SOURCE_DIR AND cute_framework_SOURCE_DIR)
-    get_filename_component(dependency_root "${cute_framework_SOURCE_DIR}" DIRECTORY)
-    if(EXISTS "${dependency_root}/box2d-src/include/box2d/box2d.h")
-        set(box2d_SOURCE_DIR "${dependency_root}/box2d-src")
-    endif()
-endif()
-if(NOT box2d_SOURCE_DIR)
-    FetchContent_Declare(chibi_box2d_source
-        GIT_REPOSITORY https://github.com/erincatto/box2d.git GIT_TAG v3.1.1
-        SOURCE_SUBDIR chibi-source-only UPDATE_DISCONNECTED TRUE)
-    FetchContent_MakeAvailable(chibi_box2d_source)
-    set(box2d_SOURCE_DIR "${chibi_box2d_source_SOURCE_DIR}")
-endif()
-file(GLOB box2d_sources CONFIGURE_DEPENDS "${box2d_SOURCE_DIR}/src/*.c")
-add_library(chibi_box2d STATIC ${box2d_sources})
-add_library(Chibi::box2d ALIAS chibi_box2d)
-set_target_properties(chibi_box2d PROPERTIES EXPORT_NAME box2d C_STANDARD 17
-    C_STANDARD_REQUIRED YES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(chibi_box2d PRIVATE "${box2d_SOURCE_DIR}/src")
-# Physics's public ABI exposes no Box2D declarations.
-target_include_directories(chibi_box2d INTERFACE $<BUILD_INTERFACE:${box2d_SOURCE_DIR}/include>)
-target_include_directories(chibi_box2d PRIVATE "${box2d_SOURCE_DIR}/include")
-if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(chibi_box2d PRIVATE -ffp-contract=off)
-endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if(CHIBI_WEB_THREADS)
-        target_compile_options(chibi_box2d PRIVATE -msimd128 -msse2)
-    else()
-        target_compile_definitions(chibi_box2d PRIVATE BOX2D_DISABLE_SIMD)
-    endif()
-endif()
-if(UNIX)
-    target_link_libraries(chibi_box2d PRIVATE m)
-endif()
-install(FILES "${box2d_SOURCE_DIR}/LICENSE" DESTINATION share/chibi/licenses/box2d)
-
-# Box3D is alpha; keep the tag Cute pins (v0.1.0) so both copies match.
-if(NOT box3d_SOURCE_DIR AND cute_framework_SOURCE_DIR)
-    get_filename_component(dependency_root "${cute_framework_SOURCE_DIR}" DIRECTORY)
-    if(EXISTS "${dependency_root}/box3d-src/include/box3d/box3d.h")
-        set(box3d_SOURCE_DIR "${dependency_root}/box3d-src")
-    endif()
-endif()
-if(NOT box3d_SOURCE_DIR)
-    FetchContent_Declare(chibi_box3d_source
-        GIT_REPOSITORY https://github.com/erincatto/box3d.git GIT_TAG v0.1.0
-        SOURCE_SUBDIR chibi-source-only UPDATE_DISCONNECTED TRUE)
-    FetchContent_MakeAvailable(chibi_box3d_source)
-    set(box3d_SOURCE_DIR "${chibi_box3d_source_SOURCE_DIR}")
-endif()
-file(GLOB box3d_sources CONFIGURE_DEPENDS "${box3d_SOURCE_DIR}/src/*.c")
-# Keep dependency caches read-only: only the allocator needs this local fix.
-set(box3d_patch "${CHIBI_SDK_ROOT}/cmake/patches/box3d-block-alignment.patch")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${box3d_patch}")
-set(box3d_patched_root "${CMAKE_CURRENT_BINARY_DIR}/private/box3d")
-configure_file("${box3d_SOURCE_DIR}/src/block_allocator.c"
-    "${box3d_patched_root}/src/block_allocator.c" COPYONLY)
-find_package(Git REQUIRED)
-execute_process(
-    COMMAND "${GIT_EXECUTABLE}" "--work-tree=${box3d_patched_root}"
-        apply "${box3d_patch}"
-    WORKING_DIRECTORY "${box3d_patched_root}"
-    RESULT_VARIABLE box3d_patch_result
-    ERROR_VARIABLE box3d_patch_error)
-if(NOT box3d_patch_result EQUAL 0)
-    message(FATAL_ERROR "Could not patch Box3D allocator: ${box3d_patch_error}")
-endif()
-list(REMOVE_ITEM box3d_sources "${box3d_SOURCE_DIR}/src/block_allocator.c")
-list(APPEND box3d_sources "${box3d_patched_root}/src/block_allocator.c")
-add_library(chibi_box3d STATIC ${box3d_sources})
-add_library(Chibi::box3d ALIAS chibi_box3d)
-set_target_properties(chibi_box3d PROPERTIES EXPORT_NAME box3d C_STANDARD 17
-    C_STANDARD_REQUIRED YES C_EXTENSIONS YES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(chibi_box3d PRIVATE "${box3d_SOURCE_DIR}/src" "${box3d_SOURCE_DIR}/include")
-target_include_directories(chibi_box3d INTERFACE $<BUILD_INTERFACE:${box3d_SOURCE_DIR}/include>)
-if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(chibi_box3d PRIVATE -ffp-contract=off)
-endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if(CHIBI_WEB_THREADS)
-        target_compile_options(chibi_box3d PRIVATE -msimd128 -msse2)
-    else()
-        target_compile_definitions(chibi_box3d PRIVATE BOX3D_DISABLE_SIMD)
-    endif()
-endif()
-if(UNIX)
-    target_link_libraries(chibi_box3d PRIVATE m)
-endif()
-# Box3D's internal scheduler and timers use the platform thread API.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
-    find_package(Threads REQUIRED)
-    target_link_libraries(chibi_box3d PRIVATE Threads::Threads)
-endif()
-install(FILES "${box3d_SOURCE_DIR}/LICENSE" DESTINATION share/chibi/licenses/box3d)
+# Box2D and Box3D come prebuilt from the third-party archive. Physics's public
+# ABI exposes neither; Box3D is alpha, and Cute links the same v0.1.0.
+chibi_sdk_vendor(chibi_box2d box2d box2d)
+chibi_sdk_vendor(chibi_box3d box3d box3d)
 
 add_library(chibi_task_pool_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/task_pool.c")
 add_library(Chibi::task_pool_runtime ALIAS chibi_task_pool_runtime)
@@ -120,49 +16,14 @@ foreach(header tracy.h web_trace.h)
 endforeach()
 target_include_directories(chibi_task_pool_runtime PRIVATE "${trace_root}")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
-    if(NOT enkits_SOURCE_DIR)
-        chibi_physics_source(enkiTS TaskScheduler_c.h enkits_SOURCE_DIR)
-    endif()
-    if(NOT enkits_SOURCE_DIR)
-        FetchContent_Declare(chibi_enkits_source
-            GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
-            GIT_TAG 4cba61a045d8e759bd35e5d85691bf9f7271f822
-            SOURCE_SUBDIR chibi-source-only UPDATE_DISCONNECTED TRUE)
-        FetchContent_MakeAvailable(chibi_enkits_source)
-        set(enkits_SOURCE_DIR "${chibi_enkits_source_SOURCE_DIR}")
-    endif()
+    # enkiTS is C++, so its consumers in this directory link with the C++ driver.
     enable_language(CXX)
-    find_package(Threads REQUIRED)
-    set(CHIBI_SDK_NEEDS_THREADS ON)
-    add_library(chibi_task_scheduler STATIC "${enkits_SOURCE_DIR}/src/TaskScheduler.cpp"
-        "${enkits_SOURCE_DIR}/src/TaskScheduler_c.cpp")
-    add_library(Chibi::task_scheduler ALIAS chibi_task_scheduler)
-    set_target_properties(chibi_task_scheduler PROPERTIES EXPORT_NAME task_scheduler
-        CXX_STANDARD 11 CXX_STANDARD_REQUIRED YES POSITION_INDEPENDENT_CODE ON)
-    target_include_directories(chibi_task_scheduler PRIVATE "${enkits_SOURCE_DIR}/src")
-    if(NOT DEFINED ENKITS_TASK_PRIORITIES_NUM)
-        set(ENKITS_TASK_PRIORITIES_NUM 3)
-    endif()
-    if(ENKITS_TASK_PRIORITIES_NUM GREATER 0)
-        target_compile_definitions(chibi_task_scheduler PRIVATE
-            ENKITS_TASK_PRIORITIES_NUM=${ENKITS_TASK_PRIORITIES_NUM})
-        target_compile_definitions(chibi_task_pool_runtime PRIVATE
-            ENKITS_TASK_PRIORITIES_NUM=${ENKITS_TASK_PRIORITIES_NUM})
-    endif()
-    target_link_libraries(chibi_task_scheduler PRIVATE Threads::Threads)
-    # Installed C-only consumers still need the vendor's C++ runtime.
-    if(APPLE)
-        target_link_libraries(chibi_task_scheduler PRIVATE c++)
-    elseif(UNIX AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-        target_link_libraries(chibi_task_scheduler PRIVATE stdc++)
-    endif()
+    chibi_sdk_vendor(chibi_task_scheduler task_scheduler enkits)
     target_link_libraries(chibi_task_pool_runtime PRIVATE chibi_task_scheduler)
-    target_include_directories(chibi_task_pool_runtime PRIVATE "${enkits_SOURCE_DIR}/src")
     target_compile_definitions(chibi_task_pool_runtime PRIVATE CHIBI_HAS_ENKITS=1)
     if(CHIBI_WEB_THREADS)
         target_compile_definitions(chibi_task_pool_runtime PRIVATE CHIBI_WEB_WORKERS=${CHIBI_WEB_WORKERS})
     endif()
-    install(FILES "${enkits_SOURCE_DIR}/License.txt" DESTINATION share/chibi/licenses/enkits)
     list(APPEND CHIBI_SDK_TARGETS chibi_task_scheduler)
 endif()
 

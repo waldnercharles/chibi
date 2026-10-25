@@ -11,10 +11,12 @@
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "runtime/declared_components.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -23,6 +25,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+static const char *reference_text(pin_value value)
+{
+    pin_string text = pin_text(value);
+    return !memchr(text.bytes, 0, text.length) && !text.bytes[text.length]
+             ? text.bytes
+             : NULL;
+}
+static pin_value renamed_value(pin_type type, const char *bytes, pin_string *text)
+{
+    if (type == PIN_NAME) {
+        return (pin_value){ .type = PIN_NAME, .str = bytes };
+    }
+    *text = (pin_string){ bytes, bytes ? (uint32_t)strlen(bytes) : 0 };
+    return (pin_value){ .type = PIN_STR, .text = text };
+}
 
 #define NAME_MAX_LENGTH 120
 
@@ -39,7 +57,6 @@ typedef struct
     scene_document *scene;
     char *rml; /* a ui asset's markup */
     char *name;
-    char *metadata;
     bool deleted;
     const reference **references;
 } loaded;
@@ -116,6 +133,7 @@ static bool read_asset(
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
         case REFERENCE_ASSET_BEHAVIOR:
+        case REFERENCE_ASSET_RELATIONSHIP:
             snprintf(why, size, "Executable source uses canonical source refactoring");
             return false;
         case REFERENCE_ASSET_PROTOTYPE:
@@ -187,7 +205,8 @@ static char *saved_source(const refactor_project *, reference_asset_kind kind, l
 {
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
-        case REFERENCE_ASSET_BEHAVIOR: return NULL;
+        case REFERENCE_ASSET_BEHAVIOR:
+        case REFERENCE_ASSET_RELATIONSHIP: return NULL;
         case REFERENCE_ASSET_PROTOTYPE: return prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE:
             return scene_document_save(l->scene, project_components());
@@ -353,20 +372,23 @@ static bool rename_struct_field(
     }
     void *copy = xmalloc(type->size);
     memcpy(copy, pin->default_value.ptr, type->size);
+    arena storage = { 0 };
     pin_value current;
-    pin_read_field(copy, field, &current);
+    pin_read_field(&storage, copy, field, &current);
     int count;
-    char *renamed = value_renamed(r, current.str, from, to, &count);
+    char *renamed = value_renamed(r, reference_text(current), from, to, &count);
     pin_value value = pin->default_value;
     value.ptr = copy;
     if (renamed) {
-        pin_write_field(copy, field, (pin_value){ .type = field->type, .str = renamed });
+        pin_string text;
+        pin_write_field(&storage, copy, field, renamed_value(field->type, renamed, &text));
     }
     bool ok = renamed_count(w, r, count, expected) &&
               (graph_set_pin_default(g, n, output, index, &value) == 0 ||
                fail(w, "could not set %s in %s", r->component, asset_name(w, r->source)));
     free(renamed);
     free(copy);
+    arena_free(&storage);
     return ok;
 }
 
@@ -387,9 +409,10 @@ static bool rename_pin(work *w, graph *g, node *n, const reference *r, const cha
         return rename_struct_field(w, g, n, output, index, r, from, to, expected);
     }
     int count;
-    char *renamed = value_renamed(r, pin->default_value.str, from, to, &count);
+    char *renamed = value_renamed(r, reference_text(pin->default_value), from, to, &count);
     pin_value value = pin->default_value;
-    value.str = renamed;
+    pin_string text;
+    value = renamed_value(value.type, renamed, &text);
     bool ok = renamed_count(w, r, count, expected) &&
               (graph_set_pin_default(g, n, output, index, &value) == 0 ||
                fail(w, "could not set a pin in %s", asset_name(w, r->source)));
@@ -455,19 +478,22 @@ static bool rename_prototype_field(
 {
     char component[128];
     component_of(r, component, sizeof component);
+    arena storage = { 0 };
+    pin_string text;
     pin_value current = { 0 };
-    prototype_read_field(prototype, component, component_field(r), &current);
+    prototype_read_field(&storage, prototype, component, component_field(r), &current);
     int count;
-    char *renamed = value_renamed(r, current.str, from, to, &count);
+    char *renamed = value_renamed(r, reference_text(current), from, to, &count);
     bool ok = renamed_count(w, r, count, expected) &&
               (prototype_write_field(
                    prototype,
                    component,
                    component_field(r),
-                   (pin_value){ .type = PIN_STR, .str = renamed }
+                   renamed_value(PIN_STR, renamed, &text)
                ) == 0 ||
                fail(w, "could not set %s in %s", r->component, prototype->name));
     free(renamed);
+    arena_free(&storage);
     return ok;
 }
 
@@ -710,8 +736,8 @@ static bool name_taken(const work *w, reference_asset_kind kind, int asset, cons
 }
 
 static const char *const KIND_NAMES[REFERENCE_ASSET_KIND_COUNT] = {
-    "scene", "prototype", "behavior", "event",  "material",
-    "shape", "field",     "library",  "system", "ui document",
+    "scene", "prototype", "behavior", "event",       "material",     "shape",
+    "field", "library",   "system",   "ui document", "relationship",
 };
 
 static const reference **uses_of(const work *w, reference_symbol symbol)
@@ -1183,20 +1209,16 @@ static bool finish(work *w, refactor_plan *plan)
         }
         if (text && !l->name && same_text(text, w->project->texts[l->asset])) {
             free(text);
-            free(l->metadata);
-            l->metadata = NULL;
             continue;
         }
         apush(
             plan->edits,
             ((refactor_edit){ .asset = l->asset,
                               .text = text,
-                              .metadata = l->metadata,
                               .name = l->name,
                               .references = l->references })
         );
         l->name = NULL;
-        l->metadata = NULL;
         l->references = NULL;
     }
     asort(plan->edits, edit_order);
@@ -1208,7 +1230,6 @@ static void work_free(work *w)
     for (int i = 0; i < acount(w->assets); i++) {
         release(w->assets[i]);
         free(w->assets[i]->name);
-        free(w->assets[i]->metadata);
         afree(w->assets[i]->references);
         free(w->assets[i]);
     }
@@ -1421,7 +1442,6 @@ void refactor_plan_free(refactor_plan *plan)
 {
     for (int i = 0; i < acount(plan->edits); i++) {
         free(plan->edits[i].text);
-        free(plan->edits[i].metadata);
         free(plan->edits[i].name);
         afree(plan->edits[i].references);
     }

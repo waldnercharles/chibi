@@ -1,5 +1,5 @@
-behavior BeatProbe {
-    on Tick(dt) {
-        self.Transform = vec2(Beat.Pulse() * 4, 0)
+BeatProbe :: behavior {
+    on Tick :: () {
+        self.Transform = vec2(float(Beat.Pulse() * 4), 0)
     }
 }

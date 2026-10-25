@@ -1,55 +1,55 @@
 # Dependency-ordered PR checklist
 
-Only coordinator-verified merged R399/RCAP/RSCHEMA/RFMT foundations and the bounded read-only B06 audit are checked. F00/F01/F02 remain open. Other existing-owned work is reserved to its coordinator; current PR/head/evidence status must be rechecked. Dependencies include preparation and readiness gates, not just code imports. Refer to README.md for universal G0–G7 gates, decisions and policy.
+Only coordinator-verified merged R397/R398/R399/RCAP/RWRITE/RSCHEMA/RFMT foundations and the bounded read-only B06 audit are checked. F00/F01/F02 remain open. Other existing-owned work is reserved to its coordinator; current PR/head/evidence status must be rechecked. Dependencies include preparation and readiness gates, not just code imports. Refer to README.md for universal G0–G7 gates, decisions and policy.
 
 ## [x] RSCHEMA: Prepared opcode schema identity
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: none (preparation can start)
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
-PR #401 merged as 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb after exact-head review/tests verified by the coordinator. Schema-safety foundation is complete; R397 and R398 retain explicit RSCHEMA dependencies and still require their own refreshed exact-head integration evidence.
+PR #401 merged as 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb after exact-head review/tests verified by the coordinator. Schema-safety foundation is complete; dependent query/read/write foundations subsequently landed with their own fresh exact-head integration evidence. Manual payload/semantic version obligations remain.
 
 Acceptance: Prepared producer/consumer mismatch rejection, unchanged existing ordinals, all backend/serialization checks on exact integrated head.
 
 Plan evidence: 6.6 publication safeguards
 PR #401 / merged integration head 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb / exact-head independent review/tests verified by coordinator; consult PR evidence.
 
-## [ ] R397: Checked query-variable load
+## [x] R397: Checked query-variable load
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: RSCHEMA
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
-Existing PR #397; reconcile publication and exact-head evidence with foundation coordinator. Do not reimplement.
+PR #397 merged as 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 after fresh exact-head review/tests on 6524d3fc090e27943e4bc3942e6b528ba311ae6c. Checked query-load foundation complete; no full Studio/browser readiness claim.
 
 Acceptance: Current review/tests/merge status independently verified; preserve fallbacks and bytecode/native/Wasm parity.
 
 Plan evidence: 6.6;11 Stage 1A
-PR / exact head / review / tests / remaining blocker: **unrecorded**
+PR #397 / merged integration head 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 / exact tested head 6524d3fc090e27943e4bc3942e6b528ba311ae6c; consult PR evidence.
 
-## [ ] R398: Checked scalar component reads
+## [x] R398: Checked scalar component reads
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: R397,RSCHEMA
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
-Existing PR #398; reconcile publication and exact-head evidence with foundation coordinator. Do not reimplement.
+PR #398 merged as b1ada743d978a25ff8b0d5d677b491291eb4ddf5 after fresh exact-head review/tests on cdf9adc540f1c1c0c9c8468820a1bf5b706629e4. Explicit checked scalar getter complete; ordinary member reads retain debug-snapshot fallback.
 
 Acceptance: Missing/stale entity, layout, effects, escapes and suspension preserve checked-path behavior; actual backend execution.
 
 Plan evidence: 6.6;11 Stage 1A
-PR / exact head / review / tests / remaining blocker: **unrecorded**
+PR #398 / merged integration head b1ada743d978a25ff8b0d5d677b491291eb4ddf5 / exact tested head cdf9adc540f1c1c0c9c8468820a1bf5b706629e4; consult PR evidence.
 
 ## [x] R399: Comment-preserving minimizer safety
 
 Stage: 1B · Repository: chibi · Scope: existing_owned
 Dependencies: none (preparation can start)
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 PR #399 merged as 1de4810d49b3acf4ead7d910d0abd2b042293e18, verified by coordinating worker. Its safety fix is complete; broader Format policy/integration remain separate packages.
 
-Acceptance: Exact-head admitted native/Wasm/tooling tests and independent review; no broad Format policy inferred.
+Acceptance: Exact-head native/Wasm/tooling tests and independent review; no broad Format policy inferred.
 
 Plan evidence: 8;D10
 PR #399 / merged integration head 1de4810d49b3acf4ead7d910d0abd2b042293e18 / merge verified by coordinator; consult PR evidence for exact validation.
@@ -58,7 +58,7 @@ PR #399 / merged integration head 1de4810d49b3acf4ead7d910d0abd2b042293e18 / mer
 
 Stage: 1B · Repository: chibi · Scope: existing_owned
 Dependencies: none (preparation can start)
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 PR #400 merged as ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec, verified by coordinating worker after fresh independent validation. Capture-retention fix is complete; do not reimplement.
 
@@ -67,24 +67,24 @@ Acceptance: Repetitive managed overwrite, task-owner release, cancellation and s
 Plan evidence: 6.1D;6.4;11 Stage 1B
 PR #400 / merged integration head ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec / merge and fresh independent validation verified by coordinator; consult PR evidence.
 
-## [ ] RWRITE: Checked scalar component writes
+## [x] RWRITE: Checked scalar component writes
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: R398,RSCHEMA
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
-Prior unpublished source is not currently recovered, only metadata. Coordinator owns reconstruction after schema identity; fresh exact-head reviews/tests required.
+PR #408 merged as 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 after independent exact-head review/tests on 982e736e4f2d5922c2308f0b6017dcfd30dbd869. Checked scalar publication and its ownership/order/reacquisition safeguards are complete; no raw-store substitution or broad managed-write claim.
 
 Acceptance: Same-value, range/type, dirty/version/ON_SET, stale/missing entity and compound evaluation/error ordering; all backends.
 
 Plan evidence: 6.6;11 Stage 1A
-PR / exact head / review / tests / remaining blocker: **unrecorded**
+PR #408 / merged integration head 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 / exact tested head 982e736e4f2d5922c2308f0b6017dcfd30dbd869; consult PR evidence.
 
 ## [x] RFMT: Configurable current-printer candidate
 
 Stage: 1B · Repository: chibi · Scope: existing_owned
 Dependencies: none (preparation can start)
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Shared formatter SDK foundation PR #402 merged as 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 after independent checks of exact head 3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b, verified by the coordinator. Output is LF only; configurable line endings are not implemented. This foundation does not complete F00 comparison or full F01/F02 caller/dialect integration.
 
@@ -97,7 +97,7 @@ PR #402 / merged integration head 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 / ind
 
 Stage: 0 · Repository: both · Scope: committed
 Dependencies: none (preparation can start)
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Record refreshed exact engine/Studio/source trees, SDK checksum, assets/fonts/toolchain/platforms; identify baseline health including historical font-variable report; preserve historical branches.
 
@@ -110,7 +110,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 0 · Repository: studio · Scope: committed
 Dependencies: B00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Reconcile 155 product sources, 62 headers and all support paths; inventory 44 panel-source contracts, commands, input states, document/history/async flows and actual shared-vs-instance view state.
 
@@ -119,15 +119,15 @@ Acceptance: Every path has a function-level owner before conversion; source/buil
 Plan evidence: 3;4;5;11 Stage 0;Appendix A
 PR / exact head / review / tests / remaining blocker: **unrecorded**
 
-## [ ] B02: Admit bounded evidence selectors
+## [ ] B02: Define and run evidence selectors
 
 Stage: 0 · Repository: both · Scope: committed
 Dependencies: B00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
-Map each acceptance need to independently meaningful C/pico_unit selectors and real native/Wasm execution; request required admission without recreating a quarantined aggregate.
+Map each acceptance need to meaningful C/pico_unit selectors and real native/Wasm execution, then run the checks for the affected contracts.
 
-Acceptance: Unchanged 60-second supervisor and repository policy; held-oracle assertions reused only through admitted routes; unavailable capture/soak remains explicit gate.
+Acceptance: Reuse held-oracle assertions through their owning routes and preserve their explicit holds; required capture/soak evidence remains an explicit gate when unavailable.
 
 Plan evidence: 7.3;12;Appendix A tests
 PR / exact head / review / tests / remaining blocker: **unrecorded**
@@ -136,7 +136,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 0-2 · Repository: both · Scope: committed
 Dependencies: B00,B02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Frozen native/original SDK versus native/candidate SDK versus authored/candidate SDK; record stable IDs, bytes, states, errors, event ordering and real input plus deterministic per-platform captures.
 
@@ -149,7 +149,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 0-2 · Repository: both · Scope: committed
 Dependencies: B00,B02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Measure startup/idle/interactive/cold compile and warm runtime; add missing crossings/copies/retained captures, strings, generations and UI phase attribution; preserve existing profiler meanings.
 
@@ -162,7 +162,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 0-8 · Repository: studio · Scope: committed
 Dependencies: B01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Function-level authored attempts, language improvements considered, irreducible mechanism justification, effects/ownership/threading and reconsideration criteria for 29 SPLIT and four candidate native files plus extracted adapters.
 
@@ -175,7 +175,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: B02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Versioned normative lexical/names/types/ownership/execution/task/ECS/effects/ABI/reload/tooling rules; fix stale reducer/reload/project-version docs using actual callers.
 
@@ -227,7 +227,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: B04,L00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Array/set construction and mutation via checked uniqueness/COW/reuse; stable indexes, sorting/searching/queues/cache algorithms using existing syntax first.
 
@@ -266,7 +266,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: B02,L00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Existing qualified libraries, discovery/namespace rules, private state ownership, visibility, unique names, cycles, incremental dependency invalidation and catalog isolation.
 
@@ -292,7 +292,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B-2 · Repository: chibi · Scope: conditional
 Dependencies: L07,L01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Implement bounded concrete specialization if real module/collection consumers need it rather than unmaintainable typed duplication.
 
@@ -305,11 +305,11 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: L00,L01,L07
-Decision gate: Inferred capture selected; callable grammar, capture/retention/ref contract still need specification
+Decision gate: Inferred shared mutable bindings selected; optional fn, arrow bodies and inferred results requested; exact grammar/canonicalization and lifetime admission pending; proper cycle reclamation required in a separate PR, mechanism unselected
 
-Owner selected inferred captures. Define exact safe by-value/ref and callable lifetime contract before grammar; checked nonescaping authored-to-authored predicate/comparator/visitor APIs first, with complete owner/service effects.
+Owner selected inferred shared mutable captures and requested optional fn, arrow forms and inferred results. Resolve exact grammar/canonicalization and lifetime admission before parser/runtime work; recommend fn-free semantic canonicalization, distinct callable types and no implicit block-to-arrow rewriting. Checked synchronous authored-to-authored callbacks first with complete owner/service effects. Proper automatic capture-cycle reclamation remains a separate required PR; interim rejection is temporary.
 
-Acceptance: Inferred captures and costs inspectable; mutation must not silently change capture/alias lifetime; no borrowed escape or suspension; all owner/service effects tracked; zero environment allocation proved only on the chosen hot path.
+Acceptance: Optional-fn block and arrow forms preserve capture/result semantics; inference keeps explicit recursive fallback and bodyless callable types distinct. Grammar boundaries and checked canonical keyword removal preserve comments, binding/effect identity and source maps. Outer and sibling closures share one binding across stack/owned placement and copies; ordinary value copies remain unchanged. No dangling escape or unsupported suspension; owner/service effects and capture costs inspectable. Proper cycle reclamation remains required in a separate PR; temporary rejection cannot close it. Zero allocation claims need exact hot-path evidence.
 
 Plan evidence: D6
 PR / exact head / review / tests / remaining blocker: **unrecorded**
@@ -331,7 +331,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1A-2 · Repository: chibi · Scope: committed
 Dependencies: RSCHEMA,L00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Single-source typed definitions gain checked borrow/retain/alias/allocation/copy/thread/reentrancy/suspension/lowering metadata, generated bindings and ABI semantic fingerprints.
 
@@ -344,7 +344,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: chibi · Scope: committed
 Dependencies: L00,L07,L16
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Generated/type-checked nominal handles/event schemas, concrete Saved/Failed/Cancelled outcomes using existing unions, cost/effects/ownership and capability pack isolation.
 
@@ -357,7 +357,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Start/poll/cancel export/thumbnail/index work, typed progress/success/failure, owner-generation tokens, limits and explicit concurrency.
 
@@ -396,7 +396,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: B04,RCAP
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 World string interning, task result snapshots/roots, activation/state arenas, retained old modules and owning FFI records; measure beyond coordinator-owned capture-box fix.
 
@@ -409,7 +409,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B-2 · Repository: chibi · Scope: committed
 Dependencies: L00,K00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Workspace/document/component registrations/jobs/resources deterministic teardown, bounded queues/payload/task work admission and truthful allocation-failure contract.
 
@@ -422,7 +422,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1A-2 · Repository: chibi · Scope: committed
 Dependencies: L16,R397,R398,RWRITE
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Bounded worthwhile helper with native scalar/unboxed calling convention and Wasm typed imports/linker; simple semantics direct shared IR, stable service binding and generic checked fallback.
 
@@ -435,7 +435,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1A-2 · Repository: chibi · Scope: committed
 Dependencies: R397,R398,RWRITE,L16,B04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Hoist stable metadata/validation and specialize row bodies after narrow access operations; preserve logical references outside uninterrupted proven regions.
 
@@ -448,7 +448,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B-2 · Repository: chibi · Scope: conditional
 Dependencies: L07,L16,B04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Inline/local/imported representative game update first; implement verified import summaries only when workload proves needless module serialization.
 
@@ -461,7 +461,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B-2 · Repository: chibi · Scope: committed
 Dependencies: L02,L04,L16,B04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Use lifetime/uniqueness for record/collection hot helpers; retain owned values at async/stored boundaries and checked fallbacks for managed/opaque cases.
 
@@ -500,7 +500,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: later · Repository: chibi · Scope: conditional
 Dependencies: L22,B04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Only measurable target-specific benefit after safe packed storage; feature detection, bounds/tails, alignment, disjointness/effects and scalar fallback.
 
@@ -513,7 +513,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B-later · Repository: chibi · Scope: committed
 Dependencies: B02,B04,L00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Dense/sparse/change queries, spawn/despawn/hierarchy, fixed-step/event order, shared-target ordered reductions, AI/task cancel swarm, exact numeric/resource ABI and inline/local/imported cases.
 
@@ -526,7 +526,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: B02,RFMT
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Current configurable printer versus real Prettier plugin/Topiary feasibility and bounded corpus evidence; one authoritative chosen engine, maintenance/configuration/native/browser implications.
 
@@ -539,7 +539,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: chibi · Scope: committed
 Dependencies: F00,R399
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Versioned options/config resolution for indent/tabs/width/line endings, project versus explicit precedence, diagnostics; one Studio/CLI/check/save-authoring service path.
 
@@ -552,7 +552,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: F00,B02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Full 81 RML/102 RCSS Studio assets plus mixed/Unicode/text/entities/comments/templates/bindings/use/slots/nesting/imports/colors/custom values corpus; CLI includes UI assets.
 
@@ -604,7 +604,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: later · Repository: chibi · Scope: conditional
 Dependencies: F01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Only useful integrations around authoritative engine API, without second formatting policy or printer.
 
@@ -617,7 +617,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: chibi · Scope: committed
 Dependencies: K00,L03
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Immutable revision snapshots, stable symbol/node IDs, bounded text edits, prepare/stage/publish, reflection/canonical serialization and generic owned storage.
 
@@ -630,7 +630,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K00,L15
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Generation-safe mount/element handles; typed patches, focus/capture/popover/list/geometry/text primitives; explicit revisions, coherent publish, attach/detach cleanup and bounded settling.
 
@@ -643,7 +643,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Project-root reads, atomic writes, change events, import/export streams, browser in-memory versus IndexedDB durability, completion/retry with revision/generation ownership.
 
@@ -656,7 +656,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: chibi · Scope: committed
 Dependencies: K00,L16
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Create/dispose worlds, immutable prepared generations, playback inspection/control, viewport submissions and retained GPU resources as typed mechanisms.
 
@@ -669,7 +669,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Window/input events, clipboard/dialogs/cursor/time/scale/accessibility and text surface foreign adapter, callbacks return to designated app thread.
 
@@ -682,7 +682,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K00,K03,K04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Authenticated socket/browser I/O, bounded send/receive/close and codec if justified; stable identity/revision/outcome schema and fake service for parity.
 
@@ -695,7 +695,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K01,K02,K03,K05,K06,F01,F02,L14
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Complete disposable state/services/publication/failure/cancel/reload feature with existing/approved primitives; record evidence without calling it Outliner production migration.
 
@@ -708,7 +708,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 2 · Repository: both · Scope: committed
 Dependencies: K08,RSCHEMA
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Land reviewed engine capability pair then pin exact Studio SDK release/checksum; clean installed-SDK builds native/browser; honor public API/extraction manifest.
 
@@ -721,7 +721,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 3-8 · Repository: studio · Scope: committed
 Dependencies: B01,K09
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 App/domain/feature/UI/service dependency direction, command registry and explicit module-local selectors; incrementally dismantle studio_sources.c/global internals/native node facade as each feature moves.
 
@@ -734,7 +734,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 3 · Repository: studio · Scope: committed
 Dependencies: P00,K01,K05,L04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Selection/toggle/range anchors, filtered order, rename/path references, visibility/lock/isolate, add/drop/reparent/reorder and permission validation.
 
@@ -747,7 +747,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 3 · Repository: studio · Scope: committed
 Dependencies: P01,K01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Minimum common scene history and snapshot policy, live edit input/change/cancel, undo/redo grouping and redo retention after no-ops.
 
@@ -760,7 +760,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 3 · Repository: studio · Scope: committed
 Dependencies: P02,K02,F01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Header/filter/rows/virtualization/selection/fold/reveal/rename/menu/drag-reorder controllers, typed models, per-view state and cleanup using approved syntax.
 
@@ -773,7 +773,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 3 gate · Repository: both · Scope: committed
 Dependencies: P03,B03,B04,B05
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Functional/input/exact-pixel and performance comparison plus native policy removal/allowlist; baseline defect choices separated.
 
@@ -786,7 +786,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P04,K02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Typed list/tree/field/menu/dialog controls; drag, popup/focus/dismiss/submenu/placement, slot/mount keys, motion/reduced-motion, number commit/scrub, morph text and toast lifecycle.
 
@@ -799,7 +799,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P05,K01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Member list/declaration/type/property choices, commands and reusable fields with exact source identities.
 
@@ -812,7 +812,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P05,K01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Records/diagnostic/call projections, filters and navigation; retain bounded storage and source identity.
 
@@ -825,7 +825,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P05,K03,K06
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Schema/defaults/migrations, unknown supported keys, workspace layouts, user remaps/chords and settings control behavior.
 
@@ -838,7 +838,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P05,P08,P00
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Header/chrome/tabs/area-panel registry, menus, prompts and shared command availability/check state for menu/shortcut/palette/buttons.
 
@@ -851,7 +851,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P05,P09
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Palette/command matching, reusable choice/label/icon presentation and named picker actions with stable typed IDs.
 
@@ -864,7 +864,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 4 · Repository: studio · Scope: committed
 Dependencies: P05,B04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Output-independent performance windows/labels/frame ring and CSV projection; retain only generic clock/profiler/export ABI.
 
@@ -877,7 +877,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P04,K01,L03
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 All document types, saved/working/applied identities, scene/prototype collections, command/mutation/navigation coordination and retention; extend Stage 3 transaction foundation.
 
@@ -890,7 +890,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P12,K03,P09
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Tabs/dirty/revert/reload/save/unsaved prompts, disk notifications/watch policy/self-write suppression and source-draft/applied/saved/durable state machine.
 
@@ -903,7 +903,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P12,K01,F01,F02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Asset/UI text buffer state/revisions, edit/apply and preview policy, one source truth with shared SDK parse/compile/reflection mechanism.
 
@@ -916,7 +916,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P12,P13,K03,K07
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Scene/workspace checkpoint schema/composition, exact IDs/value types/retention/remapping, staging restore and collaboration-compatible state.
 
@@ -929,7 +929,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P05,P12,L04,K04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Saved plus unsaved/open overlays, search/sort/filter/selection grid/list/virtualization, gallery and thumbnail result invalidation.
 
@@ -942,7 +942,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P12,P16,K01,K03
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Create/delete/import/drop and batch undo, semantic rename/reference planning/apply orchestration, atomic multi-file changes through SDK primitives.
 
@@ -955,7 +955,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 5 · Repository: studio · Scope: committed
 Dependencies: P05,P12,K01,L03
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Fields/model projection, scalar/vector/color/enum/reference, exact 64-bit/mixed/computed/read-only, multi-selection/live sessions/overrides.
 
@@ -968,7 +968,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P14,P05,K06
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Completion/indentation/commands/diagnostics/find/apply-save/text presentation/history arbitration; preserve foreign Zep/render/text mechanism only.
 
@@ -981,7 +981,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P14,P19,K01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Call hierarchy/folds, definition/context, project Find/search, refactor UI confirmation/application and navigation history.
 
@@ -994,7 +994,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P14,K05,P19
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Selected target, breakpoints/watch/step/resume/stop, source/graph live values and error presentation with immutable generation ownership.
 
@@ -1007,7 +1007,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P12,P14,K01
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Flow/document/input-binding/pin/selection/search/value semantics, comments/literals/reflected properties and source synchronization through one authority.
 
@@ -1020,7 +1020,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P22,P05,K02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Pointer/key gestures, pan/zoom/selection/navigation/menus, wires/pin connection/routing, authored geometry where possible over narrow batched draw mechanisms.
 
@@ -1033,7 +1033,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P22,P23,P21
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Node/control composition, arrange/layout algorithms, headers/targets, details, flow visuals, eval projection and live highlight/debug models.
 
@@ -1046,7 +1046,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P14,P18,P05,K02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Preview sizing/backdrop/usage navigation, hierarchy/slots/library insert, type-aware details/style edits and gesture transactions in same text history.
 
@@ -1059,7 +1059,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 6 · Repository: studio · Scope: committed
 Dependencies: P25,P05,K02
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Selected live DOM target, box model/paths/style properties, inspect overlay projection and actions.
 
@@ -1072,7 +1072,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P12,P15,P18,K05
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Remaining actor/prototype/scene document authoring/drop/hierarchy/path operations beyond Outliner foundation, permission and multi-target transactions.
 
@@ -1085,7 +1085,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P27,K05,K06,P09
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 2D/3D view/camera/pick/overlay/header/grid/zoom policies, normalized input ownership/pinch/wheel/pan and viewport sizing/dirty/presentation.
 
@@ -1098,7 +1098,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P27,P28,P18
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 2D/3D constraints/snapping/target selection/handle geometry and collider controls/gesture history.
 
@@ -1111,7 +1111,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P27,P15,K05,K04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Play/pause/step/stop/restart/target/spawn-break/keep-changes, scenario follow, physics reset, game input/presentation and preview-world lifecycle.
 
@@ -1124,7 +1124,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P13,P15,P30,P09,K06
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Startup/CLI/project intents, candidate workspace replacement/recovery/room/guest Studio routing, preferences/idle deadlines/frame coordination/module composition; retain entry/event-pump ABI only.
 
@@ -1137,7 +1137,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P30,K05,P18
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Fixture composition, rejection state, view/reference-image options, bake controls and results; generic renderer/bake/download mechanism only.
 
@@ -1150,7 +1150,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P16,K04,K05,K03
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Dependency/content recipes, priority/invalidation/LRU/bounded cache/failure policy, async generation completion; generic file/PNG/GPU operations.
 
@@ -1163,7 +1163,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P13,P15,P31,K03,K04
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Project chooser/new/open/import/export/save-first/name/progress/toast/reveal orchestration; process/file/download primitives only.
 
@@ -1176,7 +1176,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7 · Repository: studio · Scope: committed
 Dependencies: P12,P15,P27,P22,K07,P31
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Schemas/protocol validation, action authorization/gates, scene/graph dispatch through common command transactions, room/order/queue/presence/resync/checkpoint/replay and UI controls.
 
@@ -1189,7 +1189,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 7-8 · Repository: studio · Scope: committed
 Dependencies: P31,P34,P35,K03,K06,K07
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Audit all ten web host files for lifecycle/recovery/room policy; retain only browser boot/storage/network/download/isolation machinery with exact interface.
 
@@ -1202,7 +1202,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 8 · Repository: studio · Scope: committed
 Dependencies: P31,P34,P35,P36,B05
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Exact functions in state_file, stacktrace, web_trace, zep bridge plus every extracted adapter/generated binding; authored attempts or concrete irreducible ABI/crash justification.
 
@@ -1215,7 +1215,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 8 · Repository: both · Scope: committed
 Dependencies: P06,P07,P08,P09,P10,P11,P13,P14,P15,P16,P17,P18,P19,P20,P21,P22,P23,P24,P25,P26,P27,P28,P29,P30,P31,P32,P33,P34,P35,P36,P37,F01,F02,F05,L03,L24
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Final source/import allowlist, remove migration adapters/runtime switches/native controller duplicates; retain pinned oracle artifact/branch; installed-SDK native/browser packages, release evidence, docs/cookbooks and recovery proof.
 
@@ -1228,7 +1228,7 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 0-2 · Repository: both · Scope: completed_audit
 Dependencies: none (preparation can start)
-Decision gate: none beyond existing contracts and applicable admission
+Decision gate: existing contracts and explicit holds
 
 Read-only native-reload source/build audit completed at engine 02f84532 (unchanged relevant paths in 1de4810d) and Studio 78cb4d4c. Native application replacement is already removed; see native-reload-audit.md. Retain retired-option cleanup, generated-C dlopen test and authored publication/checkpoint mechanisms.
 
@@ -1246,7 +1246,6 @@ Read-only audit complete; no removal PR needed. Exact snapshot, source links and
 - [E-index](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/runtime/arrays.c#L200-L336)
 - [E-language](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/docs/code-language.md)
 - [E-migration](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/docs/studio-rml-migration.md#L1-L81)
-- [E-policy](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/AGENTS.md#L13-L18)
 - [E-ui-format](https://github.com/waldnercharles/chibi/blob/02f8453211dd4cc57965ba52c645f08a92e53c5e/src/assets/ui_source_format.c#L1-L277)
 - [P147](https://github.com/waldnercharles/chibi/pull/147)
 - [P169](https://github.com/waldnercharles/chibi/pull/169)

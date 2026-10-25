@@ -514,13 +514,12 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
         );
     }
     if (p[index].container == PIN_CONTAINER_SINGLE &&
-        (value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
-        char *s = graph_own_str(g, value->str, strlen(value->str));
-        if (!s) {
+        (value->type == PIN_STR || value->type == PIN_NAME)) {
+        if (pin_value_copy_to_graph(g, &p[index].default_value, value)) {
             return -1;
         }
-        p[index].default_value.str = s;
     }
+    p[index].default_value.type_name = p[index].type_name;
     graph_changed(g);
     return 0;
 }

@@ -1,3 +1,4 @@
+#include "graph/model/value_copy.h"
 #include "graph/modeling/model_internal.h"
 #include "runtime/models/model_bounds.h"
 #include "support/xalloc.h"
@@ -68,11 +69,17 @@ model_bounds_plan *model_prepare_bounds(
                 row.point_count = points->count;
                 int width = !strcmp(points->type_name, "ShaderVec2") ? 2 : 3;
                 for (int k = 0; k < points->count; k++) {
-                    memcpy(row.points[k], points->items[k].ptr, (size_t)width * sizeof(float));
+                    memcpy(row.points[k], pin_array_data(points, k), (size_t)width * sizeof(float));
                 }
             } else if (pin->type == PIN_STR) {
                 input->resource = acount(p->resources);
-                apush(p->resources, xstrdup(pin->default_value.str));
+                const char *key = graph_text_cstring(g, pin->default_value);
+                if (!key) {
+                    model_fail(error, n->id, "Model resource contains embedded NUL");
+                    model_bounds_plan_free(p);
+                    return NULL;
+                }
+                apush(p->resources, xstrdup(key));
             } else if (pin->type == PIN_ENUM) {
                 input->choice = pin->default_value.e;
             } else if (pin->type == PIN_I32) {

@@ -52,4 +52,14 @@ void render_scene3d_shadow_end(render_scene3d_shadow *shadow, int cascade);
 void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count);
 void render_scene3d_shadow_unbind();
 
+/* Immutable handles and transforms for another pass sampling these same
+ * mesh shadows. The owner retains the textures through the frame. */
+typedef struct
+{
+    CF_Texture map;
+    CF_M4x4 matrices[4];
+    CF_V4 settings; /* Cascade count, inverse tile side, atlas tile UV size. */
+} render_scene3d_shadow_snapshot;
+render_scene3d_shadow_snapshot render_scene3d_shadow_read(render_scene3d_shadow *, int count);
+
 #endif

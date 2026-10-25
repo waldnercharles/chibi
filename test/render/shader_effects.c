@@ -182,7 +182,7 @@ TEST_CASE(authored_ramps_own_their_stops)
     edit[1].position = edit[0].position;
     REQUIRE(!shader_node_ramp_set(copy->graph, loaded, edit, 3));
     pin_array *array = loaded->input_pins[1].default_value.ptr;
-    ((shader_ramp_stop *)array->items[1].ptr)->position = .1f;
+    ((shader_ramp_stop *)pin_array_get(array, 1).ptr)->position = .1f;
     REQUIRE(!shader_graph_from_graph(copy->graph, &ir, &error));
     REQUIRE(
         error.node == loaded->id && strstr(error.message, "stops") &&
@@ -246,12 +246,89 @@ TEST_CASE(effects_evaluate_transforms_remaps_cells_and_ramps)
     shader_graph_free(&g);
     return true;
 }
+/* Star Field along World Position with density and brightness parameters. */
+static void star_program(shader_graph *g)
+{
+    shader_graph_init(g);
+    int direction = shader_graph_add(g, SHADER_WORLD_POSITION, 3);
+    g->output_count = 1;
+    g->output[0] = effect(g, SHADER_STAR_FIELD, 3, direction, parameter(g, 0, 1), parameter(g, 1, 1), -1);
+}
+static float star_at(const shader_graph *g, float density, float brightness, float x, float y, float z)
+{
+    float p[32][4] = { { density }, { brightness } }, out[SHADER_OUTPUT_MAX][4];
+    shader_sample_context sample = { .world_position = { x, y, z } };
+    shader_error error = { 0 };
+    bool ok = shader_graph_eval_outputs(g, &sample, p, out, &error);
+    assert(ok);
+    (void)ok;
+    return out[0][0] + out[0][1] + out[0][2];
+}
+TEST_CASE(star_field_draws_sparse_points_by_direction)
+{
+    shader_graph g;
+    star_program(&g);
+    shader_error error = { 0 };
+    REQUIRE(shader_graph_validate(&g, &error));
+    /* Local maxima on a grid finer than a star over a 2 x 2 degree patch
+     * around -Y: about density x 4 stars. */
+    enum
+    {
+        SIDE = 176
+    };
+    static float field[SIDE][SIDE];
+    const float step = .0002f;
+    for (int j = 0; j < SIDE; j++) {
+        for (int i = 0; i < SIDE; i++) {
+            field[j][i] = star_at(&g, 10, 1, (i - SIDE / 2) * step, -1, (j - SIDE / 2) * step);
+        }
+    }
+    int stars = 0;
+    for (int j = 1; j < SIDE - 1; j++) {
+        for (int i = 1; i < SIDE - 1; i++) {
+            bool peak = field[j][i] > .005f;
+            for (int n = 0; n < 9 && peak; n++) {
+                peak = n == 4 || field[j][i] > field[j + n / 3 - 1][i + n % 3 - 1];
+            }
+            stars += peak;
+        }
+    }
+    REQUIRE(stars >= 20 && stars <= 60);
+    /* Direction length, zero density and brightness. */
+    float x = 0, z = 0, best = 0;
+    for (int j = 0; j < SIDE; j++) {
+        for (int i = 0; i < SIDE; i++) {
+            if (field[j][i] > best) {
+                best = field[j][i];
+                x = (i - SIDE / 2) * step;
+                z = (j - SIDE / 2) * step;
+            }
+        }
+    }
+    REQUIRE(best > .015f);
+    REQUIRE(fabsf(star_at(&g, 10, 1, x * 3, -3, z * 3) - best) < 1e-6f);
+    REQUIRE(fabsf(star_at(&g, 10, 2, x, -1, z) - 2 * best) < 1e-6f);
+    REQUIRE(star_at(&g, 0, 1, x, -1, z) == 0 && star_at(&g, 10, 0, x, -1, z) == 0);
+    REQUIRE(star_at(&g, 10, 1, 0, 0, 0) == 0);
+    /* Its GLSL reads screen derivatives and only comes with the node. */
+    char *glsl = shader_graph_glsl_named(&g, "test_stars", &error);
+    REQUIRE(glsl && strstr(glsl, "sgx_star_field(") && strstr(glsl, "fwidth"));
+    free(glsl);
+    shader_graph_free(&g);
+    program(&g, false);
+    glsl = shader_graph_glsl_named(&g, "test_effects", &error);
+    REQUIRE(glsl && !strstr(glsl, "sgx_star_field"));
+    free(glsl);
+    shader_graph_free(&g);
+    return true;
+}
 void test_shader_effects_cpu()
 {
     test_graph_packs_install();
     RUN_TEST_CASE(authored_ramps_own_their_stops);
     RUN_TEST_CASE(fresnel_reads_the_sample_context);
     RUN_TEST_CASE(effects_evaluate_transforms_remaps_cells_and_ramps);
+    RUN_TEST_CASE(star_field_draws_sparse_points_by_direction);
     test_graph_packs_restore();
 }
 

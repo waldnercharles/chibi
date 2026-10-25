@@ -1,5 +1,8 @@
 #include "authoring/source_minimize.h"
 
+#include "authoring/source_edit_refactor_internal.h"
+#include "authoring/source_format.h"
+#include "authoring/source_literal.h"
 #include "support/array.h"
 #include "support/text_edit.h"
 #include "support/xalloc.h"
@@ -48,8 +51,8 @@ static int end(TSNode node)
     return (int)ts_node_end_byte(node);
 }
 
-/* Equivalence ignores source positions, the spelling of payload aliases and
- * reference markers, which lower to the same reads. */
+/* Equivalence ignores source positions and reference markers, which lower to
+ * the same reads. */
 /* An original analysis, a rewritten one and the catalog both resolve. */
 typedef struct
 {
@@ -67,7 +70,8 @@ static bool payload(const script_symbol *s)
 static bool same_type(script_type x, script_type y)
 {
     return x.storage == y.storage && x.container == y.container &&
-           x.nominal == y.nominal && x.parameter == y.parameter && x.flags == y.flags;
+           x.nominal == y.nominal && x.parameter == y.parameter &&
+           x.flags == y.flags && x.collection == y.collection;
 }
 /* A reference marker on an operand propagates into derived value types
  * without changing how they lower. */
@@ -93,9 +97,9 @@ static bool same_symbol(const pair *p, int i, int j)
     bool parameter = x->kind == SCRIPT_PARAMETER;
     return x->kind == y->kind && same_type(x->type, y->type) &&
            x->capability == y->capability &&
-           (parameter || x->function == y->function) && x->writable == y->writable &&
-           x->disabled == y->disabled && x->outcome == y->outcome &&
-           ((payload(x) && payload(y)) || same_text(x->name, y->name));
+           (parameter || x->function == y->function) &&
+           x->writable == y->writable && x->disabled == y->disabled &&
+           x->outcome == y->outcome && same_text(x->name, y->name);
 }
 /* Arguments evaluate in source order, so a rewrite must keep their order as
  * well as their parameters. */
@@ -160,7 +164,7 @@ static const script_catalog_capability *accessor(
         }
     }
     const script_catalog_capability *c = capability(p, e);
-    return c && c->component_access == access && !c->component_field ? c : NULL;
+    return c && c->component_access == access ? c : NULL;
 }
 /* An entity argument and a path root name the same entity; an omitted
  * argument addresses the owner. */
@@ -176,12 +180,30 @@ static bool same_entity(const pair *p, int entity, int root)
 static bool same_component(const pair *p, int i, int j)
 {
     const script_expression *y = &p->b->expressions[j];
+    bool presence = false;
+    if (y->kind == SCRIPT_EXPR_BINARY && y->op == SCRIPT_OP_NE &&
+        y->right >= 0 && p->b->expressions[y->right].kind == SCRIPT_EXPR_NIL) {
+        y = &p->b->expressions[y->left];
+        presence = true;
+    }
+    const script_catalog_capability *c = accessor(
+        p,
+        p->a,
+        &i,
+        presence || (y->kind == SCRIPT_EXPR_COMPONENT &&
+                     (y->type.flags & SCRIPT_TYPE_OPTIONAL))
+            ? SCRIPT_COMPONENT_ACCESS_HAS
+            : SCRIPT_COMPONENT_ACCESS_READ
+    );
+    if (c && c->component_field) {
+        if (y->kind != SCRIPT_EXPR_MEMBER || y->member != c->component_field) {
+            return false;
+        }
+        y = &p->b->expressions[y->left];
+    }
     if (y->kind != SCRIPT_EXPR_COMPONENT) {
         return false;
     }
-    bool presence = (y->type.flags & SCRIPT_TYPE_OPTIONAL) != 0;
-    const script_catalog_capability
-        *c = accessor(p, p->a, &i, presence ? SCRIPT_COMPONENT_ACCESS_HAS : SCRIPT_COMPONENT_ACCESS_READ);
     return c && c->component == y->capability &&
            same_entity(p, argument(&p->a->expressions[i], c->component_entity), y->left);
 }
@@ -230,7 +252,7 @@ static script_operator operator_call(const pair *p, const script_expression *x)
     }
     const script_expression *right = &p->a->expressions[second];
     /* `&&` and `||` skip their right operand, which must not act. */
-    bool quiet = !(right->effects & ~SCRIPT_EFFECT_READ);
+    bool quiet = !(right->effects & ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ));
     if (quiet && script_name_matches(c->name, "and")) {
         return SCRIPT_OP_AND;
     }
@@ -270,6 +292,25 @@ static bool same_operator(const pair *p, int i, int j)
 }
 static bool same_expression(const pair *p, int i, int j)
 {
+    if (i >= 0 && j >= 0) {
+        const script_expression *x = &p->a->expressions[i],
+                                *y = &p->b->expressions[j];
+        if (x->kind == SCRIPT_EXPR_MEMBER && x->left >= 0) {
+            const script_expression *call = &p->a->expressions[x->left];
+            const script_catalog_capability *cap = capability(p, call);
+            if (cap && cap->id == script_catalog_id("capability", "Self") &&
+                cap->result_count == 1 &&
+                x->member == script_catalog_id("port", cap->results[0].name)) {
+                x = call;
+            }
+        }
+        if (x->kind == SCRIPT_EXPR_CALL && x->right < 0 &&
+            x->capability == script_catalog_id("capability", "Self") &&
+            !x->argument_count && y->kind == SCRIPT_EXPR_SYMBOL &&
+            y->symbol == p->b->owner_symbol && same_value_type(x->type, y->type)) {
+            return true;
+        }
+    }
     if (i >= 0 && j >= 0 && (same_component(p, i, j) || same_operator(p, i, j))) {
         return true;
     }
@@ -278,9 +319,18 @@ static bool same_expression(const pair *p, int i, int j)
         return i == j;
     }
     const script_expression *x = &a->expressions[i], *y = &b->expressions[j];
+    script_type left_type = x->type, right_type = y->type;
+    /* A numeric literal's inference marker does not change its stored value.
+     * Keep its storage and exact constant comparison: float/int declarations
+     * must not turn into inferred doubles. */
+    if (x->kind == SCRIPT_EXPR_CONSTANT && y->kind == SCRIPT_EXPR_CONSTANT &&
+        script_type_numeric(left_type) && script_type_numeric(right_type)) {
+        left_type.flags &= ~SCRIPT_TYPE_UNTYPED;
+        right_type.flags &= ~SCRIPT_TYPE_UNTYPED;
+    }
     /* A call records the operator that resolved it only for presentation. */
     if (x->kind != y->kind || (x->kind != SCRIPT_EXPR_CALL && x->op != y->op) ||
-        !same_value_type(x->type, y->type) || x->capability != y->capability ||
+        !same_value_type(left_type, right_type) || x->capability != y->capability ||
         x->member != y->member || x->read != y->read || x->write != y->write ||
         x->instance != y->instance || x->entry != y->entry ||
         x->offset != y->offset || x->effects != y->effects ||
@@ -369,6 +419,7 @@ static bool same_statement(const pair *p, int i, int j)
     if (x->kind != y->kind || x->op != y->op || x->reduction != y->reduction ||
         !same_effects(x->effects, y->effects) ||
         x->child_count != y->child_count || !same_symbol(p, x->symbol, y->symbol) ||
+        (x->kind == SCRIPT_STMT_FOREACH && !same_symbol(p, x->key_symbol, y->key_symbol)) ||
         !same_expression(p, x->expression, y->expression) ||
         !same_expression(p, x->second, y->second) ||
         !same_expression(p, x->third, y->third) ||
@@ -397,17 +448,15 @@ static bool same_function(const pair *p, const script_function *x, const script_
     return x->kind == y->kind && x->receiver == y->receiver &&
            x->parent == y->parent && x->parameter_count == y->parameter_count &&
            x->result_count == y->result_count &&
-           x->type_parameter_count == y->type_parameter_count &&
            x->depth_limit == y->depth_limit && x->event == y->event &&
            x->action == y->action && same_text(x->entry, y->entry) &&
            same_effects(x->effects, y->effects) && x->pure == y->pure &&
            x->disabled == y->disabled && same_symbol(p, x->symbol, y->symbol) &&
            same_symbols(p, x->parameters, y->parameters, x->parameter_count) &&
            same_symbols(p, x->results, y->results, x->result_count) &&
-           same_symbols(p, x->type_parameters, y->type_parameters, x->type_parameter_count) &&
            same_statement(p, x->body, y->body);
 }
-/* Declared symbols in order, without payload aggregates and their aliases. */
+/* Declared symbols in order, without payload aggregates. */
 static int next_declared(const script_analysis *a, int i)
 {
     while (i < a->symbol_count && payload(&a->symbols[i])) {
@@ -564,9 +613,10 @@ static void delete_line(collector *c, TSNode node)
 }
 static bool literal(TSNode value)
 {
-    return is(value, "number") || is(value, "string") || is(value, "boolean") ||
-           is(value, "nil") || is(value, "struct_expression") ||
-           is(value, "array_expression") ||
+    return is(value, "number") || is(value, "string") ||
+           is(value, "character") || is(value, "boolean") || is(value, "nil") ||
+           is(value, "struct_expression") || is(value, "array_expression") ||
+           is(value, "map_expression") ||
            (is(value, "unary_expression") && is(field(value, "operand"), "number"));
 }
 static TSNode argument_value(TSNode argument)
@@ -610,48 +660,14 @@ static void labels(collector *c, TSNode list)
         }
     }
 }
-static int symbol_declared_at(const script_analysis *a, TSNode node)
-{
-    for (int i = 0; i < a->symbol_count; i++) {
-        if (a->symbols[i].declaration.start == start(node) &&
-            a->symbols[i].declaration.end == end(node)) {
-            return i;
-        }
-    }
-    return -1;
-}
-/* `on Event as alias` reads the payload as `event`. */
-static void handler_alias(collector *c, TSNode handler)
-{
-    TSNode name = field(handler, "name"), alias = field(handler, "alias");
-    int symbol = symbol_declared_at(c->analysis, alias);
-    if (symbol < 0) {
-        return;
-    }
-    rewrite r = { 0 };
-    edit(&r, end(name), end(alias), "");
-    for (int i = 0; i < c->analysis->use_count; i++) {
-        const script_use *use = &c->analysis->uses[i];
-        if (use->symbol == symbol && use->range.start != start(alias)) {
-            edit(&r, use->range.start, use->range.end, "event");
-        }
-    }
-    apush(c->rewrites, r);
-}
 static void handler(collector *c, TSNode node)
 {
     TSNode parameters = field(node, "parameters");
-    if (!ts_node_is_null(field(node, "alias"))) {
-        handler_alias(c, node);
-    }
-    if (ts_node_is_null(parameters)) {
+    /* `on X :: (a: T)` names the payload fields it reads, with their types. */
+    if (!ts_node_is_null(field(node, "binding")) || ts_node_is_null(parameters)) {
         return;
     }
-    TSNode before = field(node, "alias");
-    if (ts_node_is_null(before)) {
-        before = field(node, "name");
-    }
-    add(c, end(before), end(parameters), "");
+    add(c, end(field(node, "name")), end(parameters), "");
     /* Payload parameters take their registered types and defaults. */
     for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
         TSNode parameter = ts_node_named_child(parameters, i);
@@ -667,12 +683,48 @@ static void handler(collector *c, TSNode node)
         }
     }
 }
+/* Behavior/library roots already retain per-instance storage. System roots
+ * and callable locals require retain to preserve their private lifetime. */
+static void root_storage(collector *c, TSNode node)
+{
+    TSNode storage = field(node, "storage"),
+           program = ts_node_parent(ts_node_parent(node));
+    if (!is(storage, "retain") ||
+        (!is(program, "behavior") && !is(program, "library"))) {
+        return;
+    }
+    int to = end(storage);
+    while (c->text[to] == ' ' || c->text[to] == '\t') {
+        to++;
+    }
+    rewrite r = { 0 };
+    edit(&r, start(storage), to, "");
+    if (ts_node_is_null(field(node, "type"))) {
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (is(child, ":")) {
+                edit(&r, start(child), end(child), ":=");
+            } else if (is(child, "=")) {
+                int after = end(child);
+                while (c->text[after] == ' ' || c->text[after] == '\t') {
+                    after++;
+                }
+                edit(&r, start(child), after, "");
+            }
+        }
+    }
+    apush(c->rewrites, r);
+}
 /* `name: type = value` and `type name = value` become `name := value`. */
 static void inferred_declaration(collector *c, TSNode node)
 {
     TSNode name = field(node, "name"), type = field(node, "type"),
            value = field(node, "value");
     if (ts_node_is_null(type) || ts_node_is_null(value)) {
+        return;
+    }
+    if (!ts_node_is_null(field(node, "storage"))) {
+        add(c, start(type), start(value), "= ");
         return;
     }
     if (start(type) > start(name)) {
@@ -762,6 +814,14 @@ static const script_expression *expression_at(const collector *c, TSNode node, s
     }
     return NULL;
 }
+/* T(value) with one positional value, analyzed as a conversion. */
+static bool conversion(const collector *c, TSNode call)
+{
+    TSNode arguments = field(call, "arguments");
+    return ts_node_named_child_count(arguments) == 1 &&
+           !is(ts_node_named_child(arguments, 0), "named_argument") &&
+           expression_at(c, call, SCRIPT_EXPR_CAST);
+}
 /* An argument written in the call's own list. Defaults span the whole list;
  * an action's configured arguments lie at its declaration. */
 static int written_argument(const collector *c, TSNode node, const script_expression *call, int parameter)
@@ -798,6 +858,7 @@ static bool primary_at(const collector *c, script_range range)
                                              "parenthesized_expression",
                                              "builtin_reference",
                                              "number",
+                                             "character",
                                              "string",
                                              "boolean" };
     for (size_t i = 0; i < sizeof primaries / sizeof *primaries; i++) {
@@ -818,38 +879,57 @@ static void append_text(char **out, const char *text, int length)
 static char *component_suffix(const collector *c, const script_catalog_capability *cap, bool close)
 {
     const script_catalog_type *type = script_catalog_type_by_id(c->catalog, cap->component);
-    const char *name = type->source_name ? type->source_name : type->name;
+    if (!type) {
+        return NULL;
+    }
+    char *name = authoring_source_identifier(type->source_name ? type->source_name : type->name, NULL, 0);
     const char *field_name = "";
     for (int i = 0; cap->component_field && i < type->field_count; i++) {
         if (type->fields[i].id == cap->component_field) {
             field_name = type->fields[i].name;
         }
     }
-    size_t size = strlen(name) + strlen(field_name) + 4;
+    char *member = *field_name ? authoring_source_identifier(field_name, NULL, 0)
+                               : xstrdup("");
+    if (!name || !member || (cap->component_field && !*field_name)) {
+        free(name);
+        free(member);
+        return NULL;
+    }
+    size_t size = strlen(name) + strlen(member) + 4;
     char *text = xmalloc(size);
-    snprintf(text, size, "%s.%s%s%s", close ? ")" : "", name, *field_name ? "." : "", field_name);
+    snprintf(text, size, "%s.%s%s%s", close ? ")" : "", name, *member ? "." : "", member);
+    free(name);
+    free(member);
     return text;
 }
 /* Replaces [from, to) with a path to the component, keeping an entity
  * argument's own text in place so rewrites inside it still apply. */
-static void path_edits(rewrite *r, const collector *c, int from, int to, int entity, const script_catalog_capability *cap)
+static bool path_edits(rewrite *r, const collector *c, int from, int to, int entity, const script_catalog_capability *cap)
 {
     if (entity < 0) {
         char *suffix = component_suffix(c, cap, false);
+        if (!suffix) {
+            return false;
+        }
         size_t size = strlen(suffix) + sizeof "self";
         char *text = xmalloc(size);
         snprintf(text, size, "self%s", suffix);
         edit(r, from, to, text);
         free(text);
         free(suffix);
-        return;
+        return true;
     }
     script_range range = value_range(c, entity);
     bool bare = primary_at(c, range);
     char *suffix = component_suffix(c, cap, !bare);
+    if (!suffix) {
+        return false;
+    }
     edit(r, from, range.start, bare ? "" : "(");
     edit(r, range.end, to, suffix);
     free(suffix);
+    return true;
 }
 /* Whether a node's value is read as a condition, which tests presence. */
 static bool condition(const collector *c, TSNode node)
@@ -879,11 +959,13 @@ static void accessor_read(collector *c, TSNode node, const script_expression *ca
             read = parent;
         }
     }
-    if (cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS && !condition(c, node)) {
+    rewrite r = { 0 };
+    if (!path_edits(&r, c, start(read), end(read), written_argument(c, node, call, cap->component_entity), cap)) {
         return;
     }
-    rewrite r = { 0 };
-    path_edits(&r, c, start(read), end(read), written_argument(c, node, call, cap->component_entity), cap);
+    if (cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS && !condition(c, node)) {
+        edit(&r, end(read), end(read), " != nil");
+    }
     apush(c->rewrites, r);
 }
 static bool is_self(const collector *c, script_range range)
@@ -911,7 +993,9 @@ static void accessor_write(
     int from = start(ts_node_named_child(statement, 0)), to = end(node);
     rewrite r = { 0 };
     if (entity >= 0 && value_range(c, entity).start < v.start) {
-        path_edits(&r, c, from, v.start, entity, cap);
+        if (!path_edits(&r, c, from, v.start, entity, cap)) {
+            return;
+        }
         text_edit *last = &r.edits[acount(r.edits) - 1];
         size_t size = strlen(last->text) + sizeof " = ";
         char *text = xmalloc(size);
@@ -924,6 +1008,9 @@ static void accessor_write(
             return;
         }
         char *suffix = component_suffix(c, cap, false), *root = NULL;
+        if (!suffix) {
+            return;
+        }
         append_text(&root, "self", 4);
         append_text(&root, suffix, (int)strlen(suffix));
         append_text(&root, " = ", 3);
@@ -951,6 +1038,22 @@ static void operator_rewrite(collector *c, TSNode node, const script_expression 
 {
     script_operator op = operator_call(&(pair){ c->analysis, NULL, c->catalog }, call);
     const script_catalog_capability *cap = script_catalog_capability_by_id(c->catalog, call->capability);
+    if (cap && call->right < 0 && cap->id == script_catalog_id("capability", "Self") &&
+        !call->argument_count && c->analysis->owner_symbol >= 0) {
+        TSNode parent = ts_node_parent(node);
+        TSNode member = field(parent, "member");
+        if (is(parent, "member_expression") && cap->result_count == 1 &&
+            end(member) - start(member) == (int)strlen(cap->results[0].name) &&
+            !memcmp(
+                c->text + start(member),
+                cap->results[0].name,
+                strlen(cap->results[0].name)
+            )) {
+            node = parent;
+        }
+        add(c, start(node), end(node), "self");
+        return;
+    }
     /* Other operands resolve the operator through the catalog. */
     if (op == SCRIPT_OP_NONE && cap && cap->parameter_count == 2) {
         op = operator_of(cap->operator_name);
@@ -1029,9 +1132,8 @@ static void call_rewrites(collector *c, TSNode node)
     /* A generic call such as has_component("Heat") names no fixed component
      * to spell as a path, so it keeps its call. */
     bool accessor = cap && cap->component;
-    if (accessor && !cap->component_field &&
-        (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
-         cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS)) {
+    if (accessor && (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
+                     cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS)) {
         accessor_read(c, node, call, cap);
     } else if (accessor && cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
         accessor_write(c, node, call, cap);
@@ -1086,6 +1188,7 @@ static void collect(collector *c, TSNode node, pass phase)
             add(c, end(name), end(declared), "");
         }
     } else if (!strcmp(type, "state_declaration") || !strcmp(type, "local_declaration")) {
+        root_storage(c, node);
         inferred_declaration(c, node);
     } else if (!strcmp(type, "typed_argument")) {
         TSNode value = field(node, "value");
@@ -1094,7 +1197,10 @@ static void collect(collector *c, TSNode node, pass phase)
         }
     } else if (!strcmp(type, "handler")) {
         handler(c, node);
-    } else if (!strcmp(type, "cast_expression")) {
+    } else if (!strcmp(type, "call_expression") && conversion(c, node)) {
+        /* Equivalence keeps only conversions whose value already has the type. */
+        unwrap_node(c, node, ts_node_named_child(field(node, "arguments"), 0));
+    } else if (!strcmp(type, "await_expression")) {
         unwrap_node(c, node, field(node, "value"));
     } else if (!strcmp(type, "parenthesized_expression") && !grouping(c, node)) {
         unwrap_node(c, node, field(node, "expression"));
@@ -1131,7 +1237,20 @@ typedef struct
     const script_analysis *original;
     const char *text;
     script_range *comments;
+    bool migration;
 } oracle;
+
+static script_analysis *analyze_source(
+    const script_syntax *syntax,
+    const script_catalog *catalog,
+    const char *identity,
+    bool migration
+)
+{
+    return migration
+             ? script_analyze_migration_document(syntax, catalog, identity, NULL, 0, false)
+             : script_analyze_document(syntax, catalog, identity);
+}
 
 static void collect_comments(TSNode node, script_range **comments)
 {
@@ -1197,7 +1316,7 @@ static bool accepts(const oracle *o, const char *text)
                 !ts_node_has_error(ts_tree_root_node(syntax->tree)) &&
                 same_comments(o, syntax);
     if (same) {
-        script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
+        script_analysis *analysis = analyze_source(syntax, o->catalog, o->identity, o->migration);
         same = same_program(&(pair){ o->original, analysis, o->catalog });
         script_analysis_free(analysis);
     }
@@ -1208,7 +1327,7 @@ static bool accepts(const oracle *o, const char *text)
 static char *round_text(const oracle *o, const char *text, pass phase)
 {
     script_syntax *syntax = script_parse(text);
-    script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
+    script_analysis *analysis = analyze_source(syntax, o->catalog, o->identity, o->migration);
     collector c = { .text = text,
                     .analysis = analysis,
                     .catalog = o->catalog,
@@ -1227,6 +1346,7 @@ static char *round_text(const oracle *o, const char *text, pass phase)
     char *together = count ? apply(text, c.rewrites, all, -1) : NULL;
     if (together && accepts(o, together)) {
         result = together;
+        memcpy(accepted, all, (size_t)count * sizeof *accepted);
     } else {
         free(together);
         int kept = 0;
@@ -1251,16 +1371,17 @@ static char *round_text(const oracle *o, const char *text, pass phase)
     return result;
 }
 
-char *authoring_source_minimize(const char *text, const script_catalog *catalog, const char *identity)
+static char *minimize(const char *text, const script_catalog *catalog, const char *identity, bool migration)
 {
     script_syntax *syntax = script_parse(text);
-    script_analysis *original = script_analyze_document(syntax, catalog, identity);
+    script_analysis *original = analyze_source(syntax, catalog, identity, migration);
     char *current = xstrdup(text);
     if (original->valid && !original->diagnostic_count && !syntax->diagnostic_count) {
         oracle o = { .catalog = catalog,
                      .identity = identity,
                      .original = original,
-                     .text = text };
+                     .text = text,
+                     .migration = migration };
         collect_comments(ts_tree_root_node(syntax->tree), &o.comments);
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
             /* Each round accepts at least one rewrite, so this ends when
@@ -1274,5 +1395,373 @@ char *authoring_source_minimize(const char *text, const script_catalog *catalog,
     }
     script_analysis_free(original);
     script_syntax_free(syntax);
+    return current;
+}
+
+char *authoring_source_minimize(const char *text, const script_catalog *catalog, const char *identity)
+{
+    return minimize(text, catalog, identity, false);
+}
+char *authoring_source_canonical(
+    const char *text,
+    const script_catalog *catalog,
+    const char *identity,
+    char *error,
+    size_t size
+)
+{
+    script_syntax *syntax = script_parse(text);
+    char *layout = authoring_source_format(syntax, error, size);
+    script_syntax_free(syntax);
+    if (!layout) {
+        return NULL;
+    }
+    char *minimal = authoring_source_minimize(layout, catalog, identity);
+    free(layout);
+    syntax = script_parse(minimal);
+    free(minimal);
+    char *result = authoring_source_format(syntax, error, size);
+    script_syntax_free(syntax);
+    return result;
+}
+
+/* A configured action is a deferred invocation, not a statement. Preserve its
+ * arguments, action identity and completion handlers by replacing only the
+ * native target with a concrete property-writing procedure. */
+static bool bounded_component(const script_catalog *catalog, const script_catalog_type *type, int depth)
+{
+    if (!type || depth == 16) {
+        return false;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const script_catalog_field *field = &type->fields[i];
+        if (field->range_contract ||
+            (field->type.storage == PIN_STRUCT &&
+             bounded_component(
+                 catalog,
+                 script_catalog_type_by_id(catalog, field->type.nominal),
+                 depth + 1
+             ))) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool write_wrapper(
+    const collector *c,
+    const script_catalog_capability *cap,
+    const char *name,
+    char **definitions,
+    char *error,
+    size_t size
+)
+{
+    if (cap->component_value < 0 ||
+        cap->component_value >= cap->parameter_count || cap->result_count > 1) {
+        return false;
+    }
+    char **parameters = NULL;
+    bool valid = true;
+    source_refactor_append(definitions, "\n%s :: (", name);
+    for (int i = 0; valid && i < cap->parameter_count; i++) {
+        const script_catalog_parameter *p = &cap->parameters[i];
+        char spelling[32];
+        snprintf(spelling, sizeof spelling, "import_arg_%d", i);
+        char *parameter = xstrdup(spelling);
+        apush(parameters, parameter);
+        if (!parameter) {
+            valid = false;
+            break;
+        }
+        source_refactor_append(definitions, "%s%s: ", i ? ", " : "", parameter);
+        if (p->type.storage == PIN_HANDLE && p->type.nominal == c->catalog->entity_type &&
+            p->type.container == PIN_CONTAINER_SINGLE) {
+            source_refactor_append(definitions, "entity%s", p->type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "");
+        } else {
+            valid = source_refactor_type(c->catalog, p->type, false, definitions, error, size);
+        }
+        /* Every migrated setter supplies its value. Native descriptors may
+         * carry a whole-row zero sentinel in that scalar parameter's default;
+         * it is never evaluated here and is not a source value. */
+        if (valid && p->has_default && i != cap->component_value) {
+            char *value = p->default_owner ? xstrdup("self")
+                        : p->default_value.type == PIN_HANDLE &&
+                                  !p->default_value.u64
+                            ? xstrdup("null")
+                            : authoring_source_literal(c->catalog, p->type, &p->default_value, error, size);
+            valid = value != NULL;
+            if (value) {
+                source_refactor_append(definitions, " = %s", value);
+            }
+            free(value);
+        }
+    }
+    source_refactor_append(definitions, ")");
+    if (valid && cap->result_count) {
+        char *result = authoring_source_identifier(cap->results[0].name, error, size);
+        valid = result != NULL;
+        if (result) {
+            source_refactor_append(definitions, " -> (%s: ", result);
+            valid = source_refactor_type(c->catalog, cap->results[0].type, false, definitions, error, size);
+            source_refactor_append(definitions, ")");
+        }
+        free(result);
+    }
+    if (valid) {
+        const script_catalog_type *type = script_catalog_type_by_id(c->catalog, cap->component);
+        char *suffix = component_suffix(c, cap, false);
+        if (!suffix) {
+            for (int i = 0; i < acount(parameters); i++) {
+                free(parameters[i]);
+            }
+            afree(parameters);
+            if (size) {
+                snprintf(error, size, "Imported component access has no identifier source spelling");
+            }
+            return false;
+        }
+        const char *entity = cap->component_entity >= 0
+                               ? parameters[cap->component_entity]
+                               : "self";
+        const char *value = parameters[cap->component_value];
+        source_refactor_append(definitions, " {");
+        if (cap->component_entity >= 0 &&
+            cap->parameters[cap->component_entity].default_owner) {
+            source_refactor_append(definitions, " if %s == 0 { %s = self; }", entity, entity);
+        }
+        source_refactor_append(definitions, " %s%s = %s;", entity, suffix, value);
+        if (cap->result_count) {
+            bool whole = cap->component_field &&
+                         cap->results[0].type.storage == PIN_STRUCT &&
+                         cap->results[0].type.nominal == type->id;
+            if (whole) {
+                script_catalog_capability root = *cap;
+                root.component_field = 0;
+                free(suffix);
+                suffix = component_suffix(c, &root, false);
+            }
+            if (whole || bounded_component(c->catalog, type, 0)) {
+                source_refactor_append(definitions, " return %s%s;", entity, suffix);
+            } else {
+                source_refactor_append(definitions, " return %s;", value);
+            }
+        }
+        source_refactor_append(definitions, " }\n");
+        free(suffix);
+    }
+    for (int i = 0; i < acount(parameters); i++) {
+        free(parameters[i]);
+    }
+    afree(parameters);
+    return valid;
+}
+typedef struct
+{
+    uint64_t capability;
+    char name[64];
+} imported_writer;
+static bool stable_import_value(const collector *c, int index)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_expression *value = &c->analysis->expressions[index];
+    bool scalar = value->type.container == PIN_CONTAINER_SINGLE &&
+                  (value->type.storage <= PIN_F64 || value->type.storage == PIN_HANDLE);
+    return (value->kind == SCRIPT_EXPR_SYMBOL &&
+            value->symbol == c->analysis->owner_symbol) ||
+           (value->kind == SCRIPT_EXPR_CONSTANT && scalar) ||
+           value->kind == SCRIPT_EXPR_NIL;
+}
+static bool wrap_write_calls(
+    collector *c,
+    TSNode node,
+    imported_writer **writers,
+    char **definitions,
+    char *error,
+    size_t size
+)
+{
+    if (is(node, "call_expression")) {
+        const script_expression *call = expression_at(c, node, SCRIPT_EXPR_CALL);
+        const script_catalog_capability
+            *cap = call ? script_catalog_capability_by_id(c->catalog, call->capability)
+                        : NULL;
+        if (cap && cap->component && !call->instance &&
+            cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
+            int value = argument(call, cap->component_value);
+            if (value < 0 || c->analysis->expressions[value].partial ||
+                call->left >= 0) {
+                if (error && size) {
+                    snprintf(error, size, "Generated partial or receiver-form setter requires an explicit merge/receiver");
+                }
+                return false;
+            }
+            int written_value = written_argument(c, node, call, cap->component_value);
+            int entity = written_argument(c, node, call, cap->component_entity);
+            if (written_value < 0 ||
+                (entity >= 0 &&
+                 value_range(c, entity).start > value_range(c, written_value).start &&
+                 !stable_import_value(c, entity) &&
+                 !stable_import_value(c, written_value))) {
+                if (error && size) {
+                    snprintf(error, size, "Generated setter needs an explicit value and entity-first arguments to preserve native evaluation order");
+                }
+                return false;
+            }
+            int writer = 0;
+            while (writer < acount(*writers) &&
+                   (*writers)[writer].capability != cap->id) {
+                writer++;
+            }
+            if (writer == acount(*writers)) {
+                imported_writer item = { .capability = cap->id };
+                int ordinal = writer;
+                bool used;
+                do {
+                    snprintf(item.name, sizeof item.name, "import_component_write_%d", ++ordinal);
+                    used = false;
+                    for (int i = 0; i < c->analysis->symbol_count; i++) {
+                        used |= !strcmp(item.name, c->analysis->symbols[i].name);
+                    }
+                    for (int i = 0; i < acount(*writers); i++) {
+                        used |= !strcmp(item.name, (*writers)[i].name);
+                    }
+                } while (used);
+                if (!write_wrapper(c, cap, item.name, definitions, error, size)) {
+                    return false;
+                }
+                apush(*writers, item);
+            }
+            TSNode target = field(node, "function");
+            if (ts_node_is_null(target)) {
+                target = field(node, "target");
+            }
+            add(c, start(target), end(target), (*writers)[writer].name);
+            TSNode arguments = field(node, "arguments");
+            for (uint32_t i = 0; i < ts_node_named_child_count(arguments); i++) {
+                TSNode argument = ts_node_named_child(arguments, i),
+                       label = field(argument, "name");
+                if (ts_node_is_null(label)) {
+                    continue;
+                }
+                char *name = slice(c->text, start(label), end(label));
+                for (int p = 0; p < cap->parameter_count; p++) {
+                    if (script_name_matches(name, cap->parameters[p].name)) {
+                        char spelling[32];
+                        snprintf(spelling, sizeof spelling, "import_arg_%d", p);
+                        add(c, start(label), end(label), spelling);
+                        break;
+                    }
+                }
+                free(name);
+            }
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        if (!wrap_write_calls(c, ts_node_child(node, i), writers, definitions, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+static char *wrap_remaining_writes(
+    const char *text,
+    const script_catalog *catalog,
+    const char *identity,
+    char *error,
+    size_t size
+)
+{
+    script_syntax *syntax = script_parse(text);
+    script_analysis *analysis = analyze_source(syntax, catalog, identity, true);
+    collector c = { .text = text,
+                    .analysis = analysis,
+                    .catalog = catalog,
+                    .tree = syntax->tree };
+    char *definitions = NULL, *result = NULL;
+    imported_writer *writers = NULL;
+    TSNode root = ts_tree_root_node(syntax->tree);
+    bool valid = analysis->valid &&
+                 wrap_write_calls(&c, root, &writers, &definitions, error, size);
+    if (!analysis->valid && error && size) {
+        const script_diagnostic *d = analysis->diagnostic_count
+                                       ? &analysis->diagnostics[0]
+                                       : NULL;
+        snprintf(
+            error,
+            size,
+            "Cannot import %s at %d:%d: %s",
+            identity,
+            d ? d->range.line : 0,
+            d ? d->range.column : 0,
+            d ? d->message : "invalid source"
+        );
+    }
+    if (valid) {
+        if (acount(writers)) {
+            TSNode body = field(ts_node_named_child(root, 0), "body");
+            apush(definitions, 0);
+            add(&c, start(body) + 1, start(body) + 1, definitions);
+            bool *accepted = xcalloc((size_t)acount(c.rewrites), sizeof *accepted);
+            for (int i = 0; i < acount(c.rewrites); i++) {
+                accepted[i] = true;
+            }
+            result = apply(text, c.rewrites, accepted, -1);
+            free(accepted);
+        } else {
+            result = xstrdup(text);
+        }
+    }
+    for (int i = 0; i < acount(c.rewrites); i++) {
+        rewrite_free(&c.rewrites[i]);
+    }
+    afree(c.rewrites);
+    afree(writers);
+    afree(definitions);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    return result;
+}
+char *authoring_source_migrate_generated(
+    const char *text,
+    const script_catalog *catalog,
+    const char *identity,
+    char *error,
+    size_t size
+)
+{
+    char *reduced = minimize(text, catalog, identity, true);
+    char *wrapped = wrap_remaining_writes(reduced, catalog, identity, error, size);
+    char *current = wrapped ? minimize(wrapped, catalog, identity, true) : NULL;
+    free(reduced);
+    free(wrapped);
+    if (!current) {
+        return NULL;
+    }
+    script_syntax *syntax = script_parse(current);
+    script_analysis *analysis = script_analyze_document(syntax, catalog, identity);
+    bool valid = analysis->valid && !syntax->diagnostic_count;
+    if (!valid && error && size) {
+        snprintf(
+            error,
+            size,
+            "Cannot normalize generated calls in %s at %d:%d: %s [%.48s]",
+            identity,
+            analysis->diagnostic_count ? analysis->diagnostics[0].range.line : 0,
+            analysis->diagnostic_count ? analysis->diagnostics[0].range.column : 0,
+            analysis->diagnostic_count ? analysis->diagnostics[0].message
+                                       : "source does not parse",
+            analysis->diagnostic_count
+                ? current + analysis->diagnostics[0].range.start
+                : ""
+        );
+    }
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    if (!valid) {
+        free(current);
+        return NULL;
+    }
     return current;
 }

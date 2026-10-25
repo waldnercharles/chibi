@@ -28,6 +28,7 @@ static const native_parameter_definition IN_CLAMP[] = { FIELD_IN_CLAMP_PORTS(NAT
 static const native_parameter_definition IN_REMAP[] = { FIELD_IN_REMAP_PORTS(NATIVE_PORT) };
 static const native_parameter_definition IN_NOISE[] = { FIELD_IN_NOISE_PORTS(NATIVE_PORT) };
 static const native_parameter_definition IN_FRACTAL[] = { FIELD_IN_FRACTAL_PORTS(NATIVE_PORT) };
+static const native_parameter_definition IN_CELL[] = { FIELD_IN_CELL_PORTS(NATIVE_PORT) };
 static const native_parameter_definition IN_HASH[] = { FIELD_IN_HASH_PORTS(NATIVE_PORT) };
 static const native_parameter_definition IN_CIRCLE[] = { FIELD_IN_CIRCLE_PORTS(NATIVE_PORT) };
 static const native_parameter_definition IN_BOX[] = { FIELD_IN_BOX_PORTS(NATIVE_PORT) };
@@ -65,6 +66,13 @@ static const native_capability_definition DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(VALUE_OUT) },
     { .canonical_name = FIELD_NODE_Y_NAME,
       .source_name = "field_y",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .completion_output = -1,
+      .outputs = VALUE_OUT,
+      .output_count = NATIVE_COUNT(VALUE_OUT) },
+    { .canonical_name = FIELD_NODE_Z_NAME,
+      .source_name = "field_z",
       .kind = SCRIPT_CAPABILITY_FUNCTION,
       .pure = true,
       .completion_output = -1,
@@ -304,24 +312,39 @@ static const native_capability_definition DEFINITIONS[] = {
       .input_count = NATIVE_COUNT(IN_OUTPUT),
       .outputs = VALUE_OUT,
       .output_count = NATIVE_COUNT(VALUE_OUT) },
+    { .canonical_name = FIELD_NODE_CELL_X_NAME,
+      .source_name = "field_cell_x",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .completion_output = -1,
+      .inputs = IN_CELL,
+      .input_count = NATIVE_COUNT(IN_CELL),
+      .outputs = VALUE_OUT,
+      .output_count = NATIVE_COUNT(VALUE_OUT) },
+    { .canonical_name = FIELD_NODE_CELL_Y_NAME,
+      .source_name = "field_cell_y",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .completion_output = -1,
+      .inputs = IN_CELL,
+      .input_count = NATIVE_COUNT(IN_CELL),
+      .outputs = VALUE_OUT,
+      .output_count = NATIVE_COUNT(VALUE_OUT) },
+    { .canonical_name = FIELD_NODE_CELL_EDGE_NAME,
+      .source_name = "field_cell_edge",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .completion_output = -1,
+      .inputs = IN_CELL,
+      .input_count = NATIVE_COUNT(IN_CELL),
+      .outputs = VALUE_OUT,
+      .output_count = NATIVE_COUNT(VALUE_OUT) },
 };
-static const native_definition_binding BINDINGS[] = {
-    { .canonical_name = FIELD_NODE_ADD_NAME,
-      .implementation = { .call = &FIELD_ADD_CALL, .access = &FIELD_NATIVE_ACCESS } },
-    { .canonical_name = FIELD_NODE_SUBTRACT_NAME,
-      .implementation = { .call = &FIELD_SUBTRACT_CALL, .access = &FIELD_NATIVE_ACCESS } },
-    { .canonical_name = FIELD_NODE_MIN_NAME,
-      .implementation = { .call = &FIELD_MIN_CALL, .access = &FIELD_NATIVE_ACCESS } },
-    { .canonical_name = FIELD_NODE_CIRCLE_NAME,
-      .implementation = { .call = &FIELD_CIRCLE_CALL, .access = &FIELD_NATIVE_ACCESS } },
-    { .canonical_name = FIELD_NODE_BOX_NAME,
-      .implementation = { .call = &FIELD_BOX_CALL, .access = &FIELD_NATIVE_ACCESS } },
-    { .canonical_name = FIELD_NODE_CAPSULE_NAME,
-      .implementation = { .call = &FIELD_CAPSULE_CALL, .access = &FIELD_NATIVE_ACCESS } },
-    { .canonical_name = FIELD_NODE_SMOOTH_UNION_NAME,
-      .implementation = { .call = &FIELD_SMOOTH_UNION_CALL,
-                          .access = &FIELD_NATIVE_ACCESS } },
-};
+#define BINDING(OP)                                                            \
+    { .canonical_name = FIELD_NODE_##OP##_NAME,                                \
+      .implementation = { .call = &FIELD_##OP##_CALL, .access = &FIELD_NATIVE_ACCESS } },
+static const native_definition_binding BINDINGS[] = { FIELD_NATIVE_CALLS(BINDING) };
+#undef BINDING
 const native_definition_pack FIELD_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
     .definition_count = NATIVE_COUNT(DEFINITIONS),

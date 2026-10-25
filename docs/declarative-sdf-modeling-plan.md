@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 Status: implementation is in the isolated declarative-modeling worktree. See [the implemented contract](declarative-sdf-modeling.md) and [validation evidence](declarative-sdf-modeling-validation.md). The original design and scope below remain the implementation reference.
 
@@ -14,7 +14,7 @@ Add a declarative modeling layer that preserves named parts, parameters, and con
 
 ## Context
 
-The SDF experiments are in `/Users/cwaldner/.codex/worktrees/sdf-scenes/c-blueprints`, inspected at HEAD `631f9a710bfccbf2b0843017304322d71798a46d` with additional working changes possible. Implementation must establish its own current source baseline and coordinate with that work before integrating dependencies.
+The SDF experiments are in `<local-evidence>/c-blueprints`, inspected at HEAD `631f9a710bfccbf2b0843017304322d71798a46d` with additional working changes possible. Implementation must establish its own current source baseline and coordinate with that work before integrating dependencies.
 
 The current system already stores shapes, materials, functions, parameters, prototypes, and scenes as KDL graphs. The lab authors sphere, rounded-box, torus, Boolean, and animated examples through the existing public graph operations. The runtime compiles shape graphs into shader code and evaluates their distance outputs inside bounded proxies.
 

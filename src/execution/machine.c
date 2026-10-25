@@ -4,10 +4,12 @@
 #include "execution/borrow.h"
 #include "execution/component_write.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/random.h"
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -47,8 +49,8 @@ static int fail(
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
-        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL &&
+        i->op != BF_COMPONENT_WRITE && i->op != BF_INTERN_STRING) {
         ctx->error_message = i->op == BF_QUERY_VARIABLE
                                ? "Query variable is not bound"
                            : i->op == BF_COMPONENT_READ
@@ -81,8 +83,9 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool inspected = behavior_function_inspection_required(f, ctx);
-    if (compact && behavior_function_fast_allowed(f, ctx)) {
+    bool canonical = behavior_execution_scope_active() ||
+                     behavior_function_inspection_required(f, ctx);
+    if (compact && !canonical && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
     behavior_function_activation *activation = ctx->activation;
@@ -112,7 +115,7 @@ void execution_machine_begin(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[begin - 1].target];
         assert(s->pc + 1 == begin);
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             int v = s->values[k];
             pin_value *to = v < slot_count ? &slots[v] : &locals[v - slot_count];
             to->type = v < slot_count ? f->slots[v]
@@ -126,7 +129,7 @@ void execution_machine_begin(
         activation->pc = 0;
     }
     const behavior_function_instruction *instructions = f->instructions;
-    if (compact && !inspected && f->runtime_instructions) {
+    if (compact && !canonical && f->runtime_instructions) {
         instructions = f->runtime_instructions;
         begin = f->runtime_map[begin];
     }
@@ -249,7 +252,7 @@ int execution_machine_step(execution_machine *m, int pc)
             assert(activation && activation->values);
             int slot_count = acount(f->slots), base = slot_count + acount(f->locals);
             const behavior_function_suspension *s = &f->suspensions[i->target];
-            for (int k = 0; k < acount(s->values); k++) {
+            for (int k = 0; k < s->value_count; k++) {
                 int v = s->values[k];
                 const pin_value *from = v < slot_count ? &slots[v]
                                                        : &locals[v - slot_count];
@@ -317,10 +320,9 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_STRING_EQUAL:
-            out->b = behavior_string_equal(
-                (const char *)(uintptr_t)behavior_scalar_bits(a),
-                (const char *)(uintptr_t)behavior_scalar_bits(b)
-            );
+            out->b = f->slots[i->left] == PIN_STR
+                       ? behavior_text_equal(a.text, b.text)
+                       : behavior_string_equal(a.str, b.str);
             break;
         case BF_INDEX: {
             uintptr_t pointer = (uintptr_t)behavior_scalar_bits(a) +
@@ -333,8 +335,13 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_COPY_STRING: {
-            const char *text = a.str ? a.str : i->value.str;
-            out->str = text ? ctx->copy_string(ctx->value_storage, text) : NULL;
+            if (i->type == PIN_STR) {
+                const pin_string *text = a.text ? a.text : i->value.text;
+                out->text = text ? ctx->copy_text(ctx->value_storage, text) : NULL;
+            } else {
+                const char *text = a.str ? a.str : i->value.str;
+                out->str = text ? ctx->copy_string(ctx->value_storage, text) : NULL;
+            }
             break;
         }
         case BF_COPY_ARRAY: {
@@ -358,7 +365,16 @@ int execution_machine_step(execution_machine *m, int pc)
         case BF_INTERN_STRING: {
             const ecs_execution_view *world = (const ecs_execution_view *)(uintptr_t)
                 behavior_scalar_bits(b);
-            out->str = world->intern_string(world, a.str);
+            if (i->type == PIN_STR) {
+                const pin_string *text = behavior_function_intern_text(ctx, world, a.text);
+                if (!text) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                    goto done;
+                }
+                out->text = text;
+            } else {
+                out->str = world->intern_string(world, a.str);
+            }
             break;
         }
         case BF_STORE_VALUE:
@@ -416,7 +432,9 @@ int execution_machine_step(execution_machine *m, int pc)
                                    ? behavior_function_borrow_snapshot(ctx, i->target)
                                : call->value
                                    ? call->value(
-                                         ctx->value_storage,
+                                         execution_intrinsic_in_result(spec->capability_id)
+                                             ? ctx->result_storage
+                                             : ctx->value_storage,
                                          ctx->data->values + spec->first,
                                          spec->result_first - spec->first,
                                          ctx->data->values + spec->result_first
@@ -484,6 +502,7 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_STORE_TYPE_NAME:
+            ctx->variables[i->target].record = NULL;
             ctx->variables[i->target].type_name = (const char *)(uintptr_t)
                 behavior_scalar_bits(a);
             break;
@@ -645,6 +664,7 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_RESULT_TYPE_NAME:
+            ctx->results[i->target].record = NULL;
             ctx->results[i->target]
                 .type_name = (const char *)(uintptr_t)(BF_POINTER_TYPE == PIN_U64
                                                            ? slots[i->left].u64
@@ -714,7 +734,12 @@ int execution_machine_step(execution_machine *m, int pc)
                 }
             }
             break;
-        case BF_CAST: *out = behavior_scalar_cast(a, i->type); break;
+        case BF_CAST:
+            behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out);
+            if (f->integer_reports) {
+                behavior_integer_report(f, i, a, b);
+            }
+            break;
         case BF_FLAGS: out->b = (a.u & b.u) != 0; break;
         case BF_CONVERT:
             if (i->type == PIN_F32) {
@@ -808,71 +833,13 @@ int execution_machine_step(execution_machine *m, int pc)
                 out->b = i->op == BF_EQ ? equal : !equal;
                 break;
             }
-            /* Address arithmetic uses an unsigned word on both native
-             * and wasm32. It must not pass through floating point. */
-            if (a.type == PIN_U32 || a.type == PIN_U64) {
-                uint64_t x = behavior_scalar_bits(a),
-                         y = behavior_scalar_bits(b), value = 0;
-                switch (i->op) {
-                    case BF_ADD: value = x + y; break;
-                    case BF_MUL: value = x * y; break;
-                    case BF_EQ: out->b = x == y; break;
-                    case BF_NE: out->b = x != y; break;
-                    default: assert(false);
-                }
-                if (out->type == PIN_U32) {
-                    out->u = (uint32_t)value;
-                }
-                if (out->type == PIN_U64) {
-                    out->u64 = value;
-                }
-                break;
-            }
-            if (a.type == PIN_I32 || a.type == PIN_I64) {
-                int64_t x = a.type == PIN_I32 ? a.i : a.i64;
-                int64_t y = a.type == PIN_I32 ? b.i : b.i64;
-                int64_t minimum = a.type == PIN_I32 ? INT32_MIN : INT64_MIN;
-                if ((i->op == BF_DIV || i->op == BF_MOD) &&
-                    (!y || (x == minimum && y == -1))) {
-                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
-                    goto done;
-                }
-                if ((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) {
-                    pin_value *other = &slots[i->target];
-                    other->type = a.type;
-                    int64_t value = i->op == BF_DIV ? x % y : x / y;
-                    if (a.type == PIN_I32) {
-                        other->i = (int32_t)value;
-                    } else {
-                        other->i64 = value;
-                    }
-                }
-                uint64_t value = 0;
-                switch (i->op) {
-                    case BF_ADD: value = (uint64_t)x + (uint64_t)y; break;
-                    case BF_SUB: value = (uint64_t)x - (uint64_t)y; break;
-                    case BF_MUL: value = (uint64_t)x * (uint64_t)y; break;
-                    case BF_DIV: value = (uint64_t)(x / y); break;
-                    case BF_MOD: value = (uint64_t)(x % y); break;
-                    case BF_NEG: value = UINT64_C(0) - (uint64_t)x; break;
-                    case BF_ABS:
-                        value = x < 0 ? UINT64_C(0) - (uint64_t)x : (uint64_t)x;
-                        break;
-                    case BF_MIN: value = (uint64_t)(x < y ? x : y); break;
-                    case BF_MAX: value = (uint64_t)(x > y ? x : y); break;
-                    case BF_LT: out->b = x < y; break;
-                    case BF_LE: out->b = x <= y; break;
-                    case BF_GT: out->b = x > y; break;
-                    case BF_GE: out->b = x >= y; break;
-                    case BF_EQ: out->b = x == y; break;
-                    case BF_NE: out->b = x != y; break;
-                    default: assert(false);
-                }
-                if (out->type == PIN_I32) {
-                    out->i = (int32_t)(uint32_t)value;
-                }
-                if (out->type == PIN_I64) {
-                    out->i64 = (int64_t)value;
+            if (a.type >= PIN_I8 && a.type <= PIN_U64) {
+                pin_value *other = (i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0
+                                     ? &slots[i->target]
+                                     : NULL;
+                behavior_scalar_integer_op(i->op, a, b, out, other);
+                if (f->integer_reports) {
+                    behavior_integer_report(f, i, a, b);
                 }
                 break;
             }
@@ -915,6 +882,13 @@ int execution_machine_step(execution_machine *m, int pc)
 done:
     m->steps = steps;
     m->pc = next;
+    return result;
+}
+
+int execution_machine_fail(execution_machine *m, const char *message)
+{
+    int result = fail(m->context, &m->instructions[m->pc], m->steps, m->parents, BEHAVIOR_FUNCTION_BUDGET);
+    m->context->error_message = message;
     return result;
 }
 

@@ -1,4 +1,5 @@
 #include "execution/definition.h"
+#include "execution/scalar.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -18,7 +19,7 @@ typedef struct
 static int define(optimizer *o, behavior_function_instruction i)
 {
     i.output = acount(o->f->slots);
-    apush(o->f->slots, i.type);
+    apush(o->f->slots, i.op >= BF_LT && i.op <= BF_NE ? PIN_BOOL : i.type);
     apush(o->f->slot_kinds, BEHAVIOR_VALUE);
     apush(o->f->instructions, i);
     apush(o->constant, i.op == BF_CONSTANT);
@@ -38,11 +39,14 @@ static int constant(optimizer *o, pin_value v)
 }
 static int arithmetic(optimizer *o, behavior_function_instruction i)
 {
-    if (i.op >= BF_ADD && i.op <= BF_DIV && o->constant[i.left] &&
-        o->constant[i.right]) {
+    bool integer = i.type >= PIN_I8 && i.type <= PIN_U64;
+    if (((i.op >= BF_ADD && i.op <= BF_DIV) || (integer && i.op == BF_MOD)) &&
+        o->constant[i.left] && o->constant[i.right]) {
         pin_value a = o->values[i.left], b = o->values[i.right],
                   v = { .type = i.type };
-        if (i.type == PIN_F32) {
+        if (i.type >= PIN_I8 && i.type <= PIN_U64) {
+            behavior_scalar_integer_op(i.op, a, b, &v, NULL);
+        } else if (i.type == PIN_F32) {
             v.f = i.op == BF_ADD ? a.f + b.f
                 : i.op == BF_SUB ? a.f - b.f
                 : i.op == BF_MUL ? a.f * b.f
@@ -130,9 +134,14 @@ void behavior_function_optimize(behavior_function *f)
             return;
         }
         if (f->slots[i] != PIN_F32 && f->slots[i] != PIN_F64 &&
-            f->slots[i] != PIN_BOOL && f->slots[i] != BF_POINTER_TYPE) {
+            f->slots[i] != PIN_BOOL && !behavior_scalar_integer(f->slots[i])) {
             return;
         }
+    }
+    bool names = false;
+    for (int i = 0; i < acount(f->instructions); i++) {
+        names |= f->instructions[i].op == BF_TYPE_NAME ||
+                 f->instructions[i].op == BF_RESULT_TYPE_NAME;
     }
     for (int i = 0; i < acount(f->instructions); i++) {
         const behavior_function_instruction *op = &f->instructions[i];
@@ -161,12 +170,13 @@ void behavior_function_optimize(behavior_function *f)
         }
         /* Only borrowed name metadata may occupy pointer slots. Arithmetic
          * and value storage keep the original typed execution path. */
-        if ((op->op == BF_TYPE_NAME && op->target != BF_CONSTANT &&
+        if (((op->op == BF_DIV || op->op == BF_MOD) && op->target >= 0) ||
+            (op->op == BF_TYPE_NAME && op->target != BF_CONSTANT &&
              op->target != BF_ARGUMENT) ||
-            (op->type == BF_POINTER_TYPE && op->op != BF_TYPE_NAME &&
+            (names && op->type == BF_POINTER_TYPE && op->op != BF_TYPE_NAME &&
              op->op != BF_CONSTANT && op->op != BF_LOCAL && op->op != BF_SAVE &&
              op->op != BF_RESULT_TYPE_NAME) ||
-            (op->op >= BF_ADD && op->op < BF_STORE &&
+            (names && op->op >= BF_ADD && op->op < BF_STORE &&
              (f->slots[op->left] == BF_POINTER_TYPE ||
               (behavior_function_right_slot(op->op) &&
                f->slots[op->right] == BF_POINTER_TYPE)))) {
@@ -305,6 +315,9 @@ void behavior_function_optimize(behavior_function *f)
                         i.right = slots[i.right];
                     }
                     slots[output] = arithmetic(&o, i);
+                    if (slots[output] < 0) {
+                        goto done;
+                    }
                 } else {
                     goto done;
                 }
@@ -328,10 +341,10 @@ done:
 
 /* Scalarized snapshots often expose only one field. Drop unused loads and
  * copies after local compaction, while retaining checks and all effects. */
-static bool discardable(behavior_function_op op)
+static bool discardable(const behavior_function_instruction *i)
 {
-    return op <= BF_ARRAY || op == BF_LOAD || op == BF_READ ||
-           op == BF_SELECT || op == BF_CAST || op == BF_CONVERT;
+    return i->op <= BF_ARRAY || i->op == BF_LOAD || i->op == BF_READ ||
+           i->op == BF_SELECT || i->op == BF_CONVERT || i->op == BF_CAST;
 }
 void behavior_function_runtime_code(behavior_function *f)
 {
@@ -346,7 +359,7 @@ void behavior_function_runtime_code(behavior_function *f)
             f->instructions[s->pc].op == BF_SOURCE_POINT) {
             continue;
         }
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             if (s->values[k] < slots) {
                 live[s->values[k]] = true;
             }
@@ -368,7 +381,7 @@ void behavior_function_runtime_code(behavior_function *f)
             const behavior_function_instruction *i = &code[pc];
             if ((pass && !keep[pc]) || behavior_function_observer(i->op) ||
                 i->op == BF_POINT || i->op == BF_SOURCE_POINT ||
-                i->op == BF_SOURCE_WATCH || (discardable(i->op) && !live[i->output])) {
+                i->op == BF_SOURCE_WATCH || (discardable(i) && !live[i->output])) {
                 keep[pc] = false;
                 continue;
             }
@@ -408,7 +421,7 @@ void behavior_function_prune_values(behavior_function *f)
     bool *keep = xcalloc((size_t)acount(f->instructions), sizeof *keep);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        if (discardable(i->op) && !live[i->output]) {
+        if (discardable(i) && !live[i->output]) {
             continue;
         }
         keep[pc] = true;

@@ -114,59 +114,12 @@ static int package()
     return tool_run(argv, directory, log_path);
 }
 
-static int install(const char *registration)
-{
-    char script[1024];
-    path(script, tool_root(), "tools/install_game_runtime.py");
-    const char *argv[] = { "python3",  script,       "--package", output,
-                           "--config", registration, NULL };
-    return tool_run(argv, directory, log_path);
-}
-
-static void previous_runtime(const char *game)
-{
-    char filename[1024], runtime[1024], canonical[1024], identity[65],
-        binary_hash[65];
-    static const char *directories[] = { ".chibi",
-                                         ".chibi/runtime",
-                                         ".chibi/runtime/bin",
-                                         ".chibi/runtime/share",
-                                         ".chibi/runtime/share/chibi" };
-    for (int i = 0; i < 5; i++) {
-        path(filename, game, directories[i]);
-        assert(!mkdir(filename, 0700));
-    }
-    path(runtime, game, ".chibi/runtime");
-    for (int i = 0; i < 2; i++) {
-        path(filename, runtime, i ? "bin/chibi_ctl" : "bin/chibi");
-        const char *copy[] = { "cp", "/usr/bin/true", filename, NULL };
-        assert(!tool_run(copy, directory, log_path));
-    }
-    assert(checksum(filename, binary_hash));
-    snprintf(canonical, sizeof canonical, "{\"bin/chibi\":\"%s\",\"bin/chibi_ctl\":\"%s\"}", binary_hash, binary_hash);
-    path(filename, directory, "previous-identity.json");
-    tool_write(filename, canonical);
-    assert(checksum(filename, identity));
-    char manifest[2048];
-    snprintf(
-        manifest,
-        sizeof manifest,
-        "{\"format\":1,\"build_id\":\"%s\",\"project_version\":%d,\"files\":%s}"
-        "\n",
-        identity,
-        CHIBI_PROJECT_VERSION,
-        canonical
-    );
-    path(filename, runtime, "share/chibi/engine.json");
-    tool_write(filename, manifest);
-}
-
 static int configure_fixture(const char *source, const char *search, const char *option, const char *environment)
 {
-    const char *argv[] = { "env",       search,  "CHIBI_DEPENDENCY_PACKAGES=0",
-                           environment, "sh",    "tools/configure.sh",
-                           "native",    "build", option,
-                           NULL };
+    const char *argv[] = {
+        "env",    search,  environment, "sh", "tools/configure.sh",
+        "native", "build", option,      NULL
+    };
     return tool_run(argv, source, log_path);
 }
 
@@ -214,9 +167,6 @@ TEST_CASE(warm_configuration_preserves_input_invalidation)
     path(original, tool_root(), "tools/configure.sh");
     path(filename, source, "tools/configure.sh");
     const char *copy[] = { "cp", original, filename, NULL };
-    REQUIRE(tool_run(copy, source, log_path) == 0);
-    path(original, tool_root(), "tools/fetchcontent_cache.py");
-    path(filename, source, "tools/fetchcontent_cache.py");
     REQUIRE(tool_run(copy, source, log_path) == 0);
     const char *git[] = { "git", "init", "-q", NULL };
     REQUIRE(tool_run(git, source, log_path) == 0);
@@ -325,92 +275,6 @@ TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages)
     return true;
 }
 
-TEST_CASE(package_installation_preserves_game_and_rejects_corruption)
-{
-    REQUIRE(package() == 0);
-    char manifest_path[1024];
-    path(manifest_path, output, "share/chibi/package.json");
-    char *manifest = tool_read(manifest_path);
-    REQUIRE(manifest != NULL);
-    bool complete = strstr(manifest, "\"build_id\"") &&
-                    strstr(manifest, "bin/chibi-player") &&
-                    strstr(manifest, "\"kind\": \"player\"") &&
-                    strstr(manifest, "\"sdk\"") &&
-                    !strstr(manifest, "bin/chibi_ctl") &&
-                    !strstr(manifest, "include/chibi/") &&
-                    !strstr(manifest, "share/chibi/studio/");
-    free(manifest);
-    REQUIRE(complete);
-
-    char game[1024], filename[1024], config[1024], registration[1024], contents[2048];
-    path(game, directory, "authored game");
-    assert(!mkdir(game, 0700));
-    path(filename, game, "project.kdl");
-    snprintf(
-        contents,
-        sizeof contents,
-        "version %d\n"
-        "name \"Independent\"\n"
-        "content \"content\"\n",
-        CHIBI_PROJECT_VERSION
-    );
-    tool_write(filename, contents);
-    path(filename, game, "content");
-    assert(!mkdir(filename, 0700));
-    path(filename, game, "content/authored.txt");
-    tool_write(filename, "original game content\n");
-    path(config, game, ".codex");
-    assert(!mkdir(config, 0700));
-    path(config, game, ".codex/config.toml");
-    const char *original = "model = \"custom\"\n\n[mcp_servers.other]\ncommand "
-                           "= \"other\"\n";
-    tool_write(config, original);
-    path(registration, directory, "registration.json");
-    snprintf(contents, sizeof contents, "{\"games\":[\"%s\"]}\n", game);
-    tool_write(registration, contents);
-    previous_runtime(game);
-    char previous_binary[1024];
-    path(previous_binary, game, ".chibi/runtime/bin/chibi_ctl");
-    tool_write(previous_binary, "modified prior runtime\n");
-    REQUIRE(install(registration) != 0);
-    REQUIRE(file_equals(previous_binary, "modified prior runtime\n"));
-    REQUIRE(file_equals(filename, "original game content\n"));
-    const char *restore[] = { "cp", "/usr/bin/true", previous_binary, NULL };
-    REQUIRE(tool_run(restore, directory, log_path) == 0);
-    REQUIRE(install(registration) == 0);
-    REQUIRE(access(previous_binary, F_OK) != 0);
-    REQUIRE(file_equals(filename, "original game content\n"));
-    REQUIRE(file_equals(config, original));
-
-    char runtime_binary[1024], package_binary[1024], pin_path[1024];
-    path(runtime_binary, game, ".chibi/runtime/bin/chibi-player");
-    path(package_binary, output, "bin/chibi-player");
-    struct stat installed_stat, source_stat;
-    REQUIRE(!lstat(runtime_binary, &installed_stat));
-    REQUIRE(!stat(package_binary, &source_stat));
-    REQUIRE(S_ISREG(installed_stat.st_mode));
-    REQUIRE(installed_stat.st_nlink == 1);
-    REQUIRE(
-        installed_stat.st_ino != source_stat.st_ino ||
-        installed_stat.st_dev != source_stat.st_dev
-    );
-    ino_t active_inode = installed_stat.st_ino;
-    path(pin_path, game, ".chibi-engine.json");
-    char *pin = tool_read(pin_path);
-    REQUIRE(pin != NULL);
-    tool_write(package_binary, "corrupted executable\n");
-    int result = install(registration);
-    bool pin_preserved = file_equals(pin_path, pin);
-    free(pin);
-    REQUIRE(result != 0);
-    REQUIRE(pin_preserved);
-    REQUIRE(!stat(runtime_binary, &installed_stat));
-    REQUIRE(installed_stat.st_ino == active_inode);
-    REQUIRE(installed_stat.st_size == source_stat.st_size);
-    REQUIRE(file_equals(filename, "original game content\n"));
-    return true;
-}
-
 TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
 {
     char source[1024], bin[1024], filename[1024], original[1024], search[8192];
@@ -469,61 +333,6 @@ TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
     return true;
 }
 
-TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints)
-{
-    char serial[1024], threads[1024], script[1024], filename[1024], entry[1024],
-        residue[1024];
-    path(serial, directory, "web serial");
-    path(threads, directory, "web threads");
-    assert(!mkdir(serial, 0700));
-    assert(!mkdir(threads, 0700));
-    const char *files[] = { "chibi.html", "chibi.js", "chibi.wasm", "chibi.data", "chibi-isolation.js" };
-    for (int i = 0; i < (int)(sizeof files / sizeof *files); i++) {
-        path(filename, serial, files[i]);
-        tool_write(filename, "serial app");
-        path(filename, threads, files[i]);
-        tool_write(filename, "threaded app");
-    }
-    path(script, tool_root(), "tools/package_web.py");
-    const char *serial_args[] = { "python3",  script, "--serial", serial,
-                                  "--output", serial, NULL };
-    const char *paired_args[] = { "python3",  script,      "--serial",
-                                  serial,     "--threads", threads,
-                                  "--output", serial,      NULL };
-    REQUIRE(tool_run(serial_args, directory, log_path) == 0);
-    REQUIRE(tool_run(paired_args, directory, log_path) == 0);
-    path(entry, serial, "threads/index.html");
-    REQUIRE(file_equals(entry, "threaded app"));
-    path(filename, serial, "threads/chibi.html");
-    REQUIRE(file_equals(filename, "threaded app"));
-    path(residue, serial, "threads/authored.txt");
-    tool_write(residue, "keep unrelated residue");
-    REQUIRE(tool_run(serial_args, directory, log_path) == 0);
-    REQUIRE(access(entry, F_OK) != 0 && access(filename, F_OK) != 0);
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    path(filename, serial, "threads/chibi.wasm");
-    REQUIRE(file_equals(filename, "threaded app"));
-    REQUIRE(tool_run(paired_args, directory, log_path) == 0);
-    REQUIRE(file_equals(entry, "threaded app"));
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    assert(!unlink(entry));
-    assert(!symlink(residue, entry));
-    REQUIRE(tool_run(serial_args, directory, log_path) != 0);
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    struct stat info;
-    REQUIRE(!lstat(entry, &info) && S_ISLNK(info.st_mode));
-    assert(!unlink(entry));
-    char worker_directory[1024], preserved[1024];
-    path(worker_directory, serial, "threads");
-    path(preserved, serial, "preserved threads");
-    assert(!rename(worker_directory, preserved));
-    assert(!symlink(preserved, worker_directory));
-    REQUIRE(tool_run(serial_args, directory, log_path) != 0);
-    path(residue, preserved, "authored.txt");
-    REQUIRE(file_equals(residue, "keep unrelated residue"));
-    return true;
-}
-
 void test_tool_package()
 {
     strcpy(directory, "/tmp/chibi-package-XXXXXX");
@@ -555,9 +364,7 @@ void test_tool_package()
     write_profile(-1);
     RUN_TEST_CASE(native_exports_have_package_owners);
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
-    RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
     RUN_TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions);
-    RUN_TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints);
     tool_remove_tree(directory);
 }

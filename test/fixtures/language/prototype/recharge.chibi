@@ -1,9 +1,9 @@
-behavior Recharge {
-    charge := 0
+Recharge :: behavior {
+    charge := 0.0
     capacity := 100
     rate := 12
 
-    on Tick(dt) {
+    on Tick :: (dt: float s) {
         gained := rate * dt
         charge = clamp(charge + gained, 0, capacity)
     }

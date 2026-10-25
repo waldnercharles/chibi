@@ -1,0 +1,148 @@
+package scalar_facts
+
+// Internal opt-in owned result for one source document holding a bounded,
+// acyclic set of ordinary pure functions over int and bool. A function's body
+// is at most one guard, `if (condition) { return value; }`, then its final
+// `return value;`. Values and conditions are literals, parameters, int
+// arithmetic, int comparisons and direct calls of functions of the set, whose
+// operands are such expressions. This is not a general IR, and no
+// compiler-private identity crosses this boundary.
+//
+// The compiler host passes arrays of flat records, so a module is one array
+// of rows. Row 0 is its Source: `name` is the path and `text` the document.
+// A rejected module has exactly one more row, its Rejection: `text` is the
+// diagnostic's message and the range is its source. Nothing else survives
+// a rejection, and it must never be emitted.
+//
+// An accepted module's row 1 is its Document: `name` is the shared source
+// snapshot's document key. Then each function follows in declaration order;
+// the first is the module's entry and takes no parameters and returns int:
+// - a Function row: its `name`, result `type`, `count` parameters and
+//   declaration range;
+// - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - at most MaxGuards guards, each a Guard row, the if statement's range,
+//   with `count` condition operand rows after it, then its arm: a Return row
+//   and that return's operands. The arm runs only when the condition is true;
+// - the final Return row: the return statement's range and the `count`
+//   operand rows that follow it.
+// Operand rows are in evaluation order, each after the operands it consumes:
+// a Literal's `value` is the integer, or 0 and 1 for false and true; a Read's
+// `value` is its parameter's ordinal; a Compare's `value` is its operator and
+// it consumes the two most recent unconsumed operands, both int, left first,
+// to give a bool; an Arithmetic's `value` is its operator and it consumes the
+// two most recent unconsumed int operands, left first, to give an int; a
+// Unary's `value` is its operator and it consumes the most recent unconsumed
+// int operand to give an int; a Call's `value` is its callee's function
+// ordinal, `name` its callee's name and `count` its arguments, the `count`
+// most recent unconsumed operands in argument order. A condition's last operand is its
+// bool; a return's last operand is the function's returned value.
+//
+// Ranges are half-open source-byte offsets into the source text; lines and
+// columns are one-based source-byte positions. Fields a row does not use are
+// zero or empty. The rows own their strings: a host snapshot of the array is
+// the retained result, not a view into the producer's invocation.
+pub Row :: struct {
+    kind: int;
+    type: int;
+    value: int;
+    count: int;
+    name: string;
+    text: string;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+}
+
+pub SourceRow: int : 0;
+pub RejectionRow: int : 1;
+pub DocumentRow: int : 2;
+pub FunctionRow: int : 3;
+pub ParameterRow: int : 4;
+pub ReturnRow: int : 5;
+pub LiteralRow: int : 6;
+pub ReadRow: int : 7;
+pub CallRow: int : 8;
+pub GuardRow: int : 9;
+pub CompareRow: int : 10;
+pub ArithmeticRow: int : 11;
+pub UnaryRow: int : 12;
+
+pub IntType: int : 1;
+pub BoolType: int : 2;
+
+// Compare operators: the source's <, <=, >, >=, == and !=, signed for int.
+pub Less: int : 1;
+pub LessEqual: int : 2;
+pub Greater: int : 3;
+pub GreaterEqual: int : 4;
+pub Equal: int : 5;
+pub NotEqual: int : 6;
+
+// Arithmetic operators: the source's +, -, *, /, %, &, | and ^ on int. None
+// fails: they wrap, x / 0 is 0, x % 0 is x, MIN / -1 is MIN and MIN % -1 is 0.
+pub Add: int : 1;
+pub Subtract: int : 2;
+pub Multiply: int : 3;
+pub Divide: int : 4;
+pub Remainder: int : 5;
+pub And: int : 6;
+pub Or: int : 7;
+pub Xor: int : 8;
+
+// Unary operators: the source's - and ~ on int; negation wraps.
+pub Negate: int : 1;
+pub Complement: int : 2;
+
+// Bounds both sides check before reading counts: source bytes, functions per
+// module, parameters and guards per function, and operands per function,
+// counted over its conditions and returns together.
+pub MaxSource: int : 16384;
+pub MaxFunctions: int : 32;
+pub MaxParameters: int : 8;
+pub MaxGuards: int : 1;
+pub MaxOperands: int : 64;
+
+// The index of the first call row that closes a cycle of the rows' call
+// relation, or -1. Each call's `value` must name one of the rows' functions.
+// The relation's transitive closure is at most MaxFunctions squared.
+pub Cycle :: (rows: Row[]) -> int {
+    count: int = 0;
+    for (row in rows) {
+        if (row.kind == FunctionRow) {
+            count += 1;
+        }
+    }
+    reach := resize([false], count * count);
+    caller: int = -1;
+    for (row in rows) {
+        if (row.kind == FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == CallRow) {
+            reach[caller * count + row.value] = true;
+        }
+    }
+    for (via in 0..<count) {
+        for (from in 0..<count) {
+            if (reach[from * count + via]) {
+                for (to in 0..<count) {
+                    if (reach[via * count + to]) {
+                        reach[from * count + to] = true;
+                    }
+                }
+            }
+        }
+    }
+    caller = -1;
+    for (index in 0..<length(rows)) {
+        row := rows[index];
+        if (row.kind == FunctionRow) {
+            caller += 1;
+        }
+        if (row.kind == CallRow && reach[row.value * count + caller]) {
+            return index;
+        }
+    }
+    return -1;
+}

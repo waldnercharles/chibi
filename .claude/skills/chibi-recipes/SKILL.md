@@ -73,8 +73,8 @@ The smallest complete example is Play Sound:
    `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Scene>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
    A scenario, which supplies its own scene, frames and input:
    `printf '%s\n' '{"contract":1,"operation":"run_scenario","scenario":"<Name>"}' | build/bin/chibi_ctl --project-root <root>`
-   Check `behavior_failures` and the state evidence. Keep frame counts
-   small; the 60-second policy applies.
+   Check `behavior_failures` and the state evidence. Choose enough frames to
+   exercise the scenario.
 
 ## Change saved projects (migration)
 
@@ -83,9 +83,9 @@ it in place, and `chibi_ctl --migrate` does the same explicitly. The
 `validate_project` operation refuses an older project until one of them has
 run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
 
-Bump the version only when you can name a project in this repository,
-`chibi-studio` or `chibi-celeste` that would otherwise load wrong or fail, and
-the step would rewrite it. Skip the steps below for additive changes, a
+Bump the version only when you can name a project in this repository or
+`chibi-studio` that would otherwise load wrong or fail, and the step would
+rewrite it. Skip the steps below for additive changes, a
 contract no project uses yet, a change to what the engine does with a value
 (a physics or rendering fix), or old data that loading already handles (a step
 that would only write what the runtime does anyway). The PR then says how to
@@ -94,7 +94,9 @@ fix a hand-made project.
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
    that upgrades the previous version to the `switch` in
    `src/assets/project_migrate.c`. Steps are idempotent and stage every
-   source before replacing any.
+   source before replacing any. After each step the manifest's `migrated`
+   node records the version the sources reached, so a rerun after a later
+   failure resumes there; only a step interrupted while replacing runs again.
 2. Cover the step with a pico_unit case that migrates a small old-format
    source and checks the result (see `program_version_11_references_migrate_to_values`
    in `test/language/program.c`).
@@ -104,16 +106,16 @@ fix a hand-made project.
 4. Run `chibi_ctl --format` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.
 
-Don't open version-bump PRs in other repositories (`chibi-studio`,
-`chibi-celeste`). Their projects may lag `main`: Studio, `chibi`,
-`chibi-compile` and `chibi export` upgrade an older project when they open it,
-and Studio CI opens Studio's projects against engine `main` on every run. A
-lagging project takes the new version in the next PR that changes it for
-another reason. Change another repository first only when a step stops on
-something it can't rewrite (a removed component a script names): make that
-edit work with the current engine, merge it before the engine PR, and leave
-its version number alone. Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one
-case that needs those projects migrated first.
+Don't open version-bump PRs in other repositories (`chibi-studio`, games).
+Their projects may lag `main`: Studio, `chibi`, `chibi-compile` and `chibi
+export` upgrade an older project when they open it, and Studio CI opens
+Studio's projects against engine `main` on every run. A lagging project takes
+the new version in the next PR that changes it for another reason. Change
+another repository first only when a step stops on something it can't rewrite
+(a removed component a script names): make that edit work with the current
+engine, merge it before the engine PR, and leave its version number alone.
+Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one case that needs those
+projects migrated first.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that

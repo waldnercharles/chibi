@@ -8,7 +8,7 @@ after rebuilding the owning SDK or Studio product and restarting the application
 ## Development loop
 
 Close Studio, edit the native source, and run `make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` again. The build reuses
-unchanged objects and dependency packages. Build failures report diagnostics and
+unchanged objects. Build failures report diagnostics and
 leave the saved workspace available for the next successful launch.
 
 The native application has no code replacement, source watcher, application DLL,
@@ -47,27 +47,22 @@ pointers or generated code.
 ## Checks
 
 `make test` and `make test-short` run six pure C execution-policy cases.
-`make test-tools` runs the complete C tooling/process integration group; each
-command has one shared 60-second deadline. Native host/generation check targets
-and the full editor checkpoint check remain quarantined, disabled and not passed.
-Individual admitted reflection/source/publication routes have their own scoped
-coverage; they do not establish workspace recovery. See the current
-[test instructions](testing.md) and [quarantine inventory](test-quarantine.md).
+`make test-tools` runs the complete C tooling/process integration group.
+Individual reflection/source/publication routes have their own scoped coverage;
+they do not establish workspace recovery. See the current
+[test instructions](testing.md) and [test inventory](test-inventory.md).
 Compilation does not establish runtime coverage.
 
 The retained `test_host` binary covers native process and state-file handling.
-`check-host` invokes the quarantine guard, which refuses execution. The binary
-remains available for compilation. The unadmitted `--editor-checkpoint` assertions in
-the native suite cover dirty documents, Undo/Redo, pre-Play restoration and held
-input across binding recreation; their existence is not current execution
-evidence. CUT65 removed the Python application-recovery driver and its CMake
-check target. Do not execute raw native or CMake checks to bypass quarantine.
+The `--editor-checkpoint` assertions in the native suite cover dirty documents,
+Undo/Redo, pre-Play restoration and held input across binding recreation; their
+existence is not current execution evidence. CUT65 removed the Python application-recovery driver and its CMake
+check target.
 
 CUT65 removed the old `CHIBI_DEVELOPMENT_RELOAD` build mode, `chibi_dll`,
 `check-reload`, `check-dev`, staging descriptors and native watcher smoke checks.
 
 Existing `build-dev` directories are reconfigured by `make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` to use the linked
-application. Dependency packages use the new build identity; existing caches stay
-on disk. Old generation directories and manifests are no longer read. Existing
+application. Old generation directories and manifests are no longer read. Existing
 workspace checkpoints remain available for restart recovery. Remove the retired
 reload option from custom configure commands.

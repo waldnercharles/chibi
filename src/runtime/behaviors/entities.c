@@ -12,6 +12,8 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -365,12 +367,27 @@ const char *entities_global_name_at(const entities *entities, int index)
     return NULL;
 }
 
+static bool global_value_header_valid(const pin_value *value)
+{
+    if (!value || value->type <= PIN_FLOW || value->type > PIN_UNION ||
+        value->container < PIN_CONTAINER_SINGLE ||
+        value->container > PIN_CONTAINER_MAP) {
+        return false;
+    }
+    if (value->record) {
+        return value->type == PIN_STRUCT && pin_record_valid(value->record) &&
+               pin_value_type(value);
+    }
+    return value->type != PIN_STRUCT || value->container != PIN_CONTAINER_SINGLE ||
+           !value->ptr || pin_value_type(value);
+}
 static bool global_value_type_matches(const pin_value *left, const pin_value *right)
 {
     /* A number's type names it; only named types compare their names. */
     bool named = left->type == PIN_STRUCT || left->type == PIN_ENUM ||
                  left->type == PIN_HANDLE;
     return left->type == right->type && left->container == right->container &&
+           pin_record_same(left->record, right->record) &&
            (!named || (!left->type_name && !right->type_name) ||
             (left->type_name && right->type_name &&
              !strcmp(left->type_name, right->type_name)));
@@ -479,9 +496,7 @@ int entities_get_global_value(const entities *entities, const char *name, arena 
 
 int entities_set_global_value(entities *entities, const char *name, const pin_value *value)
 {
-    if (!entities || !name || !name[0] || !value || value->type == PIN_FLOW ||
-        (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
-         value->ptr && !type_catalog_find(value->type_name))) {
+    if (!entities || !name || !name[0] || !global_value_header_valid(value)) {
         return -1;
     }
     const global_binding *binding = find_global_binding_const(entities, name);
@@ -504,17 +519,21 @@ int entities_set_global_value(entities *entities, const char *name, const pin_va
     if (stored && !global_value_type_matches(&stored->value, &coerced)) {
         return -1;
     }
-    value = &coerced;
+    /* Validate/copy before changing the namespace or retiring the old owner. */
+    arena replacement = { 0 };
+    pin_value snapshot;
+    if (pin_value_snapshot_to_arena(&replacement, &snapshot, &coerced)) {
+        arena_free(&replacement);
+        return -1;
+    }
     if (!stored) {
         apush(entities->global_values, ((global_value){ .name = xstrdup(name) }));
         stored = &alast(entities->global_values);
     }
-    arena_reset(&stored->storage);
-    if (pin_value_snapshot_to_arena(&stored->storage, &stored->value, value) != 0) {
-        arena_reset(&stored->storage);
-        stored->value = (pin_value){ 0 };
-        return -1;
-    }
+    arena previous = stored->storage;
+    stored->storage = replacement;
+    stored->value = snapshot;
+    arena_free(&previous);
     return 0;
 }
 
@@ -939,7 +958,16 @@ static int spawn_command(
     assert(count == 1);
     (void)count;
     entities *entities = service;
-    scene *prototype = entities_prepare_spawn(entities, arguments[0].str, message);
+    arena storage = { 0 };
+    const char *name;
+    const char *error = pin_text_cstring(&storage, arguments[0], &name, NULL);
+    if (error) {
+        *message = error;
+        arena_free(&storage);
+        return FLOW_ERR_NODE;
+    }
+    scene *prototype = entities_prepare_spawn(entities, name, message);
+    arena_free(&storage);
     if (!prototype) {
         return FLOW_ERR_NODE;
     }
@@ -973,6 +1001,55 @@ const node_command ENTITY_SEND_COMMAND = {
     .missing_reference = "Choose an event definition",
     .failure_message = "Could not queue event payload",
     .invoke = send_command
+};
+static int add_pair_command(void *service, const char *, const pin_value *args, int count)
+{
+    assert(count == 3);
+    (void)count;
+    return ecs_world_record_add_pair(
+        entities_world(service),
+        ecs_entity_from_u64(args[0].u64),
+        args[1].u64,
+        ecs_entity_from_u64(args[2].u64),
+        0
+    );
+}
+static int remove_pair_command(void *service, const char *, const pin_value *args, int count)
+{
+    assert(count == 3);
+    (void)count;
+    return ecs_world_record_remove_pair(
+        entities_world(service),
+        ecs_entity_from_u64(args[0].u64),
+        args[1].u64,
+        ecs_entity_from_u64(args[2].u64),
+        0
+    );
+}
+static const char *has_pair_data(void *service, const pin_value *args, pin_value *out)
+{
+    out[0].b = ecs_has_pair(
+        entities_world(service),
+        ecs_entity_from_u64(args[0].u64),
+        args[1].u64,
+        ecs_entity_from_u64(args[2].u64)
+    );
+    return NULL;
+}
+const node_command ENTITY_ADD_PAIR_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "add_pair requires an entity world",
+    .invoke = add_pair_command
+};
+const node_command ENTITY_REMOVE_PAIR_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "remove_pair requires an entity world",
+    .invoke = remove_pair_command
+};
+const node_host_call ENTITY_HAS_PAIR_CALL = {
+    .service = "game.entities",
+    .missing_service = "has_pair requires an entity world",
+    .invoke = has_pair_data
 };
 
 static void nearest_position(nearest_target target, const pin_value *inputs, pin_value *out, double *best)
@@ -1119,7 +1196,7 @@ const node_access ENTITY_NEAREST_ACCESS = { .read_refs = nearest_reads,
 
 /* Result headers and struct backing belong to the invocation. Global payloads
  * are snapshotted so another host write cannot invalidate a suspended reader. */
-static const char *global_result(pin_value *out, pin_value value)
+static pin_value global_result_coerce(const pin_value *out, pin_value value)
 {
     if (out->container == PIN_CONTAINER_SINGLE &&
         value.container == PIN_CONTAINER_SINGLE) {
@@ -1131,20 +1208,45 @@ static const char *global_result(pin_value *out, pin_value value)
             value.type = PIN_F32;
         }
     }
-    if (!global_value_type_matches(out, &value)) {
+    return value;
+}
+static const char *global_result_check(const pin_value *out, const pin_value *value)
+{
+    if (!global_value_header_valid(out) || !global_value_header_valid(value)) {
+        return "Global Variable result has invalid type metadata";
+    }
+    pin_value converted = global_result_coerce(out, *value);
+    if (!global_value_type_matches(out, &converted)) {
         return "Global Variable result differs from its declared type";
     }
     if (out->type == PIN_STRUCT && out->container == PIN_CONTAINER_SINGLE) {
-        if (!value.ptr) {
+        if (!value->ptr || !out->ptr) {
             return "Global Variable has no struct payload for its declared "
                    "result";
         }
-        const type_desc *type = type_catalog_find(out->type_name);
-        assert(type && out->ptr);
-        memcpy(out->ptr, value.ptr, type->size);
-        return NULL;
+        const type_desc *type = pin_value_type(out);
+        const type_desc *source = pin_value_type(value);
+        if (!type || !source || !type->size || type->size != source->size) {
+            return "Global Variable result has invalid struct storage";
+        }
     }
-    value.type_name = out->type_name;
+    return NULL;
+}
+static const char *global_result(pin_value *out, pin_value value)
+{
+    const char *error = global_result_check(out, &value);
+    if (error) {
+        return error;
+    }
+    value = global_result_coerce(out, value);
+    if (out->type == PIN_STRUCT && out->container == PIN_CONTAINER_SINGLE) {
+        const type_desc *type = pin_value_type(out);
+        memcpy(out->ptr, value.ptr, type->size);
+        value.ptr = out->ptr;
+    }
+    if (!value.record) {
+        value.type_name = out->type_name;
+    }
     *out = value;
     return NULL;
 }
@@ -1155,19 +1257,51 @@ static const char *get_global_host(
     pin_value *out
 )
 {
-    assert(context->value_storage);
+    const char *key;
+    const char *key_error = pin_text_cstring(context->value_storage, arguments[0], &key, NULL);
+    if (key_error) {
+        return key_error;
+    }
+
+    if (!context->value_storage) {
+        return "Get Global Variable requires invocation storage";
+    }
     pin_value value;
-    if (entities_get_global_value(service, arguments[0].str, context->value_storage, &value)) {
+    if (entities_get_global_value(service, key, context->value_storage, &value)) {
         return "Get Global Variable references an unknown value";
     }
     return global_result(out, value);
 }
-static const char *set_global_host(void *service, const pin_value *arguments, pin_value *out)
+static const char *set_global_host(
+    const behavior_function_context *context,
+    void *service,
+    const pin_value *arguments,
+    pin_value *out
+)
 {
-    if (entities_set_global_value(service, arguments[0].str, &arguments[1])) {
+    const char *key;
+    const char *key_error = pin_text_cstring(context->value_storage, arguments[0], &key, NULL);
+    if (key_error) {
+        return key_error;
+    }
+
+    if (!context->value_storage) {
+        return "Set Global Variable requires invocation storage";
+    }
+    const char *error = global_result_check(out, &arguments[1]);
+    if (error) {
+        return error;
+    }
+    /* Setter results retain the input value, independently of stored float
+     * width or the getter's live-entity filtering. Own it before committing. */
+    pin_value value;
+    if (pin_value_snapshot_to_arena(context->value_storage, &value, &arguments[1])) {
+        return "Set Global Variable could not snapshot its result";
+    }
+    if (entities_set_global_value(service, key, &arguments[1])) {
         return "Set Global Variable received an invalid value";
     }
-    return global_result(out, arguments[1]);
+    return global_result(out, value);
 }
 const node_host_call ENTITY_GET_GLOBAL_CALL = {
     .service = "game.entities",
@@ -1176,7 +1310,7 @@ const node_host_call ENTITY_GET_GLOBAL_CALL = {
 };
 const node_host_call ENTITY_SET_GLOBAL_CALL = {
     .service = "game.entities",
-    .invoke = set_global_host,
+    .context = set_global_host,
     .missing_service = "Set Global Variable requires a game world",
 };
 
@@ -1193,13 +1327,24 @@ static const ecs_component_desc *query_component(entities *entities, const char 
     return NULL;
 }
 
-static const char *has_component_host(void *service, const pin_value *inputs, pin_value *out)
+static const char *has_component_host(
+    const behavior_function_context *ctx,
+    void *service,
+    const pin_value *inputs,
+    pin_value *out
+)
 {
+    const char *text;
+    const char *error = pin_text_cstring(ctx->value_storage, inputs[0], &text, NULL);
+    if (error) {
+        return error;
+    }
+
     entities *entities = service;
     if (!entities) {
         return "Has Entities With Component requires a game world";
     }
-    const char *key = inputs[0].str;
+    const char *key = text;
     if (!key || !key[0]) {
         return "Choose a component for Has Entities With Component";
     }
@@ -1217,7 +1362,7 @@ static const char *has_component_host(void *service, const pin_value *inputs, pi
 }
 
 const node_host_call ENTITY_HAS_COMPONENT_CALL = { .service = "game.entities",
-                                                   .invoke = has_component_host };
+                                                   .context = has_component_host };
 
 const char *entities_find_snapshot(void *service, const char *key, pin_array *out)
 {

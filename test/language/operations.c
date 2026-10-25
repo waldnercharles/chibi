@@ -1,11 +1,13 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "execution/function.h"
 #include "execution/operation.h"
 #include "execution/status.h"
 #include "runtime/core_definition.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -58,20 +60,74 @@ static native_capabilities *single(const native_capability_definition *value, ch
     const native_definition_pack pack = { .definitions = value, .definition_count = 1 };
     return native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, size);
 }
+static native_capabilities *with_core(const native_capability_pack *packs, int count, char *error, size_t size)
+{
+    native_capability_definition alias = *definition(SCRIPT_OPERATION_OWNER);
+    alias.canonical_name = "OwnerAlias";
+    alias.source_name = "owner_alias";
+    const native_definition_pack definitions[] = {
+        CORE_DEFINITION_PACK,
+        { .definitions = &alias, .definition_count = 1 },
+    };
+    return native_capabilities_from_definition_packs(
+        packs,
+        count,
+        definitions,
+        NATIVE_COUNT(definitions),
+        error,
+        size
+    );
+}
 static bool core()
 {
     char error[256];
-    native = native_capabilities_from_definition_packs(NULL, 0, &CORE_DEFINITION_PACK, 1, error, sizeof error);
+    native = with_core(NULL, 0, error, sizeof error);
     if (!native) {
         fprintf(stderr, "operation catalog: %s\n", error);
     }
     return native != NULL;
 }
+TEST_CASE(operations_preserve_unknown_abi)
+{
+    /* Fixed ABI-v1 vectors from the pre-operation contract at d1154cdb.
+     * Keep these independent of both the operation table and generated packs. */
+    const script_catalog_parameter number = { .type = { .storage = PIN_F64 } };
+    const char *const entries[] = { "In" }, *const outcomes[] = { "Completed" };
+    const script_catalog_capability values[] = {
+        { .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .completion_outcome = -1,
+          .effects = SCRIPT_EFFECT_HOST },
+        { .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .results = &number,
+          .result_count = 1,
+          .completion_outcome = -1,
+          .pure = true },
+        { .kind = SCRIPT_CAPABILITY_ACTION,
+          .parameters = &number,
+          .parameter_count = 1,
+          .entries = entries,
+          .entry_count = 1,
+          .outcomes = outcomes,
+          .outcome_count = 1,
+          .completion_outcome = 0,
+          .effects = SCRIPT_EFFECT_SUSPEND },
+    };
+    const uint64_t expected[] = {
+        UINT64_C(0xc2f37c26b74a6739),
+        UINT64_C(0x3d0512e6a499e18a),
+        UINT64_C(0x84c107c0906de0ba),
+    };
+    const script_catalog catalog = { 0 };
+    for (int i = 0; i < NATIVE_COUNT(values); i++) {
+        REQUIRE(script_catalog_capability_abi(&catalog, &values[i]) == expected[i]);
+    }
+    return true;
+}
 TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts)
 {
     REQUIRE(core());
     const script_catalog *catalog = native_capabilities_catalog(native);
-    const behavior_function_op instructions[] = { BF_OWNER, BF_DELTA, BF_DELAY };
+    const behavior_function_op instructions[] = { BF_OWNER, BF_DELAY };
     for (int i = SCRIPT_OPERATION_OWNER; i <= SCRIPT_OPERATION_DELAY; i++) {
         const script_catalog_capability *value = declaration(i);
         REQUIRE(value && script_catalog_operation_valid(value));
@@ -105,11 +161,21 @@ TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts)
     REQUIRE(!script_operation_describe(SCRIPT_OPERATION_UNKNOWN));
     REQUIRE(!script_operation_describe((script_operation)999));
     REQUIRE(!behavior_operation_instruction(SCRIPT_OPERATION_UNKNOWN));
+    int assertion = script_catalog_find_capability(catalog, "assert", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(assertion >= 0);
+    const script_catalog_capability *assert_capability = &catalog->capabilities[assertion];
+    REQUIRE(assert_capability->operation == SCRIPT_OPERATION_UNKNOWN);
+    const native_capability_binding *assert_binding = native_capabilities_find(
+        native,
+        assert_capability->id,
+        script_catalog_capability_abi(catalog, assert_capability)
+    );
+    REQUIRE(assert_binding && assert_binding->intrinsic == BF_ASSERT);
     return true;
 }
 TEST_CASE(operations_reject_malformed_shared_declarations)
 {
-    const native_capability_definition original = *definition(SCRIPT_OPERATION_DELTA);
+    const native_capability_definition original = *definition(SCRIPT_OPERATION_OWNER);
     char error[256];
     for (int change = 0; change < 12; change++) {
         native_capability_definition value = original;
@@ -130,7 +196,7 @@ TEST_CASE(operations_reject_malformed_shared_declarations)
                 value.input_count = 1;
                 break;
             case 10: value.kind = SCRIPT_CAPABILITY_EVENT; break;
-            case 11: value.operation = SCRIPT_OPERATION_OWNER; break;
+            case 11: value.operation = SCRIPT_OPERATION_DELAY; break;
         }
         other = single(&value, error, sizeof error);
         REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
@@ -144,22 +210,27 @@ TEST_CASE(operations_reject_malformed_shared_declarations)
 TEST_CASE(operations_reject_raw_scalar_semantic_metadata)
 {
     REQUIRE(core());
-    script_catalog_capability value = *declaration(SCRIPT_OPERATION_DELTA);
+    script_catalog_capability value = *declaration(SCRIPT_OPERATION_OWNER);
     const script_catalog_parameter original = value.results[0];
-    script_catalog_parameter result;
+    script_catalog_parameter result = original;
     value.results = &result;
     const script_catalog catalog = { .capabilities = &value, .capability_count = 1 };
-    const native_capability_binding binding = { .id = value.id, .intrinsic = BF_DELTA };
+    const native_capability_binding binding = { .id = value.id, .intrinsic = BF_OWNER };
     const native_capability_pack pack = { .catalog = &catalog,
                                           .bindings = &binding,
                                           .binding_count = 1 };
+    char error[256];
+    other = native_capabilities_new(&pack, 1, error, sizeof error);
+    REQUIRE(other);
+    native_capabilities_free(other);
+    other = NULL;
     const unsigned flags[] = { SCRIPT_TYPE_ERROR,     SCRIPT_TYPE_OPTIONAL,
                                SCRIPT_TYPE_REFERENCE, SCRIPT_TYPE_RESULTS,
                                SCRIPT_TYPE_UNTYPED,   SCRIPT_TYPE_GENERIC,
                                SCRIPT_TYPE_TASK,      SCRIPT_TYPE_NAMESPACE,
                                SCRIPT_TYPE_UNION,     SCRIPT_TYPE_SINGLETON,
                                SCRIPT_TYPE_LITERAL,   SCRIPT_TYPE_BOXED_OPTIONAL };
-    for (int change = 0; change < NATIVE_COUNT(flags) + 3; change++) {
+    for (int change = 0; change < NATIVE_COUNT(flags) + 4; change++) {
         result = original;
         if (change < NATIVE_COUNT(flags)) {
             result.type.flags = flags[change];
@@ -167,11 +238,15 @@ TEST_CASE(operations_reject_raw_scalar_semantic_metadata)
             result.type.parameter = 1;
         } else if (change == NATIVE_COUNT(flags) + 1) {
             result.reference_kind = SCRIPT_REFERENCE_COMPONENT;
-        } else {
+        } else if (change == NATIVE_COUNT(flags) + 2) {
             result.member = 1;
+        } else {
+            result.type.collection = 1;
         }
-        char error[256];
         other = native_capabilities_new(&pack, 1, error, sizeof error);
+        if (other) {
+            fprintf(stderr, "raw scalar metadata accepted: change %d\n", change);
+        }
         REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
     }
     return true;
@@ -232,24 +307,24 @@ TEST_CASE(operations_reject_dormant_raw_metadata)
     }
     return true;
 }
-static const char *opaque_delta(void *, const pin_value *, pin_value *out)
+static const char *opaque_owner(void *, const pin_value *, pin_value *out)
 {
-    out->f = 0.75f;
+    out->u64 = 7;
     return NULL;
 }
 TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi)
 {
     REQUIRE(core());
-    script_catalog_capability value = *declaration(SCRIPT_OPERATION_DELTA);
+    script_catalog_capability value = *declaration(SCRIPT_OPERATION_OWNER);
     script_catalog catalog = { .capabilities = &value, .capability_count = 1 };
-    native_capability_binding binding = { .id = value.id, .intrinsic = BF_OWNER };
+    native_capability_binding binding = { .id = value.id, .intrinsic = BF_DELAY };
     native_capability_pack pack = { .catalog = &catalog,
                                     .bindings = &binding,
                                     .binding_count = 1 };
     char error[256];
     other = native_capabilities_new(&pack, 1, error, sizeof error);
     REQUIRE(!other && strstr(error, "differs from engine operation contract"));
-    static const node_host_call call = { .invoke = opaque_delta };
+    static const node_host_call call = { .invoke = opaque_owner };
     binding.intrinsic = 0;
     binding.call = &call;
     other = native_capabilities_new(&pack, 1, error, sizeof error);
@@ -267,17 +342,17 @@ TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi)
     native_capabilities_free(other);
     other = NULL;
     binding.call = NULL;
-    binding.intrinsic = BF_DELTA;
+    binding.intrinsic = BF_OWNER;
     other = native_capabilities_new(&pack, 1, error, sizeof error);
     REQUIRE(!other && strstr(error, "differs from engine operation contract"));
-    value.operation = SCRIPT_OPERATION_DELTA;
+    value.operation = SCRIPT_OPERATION_OWNER;
     pack.binding_count = 0;
     other = native_capabilities_new(&pack, 1, error, sizeof error);
     REQUIRE(!other && strstr(error, "has no execution binding"));
-    const native_definition_binding override = { .canonical_name = CORE_DELTA_NAME,
+    const native_definition_binding override = { .canonical_name = CORE_SELF_NAME,
                                                  .implementation = {
-                                                     .intrinsic = BF_DELTA } };
-    const native_definition_pack shared = { .definitions = definition(SCRIPT_OPERATION_DELTA),
+                                                     .intrinsic = BF_OWNER } };
+    const native_definition_pack shared = { .definitions = definition(SCRIPT_OPERATION_OWNER),
                                             .definition_count = 1,
                                             .bindings = &override,
                                             .binding_count = 1 };
@@ -288,11 +363,11 @@ TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi)
 TEST_CASE(operation_identity_invalidates_source_reuse)
 {
     REQUIRE(core());
-    script_catalog_capability value = *declaration(SCRIPT_OPERATION_DELTA);
+    script_catalog_capability value = *declaration(SCRIPT_OPERATION_OWNER);
     const script_catalog catalog = { .capabilities = &value, .capability_count = 1 };
     const source_catalog_edit edit = {
         .path = "/operations/libraries/Probe.chibi",
-        .text = "library Probe { Value :: () -> int { return 1; } }"
+        .text = "Probe :: library { Value :: () -> int { return 1; } }"
     };
     const script_lower_bindings bindings = { .generation = 1 };
     for (int i = 0; i < 2; i++) {
@@ -340,15 +415,19 @@ TEST_CASE(operations_reject_direct_catalog_state_rewrites)
 {
     REQUIRE(core());
     script_catalog_capability capabilities[] = {
-        *declaration(SCRIPT_OPERATION_DELTA),
+        *declaration(SCRIPT_OPERATION_OWNER),
         { .id = 1, .name = "Run", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1 }
     };
+    capabilities[0].name = "ReadOwner";
+    capabilities[0].qualified_name = NULL;
     const script_catalog catalog = { .capabilities = capabilities,
-                                     .capability_count = NATIVE_COUNT(capabilities) };
+                                     .capability_count = NATIVE_COUNT(capabilities),
+                                     .entity_type = script_catalog_id("type", "ecs.entity") };
     const char *source[] = {
-        "behavior Probe { value: float = 0; on Run { saved := "
-        "delta_time<value>(); } }",
-        "behavior Probe { value: float = 0; on Run { delta_time<value>(1); } }"
+        "Probe :: behavior { value: entity = 0; on Run :: () { saved := "
+        "ReadOwner<value>(); } }",
+        "Probe :: behavior { value: entity = 0; on Run :: () { "
+        "ReadOwner<value>(self); } }"
     };
     const script_state_access access[] = { SCRIPT_STATE_ACCESS_READ,
                                            SCRIPT_STATE_ACCESS_WRITE };
@@ -371,7 +450,7 @@ TEST_CASE(operations_reject_direct_catalog_state_rewrites)
 }
 static bool wrong_host(void *, uint64_t, script_lower_host *out)
 {
-    *out = (script_lower_host){ .intrinsic = BF_OWNER };
+    *out = (script_lower_host){ .intrinsic = BF_DELAY };
     return true;
 }
 TEST_CASE(operations_reject_custom_lowerer_binding_mismatch)
@@ -379,13 +458,36 @@ TEST_CASE(operations_reject_custom_lowerer_binding_mismatch)
     REQUIRE(core());
     const script_catalog *catalog = native_capabilities_catalog(native);
     REQUIRE(
-        analyze_source("library Probe { Value :: () -> float { return delta_time(); } }", catalog)
+        analyze_source("Probe :: library { Value :: () -> bool { return owner_alias() == owner_alias(); } }", catalog)
     );
     const script_lower_bindings bindings = { .host = wrong_host };
     plan = script_lower(analysis, catalog, &bindings);
     REQUIRE(plan && !plan->valid);
-    REQUIRE(plan->diagnostic_count == 1);
+    REQUIRE(plan->diagnostic_count == 2);
     REQUIRE(strstr(plan->diagnostics[0].message, "differs from engine operation contract"));
+    return true;
+}
+TEST_CASE(owner_alias_preserves_invocation_effects)
+{
+    REQUIRE(core());
+    const script_catalog *catalog = native_capabilities_catalog(native);
+    REQUIRE(declaration(SCRIPT_OPERATION_OWNER)->effects == SCRIPT_EFFECT_INVOCATION_READ);
+    REQUIRE(
+        analyze_source("Probe :: library { Value :: () -> bool { return owner_alias() == owner_alias(); } }", catalog)
+    );
+    REQUIRE(analysis->function_count == 1);
+    REQUIRE(analysis->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    syntax = script_parse("Probe :: system() where owner_alias() == owner_alias() {}");
+    analysis = script_analyze(syntax, catalog);
+    REQUIRE(!syntax->diagnostic_count && !analysis->valid);
+    bool rejected = false;
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        rejected |= strstr(analysis->diagnostics[i].message, "Query predicate cannot read") !=
+                    NULL;
+    }
+    REQUIRE(rejected);
     return true;
 }
 static uint64_t state(const char *name)
@@ -397,6 +499,37 @@ static uint64_t state(const char *name)
         }
     }
     return 0;
+}
+static bool operation_backend_entries(behavior_run_counts counts, behavior_backend backend, const char *phase)
+{
+    printf(
+        "operations phase=%s backend=%s bytecode=%" PRIu64 " sljit=%" PRIu64
+        " wasm=%" PRIu64 " inspected_sljit=%" PRIu64 " inspected_wasm=%" PRIu64
+        " inspection_fallback=%" PRIu64 " size_fallback=%" PRIu64
+        " overflow=%d\n",
+        phase,
+        backend == BEHAVIOR_BYTECODE ? "bytecode"
+        : backend == BEHAVIOR_SLJIT  ? "sljit"
+                                     : "wasm",
+        counts.bytecode_entries,
+        counts.sljit_entries,
+        counts.wasm_entries,
+        counts.inspected_sljit_entries,
+        counts.inspected_wasm_entries,
+        counts.inspection_bytecode_fallbacks,
+        counts.size_bytecode_fallbacks,
+        counts.overflow
+    );
+    REQUIRE(!counts.overflow);
+    REQUIRE(!counts.inspection_bytecode_fallbacks && !counts.size_bytecode_fallbacks);
+    REQUIRE(!counts.inspected_sljit_entries && !counts.inspected_wasm_entries);
+    REQUIRE(
+        backend == BEHAVIOR_BYTECODE ? counts.bytecode_entries > 0
+                                     : counts.bytecode_entries == 0
+    );
+    REQUIRE(backend == BEHAVIOR_SLJIT ? counts.sljit_entries > 0 : counts.sljit_entries == 0);
+    REQUIRE(backend == BEHAVIOR_WASM ? counts.wasm_entries > 0 : counts.wasm_entries == 0);
+    return true;
 }
 TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
 {
@@ -413,20 +546,22 @@ TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
                                   .capability_count = 1,
                                   .entity_type = script_catalog_id("type", "ecs.entity") };
     const native_capability_pack pack = { .catalog = &base };
-    const char *source = "behavior Probe { before: float = 0; resumed_value: "
-                         "float = 0; same: "
-                         "bool = false; "
-                         "text: string = \"old\"; on Run(duration) { before = "
-                         "delta_time(); "
-                         "saved := before; same = engine[\"Self\"]() == self; "
-                         "saved_text := text; "
-                         "text = \"new\"; "
-                         "await delay(duration); resumed_value = saved; text = "
-                         "saved_text; } }";
+    const char
+        *source = "Probe :: behavior { before: entity = 0; resumed_value: "
+                  "entity = 0; same: "
+                  "bool = false; "
+                  "text: string = \"old\"; on Run :: (duration: double) { "
+                  "before = "
+                  "owner_alias(); "
+                  "saved := before; same = owner_alias() == self; "
+                  "saved_text := text; "
+                  "text = \"new\"; "
+                  "await delay(duration); resumed_value = saved; text = "
+                  "saved_text; } }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         char error[256];
-        native = native_capabilities_from_definition_packs(&pack, 1, &CORE_DEFINITION_PACK, 1, error, sizeof error);
+        native = with_core(&pack, 1, error, sizeof error);
         REQUIRE(native);
         const script_catalog *catalog = native_capabilities_catalog(native);
         REQUIRE(analyze_source(source, catalog));
@@ -442,26 +577,36 @@ TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
         const double waits[] = { 0, -1, 0.25, NAN };
         for (int i = 0; i < 4; i++) {
             const pin_value argument = { .type = PIN_F64, .d = waits[i] };
-            REQUIRE(
-                execution_instance_dispatch(instance, 1, &argument, 1, i, 0.125, 1000) == FLOW_OK
-            );
-            REQUIRE(execution_instance_state(instance, state("before"))->f == 0.125f);
+            behavior_run_scope run = { 0 };
+            behavior_run_scope_begin(&run);
+            int status = execution_instance_dispatch(instance, 1, &argument, 1, i, 0.125, 1000);
+            behavior_run_scope_end(&run);
+            REQUIRE(status == FLOW_OK);
+            REQUIRE(operation_backend_entries(run.counts, backends[b], "dispatch"));
+            REQUIRE(execution_instance_state(instance, state("before"))->u64 == 7);
             REQUIRE(execution_instance_state(instance, state("same"))->b);
             REQUIRE(execution_instance_pending(instance) == (i >= 2));
             if (i == 2) {
-                REQUIRE(
-                    !strcmp(execution_instance_state(instance, state("text"))->str, "new")
-                );
-                REQUIRE(execution_program_update(program, i + 0.25, 0.5, 1000) == FLOW_OK);
+                REQUIRE(!strcmp(
+                    pin_text(*execution_instance_state(instance, state("text"))).bytes,
+                    "new"
+                ));
+                behavior_run_scope_reset(&run);
+                behavior_run_scope_begin(&run);
+                status = execution_program_update(program, i + 0.25, 0.5, 1000);
+                behavior_run_scope_end(&run);
+                REQUIRE(status == FLOW_OK);
+                REQUIRE(operation_backend_entries(run.counts, backends[b], "resume"));
                 REQUIRE(!execution_instance_pending(instance));
             }
             if (i < 3) {
                 REQUIRE(
-                    execution_instance_state(instance, state("resumed_value"))->f == 0.125f
+                    execution_instance_state(instance, state("resumed_value"))->u64 == 7
                 );
-                REQUIRE(
-                    !strcmp(execution_instance_state(instance, state("text"))->str, "old")
-                );
+                REQUIRE(!strcmp(
+                    pin_text(*execution_instance_state(instance, state("text"))).bytes,
+                    "old"
+                ));
             }
         }
     }
@@ -470,6 +615,7 @@ TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
 void test_language_operations()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(operations_preserve_unknown_abi);
     RUN_TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts);
     RUN_TEST_CASE(operations_reject_malformed_shared_declarations);
     RUN_TEST_CASE(operations_reject_raw_scalar_semantic_metadata);
@@ -478,6 +624,7 @@ void test_language_operations()
     RUN_TEST_CASE(operation_identity_invalidates_source_reuse);
     RUN_TEST_CASE(operations_reject_direct_catalog_state_rewrites);
     RUN_TEST_CASE(operations_reject_custom_lowerer_binding_mismatch);
+    RUN_TEST_CASE(owner_alias_preserves_invocation_effects);
     RUN_TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends);
     pu_clear_setup();
 }

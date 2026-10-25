@@ -10,6 +10,7 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -243,10 +244,15 @@ TEST_CASE(scalar_unions_remove_nonescaping_payloads_snapshots_and_tag_checks)
 
 TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
 {
-    const pin_value cases[] = { { .type = PIN_F64, .d = 2.75 },
-                                { .type = PIN_STR, .str = "" },
-                                { .type = PIN_STR },
-                                { .type = PIN_STR, .str = "original" } };
+    const pin_value cases[] = {
+        { .type = PIN_F64, .d = 2.75 },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "", .length = sizeof("") - 1 } },
+        { .type = PIN_STR },
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "original",
+                                       .length = sizeof("original") - 1 } }
+    };
     for (int j = 0; j < 4; j++) {
         cleanup();
         builder = behavior_function_builder_new();
@@ -263,19 +269,23 @@ TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
 #endif
         for (int backend = 0; backend < 4; backend++) {
             char text[] = "original";
+            pin_string descriptor = { text, sizeof text - 1 };
             if (j == 3) {
-                input.str = text;
+                input.text = &descriptor;
             }
             REQUIRE(begin(&input, 1, &output, backend) == FLOW_OK);
             const pin_union *retained = output.ptr;
             REQUIRE(retained && retained->tag == 42 && retained->count == 1);
             if (!j) {
                 REQUIRE(retained->values[0].d == input.d);
-            } else if (input.str) {
+            } else if (input.text) {
                 text[0] = 'X';
-                REQUIRE(!strcmp(retained->values[0].str, cases[j].str));
+                REQUIRE(!strcmp(
+                    pin_text(retained->values[0]).bytes,
+                    pin_text(cases[j]).bytes
+                ));
             } else {
-                REQUIRE(!retained->values[0].str);
+                REQUIRE(pin_text(retained->values[0]).length == 0);
             }
         }
     }
@@ -480,11 +490,7 @@ TEST_CASE(scalar_unions_optimize_authored_local_patterns)
 {
     const script_catalog catalog = { 0 };
     const script_lower_bindings bindings = { 0 };
-    syntax = script_parse(
-        "library Scalar { Eval :: pure (amount: number) -> number { "
-        "value: number | Cancelled = amount; "
-        "if value is number found { return found; } return 0; } }"
-    );
+    syntax = script_parse("Scalar :: library { Eval :: (amount: number) -> number { value: number | Cancelled = amount; if value is number found { return found; } return 0; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);
@@ -772,10 +778,11 @@ TEST_CASE(scalar_unions_keep_nested_managed_payload_snapshots)
     REQUIRE(calls(true) == 4);
     for (int mode = 0; mode < 4; mode++) {
         char original[] = "snapshot";
-        input.str = original;
+        input.text = &(const pin_string){ .bytes = original,
+                                          .length = (uint32_t)strlen(original) };
         REQUIRE(begin(&input, 1, &output, mode) == FLOW_OK);
         original[0] = 'X';
-        REQUIRE(output.str && !strcmp(output.str, "snapshot"));
+        REQUIRE(pin_text(output).bytes && !strcmp(pin_text(output).bytes, "snapshot"));
         size_t bytes, capacity;
         arena_usage(&storage, &bytes, &capacity);
         REQUIRE(bytes > 0);
@@ -815,8 +822,8 @@ TEST_CASE(scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback)
     return true;
 }
 
-/* Keep the authored baseline workload identical while comparing scalar getters
- * with the unchanged reference-based member path. Tiny
+/* Keep the authored baseline workload identical while comparing native access
+ * metadata with the unchanged reference-based member path. Tiny
  * assertion-inclusive timings describe this fixture only, never a pass/fail
  * threshold. Cold allocation counts include preparation and the first call;
  * trials reuse the canonical bank, VM scratch and resettable value arena. */
@@ -951,7 +958,14 @@ static bool read_host_binding(void *, uint64_t id, script_lower_host *out)
     return true;
 }
 
-static bool read_compile_reflection(int field, bool getter, bool managed, bool reflected, bool explicit_entity)
+static bool read_compile_reflection(
+    int field,
+    bool getter,
+    bool managed,
+    bool reflected,
+    bool explicit_entity,
+    bool aggregate
+)
 {
     cleanup();
     const type_catalog_pack pack = { .types = read_types, .type_count = 2 };
@@ -965,10 +979,15 @@ static bool read_compile_reflection(int field, bool getter, bool managed, bool r
                                             .name = f->name,
                                             .type = { .storage = f->type },
                                             .offset = f->offset,
+                                            .c_string = f->type == PIN_STR &&
+                                                        !f->text_descriptor,
                                             .range_contract = f->range_contract,
                                             .min = f->min,
                                             .max = f->max };
     }
+    /* Generated native access remains catalog metadata, not authored callable
+     * syntax. The same property without it keeps the aggregate snapshot path. */
+    fields[field].read = getter ? 9400 : 0;
     /* Generic reference banks still need a reflected root descriptor. A safe
      * offset with a catalog-only field name denies only the scalar proof. */
     if (!reflected) {
@@ -1022,24 +1041,33 @@ static bool read_compile_reflection(int field, bool getter, bool managed, bool r
                                      .capability_count = 2,
                                      .entity_type = READ_ENTITY };
     char source[256], expression[96];
-    if (getter) {
-        snprintf(expression, sizeof expression, explicit_entity ? "read_field(get_entity())" : "read_field()");
-    } else {
+    snprintf(
+        expression,
+        sizeof expression,
+        "%s.%s.%s",
+        explicit_entity ? "get_entity()" : "self",
+        type->name,
+        fields[field].name
+    );
+    if (aggregate) {
         snprintf(
-            expression,
-            sizeof expression,
-            "self.%s.%s",
+            source,
+            sizeof source,
+            "Baseline :: library { Read :: () -> %s { root := self.%s; return "
+            "root.%s; } }",
+            script_scalar_name(fields[field].type.storage),
             type->name,
             fields[field].name
         );
+    } else {
+        snprintf(
+            source,
+            sizeof source,
+            "Baseline :: library { Read :: () -> %s { return %s; } }",
+            script_scalar_name(fields[field].type.storage),
+            expression
+        );
     }
-    snprintf(
-        source,
-        sizeof source,
-        "library Baseline { Read :: () -> %s { return %s; } }",
-        script_scalar_name(fields[field].type.storage),
-        expression
-    );
     syntax = script_parse(source);
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
@@ -1079,7 +1107,7 @@ static bool read_compile_reflection(int field, bool getter, bool managed, bool r
 
 static bool read_compile(int field, bool getter, bool managed)
 {
-    return read_compile_reflection(field, getter, managed, true, false);
+    return read_compile_reflection(field, getter, managed, true, false, false);
 }
 
 static int read_instructions()
@@ -1158,7 +1186,7 @@ static double read_seconds()
     return now.tv_sec + now.tv_nsec * 1e-9;
 }
 
-TEST_CASE(scalar_component_reads_lower_only_explicit_scalar_getters)
+TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
 {
     for (int getter = 0; getter < 2; getter++) {
         for (int field = 0; field < 3; field++) {
@@ -1184,7 +1212,7 @@ TEST_CASE(scalar_component_reads_lower_only_explicit_scalar_getters)
                 result_bank->result_count == 1
             );
             REQUIRE(result_bank->first == (getter ? 0 : 12));
-            /* Record the current getter's conservative write metadata too. */
+            /* Record native access's conservative write metadata too. */
             REQUIRE(acount(function->component_writes) == getter);
             printf(
                 "SCALAR_READ path=%s field=%s canonical_hosts=%d "
@@ -1193,7 +1221,7 @@ TEST_CASE(scalar_component_reads_lower_only_explicit_scalar_getters)
                 "primitive_bank_values=%d "
                 "result_bank_values=2 bank_values=%d bank_value_bytes=%zu "
                 "writes=%d\n",
-                getter ? "getter" : "member",
+                getter ? "native-metadata" : "snapshot",
                 scalar_read_fields[field].name,
                 calls(false),
                 calls(true),
@@ -1228,7 +1256,7 @@ TEST_CASE(scalar_component_reads_lower_only_explicit_scalar_getters)
                     "alloc_calls=%llu requested_bytes=%llu arena_blocks=%llu "
                     "bank_allocs=%llu vm_allocs=%llu host_bytes=%zu "
                     "arena_bytes=%zu\n",
-                    getter ? "getter" : "member",
+                    getter ? "native-metadata" : "snapshot",
                     scalar_read_fields[field].name,
                     behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
                     mode >= 2,
@@ -1279,7 +1307,7 @@ TEST_CASE(scalar_component_reads_lower_only_explicit_scalar_getters)
                         "arena_capacity=%zu "
                         "alloc_calls=%llu requested_bytes=%llu "
                         "arena_blocks=%llu bank_allocs=%llu vm_allocs=%llu\n",
-                        getter ? "getter" : "member",
+                        getter ? "native-metadata" : "snapshot",
                         scalar_read_fields[field].name,
                         behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
                         mode >= 2,
@@ -1318,7 +1346,8 @@ TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery)
             }
         }
         REQUIRE(failed && failed->source >= 0);
-        const char *expression = getter ? "read_field()" : "self.ScalarRead";
+        const char *expression = getter ? "self.ScalarRead.signed_value"
+                                        : "self.ScalarRead";
         const char *start = strstr(syntax->text, expression);
         REQUIRE(start);
         const behavior_function_source
@@ -1331,7 +1360,7 @@ TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery)
             "SCALAR_READ_FAILURE path=%s cases=9 modes=4 status=%d reason=%d "
             "frame=%d source=%d stack=%d pin=%d steps=%llu "
             "asset=%s span=%d:%d line=%d column=%d\n",
-            getter ? "getter" : "member",
+            getter ? "native-metadata" : "snapshot",
             FLOW_ERR_INVALID_GRAPH,
             BEHAVIOR_FUNCTION_HOST_DATA,
             failed->frame,
@@ -1455,8 +1484,8 @@ TEST_CASE(scalar_component_reads_keep_managed_root_debug_snapshots)
                 REQUIRE(read_captured->text != text && !strcmp(read_captured->text, "retained"));
                 REQUIRE(read_fixture.managed[1].signed_value == 99 && text[0] == 'X');
             } else {
-                /* Explicit scalar getters never publish the root snapshot, even
-                 * when unrelated managed fields share its component storage. */
+                /* Immediate native scalar properties do not publish the root
+                 * snapshot, even beside unrelated managed fields. */
                 REQUIRE(!read_captures && !read_captured);
                 REQUIRE(read_fixture.managed[1].signed_value == -23 && !strcmp(text, "retained"));
             }
@@ -1464,7 +1493,7 @@ TEST_CASE(scalar_component_reads_keep_managed_root_debug_snapshots)
                 "SCALAR_READ_MANAGED path=%s backend=%s inspected=%d "
                 "root_captures=%d runtime_hosts=%d bank_values=%d "
                 "arena_bytes=%zu\n",
-                getter ? "getter" : "member",
+                getter ? "native-metadata" : "snapshot",
                 behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
                 mode >= 2,
                 read_captures,
@@ -1911,7 +1940,7 @@ TEST_CASE(scalar_component_reads_reacquire_after_writes_and_world_changes)
 
 TEST_CASE(scalar_component_reads_keep_unproven_and_managed_fields_generic)
 {
-    REQUIRE(read_compile_reflection(0, true, false, false, false));
+    REQUIRE(read_compile_reflection(0, true, false, false, false, false));
     REQUIRE(read_instructions() == 0 && calls(true) == 3);
     REQUIRE(read_hosts(&EXECUTION_reference_read_call, true) == 1);
     REQUIRE(acount(function->data_values) == 19);
@@ -1936,16 +1965,19 @@ TEST_CASE(scalar_component_reads_keep_unproven_and_managed_fields_generic)
         pin_value output = { .type = PIN_STR };
         read_begin(&output, mode);
         REQUIRE(read_run(mode) == FLOW_OK);
-        REQUIRE(output.str && output.str != text && !strcmp(output.str, text));
+        REQUIRE(
+            pin_text(output).bytes && pin_text(output).bytes != text &&
+            !strcmp(pin_text(output).bytes, text)
+        );
         text[0] = 'X';
-        REQUIRE(!strcmp(output.str, "managed field"));
+        REQUIRE(!strcmp(pin_text(output).bytes, "managed field"));
     }
     return true;
 }
 
 TEST_CASE(scalar_component_reads_evaluate_explicit_entity_once)
 {
-    REQUIRE(read_compile_reflection(0, true, false, true, true));
+    REQUIRE(read_compile_reflection(0, true, false, true, true, false));
     REQUIRE(read_instructions() == 1 && calls(true) == 1);
     for (int mode = 0; mode < 4; mode++) {
         read_world(false);
@@ -1958,6 +1990,32 @@ TEST_CASE(scalar_component_reads_evaluate_explicit_entity_once)
         read_entity_calls = 0;
         REQUIRE(read_run(mode) == FLOW_ERR_INVALID_GRAPH);
         REQUIRE(read_entity_calls == 1);
+    }
+    return true;
+}
+TEST_CASE(scalar_component_properties_keep_explicit_aggregate_snapshots)
+{
+    REQUIRE(read_compile_reflection(0, true, true, true, false, true));
+    REQUIRE(read_instructions() == 0);
+    for (int mode = 0; mode < 4; mode++) {
+        read_world(true);
+        char text[] = "retained";
+        read_fixture.managed[1] = (managed_read_row){ -23, text };
+        pin_value output = { .type = PIN_I32 };
+        read_begin(&output, mode);
+        read_captured = NULL;
+        read_captures = 0;
+        context.source_capture = mode >= 2 ? read_capture : NULL;
+        REQUIRE(read_run(mode) == FLOW_OK && output.i == -23);
+        if (mode >= 2) {
+            REQUIRE(read_captures > 0 && read_captured);
+            REQUIRE(read_captured != &read_fixture.managed[1]);
+            REQUIRE(read_captured->signed_value == -23);
+            REQUIRE(read_captured->text != text && !strcmp(read_captured->text, "retained"));
+            REQUIRE(read_fixture.managed[1].signed_value == 99 && text[0] == 'X');
+        } else {
+            REQUIRE(!read_captures && read_fixture.managed[1].signed_value == -23);
+        }
     }
     return true;
 }
@@ -2018,7 +2076,7 @@ void test_language_scalarize()
     RUN_TEST_CASE(scalar_unions_cross_isolated_calls_without_removing_effects_or_errors);
     RUN_TEST_CASE(scalar_unions_keep_nested_managed_payload_snapshots);
     RUN_TEST_CASE(scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback);
-    RUN_TEST_CASE(scalar_component_reads_lower_only_explicit_scalar_getters);
+    RUN_TEST_CASE(scalar_component_properties_use_proven_native_access_metadata);
     RUN_TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery);
     RUN_TEST_CASE(scalar_component_reads_keep_managed_root_debug_snapshots);
     RUN_TEST_CASE(scalar_component_reads_copy_all_widths_and_preserve_live_registers);
@@ -2028,6 +2086,7 @@ void test_language_scalarize()
     RUN_TEST_CASE(scalar_component_reads_reacquire_after_writes_and_world_changes);
     RUN_TEST_CASE(scalar_component_reads_keep_unproven_and_managed_fields_generic);
     RUN_TEST_CASE(scalar_component_reads_evaluate_explicit_entity_once);
+    RUN_TEST_CASE(scalar_component_properties_keep_explicit_aggregate_snapshots);
     RUN_TEST_CASE(scalar_component_reads_keep_copied_values_across_source_inspection);
     pu_clear_setup();
 }

@@ -1,30 +1,27 @@
-behavior "InputBehavior" {
-    action set_gamevelocity = set_velocity("MovementActions"."Movement Velocity"(input.Direction, self.Movement))
-    on Input as input {
+// Set movement velocity from local input and face the movement direction.
+InputBehavior :: behavior {
+    on Input :: (Direction: struct<CF_V2>) {
         if self.Dash {
             if 0.0 < self.Dash.remaining {
             } else {
-                set_gamevelocity()
+                self.Velocity = MovementActions.Movement_Velocity(Direction, self.Movement)
+                await Face_Direction(Direction)
             }
         } else {
-            set_gamevelocity()
+            self.Velocity = MovementActions.Movement_Velocity(Direction, self.Movement)
+            await Face_Direction(Direction)
         }
     }
-    after set_gamevelocity {
-        await "Face Direction"(input.Direction)
-    }
-    "Face Direction" :: fn(Direction: struct<"CF_V2"> = null) {
-        after entry {
-            if self.Orientation {
-                if 0.0 >= abs(entry.Direction.x) + abs(entry.Direction.y) {
-                    return
-                } else {
-                    self.Orientation = "DirectionMath"."Direction Orientation"(entry.Direction.x, entry.Direction.y)
-                    return
-                }
+    Face_Direction :: (Direction: struct<CF_V2> = null) {
+        if self.Orientation {
+            if 0.0 >= abs(Direction.x) + abs(Direction.y) {
+                return
             } else {
+                self.Orientation = DirectionMath.Direction_Orientation(Direction.x, Direction.y)
                 return
             }
+        } else {
+            return
         }
     }
 }

@@ -27,7 +27,7 @@ static bool scalar(const script_catalog_parameter *parameter, pin_type storage, 
     return parameter && parameter->type.storage == storage &&
            parameter->type.container == PIN_CONTAINER_SINGLE &&
            parameter->type.nominal == nominal && !parameter->type.parameter &&
-           !parameter->type.flags &&
+           !parameter->type.collection && !parameter->type.flags &&
            parameter->reference_kind == SCRIPT_REFERENCE_NONE && !parameter->member;
 }
 bool script_catalog_operation_valid(const script_catalog_capability *capability)
@@ -64,14 +64,10 @@ bool script_catalog_operation_valid(const script_catalog_capability *capability)
                capability->result_count == 0 && capability->entry_count == 1 &&
                capability->outcome_count == 1 && capability->completion_outcome == 0;
     }
-    uint64_t nominal = capability->operation == SCRIPT_OPERATION_OWNER
-                         ? script_catalog_id("type", "ecs.entity")
-                         : 0;
-    pin_type storage = capability->operation == SCRIPT_OPERATION_OWNER ? PIN_HANDLE
-                                                                       : PIN_F32;
+    uint64_t nominal = script_catalog_id("type", "ecs.entity");
     return capability->kind == SCRIPT_CAPABILITY_FUNCTION && capability->pure &&
            capability->parameter_count == 0 && capability->result_count == 1 &&
-           scalar(capability->results, storage, nominal) &&
+           scalar(capability->results, PIN_HANDLE, nominal) &&
            capability->entry_count == 0 && capability->outcome_count == 0 &&
            capability->completion_outcome == -1;
 }

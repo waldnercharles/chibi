@@ -2,6 +2,7 @@
 #include "execution/scalar.h"
 #include "execution/status.h"
 #include "support/array.h"
+#include "types/array.h"
 #include "types/catalog.h"
 
 #include <stdlib.h>
@@ -23,6 +24,34 @@ void program_observers_free(execution_instance *instance)
         arena_free(&instance->observations[i].storage);
     }
     afree(instance->observations);
+}
+static const type_field *observer_field(const type_desc *type, size_t offset, pin_type wanted, int depth)
+{
+    if (!type || depth == TYPE_MAX_NESTING) {
+        return NULL;
+    }
+    if (type->alias_of) {
+        return observer_field(type_catalog_find(type->alias_of), offset, wanted, depth + 1);
+    }
+    for (int n = 0; n < type->field_count; n++) {
+        const type_field *field = &type->fields[n];
+        if (field->offset == offset && field->type == wanted) {
+            return field;
+        }
+        if (field->type == PIN_STRUCT && offset >= field->offset &&
+            offset - field->offset < field->size) {
+            const type_field *nested = observer_field(
+                type_catalog_find(field->type_name),
+                offset - field->offset,
+                wanted,
+                depth + 1
+            );
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+    return NULL;
 }
 static int observe_target(
     execution_instance *instance,
@@ -61,6 +90,7 @@ static int observe_target(
         }
         return FLOW_OK;
     }
+    arena temporary = { 0 };
     pin_value value = observer->type;
     if (targeted) {
         if (!program_same_type(observer->type, *edge)) {
@@ -68,15 +98,24 @@ static int observe_target(
         }
         value = *edge;
     } else {
-        const type_desc *type = value.type == PIN_STRUCT
-                                  ? type_catalog_find(value.type_name)
-                                  : NULL;
-        type_field field = { .type = value.type,
-                             .type_name = value.type_name,
-                             .offset = observer->offset,
-                             .size = type ? type->size
-                                          : behavior_scalar_size(value.type) };
-        pin_read_field(row, &field, &value);
+        const ecs_component_desc
+            *component_type = ecs_world_component(p->world, observer->component);
+        const type_field *actual = observer_field(
+            component_type ? component_type->type : NULL,
+            observer->offset,
+            value.type,
+            0
+        );
+        if (!actual) {
+            return FLOW_ERR_ARGUMENT;
+        }
+        type_field field = *actual;
+        field.offset = observer->offset;
+        if (pin_read_field(&temporary, row, &field, &value)) {
+            arena_free(&temporary);
+            return FLOW_ERR_ARGUMENT;
+        }
+        value.type_name = observer->type.type_name;
     }
     /* A queued host edge is authoritative, including repeated payloads within
      * one input batch. Sampling alone establishes a silent initial baseline. */
@@ -94,6 +133,7 @@ static int observe_target(
         pin_value owned;
         if (pin_value_snapshot_to_arena(&next, &owned, &value)) {
             arena_free(&next);
+            arena_free(&temporary);
             return FLOW_ERR_ARGUMENT;
         }
         arena_free(&cache->storage);
@@ -105,9 +145,12 @@ static int observe_target(
         system |= p->module->plan.functions[i].kind == EXECUTION_FUNCTION_SYSTEM;
     }
     if (!changed || (system && program_instance_busy(instance))) {
+        arena_free(&temporary);
         return FLOW_OK;
     }
-    return program_dispatch_handler(instance, function, &value, 1, now, delta, budget);
+    int status = program_dispatch_handler(instance, function, &value, 1, now, delta, budget);
+    arena_free(&temporary);
+    return status;
 }
 int program_observe(
     execution_instance *instance,
@@ -150,7 +193,7 @@ int program_observe(
                     status = observe_target(
                         instance,
                         i,
-                        array->items[j].u64,
+                        pin_array_get(array, j).u64,
                         now,
                         delta,
                         budget,

@@ -1,5 +1,5 @@
-behavior CameraFollow {
-    on Tick(dt) {
-        self.Transform += (cast<handle<"ecs.entity">>(get_global_variable("Player")).Transform - self.Transform) * (1 - exp(-6 * dt))
+CameraFollow :: behavior {
+    on Tick :: (dt: float s) {
+        self.Transform += (entity(get_global_variable("Player")).Transform - self.Transform) * (1 - exp(-6 * dt))
     }
 }

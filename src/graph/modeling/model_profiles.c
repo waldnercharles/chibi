@@ -11,7 +11,7 @@ static const pin_array *vertices(const node *n)
 }
 static const float *vertex(const pin_array *points, int i)
 {
-    return points->items[i].ptr;
+    return pin_array_data(points, i);
 }
 static double cross(const float a[2], const float b[2], const float c[2])
 {
@@ -52,7 +52,8 @@ static bool polygon_validate(const node *n, shader_error *error)
     }
     double lo[2] = { DBL_MAX, DBL_MAX }, hi[2] = { -DBL_MAX, -DBL_MAX };
     for (int i = 0; i < points->count; i++) {
-        const pin_value *v = &points->items[i];
+        pin_value element = pin_array_get(points, i);
+        const pin_value *v = &element;
         if (v->type != PIN_STRUCT || v->container != PIN_CONTAINER_SINGLE ||
             !v->type_name || strcmp(v->type_name, "ShaderVec2") || !v->ptr) {
             return model_fail(error, n->id, "Polygon vertices require typed ShaderVec2 values");

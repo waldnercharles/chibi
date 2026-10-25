@@ -437,7 +437,7 @@ char *source_edit_check_connection(
 }
 bool source_edit_single_expression(const char *text)
 {
-    static const char prefix[] = "behavior __Edit { __candidate := ";
+    static const char prefix[] = "__Edit :: behavior { __candidate := ";
     size_t length = strlen(text);
     char *probe = xmalloc(sizeof prefix + length + 4);
     snprintf(probe, sizeof prefix + length + 4, "%s%s; }", prefix, text);

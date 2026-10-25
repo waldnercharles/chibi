@@ -1,0 +1,20 @@
+package native_aot
+
+// Test adapters only. Assertions live in the C/pico tooling cases.
+InspectTool :: () -> int {
+    arguments := build.arguments();
+    build.report(Tool(arguments[0]));
+    return 0;
+}
+
+InspectCleanup :: () -> int {
+    arguments := build.arguments();
+    if (Cleanup(arguments[0])) {
+        return 0;
+    }
+    return 1;
+}
+
+InspectInterruption :: () -> int {
+    return build.run(build.arguments());
+}

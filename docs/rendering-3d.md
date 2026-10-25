@@ -309,8 +309,8 @@ The probes start dark and settle over about twenty frames, so preview after
 warmup frames. On hardware opted into profiling, a performance run's
 `pass_timing` charges each frame's 3D work to "3D setup" (the sky's
 filtering and the scene's uploads), "3D shadow maps", "3D ambient
-occlusion", "3D global illumination", "3D surfaces" and "3D
-post-processing".
+occlusion", "3D screen light" (when on), "3D global illumination", "3D
+surfaces" and "3D post-processing".
 
 Reference: Majercik et al., [Dynamic Diffuse Global Illumination with
 Ray-Traced Irradiance Fields](https://jcgt.org/published/0008/02/01/), and
@@ -318,6 +318,66 @@ Ramamoorthi and Hanrahan, [An Efficient Representation for Irradiance
 Environment Maps](https://graphics.stanford.edu/papers/envmap/envmap.pdf),
 whose cosine factors per harmonic band turn the sky's irradiance back into
 the light it gives off.
+
+## Screen light (2026-10-17)
+
+`Environment.screen_light` lets glowing particles and surfaces light what is
+around them, which the probes above miss: particles cast nothing and small
+emitters fall between probes. It traces radiance cascades
+(`render/scene3d_cascades.[ch]`, `shaders/scene3d_cascades*`), is opt-in, and
+needs `occlusion` on because its probes stand on the occlusion's depth.
+`World` is the mode to use; `Screen` remains for comparison.
+
+- **Probes:** every 8 pixels on the visible surfaces, each with a 4 x 4
+  octahedral map of directions. Each of five cascades doubles the spacing and
+  the map side and traces rays four times as long: [0, 1], [1, 5], [5, 21],
+  [21, 85] and [85, 341] first-cascade probe spacings measured on the probe's
+  surface, so the shape holds at any scale. Cascades trace top-down and merge
+  with the one above where a ray ends unblocked, blending its four probes by
+  depth.
+- **Energy:** each frame turns every ray to another point of its direction's
+  cell and shifts its samples, and the gather weights each direction by the
+  solid angle its texel covers, (2 / side)^2 over the cube of its octahedral
+  point's distance from the center. Each probe's irradiance is blurred over
+  its 3 x 3 neighbors on the same surface and accumulated, each frame counting
+  a tenth. Accumulation starts over where the camera moves or a probe's depth
+  changes, and drops values that are not finite or are negative, which
+  otherwise feed back through the last frame's color for good.
+- **World tracing** marches the terrain volume's carved density on its coarse
+  lattice and a grid of the frame's particles, each spread as a sphere whose
+  chord shows its emission. The same grid's alpha marks cells whose centers
+  lie in an opaque object's box (ships, debris, any non-terrain solid), which
+  block rays past the first cell. Light reaches surfaces from emitters off the
+  screen and stops at rock and objects the camera cannot see; what a ray meets
+  gives back the last frame's color where the camera sees it. Without a
+  terrain volume it traces the screen. A carve change relays only the lattice
+  points it can flip (`terrain_volume_changed_lattice`).
+- **Screen tracing** marches the depth with a thickness of four spacings and
+  takes the last frame's color where a ray passes just behind a surface.
+  Nothing off the screen counts.
+- **Packing:** the lit pass's 16 samplers are taken, so the result shares the
+  occlusion's binding: screen light over pi in rgb, ambient occlusion in alpha.
+  Translucent draws read none.
+
+Bake-off on Voidweaver's basalt bay (`Basalt3DLightLab*`), 1080p, Apple M4
+Pro, warmed medians: off 27.2 ms; Screen 28.7 ms (its pass 3.95 ms); World
+28.9 ms (3.7 ms). With the round-05 Cradle's small blue jets, World brightened
+the rock and hull near them by 6% and Screen by 2%; with larger glowing
+particles World brightened them by 50% and Screen by 2%, because a few-pixel
+emitter rarely meets a ray marched over the screen. Hardened World measures
+27.1 ms against 25.6 ms off (pass 3.9 ms). In the cut benchmark, a hit's
+lattice relay takes 0.16 ms against 3.6 ms for the whole lattice.
+
+Known limits:
+
+- The rock atlas still uploads whole (2.6 MB in the bay) after a cut; Cute
+  has no region update.
+- Objects block at the grid's 16-unit cells and only past the first cell.
+- Only particles emit into the world grid; emissive surfaces count only where
+  the camera sees them. Light bounces through the last frame's color, so it
+  lags a frame.
+- A moving camera restarts the accumulation each frame; a follow camera will
+  need probe reprojection.
 
 ## Sky
 
@@ -348,6 +408,19 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
   1024-texel faces and for integrating its light over all of its texels.
 - **Order**: the sky draws after opaque surfaces and before trails and
   translucent surfaces, which blend over it.
+- **Sky materials**: `sky_material` names a surface material to draw as the sky
+  instead of an image; an Environment sets one or the other. The material is
+  evaluated along every direction looked along: World Position, Object
+  Position and Part Position are that unit direction, Normal and View
+  Direction point back toward the camera, UV holds its equirectangular
+  coordinates and Time is the scene's. The sky shows its Emission, plus Base
+  Color when Unlit. Rotation and exposure apply as to an image. For light,
+  the renderer renders it at time zero into a 256-texel cube for reflections
+  and global illumination, and evaluates its graph on the CPU over a 64 x 32
+  grid for diffuse light, rebuilding both when the material, its defaults or
+  the shader catalog change. It cannot read images; use an image sky for
+  photographs. The **Star Field** node draws point stars that stay about a
+  pixel wide at any field of view; see [shader graphs](shader-graphs.md).
 - **Import**: the `import_sky` controller operation checks that a file decodes
   as a sky, then copies it into the project's content, by default to
   `content/skies/` with the file's own name. It never replaces an existing file.
@@ -410,6 +483,24 @@ group's surface material, or with the entity's Shader material when the group
 names none; a name that is no surface material fails the frame. Surface graphs
 read the vertex texture coordinates, or with source UV bounds the box
 projection the planar pass uses, and the vertex part positions and frames.
+
+In the planar `MeshSurface2D` pass, meshes and SDF shapes use the entity's
+`Material` for HRC absorption even when a surface graph supplies their visible
+color. Each absorption channel is `Material.scene.a * Material.absorption *
+(1 - Material.filter.rgb)`, scaled by the graph's `Surface.Opacity`. Absorber
+coverage is also scaled by that opacity. Set absorption to zero to keep a
+visible surface from absorbing planar light; set both scene alpha and
+absorption above zero for an absorber. Omitted `Material` fields are zero, and
+surfaces without a `Material` do not absorb. Filter alpha is unused; HRC reduces
+these RGB coefficients to scalar optical depth, so this does not provide colored
+transmission. Mesh groups and model-part graphs share the entity's coefficients;
+use separate entities when parts need different absorption.
+
+This planar surface path draws any positive graph opacity as visually opaque;
+zero opacity cuts the surface out. Zero absorption does not disable geometric
+depth testing or HRC Depth-mode height occlusion. The lit 3D pass has its own
+transparency and lighting contracts.
+
 Meshes cast and receive shadows as shapes do, including from outside the view;
 picking meets their triangles, and bounds hold their extents. A pick tests
 only the triangles in boxes its ray crosses, from a tree of boxes built on a
@@ -688,8 +779,8 @@ a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSa
 cases and 83503 assertions in 17.9 seconds on 2026-10-11.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gi` runs global illumination's
-cases, apart from the rest so that each selector compiles its shaders and runs
-within the 60-second limit even with an empty shader cache; `--scene3d-gi-gles`
+cases in a separate selector that compiles its shaders, including with an empty
+shader cache; `--scene3d-gi-gles`
 runs them on GLES. At Low, a sunlit red floor lights the white box's face that
 the sun misses in red, and an orange emissive box below the view lights the
 floor near it, both black without global illumination. The red floor still does

@@ -1,7 +1,10 @@
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/status.h"
 #include "support/array.h"
+#include "types/text.h"
 
+#include <assert.h>
 #include <math.h>
 #include <string.h>
 static const char *field(pin_type type)
@@ -9,9 +12,35 @@ static const char *field(pin_type type)
     return behavior_scalar_field(type);
 }
 static void type_name(FILE *out, const char *name);
-static void constant(FILE *out, pin_type type, pin_value value)
+static int text_index(const behavior_function *f, const pin_string *text)
 {
-    if (behavior_scalar_string(type)) {
+    for (int n = 0; n < acount(f->instructions); n++) {
+        if (f->instructions[n].op != BF_TYPE_NAME &&
+            f->instructions[n].value.type == PIN_STR &&
+            f->instructions[n].value.text == text) {
+            return n;
+        }
+    }
+    for (int n = 0; n < acount(f->locals); n++) {
+        if (f->locals[n].offset != SIZE_MAX - 1 && f->locals[n].initial.type == PIN_STR &&
+            f->locals[n].initial.text == text) {
+            return acount(f->instructions) + n;
+        }
+    }
+    assert(false);
+    return -1;
+}
+static void constant(FILE *out, const behavior_function *f, pin_type type, pin_value value)
+{
+    if (type == PIN_STR) {
+        if (!value.text) {
+            fputs("0", out);
+        } else {
+            fprintf(out, "&text%d", text_index(f, value.text));
+        }
+        return;
+    }
+    if (type == PIN_NAME) {
         fputs("(const char*)", out);
         type_name(out, value.str);
         return;
@@ -67,15 +96,15 @@ static void enter_locals(FILE *out, const behavior_function *f, int frame)
         } else if (f->locals[i].offset == SIZE_MAX - 1) {
             type_name(out, f->locals[i].initial.str);
         } else {
-            constant(out, f->locals[i].initial.type, f->locals[i].initial);
+            constant(out, f, f->locals[i].initial.type, f->locals[i].initial);
         }
         fprintf(out, ";\n");
     }
 }
 static void failure(FILE *out, const behavior_function_instruction *i, behavior_function_failure reason)
 {
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
-        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL &&
+        i->op != BF_COMPONENT_WRITE && i->op != BF_INTERN_STRING) {
         fputs("c->error_message=(const char*)", out);
         type_name(
             out,
@@ -111,7 +140,145 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
                                                 : FLOW_ERR_STEP_BUDGET
     );
 }
-static void memory(FILE *out, const behavior_function_instruction *i)
+/* Emits the branch where the divisor is `divisor`, whose quotient and
+ * remainder are given rather than divided. Both are read before either
+ * result is written, since a result may share a slot with an operand. */
+static void division_case(
+    FILE *out,
+    const behavior_function_instruction *i,
+    const char *divisor,
+    const char *quotient,
+    const char *remainder
+)
+{
+    fprintf(
+        out,
+        "if(v%d==%s){%s quotient=%s,remainder=%s;",
+        i->right,
+        divisor,
+        behavior_scalar_c_type(i->type),
+        quotient,
+        remainder
+    );
+    if (i->target >= 0) {
+        fprintf(out, "v%d=%s;", i->target, i->op == BF_DIV ? "remainder" : "quotient");
+    }
+    fprintf(out, "v%d=%s;}else ", i->output, i->op == BF_DIV ? "quotient" : "remainder");
+}
+/* Integer division never fails. x / 0 is 0 with remainder x; a signed
+ * divisor of -1 negates, so the minimum wraps to itself, with remainder 0. */
+static void integer_division(FILE *out, const behavior_function_instruction *i)
+{
+    const char *type = behavior_scalar_c_type(i->type);
+    char left[32];
+    snprintf(left, sizeof left, "v%d", i->left);
+    division_case(out, i, "0", "0", left);
+    if (behavior_scalar_signed(i->type)) {
+        const char *u = i->type == PIN_I32 ? "uint32_t" : "uint64_t";
+        char negated[64];
+        snprintf(negated, sizeof negated, "(%s)(0-(%s)v%d)", type, u, i->left);
+        division_case(out, i, "-1", negated, "0");
+    }
+    const char *divide = i->op == BF_DIV ? "/" : "%",
+               *other = i->op == BF_DIV ? "%" : "/";
+    if (i->target >= 0) {
+        fprintf(
+            out,
+            "{%s primary=v%d%s v%d, secondary=v%d%s "
+            "v%d;v%d=secondary;v%d=primary;}\n",
+            type,
+            i->left,
+            divide,
+            i->right,
+            i->left,
+            other,
+            i->right,
+            i->target,
+            i->output
+        );
+        return;
+    }
+    fprintf(out, "{v%d=v%d%s v%d;}\n", i->output, i->left, divide, i->right);
+}
+/* INT64_MIN has no literal spelling; its negation overflows. */
+static void lower_bound(char *text, size_t size, long long low)
+{
+    if (low == INT64_MIN) {
+        snprintf(text, size, "INT64_MIN");
+        return;
+    }
+    snprintf(text, size, "%lldLL", low);
+}
+/* Mirrors behavior_scalar_cast: modes apply to integer values outside the
+ * destination range; floating sources round toward zero and saturate. */
+static void cast(FILE *out, const behavior_function *f, const behavior_function_instruction *i)
+{
+    pin_type from = f->slots[i->left];
+    const char *type = behavior_scalar_c_type(i->type);
+    long long low = (long long)behavior_scalar_integer_low(i->type);
+    unsigned long long high = behavior_scalar_integer_high(i->type);
+    char minimum[32];
+    lower_bound(minimum, sizeof minimum, low);
+    if (from == i->type || i->type == PIN_F64) {
+        fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
+        return;
+    }
+    if (from == PIN_F32 || from == PIN_F64) {
+        fprintf(
+            out,
+            "v%d=isnan(v%d)?0:(double)v%d<=(double)%s?(%s)%s:(double)v%d>=("
+            "double)%lluULL?"
+            "(%s)%lluULL:(%s)v%d;\n",
+            i->output,
+            i->left,
+            i->left,
+            minimum,
+            type,
+            minimum,
+            i->left,
+            high,
+            type,
+            high,
+            type,
+            i->left
+        );
+        return;
+    }
+    bool sign = behavior_scalar_signed(from);
+    bool below = sign && low > (long long)behavior_scalar_integer_low(from);
+    bool above = high < behavior_scalar_integer_high(from);
+    if (i->target == BEHAVIOR_CAST_WRAP || (!below && !above)) {
+        fprintf(out, "v%d=(%s)(uint64_t)v%d;\n", i->output, type, i->left);
+        return;
+    }
+    char low_test[64] = "0", high_test[64] = "0";
+    if (below) {
+        snprintf(low_test, sizeof low_test, "(int64_t)v%d<%lldLL", i->left, low);
+    }
+    if (above) {
+        snprintf(
+            high_test,
+            sizeof high_test,
+            sign ? "(int64_t)v%d>%lluLL" : "(uint64_t)v%d>%lluULL",
+            i->left,
+            high
+        );
+    }
+    fprintf(
+        out,
+        "v%d=%s?(%s)%s:%s?(%s)%lluULL:(%s)v%d;\n",
+        i->output,
+        low_test,
+        type,
+        minimum,
+        high_test,
+        type,
+        high,
+        type,
+        i->left
+    );
+}
+static void memory(FILE *out, const behavior_function *f, const behavior_function_instruction *i)
 {
     if (i->op == BF_STORE) {
         fprintf(
@@ -143,7 +310,7 @@ static void memory(FILE *out, const behavior_function_instruction *i)
     const char *base = argument ? "arguments" : "variables";
     if (argument) {
         fprintf(out, "v%d=", i->output);
-        constant(out, i->type, i->value);
+        constant(out, f, i->type, i->value);
         fprintf(out, ";\nif(c->argument_count>%d && c->arguments[%d].type==%d){\n", i->left, i->left, PIN_STRUCT);
     }
     if (i->op == BF_PRESENT) {
@@ -175,7 +342,7 @@ static void activation_values(
 )
 {
     int slots = acount(f->slots), base = slots + acount(f->locals);
-    for (int k = 0; k < acount(s->values); k++) {
+    for (int k = 0; k < s->value_count; k++) {
         int v = s->values[k], index = v < slots ? v : v - slots;
         char name = v < slots ? 'v' : 'l';
         if (restore) {
@@ -200,6 +367,25 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
         runtime = *f;
         runtime.instructions = f->runtime_body;
         f = &runtime;
+    }
+    for (int n = 0; n < acount(f->instructions) + acount(f->locals); n++) {
+        if ((n < acount(f->instructions) && f->instructions[n].op == BF_TYPE_NAME) ||
+            (n >= acount(f->instructions) &&
+             f->locals[n - acount(f->instructions)].offset == SIZE_MAX - 1)) {
+            continue;
+        }
+        pin_value value = n < acount(f->instructions)
+                            ? f->instructions[n].value
+                            : f->locals[n - acount(f->instructions)].initial;
+        if (value.type != PIN_STR || !value.text || text_index(f, value.text) != n) {
+            continue;
+        }
+        pin_string text = pin_text(value);
+        fprintf(out, "static const pin_string text%d={(const char*)\"", n);
+        for (uint32_t byte = 0; byte < text.length; byte++) {
+            fprintf(out, "\\%03o", (unsigned char)text.bytes[byte]);
+        }
+        fprintf(out, "\",%u};\n", text.length);
     }
     for (int j = 0; j < acount(f->slots); j++) {
         fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);
@@ -230,7 +416,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             continue;
         }
         if (i->indirect || i->op == BF_PRESENT) {
-            memory(out, i);
+            memory(out, f, i);
             continue;
         }
         switch (i->op) {
@@ -321,9 +507,10 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_STRING_EQUAL:
                 fprintf(
                     out,
-                    "v%d=behavior_string_equal((const "
-                    "char*)(uintptr_t)v%d,(const char*)(uintptr_t)v%d);\n",
+                    "v%d=%s(v%d,v%d);\n",
                     i->output,
+                    f->slots[i->left] == PIN_STR ? "behavior_text_equal"
+                                                 : "behavior_string_equal",
                     i->left,
                     i->right
                 );
@@ -339,14 +526,13 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             case BF_COPY_STRING:
-                fprintf(out, "{const char *s=(const char*)(uintptr_t)v%d;if(!s)s=(const char*)", i->left);
-                type_name(out, i->value.str);
+                fprintf(out, "{%s s=v%d;if(!s)s=", behavior_scalar_c_type(i->type), i->left);
+                constant(out, f, i->type, i->value);
                 fprintf(
                     out,
-                    ";v%d=(%s)(uintptr_t)(s?c->copy_string(c->value_storage,s):"
-                    "0); }\n",
+                    ";v%d=s?c->%s(c->value_storage,s):0;}\n",
                     i->output,
-                    behavior_scalar_c_type(i->type)
+                    i->type == PIN_STR ? "copy_text" : "copy_string"
                 );
                 break;
             case BF_COPY_ARRAY:
@@ -373,15 +559,29 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 break;
             }
             case BF_INTERN_STRING:
-                fprintf(
-                    out,
-                    "{const ecs_execution_view *w=(const "
-                    "ecs_execution_view*)(uintptr_t)v%d;v%d=w->intern_string(w,"
-                    "v%d); }\n",
-                    i->right,
-                    i->output,
-                    i->left
-                );
+                if (i->type == PIN_STR) {
+                    fprintf(
+                        out,
+                        "v%d=behavior_function_intern_text(c,(const "
+                        "ecs_execution_view*)(uintptr_t)v%d,v%d);if(!v%d){",
+                        i->output,
+                        i->right,
+                        i->left,
+                        i->output
+                    );
+                    failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
+                    fputs("}\n", out);
+                } else {
+                    fprintf(
+                        out,
+                        "{const ecs_execution_view *w=(const "
+                        "ecs_execution_view*)(uintptr_t)v%d;v%d=w->intern_"
+                        "string(w,v%d);}\n",
+                        i->right,
+                        i->output,
+                        i->left
+                    );
+                }
                 break;
             case BF_STORE_VALUE:
                 if (i->offset == BF_STORE_VALUE_SET_ADD) {
@@ -460,11 +660,13 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     }
                     fprintf(
                         out,
-                        "{c->error_message=c->data->calls[%d].value(c->value_"
-                        "storage,"
+                        "{c->error_message=c->data->calls[%d].value(c->%s,"
                         "c->data->values+%d,%d,c->data->values+%d);if(c->error_"
                         "message){",
                         i->target,
+                        execution_intrinsic_in_result(spec->capability_id)
+                            ? "result_storage"
+                            : "value_storage",
                         spec->first,
                         spec->result_first - spec->first,
                         spec->result_first
@@ -584,6 +786,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             case BF_STORE_TYPE_NAME:
+                fprintf(out, "c->variables[%d].record=NULL;\n", i->target);
                 fprintf(
                     out,
                     "c->variables[%d].type_name=(const char*)(uintptr_t)v%d;\n",
@@ -788,6 +991,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 }
                 break;
             case BF_RESULT_TYPE_NAME:
+                fprintf(out, "c->results[%d].record=NULL;\n", i->target);
                 fprintf(out, "c->results[%d].type_name=(const char*)(uintptr_t)v%d;\n", i->target, i->left);
                 break;
             case BF_RESULT_ARRAY:
@@ -836,7 +1040,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_RANDOM: fprintf(out, "v%d=rand();\n", i->output); break;
             case BF_CONSTANT: {
                 fprintf(out, "v%d=", i->output);
-                constant(out, i->type, i->value);
+                constant(out, f, i->type, i->value);
                 fprintf(out, ";\n");
                 break;
             }
@@ -900,7 +1104,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 break;
             case BF_ARGUMENT:
                 fprintf(out, "v%d=", i->output);
-                constant(out, i->type, i->value);
+                constant(out, f, i->type, i->value);
                 fprintf(out, ";\nif(c->argument_count>%d){\n", i->left);
                 fprintf(
                     out,
@@ -927,36 +1131,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 }
                 fprintf(out, "}\n");
                 break;
-            case BF_CAST: {
-                pin_type from = f->slots[i->left];
-                const char *type = behavior_scalar_c_type(i->type);
-                if (from == i->type || i->type == PIN_F64 || from == PIN_I32) {
-                    fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
-                    break;
-                }
-                const char *low = i->type == PIN_U8  ? "0"
-                                : i->type == PIN_I32 ? "INT32_MIN"
-                                                     : "INT64_MIN";
-                const char *high = i->type == PIN_U8  ? "UINT8_MAX"
-                                 : i->type == PIN_I32 ? "INT32_MAX"
-                                                      : "INT64_MAX";
-                fprintf(
-                    out,
-                    "v%d=isnan(v%d)?0:(double)v%d<=(double)%s?%s:(double)v%d>=("
-                    "double)%s?%s:(%s)v%d;\n",
-                    i->output,
-                    i->left,
-                    i->left,
-                    low,
-                    low,
-                    i->left,
-                    high,
-                    high,
-                    type,
-                    i->left
-                );
-                break;
-            }
+            case BF_CAST: cast(out, f, i); break;
             case BF_FLAGS:
                 fprintf(out, "v%d=(v%d & v%d)!=0;\n", i->output, i->left, i->right);
                 break;
@@ -1029,6 +1204,10 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 break;
             case BF_ABS:
                 if (behavior_scalar_integer(i->type)) {
+                    if (!behavior_scalar_signed(i->type)) {
+                        fprintf(out, "v%d=v%d;\n", i->output, i->left);
+                        break;
+                    }
                     fprintf(
                         out,
                         "v%d=v%d<0?(%s)(0-(%s)v%d):v%d;\n",
@@ -1059,33 +1238,8 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             default: {
                 if ((i->op == BF_DIV || i->op == BF_MOD) &&
                     behavior_scalar_integer(i->type)) {
-                    fprintf(
-                        out,
-                        "if(v%d==0 || (v%d==%s && v%d==-1)){",
-                        i->right,
-                        i->left,
-                        i->type == PIN_I32 ? "INT32_MIN" : "INT64_MIN",
-                        i->right
-                    );
-                    failure(out, i, BEHAVIOR_FUNCTION_DATA);
-                    fprintf(out, "}\n");
-                    if (i->target >= 0) {
-                        fprintf(
-                            out,
-                            "{%s primary=v%d%s v%d, secondary=v%d%s v%d;"
-                            "v%d=secondary;v%d=primary;}\n",
-                            behavior_scalar_c_type(i->type),
-                            i->left,
-                            i->op == BF_DIV ? "/" : "%",
-                            i->right,
-                            i->left,
-                            i->op == BF_DIV ? "%" : "/",
-                            i->right,
-                            i->target,
-                            i->output
-                        );
-                        break;
-                    }
+                    integer_division(out, i);
+                    break;
                 }
                 if (i->op >= BF_ADD && i->op <= BF_MUL &&
                     behavior_scalar_integer(i->type)) {

@@ -23,7 +23,7 @@ extern node_desc NODE_Event, NODE_Branch, NODE_Sequence, NODE_ForLoop,
     NODE_CallPureFunction, NODE_BehaviorExpression, NODE_CallMacro,
     NODE_SwitchInt, NODE_SwitchString, NODE_SwitchName, NODE_SwitchEnum,
     NODE_Select, NODE_RerouteData, NODE_RerouteExec, NODE_SetMembers, NODE_Add,
-    NODE_Multiply, NODE_Subtract, NODE_Divide, NODE_Min, NODE_Max, NODE_DeltaTime;
+    NODE_Multiply, NODE_Subtract, NODE_Divide, NODE_Min, NODE_Max;
 extern node_desc NODE_Clamp, NODE_Modulo, NODE_Negate, NODE_Abs;
 extern node_desc NODE_And, NODE_Or, NODE_Not;
 

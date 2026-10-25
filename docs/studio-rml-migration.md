@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 > Script test and benchmark runners referenced below are retired. Their commands
 > are historical records, not current workflows. Measurements and source hashes
@@ -44,7 +44,7 @@ one (S0 results).
 ## Historical remaining work, 2026-10-05
 
 Reconciled against merged `main` at `de73cb85652f43694957377dfc3607d2e15da386`
-on 2026-10-05 under [CUT-58](https://linear.app/cute-engine/issue/CUT-58).
+on 2026-10-05 under CUT-58.
 Details and historical measurements live in the sections named. The audit below
 separates source evidence from fixes that still need reproduction.
 
@@ -52,7 +52,7 @@ separates source evidence from fixes that still need reproduction.
 - [x] PRs [147](https://github.com/waldnercharles/c-blueprints/pull/147) and
   [151](https://github.com/waldnercharles/c-blueprints/pull/151) are merged;
   `de73cb85` is the integration baseline. Integration validation belongs to
-  [CUT-44](https://linear.app/cute-engine/issue/CUT-44). Measurements and
+  CUT-44. Measurements and
   checks recorded below are historical branch evidence, not fresh exact-head
   full-suite reruns. This audit does not claim a new native/render suite pass.
 
@@ -80,7 +80,7 @@ panels ▸ Recommendation)
   node bodies). Designer Details now uses authored EnumField; shrink `kit.h`; update
   DESIGN decision 5, `studio-ui-authoring.md`, `editor-ui-references.md`.
 
-**Performance** (coordinate with [CUT-50](https://linear.app/cute-engine/issue/CUT-50),
+**Performance** (coordinate with CUT-50,
 which owns test selectors/timing and iteration cost; Shared follow-ups after
 Wave 2; re-measure with `uptime` below 4 first)
 - [ ] Keyed `data-for` (rows match by index today).
@@ -110,7 +110,7 @@ the current Outliner implementation is recorded above.
 **Open questions** (Open questions): 1, 2, 4, 6 and 7.
 
 **Needs the user**
-- [ ] Native macOS trackpad check: [CUT-57](https://linear.app/cute-engine/issue/CUT-57)
+- [ ] Native macOS trackpad check: CUT-57
   owns physical-device validation. SDL counts 10 pt as a wheel notch, so
   scrolling may be about 10× too fast outside the browser. Synthetic input
   and Linux/browser checks cannot complete this item.

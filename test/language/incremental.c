@@ -6,6 +6,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -32,12 +33,15 @@ static void setup()
                                          "behaviors/Caller.chibi",
                                          "behaviors/Independent.chibi" };
     static const char *const texts[] = {
-        "library Leaf { Value :: () -> number { return 2; } }",
-        "library Middle { Value :: () -> number { return Leaf.Value() + 1; } }",
-        "behavior Caller { state value: number = 0; on Tick() { value = "
+        "Leaf :: library { Value :: () -> number { return 2; } }",
+        "Middle :: library { Value :: () -> number { return Leaf.Value() + 1; "
+        "} }",
+        "Caller :: behavior { value: retain number = 0; on Tick :: () { value "
+        "= "
         "Middle.Value(); } }",
-        "behavior Independent { state value: number = 0; on Tick() { value = "
-        "7; } }"
+        "Independent :: behavior { value: retain number = 0; on Tick :: () { "
+        "value "
+        "= 7; } }"
     };
     for (int i = 0; i < 4; i++) {
         snprintf(paths[i], sizeof paths[i], "%s/%s", root, names[i]);
@@ -214,7 +218,8 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
         edits[0].text = original;
         generations[0] = prepare(-1, backends[b]);
         REQUIRE(valid(0));
-        edits[0].text = "library Leaf { Value :: () -> number { return 9; } }";
+        edits[0]
+            .text = "Leaf :: library { Value :: () -> number { return 9; } }";
         generations[1] = prepare(0, backends[b]);
         REQUIRE(valid(1));
         REQUIRE(authoring_sources_reused(generations[1]) == 1);
@@ -229,7 +234,7 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
         /* Current generations keep no chain of old collections. */
         for (int edit = 0; edit < 12; edit++) {
             char text[160];
-            snprintf(text, sizeof text, "behavior Independent { state value: number = 0; on Tick() { value = %d; } }", edit);
+            snprintf(text, sizeof text, "Independent :: behavior { value: retain number = 0; on Tick :: () { value = %d; } }", edit);
             edits[3].text = text;
             generations[2] = prepare(1, backends[b]);
             REQUIRE(valid(2) && authoring_sources_reused(generations[2]) == 3);
@@ -238,8 +243,8 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
             generations[2] = NULL;
             REQUIRE(source(1, "Caller")->references == 1);
             REQUIRE(value_is(1, "Independent", edit));
-            edits[3].text = "behavior Independent { state value: number = 0; "
-                            "on Tick() { value = 7; } }";
+            edits[3].text = "Independent :: behavior { value: retain number = "
+                            "0; on Tick :: () { value = 7; } }";
         }
         discard(1);
     }
@@ -352,16 +357,16 @@ TEST_CASE(signature_units_cross_libraries_and_invalidate_same_layout_callers)
 {
     /* The caller sorts before its callee: declarations carry units before bodies. */
     snprintf(paths[0], sizeof paths[0], "%s/libraries/ZLeaf.chibi", root);
-    edits[0].text = "library Leaf { Value :: (distance: number u = 2) -> "
+    edits[0].text = "Leaf :: library { Value :: (distance: number u = 2) -> "
                     "number u { return distance; } }";
-    edits[1]
-        .text = "library Middle { Value :: () -> u { return Leaf.Value(); } }";
+    edits[1].text = "Middle :: library { Value :: () -> u { return "
+                    "Leaf.Value(); } }";
     generations[0] = prepare(-1, BEHAVIOR_BYTECODE);
     REQUIRE(valid(0));
     generations[1] = prepare(0, BEHAVIOR_BYTECODE);
     REQUIRE(valid(1) && authoring_sources_reused(generations[1]) == 4);
     discard(1);
-    edits[0].text = "library Leaf { Value :: (distance: number s = 2) -> "
+    edits[0].text = "Leaf :: library { Value :: (distance: number s = 2) -> "
                     "number s { return distance; } }";
     generations[1] = prepare(0, BEHAVIOR_BYTECODE);
     REQUIRE(!authoring_sources_valid(generations[1]));
@@ -371,8 +376,8 @@ TEST_CASE(signature_units_cross_libraries_and_invalidate_same_layout_callers)
     REQUIRE(!strcmp(caller->diagnostics[0].message, "Units differ: u = s"));
     REQUIRE(value_is(0, "Caller", 2));
     discard(1);
-    edits[1].text = "library Middle { Value :: (distance: u = 2) -> s { return "
-                    "Leaf.Value(distance); } }";
+    edits[1].text = "Middle :: library { Value :: (distance: u = 2) -> s { "
+                    "return Leaf.Value(distance); } }";
     generations[1] = prepare(0, BEHAVIOR_BYTECODE);
     caller = source(1, "Middle");
     REQUIRE(caller && !caller->valid && caller->diagnostic_count == 1);
@@ -480,14 +485,14 @@ TEST_CASE(invalid_edits_and_document_moves_preserve_previous_generations)
     generations[0] = prepare(-1, BEHAVIOR_BYTECODE);
     REQUIRE(valid(0));
     edits[0]
-        .text = "library Leaf { Value :: () -> number { return missing; } }";
+        .text = "Leaf :: library { Value :: () -> number { return missing; } }";
     generations[1] = prepare(0, BEHAVIOR_BYTECODE);
     REQUIRE(!authoring_sources_valid(generations[1]));
     REQUIRE(source(1, "Leaf")->diagnostic_count > 0);
     REQUIRE(source(1, "Caller")->diagnostic_count > 0);
     REQUIRE(authoring_sources_reused(generations[1]) == 1);
     REQUIRE(value_is(0, "Caller", 3));
-    edits[0].text = "library Leaf { Value :: () -> number { return 4; } }";
+    edits[0].text = "Leaf :: library { Value :: () -> number { return 4; } }";
     generations[2] = prepare(1, BEHAVIOR_BYTECODE);
     REQUIRE(valid(2) && authoring_sources_reused(generations[2]) == 1);
     REQUIRE(value_is(2, "Caller", 5));
@@ -615,11 +620,14 @@ TEST_CASE(default_comparison_storage_is_bounded)
     REQUIRE(large);
     memset(large, 'x', bytes);
     large[bytes] = 0;
-    script_catalog_parameter parameter = { .name = "unused",
-                                           .type = { .storage = PIN_STR },
-                                           .has_default = true,
-                                           .default_value = { .type = PIN_STR,
-                                                              .str = large } };
+    script_catalog_parameter parameter = {
+        .name = "unused",
+        .type = { .storage = PIN_STR },
+        .has_default = true,
+        .default_value = { .type = PIN_STR,
+                           .text = &(const pin_string){ .bytes = large,
+                                                        .length = (uint32_t)strlen(large) } }
+    };
     script_catalog_capability capabilities[] = { tick,
                                                  { .id = 75,
                                                    .name = "LargeDefault",

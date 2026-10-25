@@ -1,0 +1,202 @@
+package assets
+
+// Family constructors type the stable document fields. Extension fields retain
+// engine-specific reflected values and optional settings; Object rejects a
+// duplicate of a required field. Runtime catalog validators own native names.
+TextList :: (items: string[]) -> Value {
+    values: Value[] = [];
+    for (item in items) {
+        values.append(Value.Text(item));
+    }
+    return List(values);
+}
+
+NamedObject :: (required: Field[], additional: Field[]) -> Value {
+    required.extend(additional);
+    return Object(required);
+}
+
+pub Project :: (name: string, version: int, content: string, start_scene: string, fields: Field[]) -> Value {
+    assert(name != "", "Project name must not be empty");
+    assert(version > 0, "Project version must be positive");
+    assert(content != "", "Project content path must not be empty");
+    return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("version", Value.Int(int64(version))),
+                        Field.Named("content", Value.Text(content)), Field.Named("start_scene", Value.Text(start_scene))], fields);
+}
+
+pub Application :: (title: string, width: int, height: int, fullscreen: bool, fields: Field[]) -> Value {
+    assert(width >= 0 && height >= 0 && width <= 16384 && height <= 16384,
+           "Application dimensions must be between 0 and 16384");
+    return NamedObject([Field.Named("title", Value.Text(title)), Field.Named("width", Value.Int(int64(width))),
+                        Field.Named("height", Value.Int(int64(height))), Field.Named("fullscreen", Value.Bool(fullscreen))], fields);
+}
+
+pub EntityDefinition :: union {
+    Named(name: string, base_name: string, components: Field[], fields: Field[])
+}
+
+EntityValue :: (entity: EntityDefinition) -> Value {
+    switch entity {
+        case .Named(name, base_name, components, fields):
+            assert(name != "", "Scene entity name must not be empty");
+            return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("prototype", Value.Text(base_name)),
+                                Field.Named("components", Object(components))], fields);
+    }
+}
+
+pub Scene :: (name: string, entities: EntityDefinition[], fields: Field[]) -> Value {
+    assert(name != "", "Scene name must not be empty");
+    values: Value[] = [];
+    names: string[] = [];
+    for (entity in entities) {
+        switch entity {
+            case .Named(entity_name, base_name, components, extra):
+                for (previous in names) {
+                    assert(previous != entity_name, "Duplicate scene entity name");
+                }
+                names.append(entity_name);
+        }
+        values.append(EntityValue(entity));
+    }
+    return NamedObject([Field.Named("version", Value.UInt(1)), Field.Named("name", Value.Text(name)),
+                        Field.Named("entities", List(values))], fields);
+}
+
+pub Prototype :: (name: string, components: Field[], includes: string[], behaviors: string[], fields: Field[]) -> Value {
+    assert(name != "", "Prototype name must not be empty");
+    return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("components", Object(components)),
+                        Field.Named("includes", TextList(includes)), Field.Named("behaviors", TextList(behaviors))], fields);
+}
+
+pub GraphNode :: union {
+    Named(id: uint64, type: string, fields: Field[])
+}
+pub GraphConnection :: union {
+    Named(from: string, to: string, fields: Field[])
+    | Linked(from: uint64, from_pin: uint64, to: uint64, to_pin: uint64, fields: Field[])
+}
+pub GraphDefinition :: union {
+    Named(kind: string, name: string, nodes: GraphNode[], edges: GraphConnection[], fields: Field[])
+}
+
+GraphValue :: (graph: GraphDefinition) -> Value {
+    switch graph {
+        case .Named(kind, name, nodes, edges, fields):
+            assert(kind != "", "Graph kind must not be empty");
+            values: Value[] = [];
+            ids: uint64[] = [];
+            for (node in nodes) {
+                switch node {
+                    case .Named(id, type, extra):
+                        assert(type != "", "Graph node needs a type");
+                        for (previous in ids) {
+                            assert(previous != id, "Duplicate graph node ID");
+                        }
+                        ids.append(id);
+                        values.append(NamedObject([Field.Named("id", Value.UInt(id)),
+                                                   Field.Named("type", Value.Text(type))], extra));
+                }
+            }
+            links: Value[] = [];
+            for (edge in edges) {
+                switch edge {
+                    case .Named(from, to, extra):
+                        assert(from != "" && to != "", "Graph edge needs two pin references");
+                        links.append(NamedObject([Field.Named("from", Value.Text(from)),
+                                                  Field.Named("to", Value.Text(to))], extra));
+                    case .Linked(from, from_pin, to, to_pin, extra):
+                        links.append(NamedObject([Field.Named("from", Value.UInt(from)), Field.Named("from_pin", Value.UInt(from_pin)),
+                                                  Field.Named("to", Value.UInt(to)), Field.Named("to_pin", Value.UInt(to_pin))], extra));
+                }
+            }
+            return NamedObject([Field.Named("kind", Value.Text(kind)), Field.Named("name", Value.Text(name)),
+                                Field.Named("nodes", List(values)), Field.Named("edges", List(links))], fields);
+    }
+}
+
+pub Graph :: (name: string, domain: string, version: int, id_counter: uint64, graphs: GraphDefinition[], fields: Field[]) -> Value {
+    assert(name != "" && domain != "", "Graph asset needs a name and domain");
+    assert(version > 0, "Graph version must be positive");
+    values: Value[] = [];
+    for (graph in graphs) {
+        values.append(GraphValue(graph));
+    }
+    return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("domain", Value.Text(domain)),
+                        Field.Named("version", Value.UInt(uint64(version))), Field.Named("id_counter", Value.UInt(id_counter)),
+                        Field.Named("graphs", List(values))], fields);
+}
+
+pub InputAction :: union {
+    Keyboard(name: string, sources: string[], firing: bool)
+    | Controller(name: string, slot: int, buttons: string[], firing: bool)
+    | Combined(name: string, sources: string[], slot: int, buttons: string[], firing: bool)
+}
+
+pub InputMap :: (actions: InputAction[]) -> Value {
+    fields: Field[] = [];
+    for (input in actions) {
+        switch input {
+            case .Keyboard(name, sources, firing):
+                assert(name != "" && length(sources) > 0, "Keyboard action needs a name and sources");
+                fields.append(Field.Named(name, Object([Field.Named("sources", TextList(sources)),
+                                                        Field.Named("firing", Value.Bool(firing))])));
+            case .Controller(name, slot, buttons, firing):
+                assert(name != "" && length(buttons) > 0 && slot >= 0 && slot < 4,
+                       "Controller action needs a name, buttons and slot from 0 to 3");
+                fields.append(Field.Named(name, Object([Field.Named("controller", Value.UInt(uint64(slot))),
+                                                        Field.Named("buttons", TextList(buttons)), Field.Named("firing", Value.Bool(firing))])));
+            case .Combined(name, sources, slot, buttons, firing):
+                assert(name != "" && length(sources) > 0 && length(buttons) > 0 && slot >= 0 && slot < 4,
+                       "Combined action needs a name, sources, buttons and slot from 0 to 3");
+                fields.append(Field.Named(name, Object([Field.Named("sources", TextList(sources)),
+                                                        Field.Named("controller", Value.UInt(uint64(slot))),
+                                                        Field.Named("buttons", TextList(buttons)), Field.Named("firing", Value.Bool(firing))])));
+        }
+    }
+    return Object(fields);
+}
+
+pub Keyframe :: union {
+    At(frame: int, fields: Field[])
+}
+
+pub Scenario :: (scene: string, frames: int, keys: Keyframe[], fields: Field[]) -> Value {
+    assert(scene != "" && frames > 0 && frames <= 108000, "Scenario needs a scene and 1 to 108000 frames");
+    values: Value[] = [];
+    previous: int = -1;
+    for (key in keys) {
+        switch key {
+            case .At(frame, extra):
+                assert(frame >= 0 && frame < frames && frame >= previous, "Scenario key frames must not decrease or exceed the scenario");
+                previous = frame;
+                values.append(NamedObject([Field.Named("frame", Value.UInt(uint64(frame)))], extra));
+        }
+    }
+    return NamedObject([Field.Named("scene", Value.Text(scene)), Field.Named("frames", Value.UInt(uint64(frames))),
+                        Field.Named("keys", List(values))], fields);
+}
+
+pub ComponentDisplay :: union {
+    Named(name: string, tab: string, icon: string, fields: Field[])
+}
+
+pub ComponentPresentation :: (components: ComponentDisplay[]) -> Value {
+    entries: Field[] = [];
+    for (component in components) {
+        switch component {
+            case .Named(name, tab, icon, fields):
+                assert(name != "", "Component presentation needs a name");
+                display: Field[] = [];
+                if (tab != "") {
+                    assert(tab == "Object" || tab == "Physics" || tab == "Material" || tab == "Gameplay",
+                           "Unknown component presentation tab");
+                    display.append(Field.Named("tab", Value.Text(tab)));
+                }
+                if (icon != "") {
+                    display.append(Field.Named("icon", Value.Text(icon)));
+                }
+                entries.append(Field.Named(name, NamedObject(display, fields)));
+        }
+    }
+    return Object([Field.Named("components", Object(entries))]);
+}

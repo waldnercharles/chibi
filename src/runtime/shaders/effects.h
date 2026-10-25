@@ -10,4 +10,6 @@ void shader_effect_eval(
     float out[4]
 );
 const char *shader_effects_glsl();
+/* Star Field's GPU function, which reads screen derivatives. */
+const char *shader_star_field_glsl();
 #endif

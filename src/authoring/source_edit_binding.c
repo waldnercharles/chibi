@@ -29,13 +29,8 @@ static bool identifier(const char *name)
 }
 static char *member_name(const script_catalog *catalog, const char *name, char *error, size_t size)
 {
-    return authoring_source_literal(
-        catalog,
-        (script_type){ .storage = PIN_STR },
-        &(pin_value){ .type = PIN_STR, .str = name },
-        error,
-        size
-    );
+    (void)catalog;
+    return authoring_source_identifier(name, error, size);
 }
 static const script_catalog_field *field(const script_catalog_type *type, uint64_t id)
 {

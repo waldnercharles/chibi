@@ -2,6 +2,7 @@
 
 #include "graph/authoring/graph_edit.h"
 #include "graph/shader/shader_graph.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -102,7 +103,9 @@ static node *texture(graph *g, const standard_texture *source, shader_image_colo
     set(g,
         n,
         SHADER_IMAGE_INPUT_IMAGE,
-        (pin_value){ .type = PIN_STR, .str = source->image });
+        (pin_value){ .type = PIN_STR,
+                     .text = &(pin_string){ source->image,
+                                            (uint32_t)strlen(source->image) } });
     set(g, n, SHADER_IMAGE_INPUT_COLOR_SPACE, (pin_value){ .type = PIN_I32, .i = space });
     set(g,
         n,

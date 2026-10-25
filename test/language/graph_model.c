@@ -1,7 +1,9 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/value_copy.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -99,12 +101,19 @@ TEST_CASE(graph_model_owns_nested_values_and_artifact_lifetimes)
     );
     REQUIRE(owned != &original && owned->count == 17);
     REQUIRE(!strcmp(owned->nested.label, "nested owned label"));
-    pin_value items[] = { { .type = PIN_STR, .str = owned->nested.label } };
+    pin_value items[] = { { .type = PIN_STR,
+                            .text = &(const pin_string){
+                                .bytes = owned->nested.label,
+                                .length = (uint32_t)strlen(owned->nested.label) } } };
     pin_array source = { .element_type = PIN_STR, .count = 1, .capacity = 1, .items = items };
     pin_array *array = pin_array_clone_to_graph(asset->graph, &source);
     REQUIRE(array && array != &source && array->items != items);
-    items[0].str = "changed";
-    REQUIRE(array->items[0].type == PIN_STR && !strcmp(array->items[0].str, "nested owned label"));
+    items[0].text = &(const pin_string){ .bytes = "changed",
+                                         .length = (uint32_t)strlen("changed") };
+    REQUIRE(
+        pin_array_get(array, 0).type == PIN_STR &&
+        !strcmp(pin_text(pin_array_get(array, 0)).bytes, "nested owned label")
+    );
     retired = 0;
     artifact *first = artifact_new(n->id);
     behavior_asset_set_artifact(asset, first, retire);

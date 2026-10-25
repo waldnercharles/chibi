@@ -33,6 +33,11 @@ typedef enum
     FIELD_SMOOTH_SUBTRACT,
     FIELD_SELECT,
     FIELD_OUTPUT,
+    /* Appended so prepared opcodes keep their values. */
+    FIELD_Z,
+    FIELD_CELL_X,
+    FIELD_CELL_Y,
+    FIELD_CELL_EDGE,
     FIELD_OP_COUNT
 } field_op;
 

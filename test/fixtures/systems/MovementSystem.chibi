@@ -1,5 +1,5 @@
-system "MovementSystem" {
-    on Tick {
-        set_transform(add(get_transform(), multiply(multiply(convert<"Unwrap_Input">(get_input()), convert<"Unwrap_Movement">(get_movement())), event.DeltaSeconds)))
+MovementSystem :: system() {
+    on Tick :: (dt: float s) {
+        set_transform(add(get_transform(), multiply(multiply(convert<Unwrap_Input>(get_input()), convert<Unwrap_Movement>(get_movement())), dt)))
     }
 }

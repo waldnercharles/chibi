@@ -5,6 +5,10 @@
 # comment that gives the reason (a blank line ends a group), and remove lines
 # as scenes start using them.
 
+# Native compiler helpers Text Byte Length, Text Byte At, Text Slice and Text
+# Bytes are exercised by the package-core language fixture. Their uncategorized pure
+# declarations are excluded by feature_function, so no function gaps apply here.
+
 # Material simulation: fluids, destruction worlds, heat and combustion need a
 # material field and solver scene.
 component MaterialFluidWorld
@@ -13,10 +17,10 @@ component MaterialBreakProfile
 component MaterialThermal
 component MaterialConstitutive
 component MaterialTerrain
+component TerrainVolume
 component Combustion
 component Fuel
 component Igniter
-component Substance
 component MaterialCavity
 component FragmentGlow
 component MaterialFrame
@@ -43,6 +47,19 @@ function Count Matching Entities
 # Engine internals that scenes don't author directly.
 component Drive
 
+# The private tool.build catalog is deliberately absent from game/scene hosts.
+# build-process and build-toolchain exercise all of its file, text, environment,
+# argument and process capabilities on bytecode and SLJIT; scene admission would
+# expose build authority to games. No runtime capability entries are omitted.
+
+# Compiler JSON String belongs only to the private compiler catalog. The
+# package-routes-chibi differential exercises its decoded value and lifetime
+# through authored routing on both backends; it is absent from scene catalogs.
+
+# Compiler Syntax Parse belongs only to the private compiler catalog. The
+# package-snapshot-chibi differential compares its raw trees and detached
+# lifetimes on both backends. Scene catalogs do not expose compiler services.
+
 # Move Objects is a Studio-host service rather than a runtime catalog entry.
 # Studio's OutlinerInput uses it; --outliner-move exercises its authored drop
 # event and scene-move covers the scene contract. It cannot run in this fixture.
@@ -51,3 +68,10 @@ component Drive
 # Source-native-features tests the authored requests without launching websites.
 function Open URL
 function Cancel Open URL
+
+# Terrain checkpoints need a terrain recipe and host-bound binary storage.
+# --terrain-playable exercises all three from .chibi in VM and SLJIT;
+# --terrain-storage and --terrain-storage-commands cover storage failures.
+function Save Terrain
+function Load Terrain
+function Terrain Storage Result

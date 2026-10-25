@@ -1,8 +1,10 @@
+#include "language/nominal_binding.h"
 #include "language/semantic_internal.h"
+#include "language/type_constructors.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "types/union.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,28 +16,7 @@ static const char *own(analyzer *a, const char *text)
     memcpy(copy, text, size);
     return copy;
 }
-static script_catalog_variant own_variant(analyzer *a, script_catalog_variant value)
-{
-    if (value.name) {
-        value.name = own(a, value.name);
-    }
-    if (value.is_literal) {
-        value.literal.str = own(a, value.literal.str);
-    }
-    if (value.field_count) {
-        script_catalog_field *fields = arena_alloc(
-            &a->out->constants,
-            (size_t)value.field_count * sizeof *fields
-        );
-        memcpy(fields, value.fields, (size_t)value.field_count * sizeof *fields);
-        for (int i = 0; i < value.field_count; i++) {
-            fields[i].name = own(a, fields[i].name);
-        }
-        value.fields = fields;
-    }
-    return value;
-}
-static void publish(analyzer *a, script_catalog_type type)
+void script_analyzer_publish_type(analyzer *a, script_catalog_type type)
 {
     apush(a->out->types, type);
     apush(a->catalog_types, type);
@@ -43,7 +24,7 @@ static void publish(analyzer *a, script_catalog_type type)
     a->catalog_view.type_count = acount(a->catalog_types);
     a->out->type_count = acount(a->out->types);
 }
-static void replace(analyzer *a, script_catalog_type type)
+void script_analyzer_replace_type(analyzer *a, script_catalog_type type)
 {
     for (int i = 0; i < acount(a->out->types); i++) {
         if (a->out->types[i].id == type.id) {
@@ -102,38 +83,93 @@ static int payload_cycle(const script_catalog *catalog, script_type type, unsign
     states[index] = 2;
     return 0;
 }
-void script_analyzer_union_declarations(analyzer *a, TSNode body)
+static int declared_union(analyzer *a, TSNode node)
+{
+    TSNode name = script_analyzer_field(node, "name");
+    int symbol = script_analyzer_lookup(a, name);
+    if (symbol < 0) {
+        return -1;
+    }
+    const script_symbol *s = &a->out->symbols[symbol];
+    script_range range = script_analyzer_range(a, name);
+    if (s->kind != SCRIPT_TYPE || s->type.storage != PIN_UNION ||
+        s->declaration.document != range.document ||
+        s->declaration.start != range.start) {
+        return -1;
+    }
+    return symbol;
+}
+void script_analyzer_union_types(analyzer *a, TSNode body)
 {
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
-        TSNode name = script_analyzer_field(node, "name");
-        int symbol = script_analyzer_symbol_new(
-            a,
-            name,
-            SCRIPT_TYPE,
-            (script_type){ .storage = PIN_UNION, .flags = SCRIPT_TYPE_UNION },
-            false
+        TSNode token = script_analyzer_field(node, "name");
+        char *name = script_analyzer_name_copy(a, token);
+        script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+        script_range range = script_analyzer_range(a, token);
+        script_nominal_declaration declaration = script_nominal_declare(
+            &a->out->constants,
+            &facts,
+            (script_nominal_context){
+                .lexical = { a->scope, a->function, a->package_scope, a->document_count, a->specialization },
+                .program_kind = a->out->kind,
+                .program_name = a->out->name,
+                .pointer_size = sizeof(void *) },
+            (script_nominal_request){ .kind = SCRIPT_NOMINAL_UNION,
+                                      .name = name,
+                                      .range = script_analyzer_range(a, node),
+                                      .name_range = range }
         );
-        script_symbol *s = &a->out->symbols[symbol];
-        s->type.nominal = s->id;
-        publish(
+        for (int j = 0; j < declaration.diagnostic_count; j++) {
+            apush(a->out->diagnostics, declaration.diagnostics[j]);
+        }
+        int symbol = declaration.existing;
+        if (declaration.declare && symbol < 0) {
+            apush(
+                a->out->symbols,
+                ((script_symbol){ .id = declaration.id,
+                                  .name = name,
+                                  .kind = SCRIPT_TYPE,
+                                  .type = declaration.declaration_type,
+                                  .declaration = range,
+                                  .scope = a->scope,
+                                  .initializer = -1,
+                                  .function = -1,
+                                  .writable = false })
+            );
+            symbol = acount(a->out->symbols) - 1;
+            name = NULL; /* The analysis now owns this heap symbol name. */
+        }
+        free(name);
+        if (!declaration.publish) {
+            continue;
+        }
+        a->out->symbols[symbol].type = declaration.type;
+        script_analyzer_publish_type(
             a,
-            (script_catalog_type){ .id = s->id,
-                                   .name = own(a, s->name),
-                                   .source_name = own(a, s->name),
-                                   .type = s->type,
-                                   .size = sizeof(void *) }
+            (script_catalog_type){ .id = declaration.id,
+                                   .name = declaration.name,
+                                   .source_name = declaration.source_name,
+                                   .type = declaration.type,
+                                   .authored_record = declaration.authored_record,
+                                   .size = declaration.size }
         );
     }
+}
+void script_analyzer_union_fields(analyzer *a, TSNode body)
+{
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
-        int symbol = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
+        int symbol = declared_union(a, node);
+        if (symbol < 0) {
+            continue;
+        }
         script_type type = a->out->symbols[symbol].type;
         script_catalog_type definition = *script_catalog_type_by_id(a->catalog, type.nominal);
         script_catalog_variant *variants = NULL;
@@ -144,14 +180,29 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
             }
             TSNode literal = script_analyzer_field(variant, "literal");
             TSNode name = script_analyzer_field(variant, "name");
-            char *text = script_analyzer_name_copy(a, ts_node_is_null(literal) ? name : literal);
+            pin_value literal_value = { .type = PIN_STR };
+            char *text;
+            if (ts_node_is_null(literal)) {
+                text = script_analyzer_name_copy(a, name);
+            } else {
+                literal_value = script_analyzer_string_value(a, literal);
+                pin_string bytes = pin_text(literal_value);
+                text = bytes.length && memchr(bytes.bytes, 0, bytes.length)
+                         ? script_analyzer_text_copy(a, literal)
+                         : xstrdup(bytes.bytes);
+            }
             script_catalog_variant v = { .name = own(a, text),
                                          .type = type,
                                          .tagged = ts_node_is_null(literal),
                                          .is_literal = !ts_node_is_null(literal) };
             if (v.is_literal) {
-                v.tag = script_catalog_id("union-literal", text);
-                v.literal = (pin_value){ .type = PIN_STR, .str = v.name };
+                pin_string bytes = pin_text(literal_value);
+                v.tag = script_catalog_id_bytes(
+                    "union-literal",
+                    bytes.bytes,
+                    bytes.length
+                );
+                v.literal = literal_value;
                 v.type = (script_type){ .storage = PIN_STR,
                                         .flags = SCRIPT_TYPE_LITERAL,
                                         .parameter = v.tag };
@@ -211,7 +262,7 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
             definition.variants = copy;
         }
         afree(variants);
-        replace(a, definition);
+        script_analyzer_replace_type(a, definition);
     }
     unsigned char *states = xcalloc((size_t)a->catalog->type_count + 1, sizeof *states);
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
@@ -219,7 +270,10 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
-        int symbol = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
+        int symbol = declared_union(a, node);
+        if (symbol < 0) {
+            continue;
+        }
         int error = payload_cycle(a->catalog, a->out->symbols[symbol].type, states, 0);
         if (error) {
             script_analyzer_diagnostic(
@@ -233,148 +287,70 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
     }
     free(states);
 }
+void script_analyzer_union_declarations(analyzer *a, TSNode body)
+{
+    script_analyzer_union_types(a, body);
+    script_analyzer_union_fields(a, body);
+}
+static script_constructor_facts constructor_facts(const analyzer *a)
+{
+    return (script_constructor_facts){ .catalog = a->catalog,
+                                       .symbols = a->out->symbols,
+                                       .functions = a->out->functions,
+                                       .function_count = acount(a->out->functions) };
+}
+static script_type apply_constructor(
+    analyzer *a,
+    const script_constructor_facts *facts,
+    const script_constructor_plan *plan
+)
+{
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        apush(a->out->diagnostics, plan->diagnostics[i]);
+    }
+    if (plan->publish) {
+        script_catalog_type definition = { 0 };
+        bool copied = script_constructor_materialize(&a->out->constants, facts, plan, &definition);
+        /* Active catalogs have valid, snapshot-compatible declaration values.
+         * This is an ownership invariant, not a new source diagnostic. */
+        assert(copied);
+        if (!copied) {
+            return script_analyzer_bad_type();
+        }
+        script_analyzer_publish_type(a, definition);
+    }
+    return plan->type;
+}
 script_type script_analyzer_union_type(analyzer *a, TSNode node, const script_type *members, int count)
 {
-    script_catalog_variant *variants = NULL;
-    for (int i = 0; i < count; i++) {
-        const script_catalog_type
-            *nested = (members[i].flags & SCRIPT_TYPE_UNION) &&
-                              !(members[i].flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
-                              members[i].container == PIN_CONTAINER_SINGLE
-                        ? script_catalog_type_by_id(a->catalog, members[i].nominal)
-                        : NULL;
-        int n = nested ? nested->variant_count : 1;
-        for (int j = 0; j < n; j++) {
-            if (nested && members[i].parameter &&
-                nested->variants[j].tag != members[i].parameter) {
-                continue;
-            }
-            script_catalog_variant v = nested
-                                         ? nested->variants[j]
-                                         : (
-                                               script_catalog_variant
-                                           ){ .tag = script_type_tag(members[i]),
-                                              .type = members[i] };
-            bool exists = false;
-            for (int k = 0; k < acount(variants); k++) {
-                exists |= variants[k].tag == v.tag;
-            }
-            if (!exists) {
-                apush(variants, v);
-            }
-        }
-    }
-    /* Stable structural identity, independent of spelling order. */
-    for (int i = 1; i < acount(variants); i++) {
-        for (int j = i; j > 0 && variants[j - 1].tag > variants[j].tag; j--) {
-            script_catalog_variant tmp = variants[j];
-            variants[j] = variants[j - 1];
-            variants[j - 1] = tmp;
-        }
-    }
-    uint64_t id = UINT64_C(14695981039346656037);
-    for (int i = 0; i < acount(variants); i++) {
-        id = (id ^ variants[i].tag) * UINT64_C(1099511628211);
-    }
-    script_type type = { .storage = PIN_UNION, .nominal = id, .flags = SCRIPT_TYPE_UNION };
-    if (!script_catalog_type_by_id(a->catalog, id)) {
-        char name[64];
-        snprintf(name, sizeof name, "union:%llu", (unsigned long long)id);
-        script_catalog_variant *copy = arena_alloc(
-            &a->out->constants,
-            (size_t)acount(variants) * sizeof *copy
-        );
-        for (int i = 0; i < acount(variants); i++) {
-            copy[i] = own_variant(a, variants[i]);
-        }
-        publish(
-            a,
-            (script_catalog_type){ .id = id,
-                                   .name = own(a, name),
-                                   .type = type,
-                                   .size = sizeof(void *),
-                                   .variants = copy,
-                                   .variant_count = acount(variants),
-                                   .internal = true }
-        );
-    }
-    afree(variants);
+    script_constructor_facts facts = constructor_facts(a);
+    script_constructor_plan plan = script_constructor_union(
+        &a->out->constants,
+        &facts,
+        members,
+        count,
+        sizeof(void *)
+    );
     (void)node;
-    return type;
+    return apply_constructor(a, &facts, &plan);
 }
 script_type script_analyzer_task_type(analyzer *a, script_type result, uint64_t function)
 {
-    uint64_t id = script_type_tag(result);
-    if (!script_catalog_type_by_id(a->catalog, id)) {
-        char name[64];
-        snprintf(name, sizeof name, "task-result:%llu", (unsigned long long)id);
-        script_catalog_field *fields = NULL;
-        if (result.flags & SCRIPT_TYPE_RESULTS) {
-            const script_catalog_capability
-                *capability = script_catalog_capability_by_id(a->catalog, function);
-            if (capability) {
-                for (int i = 0; i < capability->result_count; i++) {
-                    const script_catalog_parameter *field = &capability->results[i];
-                    apush(
-                        fields,
-                        ((script_catalog_field){ .name = own(a, field->name),
-                                                 .type = field->type })
-                    );
-                }
-            } else {
-                for (int i = 0; i < acount(a->out->functions); i++) {
-                    const script_function *f = &a->out->functions[i];
-                    if (f->symbol < 0 || a->out->symbols[f->symbol].id != function) {
-                        continue;
-                    }
-                    for (int j = 0; j < acount(f->results); j++) {
-                        const script_symbol *field = &a->out->symbols[f->results[j]];
-                        apush(
-                            fields,
-                            ((script_catalog_field){ .name = own(a, field->name),
-                                                     .type = field->type })
-                        );
-                    }
-                    break;
-                }
-            }
-        }
-        script_catalog_field *owned_fields = NULL;
-        if (acount(fields)) {
-            owned_fields = arena_alloc(&a->out->constants, (size_t)acount(fields) * sizeof *owned_fields);
-            memcpy(owned_fields, fields, (size_t)acount(fields) * sizeof *owned_fields);
-        }
-        publish(
-            a,
-            (script_catalog_type){ .id = id,
-                                   .name = own(a, name),
-                                   .type = result,
-                                   .fields = owned_fields,
-                                   .field_count = acount(fields),
-                                   .internal = true }
-        );
-        afree(fields);
-    }
-    return (script_type){ .storage = PIN_TASK,
-                          .nominal = function,
-                          .parameter = id,
-                          .flags = SCRIPT_TYPE_TASK };
+    script_constructor_facts facts = constructor_facts(a);
+    script_constructor_plan plan = script_constructor_task(&a->out->constants, &facts, result, function);
+    return apply_constructor(a, &facts, &plan);
 }
 script_type script_analyzer_await_type(analyzer *a, TSNode node, script_type success)
 {
-    const script_catalog_type
-        *definition = success.flags & SCRIPT_TYPE_UNION
-                        ? script_catalog_type_by_id(a->catalog, success.nominal)
-                        : NULL;
-    bool cancelled = success.flags & SCRIPT_TYPE_SINGLETON;
-    for (int i = 0; definition && i < definition->variant_count; i++) {
-        cancelled |= definition->variants[i].tag == PIN_UNION_CANCELLED_TAG;
-    }
-    if (cancelled) {
-        script_analyzer_diagnostic(a, node, "Cancelled is reserved for task cancellation, not a successful task result");
-    }
-    script_type types[] = { success, script_cancelled_type() };
-    return script_analyzer_union_type(a, node, types, 2);
+    script_constructor_facts facts = constructor_facts(a);
+    script_constructor_plan plan = script_constructor_await(
+        &a->out->constants,
+        &facts,
+        success,
+        script_analyzer_range(a, node),
+        sizeof(void *)
+    );
+    return apply_constructor(a, &facts, &plan);
 }
 static bool binding_condition(analyzer *a, TSNode node)
 {
@@ -426,7 +402,7 @@ static const script_catalog_variant *qualified_variant(analyzer *a, TSNode node,
     }
     char *owner = script_analyzer_qualified_name(a, script_analyzer_field(node, "object"));
     int symbol = script_analyzer_lookup_name(a, owner);
-    int named = script_catalog_find_type(a->catalog, owner);
+    int named = script_analyzer_find_type(a, node, owner);
     free(owner);
     const script_catalog_type *definition = NULL;
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_TYPE) {
@@ -458,7 +434,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
     script_catalog_variant v = *found;
     script_expression result = { .kind = SCRIPT_EXPR_UNION,
                                  .type = type,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
@@ -500,7 +476,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
             result.arguments,
             ((script_argument){ .value = expression,
                                 .parameter = field,
-                                .range = script_analyzer_range(argument) })
+                                .range = script_analyzer_range(a, argument) })
         );
         result.effects |= script_analyzer_expr_effects(a, expression);
     }
@@ -555,7 +531,7 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
     owner = owner ? &owner_copy : NULL;
     script_expression result = { .kind = SCRIPT_EXPR_IS,
                                  .type = { .storage = PIN_BOOL },
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .left = subject,
                                  .right = -1,
                                  .entry = -1,
@@ -570,19 +546,19 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
         }
         free(name);
     } else if (script_analyzer_is(node, "string")) {
-        char *text = script_analyzer_name_copy(a, node);
+        pin_value literal = script_analyzer_string_value(a, node);
+        pin_string text = pin_text(literal);
         result.tested = (script_type){
             .storage = PIN_STR,
             .flags = SCRIPT_TYPE_LITERAL,
-            .parameter = script_catalog_id("union-literal", text)
+            .parameter = script_catalog_id_bytes("union-literal", text.bytes, text.length)
         };
-        free(text);
     } else {
         char *name = script_analyzer_text_copy(a, node);
         char *dot = strrchr(name, '.');
         if (dot) {
             *dot = 0;
-            int index = script_catalog_find_type(a->catalog, name);
+            int index = script_analyzer_find_type(a, node, name);
             if (index >= 0) {
                 variant = variant_name(&a->catalog->types[index], dot + 1);
             }
@@ -628,7 +604,7 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
                 ((script_argument){ .value = subject,
                                     .parameter = symbol,
                                     .member = (uint64_t)ordinal,
-                                    .range = script_analyzer_range(binding) })
+                                    .range = script_analyzer_range(a, binding) })
             );
             ordinal++;
         }
@@ -678,7 +654,7 @@ int script_analyzer_pattern_expression(analyzer *a, TSNode node)
     int index = script_analyzer_pattern(a, script_analyzer_field(node, "type"), subject);
     bool extract = script_analyzer_is(node, "as_expression");
     script_expression *e = &a->out->expressions[index];
-    e->range = script_analyzer_range(node);
+    e->range = script_analyzer_range(a, node);
     e->negated = !ts_node_is_null(script_analyzer_field(node, "negated"));
     if (extract) {
         e->kind = SCRIPT_EXPR_AS;

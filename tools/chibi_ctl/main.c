@@ -1,4 +1,7 @@
 #include "assets/project.h"
+#include "authoring/application_catalog.h"
+#include "authoring/project_open.h"
+#include "authoring/studio_project.h"
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
 #include "automation/render_preview.h"
@@ -173,7 +176,15 @@ static int run(int argc, char **argv)
     }
     if (migrate) {
         char error[512];
-        int steps = chibi_project_migrate(project_root, error, sizeof error);
+        native_capabilities *native = authoring_application_catalog_new(
+            studio_project_is(project_root),
+            error,
+            sizeof error
+        );
+        int steps = native
+                      ? authoring_project_migrate(project_root, native, error, sizeof error)
+                      : -1;
+        native_capabilities_free(native);
         if (steps < 0) {
             fprintf(stderr, "%s\n", error);
             return CHIBI_AUTOMATION_IO_ERROR;

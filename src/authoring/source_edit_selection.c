@@ -240,12 +240,13 @@ static TSNode body(const script_syntax *syntax, const source_presentation_origin
 }
 static bool fragment_syntax(const char *fragment, const char *region)
 {
-    const char *prefix = !strcmp(region, "system_body") ? "system __Edit {\n"
+    const char *prefix = !strcmp(region, "system_body")
+                           ? "__Edit :: system() {\n"
                        : !strcmp(region, "declaration_body")
-                           ? "behavior __Edit {\n"
+                           ? "__Edit :: behavior {\n"
                        : !strcmp(region, "callable_body")
-                           ? "behavior __Edit { __Scope :: fn()->() {\n"
-                           : "behavior __Edit { on Tick {\n";
+                           ? "__Edit :: behavior { __Scope :: () {\n"
+                           : "__Edit :: behavior { on Tick :: () {\n";
     const char *suffix = (!strcmp(region, "system_body") ||
                           !strcmp(region, "declaration_body"))
                            ? "\n}"

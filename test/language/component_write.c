@@ -9,6 +9,7 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -100,14 +101,17 @@ static bool compile_field(int field, int form, behavior_backend backend)
     project_types = true;
     script_catalog_field selected[5] = { 0 };
     for (int j = 0; j < 5; j++) {
-        selected[j] = (script_catalog_field){ .id = (uint64_t)(9900 + j),
-                                              .name = fields[j].name,
-                                              .type = { .storage = fields[j].type },
-                                              .offset = fields[j].offset,
-                                              .writable = true,
-                                              .range_contract = fields[j].range_contract,
-                                              .min = fields[j].min,
-                                              .max = fields[j].max };
+        selected[j] = (script_catalog_field){
+            .id = (uint64_t)(9900 + j),
+            .name = fields[j].name,
+            .type = { .storage = fields[j].type },
+            .offset = fields[j].offset,
+            .writable = true,
+            .c_string = fields[j].type == PIN_STR && !fields[j].text_descriptor,
+            .range_contract = fields[j].range_contract,
+            .min = fields[j].min,
+            .max = fields[j].max
+        };
     }
     const script_catalog_type root = { .id = ROW_TYPE,
                                        .name = row_type.name,
@@ -153,36 +157,37 @@ static bool compile_field(int field, int form, behavior_backend backend)
                                      .global_count = 1,
                                      .entity_type = ENTITY_TYPE };
     char source[512], statement[256];
-    if (form == 0) {
-        snprintf(statement, sizeof statement, "answer = set_field(value);");
-    } else {
+    {
         snprintf(
             statement,
             sizeof statement,
             "self.CheckedWrite.%s %s value; answer = self.CheckedWrite.%s;",
             fields[field].name,
-            form == 1 ? "=" : "+=",
+            form == 2 ? "+=" : "=",
             fields[field].name
         );
     }
     snprintf(
         source,
         sizeof source,
-        "behavior Writes { answer: %s = %s; on Tick(value) { %s } }",
+        "Writes :: behavior { answer: %s = %s; on Tick :: (value: %s) { %s } }",
         script_scalar_name(parameter.type.storage),
         field == 0   ? "false"
         : field == 4 ? "\"\""
                      : "0",
+        script_scalar_name(parameter.type.storage),
         statement
     );
     if (form == 3) {
         snprintf(
             source,
             sizeof source,
-            "library Writes { Run :: (value: %s) -> %s { return "
-            "set_field(value); } }",
+            "Writes :: library { Run :: (value: %s) -> %s { "
+            "self.CheckedWrite.%s = value; return self.CheckedWrite.%s; } }",
             script_scalar_name(parameter.type.storage),
-            script_scalar_name(parameter.type.storage)
+            script_scalar_name(parameter.type.storage),
+            fields[field].name,
+            fields[field].name
         );
     }
     syntax = script_parse(source);
@@ -245,7 +250,9 @@ static bool create_row(ecs_entity *owner, execution_instance **instance)
             COMPONENT,
             fields[4].offset,
             (pin_value){ .type = PIN_STR },
-            (pin_value){ .type = PIN_STR, .str = retained }
+            (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = retained,
+                                                      .length = (uint32_t)strlen(retained) } }
         ) == ECS_OK
     );
     memset(retained, 'X', sizeof retained - 1);
@@ -327,13 +334,19 @@ TEST_CASE(component_write_preserves_managed_field_publication)
         execution_instance *instance;
         REQUIRE(create_row(&owner, &instance));
         char text[] = "updated owned text";
-        const pin_value value = { .type = PIN_STR, .str = text };
+        const pin_value value = { .type = PIN_STR,
+                                  .text = &(const pin_string){
+                                      .bytes = text,
+                                      .length = (uint32_t)strlen(text) } };
         REQUIRE(execution_instance_dispatch(instance, EVENT, &value, 1, 0, 0, 100) == FLOW_OK);
         memset(text, 'X', sizeof text - 1);
         const write_row *row = ecs_component_data_const(world, owner, COMPONENT);
         const pin_value *result = answer(instance);
         REQUIRE(row && !strcmp(row->text, "updated owned text"));
-        REQUIRE(result && result->type == PIN_STR && !strcmp(result->str, "updated owned text"));
+        REQUIRE(
+            result && result->type == PIN_STR &&
+            !strcmp(pin_text(*result).bytes, "updated owned text")
+        );
         REQUIRE(row->bounded == 3 && row->wide == 1 && row->real == 2.5);
     }
     return true;

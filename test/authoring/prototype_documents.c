@@ -2,9 +2,11 @@
 #include "assets/scene_document.h"
 #include "authoring/native_prototype.h"
 #include "runtime/component_catalog.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "test/asset_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -26,8 +28,10 @@ static scene_document *scene, *loaded;
 static av_value *values;
 static char **owned_strings;
 
+static arena text_reads;
 static void cleanup()
 {
+    arena_free(&text_reads);
     prototype_free(test_prototype);
     prototype_free(copy);
     ecs_world_free(world);
@@ -126,7 +130,10 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
                                                   .element_size = sizeof(char *),
                                                   .type = &type };
     const ecs_component_desc *components[] = { &component };
-    prototype_registry registry = { .components = components, .component_count = 1 };
+    prototype_registry registry = { .components = components,
+                                    .component_count = 1,
+                                    .include = NULL,
+                                    .include_user = NULL };
     char error[256];
     test_prototype = prototype_load(
         "name \"StringOwner\"\ncomponents {\n    test.Label "
@@ -141,8 +148,8 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
     test_prototype = NULL;
     REQUIRE(copy && prototype_add_component(copy, &component) == 0);
     pin_value value;
-    REQUIRE(prototype_read_field(copy, "test.Label", "text", &value) == 0);
-    REQUIRE(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
+    REQUIRE(prototype_read_field(&text_reads, copy, "test.Label", "text", &value) == 0);
+    REQUIRE(value.type == PIN_STR && strcmp(pin_text(value).bytes, "customized") == 0);
     REQUIRE(prototype_detach_component(copy, "test.Label") == 0);
     saved = prototype_save(copy);
 
@@ -150,11 +157,15 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
     renamed.name = "DisplayLabel";
     const ecs_component_desc *renamed_components[] = { &renamed };
     prototype_registry renamed_registry = { .components = renamed_components,
-                                            .component_count = 1 };
+                                            .component_count = 1,
+                                            .include = NULL,
+                                            .include_user = NULL };
     test_prototype = prototype_load(saved, &renamed_registry, error, sizeof error);
     REQUIRE(test_prototype && prototype_add_component(test_prototype, &renamed) == 0);
-    REQUIRE(prototype_read_field(test_prototype, "DisplayLabel", "text", &value) == 0);
-    REQUIRE(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
+    REQUIRE(
+        prototype_read_field(&text_reads, test_prototype, "DisplayLabel", "text", &value) == 0
+    );
+    REQUIRE(value.type == PIN_STR && strcmp(pin_text(value).bytes, "customized") == 0);
     return true;
 }
 
@@ -184,7 +195,9 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
     REQUIRE(prototype_detach_component(test_prototype, "Input") == 0);
     REQUIRE(prototype_detach_component(test_prototype, "Health") == -1);
     pin_value value;
-    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &value) == -1);
+    REQUIRE(
+        prototype_read_field(&text_reads, test_prototype, "Health", "current", &value) == -1
+    );
     saved = prototype_save(test_prototype);
     prototype_free(test_prototype);
     test_prototype = prototype_load(saved, &registry, error, sizeof error);
@@ -270,7 +283,8 @@ static prototype_registry enemies()
 {
     return (prototype_registry){ .components = REGISTRY_COMPONENTS,
                                  .component_count = REGISTRY_COMPONENT_COUNT,
-                                 .include = find_base };
+                                 .include = find_base,
+                                 .include_user = NULL };
 }
 
 static const Health *health_of(const prototype *p)
@@ -324,12 +338,16 @@ TEST_CASE(prototype_includes_override_and_save_deterministically)
 
     prototype_registry missing = { .components = REGISTRY_COMPONENTS,
                                    .component_count = 1,
-                                   .include = find_base };
+                                   .include = find_base,
+                                   .include_user = NULL };
     REQUIRE(!prototype_load(derived_enemy, &missing, error, sizeof error));
     REQUIRE(strstr(error, "Health"));
-    const prototype_registry cycles = { .components = REGISTRY_COMPONENTS,
-                                        .component_count = REGISTRY_COMPONENT_COUNT,
-                                        .include = find_cycle };
+    const prototype_registry cycles = {
+        .components = REGISTRY_COMPONENTS,
+        .component_count = REGISTRY_COMPONENT_COUNT,
+        .include = find_cycle,
+        .include_user = NULL,
+    };
     REQUIRE(!prototype_load(cycle_a, &cycles, error, sizeof error));
     REQUIRE(strstr(error, "cycle"));
     return true;
@@ -358,11 +376,11 @@ TEST_CASE(prototype_spawns_edits_and_captures_overrides)
     REQUIRE(attached == 2 && ecs_entity_is_alive(world, entity));
 
     pin_value field = { 0 };
-    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &field) == 0);
+    REQUIRE(prototype_read_field(&text_reads, test_prototype, "Health", "current", &field) == 0);
     REQUIRE(field.i == 100);
     pin_value edited = { .type = PIN_I32, .i = 101 };
     REQUIRE(prototype_write_field(test_prototype, "Health", "current", edited) == 0);
-    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &field) == 0);
+    REQUIRE(prototype_read_field(&text_reads, test_prototype, "Health", "current", &field) == 0);
     REQUIRE(field.i == 101);
     edited.i = 100;
     REQUIRE(prototype_write_field(test_prototype, "Health", "current", edited) == 0);

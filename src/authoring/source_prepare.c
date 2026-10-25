@@ -55,11 +55,13 @@ static void performance_diagnostics(authoring_source *source)
     source->performance_count = acount(source->performance);
 }
 
-authoring_source *authoring_source_analyze(
+authoring_source *authoring_source_analyze_requested(
     const char *path,
     const char *key,
     const script_syntax *syntax,
-    const script_catalog *catalog
+    const script_catalog *catalog,
+    const script_specialization_request *requests,
+    int request_count
 )
 {
     assert(path && syntax && catalog);
@@ -73,13 +75,25 @@ authoring_source *authoring_source_analyze(
         apush(source->syntax->diagnostics, syntax->diagnostics[i]);
     }
     source->syntax->diagnostic_count = acount(source->syntax->diagnostics);
-    source->analysis = key ? script_analyze_document(source->syntax, catalog, key)
+    source->analysis = request_count
+                         ? script_analyze_document_requested(source->syntax, catalog, key, requests, request_count)
+                     : key ? script_analyze_document(source->syntax, catalog, key)
                            : script_analyze(source->syntax, catalog);
     for (int i = 0; i < source->analysis->diagnostic_count; i++) {
         apush(source->diagnostics, source->analysis->diagnostics[i]);
     }
     source->diagnostic_count = acount(source->diagnostics);
     return source;
+}
+
+authoring_source *authoring_source_analyze(
+    const char *path,
+    const char *key,
+    const script_syntax *syntax,
+    const script_catalog *catalog
+)
+{
+    return authoring_source_analyze_requested(path, key, syntax, catalog, NULL, 0);
 }
 
 void authoring_source_lower(
@@ -97,7 +111,8 @@ void authoring_source_lower(
         script_diagnostic copy = { .range = { diagnostic->range.start,
                                               diagnostic->range.end,
                                               diagnostic->range.line,
-                                              diagnostic->range.column } };
+                                              diagnostic->range.column,
+                                              diagnostic->range.document } };
         memcpy(copy.message, diagnostic->message, sizeof copy.message);
         apush(source->diagnostics, copy);
     }

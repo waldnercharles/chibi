@@ -25,9 +25,9 @@ static bool has_completion(const asset_source_completions *choices, const char *
  * property completion remains independently covered below. */
 TEST_CASE(asset_source_navigates_event_payloads)
 {
-    const char
-        *text = "behavior Payload { on Tick(dt) { first:=dt; second:=dt; } }";
-    const script_catalog_parameter payload = { .name = "DeltaSeconds",
+    const char *text = "Payload :: behavior { on Tick :: (dt: float) { "
+                       "first:=dt; second:=dt; } }";
+    const script_catalog_parameter payload = { .name = "dt",
                                                .type = { .storage = PIN_F32 } };
     const script_catalog_capability event = { .id = 100,
                                               .name = "Tick",
@@ -49,7 +49,7 @@ TEST_CASE(asset_source_navigates_event_payloads)
     const authoring_reference *use = authoring_navigation_at(navigation, 0, offset);
     REQUIRE(use);
     const authoring_reference *definition = authoring_navigation_definition(navigation, use->target);
-    REQUIRE(definition && definition->location.range.start == (int)(strstr(text, "dt)") - text));
+    REQUIRE(definition && definition->location.range.start == (int)(strstr(text, "dt:") - text));
     int references = 0;
     for (int i = 0; i < authoring_navigation_reference_count(navigation); i++) {
         const authoring_reference *reference = authoring_navigation_reference_at(navigation, i);

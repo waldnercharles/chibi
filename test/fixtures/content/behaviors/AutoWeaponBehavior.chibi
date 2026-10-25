@@ -1,18 +1,22 @@
-behavior "AutoWeaponBehavior" {
-    state Elapsed: float = 0.0
-    on Tick {
-        if find_nearest_entity(self.Transform, 600.0, 2, engine["Self"]()).Found {
-            await "Fire Ready Projectiles"(self.Transform, direction_to<"Direction To">(self.Transform, find_nearest_entity(self.Transform, 600.0, 2, engine["Self"]()).Position), self.Weapon.damage)
+// Fires toward a nearby enemy on each complete cooldown interval, retaining
+// unused time while preserving projectile defaults.
+AutoWeaponBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    // Weapon
+    Elapsed: float = 0.0
+    on Tick :: (dt: float s) {
+        Step = dt
+        if find_nearest_entity(self.Transform, 600.0, 2, self).Found {
+            await Fire_Ready_Projectiles(self.Transform, direction_to<Direction_To>(self.Transform, find_nearest_entity(self.Transform, 600.0, 2, self).Position), self.Weapon.damage)
         }
     }
-    "Fire Ready Projectiles" :: fn(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0) {
-        after entry {
-            state."Elapsed" = state."Elapsed" + delta_time()
-            while "WeaponActions"."Check Firing Interval"(state."Elapsed", self.Weapon.cooldown).Ready {
-                state."Elapsed" = "WeaponActions"."Check Firing Interval"(state."Elapsed", self.Weapon.cooldown).Remainder
-                await "WeaponActions"."Fire Projectile"(entry.Origin, entry.Direction, entry.Damage, "Projectile", self)
-            }
-            return
+    Fire_Ready_Projectiles :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0) {
+        Elapsed = Elapsed + Step
+        while WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Ready {
+            Elapsed = WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Remainder
+            await WeaponActions.Fire_Projectile(Origin, Direction, Damage, Projectile, self)
         }
+        return
     }
 }

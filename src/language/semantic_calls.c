@@ -1,9 +1,12 @@
+#include "language/lexical_binding.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 
 #include <ctype.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,22 +53,10 @@ static TSNode unparenthesized_parent(TSNode node)
 }
 int script_analyzer_callable_symbol(const analyzer *a, const char *name)
 {
-    int symbol = script_analyzer_lookup_name(a, name);
-    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
-        return symbol;
-    }
-    for (int scope = a->scope; scope >= 0; scope = a->out->scopes[scope].parent) {
-        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
-            const script_symbol *candidate = &a->out->symbols[i];
-            if (candidate->scope == scope &&
-                (candidate->kind == SCRIPT_FUNCTION || candidate->kind == SCRIPT_MACRO) &&
-                !strcmp(candidate->name, name)) {
-                return i;
-            }
-        }
-    }
-    return -1;
+    script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+    return script_lexical_callable(&facts, a->scope, name);
 }
+
 int script_analyzer_parameter_index(const script_catalog_parameter *parameters, int count, const char *name)
 {
     int found = -1;
@@ -125,18 +116,36 @@ int script_analyzer_authored_parameter_index(
 }
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter)
 {
-    char *name = script_analyzer_name_copy(a, node);
+    char *name = script_analyzer_qualified_name(a, node);
     uint64_t id = 0;
     const char *canonical = name;
-    int index;
+    int index = -1;
+    if (!script_analyzer_is(node, "identifier") &&
+        !script_analyzer_is(node, "member_expression")) {
+        script_analyzer_diagnostic(a, node, "Symbol references use identifiers, not string names");
+    }
     if (parameter->reference_kind == SCRIPT_REFERENCE_PROTOTYPE) {
-        index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE);
+        index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_PROTOTYPE);
         if (index >= 0) {
             id = a->catalog->capabilities[index].id;
             canonical = a->catalog->capabilities[index].name;
         }
+    } else if (parameter->reference_kind == SCRIPT_REFERENCE_RELATIONSHIP) {
+        if (!script_analyzer_is(node, "identifier")) {
+            script_analyzer_diagnostic(a, node, "A relationship argument must name a relationship symbol");
+        } else if (!strcmp(name, "ChildOf")) {
+            id = SCRIPT_CHILD_OF;
+        } else {
+            for (int i = 0; i < a->catalog->relationship_count; i++) {
+                if (!strcmp(a->catalog->relationships[i].name, name)) {
+                    id = a->catalog->relationships[i].id;
+                    index = i;
+                    break;
+                }
+            }
+        }
     } else {
-        index = script_catalog_find_type(a->catalog, name);
+        index = script_analyzer_find_type(a, node, name);
         if (index >= 0 && a->catalog->types[index].component) {
             id = a->catalog->types[index].id;
             canonical = a->catalog->types[index].key
@@ -152,6 +161,8 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
             index == -2 ? "Ambiguous" : "Unknown",
             parameter->reference_kind == SCRIPT_REFERENCE_PROTOTYPE
                 ? "prototype"
+            : parameter->reference_kind == SCRIPT_REFERENCE_RELATIONSHIP
+                ? "relationship"
                 : "component",
             name
         );
@@ -165,46 +176,114 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
             id
         );
     }
-    script_expression value = { .kind = SCRIPT_EXPR_CONSTANT,
-                                .type = parameter->type,
-                                .range = script_analyzer_range(node),
-                                .symbol = -1,
-                                .left = -1,
-                                .right = -1,
-                                .capability = id,
-                                .constant = { .type = parameter->type.storage,
-                                              .str = xstrdup(canonical) } };
+    script_expression value = {
+        .kind = SCRIPT_EXPR_CONSTANT,
+        .type = script_reference_type(parameter->reference_kind),
+        .range = script_analyzer_range(a, node),
+        .symbol = -1,
+        .left = -1,
+        .right = -1,
+        .capability = id,
+        .constant = { .type = script_reference_type(parameter->reference_kind).storage,
+                      .str = xstrdup(canonical) }
+    };
+    if (parameter->reference_kind == SCRIPT_REFERENCE_RELATIONSHIP) {
+        free((void *)value.constant.str);
+        value.constant.u64 = id;
+    }
     free(name);
     return script_analyzer_expr_add(a, value);
+}
+int script_analyzer_symbol_reference(analyzer *a, TSNode node, script_type expected)
+{
+    script_reference_kind kind = script_reference_kind_for_type(expected);
+    if (kind == SCRIPT_REFERENCE_NONE) {
+        char *name = script_analyzer_qualified_name(a, node);
+        int found = 0;
+        if (script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE) >=
+            0) {
+            kind = SCRIPT_REFERENCE_PROTOTYPE;
+            found++;
+        }
+        int type = script_catalog_find_type(a->catalog, name);
+        if (type >= 0 && a->catalog->types[type].component) {
+            kind = SCRIPT_REFERENCE_COMPONENT;
+            found++;
+        }
+        for (int i = 0; i < a->catalog->relationship_count; i++) {
+            if (!strcmp(a->catalog->relationships[i].name, name)) {
+                kind = SCRIPT_REFERENCE_RELATIONSHIP;
+                found++;
+            }
+        }
+        if (!strcmp(name, "ChildOf") && kind != SCRIPT_REFERENCE_RELATIONSHIP) {
+            kind = SCRIPT_REFERENCE_RELATIONSHIP;
+            found++;
+        }
+        free(name);
+        if (!found) {
+            return -1;
+        }
+        if (found > 1) {
+            script_analyzer_diagnostic(a, node, "Ambiguous symbol reference; provide a Prototype, Component or Relationship type");
+        }
+    }
+    script_catalog_parameter parameter = { .reference_kind = kind,
+                                           .type = script_reference_type(kind) };
+    return script_analyzer_reference_argument(a, node, &parameter);
 }
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected)
 {
     TSNode object = script_analyzer_field(node, "object"),
            member = script_analyzer_field(node, "member");
-    char *name = script_analyzer_name_copy(a, member);
-    if (script_analyzer_is(object, "builtin_reference") &&
-        script_analyzer_text_is(a, object, "entry")) {
-        int payload = script_analyzer_lookup(a, object);
-        int function = payload >= 0 ? a->out->symbols[payload].function : -1;
-        int parameter = function >= 0
-                          ? script_analyzer_authored_parameter_index(a, &a->out->functions[function], name)
-                          : -1;
-        if (parameter >= 0) {
-            int symbol = a->out->functions[function].parameters[parameter];
-            script_symbol value = a->out->symbols[symbol];
-            script_analyzer_use(a, member, symbol, SCRIPT_READ, 0);
-            free(name);
-            return script_analyzer_expr_add(
-                a,
-                (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
-                                     .type = value.type,
-                                     .range = script_analyzer_range(node),
-                                     .symbol = symbol,
-                                     .left = -1,
-                                     .right = -1,
-                                     .writable = value.writable }
-            );
+    if ((script_analyzer_is(object, "identifier") ||
+         script_analyzer_is(object, "member_expression")) &&
+        script_analyzer_lookup(a, object) < 0) {
+        int reference = script_analyzer_symbol_reference(a, node, expected);
+        if (reference >= 0) {
+            return reference;
         }
+    }
+    char *name = script_analyzer_name_copy(a, member);
+    int imported_constant = script_analyzer_package_constant(a, node);
+    if (imported_constant >= 0) {
+        script_symbol value = a->out->symbols[imported_constant];
+        script_analyzer_use(a, member, imported_constant, SCRIPT_READ, value.id);
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){
+                .kind = SCRIPT_EXPR_SYMBOL,
+                .type = value.type,
+                .range = script_analyzer_range(a, node),
+                .symbol = imported_constant,
+                .left = -1,
+                .right = -1,
+                .entry = -1,
+                .member = value.id,
+            }
+        );
+    }
+    bool hidden = false;
+    if (a->import_count && script_analyzer_is(object, "identifier")) {
+        char *qualified = script_analyzer_qualified_name(a, node);
+        hidden = script_analyzer_private_member(a, node, qualified);
+        if (hidden) {
+            script_analyzer_diagnostic(a, node, SCRIPT_PRIVATE_MEMBER, qualified);
+        }
+        free(qualified);
+    }
+    if (hidden) {
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_ERROR,
+                                 .type = script_analyzer_bad_type(),
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 }
+        );
     }
     if (script_analyzer_is(object, "builtin_reference") &&
         script_analyzer_text_is(a, object, "state")) {
@@ -216,7 +295,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                 a,
                 (script_expression){ .kind = SCRIPT_EXPR_ERROR,
                                      .type = script_analyzer_bad_type(),
-                                     .range = script_analyzer_range(node),
+                                     .range = script_analyzer_range(a, node),
                                      .symbol = -1,
                                      .left = -1,
                                      .right = -1 }
@@ -230,7 +309,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             a,
             (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
                                  .type = value.type,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = symbol,
                                  .left = -1,
                                  .right = -1,
@@ -244,7 +323,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
     int left = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
     script_expression receiver = a->out->expressions[left];
     script_expression result = { .kind = SCRIPT_EXPR_MEMBER,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = receiver.symbol,
                                  .left = left,
                                  .right = -1,
@@ -337,9 +416,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             result.writable = (result.type.flags & SCRIPT_TYPE_REFERENCE) != 0;
         } else if (receiver_function >= 0) {
             script_function *function = &a->out->functions[receiver_function];
-            bool payload = (receiver.symbol >= 0 &&
-                            !strcmp(a->out->symbols[receiver.symbol].name, "entry")) ||
-                           function->kind == SCRIPT_FUNCTION_HANDLER ||
+            bool payload = function->kind == SCRIPT_FUNCTION_HANDLER ||
                            function->kind == SCRIPT_FUNCTION_CONTINUATION ||
                            function->kind == SCRIPT_FUNCTION_MACRO_ENTRY;
             int *members = payload ? function->parameters : function->results;
@@ -367,7 +444,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
     }
     if (receiver.type.storage == PIN_HANDLE &&
         receiver.type.nominal == a->out->owner_type) {
-        int index = script_catalog_find_type(a->catalog, name);
+        int index = script_analyzer_find_type(a, node, name);
         if (index >= 0 && a->catalog->types[index].component) {
             const script_catalog_type *type = &a->catalog->types[index];
             result.kind = SCRIPT_EXPR_COMPONENT;
@@ -391,8 +468,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             while (script_analyzer_is(parent, "parenthesized_expression")) {
                 parent = ts_node_parent(parent);
             }
-            if ((!script_analyzer_is(parent, "foreach_statement") &&
-                 !script_analyzer_is(parent, "for_statement")) ||
+            if (!script_analyzer_is(parent, "for_statement") ||
                 !ts_node_is_null(script_analyzer_field(parent, "first"))) {
                 script_analyzer_diagnostic(a, node, "Relationship targets require a streaming for-in loop");
             }
@@ -421,6 +497,11 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         const script_catalog_field *f = &type->fields[index];
         script_analyzer_use(a, member, -1, SCRIPT_READ, f->id);
         free(name);
+        pin_value value = { .type = PIN_STR };
+        const char *error = pin_value_text(&a->out->constants, &value, f->name, strlen(f->name));
+        if (error) {
+            script_analyzer_diagnostic(a, member, "%s", error);
+        }
         return script_analyzer_expr_add(
             a,
             (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
@@ -430,7 +511,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .left = -1,
                                  .right = -1,
                                  .member = f->id,
-                                 .constant = { .type = PIN_STR, .str = xstrdup(f->name) } }
+                                 .constant_snapshot = true,
+                                 .constant = value }
         );
     }
     if (index >= 0) {
@@ -475,12 +557,12 @@ static int component_reference(analyzer *a, TSNode node)
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .effects = SCRIPT_EFFECT_READ,
                                  .writable = true };
     TSNode argument = ts_node_named_child(arguments, 0);
     char *name = script_analyzer_name_copy(a, argument);
-    int index = script_catalog_find_type(a->catalog, name);
+    int index = script_analyzer_find_type(a, node, name);
     if (index < 0 || !a->catalog->types[index].component ||
         a->out->owner_symbol < 0 || script_analyzer_named_count(arguments) < 1 ||
         script_analyzer_named_count(arguments) > 2) {
@@ -499,7 +581,7 @@ static int component_reference(analyzer *a, TSNode node)
                                  .type = a->out->symbols[owner].type,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) }
+                                 .range = script_analyzer_range(a, node) }
         );
     }
     free(name);
@@ -525,7 +607,7 @@ static int component_reference(analyzer *a, TSNode node)
             reference = script_analyzer_expr_add(
                 a,
                 (script_expression){ .kind = SCRIPT_EXPR_MEMBER,
-                                     .range = script_analyzer_range(node),
+                                     .range = script_analyzer_range(a, node),
                                      .type = member->type,
                                      .symbol = -1,
                                      .left = reference,
@@ -556,7 +638,7 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) };
+                                 .range = script_analyzer_range(a, node) };
     TSNode arguments = script_analyzer_field(node, "arguments");
     int values[] = { -1, -1, -1 };
     for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
@@ -608,7 +690,7 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
         }
         apush(
             result.arguments,
-            ((script_argument){ index, ordinal, 0, script_analyzer_range(argument) })
+            ((script_argument){ index, ordinal, 0, script_analyzer_range(a, argument) })
         );
     }
     if (values[1] < 0 && values[2] < 0) {
@@ -633,7 +715,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) };
+                                 .range = script_analyzer_range(a, node) };
     if (script_analyzer_named_count(types) != 1 || symbol < 0 ||
         (a->out->symbols[symbol].kind != SCRIPT_STATE &&
          a->out->symbols[symbol].kind != SCRIPT_SHARED_STATE)) {
@@ -645,7 +727,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
                                   .symbol = symbol,
                                   .left = -1,
                                   .right = -1,
-                                  .range = script_analyzer_range(node),
+                                  .range = script_analyzer_range(a, node),
                                   .effects = SCRIPT_EFFECT_READ,
                                   .writable = true };
     int target = script_analyzer_expr_add(a, result);
@@ -679,7 +761,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
                                 .symbol = symbol,
                                 .left = target,
                                 .right = right,
-                                .range = script_analyzer_range(node),
+                                .range = script_analyzer_range(a, node),
                                 .effects = SCRIPT_EFFECT_WRITE |
                                            script_analyzer_expr_effects(a, right) };
     apush(store.results, result.type);
@@ -778,14 +860,14 @@ static bool field_argument(
             (script_expression){ .kind = SCRIPT_EXPR_STRUCT,
                                  .partial = true,
                                  .type = type,
-                                 .range = script_analyzer_range(argument),
+                                 .range = script_analyzer_range(a, argument),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1 }
         );
         apush(
             call->arguments,
-            ((script_argument){ aggregate, parameter, 0, script_analyzer_range(argument) })
+            ((script_argument){ aggregate, parameter, 0, script_analyzer_range(a, argument) })
         );
     }
     if (a->out->expressions[aggregate].kind != SCRIPT_EXPR_STRUCT) {
@@ -806,7 +888,10 @@ static bool field_argument(
     }
     apush(
         structure->arguments,
-        ((script_argument){ expression, field, record->fields[field].id, script_analyzer_range(argument) })
+        ((script_argument){ expression,
+                            field,
+                            record->fields[field].id,
+                            script_analyzer_range(a, argument) })
     );
     structure->argument_count = acount(structure->arguments);
     structure->effects |= script_analyzer_expr_effects(a, expression);
@@ -822,12 +907,13 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
     for (int i = 0; i < count; i++) {
         (*values)[i] = -1;
     }
-    int found = -1;
+    int found = -1, best_cost = INT_MAX, best_literal_cost = INT_MAX;
     for (int c = 0; c < a->catalog->capability_count; c++) {
         const script_catalog_capability *candidate = &a->catalog->capabilities[c];
         const char *full = candidate->qualified_name ? candidate->qualified_name
                                                      : candidate->name;
-        if (candidate->kind != SCRIPT_CAPABILITY_FUNCTION ||
+        if (!script_analyzer_native_capability(a, candidate->id) ||
+            candidate->kind != SCRIPT_CAPABILITY_FUNCTION ||
             (!script_name_matches(full, name) &&
              !script_name_matches(candidate->name, name))) {
             continue;
@@ -837,6 +923,7 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
             sizeof *seen
         );
         bool matches = true;
+        int cost = 0, literal_cost = 0;
         int ordinal = 0;
         for (int i = 0; matches && i < count; i++) {
             TSNode argument = ts_node_named_child(arguments, (uint32_t)i);
@@ -885,13 +972,26 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
             }
             matches = wanted.container == actual.container &&
                       script_catalog_type_assignable(a->catalog, wanted, actual);
+            if (matches && script_type_numeric(wanted) &&
+                script_type_numeric(actual) && wanted.storage != actual.storage) {
+                /* Concrete operand widths choose the kernel first. Literal
+                 * defaults break ties without widening a typed float operand. */
+                if (actual.flags & SCRIPT_TYPE_UNTYPED) {
+                    literal_cost += wanted.storage == PIN_F64 ? 0 : 1;
+                } else {
+                    cost += wanted.storage == PIN_F64 ? 1 : 2;
+                }
+            }
         }
         for (int i = 0; matches && i < candidate->parameter_count; i++) {
             matches = seen[i] || candidate->parameters[i].has_default;
         }
         free(seen);
-        if (matches) {
-            found = found == -1 ? c : -2;
+        if (matches && (cost < best_cost ||
+                        (cost == best_cost && literal_cost <= best_literal_cost))) {
+            found = cost < best_cost || literal_cost < best_literal_cost ? c : -2;
+            best_cost = cost;
+            best_literal_cost = literal_cost;
         }
     }
     return found;
@@ -946,6 +1046,176 @@ void script_analyzer_finish_boxes(analyzer *a)
         }
     }
 }
+/* T(value) converts to T. Integer narrowing clamps unless the argument is
+ * named wrap, and a constant must fit T. A non-numeric T only supplies the
+ * expected type. */
+/* A conversion to an integer type reads an integer literal, in parentheses
+ * too, as int64, or uint64 above int64. It leaves a fraction untyped, which
+ * wrap rejects and an exact conversion types as T; other operands give their
+ * literals int64. */
+script_type script_analyzer_conversion_operand(const analyzer *a, TSNode value)
+{
+    while (script_analyzer_is(value, "parenthesized_expression")) {
+        value = script_analyzer_field(value, "expression");
+    }
+    if (!script_analyzer_is(value, "number")) {
+        return (script_type){ .storage = PIN_I64 };
+    }
+    char *text = script_analyzer_text_copy(a, value);
+    bool hex = strpbrk(text, "xX") != NULL;
+    script_type type = { .flags = SCRIPT_TYPE_UNTYPED };
+    if (hex || !strpbrk(text, ".eE")) {
+        /* Too large for uint64 saturates, and the literal reports its range. */
+        uintmax_t parsed = strtoumax(text, NULL, hex ? 16 : 10);
+        type = (script_type){ .storage = parsed > INT64_MAX ? PIN_U64 : PIN_I64 };
+    }
+    free(text);
+    return type;
+}
+/* A literal, or a unary or binary expression, converted to an integer type
+ * from a typed operand. */
+static bool integer_operand(TSNode value, script_type operand, script_type type)
+{
+    while (script_analyzer_is(value, "parenthesized_expression")) {
+        value = script_analyzer_field(value, "expression");
+    }
+    return !(operand.flags & SCRIPT_TYPE_UNTYPED) && type.storage >= PIN_I8 &&
+           type.storage <= PIN_U64 &&
+           (script_analyzer_is(value, "number") ||
+            script_analyzer_is(value, "unary_expression") ||
+            script_analyzer_is(value, "binary_expression"));
+}
+static int conversion(analyzer *a, TSNode node, script_type type)
+{
+    TSNode arguments = script_analyzer_field(node, "arguments"), value = { 0 };
+    int count = 0;
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (!ts_node_is_extra(child)) {
+            value = child;
+            count++;
+        }
+    }
+    behavior_cast_mode mode = BEHAVIOR_CAST_EXACT;
+    if (count != 1 || !ts_node_is_null(script_analyzer_field(node, "type_arguments"))) {
+        script_analyzer_diagnostic(a, node, "Conversion takes one value");
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = script_analyzer_bad_type(),
+                                 .range = script_analyzer_range(a, node),
+                                 .left = -1,
+                                 .right = -1,
+                                 .symbol = -1,
+                                 .entry = -1 }
+        );
+    }
+    if (script_analyzer_is(value, "named_argument")) {
+        TSNode label = script_analyzer_field(value, "name");
+        mode = script_analyzer_text_is(a, label, "wrap") ? BEHAVIOR_CAST_WRAP
+                                                         : BEHAVIOR_CAST_EXACT;
+        if (mode == BEHAVIOR_CAST_EXACT) {
+            script_analyzer_diagnostic(a, label, "A conversion argument may only be named wrap");
+        }
+        value = script_analyzer_field(value, "value");
+    }
+    bool character = script_type_char(type);
+    if (character && mode != BEHAVIOR_CAST_EXACT) {
+        script_analyzer_diagnostic(a, node, "char converts only with char(value)");
+        mode = BEHAVIOR_CAST_EXACT;
+    }
+    /* char(literal) checks the literal as the conversion would check it.
+     * An untyped integer operand converted to an integer type is an int64,
+     * or uint64 beyond it, so a constant outside T does not fit T. */
+    script_type operand = script_analyzer_conversion_operand(a, value);
+    script_type literal = character ? (script_type){ .storage = PIN_I64 }
+                        : mode == BEHAVIOR_CAST_EXACT &&
+                                  !integer_operand(value, operand, type)
+                            ? type
+                            : operand;
+    script_expression result = { .kind = SCRIPT_EXPR_CAST,
+                                 .type = type,
+                                 .range = script_analyzer_range(a, node),
+                                 .left = script_analyzer_expression(a, value, literal),
+                                 .right = -1,
+                                 .symbol = -1,
+                                 .entry = -1,
+                                 .conversion = mode };
+    script_type actual = script_analyzer_expr_type(a, result.left);
+    bool numeric = script_type_numeric(actual) && script_type_numeric(type);
+    bool integers = numeric && actual.storage <= PIN_U64 && type.storage <= PIN_U64;
+    if (mode != BEHAVIOR_CAST_EXACT && !integers &&
+        !(actual.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, node, "wrap converts between integer types");
+    }
+    if (character && numeric && !integers) {
+        script_analyzer_diagnostic(a, node, "char converts from an integer");
+    }
+    if (!numeric && script_catalog_type_assignable(a->catalog, type, actual)) {
+        return result.left;
+    }
+    if (!numeric && !(actual.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, node, "Conversion requires numeric values or the value's own type");
+    }
+    /* Constant integer conversions are checked with the other constants. */
+    pin_value constant;
+    if (character && integers && !script_type_char(actual) &&
+        !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant)) {
+        uint64_t bits = behavior_scalar_bits(constant);
+        bool negative = behavior_scalar_signed(constant.type) && (int64_t)bits < 0;
+        if (negative || bits > 0x10FFFF || (bits >= 0xD800 && bits <= 0xDFFF)) {
+            script_analyzer_diagnostic(a, node, "Constant does not fit in char");
+        }
+    }
+    result.effects = script_analyzer_expr_effects(a, result.left);
+    return script_analyzer_expr_add(a, result);
+}
+/* `xs.f(...)` calls the array function f with xs first. */
+const script_catalog_capability *script_analyzer_array_method(analyzer *a, TSNode member)
+{
+    char *name = script_analyzer_name_copy(a, member);
+    const script_catalog_capability *found = NULL;
+    for (int i = 0; !found && i < a->catalog->capability_count; i++) {
+        const script_catalog_capability *candidate = &a->catalog->capabilities[i];
+        if (candidate->kind == SCRIPT_CAPABILITY_FUNCTION && candidate->parameter_count &&
+            candidate->parameters[0].type.container == PIN_CONTAINER_ARRAY &&
+            script_analyzer_native_capability(a, candidate->id) &&
+            script_name_matches(candidate->name, name)) {
+            found = candidate;
+        }
+    }
+    free(name);
+    return found;
+}
+/* The array functions that return their array changed; `slice` returns a new one. */
+static const char *const ARRAY_CHANGERS[] = {
+    "append",  "add_unique",   "extend",      "set_array_elem",
+    "insert",  "remove_index", "remove_item", "clear",
+    "reverse", "swap",         "resize",
+};
+bool script_analyzer_array_changer(const script_catalog_capability *function)
+{
+    for (size_t i = 0; i < sizeof ARRAY_CHANGERS / sizeof *ARRAY_CHANGERS; i++) {
+        if (script_name_matches(function->name, ARRAY_CHANGERS[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool migrated_self(const analyzer *a, const script_catalog_capability *capability)
+{
+    if (!a->migration_import || a->out->kind == SCRIPT_PROGRAM_LIBRARY ||
+        !capability || capability->id != script_catalog_id("capability", "Self") ||
+        capability->operation != SCRIPT_OPERATION_OWNER ||
+        !script_catalog_operation_valid(capability) || a->out->owner_symbol < 0 ||
+        script_analyzer_lookup_name(a, "self") != a->out->owner_symbol) {
+        return false;
+    }
+    const script_symbol *owner = &a->out->symbols[a->out->owner_symbol];
+    return owner->kind == SCRIPT_GLOBAL &&
+           owner->id == script_catalog_id("owner", a->out->identity) &&
+           script_type_equal(capability->results[0].type, owner->type);
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     TSNode target = script_analyzer_field(node, "function"),
@@ -969,11 +1239,27 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             name = script_analyzer_name_copy(a, script_analyzer_field(type, "name"));
         }
     }
-    int symbol = script_analyzer_callable_symbol(a, name);
+    bool imported = script_analyzer_import_namespace(a, target, name);
+    int symbol = imported ? script_analyzer_package_function(a, target, name)
+                          : script_analyzer_callable_symbol(a, name);
     const script_catalog_capability *capability = NULL;
     int function_index = symbol >= 0 ? a->out->symbols[symbol].function : -1;
     int receiver = -1, entry_index = -1;
     int *resolved_arguments = NULL;
+    int specialized = script_analyzer_generic_call(a, node, symbol, &resolved_arguments);
+    if (specialized >= 0) {
+        function_index = specialized;
+        symbol = a->out->functions[specialized].symbol;
+    }
+    if (symbol < 0) {
+        int imported = -1;
+        if (script_analyzer_generic_import_call(a, node, name, &imported, &capability, &resolved_arguments) &&
+            imported >= 0) {
+            free(name);
+            free(resolved_arguments);
+            return imported;
+        }
+    }
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
         script_analyzer_resolve_initializer(a, symbol);
         capability = script_catalog_capability_by_id(
@@ -989,7 +1275,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         if (initializer >= 0 &&
             a->out->expressions[initializer].kind == SCRIPT_EXPR_STORE) {
             script_expression store = a->out->expressions[initializer];
-            store.range = script_analyzer_range(node);
+            store.range = script_analyzer_range(a, node);
             store.instance = a->out->symbols[symbol].id;
             store.arguments = NULL;
             store.argument_count = 0;
@@ -1022,16 +1308,16 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         }
     }
     if (!capability && function_index < 0) {
-        int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+        int index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_FUNCTION);
         if (index == -2) {
             index = overloaded_capability(a, name, arguments, &resolved_arguments);
         }
         if (index == -1) {
-            index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_ACTION);
+            index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_ACTION);
         }
         if (index >= 0) {
             capability = &a->catalog->capabilities[index];
-        } else if (script_analyzer_is(target, "member_expression")) {
+        } else if (!imported && script_analyzer_is(target, "member_expression")) {
             TSNode object = script_analyzer_field(target, "object");
             int action = script_analyzer_lookup(a, object);
             if (action >= 0 && a->out->symbols[action].kind == SCRIPT_ACTION) {
@@ -1074,6 +1360,9 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 uint64_t receiver_type = script_analyzer_expr_type(a, receiver).nominal;
                 for (int i = 0; i < a->catalog->capability_count; i++) {
                     const script_catalog_capability *candidate = &a->catalog->capabilities[i];
+                    if (!script_analyzer_native_capability(a, candidate->id)) {
+                        continue;
+                    }
                     if (script_catalog_canonical_type(
                             a->catalog,
                             (script_type){ .nominal = candidate->receiver }
@@ -1093,8 +1382,37 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 }
                 free(method);
             }
+            if (!capability && function_index < 0 &&
+                script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_ARRAY) {
+                TSNode member = script_analyzer_field(target, "member");
+                capability = script_analyzer_array_method(a, member);
+                if (capability && script_analyzer_array_changer(capability) &&
+                    !ts_node_eq(a->changing, node)) {
+                    char *method = script_analyzer_name_copy(a, member);
+                    script_analyzer_diagnostic(a, target, "%s changes the array; call it as a statement on a name", method);
+                    free(method);
+                }
+            }
         }
-        if (!capability && function_index < 0) {
+        /* Numeric type names always convert; other types yield to a
+         * capability of the same name, such as a literal node. */
+        bool numeric = script_type_numeric(script_builtin_type(name));
+        script_type converted = (index == -1 || (index >= 0 && numeric)) &&
+                                        !imported &&
+                                        script_analyzer_is(target, "identifier")
+                                  ? script_analyzer_conversion_type(a, target, name)
+                                  : script_analyzer_bad_type();
+        if (function_index < 0 && !(converted.flags & SCRIPT_TYPE_ERROR) &&
+            (index == -1 || numeric)) {
+            free(name);
+            free(resolved_arguments);
+            return conversion(a, node, converted);
+        }
+        if (!capability && function_index < 0 && !strcmp(name, "cast")) {
+            script_analyzer_diagnostic(a, target, "cast<T>(value) was removed; write T(value)");
+        } else if (!capability && function_index < 0 && script_analyzer_private_member(a, target, name)) {
+            script_analyzer_diagnostic(a, target, SCRIPT_PRIVATE_MEMBER, name);
+        } else if (!capability && function_index < 0) {
             script_analyzer_diagnostic(a, target, "%s callable '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
         }
     }
@@ -1113,7 +1431,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         } else {
             TSNode type = ts_node_named_child(types, 0);
             char *event_name = script_analyzer_name_copy(a, script_analyzer_field(type, "name"));
-            int event = script_catalog_find_capability(a->catalog, event_name, SCRIPT_CAPABILITY_EVENT);
+            int event = script_analyzer_find_capability(a, node, event_name, SCRIPT_CAPABILITY_EVENT);
             free(event_name);
             if (event < 0) {
                 script_analyzer_diagnostic(a, type, "%s event declaration", event == -2 ? "Ambiguous" : "Unknown");
@@ -1140,6 +1458,17 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
         }
     }
+    if (capability && !a->migration_import) {
+        if (capability->component &&
+            (capability->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
+             capability->component_access == SCRIPT_COMPONENT_ACCESS_WRITE ||
+             capability->component_access == SCRIPT_COMPONENT_ACCESS_HAS)) {
+            script_analyzer_diagnostic(a, target, "Generated component accessors are import-only; use entity.Component properties");
+        }
+        if (capability->id == script_catalog_id("capability", "Self")) {
+            script_analyzer_diagnostic(a, target, "Use self instead of Self()");
+        }
+    }
     const script_function *function = function_index >= 0
                                         ? &a->out->functions[function_index]
                                         : NULL;
@@ -1149,7 +1478,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     bool *seen = xcalloc((size_t)(parameter_count ? parameter_count : 1), sizeof *seen);
     script_expression result = {
         .kind = SCRIPT_EXPR_CALL,
-        .range = script_analyzer_range(node),
+        .range = script_analyzer_range(a, node),
         .symbol = symbol,
         .left = receiver,
         .right = function_index,
@@ -1163,19 +1492,36 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         .member = selected_event,
         .effects = capability ? capability->effects : 0
     };
+    /* Legacy Self imports become the same bound self expression. Only a
+     * library's self reads its caller's invocation; behavior/system self is
+     * stable. Keep the catalog contract and the migration oracle exact. */
+    if (migrated_self(a, capability)) {
+        result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
+    }
+    if (capability && a->out->kind == SCRIPT_PROGRAM_LIBRARY &&
+        (capability->id == script_catalog_id("capability", "Self") ||
+         (capability->component && capability->component_entity < 0))) {
+        result.effects |= SCRIPT_EFFECT_INVOCATION_READ;
+    }
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION &&
         a->out->symbols[symbol].initializer >= 0) {
         result.instance = a->out->symbols[symbol].id;
     }
     int ordinal = 0;
     if (receiver >= 0 && capability && parameter_count) {
-        apush(result.arguments, ((script_argument){ receiver, 0, 0, script_analyzer_range(target) }));
+        apush(
+            result.arguments,
+            ((script_argument){ receiver, 0, 0, script_analyzer_range(a, target) })
+        );
         seen[0] = true;
         ordinal = 1;
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
         TSNode argument = ts_node_named_child(arguments, i);
         if (ts_node_is_extra(argument)) {
+            continue;
+        }
+        if (resolved_arguments && resolved_arguments[i] == -2) {
             continue;
         }
         TSNode name_node = script_analyzer_field(argument, "name"),
@@ -1243,6 +1589,10 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                           script_analyzer_is(value, "string")) &&
                          (script_analyzer_is(value, "string") ||
                           script_analyzer_lookup(a, value) < 0);
+        if (capability && parameter >= 0 && parameter < parameter_count &&
+            capability->parameters[parameter].reference_kind != SCRIPT_REFERENCE_NONE) {
+            type = script_reference_type(capability->parameters[parameter].reference_kind);
+        }
         int expression_index = !reference && resolved_arguments &&
                                        resolved_arguments[i] >= 0
                                  ? resolved_arguments[i]
@@ -1253,6 +1603,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                        &capability->parameters[parameter]
                                    )
                                  : script_analyzer_expression(a, value, type);
+        if (capability && parameter >= 0 && parameter < parameter_count &&
+            capability->parameters[parameter].c_string) {
+            script_analyzer_c_string_argument(
+                a,
+                value,
+                expression_index,
+                capability->parameters[parameter].name
+            );
+        }
         if (capability && parameter >= 0 && parameter < parameter_count &&
             capability->parameters[parameter].default_owner &&
             a->out->owner_symbol >= 0) {
@@ -1267,7 +1626,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                          .symbol = owner,
                                          .left = -1,
                                          .right = -1,
-                                         .range = script_analyzer_range(value) }
+                                         .range = script_analyzer_range(a, value) }
                 );
             }
         }
@@ -1291,7 +1650,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                 capability && parameter >= 0 && parameter < parameter_count
                                     ? capability->parameters[parameter].member
                                     : 0,
-                                script_analyzer_range(argument) })
+                                script_analyzer_range(a, argument) })
         );
         result.effects |= script_analyzer_expr_effects(a, expression_index);
         function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
@@ -1319,7 +1678,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             if (authored_default >= 0) {
                 apush(
                     result.arguments,
-                    ((script_argument){ authored_default, i, 0, script_analyzer_range(arguments) })
+                    ((script_argument){ authored_default, i, 0, script_analyzer_range(a, arguments) })
                 );
                 result.effects |= script_analyzer_expr_effects(a, authored_default);
             }
@@ -1342,11 +1701,18 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
                                      .type = a->out->symbols[owner].type,
                                      .symbol = owner,
+                                     .effects = a->out->kind == SCRIPT_PROGRAM_LIBRARY
+                                                  ? SCRIPT_EFFECT_INVOCATION_READ
+                                                  : 0,
                                      .left = -1,
                                      .right = -1,
-                                     .range = script_analyzer_range(arguments) }
+                                     .range = script_analyzer_range(a, arguments) }
             );
-            apush(result.arguments, ((script_argument){ index, i, 0, script_analyzer_range(arguments) }));
+            apush(
+                result.arguments,
+                ((script_argument){ index, i, 0, script_analyzer_range(a, arguments) })
+            );
+            result.effects |= script_analyzer_expr_effects(a, index);
             seen[i] = true;
         }
         if (!seen[i] && capability && capability->parameters[i].has_default) {
@@ -1364,12 +1730,23 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                      .type = capability->parameters[i].type,
                                      .constant = value,
                                      .constant_snapshot = true,
-                                     .range = script_analyzer_range(arguments),
+                                     .range = script_analyzer_range(a, arguments),
                                      .symbol = -1,
                                      .left = -1,
                                      .right = -1 }
             );
-            apush(result.arguments, ((script_argument){ index, i, 0, script_analyzer_range(arguments) }));
+            if (capability->parameters[i].c_string) {
+                script_analyzer_c_string_argument(
+                    a,
+                    arguments,
+                    index,
+                    capability->parameters[i].name
+                );
+            }
+            apush(
+                result.arguments,
+                ((script_argument){ index, i, 0, script_analyzer_range(a, arguments) })
+            );
         }
     }
     free(seen);

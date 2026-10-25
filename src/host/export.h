@@ -42,5 +42,7 @@ typedef struct
  * when it is an earlier export. Prints the failure and returns false; when
  * only the archive fails, the folder is still in place. */
 bool chibi_export(const chibi_export_spec *);
+/* Deletes a folder without following symlinks; false when anything remains. */
+bool chibi_remove_tree(const char *path);
 
 #endif

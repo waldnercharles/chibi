@@ -6,8 +6,10 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/core_nodes.h"
 #include "runtime/component_catalog.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,7 +92,7 @@ TEST_CASE(prototype_children_follow_a_rename)
         reference_index_add_prototype(index, i, loaded);
         prototype_free(loaded);
     }
-    refactor_project project = { index, texts, &registry, NULL };
+    refactor_project project = { index, texts, &registry };
     refactor_plan plan = { 0 };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = BARREL };
     bool renamed = refactor_rename(&project, symbol, "Cannon", &plan, error, sizeof error) ==
@@ -287,12 +289,14 @@ static bool particle_bindings_rewritten(const char *expected)
         if (edit->asset == 1) {
             prototype *saved = prototype_load_authored(edit->text, &particle_registry, error, sizeof error);
             pin_value material = { 0 }, parameters = { 0 };
+            arena text_reads = { 0 };
             bool ok = saved &&
-                      !prototype_read_field(saved, "Shader", "material", &material) &&
-                      !prototype_read_field(saved, "Shader", "parameters", &parameters) &&
-                      !strcmp(material.str, expected) &&
-                      !strcmp(parameters.str, "Speed 2\n");
+                      !prototype_read_field(&text_reads, saved, "Shader", "material", &material) &&
+                      !prototype_read_field(&text_reads, saved, "Shader", "parameters", &parameters) &&
+                      !strcmp(pin_text(material).bytes, expected) &&
+                      !strcmp(pin_text(parameters).bytes, "Speed 2\n");
             prototype_free(saved);
+            arena_free(&text_reads);
             REQUIRE(ok);
             rewritten++;
         }
@@ -320,7 +324,7 @@ TEST_CASE(qualified_shader_bindings_follow_library_and_function_renames)
     const char *texts[] = { particle_library_text,
                             particle_prototype_text,
                             particle_scene_text };
-    refactor_project project = { particle_index, texts, &particle_registry, NULL };
+    refactor_project project = { particle_index, texts, &particle_registry };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = 0 };
     char error[256] = { 0 };
     REQUIRE(
@@ -350,7 +354,7 @@ TEST_CASE(qualified_shader_bindings_reject_stale_refactors)
                             "name \"Cloud\"\ncomponents {\n    Shader "
                             "material=\"RainParticles.Other\"\n}\n",
                             particle_scene_text };
-    refactor_project project = { particle_index, texts, &particle_registry, NULL };
+    refactor_project project = { particle_index, texts, &particle_registry };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = 0 };
     char error[256] = { 0 };
     REQUIRE(

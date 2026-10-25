@@ -15,7 +15,7 @@ The corrected admitted selectors pass:
 | Linux Clang 19.1.7, ASan/UBSan | Bytecode and actual SLJIT | 109 | 7,872 | 1.813 s |
 | Node v24.19.0, Emscripten 6.0.10 | Bytecode and actual Wasm | 109 | 7,860 | 0.537 s |
 
-Both runs have the production 60-second ceiling, including test fixture setup.
+Both runs include test fixture setup in the production-supervisor measurement.
 Configuration and compilation are separate. The fixture explicitly verifies
 `execution_module_backend` for every new scenario. Native/Node assertion counts
 differ because the existing selector has platform-specific cases.

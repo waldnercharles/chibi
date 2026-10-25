@@ -1,7 +1,9 @@
 #include "authoring/source_prototype_flow.h"
 
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <stdlib.h>
 
@@ -30,15 +32,24 @@ static void mark_symbol(flow *f, int document, int symbol)
 
 static void add_name(flow *f, int document, const script_expression *constant)
 {
-    int index = script_catalog_find_capability(f->catalog, constant->constant.str, SCRIPT_CAPABILITY_PROTOTYPE);
-    if (index < 0) {
+    const script_catalog_capability
+        *prototype = constant->capability
+                       ? script_catalog_capability_by_id(f->catalog, constant->capability)
+                       : NULL;
+    if (!constant->capability) {
+        arena storage = { 0 };
+        const char *name;
+        const char *error = pin_text_cstring(&storage, constant->constant, &name, NULL);
+        int index = error ? -1 : script_catalog_find_capability(f->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE);
+        prototype = index >= 0 ? &f->catalog->capabilities[index] : NULL;
+        arena_free(&storage);
+    }
+    if (!prototype || prototype->kind != SCRIPT_CAPABILITY_PROTOTYPE) {
         return;
     }
     apush(
         f->names,
-        ((authoring_prototype_name){ document,
-                                     constant->range,
-                                     f->catalog->capabilities[index].id })
+        ((authoring_prototype_name){ document, constant->range, prototype->id })
     );
 }
 
@@ -53,11 +64,12 @@ static void mark_value(flow *f, int document, int expression)
     switch (e->kind) {
         case SCRIPT_EXPR_SYMBOL: mark_symbol(f, document, e->symbol); return;
         case SCRIPT_EXPR_CONSTANT:
-            /* A constant with a capability is already a direct reference, and a
-             * snapshot of an omitted default is edited at its declaration. */
-            if (!e->capability && !e->constant_snapshot &&
+            /* Report typed origins too: a direct reference may reach this sink
+             * through a local or authored parameter. Omitted-default snapshots
+             * are still edited only at their original declaration. */
+            if (!e->constant_snapshot && e->constant.container == PIN_CONTAINER_SINGLE &&
                 (e->constant.type == PIN_STR || e->constant.type == PIN_NAME) &&
-                e->constant.str) {
+                pin_text(e->constant).length) {
                 add_name(f, document, e);
             }
             return;

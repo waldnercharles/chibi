@@ -80,12 +80,12 @@ failure cases. An initial malformed fixture and missing activation were repaired
 before those baseline passes; the failed revision's evidence was retained.
 
 The dedicated `language-component-write` and `wasm-component-write` routes keep
-the unchanged production 60-second supervisor. Expanded implementation fixtures
-and generated-C checks require fresh independent workload admission and exact
-source/binary identities before execution. The fixed selector is included once
+the production supervisor. Review expanded implementation fixtures and generated-C
+checks for the affected contracts, and record the source/binary identities and
+actual results. The fixed selector is included once
 in each regular language and Wasm group, preserving the other members and their
-order. Those complete groups require independent admission and measurement on
-the exact candidate. Full quarantined suites remain disabled, not passed.
+order. Run those complete groups on the candidate when their coverage is required.
+Historical selected results do not establish a full-suite pass.
 
 The native `language-component-write-layout` route selects only the same eight-map
 C sizing case, using the actual internal layout helper without building or executing
@@ -104,7 +104,7 @@ identities checked before each serial route and after the matrix:
 - Prepared integration: 19 cases, 833 assertions, 0.260 seconds.
 - Complete native tooling: 116 cases, 33,227 assertions, 23.787 seconds.
 
-Each route used the unchanged production 60-second supervisor; configuration and
+Each route used the production supervisor; configuration and
 build time were separate. Before these passes, source review caught and repaired
 the native operand-cell reservation defect without executing unsafe generated
 code. The first candidate runtime then caught a fixture catalog-lifecycle error;
@@ -129,7 +129,7 @@ of exact integrated checkpoint `b38abe0e` passed:
 - Native tooling, including generated C: 116 cases, 33,227 assertions, 23.789 seconds.
 - Prepared integration: 19 cases, 833 assertions, 0.250 seconds.
 
-All four commands ran serially under the unchanged 60-second supervisor, with
+All four commands ran serially under the production supervisor, with
 source/artifact identities checked before each run and afterward. Native used
 Clang 19 Debug ASan/UBSan with leak detection disabled; Wasm used serial Release
 with test assertions. The earlier safe control was reverified, not replayed:
@@ -138,5 +138,5 @@ its helper, guards and fixture bodies are identical in the integration.
 [Machine-readable validation evidence](scalar-component-writes-validation.json)
 records exact commits, hashes, configurations, workloads, failures and results.
 The subsequent documentation-only change does not alter product, fixture or
-policy bytes. Full quarantined suites remain disabled, not passed; no whole-app,
+policy bytes. Full suites were not run; no whole-app,
 performance, leak-check or unpublished historical-results claim is made.

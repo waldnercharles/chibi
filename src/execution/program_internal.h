@@ -161,6 +161,7 @@ struct execution_program
     arena service_names;
     eval_component_reader reader;
     state_value *shared;
+    bool registration_state; /* Inherited by libraries before state initialization. */
     execution_instance **instances;
     execution_instance **row_table;
     int *change_queries;
@@ -281,7 +282,6 @@ bool program_capture_reference(
     pin_value *
 );
 void program_collect_payloads(execution_program *, execution_activation *extra);
-const pin_value *program_event_argument(behavior_function_context *, uint64_t, int);
 static inline bool program_wait_due(const command_wait *wait, double now)
 {
     return wait->timer &&

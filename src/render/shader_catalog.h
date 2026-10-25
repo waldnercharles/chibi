@@ -97,6 +97,8 @@ bool render_shader_model_snapshot(
     shader_error *error
 );
 bool render_shader_is_shape(int index);
+/* Validated material IR, borrowed until catalog publication or clear. */
+const shader_graph *render_shader_material_graph(int index);
 /* Exact centered sphere with a constant or scalar parameter radius. */
 bool render_shader_sphere_radius(int index, const float parameters[32][4], float *radius);
 bool render_shader_is_model(int index);

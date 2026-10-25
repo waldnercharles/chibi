@@ -19,11 +19,11 @@ PORTS(EACH_OUT, CORE_EACH_OUTPUTS)
 PORTS(DELAY, CORE_DELAY_INPUTS)
 PORTS(DELAY_OUT, CORE_DELAY_OUTPUTS)
 PORTS(PRINT, CORE_PRINT_INPUTS)
+PORTS(ASSERT, CORE_ASSERT_INPUTS)
 PORTS(VALUE, CORE_VARIABLE_DATA)
 PORTS(SET, CORE_SET_INPUTS)
 PORTS(SET_OUT, CORE_SET_OUTPUTS)
 PORTS(SELF, CORE_SELF_OUTPUTS)
-PORTS(DELTA, CORE_DELTA_OUTPUTS)
 PORTS(COMPONENT_GET, CORE_COMPONENT_GET_INPUTS)
 PORTS(COMPONENT_VALUE, CORE_COMPONENT_GET_OUTPUTS)
 PORTS(COMPONENT_HAS, CORE_COMPONENT_HAS_OUTPUTS)
@@ -85,6 +85,8 @@ static const native_capability_definition DEFINITIONS[] = {
       CORE_PRINT_PRESENTATION,
       IN(PRINT),
       OUT(THEN) },
+    /* Pure: it lowers to an ASSERT, which no optimization removes. */
+    { FUNCTION(CORE_ASSERT_NAME, CORE_ASSERT_SOURCE), CORE_ASSERT_PRESENTATION, IN(ASSERT) },
     { FUNCTION(CORE_GET_NAME, CORE_GET_SOURCE), OUT(VALUE), .state_access = SCRIPT_STATE_ACCESS_READ },
     { ACTION(CORE_SET_NAME, CORE_SET_SOURCE, 0),
       IN(SET),
@@ -128,29 +130,21 @@ static const native_capability_definition DEFINITIONS[] = {
     { FUNCTION(CORE_SELF_NAME, CORE_SELF_SOURCE),
       CORE_SELF_PRESENTATION,
       OUT(SELF),
+      .effects = SCRIPT_EFFECT_INVOCATION_READ,
       .operation = SCRIPT_OPERATION_OWNER },
-    { FUNCTION(CORE_DELTA_NAME, CORE_DELTA_SOURCE), OUT(DELTA), .operation = SCRIPT_OPERATION_DELTA },
 };
 static const node_access PRINT_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 static const native_definition_binding BINDINGS[] = {
     { .canonical_name = CORE_PRINT_NAME,
       .implementation = { .call = &EXECUTION_PrintString, .access = &PRINT_ACCESS } },
+    { .canonical_name = CORE_ASSERT_NAME, .implementation = { .intrinsic = BF_ASSERT } },
 };
 static const native_global_definition GLOBALS[] = {
     { .canonical_name = "self", .type = SELF },
-    { .canonical_name = CORE_DELTA_NAME,
-      .source_name = "delta",
-      .type = DELTA,
-      .identity = NATIVE_GLOBAL_IDENTITY_CAPABILITY,
-      .unit = "s" },
-    { .canonical_name = "dt", .type = DELTA, .unit = "s" },
     { .canonical_name = "pi", .type = PI },
 };
 static const native_definition_global_binding GLOBAL_BINDINGS[] = {
     { .canonical_name = "self", .instruction = { .op = BF_OWNER, .type = PIN_HANDLE } },
-    { .canonical_name = CORE_DELTA_NAME,
-      .instruction = { .op = BF_DELTA, .type = PIN_F32 } },
-    { .canonical_name = "dt", .instruction = { .op = BF_DELTA, .type = PIN_F32 } },
     { .canonical_name = "pi",
       .instruction = { .op = BF_CONSTANT,
                        .type = PIN_F64,

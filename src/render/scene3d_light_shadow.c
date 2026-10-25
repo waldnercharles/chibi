@@ -122,7 +122,7 @@ static CF_V3 light_center(CF_V4 light)
     return (CF_V3){ light.x, light.y, light.z };
 }
 
-bool render_scene3d_light_shadow_near(const render_scene3d_light_shadow *shadow, int light, CF_M4x4 box)
+static bool near_box(const render_scene3d_light_shadow *shadow, int light, CF_M4x4 box, bool bounds_only)
 {
     assert(light < shadow->count);
     CF_V4 at = shadow->lights[light];
@@ -140,7 +140,18 @@ bool render_scene3d_light_shadow_near(const render_scene3d_light_shadow *shadow,
         around = around && fabsf(cf_dot_v3(offset, edge)) <= .5f * length;
         diagonal += length;
     }
-    return !around && cf_len_v3(offset) < at.w + .5f * sqrtf(diagonal);
+    return (bounds_only || !around) &&
+           cf_len_v3(offset) < at.w + .5f * sqrtf(diagonal);
+}
+
+bool render_scene3d_light_shadow_near(const render_scene3d_light_shadow *shadow, int light, CF_M4x4 box)
+{
+    return near_box(shadow, light, box, false);
+}
+
+bool render_scene3d_light_shadow_mesh_near(const render_scene3d_light_shadow *shadow, int light, CF_M4x4 box)
+{
+    return near_box(shadow, light, box, true);
 }
 
 bool render_scene3d_light_shadow_reaches(
@@ -246,4 +257,13 @@ void render_scene3d_light_shadow_bind(render_scene3d_light_shadow *shadow)
 void render_scene3d_light_shadow_unbind()
 {
     cf_draw3d_set_texture("scene_light_shadow_map", (CF_Texture){ 0 });
+}
+
+render_scene3d_light_shadow_snapshot render_scene3d_light_shadow_read(render_scene3d_light_shadow *shadow)
+{
+    render_scene3d_depth_map_prepare(&shadow->atlas, 1, 1);
+    return (render_scene3d_light_shadow_snapshot){
+        .map = shadow->atlas.map,
+        .settings = { (float)shadow->count, guard_share(), near_share, (float)FACE },
+    };
 }

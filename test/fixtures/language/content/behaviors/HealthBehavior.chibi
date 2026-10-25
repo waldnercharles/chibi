@@ -1,5 +1,7 @@
-behavior "HealthBehavior" {
-    owner "ecs.entity";
+// Applies accepted damage and reports actual health loss. Died handlers run
+// before destruction; active dashes reject Damage.
+HealthBehavior :: behavior {
+
     macro HealthChanged(Current: double, RemainingHealth: double) -> () {
         exit True;
         exit False;
@@ -9,44 +11,42 @@ behavior "HealthBehavior" {
             goto False;
         }
     }
-    on Damage as damage(Amount: int = 0, Source: handle<"ecs.entity"> = 0) {
-        if (convert<"To Real">(damage.Amount) > 0) {
-            await "Apply Damage"(Current: component("Health", "current"), Maximum: component("Health", "maximum"), Amount: damage.Amount, Source: damage.Source);
+    on Damage :: (Amount: int, Source: handle<ecs.entity>) {
+        if (convert<To_Real>(Amount) > 0) {
+            await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: Amount, Source: Source);
         } else {
         }
     }
-    on Died as died(Source: handle<"ecs.entity"> = 0) {
-        if (cast<double>(component("Health", "current")) <= 0) {
-            await "Notify Encounter"();
+    on Died :: () {
+        if (double(self.Health.current) <= 0) {
+            await Notify_Encounter();
             destroy_entity(Entity: self);
         } else {
         }
     }
-    "Apply Damage" :: fn(Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<"ecs.entity"> = 0) -> () {
-        depth_limit 0;
-        action current_remaininghealth = HealthChanged(Current: plain double = convert<"To Real">(entry.Current), RemainingHealth: plain double = cast<double>(clamp(convert<"To Real">(entry.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(entry.Current)), 0, convert<"To Real">(entry.Maximum))));
-        after entry {
-            if (convert<"To Real">(entry.Current) > 0) {
-                if (has_dash()) {
-                    if (cast<double>(component("Dash", "remaining")) > 0) {
-                        return ();
-                    } else {
-                        current_remaininghealth();
-                    }
+    Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<ecs.entity> = 0) -> () {
+
+        action current_remaininghealth = HealthChanged(Current: plain double = convert<To_Real>(Current), RemainingHealth: plain double = double(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(Maximum))));
+        if (convert<To_Real>(Current) > 0) {
+            if (self.Dash != nil) {
+                if (double(self.Dash.remaining) > 0) {
+                    return ();
                 } else {
                     current_remaininghealth();
                 }
             } else {
-                return ();
+                current_remaininghealth();
             }
+        } else {
+            return ();
         }
         after current_remaininghealth.True {
-            Current := entry.Current
-            RemainingHealth := cast<double>(clamp(convert<"To Real">(Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(Current)), 0, convert<"To Real">(entry.Maximum)))
-            await set_health_current(Value: convert<"To Integer">(RemainingHealth), Target: 0);
-            await send_event<"Damaged">(Entity: engine["Self"](), Amount: int = subtract(A: int = Current, B: int = convert<"To Integer">(RemainingHealth)), Source: entry.Source);
-            if (cast<double>(clamp(convert<"To Real">(Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(Current)), 0, convert<"To Real">(entry.Maximum))) <= 0) {
-                await send_event<"Died">(Entity: engine["Self"](), Source: entry.Source);
+            current := Current
+            RemainingHealth := double(clamp(convert<To_Real>(current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(current)), 0, convert<To_Real>(Maximum)))
+            self.Health.current = convert<To_Integer>(RemainingHealth);
+            await send_event<Damaged>(Entity: self, Amount: int = subtract(A: int = current, B: int = convert<To_Integer>(RemainingHealth)), Source: Source);
+            if (double(clamp(convert<To_Real>(current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(current)), 0, convert<To_Real>(Maximum))) <= 0) {
+                await send_event<Died>(Entity: self, Source: Source);
                 return ();
             } else {
                 return ();
@@ -56,17 +56,15 @@ behavior "HealthBehavior" {
             return ();
         }
     }
-    "Notify Encounter" :: fn() -> () {
-        depth_limit 0;
-        after entry {
-            if (has_encounter_member()) {
-                foreach (foreach_2 in find_entities_with_component(Component: "Encounter")) {
-                    send_event<"RefreshEncounter">(Entity: foreach_2);
-                }
-                return ();
-            } else {
-                return ();
+    Notify_Encounter :: () -> () {
+
+        if (self.EncounterMember != nil) {
+            for (foreach_2 in find_entities_with_component(Component: Encounter)) {
+                send_event<RefreshEncounter>(Entity: foreach_2);
             }
+            return ();
+        } else {
+            return ();
         }
     }
 }

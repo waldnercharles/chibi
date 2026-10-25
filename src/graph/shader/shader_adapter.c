@@ -1,4 +1,5 @@
 #include "graph/model/behavior_asset.h"
+#include "graph/model/value_copy.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/core_nodes.h"
 #include "graph/shader/shader_graph.h"
@@ -95,7 +96,8 @@ int shader_node_input_context(const node *n, int pin, const char **label)
         if (!strcmp(name, "Shader Mapping3D")) {
             context = SHADER_OBJECT_POSITION;
         }
-        if (!strcmp(name, "Shader Surface Influence")) {
+        if (!strcmp(name, "Shader Surface Influence") ||
+            !strcmp(name, "Shader Star Field")) {
             context = SHADER_WORLD_POSITION;
         }
         if (!strcmp(name, "Shader Fractal Noise") || !strcmp(name, "Shader Voronoi")) {
@@ -275,7 +277,7 @@ static int operation(const node *n)
     }
     return -1;
 }
-static int image_source(lowering *l, const node *n)
+static int image_source(lowering *l, const scope *s, const node *n)
 {
     int image = !strcmp(n->desc->name, "Shader Triplanar Texture")
                   ? 3
@@ -292,10 +294,12 @@ static int image_source(lowering *l, const node *n)
         }
     }
     const pin_spec *pins = n->input_pins;
-    shader_image_source source = { .key = (char *)pins[image].default_value.str,
-                                   .color_space = pins[image + 1].default_value.i,
-                                   .filter = pins[image + 2].default_value.i,
-                                   .wrap = pins[image + 3].default_value.i };
+    shader_image_source source = {
+        .key = (char *)graph_text_cstring(s->source, pins[image].default_value),
+        .color_space = pins[image + 1].default_value.i,
+        .filter = pins[image + 2].default_value.i,
+        .wrap = pins[image + 3].default_value.i
+    };
     if (!source.key || !*source.key) {
         return error(l, n->id, "Choose an image for Image Texture");
     }
@@ -354,7 +358,7 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
     }
     int image = -1;
     if (op == SHADER_IMAGE_TEXTURE || op == SHADER_TRIPLANAR_TEXTURE) {
-        image = image_source(l, n);
+        image = image_source(l, s, n);
         if (image < 0) {
             return -1;
         }

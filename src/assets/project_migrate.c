@@ -1,6 +1,11 @@
 #include "assets/project_migrate.h"
 
+#include "assets/project.h"
 #include "language/syntax.h"
+#include "project_migrate26.h"
+#include "project_migrate29.h"
+#include "project_migrate30.h"
+#include "project_migrate31.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -17,19 +22,66 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <tree_sitter/parser.h>
 #include <unistd.h>
 #include <yyjson.h>
 
 /* Historical migration steps parse their source contract, independently of
  * the current language accepted by compilation and authoring. */
 const TSLanguage *tree_sitter_chibi_project23();
+const TSLanguage *tree_sitter_chibi_project24();
+const TSLanguage *tree_sitter_chibi_project25();
+const TSLanguage *tree_sitter_chibi_project26();
+const TSLanguage *tree_sitter_chibi_project27();
+const TSLanguage *tree_sitter_chibi_project28();
+const TSLanguage *tree_sitter_chibi_project29();
+const TSLanguage *tree_sitter_chibi_project30();
+const TSLanguage *tree_sitter_chibi_project31();
 
-static script_syntax *parse23(const char *text)
+void *tree_sitter_chibi_external_scanner_create();
+void tree_sitter_chibi_external_scanner_destroy(void *);
+bool tree_sitter_chibi_external_scanner_scan(void *, TSLexer *, const bool *);
+unsigned tree_sitter_chibi_external_scanner_serialize(void *, char *);
+void tree_sitter_chibi_external_scanner_deserialize(void *, const char *, unsigned);
+
+void *tree_sitter_chibi_project24_external_scanner_create()
+{
+    return tree_sitter_chibi_external_scanner_create();
+}
+void tree_sitter_chibi_project24_external_scanner_destroy(void *scanner)
+{
+    tree_sitter_chibi_external_scanner_destroy(scanner);
+}
+bool tree_sitter_chibi_project24_external_scanner_scan(void *scanner, TSLexer *lexer, const bool *valid)
+{
+    return tree_sitter_chibi_external_scanner_scan(scanner, lexer, valid);
+}
+unsigned tree_sitter_chibi_project24_external_scanner_serialize(void *scanner, char *buffer)
+{
+    return tree_sitter_chibi_external_scanner_serialize(scanner, buffer);
+}
+void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, const char *buffer, unsigned length)
+{
+    tree_sitter_chibi_external_scanner_deserialize(scanner, buffer, length);
+}
+
+script_syntax *chibi_migrate_parse(const char *text, int version)
 {
     script_syntax *syntax = xcalloc(1, sizeof *syntax);
     syntax->text = xstrdup(text);
     TSParser *parser = ts_parser_new();
-    bool compatible = ts_parser_set_language(parser, tree_sitter_chibi_project23());
+    bool compatible = ts_parser_set_language(
+        parser,
+        version == 23   ? tree_sitter_chibi_project23()
+        : version == 24 ? tree_sitter_chibi_project24()
+        : version == 25 ? tree_sitter_chibi_project25()
+        : version == 26 ? tree_sitter_chibi_project26()
+        : version == 27 ? tree_sitter_chibi_project27()
+        : version == 28 ? tree_sitter_chibi_project28()
+        : version == 29 ? tree_sitter_chibi_project29()
+        : version == 30 ? tree_sitter_chibi_project30()
+                        : tree_sitter_chibi_project31()
+    );
     assert(compatible);
     (void)compatible;
     syntax->tree = ts_parser_parse_string(parser, NULL, text, (uint32_t)strlen(text));
@@ -53,12 +105,79 @@ static script_syntax *parse23(const char *text)
         }
         script_diagnostic diagnostic = {
             .range = script_node_range(problem),
-            .message = "Invalid version 23 source syntax"
+            .message = "Invalid historical source syntax"
         };
         apush(syntax->diagnostics, diagnostic);
         syntax->diagnostic_count = 1;
     }
     return syntax;
+}
+
+static script_syntax *parse23(const char *text)
+{
+    return chibi_migrate_parse(text, 23);
+}
+
+static script_syntax *parse24(const char *text)
+{
+    return chibi_migrate_parse(text, 24);
+}
+
+static script_syntax *parse25(const char *text)
+{
+    return chibi_migrate_parse(text, 25);
+}
+
+static script_syntax *parse26(const char *text)
+{
+    return chibi_migrate_parse(text, 26);
+}
+
+static script_syntax *parse27(const char *text)
+{
+    return chibi_migrate_parse(text, 27);
+}
+
+static script_syntax *parse28(const char *text)
+{
+    return chibi_migrate_parse(text, 28);
+}
+static script_syntax *parse29(const char *text)
+{
+    return chibi_migrate_parse(text, 29);
+}
+static script_syntax *parse30(const char *text)
+{
+    return chibi_migrate_parse(text, 30);
+}
+static script_syntax *parse31(const char *text)
+{
+    return chibi_migrate_parse(text, 31);
+}
+/* Whether text parses with the grammar of project `version`, from 23 on. */
+static bool valid_at(const char *text, int version)
+{
+    script_syntax *syntax = version < CHIBI_PROJECT_VERSION
+                              ? chibi_migrate_parse(text, version)
+                              : script_parse(text);
+    bool valid = !syntax->diagnostic_count;
+    script_syntax_free(syntax);
+    return valid;
+}
+/* Whether later steps already migrated text past version `from + 1`. An
+ * upgrade that fails after its steps wrote leaves sources ahead of the
+ * manifest, and its rerun starts again at the manifest's version. */
+static bool migrated_ahead(const char *text, int from)
+{
+    if (valid_at(text, from) || valid_at(text, from + 1)) {
+        return false;
+    }
+    for (int version = from + 2; version <= CHIBI_PROJECT_VERSION; version++) {
+        if (valid_at(text, version)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 typedef struct
@@ -3512,185 +3631,10 @@ char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t 
     return out;
 }
 
-static void prefix_hash(const char *text, char out[17])
-{
-    uint64_t hash = UINT64_C(14695981039346656037);
-    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
-        hash = (hash ^ *p) * UINT64_C(1099511628211);
-    }
-    snprintf(out, 17, "%016llx", (unsigned long long)hash);
-}
-static bool aggregate_pins(const char *type)
-{
-    if (!type) {
-        return false;
-    }
-    const char *aggregate = !strncmp(type, "Make_", 5)  ? type + 5
-                          : !strncmp(type, "Break_", 6) ? type + 6
-                                                        : NULL;
-    if (!aggregate) {
-        return false;
-    }
-    if (prefixed_native(aggregate, strlen(aggregate))) {
-        return true;
-    }
-    char name[128];
-    snprintf(name, sizeof name, "Game%s", aggregate);
-    return prefixed_native(name, strlen(name));
-}
-static bool metadata_edge_prefixes(yyjson_mut_doc *document, yyjson_mut_val *graph)
-{
-    yyjson_mut_val *nodes = yyjson_mut_obj_get(graph, "nodes"),
-                   *edges = yyjson_mut_obj_get(graph, "edges"), *edge;
-    bool changed = false;
-    size_t i, count;
-    yyjson_mut_arr_foreach(edges, i, count, edge)
-    {
-        static const char *const endpoints[] = { "from", "to" };
-        for (size_t j = 0; j < sizeof endpoints / sizeof *endpoints; j++) {
-            yyjson_mut_val *value = yyjson_mut_obj_get(edge, endpoints[j]);
-            const char *text = yyjson_mut_get_str(value);
-            if (!text) {
-                continue;
-            }
-            char *end;
-            uint64_t id = strtoull(text, &end, 10);
-            if (end == text || *end != '.') {
-                continue;
-            }
-            size_t n, node_count;
-            yyjson_mut_val *node;
-            yyjson_mut_arr_foreach(nodes, n, node_count, node)
-            {
-                if (yyjson_mut_get_uint(yyjson_mut_obj_get(node, "id")) != id ||
-                    !aggregate_pins(yyjson_mut_get_str(yyjson_mut_obj_get(node, "type")))) {
-                    continue;
-                }
-                char *renamed = unprefix_name(text);
-                if (renamed) {
-                    yyjson_mut_set_str(value, yyjson_mut_get_str(yyjson_mut_strcpy(document, renamed)));
-                    free(renamed);
-                    changed = true;
-                }
-                break;
-            }
-        }
-    }
-    return changed;
-}
-static bool metadata_prefixes(yyjson_mut_doc *document, yyjson_mut_val *value, bool semantic, bool pins)
-{
-    if (yyjson_mut_is_str(value) && semantic) {
-        char *name = unprefix_name(yyjson_mut_get_str(value));
-        if (!name) {
-            return false;
-        }
-        yyjson_mut_set_str(value, yyjson_mut_get_str(yyjson_mut_strcpy(document, name)));
-        free(name);
-        return true;
-    }
-    bool changed = false;
-    size_t i, count;
-    yyjson_mut_val *key, *child;
-    yyjson_mut_obj_foreach(value, i, count, key, child)
-    {
-        const char *name = yyjson_mut_get_str(key);
-        bool selector = false;
-        const char *pin = yyjson_mut_get_str(yyjson_mut_obj_get(value, "name"));
-        if (!strcmp(name, "value") && pin && names_match(pin, "Component")) {
-            selector = true;
-        }
-        bool pin_name = pins && (!strcmp(name, "name") || !strcmp(name, "parents"));
-        changed |= metadata_prefixes(
-            document,
-            child,
-            semantic || prefix_field(name) || selector || pin_name,
-            (!strcmp(name, "inputs") || !strcmp(name, "outputs")) &&
-                aggregate_pins(yyjson_mut_get_str(yyjson_mut_obj_get(value, "type")))
-        );
-    }
-    yyjson_mut_arr_foreach(value, i, count, child)
-    {
-        changed |= metadata_prefixes(document, child, semantic, pins);
-    }
-    return metadata_edge_prefixes(document, value) || changed;
-}
-/* Moving a function keyword past its name changes the declaration's start,
- * particularly when a comment separates the old keyword and name. */
-static int declaration_anchor(TSNode node, int offset)
-{
-    if (is(node, "function_declaration") &&
-        ts_node_start_byte(node) == (uint32_t)offset) {
-        return (int)ts_node_start_byte(ts_node_child_by_field_name(node, "name", 4));
-    }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        TSNode child = ts_node_named_child(node, i);
-        if (ts_node_start_byte(child) <= (uint32_t)offset &&
-            ts_node_end_byte(child) > (uint32_t)offset) {
-            return declaration_anchor(child, offset);
-        }
-    }
-    return offset;
-}
-/* Source-bound graph IDs and layout survive the rename. Only metadata bound
- * to the old source gets a new hash; already stale metadata stays stale. */
-static char *migrate_source_metadata(
-    const char *json,
-    const char *before,
-    const char *after,
-    replacement *edits,
-    bool prefixes
-)
-{
-    yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
-    if (!parsed || !yyjson_is_obj(yyjson_doc_get_root(parsed))) {
-        yyjson_doc_free(parsed);
-        return NULL;
-    }
-    yyjson_mut_doc *document = yyjson_doc_mut_copy(parsed, NULL);
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(document);
-    bool changed = prefixes && metadata_prefixes(document, root, false, false);
-    char old_hash[17], new_hash[17];
-    prefix_hash(before, old_hash);
-    prefix_hash(after, new_hash);
-    const char *bound = yyjson_mut_get_str(yyjson_mut_obj_get(root, "source_hash"));
-    if (strcmp(before, after) && bound && !strcmp(bound, old_hash)) {
-        script_syntax *syntax = prefixes ? NULL : parse23(before);
-        yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
-        size_t i, count;
-        yyjson_mut_arr_foreach(anchors, i, count, anchor)
-        {
-            yyjson_mut_val *start = yyjson_mut_obj_get(anchor, "start");
-            int offset = (int)yyjson_mut_get_uint(start), shift = 0;
-            if (syntax) {
-                offset = declaration_anchor(ts_tree_root_node(syntax->tree), offset);
-            }
-            for (int j = 0; j < acount(edits) && edits[j].end <= offset; j++) {
-                shift += (int)strlen(edits[j].text) - (edits[j].end - edits[j].start);
-            }
-            if (yyjson_mut_is_uint(start)) {
-                yyjson_mut_set_uint(start, (uint64_t)(offset + shift));
-            }
-        }
-        script_syntax_free(syntax);
-        yyjson_mut_obj_put(
-            root,
-            yyjson_mut_str(document, "source_hash"),
-            yyjson_mut_strcpy(document, new_hash)
-        );
-        changed = true;
-    }
-    char *out = changed ? yyjson_mut_write(document, 0, NULL) : NULL;
-    yyjson_mut_doc_free(document);
-    yyjson_doc_free(parsed);
-    return out;
-}
-
 static char **migrate_prefixes(char **sources, char **paths, int count, char *error, size_t error_size)
 {
     corpus context = { .sources = (const char *const *)sources };
     script_syntax **syntax = xcalloc((size_t)count, sizeof *syntax);
-    replacement **edits = xcalloc((size_t)count, sizeof *edits);
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
     for (int i = 0; i < count; i++) {
         if (has_suffix(paths[i], ".chibi")) {
@@ -3706,38 +3650,20 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
     }
     for (int i = 0; i < count && !error[0]; i++) {
         if (syntax[i]) {
-            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits[i]);
-            migrated[i] = prefix_apply(sources[i], edits[i]);
-        } else if (!has_suffix(paths[i], ".chibi.meta")) {
+            replacement *edits = NULL;
+            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits);
+            migrated[i] = prefix_apply(sources[i], edits);
+            prefix_edits_free(edits);
+        } else {
             migrated[i] = chibi_migrate_prefixes(sources[i], false, error, error_size);
-        }
-    }
-    for (int i = 0; i < count && !error[0]; i++) {
-        if (!has_suffix(paths[i], ".chibi.meta")) {
-            continue;
-        }
-        size_t length = strlen(paths[i]) - strlen(".meta");
-        for (int j = 0; j < count; j++) {
-            if (strlen(paths[j]) == length && !memcmp(paths[i], paths[j], length)) {
-                migrated[i] = migrate_source_metadata(
-                    sources[i],
-                    sources[j],
-                    migrated[j] ? migrated[j] : sources[j],
-                    edits[j],
-                    true
-                );
-                break;
-            }
         }
     }
     for (int i = 0; i < count; i++) {
         if (syntax[i]) {
             script_syntax_free(syntax[i]);
         }
-        prefix_edits_free(edits[i]);
     }
     free(syntax);
-    free(edits);
     afree(context.functions);
     return migrated;
 }
@@ -3848,6 +3774,21 @@ static char *drop_lab_settings(const char *asset)
 /* Replace only syntax tokens, preserving comments, strings and each name. */
 static void declaration_edits(const char *text, TSNode node, replacement **edits)
 {
+    if (is(node, "call_expression")) {
+        TSNode target = ts_node_child_by_field_name(node, "function", 8);
+        /* Version 23 treated not as an ordinary callable name. Version 24
+         * added its unary spelling: quote the target for that historical
+         * parser, without assuming a native call rather than authored shadow.
+         * The catalog-aware final migration chooses unary ! only for natives. */
+        if (is(target, "identifier") && names(text, target, "not")) {
+            apush(
+                *edits,
+                ((replacement){ .start = (int)ts_node_start_byte(target),
+                                .end = (int)ts_node_end_byte(target),
+                                .text = xstrdup("\"not\"") })
+            );
+        }
+    }
     if (is(node, "function_declaration")) {
         TSNode name = ts_node_child_by_field_name(node, "name", 4);
         bool pure = false;
@@ -3922,6 +3863,24 @@ int chibi_migrate_declarations(const char *source, char **migrated, char *error,
     if (done) {
         return 0;
     }
+    current = parse24(source);
+    done = !current->diagnostic_count;
+    script_syntax_free(current);
+    if (done) {
+        return 0;
+    }
+    current = parse25(source);
+    done = !current->diagnostic_count;
+    script_syntax_free(current);
+    if (done) {
+        return 0;
+    }
+    current = parse26(source);
+    done = !current->diagnostic_count;
+    script_syntax_free(current);
+    if (done) {
+        return 0;
+    }
     script_syntax *syntax = parse23(source);
     if (syntax->diagnostic_count) {
         snprintf(error, size, "Cannot migrate invalid version 23 source");
@@ -3933,16 +3892,1176 @@ int chibi_migrate_declarations(const char *source, char **migrated, char *error,
     char *result = prefix_apply(source, edits);
     prefix_edits_free(edits);
     script_syntax_free(syntax);
-    script_syntax *check = script_parse(result ? result : source);
+    script_syntax *check = parse24(result ? result : source);
     bool valid = !check->diagnostic_count;
-    script_syntax_free(check);
     if (!valid) {
-        snprintf(error, size, "Declaration migration produced invalid source");
+        script_diagnostic diagnostic = check->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "Declaration migration produced invalid source at %d:%d: %s",
+            diagnostic.range.line,
+            diagnostic.range.column,
+            diagnostic.message
+        );
+        script_syntax_free(check);
         free(result);
         return -1;
     }
+    script_syntax_free(check);
     *migrated = result;
     return 0;
+}
+
+/* Move storage to the declaration's trait position without consuming comments. */
+static void retention_edits(const char *text, TSNode node, replacement **edits)
+{
+    TSNode storage = ts_node_child_by_field_name(node, "storage", 7);
+    if (is(node, "state_declaration") && !ts_node_is_null(storage)) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        TSNode type = ts_node_child_by_field_name(node, "type", 4);
+        const char *trait = is(storage, "shared") ? "retain(system)" : "retain";
+        int end = (int)ts_node_end_byte(storage);
+        while (text[end] == ' ' || text[end] == '\t') {
+            end++;
+        }
+        apush(
+            *edits,
+            ((replacement){ .start = (int)ts_node_start_byte(storage),
+                            .end = end,
+                            .text = xstrdup("") })
+        );
+        if (!ts_node_is_null(type) &&
+            ts_node_start_byte(type) < ts_node_start_byte(name)) {
+            char *spelling = copy_text(text + ts_node_start_byte(type), text + ts_node_end_byte(type));
+            size_t size = strlen(trait) + strlen(spelling) + 4;
+            char *annotation = xmalloc(size);
+            snprintf(annotation, size, ": %s %s", trait, spelling);
+            free(spelling);
+            end = (int)ts_node_end_byte(type);
+            while (text[end] == ' ' || text[end] == '\t') {
+                end++;
+            }
+            apush(
+                *edits,
+                ((replacement){ .start = (int)ts_node_start_byte(type),
+                                .end = end,
+                                .text = xstrdup("") })
+            );
+            end = (int)ts_node_end_byte(name);
+            apush(*edits, ((replacement){ .start = end, .end = end, .text = annotation }));
+        } else {
+            for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+                TSNode child = ts_node_child(node, i);
+                if (!is(child, ":") && !is(child, ":=")) {
+                    continue;
+                }
+                bool inferred = is(child, ":=");
+                size_t size = strlen(trait) + 6;
+                char *annotation = xmalloc(size);
+                snprintf(annotation, size, inferred ? ": %s =" : ": %s", trait);
+                apush(
+                    *edits,
+                    ((replacement){ .start = (int)ts_node_start_byte(child),
+                                    .end = (int)ts_node_end_byte(child),
+                                    .text = annotation })
+                );
+                break;
+            }
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        retention_edits(text, ts_node_named_child(node, i), edits);
+    }
+}
+
+int chibi_migrate_retention(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = parse24(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        if (valid_at(source, 25)) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 24 source");
+        return -1;
+    }
+    replacement *edits = NULL;
+    retention_edits(source, ts_tree_root_node(syntax->tree), &edits);
+    char *result = prefix_apply(source, edits);
+    prefix_edits_free(edits);
+    script_syntax_free(syntax);
+    script_syntax *check = parse25(result ? result : source);
+    bool valid = !check->diagnostic_count;
+    if (!valid) {
+        const script_diagnostic *diagnostic = &check->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "Retention migration produced invalid source at %d:%d: %s",
+            diagnostic->range.line,
+            diagnostic->range.column,
+            diagnostic->message
+        );
+        script_syntax_free(check);
+        free(result);
+        return -1;
+    }
+    script_syntax_free(check);
+    *migrated = result;
+    return 0;
+}
+
+static void syntax_edit(replacement **edits, int start, int end, const char *text)
+{
+    apush(*edits, ((replacement){ .start = start, .end = end, .text = xstrdup(text) }));
+}
+
+static void remove_syntax_token(const char *text, TSNode node, replacement **edits)
+{
+    int end = (int)ts_node_end_byte(node);
+    while (text[end] == ' ' || text[end] == '\t') {
+        end++;
+    }
+    syntax_edit(edits, (int)ts_node_start_byte(node), end, "");
+}
+
+typedef struct
+{
+    TSNode declaration, name, scope;
+    char *before, *after;
+} cleanup_name;
+
+static char *cleanup_identifier(const char *name, bool native)
+{
+    if (native && (!strcmp(name, "Branch") || !strcmp(name, "branch"))) {
+        return xstrdup("branch_if");
+    }
+    char *out = xmalloc(strlen(name) + 3), *at = out;
+    if (isdigit((unsigned char)*name)) {
+        *at++ = '_';
+    }
+    bool separator = false, letter = false;
+    for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
+        bool ascii = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+                     (*p >= '0' && *p <= '9');
+        if (ascii || *p == '_') {
+            if (separator && at > out && at[-1] != '_') {
+                *at++ = '_';
+            }
+            *at++ = native ? (char)tolower(*p) : (char)*p;
+            separator = false;
+            letter |= ascii;
+        } else {
+            separator = true;
+        }
+    }
+    *at = 0;
+    if (!letter) {
+        free(out);
+        return NULL;
+    }
+    static const char *const keywords[] = {
+        "behavior",     "library",  "system",  "component", "prototype",
+        "relationship", "retain",   "state",   "action",    "event",
+        "disabled",     "on",       "after",   "as",        "bind",
+        "events",       "union",    "struct",  "switch",    "is",
+        "where",        "macro",    "entry",   "exit",      "description",
+        "domain",       "dataflow", "query",   "if",        "else",
+        "while",        "for",      "in",      "case",      "sequence",
+        "branch",       "return",   "reduce",  "goto",      "break",
+        "continue",     "await",    "yield",   "cancel",    "true",
+        "false",        "nil",      "null",    "cast",      "plain",
+        "ref",          "service",  "setting", "wildcard"
+    };
+    for (size_t i = 0; !native && i < sizeof keywords / sizeof *keywords; i++) {
+        if (!strcmp(out, keywords[i])) {
+            memmove(out + 1, out, strlen(out) + 1);
+            out[0] = '_';
+            break;
+        }
+    }
+    return out;
+}
+
+static char *cleanup_qualified_identifier(const char *name)
+{
+    char *parts = xstrdup(name), *out = xmalloc(strlen(name) * 2 + 3), *at = out;
+    for (char *part = parts, *next; part; part = next) {
+        next = strchr(part, '.');
+        if (next) {
+            *next++ = 0;
+        }
+        char *identifier = cleanup_identifier(part, false);
+        if (!identifier) {
+            free(parts);
+            free(out);
+            return NULL;
+        }
+        if (at > out) {
+            *at++ = '.';
+        }
+        at = stpcpy(at, identifier);
+        free(identifier);
+    }
+    free(parts);
+    return out;
+}
+
+static void cleanup_type_edits(const char *text, TSNode node, int offset, replacement **edits)
+{
+    if (is(node, "string") && is(ts_node_parent(node), "type_name")) {
+        char *before = name_text(text, node),
+             *after = cleanup_qualified_identifier(before);
+        if (after) {
+            syntax_edit(
+                edits,
+                (int)ts_node_start_byte(node) - offset,
+                (int)ts_node_end_byte(node) - offset,
+                after
+            );
+        }
+        free(before);
+        free(after);
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        cleanup_type_edits(text, ts_node_named_child(node, i), offset, edits);
+    }
+}
+
+static char *cleanup_type_spelling(const char *text, TSNode node)
+{
+    char *before = copy_text(text + ts_node_start_byte(node), text + ts_node_end_byte(node));
+    replacement *edits = NULL;
+    cleanup_type_edits(text, node, (int)ts_node_start_byte(node), &edits);
+    char *after = prefix_apply(before, edits);
+    prefix_edits_free(edits);
+    if (!after) {
+        return before;
+    }
+    free(before);
+    return after;
+}
+
+static bool cleanup_type_moves(TSNode node)
+{
+    for (TSNode parent = ts_node_parent(node); !ts_node_is_null(parent);
+         parent = ts_node_parent(parent)) {
+        if (!is(parent, "state_declaration") && !is(parent, "parameter")) {
+            continue;
+        }
+        TSNode type = ts_node_child_by_field_name(parent, "type", 4);
+        TSNode name = ts_node_child_by_field_name(parent, "name", 4);
+        return !ts_node_is_null(type) &&
+               ts_node_start_byte(type) < ts_node_start_byte(name) &&
+               ts_node_start_byte(type) <= ts_node_start_byte(node) &&
+               ts_node_end_byte(type) >= ts_node_end_byte(node);
+    }
+    return false;
+}
+
+static TSNode cleanup_scope(TSNode node)
+{
+    TSNode parent = ts_node_parent(node);
+    if (is(node, "parameter")) {
+        parent = ts_node_parent(parent);
+        TSNode body = ts_node_child_by_field_name(parent, "body", 4);
+        if (!ts_node_is_null(body)) {
+            return body;
+        }
+    }
+    for (; !ts_node_is_null(parent); parent = ts_node_parent(parent)) {
+        if (is(parent, "source_file") || is(parent, "declaration_body") ||
+            is(parent, "system_body") || is(parent, "callable_body") ||
+            is(parent, "block") || is(parent, "component_body") ||
+            is(parent, "record_body")) {
+            return parent;
+        }
+    }
+    return node;
+}
+
+static bool cleanup_declaration(TSNode node)
+{
+    static const char *const kinds[] = { "behavior",
+                                         "library",
+                                         "system",
+                                         "component",
+                                         "state_declaration",
+                                         "local_declaration",
+                                         "function_declaration",
+                                         "macro_declaration",
+                                         "constant_declaration",
+                                         "union_declaration",
+                                         "record_declaration",
+                                         "record_field",
+                                         "component_field",
+                                         "parameter",
+                                         "type_parameter",
+                                         "action_declaration",
+                                         "event_declaration",
+                                         "bind_declaration",
+                                         "events_declaration",
+                                         "entry_declaration",
+                                         "exit_declaration",
+                                         "label_statement",
+                                         "for_statement",
+                                         "foreach_statement",
+                                         "query_generator" };
+    for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) {
+        if (is(node, kinds[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool cleanup_collect_names(const char *text, TSNode node, cleanup_name **names, char *error, size_t size)
+{
+    TSNode name = ts_node_child_by_field_name(node, "name", 4);
+    if (cleanup_declaration(node) && !ts_node_is_null(name)) {
+        char *before = name_text(text, name);
+        char *after = is(name, "string") ? cleanup_identifier(before, false)
+                                         : xstrdup(before);
+        if (!after) {
+            snprintf(error, size, "Cannot migrate symbolic name '%s' to an identifier; rename it before migration", before);
+            free(before);
+            return false;
+        }
+        apush(*names, ((cleanup_name){ node, name, cleanup_scope(node), before, after }));
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_collect_names(text, ts_node_named_child(node, i), names, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool cleanup_contains(TSNode scope, TSNode node)
+{
+    return ts_node_start_byte(scope) <= ts_node_start_byte(node) &&
+           ts_node_end_byte(scope) >= ts_node_end_byte(node);
+}
+
+static cleanup_name *cleanup_binding(cleanup_name *names, TSNode node, const char *name)
+{
+    cleanup_name *found = NULL;
+    for (int i = 0; i < acount(names); i++) {
+        cleanup_name *candidate = &names[i];
+        if (strcmp(candidate->before, name) ||
+            !cleanup_contains(candidate->scope, node)) {
+            continue;
+        }
+        if (!found ||
+            ts_node_end_byte(candidate->scope) - ts_node_start_byte(candidate->scope) <
+                ts_node_end_byte(found->scope) - ts_node_start_byte(found->scope)) {
+            found = candidate;
+        }
+    }
+    return found;
+}
+
+static bool cleanup_native_shadows(const char *text, TSNode node, cleanup_name *names, char *error, size_t size)
+{
+    if (is(node, "engine_reference")) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        char *before = name_text(text, name),
+             *native = cleanup_identifier(before, true);
+        bool simple = native &&
+                      strspn(before, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_ -") ==
+                          strlen(before);
+        if (!simple) {
+            snprintf(error, size, "Cannot migrate native capability '%s'; use its registered source identifier", before);
+            free(before);
+            free(native);
+            return false;
+        }
+        for (int i = 0; i < acount(names); i++) {
+            cleanup_name *binding = &names[i];
+            if (!names_match(binding->after, native) ||
+                !cleanup_contains(binding->scope, node)) {
+                continue;
+            }
+            const char *suffix = is(binding->declaration, "function_declaration")
+                                   ? "_function"
+                                   : "_action";
+            size_t length = strlen(binding->after) + strlen(suffix) + 1;
+            char *renamed = xmalloc(length);
+            snprintf(renamed, length, "%s%s", binding->after, suffix);
+            free(binding->after);
+            binding->after = renamed;
+        }
+        free(before);
+        free(native);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_native_shadows(text, ts_node_named_child(node, i), names, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool cleanup_symbol_edits(
+    const char *text,
+    TSNode node,
+    cleanup_name *names,
+    replacement **edits,
+    char *error,
+    size_t size
+)
+{
+    if (is(node, "engine_reference")) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        char *before = name_text(text, name),
+             *native = cleanup_identifier(before, true);
+        assert(native);
+        TSNode parent = ts_node_parent(node);
+        bool self = !strcmp(native, "self") && is(parent, "call_expression");
+        TSNode arguments = ts_node_child_by_field_name(parent, "arguments", 9);
+        if (self && ts_node_named_child_count(arguments)) {
+            snprintf(error, size, "Cannot migrate Self with arguments");
+            free(before);
+            free(native);
+            return false;
+        }
+        syntax_edit(edits, (int)ts_node_start_byte(node), (int)ts_node_end_byte(self ? parent : node), native);
+        free(before);
+        free(native);
+        return true;
+    }
+    if (is(node, "identifier") || is(node, "string")) {
+        TSNode parent = ts_node_parent(node);
+        char *before = name_text(text, node);
+        const char *after = NULL;
+        char *normalized = NULL;
+        for (int i = 0; i < acount(names); i++) {
+            if (ts_node_eq(names[i].name, node)) {
+                after = names[i].after;
+                break;
+            }
+        }
+        bool type_name = is(parent, "type_name");
+        if (type_name && cleanup_type_moves(node)) {
+            free(before);
+            return true;
+        }
+        bool symbolic = !ts_node_is_null(parent) &&
+                        ((is(parent, "member_expression") &&
+                          (ts_node_eq(node, ts_node_child_by_field_name(parent, "member", 6)) ||
+                           is(ts_node_parent(parent), "call_expression"))) ||
+                         is(parent, "argument_name") || type_name ||
+                         (is(parent, "handler") &&
+                          (ts_node_eq(node, ts_node_child_by_field_name(parent, "name", 4)) ||
+                           ts_node_eq(node, ts_node_child_by_field_name(parent, "alias", 5)))) ||
+                         ((is(parent, "call_expression") || is(parent, "goto_statement")) &&
+                          ts_node_eq(
+                              node,
+                              ts_node_child_by_field_name(
+                                  parent,
+                                  is(parent, "call_expression") ? "function" : "name",
+                                  is(parent, "call_expression") ? 8 : 4
+                              )
+                          )));
+        /* A receiver's member, a callee's argument label and a type name do
+         * not resolve against the caller's lexical value bindings. */
+        bool member = is(parent, "member_expression") &&
+                      ts_node_eq(node, ts_node_child_by_field_name(parent, "member", 6));
+        char *object_name = member
+                              ? name_text(text, ts_node_child_by_field_name(parent, "object", 6))
+                              : NULL;
+        bool lexical_namespace = object_name && (!strcmp(object_name, "state") ||
+                                                 !strcmp(object_name, "entry"));
+        free(object_name);
+        cleanup_name *binding = (member && !lexical_namespace) ||
+                                        is(parent, "argument_name") || type_name
+                                  ? NULL
+                                  : cleanup_binding(names, node, before);
+        if (!after && binding && (is(node, "identifier") || symbolic)) {
+            after = binding->after;
+        }
+        if (!after && is(node, "string") && symbolic) {
+            normalized = type_name ? cleanup_qualified_identifier(before)
+                                   : cleanup_identifier(before, false);
+            after = normalized;
+        }
+        if (after && (is(node, "string") || strcmp(before, after))) {
+            syntax_edit(edits, (int)ts_node_start_byte(node), (int)ts_node_end_byte(node), after);
+        }
+        free(normalized);
+        free(before);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_symbol_edits(text, ts_node_named_child(node, i), names, edits, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void cleanup_names_free(cleanup_name *names)
+{
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i].before);
+        free(names[i].after);
+    }
+    afree(names);
+}
+
+static bool cleanup_edits(const char *text, TSNode root, replacement **edits, char *error, size_t size);
+
+/* Old per-row system state has no equivalent registration-owned binding. */
+static bool cleanup_syntax_edits(const char *text, TSNode node, replacement **edits, char *error, size_t size)
+{
+    TSNode name = ts_node_child_by_field_name(node, "name", 4);
+    TSNode type = ts_node_child_by_field_name(node, "type", 4);
+    if (is(node, "state_declaration")) {
+        TSNode storage = ts_node_child_by_field_name(node, "storage", 7);
+        TSNode owner = ts_node_child_by_field_name(node, "owner", 5);
+        bool system = false;
+        for (TSNode parent = ts_node_parent(node); !ts_node_is_null(parent);
+             parent = ts_node_parent(parent)) {
+            system |= is(parent, "system");
+        }
+        if (system && ts_node_is_null(owner) &&
+            ((!ts_node_is_null(storage) && is(storage, "retain")) ||
+             is(ts_node_parent(node), "system_body"))) {
+            TSPoint point = ts_node_start_point(name);
+            snprintf(
+                error,
+                size,
+                "Per-row system state at %u:%u cannot become "
+                "registration-owned retain; move durable entity state to a "
+                "component, or use an ordinary coroutine local",
+                point.row + 1,
+                point.column + 1
+            );
+            return false;
+        }
+        if (!ts_node_is_null(owner)) {
+            /* Preserve comments between the retired ownership tokens. */
+            for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+                TSNode child = ts_node_child(node, i);
+                if (is(child, "(") || is(child, ")") ||
+                    (ts_node_start_byte(child) == ts_node_start_byte(owner) &&
+                     ts_node_end_byte(child) == ts_node_end_byte(owner))) {
+                    syntax_edit(edits, (int)ts_node_start_byte(child), (int)ts_node_end_byte(child), "");
+                }
+            }
+        }
+    }
+    if (is(node, "behavior") || is(node, "library") || is(node, "system") ||
+        is(node, "component")) {
+        const char *kind = ts_node_type(node);
+        TSNode parameters = ts_node_child_by_field_name(node, "parameters", 10);
+        bool query = !ts_node_is_null(parameters) &&
+                     is(parameters, "query_parameter_list");
+        char suffix[48];
+        snprintf(
+            suffix,
+            sizeof suffix,
+            " :: %s%s",
+            kind,
+            is(node, "system") ? ts_node_is_null(parameters) ? "()"
+                               : query                       ? "("
+                                                             : ""
+                               : ""
+        );
+        syntax_edit(edits, (int)ts_node_end_byte(name), (int)ts_node_end_byte(name), suffix);
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (is(child, kind) || (query && is(child, "query"))) {
+                remove_syntax_token(text, child, edits);
+            }
+        }
+        if (query) {
+            syntax_edit(edits, (int)ts_node_end_byte(parameters), (int)ts_node_end_byte(parameters), ")");
+        }
+    }
+    bool type_first = !ts_node_is_null(name) && !ts_node_is_null(type) &&
+                      ts_node_start_byte(type) < ts_node_start_byte(name) &&
+                      (is(node, "state_declaration") || is(node, "parameter"));
+    if (type_first) {
+        char *spelling = cleanup_type_spelling(text, type);
+        size_t length = strlen(spelling) + 12;
+        char *annotation = xmalloc(length);
+        snprintf(annotation, length, ": %s", spelling);
+        remove_syntax_token(text, type, edits);
+        syntax_edit(edits, (int)ts_node_end_byte(name), (int)ts_node_end_byte(name), annotation);
+        free(annotation);
+        free(spelling);
+    }
+    if (is(node, "function_declaration") || is(node, "foreach_statement")) {
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (is(child, "fn") || is(child, "pure")) {
+                remove_syntax_token(text, child, edits);
+            } else if (is(child, "foreach")) {
+                syntax_edit(edits, (int)ts_node_start_byte(child), (int)ts_node_end_byte(child), "for");
+            }
+        }
+    }
+    if (is(node, "metadata_declaration")) {
+        TSNode kind = ts_node_child_by_field_name(node, "kind", 4);
+        TSNode value = ts_node_child_by_field_name(node, "value", 5);
+        bool owner = is(kind, "owner");
+        {
+            char *spelling = copy_text(text + ts_node_start_byte(value), text + ts_node_end_byte(value));
+            bool supported = !owner || !strcmp(spelling, "\"ecs.entity\"") ||
+                             !strcmp(spelling, "ecs.entity");
+            free(spelling);
+            if (!supported) {
+                snprintf(error, size, "Cannot migrate custom owner metadata; only ecs.entity preserves the current runtime contract");
+                return false;
+            }
+            for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+                TSNode child = ts_node_child(node, i);
+                if (!is(child, "comment")) {
+                    remove_syntax_token(text, child, edits);
+                }
+            }
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_syntax_edits(text, ts_node_named_child(node, i), edits, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool cleanup_edits(const char *text, TSNode root, replacement **edits, char *error, size_t size)
+{
+    cleanup_name *names = NULL;
+    bool valid = cleanup_collect_names(text, root, &names, error, size) &&
+                 cleanup_native_shadows(text, root, names, error, size);
+    for (int i = 0; valid && i < acount(names); i++) {
+        for (int j = 0; j < i; j++) {
+            if (ts_node_eq(names[i].scope, names[j].scope) &&
+                !strcmp(names[i].after, names[j].after) &&
+                strcmp(names[i].before, names[j].before)) {
+                snprintf(
+                    error,
+                    size,
+                    "Symbol migration would collide '%s' with '%s'; rename one "
+                    "before migration",
+                    names[i].before,
+                    names[j].before
+                );
+                valid = false;
+                break;
+            }
+        }
+    }
+    if (valid) {
+        valid = cleanup_syntax_edits(text, root, edits, error, size) &&
+                cleanup_symbol_edits(text, root, names, edits, error, size);
+    }
+    cleanup_names_free(names);
+    return valid;
+}
+
+typedef struct
+{
+    TSNode callable, list;
+    char *name, *bound;
+} cleanup_legacy_type;
+
+static void cleanup_legacy_comments(const char *text, TSNode node, char **out)
+{
+    if (is(node, "comment")) {
+        size_t old = *out ? strlen(*out) : 0;
+        size_t bytes = ts_node_end_byte(node) - ts_node_start_byte(node);
+        *out = xrealloc(*out, old + bytes + 2);
+        memcpy(*out + old, text + ts_node_start_byte(node), bytes);
+        (*out)[old + bytes] = '\n';
+        (*out)[old + bytes + 1] = 0;
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        cleanup_legacy_comments(text, ts_node_named_child(node, i), out);
+    }
+}
+
+static bool cleanup_legacy_types(
+    const char *text,
+    TSNode node,
+    cleanup_legacy_type **types,
+    replacement **edits,
+    char *error,
+    size_t size
+)
+{
+    TSNode list = ts_node_child_by_field_name(node, "type_parameters", 15);
+    if (!ts_node_is_null(list)) {
+        for (uint32_t i = 0; i < ts_node_named_child_count(list); i++) {
+            TSNode parameter = ts_node_named_child(list, i);
+            if (ts_node_is_extra(parameter)) {
+                continue;
+            }
+            TSNode bound = ts_node_child_by_field_name(parameter, "type", 4);
+            if (ts_node_is_null(bound)) {
+                snprintf(error, size, "Cannot migrate unbound legacy <T> declarations; replace them with argument binders such as (value: $T) -> T");
+                return false;
+            }
+            char *name = name_text(text, ts_node_child_by_field_name(parameter, "name", 4));
+            char *spelling = copy_text(text + ts_node_start_byte(bound), text + ts_node_end_byte(bound));
+            apush(*types, ((cleanup_legacy_type){ node, list, name, spelling }));
+        }
+        char *comments = NULL;
+        cleanup_legacy_comments(text, list, &comments);
+        syntax_edit(
+            edits,
+            (int)ts_node_start_byte(list),
+            (int)ts_node_end_byte(list),
+            comments ? comments : ""
+        );
+        free(comments);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_legacy_types(text, ts_node_named_child(node, i), types, edits, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool cleanup_legacy_uses(
+    const char *text,
+    TSNode node,
+    cleanup_legacy_type *types,
+    replacement **edits,
+    char *error,
+    size_t size
+)
+{
+    cleanup_legacy_type *selected = NULL;
+    for (int i = 0; i < acount(types); i++) {
+        if (ts_node_start_byte(node) >= ts_node_start_byte(types[i].list) &&
+            ts_node_end_byte(node) <= ts_node_end_byte(types[i].list)) {
+            return true;
+        }
+        if (ts_node_start_byte(node) < ts_node_start_byte(types[i].callable) ||
+            ts_node_end_byte(node) > ts_node_end_byte(types[i].callable)) {
+            continue;
+        }
+        TSNode declared = ts_node_child_by_field_name(node, "name", 4);
+        if ((is(node, "record_declaration") || is(node, "union_declaration") ||
+             is(node, "constant_declaration")) &&
+            !ts_node_is_null(declared)) {
+            char *name = name_text(text, declared);
+            bool shadows = !strcmp(name, types[i].name);
+            free(name);
+            if (shadows) {
+                snprintf(
+                    error,
+                    size,
+                    "Legacy generic alias '%s' is shadowed; rename the inner "
+                    "type or constant before migration",
+                    types[i].name
+                );
+                return false;
+            }
+        }
+        if (!is(node, "type_name")) {
+            continue;
+        }
+        char *name = name_text(text, node);
+        bool match = !strcmp(name, types[i].name);
+        free(name);
+        if (match && (!selected || ts_node_start_byte(types[i].callable) >
+                                       ts_node_start_byte(selected->callable))) {
+            selected = &types[i];
+        }
+    }
+    if (selected) {
+        syntax_edit(
+            edits,
+            (int)ts_node_start_byte(node),
+            (int)ts_node_end_byte(node),
+            selected->bound
+        );
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_legacy_uses(text, ts_node_named_child(node, i), types, edits, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool cleanup_legacy_bound(const char *text, TSNode node, cleanup_legacy_type *types)
+{
+    if (is(node, "type_name")) {
+        char *name = name_text(text, node);
+        for (int i = 0; i < acount(types); i++) {
+            if (!strcmp(name, types[i].name)) {
+                free(name);
+                return false;
+            }
+        }
+        free(name);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!cleanup_legacy_bound(text, ts_node_named_child(node, i), types)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int migrate_syntax_spelling(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = parse25(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        syntax = parse26(source);
+        bool valid = !syntax->diagnostic_count;
+        script_syntax_free(syntax);
+        if (valid) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 25 source");
+        return -1;
+    }
+    replacement *edits = NULL;
+    cleanup_legacy_type *types = NULL;
+    bool valid = cleanup_legacy_types(source, ts_tree_root_node(syntax->tree), &types, &edits, error, size) &&
+                 cleanup_legacy_uses(source, ts_tree_root_node(syntax->tree), types, &edits, error, size);
+    for (int i = 0; valid && i < acount(types); i++) {
+        for (uint32_t j = 0; j < ts_node_named_child_count(types[i].list); j++) {
+            TSNode bound = ts_node_child_by_field_name(
+                ts_node_named_child(types[i].list, j),
+                "type",
+                4
+            );
+            if (!ts_node_is_null(bound) && !cleanup_legacy_bound(source, bound, types)) {
+                snprintf(error, size, "Legacy generic aliases require concrete independent bounds; expand dependent bounds before migration");
+                valid = false;
+            }
+        }
+    }
+    char *legacy = valid ? prefix_apply(source, edits) : NULL;
+    for (int i = 0; i < acount(types); i++) {
+        free(types[i].name);
+        free(types[i].bound);
+    }
+    afree(types);
+    prefix_edits_free(edits);
+    edits = NULL;
+    if (!valid) {
+        script_syntax_free(syntax);
+        free(legacy);
+        return -1;
+    }
+    if (legacy) {
+        source = legacy;
+        script_syntax_free(syntax);
+        syntax = parse25(source);
+        if (syntax->diagnostic_count) {
+            snprintf(error, size, "Legacy generic aliases require concrete independent bounds; expand dependent bounds before migration");
+            script_syntax_free(syntax);
+            free(legacy);
+            return -1;
+        }
+    }
+    valid = cleanup_edits(source, ts_tree_root_node(syntax->tree), &edits, error, size);
+    char *result = valid ? prefix_apply(source, edits) : NULL;
+    if (valid && !result && legacy) {
+        result = xstrdup(legacy);
+    }
+    free(legacy);
+    prefix_edits_free(edits);
+    script_syntax_free(syntax);
+    if (!valid) {
+        return -1;
+    }
+    syntax = parse26(result ? result : source);
+    valid = !syntax->diagnostic_count;
+    if (!valid) {
+        script_diagnostic diagnostic = syntax->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "Syntax migration produced invalid source at %d:%d: %.80s",
+            diagnostic.range.line,
+            diagnostic.range.column,
+            (result ? result : source) + diagnostic.range.start
+        );
+        script_syntax_free(syntax);
+        free(result);
+        return -1;
+    }
+    script_syntax_free(syntax);
+    *migrated = result;
+    return 0;
+}
+
+int chibi_migrate_syntax(const char *source, char **migrated, char *error, size_t size)
+{
+    if (migrate_syntax_spelling(source, migrated, error, size)) {
+        return -1;
+    }
+    const char *input = *migrated ? *migrated : source;
+    text_edit **edits = NULL;
+    bool valid = chibi_migrate26_references(&input, 1, &edits, error, size);
+    if (valid && acount(edits[0])) {
+        char *output = text_edits_apply(input, edits[0], acount(edits[0]));
+        if (strcmp(output, input)) {
+            free(*migrated);
+            *migrated = output;
+        } else {
+            free(output);
+        }
+    }
+    chibi_migrate26_edits_free(edits, 1);
+    if (!valid) {
+        free(*migrated);
+        *migrated = NULL;
+        return -1;
+    }
+    return 0;
+}
+
+typedef struct
+{
+    char *before, *after, *owner;
+    const char *kind;
+} cleanup_asset_name;
+
+static bool cleanup_asset_names(const char *text, cleanup_asset_name **names, char *error, size_t size)
+{
+    script_syntax *syntax = parse25(text);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        syntax = parse26(text);
+    }
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        return true; /* The owning source migration reports the invalid syntax. */
+    }
+    TSNode source = ts_tree_root_node(syntax->tree), root = { 0 };
+    for (uint32_t i = 0; i < ts_node_named_child_count(source); i++) {
+        TSNode child = ts_node_named_child(source, i);
+        if (!ts_node_is_extra(child)) {
+            root = child;
+            break;
+        }
+    }
+    if (ts_node_is_null(root)) {
+        script_syntax_free(syntax);
+        return true;
+    }
+    TSNode name = ts_node_child_by_field_name(root, "name", 4);
+    char *before = name_text(text, name);
+    char *after = is(name, "string") ? cleanup_identifier(before, false)
+                                     : xstrdup(before);
+    if (!after) {
+        snprintf(error, size, "Cannot migrate project symbolic name '%s'; rename it before migration", before);
+        free(before);
+        script_syntax_free(syntax);
+        return false;
+    }
+    const char *kind = is(root, "component") ? "component"
+                     : is(root, "system")    ? "system"
+                     : is(root, "behavior")  ? "behavior"
+                                             : "library";
+    for (int i = 0; i < acount(*names); i++) {
+        cleanup_asset_name *previous = &(*names)[i];
+        if (!previous->owner && !strcmp(previous->after, after) &&
+            strcmp(previous->before, before)) {
+            snprintf(
+                error,
+                size,
+                "Project symbol migration would collide '%s' with '%s'; rename "
+                "one before migration",
+                before,
+                previous->before
+            );
+            free(before);
+            free(after);
+            script_syntax_free(syntax);
+            return false;
+        }
+    }
+    apush(*names, ((cleanup_asset_name){ before, after, NULL, kind }));
+    if (is(root, "component")) {
+        TSNode body = ts_node_child_by_field_name(root, "body", 4);
+        for (uint32_t i = 0; i < ts_node_named_child_count(body); i++) {
+            TSNode field = ts_node_named_child(body, i);
+            if (!is(field, "component_field")) {
+                continue;
+            }
+            TSNode field_name = ts_node_child_by_field_name(field, "name", 4);
+            char *field_before = name_text(text, field_name);
+            char *field_after = is(field_name, "string")
+                                  ? cleanup_identifier(field_before, false)
+                                  : xstrdup(field_before);
+            if (field_after) {
+                apush(*names, ((cleanup_asset_name){ field_before, field_after, xstrdup(before), "field" }));
+            } else {
+                free(field_before);
+            }
+        }
+    }
+    script_syntax_free(syntax);
+    return true;
+}
+
+static const cleanup_asset_name *cleanup_asset_find(
+    const cleanup_asset_name *names,
+    const char *name,
+    const char *kind,
+    const char *owner
+)
+{
+    for (int i = 0; name && i < acount(names); i++) {
+        if (strcmp(names[i].kind, kind) || strcmp(names[i].before, name) ||
+            (owner ? !names[i].owner || strcmp(names[i].owner, owner)
+                   : names[i].owner != NULL)) {
+            continue;
+        }
+        return &names[i];
+    }
+    return NULL;
+}
+
+static void cleanup_asset_edits(
+    const av_value *value,
+    const cleanup_asset_name *names,
+    const char *reference,
+    bool components,
+    const char *owner,
+    replacement **edits
+)
+{
+    if (av_is_str(value) && reference) {
+        const cleanup_asset_name *name = cleanup_asset_find(names, av_get_str(value), reference, NULL);
+        if (name && strcmp(name->before, name->after)) {
+            av_source source = av_get_source(value);
+            size_t length = strlen(name->after) + 3;
+            char *quoted = xmalloc(length);
+            snprintf(quoted, length, "\"%s\"", name->after);
+            syntax_edit(edits, source.start, source.end, quoted);
+            free(quoted);
+        }
+        return;
+    }
+    for (size_t i = 0; i < av_obj_size(value); i++) {
+        const av_value *key = av_obj_key_at(value, i),
+                       *child = av_obj_value_at(value, i);
+        const char *field = av_get_str(key);
+        av_source source = av_get_source(child);
+        const cleanup_asset_name *name = components
+                                           ? cleanup_asset_find(names, field, "component", NULL)
+                                       : owner
+                                           ? cleanup_asset_find(names, field, "field", owner)
+                                           : NULL;
+        if (name && strcmp(name->before, name->after)) {
+            syntax_edit(edits, source.name_start, source.name_end, name->after);
+        }
+        const char *child_reference = !strcmp(field, "behaviors") ? "behavior"
+                                    : owner && !strcmp(owner, "EngineSystem") &&
+                                              !strcmp(field, "asset")
+                                        ? "system"
+                                        : NULL;
+        bool child_components = !strcmp(field, "components") ||
+                                !strcmp(field, "retained_components") ||
+                                !strcmp(field, "detached_components") ||
+                                !strcmp(field, "component_overrides");
+        cleanup_asset_edits(child, names, child_reference, child_components, components ? field : NULL, edits);
+    }
+    for (size_t i = 0; i < av_arr_size(value); i++) {
+        cleanup_asset_edits(av_arr_get(value, i), names, reference, false, owner, edits);
+    }
+}
+
+static char **migrate_syntax(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    cleanup_asset_name *names = NULL;
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            !cleanup_asset_names(sources[i], &names, error, size)) {
+            break;
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (migrate_syntax_spelling(sources[i], &migrated[i], error, size)) {
+            char *detail = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], detail);
+            free(detail);
+            break;
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], DECLARATIVE_ASSET_EXTENSION)) {
+            continue;
+        }
+        av_doc *document = asset_text_read(sources[i], error, size);
+        if (!document) {
+            break;
+        }
+        replacement *edits = NULL;
+        cleanup_asset_edits(av_doc_root(document), names, NULL, false, NULL, &edits);
+        migrated[i] = prefix_apply(sources[i], edits);
+        prefix_edits_free(edits);
+        av_doc_free(document);
+    }
+    const char **inputs = xcalloc((size_t)count, sizeof *inputs);
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], ".chibi")) {
+            inputs[i] = migrated[i] ? migrated[i] : sources[i];
+        }
+    }
+    text_edit **references = NULL;
+    if (!error[0] &&
+        chibi_migrate26_references(inputs, count, &references, error, size)) {
+        for (int i = 0; i < count; i++) {
+            if (!inputs[i] || !acount(references[i])) {
+                continue;
+            }
+            char *after = text_edits_apply(inputs[i], references[i], acount(references[i]));
+            if (!strcmp(after, inputs[i])) {
+                free(after);
+                continue;
+            }
+            free(migrated[i]);
+            migrated[i] = after;
+        }
+    }
+    if (references) {
+        chibi_migrate26_edits_free(references, count);
+    }
+    free(inputs);
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i].before);
+        free(names[i].after);
+        free(names[i].owner);
+    }
+    afree(names);
+    return migrated;
+}
+
+static char **migrate_retention(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        chibi_migrate_retention(sources[i], &migrated[i], error, size);
+    }
+    return migrated;
 }
 
 static char **migrate_declarations(char **sources, char **paths, int count, char *error, size_t size)
@@ -3952,27 +5071,995 @@ static char **migrate_declarations(char **sources, char **paths, int count, char
         if (!has_suffix(paths[i], ".chibi")) {
             continue;
         }
-        if (chibi_migrate_declarations(sources[i], &migrated[i], error, size) ||
-            !migrated[i]) {
-            continue;
+        if (chibi_migrate_declarations(sources[i], &migrated[i], error, size)) {
+            char *detail = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], detail);
+            free(detail);
         }
-        script_syntax *syntax = parse23(sources[i]);
-        replacement *edits = NULL;
-        declaration_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
-        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-        size_t length = strlen(paths[i]);
-        for (int j = 0; j < count; j++) {
-            if (!strncmp(paths[j], paths[i], length) &&
-                !strcmp(paths[j] + length, ".meta")) {
-                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, false);
-            }
-        }
-        prefix_edits_free(edits);
-        script_syntax_free(syntax);
     }
     return migrated;
 }
 
+/* Publishes a step's result, or NULL for unchanged source, only when the
+ * current grammar parses it. */
+/* Accepts a step's result when the grammar of the version it produces
+ * parses it: 27 for the conversion step, 28 for the entry step, the current
+ * grammar after that. */
+static int accept_migrated(
+    const char *source,
+    char *result,
+    const char *step,
+    int version,
+    char **migrated,
+    char *error,
+    size_t size
+)
+{
+    const char *text = result ? result : source;
+    script_syntax *check = version == 27 ? parse27(text)
+                         : version == 28 ? parse28(text)
+                         : version == 29 ? parse29(text)
+                         : version == 30 ? parse30(text)
+                         : version == 31 ? parse31(text)
+                                         : script_parse(text);
+    if (check->diagnostic_count) {
+        const script_diagnostic *diagnostic = &check->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "%s migration produced invalid source at %d:%d: %s",
+            step,
+            diagnostic->range.line,
+            diagnostic->range.column,
+            diagnostic->message
+        );
+        script_syntax_free(check);
+        free(result);
+        return -1;
+    }
+    script_syntax_free(check);
+    *migrated = result;
+    return 0;
+}
+/* The T(value) callee for a version 26 cast type, or NULL when the type has
+ * no name spelling, such as an array. */
+static char *conversion_callee(const char *text, TSNode type)
+{
+    int from = (int)ts_node_start_byte(type), to = (int)ts_node_end_byte(type);
+    if (to - from == (int)strlen("handle<ecs.entity>") &&
+        !strncmp(text + from, "handle<ecs.entity>", (size_t)(to - from))) {
+        return xstrdup("entity");
+    }
+    for (int i = from; i < to; i++) {
+        if (!isalnum((unsigned char)text[i]) && text[i] != '_' && text[i] != '.') {
+            return NULL;
+        }
+    }
+    char *callee = xmalloc((size_t)(to - from) + 1);
+    memcpy(callee, text + from, (size_t)(to - from));
+    callee[to - from] = '\0';
+    return callee;
+}
+/* The first anonymous child token spelled `token`. */
+static TSNode child_token(TSNode node, const char *token)
+{
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        if (!ts_node_is_named(child) && is(child, token)) {
+            return child;
+        }
+    }
+    return (TSNode){ 0 };
+}
+static void push_edit(replacement **edits, int start, int end, char *text)
+{
+    apush(*edits, ((replacement){ .start = start, .end = end, .text = text }));
+}
+/* `cast<T>(v)` becomes `T(v)`; a constant `N :: cast<T>(v)` becomes `N: T : v`.
+ * Edits replace only the tokens around each value, so comments survive and
+ * nested casts compose. */
+static void conversion_edits(const char *text, TSNode node, replacement **edits, TSNode *unsupported)
+{
+    TSNode value = ts_node_child_by_field_name(node, "value", 5);
+    if (is(node, "constant_declaration") && is(value, "cast_expression")) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        TSNode declare = child_token(node, "::");
+        TSNode type = ts_node_child_by_field_name(value, "type", 4);
+        TSNode open = child_token(value, "(");
+        int from = (int)ts_node_start_byte(type), to = (int)ts_node_end_byte(type);
+        int gap = (int)ts_node_end_byte(name);
+        while (gap < (int)ts_node_start_byte(declare) &&
+               isspace((unsigned char)text[gap])) {
+            gap++;
+        }
+        size_t size = (size_t)(to - from) + sizeof ":  :";
+        char *declared = xmalloc(size);
+        snprintf(declared, size, ": %.*s :", to - from, text + from);
+        /* Whitespace before `::` goes; a comment there stays. */
+        int start = gap == (int)ts_node_start_byte(declare)
+                      ? (int)ts_node_end_byte(name)
+                      : (int)ts_node_start_byte(declare);
+        push_edit(edits, start, (int)ts_node_end_byte(declare), declared);
+        push_edit(edits, (int)ts_node_start_byte(value), (int)ts_node_end_byte(open), xstrdup(""));
+        int close = (int)ts_node_end_byte(value);
+        push_edit(edits, close - 1, close, xstrdup(""));
+        conversion_edits(text, ts_node_child_by_field_name(value, "value", 5), edits, unsupported);
+        return;
+    }
+    if (is(node, "cast_expression")) {
+        char *callee = conversion_callee(text, ts_node_child_by_field_name(node, "type", 4));
+        if (!callee && ts_node_is_null(*unsupported)) {
+            *unsupported = node;
+        }
+        if (callee) {
+            size_t size = strlen(callee) + 2;
+            char *call = xmalloc(size);
+            snprintf(call, size, "%s(", callee);
+            free(callee);
+            push_edit(
+                edits,
+                (int)ts_node_start_byte(node),
+                (int)ts_node_end_byte(child_token(node, "(")),
+                call
+            );
+        }
+        conversion_edits(text, value, edits, unsupported);
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        conversion_edits(text, ts_node_child(node, i), edits, unsupported);
+    }
+}
+int chibi_migrate_conversions(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = parse26(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        /* A rerun after an interrupted step finds sources already converted,
+         * which the version 27 grammar reads at version 27 or later. */
+        syntax = parse27(source);
+        bool valid = !syntax->diagnostic_count;
+        script_syntax_free(syntax);
+        if (valid) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 26 source");
+        return -1;
+    }
+    replacement *edits = NULL;
+    TSNode unsupported = { 0 };
+    conversion_edits(source, ts_tree_root_node(syntax->tree), &edits, &unsupported);
+    bool spelled = ts_node_is_null(unsupported);
+    script_range range = spelled ? (script_range){ 0 }
+                                 : script_node_range(unsupported);
+    script_syntax_free(syntax);
+    if (!spelled) {
+        snprintf(
+            error,
+            size,
+            "cast at %d:%d converts to a type with no T(value) spelling; "
+            "declare a typed local or constant",
+            range.line,
+            range.column
+        );
+        prefix_edits_free(edits);
+        return -1;
+    }
+    char *result = prefix_apply(source, edits);
+    prefix_edits_free(edits);
+    return accept_migrated(source, result, "Conversion", 27, migrated, error, size);
+}
+static char **migrate_conversions(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (chibi_migrate_conversions(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
+/* The callable a node is inside, or a null node. */
+static TSNode enclosing_callable(TSNode node)
+{
+    for (TSNode up = ts_node_parent(node); !ts_node_is_null(up);
+         up = ts_node_parent(up)) {
+        if (is(up, "function_declaration") || is(up, "macro_declaration")) {
+            return up;
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* Whether two nodes are spelled alike. */
+static bool spelled_alike(const char *text, TSNode a, TSNode b)
+{
+    if (ts_node_is_null(a) || ts_node_is_null(b)) {
+        return false;
+    }
+    size_t length = ts_node_end_byte(a) - ts_node_start_byte(a);
+    return length == ts_node_end_byte(b) - ts_node_start_byte(b) &&
+           !strncmp(text + ts_node_start_byte(a), text + ts_node_start_byte(b), length);
+}
+/* Whether node itself binds a name spelled like name: a local or constant, a
+ * handler parameter or alias, or a loop name or key. */
+static bool binds_here(const char *text, TSNode node, TSNode name)
+{
+    if (is(node, "handler")) {
+        return spelled_alike(text, ts_node_child_by_field_name(node, "alias", 5), name);
+    }
+    if (is(node, "for_statement")) {
+        return spelled_alike(text, ts_node_child_by_field_name(node, "name", 4), name) ||
+               spelled_alike(text, ts_node_child_by_field_name(node, "key", 3), name);
+    }
+    bool named = is(node, "local_declaration") ||
+                 is(node, "constant_declaration") || is(node, "parameter");
+    return named &&
+           spelled_alike(text, ts_node_child_by_field_name(node, "name", 4), name);
+}
+/* Whether node binds a name spelled like name, outside the callables nested
+ * in it. Such a binding would capture a rewritten read of the parameter. */
+static bool binds_name(const char *text, TSNode node, TSNode name)
+{
+    if (binds_here(text, node, name)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (is(child, "function_declaration") || is(child, "macro_declaration")) {
+            continue;
+        }
+        if ((is(node, "pattern_bindings") && spelled_alike(text, child, name)) ||
+            binds_name(text, child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* The parameter in parameters spelled like name, or a null node. */
+static TSNode named_parameter(const char *text, TSNode parameters, TSNode name)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+        TSNode parameter = ts_node_child_by_field_name(ts_node_named_child(parameters, i), "name", 4);
+        if (spelled_alike(text, parameter, name)) {
+            return parameter;
+        }
+    }
+    return (TSNode){ 0 };
+}
+typedef struct
+{
+    replacement *edits;
+    TSNode unnamed; /* an entry naming no parameter of its callable */
+    TSNode shadowed; /* an entry whose parameter a binding in the callable hides */
+} entry_rewrite;
+/* Rewrites one read through entry: `entry.X` of a parameter X loses its
+ * prefix, and otherwise entry names the callable's only parameter, so
+ * `entry.x` becomes `p.x` and a bare `entry` becomes `p`. */
+static void entry_read(const char *text, TSNode node, entry_rewrite *out)
+{
+    TSNode parent = ts_node_parent(node);
+    TSNode callable = enclosing_callable(node);
+    TSNode parameters = ts_node_is_null(callable)
+                          ? (TSNode){ 0 }
+                          : ts_node_child_by_field_name(callable, "parameters", 10);
+    TSNode object = ts_node_child_by_field_name(parent, "object", 6);
+    TSNode member = is(parent, "member_expression") && ts_node_eq(object, node)
+                      ? ts_node_child_by_field_name(parent, "member", 6)
+                      : (TSNode){ 0 };
+    TSNode parameter = ts_node_is_null(member)
+                         ? (TSNode){ 0 }
+                         : named_parameter(text, parameters, member);
+    bool only = !ts_node_is_null(parameters) &&
+                ts_node_named_child_count(parameters) == 1;
+    if (ts_node_is_null(parameter) && !only) {
+        if (ts_node_is_null(out->unnamed)) {
+            out->unnamed = node;
+        }
+        return;
+    }
+    if (ts_node_is_null(parameter)) {
+        parameter = ts_node_child_by_field_name(ts_node_named_child(parameters, 0), "name", 4);
+    }
+    if (binds_name(text, ts_node_child_by_field_name(callable, "body", 4), parameter) &&
+        ts_node_is_null(out->shadowed)) {
+        out->shadowed = node;
+    }
+    if (!ts_node_is_null(member) && spelled_alike(text, member, parameter)) {
+        push_edit(
+            &out->edits,
+            (int)ts_node_start_byte(node),
+            (int)ts_node_start_byte(member),
+            xstrdup("")
+        );
+        return;
+    }
+    int from = (int)ts_node_start_byte(parameter),
+        to = (int)ts_node_end_byte(parameter);
+    char *spelling = xmalloc((size_t)(to - from) + 1);
+    memcpy(spelling, text + from, (size_t)(to - from));
+    spelling[to - from] = '\0';
+    push_edit(&out->edits, (int)ts_node_start_byte(node), (int)ts_node_end_byte(node), spelling);
+}
+/* Every read through entry is rewritten; `after entry` names a handler, not a
+ * value, and stays. */
+static void entry_edits(const char *text, TSNode node, entry_rewrite *out)
+{
+    if (is(node, "builtin_reference") &&
+        ts_node_end_byte(node) - ts_node_start_byte(node) == 5 &&
+        !strncmp(text + ts_node_start_byte(node), "entry", 5)) {
+        if (!is(ts_node_parent(node), "handler")) {
+            entry_read(text, node, out);
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        entry_edits(text, ts_node_child(node, i), out);
+    }
+}
+int chibi_migrate_entry(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = parse27(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        /* A rerun after an interrupted step finds sources already migrated,
+         * which the version 28 grammar reads at version 28 or later. */
+        syntax = parse28(source);
+        bool valid = !syntax->diagnostic_count;
+        script_syntax_free(syntax);
+        if (valid) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 27 source");
+        return -1;
+    }
+    entry_rewrite rewrite = { 0 };
+    entry_edits(source, ts_tree_root_node(syntax->tree), &rewrite);
+    bool named = ts_node_is_null(rewrite.unnamed),
+         clear = ts_node_is_null(rewrite.shadowed);
+    if (!named || !clear) {
+        script_range range = script_node_range(
+            named ? rewrite.shadowed : rewrite.unnamed
+        );
+        snprintf(
+            error,
+            size,
+            "entry at %d:%d %s",
+            range.line,
+            range.column,
+            !named ? "names no parameter of its callable; name the parameter" : "reads a parameter that a binding of the same name hides; rename the binding"
+        );
+        script_syntax_free(syntax);
+        prefix_edits_free(rewrite.edits);
+        return -1;
+    }
+    script_syntax_free(syntax);
+    if (!acount(rewrite.edits)) {
+        return 0;
+    }
+    char *result = prefix_apply(source, rewrite.edits);
+    prefix_edits_free(rewrite.edits);
+    return accept_migrated(source, result, "Entry", 28, migrated, error, size);
+}
+static char **migrate_entry(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (chibi_migrate_entry(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+/* Whether node is an `after entry` handler. */
+static bool after_entry(const char *text, TSNode node)
+{
+    TSNode kind = ts_node_child_by_field_name(node, "kind", 4);
+    TSNode name = ts_node_child_by_field_name(node, "name", 4);
+    return is(node, "handler") && !ts_node_is_null(kind) &&
+           ts_node_end_byte(kind) - ts_node_start_byte(kind) == 5 &&
+           !strncmp(text + ts_node_start_byte(kind), "after", 5) &&
+           is(name, "builtin_reference") &&
+           ts_node_end_byte(name) - ts_node_start_byte(name) == 5 &&
+           !strncmp(text + ts_node_start_byte(name), "entry", 5);
+}
+/* Whether node reads the handler payload through `event`, outside the
+ * callables and handlers nested in it. */
+static bool reads_event(const char *text, TSNode node)
+{
+    if (is(node, "builtin_reference") &&
+        ts_node_end_byte(node) - ts_node_start_byte(node) == 5 &&
+        !strncmp(text + ts_node_start_byte(node), "event", 5)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        bool nested = is(child, "function_declaration") ||
+                      is(child, "macro_declaration") || is(child, "handler");
+        if (!nested && reads_event(text, child)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether node, outside the callables nested in it, holds an identifier
+ * spelled like name. */
+static bool mentions(const char *text, TSNode node, TSNode name)
+{
+    if (is(node, "identifier")) {
+        return spelled_alike(text, node, name);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        bool nested = is(child, "function_declaration") ||
+                      is(child, "macro_declaration");
+        if (!nested && mentions(text, child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* The variable an assignment target or call target starts from. */
+static TSNode expression_root(TSNode node)
+{
+    while (is(node, "member_expression") || is(node, "index_expression")) {
+        node = ts_node_child_by_field_name(node, "object", 6);
+    }
+    return node;
+}
+/* The name of the library, behavior or system that holds node, or a null
+ * node. An unqualified call names a callable of its own container. */
+static TSNode container_name(TSNode node)
+{
+    for (TSNode at = ts_node_parent(node); !ts_node_is_null(at);
+         at = ts_node_parent(at)) {
+        if (is(at, "library") || is(at, "behavior") || is(at, "system")) {
+            return ts_node_child_by_field_name(at, "name", 4);
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* A callable's identity across a project: "Container.Name". */
+static char *callable_key(const char *text, TSNode container, TSNode name)
+{
+    char *outer = ts_node_is_null(container) ? xstrdup("")
+                                             : name_text(text, container);
+    char *inner = name_text(text, name);
+    size_t size = strlen(outer) + strlen(inner) + 2;
+    char *key = xmalloc(size);
+    snprintf(key, size, "%s.%s", outer, inner);
+    free(outer);
+    free(inner);
+    return key;
+}
+static bool declares_reference(const char *text, TSNode parameters)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+        TSNode type = ts_node_child_by_field_name(ts_node_named_child(parameters, i), "type", 4);
+        if (ts_node_is_null(type)) {
+            continue;
+        }
+        const char *spelling = text + ts_node_start_byte(type);
+        if (!strncmp(spelling, "ref", 3) &&
+            !isalnum((unsigned char)spelling[3]) && spelling[3] != '_') {
+            return true;
+        }
+    }
+    return false;
+}
+/* Appends the identities of the callables in node that take a parameter by
+ * reference. Natives take copies, so only calls to these can change a
+ * variable passed to them. */
+static void collect_reference_callables(const char *text, TSNode node, char ***keys)
+{
+    if ((is(node, "function_declaration") || is(node, "macro_declaration")) &&
+        declares_reference(text, ts_node_child_by_field_name(node, "parameters", 10))) {
+        apush(*keys, callable_key(text, container_name(node), ts_node_child_by_field_name(node, "name", 4)));
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        collect_reference_callables(text, ts_node_named_child(node, i), keys);
+    }
+}
+static void collect_source_references(const char *source, char ***keys)
+{
+    script_syntax *syntax = parse28(source);
+    collect_reference_callables(source, ts_tree_root_node(syntax->tree), keys);
+    script_syntax_free(syntax);
+}
+static void reference_callables_free(char **keys)
+{
+    for (int i = 0; i < acount(keys); i++) {
+        free(keys[i]);
+    }
+    afree(keys);
+}
+/* Whether call may take an argument by reference: `Library.Name(...)` names
+ * Library's callable, and `Name(...)` one in the call's own container. */
+static bool takes_reference(const char *text, TSNode call, char **references)
+{
+    TSNode function = ts_node_child_by_field_name(call, "function", 8);
+    TSNode library = ts_node_child_by_field_name(function, "object", 6);
+    bool qualified = is(function, "member_expression") && is(library, "identifier");
+    if (!qualified && !is(function, "identifier")) {
+        return false;
+    }
+    char *key = qualified
+                  ? callable_key(text, library, ts_node_child_by_field_name(function, "member", 6))
+                  : callable_key(text, container_name(call), function);
+    bool found = false;
+    for (int i = 0; !found && i < acount(references); i++) {
+        found = !strcmp(references[i], key);
+    }
+    free(key);
+    return found;
+}
+/* Whether node, outside nested callables and handlers, may change a variable
+ * spelled like name: it assigns the variable, a field or an element of it,
+ * or passes it to a callable that takes a parameter by reference. */
+static bool may_change(const char *text, TSNode node, TSNode name, char **references)
+{
+    if ((is(node, "assignment") || is(node, "reduce_statement")) &&
+        spelled_alike(text, expression_root(ts_node_child_by_field_name(node, "target", 6)), name)) {
+        return true;
+    }
+    if (is(node, "call_expression") && takes_reference(text, node, references) &&
+        mentions(text, ts_node_child_by_field_name(node, "arguments", 9), name)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        bool nested = is(child, "function_declaration") ||
+                      is(child, "macro_declaration") || is(child, "handler");
+        if (!nested && may_change(text, child, name, references)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether a local or constant the handler declares at its top level is a
+ * parameter's name or is spelled elsewhere in body. Moved out of the handler,
+ * it would join the function's scope and clash with, or capture, that name. */
+static bool declares_used_name(const char *text, TSNode handler, TSNode body, TSNode parameters)
+{
+    TSNode block = ts_node_child_by_field_name(handler, "body", 4);
+    for (uint32_t i = 0; i < ts_node_named_child_count(block); i++) {
+        TSNode declaration = ts_node_named_child(block, i);
+        if (!is(declaration, "local_declaration") &&
+            !is(declaration, "constant_declaration")) {
+            continue;
+        }
+        TSNode name = ts_node_child_by_field_name(declaration, "name", 4);
+        if (!ts_node_is_null(named_parameter(text, parameters, name))) {
+            return true;
+        }
+        for (uint32_t j = 0; j < ts_node_named_child_count(body); j++) {
+            TSNode other = ts_node_named_child(body, j);
+            if (!ts_node_eq(other, handler) && mentions(text, other, name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+/* Whether the handler reads a parameter that the function's own statements
+ * may change. The handler read the argument as passed; moved, it would read
+ * the changed value. */
+static bool reads_changed_parameter(
+    const char *text,
+    TSNode handler,
+    TSNode body,
+    TSNode parameters,
+    char **references
+)
+{
+    TSNode block = ts_node_child_by_field_name(handler, "body", 4);
+    for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+        TSNode name = ts_node_child_by_field_name(ts_node_named_child(parameters, i), "name", 4);
+        if (!mentions(text, block, name)) {
+            continue;
+        }
+        for (uint32_t j = 0; j < ts_node_named_child_count(body); j++) {
+            TSNode statement = ts_node_named_child(body, j);
+            if (!is(statement, "handler") &&
+                may_change(text, statement, name, references)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+/* The columns of spaces or tabs that begin the line holding offset. */
+static int line_indent(const char *text, int offset, int *line_start)
+{
+    int start = offset;
+    while (start > 0 && text[start - 1] != '\n') {
+        start--;
+    }
+    int end = start;
+    while (text[end] == ' ' || text[end] == '\t') {
+        end++;
+    }
+    *line_start = start;
+    return end - start;
+}
+typedef struct
+{
+    replacement *edits;
+    char **references; /* Borrowed callables that take a parameter by reference. */
+    char *moved;       /* The current function's moved statements. */
+    TSNode refused;
+    const char *reason;
+} entry_body_rewrite;
+static void move_literal(entry_body_rewrite *out, const char *text, int length)
+{
+    if (!length) {
+        return;
+    }
+    int offset = acount(out->moved);
+    asetlen(out->moved, offset + length);
+    memcpy(out->moved + offset, text, (size_t)length);
+}
+/* Appends the statements of block, between its braces, to the moved text. A
+ * block on one line moves trimmed; with lines, each line moves without the
+ * indent its statements had beyond the handler's. */
+static void move_statements(entry_body_rewrite *out, const char *text, TSNode block, bool inline_close)
+{
+    int from = (int)ts_node_start_byte(block) + 1,
+        to = (int)ts_node_end_byte(block) - 1;
+    while (from < to && (text[from] == ' ' || text[from] == '\t')) {
+        from++;
+    }
+    while (to > from && isspace((unsigned char)text[to - 1])) {
+        to--;
+    }
+    if (from == to) {
+        return;
+    }
+    int line_start,
+        indent = line_indent(text, (int)ts_node_start_byte(block), &line_start);
+    if (inline_close || text[from] != '\n') {
+        if (!inline_close) {
+            move_literal(out, text + line_start, indent);
+        }
+        move_literal(out, text + from, to - from);
+        move_literal(out, inline_close ? " " : "\n", 1);
+        return;
+    }
+    int inner_start,
+        inner = line_indent(text, (int)ts_node_start_byte(ts_node_named_child(block, 0)), &inner_start);
+    for (int line = from + 1; line < to;) {
+        int skip = 0;
+        while (skip < inner - indent && line + skip < to &&
+               (text[line + skip] == ' ' || text[line + skip] == '\t')) {
+            skip++;
+        }
+        int end = line + skip;
+        while (end < to && text[end] != '\n') {
+            end++;
+        }
+        move_literal(out, text + line + skip, end - line - skip);
+        move_literal(out, "\n", 1);
+        line = end + 1;
+    }
+}
+/* Why the statements of handler cannot move into body, or NULL. */
+static const char *entry_refusal(const char *text, TSNode handler, TSNode body, TSNode parameters, char **references)
+{
+    if (!ts_node_is_null(ts_node_child_by_field_name(handler, "alias", 5)) ||
+        !ts_node_is_null(ts_node_child_by_field_name(handler, "parameters", 10))) {
+        return "names the payload of `after entry`; "
+               "read the parameters by name";
+    }
+    if (reads_event(text, ts_node_child_by_field_name(handler, "body", 4))) {
+        return "reads `event` inside `after entry`; "
+               "read the parameters by name";
+    }
+    if (declares_used_name(text, handler, body, parameters)) {
+        return "declares a name in `after entry` that "
+               "the function also uses; rename it";
+    }
+    if (reads_changed_parameter(text, handler, body, parameters, references)) {
+        return "reads a parameter in `after entry` that the "
+               "function's statements assign or pass by "
+               "reference; move the statements by hand";
+    }
+    return NULL;
+}
+/* Where the moved statements go: after the function's last statement, before
+ * the handlers that follow it, or before the closing brace. */
+static int entry_insertion(const char *text, TSNode body, int close_start)
+{
+    for (uint32_t i = ts_node_named_child_count(body); i-- > 0;) {
+        TSNode child = ts_node_named_child(body, i);
+        if (is(child, "handler") || is(child, "comment")) {
+            continue;
+        }
+        /* An automatic terminator ends a statement after its newline and the
+         * next line's indent. */
+        int end = (int)ts_node_end_byte(child);
+        while (text[end - 1] == ' ' || text[end - 1] == '\t') {
+            end--;
+        }
+        if (text[end - 1] != '\n') {
+            while (text[end] == ' ' || text[end] == '\t' || text[end] == ';') {
+                end++;
+            }
+            if (text[end] != '\n') {
+                return close_start;
+            }
+            end++;
+        }
+        return end < close_start ? end : close_start;
+    }
+    return close_start;
+}
+/* `after entry { B }` in a function runs B after the function's statements,
+ * with the arguments as they were passed, so B's statements move after them,
+ * before the handlers that follow. The refusals keep the moved statements
+ * reading the same values and names. */
+static void move_entry_bodies(const char *text, TSNode function, entry_body_rewrite *out)
+{
+    TSNode body = ts_node_child_by_field_name(function, "body", 4);
+    assert(is(body, "callable_body"));
+    bool any = false;
+    for (uint32_t i = 0; i < ts_node_named_child_count(body); i++) {
+        any |= after_entry(text, ts_node_named_child(body, i));
+    }
+    if (!any) {
+        return;
+    }
+    TSNode parameters = ts_node_child_by_field_name(function, "parameters", 10);
+    TSNode close = ts_node_child(body, ts_node_child_count(body) - 1);
+    int close_start,
+        close_indent = line_indent(text, (int)ts_node_start_byte(close), &close_start);
+    bool inline_close = close_start + close_indent != (int)ts_node_start_byte(close);
+    if (inline_close && ts_node_named_child_count(body) > 1 &&
+        ts_node_is_null(out->refused)) {
+        out->refused = function;
+        out->reason = "is on one line with `after entry` and other statements; "
+                      "put them on separate lines";
+    }
+    int at = inline_close ? (int)ts_node_start_byte(close)
+                          : entry_insertion(text, body, close_start);
+    int merged = -1;
+    asetlen(out->moved, 0);
+    for (uint32_t i = 0; i < ts_node_named_child_count(body); i++) {
+        TSNode handler = ts_node_named_child(body, i);
+        if (!after_entry(text, handler)) {
+            continue;
+        }
+        const char *refusal = entry_refusal(text, handler, body, parameters, out->references);
+        if (refusal && ts_node_is_null(out->refused)) {
+            out->refused = handler;
+            out->reason = refusal;
+        }
+        int start = (int)ts_node_start_byte(handler),
+            end = (int)ts_node_end_byte(handler);
+        int line_start, indent = line_indent(text, start, &line_start), after = end;
+        while (text[after] == ' ' || text[after] == '\t') {
+            after++;
+        }
+        bool own_line = line_start + indent == start && text[after] == '\n';
+        int from = own_line ? line_start : start;
+        /* Edits must not start at one offset, so a handler where the
+         * statements go is replaced by them. */
+        merged = from == at ? acount(out->edits) : merged;
+        push_edit(&out->edits, from, own_line ? after + 1 : after, xstrdup(""));
+        move_statements(out, text, ts_node_child_by_field_name(handler, "body", 4), inline_close);
+    }
+    apush(out->moved, '\0');
+    if (merged < 0) {
+        push_edit(&out->edits, at, at, xstrdup(out->moved));
+        return;
+    }
+    free(out->edits[merged].text);
+    out->edits[merged].text = xstrdup(out->moved);
+}
+static void after_entry_edits(const char *text, TSNode node, entry_body_rewrite *out)
+{
+    if (is(node, "function_declaration")) {
+        move_entry_bodies(text, node, out);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        after_entry_edits(text, ts_node_named_child(node, i), out);
+    }
+}
+/* Collects the edits that move the statements of every `after entry` in a
+ * function; returns -1 with error set when one cannot move. */
+static int after_entry_rewrite(const char *source, entry_body_rewrite *rewrite, char *error, size_t size)
+{
+    script_syntax *syntax = parse28(source);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        /* A rerun after an interrupted step finds sources already migrated,
+         * which the version 29 grammar reads. */
+        if (valid_at(source, 29)) {
+            return 0;
+        }
+        snprintf(error, size, "Cannot migrate invalid version 28 source");
+        return -1;
+    }
+    after_entry_edits(source, ts_tree_root_node(syntax->tree), rewrite);
+    afree(rewrite->moved);
+    rewrite->moved = NULL;
+    if (!ts_node_is_null(rewrite->refused)) {
+        script_range range = script_node_range(rewrite->refused);
+        snprintf(
+            error,
+            size,
+            "function at %d:%d %s",
+            range.line,
+            range.column,
+            rewrite->reason
+        );
+        script_syntax_free(syntax);
+        return -1;
+    }
+    script_syntax_free(syntax);
+    return 0;
+}
+/* Moves the statements of each `after entry`; references are the callables
+ * that take a parameter by reference. */
+static int migrate_entry_bodies(const char *source, char **references, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    entry_body_rewrite rewrite = { .references = references };
+    int status = after_entry_rewrite(source, &rewrite, error, size);
+    if (!status && acount(rewrite.edits)) {
+        char *result = prefix_apply(source, rewrite.edits);
+        status = accept_migrated(source, result, "After entry", 29, migrated, error, size);
+    }
+    prefix_edits_free(rewrite.edits);
+    return status;
+}
+int chibi_migrate_after_entry(const char *source, char **migrated, char *error, size_t size)
+{
+    char **references = NULL;
+    collect_source_references(source, &references);
+    int status = migrate_entry_bodies(source, references, migrated, error, size);
+    reference_callables_free(references);
+    return status;
+}
+static char **migrate_after_entry(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated),
+         **references = NULL;
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], ".chibi")) {
+            collect_source_references(sources[i], &references);
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (migrate_entry_bodies(sources[i], references, &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    reference_callables_free(references);
+    return migrated;
+}
+
+int chibi_migrate_handlers(
+    const char *source,
+    const char *const *declarations,
+    int declaration_count,
+    char **migrated,
+    char *error,
+    size_t size
+)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate29_handlers(source, declarations, declaration_count, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Handler", 30, migrated, error, size)
+             : 0;
+}
+static char **migrate_handlers(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    const char **declarations = NULL;
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], DECLARATIVE_ASSET_EXTENSION)) {
+            apush(declarations, sources[i]);
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_handlers(sources[i], declarations, acount(declarations), &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    afree(declarations);
+    return migrated;
+}
+
+int chibi_migrate_step_globals(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate30_step_globals(source, &result, error, size)) {
+        return -1;
+    }
+    return result ? accept_migrated(source, result, "Step", 31, migrated, error, size)
+                  : 0;
+}
+static char **migrate_step_globals(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_step_globals(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
+int chibi_migrate_array_calls(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate31_array_calls(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Array call", 32, migrated, error, size)
+             : 0;
+}
+static char **migrate_array_calls(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_array_calls(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
+/* Removes the scripts later steps migrated past version `from + 1` from the
+ * step's inputs; returns the remaining count. */
+static int skip_migrated_ahead(char **paths, char **sources, int count, int from)
+{
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], ".chibi") && migrated_ahead(sources[i], from)) {
+            free(paths[i]);
+            free(sources[i]);
+            continue;
+        }
+        paths[kept] = paths[i];
+        sources[kept++] = sources[i];
+    }
+    asetlen(paths, kept);
+    return kept;
+}
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -3989,24 +6076,22 @@ int chibi_project_migrate_content(
      * version 21 changes materials, wherever the project keeps them; every
      * other step changes scripts. */
     bool declarative = from == 14 || from == 15 || from == 17 || from == 18 ||
-                       from == 20 || from == 21 || from == 22;
+                       from == 20 || from == 21 || from == 22 || from == 25;
     int status = collect_sources(
         content,
-        (from == 22 || from == 23) ? ".chibi.meta"
-        : declarative              ? DECLARATIVE_ASSET_EXTENSION
-                                   : ".chibi",
+        declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
         &paths,
         error,
         error_size
     );
-    /* Replace sidecars before their sources so interrupted source migrations
-     * can rerun without losing the old hash needed to remap anchors. */
-    if (!status && from == 22) {
-        status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
-    }
-    /* Versions 16 and 18 also check scripts for names they remove. */
-    if (!status && (from == 15 || from == 17 || from == 22 || from == 23)) {
+    /* Versions 16 and 18 also check scripts for names they remove, and
+     * versions 23 and 26 also rewrite scripts. */
+    if (!status && (from == 15 || from == 17 || from == 22 || from == 25)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
+    }
+    /* Version 30 types handler payloads from the project's event declarations. */
+    if (!status && from == 29) {
+        status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
      * content, so add it unless the scan found it. */
@@ -4043,6 +6128,11 @@ int chibi_project_migrate_content(
             snprintf(error, error_size, "Cannot read source %s", paths[i]);
             status = -1;
         }
+    }
+    /* Steps from version 23 on read scripts at their own version or the
+     * next; they leave alone scripts that later steps migrated further. */
+    if (!status && from >= 23) {
+        count = skip_migrated_ahead(paths, sources, count, from);
     }
     char **migrated = NULL;
     if (!status) {
@@ -4120,12 +6210,54 @@ int chibi_project_migrate_content(
                 migrated = migrate_declarations(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
+            case 24:
+                error[0] = '\0';
+                migrated = migrate_retention(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 25:
+                error[0] = '\0';
+                migrated = migrate_syntax(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 26:
+                error[0] = '\0';
+                migrated = migrate_conversions(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 27:
+                error[0] = '\0';
+                migrated = migrate_entry(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 28:
+                error[0] = '\0';
+                migrated = migrate_after_entry(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 29:
+                error[0] = '\0';
+                migrated = migrate_handlers(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 30:
+                error[0] = '\0';
+                migrated = migrate_step_globals(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 31:
+                error[0] = '\0';
+                migrated = migrate_array_calls(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
             default: assert(false);
         }
     }
     /* Every source is staged before any original is replaced, and a failed
      * step leaves the originals. Each step is idempotent, so a step
-     * interrupted while replacing reruns cleanly. */
+     * interrupted while replacing reruns cleanly, except version 31's: see
+     * chibi_migrate31_array_calls. The manifest records each finished step,
+     * so a later failure reruns none. */
     int staged = 0;
     for (; !status && staged < count; staged++) {
         if (migrated[staged]) {

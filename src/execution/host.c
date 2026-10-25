@@ -33,6 +33,8 @@ void behavior_function_free_data(behavior_data_storage *data)
         free(data->buffers[i]);
     }
     afree(data->buffers);
+    afree(data->buffered);
+    afree(data->initial);
     afree(data->values);
     afree(data->calls);
     free(data);
@@ -43,13 +45,16 @@ void behavior_function_reset_data(behavior_data_storage *data)
         return;
     }
     const behavior_function *f = data->function;
-    for (int i = 0; i < acount(f->data_values); i++) {
-        behavior_function_data_value v = f->data_values[i];
-        data->values[i] = v.initial;
-        if (v.size) {
-            memset(data->buffers[i], 0, v.size);
-            data->values[i].ptr = data->buffers[i];
-        }
+    if (data->initial) {
+        memcpy(
+            data->values,
+            data->initial,
+            (size_t)acount(data->initial) * sizeof *data->values
+        );
+    }
+    for (int i = 0; i < acount(data->buffered); i++) {
+        int cell = data->buffered[i];
+        memset(data->buffers[cell], 0, f->data_values[cell].size);
     }
 }
 size_t behavior_function_data_storage_bytes(const behavior_data_storage *data)
@@ -60,12 +65,10 @@ size_t behavior_function_data_storage_bytes(const behavior_data_storage *data)
     size_t bytes = sizeof *data;
 #define VECTOR(values)                                                         \
     ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
-    bytes += VECTOR(data->values) + VECTOR(data->buffers) + VECTOR(data->calls);
+    bytes += VECTOR(data->values) + VECTOR(data->initial) +
+             VECTOR(data->buffers) + VECTOR(data->buffered) + VECTOR(data->calls);
 #undef VECTOR
-    for (int i = 0; i < acount(data->function->data_values); i++) {
-        bytes += data->function->data_values[i].size;
-    }
-    return bytes;
+    return bytes + data->buffer_bytes;
 }
 size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx)
 {
@@ -111,8 +114,11 @@ void behavior_function_prepare_data(
             void *buffer = v.size ? xcalloc(1, v.size) : NULL;
             if (v.size) {
                 v.initial.ptr = buffer;
+                data->buffer_bytes += v.size;
+                apush(data->buffered, i);
             }
             apush(data->values, v.initial);
+            apush(data->initial, v.initial);
             apush(data->buffers, buffer);
         }
         /* Keep zero-argument, zero-result calls on a valid bank base. */

@@ -49,7 +49,66 @@ static void transfer(const behavior_function *f, const behavior_function_instruc
         mark(bits, slots + i->left, true);
     }
 }
-static void suspensions(behavior_function *f)
+static bool live_at(const uint64_t *bits, int value)
+{
+    return bits[value / 64] & (UINT64_C(1) << (value % 64));
+}
+static int root_value(const behavior_function *f, behavior_value_root root)
+{
+    return root.index + (root.bank == BEHAVIOR_BANK_LOCAL ? acount(f->slots) : 0);
+}
+/* Count before allocating so retained storage is exactly the live sets. */
+static bool save_live(
+    behavior_function *f,
+    behavior_function_suspension *s,
+    const uint64_t *bits,
+    int values,
+    size_t budget
+)
+{
+    for (int v = 0; v < values; v++) {
+        s->value_count += live_at(bits, v);
+    }
+    for (int i = 0; i < acount(f->value_roots); i++) {
+        s->root_count += live_at(bits, root_value(f, f->value_roots[i]));
+    }
+    if (s->value_count) {
+        s->values = arena_alloc_bounded(
+            &f->owned,
+            (size_t)s->value_count * sizeof *s->values,
+            budget
+        );
+        if (!s->values) {
+            return false;
+        }
+    }
+    if (s->root_count) {
+        s->roots = arena_alloc_bounded(
+            &f->owned,
+            (size_t)s->root_count * sizeof *s->roots,
+            budget
+        );
+        if (!s->roots) {
+            return false;
+        }
+    }
+    int saved = 0;
+    for (int v = 0; v < values; v++) {
+        if (live_at(bits, v)) {
+            s->values[saved++] = v;
+        }
+    }
+    saved = 0;
+    for (int i = 0; i < acount(f->value_roots); i++) {
+        behavior_value_root root = f->value_roots[i];
+        root.index = root_value(f, root);
+        if (live_at(bits, root.index)) {
+            s->roots[saved++] = root;
+        }
+    }
+    return true;
+}
+static bool suspensions(behavior_function *f, size_t budget)
 {
     assert(!f->suspensions);
     int count = acount(f->instructions), values = acount(f->slots) + acount(f->locals);
@@ -64,7 +123,7 @@ static void suspensions(behavior_function *f)
         }
     }
     if (!acount(f->suspensions)) {
-        return;
+        return true;
     }
     /* Backward fixed point includes both branch successors and loop back edges.
      * Local definitions/entries kill old values just like SSA definitions. */
@@ -94,26 +153,14 @@ static void suspensions(behavior_function *f)
             }
         }
     } while (changed);
-    for (int j = 0; j < acount(f->suspensions); j++) {
+    bool saved = true;
+    for (int j = 0; j < acount(f->suspensions) && saved; j++) {
         behavior_function_suspension *s = &f->suspensions[j];
-        const uint64_t *bits = live + (size_t)(s->pc + 1) * words;
-        for (int v = 0; v < values; v++) {
-            if (bits[v / 64] & (UINT64_C(1) << (v % 64))) {
-                apush(s->values, v);
-            }
-        }
-        for (int i = 0; i < acount(f->value_roots); i++) {
-            behavior_value_root root = f->value_roots[i];
-            int index = root.index +
-                        (root.bank == BEHAVIOR_BANK_LOCAL ? acount(f->slots) : 0);
-            if (bits[index / 64] & (UINT64_C(1) << (index % 64))) {
-                root.index = index;
-                apush(s->roots, root);
-            }
-        }
+        saved = save_live(f, s, live + (size_t)(s->pc + 1) * words, values, budget);
     }
     free(next);
     free(live);
+    return saved;
 }
 static void operands(behavior_function *f)
 {
@@ -123,11 +170,12 @@ static void operands(behavior_function *f)
         i->right_slot = behavior_function_right_slot(i->op);
     }
 }
-void behavior_function_finalize(behavior_function *f)
+bool behavior_function_finalize(behavior_function *f, size_t arena_budget)
 {
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         f->uses_storage |= i->op == BF_COPY_ARRAY || i->op == BF_COPY_STRING ||
+                           (i->op == BF_INTERN_STRING && i->type == PIN_STR) ||
                            i->op == BF_INVOKE ||
                            (i->op == BF_HOST_CALL &&
                             f->host_calls[i->target].call->value);
@@ -136,9 +184,12 @@ void behavior_function_finalize(behavior_function *f)
     if (f->fast) {
         operands(f->fast);
     }
-    suspensions(f);
+    if (!suspensions(f, arena_budget)) {
+        return false;
+    }
     behavior_function_runtime_code(f);
     behavior_function_borrow_arrays(f);
+    return true;
 }
 void behavior_function_activation_init(const behavior_function *f, behavior_function_activation *a)
 {

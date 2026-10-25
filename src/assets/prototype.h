@@ -30,7 +30,9 @@ typedef struct
     size_t size;
 } prototype_default;
 
-typedef struct
+typedef struct prototype_registry prototype_registry;
+typedef av_doc *(*prototype_decode_fn)(const char *, const prototype_registry *, char *, size_t);
+struct prototype_registry
 {
     const ecs_component_desc *const *components;
     int component_count;
@@ -38,7 +40,11 @@ typedef struct
     void *include_user;
     const prototype_default *defaults;
     int default_count;
-} prototype_registry;
+    const ecs_relationship_desc *const *relationships;
+    int relationship_count;
+    /* Optional authoring decoder. Runtime/document-only users retain KDL. */
+    prototype_decode_fn decode;
+};
 
 typedef int (*prototype_attach_fn)(ecs_world *world, ecs_entity entity, const char *graph_name, void *user);
 
@@ -73,6 +79,12 @@ typedef struct
     bool outer;
 } prototype_link;
 
+typedef struct
+{
+    const ecs_relationship_desc *relationship;
+    char *path;
+} prototype_pair;
+
 typedef struct prototype
 {
     char *name;
@@ -99,6 +111,7 @@ typedef struct prototype
     struct prototype **child_prototypes;
     /* Its handle fields that name entities, attached or detached. */
     prototype_link *links;
+    prototype_pair *pairs;
     int expanded; /* the other documents its load read, at most PROTOTYPE_EXPANSION_MAX */
     size_t read; /* their bytes, at most PROTOTYPE_READ_MAX */
     char **strings;
@@ -190,6 +203,7 @@ int prototype_spawn(
 );
 
 int prototype_read_field(
+    arena *storage,
     const prototype *prototype,
     const char *component_name,
     const char *field_name,

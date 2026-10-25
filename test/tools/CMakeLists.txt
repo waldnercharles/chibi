@@ -60,6 +60,7 @@ elseif(NOT TARGET Chibi::types)
     set(CHIBI_SDK_BUILD_COMPILER OFF CACHE BOOL "Build language, compiler and source authoring packages")
     add_subdirectory("${CHIBI_TOOL_ROOT}/sdk" sdk)
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/languages.cmake")
 add_executable(policy_worker policy_worker.c)
 target_compile_definitions(policy_worker PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
 target_compile_features(policy_worker PRIVATE c_std_11)
@@ -77,6 +78,10 @@ target_compile_options(chibi_sdk_contracts PRIVATE -Wall -Wextra -Werror -UNDEBU
 configure_file("${CHIBI_TOOL_ROOT}/test/prepared_fixture.h"
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/prepared_fixture.h" COPYONLY)
 add_library(chibi_prepared_consumer OBJECT prepared_runtime.c)
+add_library(chibi_record_consumer OBJECT record_runtime.c)
+target_include_directories(chibi_record_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+target_link_libraries(chibi_record_consumer PRIVATE Chibi::behavior_runtime)
+target_compile_options(chibi_record_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_include_directories(chibi_prepared_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_link_libraries(chibi_prepared_consumer PRIVATE Chibi::behavior_runtime)
 target_compile_options(chibi_prepared_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
@@ -86,8 +91,8 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
+add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c package_ownership.c desktop_dependencies.c third_party_publish.c collab.c
+    validate_project.c fixture_format.c controller.c render_fixture.c test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -101,6 +106,28 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+if(TARGET chibi_build_host)
+    target_sources(test_tools PRIVATE native_aot_driver.c)
+    target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c)
+    target_link_libraries(test_tools PRIVATE chibi_build_host)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BUILD_PROCESS=1)
+    add_dependencies(test_tools chibi-build-host)
+endif()
+if(TARGET chibi_compiler_host)
+    target_sources(test_tools PRIVATE compiler_artifact.c compiler_bootstrap.c)
+    target_link_libraries(test_tools PRIVATE chibi_compiler_host)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_COMPILER_ARTIFACT=1)
+    add_dependencies(test_tools chibi-compiler-host)
+endif()
+if(TARGET Chibi::shader_runtime)
+    add_library(chibi_shader_bake_consumer OBJECT shader_bake.c shader_source_debug.c)
+    target_include_directories(chibi_shader_bake_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_shader_bake_consumer PRIVATE Chibi::shader_runtime)
+    target_compile_options(chibi_shader_bake_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_shader_bake_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::shader_runtime)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_BAKE=1)
+endif()
 if(TARGET Chibi::authoring AND UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_INSTALLED_SDK AND
    NOT CMAKE_CONFIGURATION_TYPES)
     string(TOUPPER "${CMAKE_BUILD_TYPE}" export_build_type)
@@ -121,10 +148,10 @@ if(TARGET Chibi::authoring AND UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_I
     endforeach()
     configure_file(export_compiler.h.in
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/export_compiler.h" @ONLY)
-    set_source_files_properties(c_export.c PROPERTIES
+    set_source_files_properties(c_export.c record_c_export.c PROPERTIES
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_sources(test_tools PRIVATE c_export.c)
-    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::execution ${CMAKE_DL_LIBS})
+    target_sources(test_tools PRIVATE c_export.c record_c_export.c)
+    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::execution Chibi::array_capabilities ${CMAKE_DL_LIBS})
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_C_EXPORT=1)
 endif()
 if(TARGET Chibi::audio_runtime)
@@ -141,9 +168,21 @@ if(TARGET Chibi::scene_authoring)
     target_link_libraries(test_tools PRIVATE Chibi::scene_authoring Chibi::scene_document)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SCENE_AUTHORING=1)
 endif()
+if(TARGET Chibi::scene_authoring AND TARGET Chibi::source_catalog AND TARGET Chibi::authoring)
+    add_library(chibi_scene_snapshot_read_consumer OBJECT ../authoring/scene_snapshot_read.c)
+    target_include_directories(chibi_scene_snapshot_read_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_scene_snapshot_read_consumer PRIVATE Chibi::scene_authoring Chibi::source_catalog Chibi::authoring)
+    target_compile_options(chibi_scene_snapshot_read_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_scene_snapshot_read_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::scene_authoring Chibi::source_catalog Chibi::authoring)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SCENE_SNAPSHOT_READ=1)
+endif()
 if(TARGET Chibi::entity_runtime)
+    configure_file("${CHIBI_TOOL_ROOT}/test/tools/fixture.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/tools/fixture.h" COPYONLY)
     add_library(chibi_native_consumer OBJECT native.c native_values.c native_catalog.c physics.c
-        physics3d.c transforms.c tilemap_native.c)
+        physics3d.c transforms.c tilemap_native.c terrain_seams.c terrain_checkpoint.c terrain_storage.c
+        material_surface_mesh.c terrain_volume.c)
     target_include_directories(chibi_native_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_native_consumer PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
         Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
@@ -168,20 +207,13 @@ if(TARGET Chibi::tilemap_runtime)
     target_link_libraries(test_tools PRIVATE Chibi::tilemap_runtime)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_TILEMAP=1)
 endif()
-if(TARGET Chibi::tilemap_runtime AND TARGET Chibi::asset_text AND TARGET Chibi::project_compilation)
-    target_sources(test_tools PRIVATE tilemap_project.c)
-    target_link_libraries(test_tools PRIVATE Chibi::asset_text)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_TILEMAP_PROJECT=1)
-endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
 # Exercise the runtime GLSL compiler without opening a device. Its compiler
 # header is private to Cute, so these cases require an in-tree build.
 if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALLED_SDK)
-    get_target_property(platform_source Chibi::platform SOURCE_DIR)
-    get_directory_property(cute_source DIRECTORY "${platform_source}" DEFINITION cute_framework_SOURCE_DIR)
     target_sources(test_tools PRIVATE shader_webgpu.c)
-    target_include_directories(test_tools PRIVATE "${cute_source}/tools")
+    target_include_directories(test_tools PRIVATE "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/tools")
     target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
 endif()
@@ -195,6 +227,14 @@ if(TARGET Chibi::asset_text AND TARGET Chibi::asset_json)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_asset_values_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::asset_text Chibi::asset_json)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_ASSET_VALUES=1)
+endif()
+
+# The repository's published documentation site, built by a given compiler
+# from copies of the pages docs/site.kdl lists.
+if(TARGET Chibi::asset_text)
+    target_sources(test_tools PRIVATE published_docs.c)
+    target_link_libraries(test_tools PRIVATE Chibi::asset_text)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PUBLISHED_DOCS=1)
 endif()
 
 # UI documents and RCSS, and the watched, overlaid text files they read.
@@ -252,6 +292,23 @@ if(TARGET Chibi::project_document AND TARGET Chibi::text_source)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DOCUMENT=1)
 endif()
 
+# Exact Studio declaration migration through the public document/syntax owners.
+if(TARGET Chibi::project_document AND TARGET Chibi::language_syntax AND
+   TARGET Chibi::authoring AND TARGET Chibi::json)
+    configure_file("${CHIBI_TOOL_ROOT}/test/tools/fixture.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/tools/fixture.h" COPYONLY)
+    add_library(chibi_project_declarations_consumer OBJECT project_declarations.c)
+    target_include_directories(chibi_project_declarations_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_project_declarations_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_project_declarations_consumer PRIVATE Chibi::project_document
+        Chibi::language_syntax Chibi::authoring Chibi::json)
+    target_compile_options(chibi_project_declarations_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_project_declarations_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::project_document Chibi::language_syntax
+        Chibi::authoring Chibi::json)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DECLARATIONS=1)
+endif()
+
 # Reflection cases drive the native generator that SDK packages are built with.
 if(CHIBI_REFLECT_EXECUTABLE)
     target_sources(test_tools PRIVATE reflect.c)
@@ -259,7 +316,7 @@ if(CHIBI_REFLECT_EXECUTABLE)
         CHIBI_REFLECT_PATH="${CHIBI_REFLECT_EXECUTABLE}")
 endif()
 
-# The SDK installs no Box3D headers, so only an in-tree build can call Box3D directly.
+# The in-tree build checks the archive's Box3D directly.
 if(TARGET chibi_box3d)
     target_sources(test_tools PRIVATE box3d.c)
     target_link_libraries(test_tools PRIVATE Chibi::box3d)
@@ -267,27 +324,34 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
-    target_sources(test_tools PRIVATE installed_examples.c)
+    target_sources(test_tools PRIVATE terrain_playable_render.c)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
         ../render/memory_images.c
         ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c
         ../render/material_sampling.c ../render/material_coefficients.c ../render/material_lod.c
-        ../render/scene2d.c ../render/scene3d.c
+        ../render/scene2d.c ../render/scene3d.c ../render/material_terrain_seams.c
         device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(chibi_render_consumer PRIVATE scene3d_camera.c scene3d_terrain.c scene3d_volume.c
+        terrain_cut_benchmark.c)
     target_sources(test_tools PRIVATE particle_fields.c audio_output.c player_clock.c $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
     # Surface materials with roughness and metallic come from material graphs, and
     # the visibility scenes build shader graphs too.
     if(TARGET Chibi::shader_preparation)
+        configure_file("${CHIBI_TOOL_ROOT}/test/graph/packs.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/graph/packs.h" COPYONLY)
+        configure_file("${CHIBI_TOOL_ROOT}/test/render/hidden_app.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/render/hidden_app.h" COPYONLY)
         target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)
         target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c
-            ../render/material_pixels.c ../sdf_visibility.c)
+            ../render/material_pixels.c ../sdf_visibility.c surface_transport.c
+            material_mesh_cache.c hrc_spot.c)
         target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)
@@ -424,10 +488,15 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
         # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
         if(TARGET chibi_ctl)
-            target_sources(test_tools PRIVATE feature_coverage.c)
+            target_sources(test_tools PRIVATE feature_coverage.c environment_authoring.c material_bake.c terrain_storage_commands.c terrain_playable.c
+                game_equivalence.c)
             target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
                 CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
             add_dependencies(test_tools chibi_ctl)
+            # game-equivalence rebuilds Terrain Lab with chibi-compile by default.
+            if(TARGET chibi-compile)
+                add_dependencies(test_tools chibi-compile)
+            endif()
         endif()
         if(TARGET chibi_automation)
             target_sources(test_tools PRIVATE preview_components.c preview.c)
@@ -484,3 +553,4 @@ target_include_directories(benchmark_trials PRIVATE "${CHIBI_TOOL_ROOT}/src")
 target_compile_definitions(benchmark_trials PRIVATE _POSIX_C_SOURCE=200809L)
 target_compile_features(benchmark_trials PRIVATE c_std_11)
 target_compile_options(benchmark_trials PRIVATE -Wall -Wextra -Werror)
+add_dependencies(test_tools benchmark_trials)

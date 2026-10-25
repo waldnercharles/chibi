@@ -1,11 +1,12 @@
-behavior "Movement" {
-    on Tick {
+// Face aim; drive from movement input or boost along the ship heading.
+Movement :: behavior {
+    on Tick :: () {
         self.Orientation.Radians = atan2(self.Aim.Direction.y, self.Aim.Direction.x)
         if input.Boost.held {
-            self.Drive.Target = direction(cast<double>(self.Orientation.Radians)) * cast<double>(self.Movement.Speed) * 2
+            self.Drive.Target = direction(double(self.Orientation.Radians)) * double(self.Movement.Speed) * 2
         } else {
             if length(self.Input.Move) > 0.1 {
-                self.Drive.Target = self.Input.Move * cast<double>(self.Movement.Speed)
+                self.Drive.Target = self.Input.Move * double(self.Movement.Speed)
             } else {
                 self.Drive.Target = vec2(0, 0)
             }

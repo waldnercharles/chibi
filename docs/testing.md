@@ -25,26 +25,74 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
-make test-materials      # the material simulation selectors, one 60-second deadline
-make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
-make test-language-all   # every test_language selector, one 60-second deadline
+make test-native         # native CPU selectors
+make test-materials      # material simulation selectors
+make test-projects       # project, asset import and chibi_ctl selectors
+make test-language-all   # native language group
+make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
+make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
+make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
+make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
+make test-full           # tooling, native, materials, projects and language; no GPU
+make test-render         # render checks requiring a display and GPU; excludes Studio
+make test-compiler-parity # Release package-compiler routes, including bootstrap
+make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`make test-projects` also builds an unsanitized Release `chibi_ctl` in
-`build-release/` for `validate-project`, `prototype-expansion`, `controller` and
-`render-fixture`. `validate-project` starts `chibi_ctl` dozens of times; each
-start builds the authoring catalog, and under ASan those starts alone take
-longer than the deadline. The project selectors left the native group when it
-reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
-coverage, mesh files, project validation and model import alone took 33 s.
+The runner has no default global timeout.
+`make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
+case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
+passed directly to the program. For an arbitrary driver invocation, use
+`python3 tools/test_policy.py native /absolute/path/to/test_binary --selector`.
+An optional timeout precedes the action, for example
+`python3 tools/test_policy.py --timeout SECONDS tool language-program`.
 
-`python3 tools/test_policy.py tool <name>` runs one entry of that table against
-the drivers `make test-build` produced and that Release `chibi_ctl`; set
-`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
-build.
+`make test-projects` also builds an unsanitized Release `chibi_ctl` and `chibi`
+launcher, with its `chibi-compile` and `chibi-player`, in `build-release/`:
+`chibi_ctl` for `validate-project`, `prototype-expansion`, `controller` and
+`render-fixture`, `chibi-compile` for `published-docs`, and the launcher for
+`chibi-cli`. `validate-project` starts `chibi_ctl` dozens of times; each
+start builds the authoring catalog. The separate project group and Release tools
+keep that repeated startup work out of the native runtime checks.
+
+`published-docs` copies `docs/site.kdl` and every page, package folder and
+grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
+which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
+must parse, and each whole package must analyze, so a language change that
+breaks one fails `make test-projects` instead of the next site build. The site
+it writes stays out of the source tree. The same selector checks documentation
+fixtures for rendering, package references, and rejection of invalid original
+snippets. These compiler-only cases need no player or launcher. The Release
+`--docs` took 0.2–1.0 s on an M-series Mac under load; the sanitized one took 5–9 s.
+
+`chibi-cli` runs seventeen launcher cases: each command over a fake sibling
+compiler and player, the launcher's own `version` and `doctor`, and the real
+`chibi-compile`'s `--check`, `--test` and `--format` on fixture projects and
+package trees. Its `doc` case checks forwarding to the compiler; the real
+compiler's documentation cases run under `published-docs`.
+
+`python3 tools/test_policy.py tool language-docs-markdown` checks the authored
+renderer on both bytecode and the compiled backend, including grammar-derived
+highlighting, incomplete-fragment recovery, exact source slices, escaping,
+whitespace, UTF-8, and the GitHub Light/Dark Default token colors and contrast.
+Those presentation checks are separate from the original-snippet validation
+above, which cannot access the generator's private parser native.
+
+`python3 tools/test_policy.py tool <name>` runs one mapped selector against
+the drivers `make test-build` produced and those Release tools, except
+`language-package-compiler-chibi-bootstrap`, which runs the Release
+`test_language` that `make test-bootstrap` builds; set
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR`, `CHIBI_CTL`, `CHIBI_CLI` or
+`CHIBI_COMPILE` to use another build.
+
+`python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
+checked-in fixture projects with Release `chibi_ctl --format --check`.
+It refuses outdated manifests before launching any child, because opening an
+old project can migrate it. Standalone selectors,
+including `language-query-program` and `language-row-array`, can be outside the
+aggregate groups; use `make test-list` for the current inventory.
 
 `make language-build` builds a standalone, faster `test_language` in
 `build-language/` for the `test-language*` targets. Add a case to the selector
@@ -59,21 +107,32 @@ window, which needs a display and a GPU driver the CI job does not set up, so
 they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, the four groups and `make test-tools` on Linux and macOS. On
-Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
-one-minute step timeout (the test supervisor needs POSIX signals) and builds
-Studio against the installed SDK, without running tests. The Windows jobs are
-advisory until they first pass.
+CI runs the build, the four groups and `make test-tools` on Linux and macOS.
+The general Windows engine and Studio jobs are paused pending desktop archives.
+The independent `Compiler self-build` workflow runs nonadvisory macOS, Linux and
+Windows proofs on every PR into `main` and push to `main`. Each downloads a
+checksum-pinned runtime seed and uses the checked-in Chibi compiler to compile
+the current compiler/core sources. It then executes that output to compile them
+again. This workflow installs and invokes neither a C compiler nor CMake, and
+has no native-build job dependency. Both compiler processes use an isolated
+input directory and an empty tool search path. The two stages must agree locally,
+and the three platforms must produce identical compiler bytes. See the
+[compiler recovery proof](self-hosting-build.md#three-platform-compiler-recovery-proof)
+for the exact command, isolation and uploaded evidence. This workflow does not
+call `make test-bootstrap`, which prepares stage one through stage zero.
+The separate manual runtime-seed workflow retains the C/CMake recovery route
+for updating the explicitly prebuilt runtime dependency.
 
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
 area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
-materials, input and entities). `test_tools --feature-coverage <project>` compares the engine
+materials, input and entities). `test_tools --feature-coverage <project> <chibi_ctl>` compares the engine
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
-failure. Every prototype, behavior, library and system must be reachable from a
+failure. The runner passes the selected `CHIBI_CTL` controller,
+defaulting to `build-release/bin/chibi_ctl`. Every prototype, behavior, library and system must be reachable from a
 scene: placed or attached there, spawned or called from source that runs, and
 only that source counts. A spawn reaches the prototype it names directly or
 through a value, such as a local, state or library parameter that holds the
@@ -83,7 +142,7 @@ prototype run the prototype's list. A prototype's children spawn with each of
 its instances, so they are reached and run as instances too. Components count on these placed and
 spawned instances, after the scene's overrides, and where running source reads,
 writes or adds them, directly or through a generic call such as
-`add_component("Heat")`; a system query alone matches nothing without
+`add_component(Heat)`; a system query alone matches nothing without
 them, so it does not count.
 A system runs only while an entity's `EngineSystem` names it. Components the
 project declares in `content/components` load as they do in preparation and
@@ -99,29 +158,59 @@ entry becomes used. A PR that adds a component, native function or event uses it
 in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 `projects` group, and so CI, runs it on the fixture.
 
-## Temporary 60-second policy
+## Focused regression coverage
 
-`language-operations` is the bounded C workload for the checked core operation
-contract. Its nine cases attempt 82 catalog constructions (13 accepted and 69
-rejected), with at most 20 capabilities and four globals per catalog, and 13
-single-definition malformed inputs, 15 raw-table scalar semantic metadata
-rejections and 36 dormant metadata rejections. The latter independently mutate
-twelve fields for each of Owner, Delta and Delay; malformed tables are never
-lowered or executed. It performs seven
-top-level source preparation/lowering attempts (including two direct-catalog
-state rewrite rejections) and four
-tiny module finalizations (two constant-library bytecode modules, one operation fixture on
-each backend). The execution fixture dispatches four fixed durations on each
-backend, performs one synthetic-time update per backend and uses a 1,000-step
-budget per dispatch/update. No prepared bytes, files, subprocesses, windows,
-network or GPU are used. Native uses bytecode/SLJIT; the same C workload uses
-bytecode/Wasm in the browser-target driver. Admission and execution timing must
-be recorded separately; the shared production supervisor retains its 60-second
-deadline. Existing `language-program`, `language-incremental`, `native-catalog`
-and prepared integration selectors remain applicable to the changed contracts.
+The length-carrying string migration adds the following fixed CPU workloads.
+These counts describe coverage and do not record a pass.
+
+- `language-record-values`: thirteen cases, including eight fixed UTF-8 vectors,
+  eight indexed string keys, and ownership/native-boundary checks. One tiny
+  nested-record case checks local type resolution, a conflicting global shape,
+  atomic NUL rejection, retained bytes, ranges and collectable-arena rejection;
+  it adds no loops or child processes. One partial native record copy adds
+  three assertions for preserved opaque bytes and owned text after mutation.
+- `language-execution`: twenty-nine cases. The added five-instruction function
+  runs eight times across two backends with a 100-instruction budget; four
+  iterator calls cover NUL and malformed UTF-8. A fixed one-field native record
+  checks read ownership and rejection before reference/constructor publication.
+- `language-package-core`: seven cases and 386 calls, retaining the existing
+  10,000-instruction per-call budget.
+- `language-record-document`: five cases, adding three tiny JSON roundtrips,
+  four malformed byte tags and one rejected NUL name.
+- `language-record-prepared`: eleven cases, including a four-byte wire roundtrip,
+  budget failure, metadata rejection and invalid field markers. Shared-layout
+  validation uses one 128-field record and 256 headers under the default work
+  limit; tiny decoded definitions check distinct invalid layouts, later headers,
+  retries and native catalog replacement. A native-field size check uses an
+  81-byte stack string and a nearly exhausted logical budget with a hash sink;
+  it allocates no large output buffer.
+- `build-process`: thirty-seven cases. The new helper case adds seven operations
+  on at most seven bytes and no processes. Existing invocation and child limits
+  remain unchanged; binary-output and file assertions replace text rejection.
+- `ecs-strings`: three cases, each with one entity, at most two components and
+  fixed short strings. Rejected writes preserve payloads, versions and intern
+  statistics; successful writes retain bytes after the original storage changes.
+- `language-program` and its `language-query-program` subset add one descriptor
+  observer case: one entity, two tiny bytecode functions and two program steps
+  with a 1,000-instruction budget to check a three-byte payload.
+- `c-export-alias`: the existing second compiler child includes one additional
+  ten-instruction string function, two samples and four VM/generated-C calls
+  with budget 64. A fixed 4 KiB stack disturbance checks returned descriptor
+  lifetime. The two compiler children, 10-second child deadlines and second
+  child's 64 KiB source cap remain unchanged.
+
+These extensions add no rendering, GPU or network work and no additional child
+process launches.
+
+The independently reviewed compiler integration has 137 fixed samples: 90 base,
+13 types, 20 imports and 14 collections, with imports using Release. The Release
+bootstrap also compares all 137 samples between stages and 59 fixed floating
+literals with both signs. Seed verification runs one fixed-point compile with a 16 MiB output
+limit and writes only its closure and manifest; a failed compile may make one
+diagnostic call.
 
 The compiled-runtime rollout passed native, language, tooling, materials and
-project groups under their shared 60-second deadlines. Browser Wasm execution
+project groups. Browser Wasm execution
 passed in serial and pthread configurations. URL gesture coverage passed nine
 cases; the browser audio transport passed two C cases (six assertions) in
 1.372 seconds including its native launcher. Permission and capture endpoints
@@ -134,7 +223,7 @@ Metal/Cocoa (3.630 seconds including startup). This is rendering evidence, not
 a steady-state performance measurement. The broader `scene3d` check aborts in
 the existing sky path because Metal rejects an unused 128-byte instance-buffer
 layout; the sky source, Cute revision and instance-buffer patch are unchanged.
-Full native/render/Studio coverage remains disabled, not passed.
+That rollout did not establish full native/render/Studio coverage.
 
 `player-url` runs nine C-owned URL gesture lifecycle cases through nine short
 Node invocations. It drives the production browser bridge with fake browser
@@ -185,9 +274,8 @@ do not establish production semantic or execution coverage.
 
 The production syntax dispatcher builds independently with `make language-build`.
 `make test-language` runs seven finite C syntax/recovery/incremental snapshot cases
-and the explicit `.chibi` corpus manifest under one production deadline. Corpus
-input is limited to 256 files, 512 KiB per file and 8 MiB total. Independent review
-approved first supervised measurement; a syntax pass does not establish semantic
+and the explicit `.chibi` corpus manifest. Corpus input is limited to 256 files,
+512 KiB per file and 8 MiB total. A syntax pass does not establish semantic
 or execution correctness. The dispatcher compiles against public SDK headers;
 its syntax cases use allocation support and Tree-sitter's C runtime.
 Default inputs are curated engine examples and fixtures. Extracted projects can
@@ -213,6 +301,20 @@ to these small functions; there are no files, processes, frames or GPU work.
 Debug Clang 23.1.1 with ASan/UBSan passed 10 cases and 726 assertions in 0.577
 seconds on 2026-10-07, including actual VM and SLJIT execution.
 
+The 2026-10-21 shift-contract regression adds sixteen tiny functions (eight
+integer types, two directions), each run on VM and the compiled backend with
+three invalid counts: width, width plus one, and all bits set. These 96 calls
+check DATA failure and source metadata. Existing valid-shift cases cover zero,
+one and width minus one, sign extension and discarded bits. This bounded
+extension was independently reviewed before execution; its no-IO/no-process
+constraints are unchanged.
+
+The same dispatcher adds six two-frame, ten-instruction definitions to check
+the optimizer's treatment of failing shifts. Twenty invocations, each capped at
+100 instructions, cover both directions, variable counts and valid/invalid
+constant counts on both backends. An unused invalid shift must still fail and
+preserve a prior persistent write; a valid shift reaches the subsequent write.
+
 `python3 tools/test_policy.py tool language-program` selects twelve independently
 reviewed source/runtime cases on VM and SLJIT. Besides typed events, systems,
 bindings, imports, cancellation and failure records, it exercises eager tuple
@@ -234,9 +336,8 @@ pico_unit checks the exact result before timing and after each trial. Output
 reports monotonic elapsed time, allocation-wrapper calls/requested bytes and
 arena block allocations; requested bytes are cumulative, not live memory.
 Compilation is excluded from trial timing. This CPU-only selector has no engine
-frames, GPU, files, processes or sleeps and runs under the shared 60-second
-production supervisor deadline. The permanent selector passed 64 assertions in
-0.215 seconds on 2026-10-11 (macOS arm64, Clang 23, Release, no sanitizers).
+frames, GPU, files, processes or sleeps. The permanent selector passed 64
+assertions in 0.215 seconds on 2026-10-11 (macOS arm64, Clang 23, Release, no sanitizers).
 Set `CHIBI_LANGUAGE_BUILD_DIR` to the Release build's `test/language` directory
 when comparing performance; the default build may enable sanitizers.
 
@@ -250,16 +351,25 @@ frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
 
-Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. `make
+test-wasm` also runs the package compiler's base samples on both backends
+(`wasm-package-compiler-chibi` and `-compiled`); every other package-compiler
+selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
-examples, and run under the production 60-second deadline. Configuration and
-build time are separate. Node runs the Wasm, execution, program, headless,
-publication and scalar benchmark selectors. Chrome runs the same selectors
+examples. Configuration and build time are separate. Node runs the Wasm,
+execution, program, headless, publication and scalar benchmark selectors. Chrome runs the same selectors
 except headless through `test_tools --wasm-browser`, with GPU use disabled and
 a 55-second internal process deadline. The fixture owns and removes its browser
 profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
 baseline comparison.
+
+Chrome also runs `--row-array`, `--modules` and `--query-program` for packed
+numeric arrays, imported generic ownership, maps and iteration. These are fixed
+C workloads; module paths use a temporary MEMFS directory and source overlays.
+The packed loop has 64 elements and 16 trials per numeric width, representation
+and backend. The combined route retains its 55-second internal timeout. Its
+expanded duration has not been measured.
 
 Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
 helper continuations, budgets, prepared generation ownership and canonical
@@ -268,7 +378,7 @@ live and checks that repeated passes add no compilations. Separate checks cover
 retirement without recompiling unrelated functions and pthread table cleanup.
 The default-backend and scratch-capacity checks failed with their prior behavior
 restored. Linking the previous loader made both cache regressions fail on their
-compilation-count assertions. Full GPU/Studio coverage remains quarantined.
+compilation-count assertions. These runs do not establish full GPU/Studio coverage.
 
 On 2026-10-11, Chrome passed 91 cases/5,007 assertions in 0.907 seconds; its
 pthread configuration passed 92 cases/5,041 assertions in 0.943 seconds. Node
@@ -327,10 +437,10 @@ limits, values above 2^53, contextual nominal enums and five out-of-range reject
 
 `python3 tools/test_policy.py tool controller` runs five C command-response cases
 against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
-Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. Independent
-review admitted seven tiny generated files per case, two scene entities, thirteen
-owned child processes capped at ten seconds each, and twenty total fixed
-simulation steps under the shared sixty-second deadline. Each fixture is formatted
+Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. The workload
+uses seven tiny generated files per case, two scene entities, thirteen owned
+child processes capped at ten seconds each, and twenty total fixed simulation
+steps. Each fixture is formatted
 through `chibi_ctl --format`, and its files are removed after the case.
 
 The cases check canonical definitions and references, exact rename edits without
@@ -350,8 +460,10 @@ Begin, rollback and cancellation. The normal Debug runtime-only consumer passed
 59 assertions in 0.656 seconds. `field-runtime` originally ran three public cases for owned
 scalar artifacts, a 3-by-3 whole/sliced bake, geometry/parameter results, invalid
 IR and every prefix of a prepared record smaller than 512 bytes. It passed 254
-assertions in 0.828 seconds with ASan/UBSan. Neither selector loads a renderer or
-runs engine frames.
+assertions in 0.828 seconds with ASan/UBSan. Two of its cases check every field
+node's library host call against the field evaluator, sampled and baked, over
+2,000 operand sets each, and that a call's Seed Offset is its whole seed.
+Neither selector loads a renderer or runs engine frames.
 `prototype-document` selects one independently reviewed case with two small
 reflected types and fixed creation-default, detached-component, value snapshot,
 partial KDL and malformed-size operations. It has no files, worlds, processes or
@@ -366,24 +478,24 @@ replacement invalidating an existing session, new default values and a rejected
 wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
 in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 
-`--source-presentation` is an independently admitted native selector for seven small
+`--source-presentation` is a native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
 edits, exact-source layout metadata, invalid drafts, native palette declarations,
 callable-local ownership and readable formulas. Formula coverage retains authored
 call origins and effectful operations and reparses expression replacements.
-These cases pass 7,971 assertions in 1.259 seconds under the production deadline.
+These cases pass 7,971 assertions in 1.259 seconds.
 Later document/Studio integrations are unverified.
 It also runs two component presentation cases on two fixed in-memory documents:
 the engine's tabs, icons and reflected units and ranges, and a document
 overriding them key by key.
 
-`make agent-gpu-test AGENT_SELECTOR=--studio-scene-camera` admits one fixed
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-camera` runs one fixed
 native Studio camera case, with one in-memory cube and thirty hidden 1920x1080
-frames at fixed 1/60 dt under one shared 60-second deadline. Queued SDL input
+frames at fixed 1/60 dt. Queued SDL input
 exercises orbit, pan, anchored dolly, same-frame right-button/W flight,
 fractional diagonal wheel pan, an above-horizon press, focus-loss cleanup and
-checkpoint lens retention. This does not admit the broader Studio acceptance
-suite or establish web input coverage.
+checkpoint lens retention. This case does not establish broader Studio acceptance
+or web input coverage.
 
 Use the existing absolute `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD` and
 `CHIBI_STUDIO_ACCEPTANCE_EVIDENCE` paths. The evidence must match the current
@@ -398,10 +510,10 @@ Exactly one `Studio 3D camera accepted: frames=30` line is required; incomplete,
 repeated or diagnostic-bearing output fails. C policy regressions check those
 completion requirements. The first supervised camera execution remains pending.
 
-`make agent-gpu-test AGENT_SELECTOR=--studio-scene-gizmo3d` admits the
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-gizmo3d` runs the
 independently reviewed native gizmo fixture: six in-memory prototypes and eight
-actors, forty-two hidden 1920x1080 frames at fixed 1/60 dt under one shared
-60-second deadline. Queued SDL gestures exercise world/local movement, grid
+actors, forty-two hidden 1920x1080 frames at fixed 1/60 dt. Queued SDL gestures
+exercise world/local movement, grid
 snapping, Orientation and mirrored-parent rotation, local scaling, undo/redo,
 Escape, focus-loss and hidden-panel cancellation, and refusal beneath sheared
 or singular parents. It uses the same installed-SDK provenance, disposable
@@ -411,12 +523,12 @@ files with the shared 3D fixture and collider acceptance).
 Exactly one `Studio 3D gizmo accepted: frames=42` line is required; an older
 38-frame fixture, incomplete run, duplicate marker or runtime diagnostic fails.
 The C policy case checks completion and rejection; the first supervised GPU
-execution remains pending. This admission covers only this fixed fixture.
+execution remains pending. This description covers only this fixed fixture.
 
-`make agent-gpu-test AGENT_SELECTOR=--studio-scene-collider3d` admits the
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-collider3d` runs the
 independently reviewed native collider fixture: three in-memory prototypes and
-three actors, twenty-six hidden 1920x1080 frames at fixed 1/60 dt under one shared
-60-second deadline. Queued SDL input edits a stretched box face, a sphere's
+three actors, twenty-six hidden 1920x1080 frames at fixed 1/60 dt. Queued SDL input
+edits a stretched box face, a sphere's
 radius and a capsule's height with typed undo/redo, rejects parallel-axis and
 nonfinite begins, refuses hidden handles, and cancels a face move with Escape or
 H-during-drag while restoring dirty/history state.
@@ -425,7 +537,7 @@ project and resource-generation checks as the gizmo route. Exactly one
 `Studio 3D collider handles accepted: frames=26` line is required; incomplete,
 repeated, unrelated or diagnostic-bearing output fails. A C policy case checks
 those requirements. The first supervised execution remains pending, and this
-route admits only the fixed collider fixture.
+route runs only the fixed collider fixture.
 
 The four graph selectors compose the application's graph palette (core, shader,
 field and native nodes over the game's components) into the registry and edit
@@ -443,25 +555,25 @@ hover sentences. It passes 128 assertions in 0.51 seconds with ASan/UBSan.
 purity, defaults, moves and variable promotion reaching every call, Collapse to
 Macro and Expand Node, and catalog problems of two linked shader libraries. It
 passes 170 assertions in 0.50 seconds with ASan/UBSan.
-`--vector-nodes` runs one case on the vector kernels: normalize at extremes,
-zero scale and the palette's Direction To through a saved graph. It passes 42
-assertions in 0.20 seconds with ASan/UBSan.
+`--vector-nodes` runs two cases on the vector kernels: normalize at extremes,
+zero scale and the palette's Direction To through a saved graph, and a vector
+of floats scaled by integers of each width on either side. It passes 54
+assertions in under a second with ASan/UBSan.
 
-`--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
+`--system-schedule` runs only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
-The scheduler benchmark and broad material aggregates remain quarantined. This
-selector currently fails: the migrated invalid-source case exposed a NULL program
-identity in lowering. The supervised debugger located the failure; its completion
+The recorded run of this selector failed: the migrated invalid-source case
+exposed a NULL program identity in lowering. The debugger located the failure; its completion
 is diagnostic evidence, not a passing test.
 
-`--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
+`--new-asset` runs one case: `new_asset_create` writes a behavior and a scene
 into one temporary content folder, creating the missing folders, and refuses an
 existing file, a model named like a shape, an invalid name, a folder blocked
 by a file, and a family folder or content folder that is a symbolic link out
 of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
-`--asset-refactor` admits one case: renaming a prototype that prototype
+`--asset-refactor` runs one case: renaming a prototype that prototype
 children use plans a rewrite of each child in its parent's text, and a parent
 that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
@@ -470,8 +582,7 @@ Material tests are split by masks/damage, cave/terrain, fluids, body destruction
 fragments and debris; a shared fixture owns setup and coverage invariants.
 The fixed largest inputs are a 2048 by 768 cave, a 192 by 192 flow grid,
 and two 192-particle MPM pools of 3000 steps each. Worker cases use four workers.
-No material selector creates a window, child process or network connection;
-the group runs once under one shared 60-second deadline.
+No material selector creates a window, child process or network connection.
 
 The material simulation selectors run without a window or GPU; wall times are
 under ASan/UBSan through the production supervisor on a shared four-core host.
@@ -503,8 +614,8 @@ serial run; heat exchange over 48 by 48 parcels, conserving energy; and gas
 flow around two bodies over 64 by 64 parcels. It prints per-phase timings and
 passes 6,404 assertions in 8.2 seconds. `--contact-benchmark` times the first
 and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
-overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
-`benchmark_trials`.
+overlapping, and passes 96 assertions in 1.4 seconds. Compare builds using the
+same C selectors and identical build flags, retaining their timing output.
 
 `--asset-values` runs nine cases on KDL asset text and the native value tree:
 typed scalars at the 64-bit limits, slashdash, annotated arrays and source
@@ -547,6 +658,56 @@ with an empty start scene and is never written over, and the language and
 material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
+`--project-declarations` is one standalone pico compatibility case. Its two exact
+fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi` and
+`VirtualList.chibi` from Studio
+`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (7,147 bytes total). Each source must
+migrate from version 23 to 24 and repeat that step unchanged. Explicit retention,
+syntax, conversion, entry and after-entry migrations then produce current-grammar
+source for parsing. One
+successful content transaction must produce exactly the version-24 direct migrated
+source.
+A second transaction adds one 32-byte malformed source and must reject it with
+its actual path, leaving all three input files byte-identical and no `.migrating`
+files. The fixture prints each source name before its migration assertion so a
+rejected rewrite identifies the original source and current-parser diagnostic.
+
+The original diagnostic at `66448ee5` rejected the OutlinerRows rewrite at
+26:75, inside `not(Value: state.Collapsed)`: one failed case, three assertions,
+0.062 supervised seconds. Later controls were not reached. The migration now
+quotes only historical bare `not` call targets using existing quoted-name
+syntax; the current unary grammar is unchanged. Assertions preserve all four
+real call arguments. Two fixed in-memory snippets under 1 KiB additionally
+check exact rewrite exclusions for comments, strings, member and already-quoted
+call targets, plus unchanged current `not(value)` syntax with a unary CST node
+and no call node.
+
+The success-path ceiling is six declaration migration calls, ten later-step
+migration calls, three explicit current parses and two content transactions over
+two then three input files, with at most four simultaneous content/staging
+files.
+There is no authored execution, backend, renderer, child process, network or
+additional corpus. The test object consumes only explicitly linked public
+`Chibi::project_document`, `Chibi::language_syntax`, `Chibi::authoring` and
+`Chibi::json` owners plus the copied pico/fixture headers. The route stays outside
+all default aggregates. At `c4a9ed52`, this fixed route passed one case and
+60 assertions, exit 0 in 0.082 supervised seconds. That historical run predates
+the redesigned migration chain. On 2026-10-20 the route passed one case and 72
+assertions in 0.6 seconds on macOS. Already-current `not(value)` keeps the existing
+unchanged early return; this is not general version-aware
+call/unary disambiguation.
+
+A fresh full compiler/native/desktop SDK from that same source passed independent
+package/relocation and current controller/Studio consumer-link verification.
+With Studio `d79bb24c`, its separate fail-fast case passed one case/50 assertions
+in 0.057 seconds. A separately supervised empty-scene startup requested two
+frames at fixed 1/60-second steps and produced a visually checked opaque
+1920x1080 capture, exit 0 in 4.529 seconds, using the retained offscreen/software
+Mesa configuration. No prohibited syntax/initialization/frame-failure markers
+appeared and all 21,668 immutable paths were unchanged. These results do not
+cover interaction, hardware-GPU behavior, sanitizers or leak detection. The SDK
+uses Clang 19 Release/NDEBUG; the focused pico assertions remain enabled.
+
 `--prototype-documents` runs eight cases on prototypes and scene documents in
 memory: a rebase keeps local values over evolving defaults, retained strings
 survive clones and renames, detached components spawn absent and reattach,
@@ -576,6 +737,21 @@ and leaves both worlds on the generation they had; a preview scene launch that
 fails destroys its entities before releasing their component override strings.
 11 assertions in 0.23 seconds with ASan/UBSan; a temporary folder.
 
+`python3 tools/test_policy.py tool native-runtime` includes two fixed player
+Panic-relationship cases: a refused scene change preserves its current instance,
+entities, links, globals, scene-flow name and unsaved values, while shutdown
+releases its entire owned world, including a disabled external Panic source.
+These additions create three in-memory player worlds with at most two live
+entities each, without frames, processes, GPU work or files.
+
+Studio's `studio-source-edit` check also covers the production Undo/Redo
+dispatch for prototype and relationship source tabs, including typed reopening
+of their saved tab snapshots. One temporary file below 65 MiB verifies that the
+general asset reader accepts text larger than the prototype collection budget,
+while collection rejects it before a second read or parsing. The buffer and file
+are released before the two tiny history fixtures. These cases add no rendered
+frames to the existing four-frame check.
+
 `--engine-clock` runs six cases on the engine's 60 Hz fixed clock over a
 preview engine and one kinematic body: 30, 60, 120 and 144 Hz displays all run
 sixty steps a second with systems at each step's time, hitches and overload are
@@ -590,7 +766,7 @@ a placed node is an unsaved edit, and component access nodes keep their file
 entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
 ASan/UBSan.
 
-`--fields` runs eighteen cases on field graphs compiled to field programs:
+`--fields` runs twenty cases on field graphs compiled to field programs:
 deterministic cos/sin, atan2 and exponentials against golden bits, primitives
 that bake as they sample, parameters and compile errors, noise and
 composition, row evaluation matching scalar samples, repeated inputs,
@@ -599,8 +775,13 @@ tiles that restore and retry failed slices, plus linked-library publication
 and rollback, source-library linking and constant parameter defaults, and library
 updates that preserve valid and invalid field drafts, and source calls that retain
 the named function and authored inputs after functions and parameters reorder.
+Two more lower a library calling every field node, each baked bit-identical to
+that node alone with the field's seed, sample and parameters, and functions
+calling functions before and after them, in another library, and recursively.
 The original thirteen cases passed 3,308 assertions in 0.36 seconds with
-ASan/UBSan; these historical measurements do not cover the five added cases.
+ASan/UBSan; these historical measurements do not cover the seven added cases.
+All twenty passed 3,648 assertions in 2.4 seconds with ASan/UBSan on
+2026-10-16.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
@@ -641,7 +822,7 @@ preparation shares: a project's prototypes, each under its own load's limit,
 and a scene's instances of one prototype tree. Each reads tens of thousands of
 small prototype documents, so they have their own selector.
 
-`--source-edit` admits nine independently reviewed cases with fixed small inline
+`--source-edit` runs nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
 effectful result reuse, lexical capture rejection, statement deletion/reordering,
 structural selections, typed values, optional-input reconnection, palette creation,
@@ -649,7 +830,7 @@ declaration edits, and comment-box/reroute preservation. The two added cases use
 four sources smaller than 200 bytes and twelve fixed edits plus clipboard checks;
 the review repairs add one tiny capture counterexample and two tuple selection
 requests. No files, runtime frames, processes or GPU work run. The first three-case
-snapshot passed one and failed two. Three more admitted cases cover extraction,
+snapshot passed one and failed two. Three more cases cover extraction,
 inline capture/default handling, signature changes and resolved binding intents
 using seven tiny sources and fixed requests. The first five-case integration hit
 an invalid-expression parser-node crash; its bounded debugger capture identified
@@ -659,13 +840,13 @@ projections to check program/path rename and persisted geometry, watches, boxes
 and routes. It also checks atomic rejection of a malformed origin table, wrong
 expected bytes and a non-name edit. Debugger completion is diagnostic evidence only.
 
-`--source-systems` admits seven isolated pico cases from `test/code_system_runtime.c`
+`--source-systems` runs seven isolated pico cases from `test/code_system_runtime.c`
 on VM and SLJIT. Fixed supplied-time steps and pumps cover membership, suspension,
 spawn cancellation, refreshed component reads, query formatting, reactive bindings,
 movement and camera globals. Each fixture has at most 259 entities, and the cases
 use no renderer, sleeps or child processes. Its exact dispatcher runs only registry
-validation and these cases. The migrated selector is independently reviewed and
-admitted for its first supervised capture.
+validation and these cases. The migrated selector has been independently
+reviewed; no execution result is recorded here.
 
 `python3 tools/test_policy.py tool tilemap` selects eight reviewed C cases for
 owned grid decoding and cache invalidation, half-open point lookup, exact rotated
@@ -674,23 +855,6 @@ grid has at most four cells and no rendering or engine frames run. A decorative
 prototype also checks, without gameplay, that its atlas and its normal and height
 maps are prepared and that it owns its prepared data, and a map of another size
 must fail preparation.
-
-`python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
-cases when the tooling build includes asset authoring. It reads only the sibling
-`chibi-celeste` checkout. A bounded local `git show` supplies the former Level
-scene from commit `56ca9d486b93c15a504bf293dc722c6202cd2bf5`; the production KDL
-parser compares all 1,472 cells and 230 former tile centres/frame indices, then
-checks the four retained actors and one Room layer. Inputs are capped at 64 KiB
-for the baseline, 16 KiB for Room and 4 KiB for Level. Three owned controller
-children validate, prepare and run exactly two headless simulation frames with
-five authored and fifteen live entities and no behavior failures. Each child
-has the existing ten-second deadline inside the shared sixty-second supervisor.
-No GPU or network is used. Logs and the baseline revision are retained under
-`/tmp/chibi-publish-validation/evidence`; generated baseline, requests and prepared
-artifacts are removed. This fixed workload is independently admitted for its
-first supervised measurement; it does not admit arbitrary projects or frames.
-The first supervised run passed both cases and 3,818 assertions in 8.270 seconds,
-including controller startup, source preparation and the two simulation frames.
 
 `python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
@@ -702,7 +866,7 @@ imported device it recreates the app, delivers a controlled old loss continuatio
 and verifies that the new app stays healthy. A real validation error must reach
 both CF and the page's listener; a real device destruction must mark the backend
 lost. Each callback phase has at most one second, clipped to the shared 55-second
-startup/execution deadline inside the production 60-second limit.
+startup/execution timeout.
 The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparison
 build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
 Callback wall time excludes the first 30 frames and is diagnostic, not a timing
@@ -716,7 +880,7 @@ fractional overlap, strict rectangle edge contact and half-open point inclusion.
 It retains the query snapshot while disabling, removing, restoring and destroying
 its single member. The case creates no windows, files, subprocesses or engine
 frames and uses at most 16 bounded event dispatches per backend. Independent
-review admitted the extension; its supervised run passed three cases and 722
+review covered the extension; its run passed three cases and 722
 assertions in 1.351 seconds. The room-border rules and player spawn remain
 project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
@@ -739,8 +903,15 @@ process runs four independently reviewed cases: state/events/bindings/imports,
 seven missing or incompatible linkage failures, ten malformed wire mutations,
 and atomic package loading with reversed records and three rejection cases.
 Both execution backends are checked. Input files are capped at 512 KiB and the
-metadata file at 96 bytes. Each child has a 10-second cap within the shared
-60-second production deadline; generated inputs and logs are removed by the parent.
+metadata file at 96 bytes. Each child has a 10-second cap; generated inputs and
+logs are removed by the parent.
+The redesign adds two fixed one-function specimens on this same route: a declared
+scalar BOOL getter with its actual field capability metadata, and a separate
+payload-free native-header artifact written after catalog retirement. Each file
+is capped at 16 KiB. The consumer keeps the existing scalar offset-corruption
+checks and adds one native-header layout-bit corruption checked against its linked
+native descriptor. These add no processes, frames, loops over runtime data or
+deadline changes. Validation of this addition is pending.
 The consumer translation unit sees only exported SDK headers and its fixture;
 the executable links no parser, compiler, graph or renderer library. The frozen
 candidate passed in 0.701 seconds on 2026-10-07: producer one case/31 assertions,
@@ -756,39 +927,51 @@ in, and the repository's fixtures are not complete projects for them, since some
 reference events and prototypes they omit or declare their own components. Run
 them on extracted game projects and keep the manifest with the evidence.
 
-Managed test executions, including aggregates, have one hard 60-second ceiling.
-Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear
-it. See [the inventory](test-quarantine.md) for preserved native coverage,
-retired script coverage and exact admitted native tuples.
+The runner has no default global time limit. Use its optional `--timeout SECONDS`
+when a run needs an explicit deadline. Product operations and fixtures can retain
+their own timeout and cancellation contracts. See [the inventory](test-inventory.md)
+for native coverage and retired script coverage.
 
 `make test` and `make test-short` run six pure C execution-policy cases through
-`tools/test_policy.py`. This default checks execution-policy decisions only.
+`tools/test_policy.py`. This default checks runner and selection behavior only.
 `make test-tools` runs the complete C tooling group: execution policy,
 package/install and configure preservation, room service, publication,
-supervisor cleanup/deadlines and validation-planner regressions. Packaging,
+process cleanup, explicit deadlines and validation-planner regressions. Packaging,
 publication and room service implementations remain external programs; C tests
 own their assertions. Once `make build` has produced `build/reflect`, the
 tooling build also runs it against component manifest identity, unchanged and
 failed generation, handle pins and JIT identity; without it those cases are
 absent, not passed. Select this complete group for affected tooling contracts.
 CI runs `make test-tools`; the planner's `--tools` also selects that complete group.
-Both modes retain one shared 60-second supervisor deadline. Retired script suites
-have not been reproduced completely.
+Retired script suites have not been reproduced completely.
+
+The focused room-service check is
+`CHIBI_TOOLS_BUILD_DIR=build-tools python3 tools/test_policy.py --timeout 60 tool collab`
+after `make tools-build`. It runs the real Node server from the C dispatcher.
+Health readiness must succeed before the existing 401/201/403 authority checks.
+Unexpected responses report the method, path, expected and actual status, byte
+count, transport errno or parse error, and the server's JSON error code when
+available. A failed case prints its server output and retains the temporary
+`server.log` at the reported path; passing cases remove their files. Failure
+cases exercise invalid server configuration, an occupied port, a live process
+without health readiness, and real receive timeout/connection refusal. They
+use process signals and sockets rather than replacement server responses.
+These cases also remain in `make test-tools`; the focused command does not
+certify that complete group or the native/material/project/language groups.
 
 For reflection range metadata, `python3 tools/test_policy.py tool reflect-ranges`
 selects two existing C cases with unchanged assertions: numeric units and range
 generation, malformed and nonnumeric annotations, unsafe endpoints, distinct
 hints/defaults, and failed generation preserving prior outputs. The fixed sources
 are below 2 KiB; twelve reflection children retain their existing ten-second
-limits inside one shared 60-second supervisor deadline. There are no engine
-frames, GPU or network operations. This is an admission for the first supervised
-measurement, not a recorded pass. Configure the tooling driver with
+limits. There are no engine frames, GPU or network operations. This workload
+description is not a recorded pass. Configure the tooling driver with
 `CHIBI_REFLECT_EXECUTABLE` and select its directory with `CHIBI_TOOLS_BUILD_DIR`;
 the selector rejects a driver built without reflection. The complete tooling
 group retains both cases. This focused check covers reflection range metadata
 only and does not establish a complete tooling-group pass.
 
-The language follow-up admits these focused C checks under the same supervisor:
+The language follow-up adds these focused C checks:
 
 - `tool ecs-query` runs the existing ECS query correctness cases plus bounded
   membership-cache and query-planning regressions. They create at most 256
@@ -832,11 +1015,11 @@ The language follow-up admits these focused C checks under the same supervisor:
   One combined 12-instruction scalar/query definition adds 20 calls across VM/
   compiled and inspection modes, with live integer/floating/handle values,
   distinct missing-tuple/stale-entity failures and same-context recovery. The
-  combined workload requires independent admission before execution.
+  combined workload has no recorded execution result here.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
 - The optimizer microbenchmarks below use the existing C dispatchers, five
-  small trials and the same 60-second supervisor. Setup and correctness checks
+  small trials. Setup and correctness checks
   stay outside timed loops; no elapsed-time threshold determines a pass.
   `xalloc` requested bytes measure allocation traffic through that allocator,
   not live or peak memory. Compare Release builds with identical flags and
@@ -854,17 +1037,43 @@ The language follow-up admits these focused C checks under the same supervisor:
   of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
   failure checks. These fixtures perform no child-process, engine-frame or GPU
   work. The four language selectors also have `wasm-` variants using the same
-  C checks. Initial admissions establish bounded work, not measured speedups.
+  C checks. Workload counts alone do not establish measured speedups.
   The scheduler selector also covers unchanged owned descriptors, callback and
   effect replacement, failure retry and ordering, one recursive dispatch, and a
   129-system oversized-cache fallback. There are eight fixed cases; cached
   allocation assertions and retained scratch accounting complement timings.
-- `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise four
+- `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise five
   fixed binding-cache cases on both backends: module/owner generation changes,
   peer destruction, caller ordering, cycle rejection before writes, query-gate
   changes and dynamic dependency targets. Cache fallback uses 17 programs and
   1,025 independent constant binding rows, proving cache bounds are not execution
   limits. There are no frames, child processes or GPU work.
+  The fifth case adds managed evaluator ownership through actual source bindings:
+  a direct string binding, a boolean binding with whole numeric-array/record
+  dependency results, and a constant binding with a zero-result dependency
+  evaluator. Array pointer equality is guarded by literal true because state
+  reads snapshot separately; record equality keeps the final boolean true while
+  changed state still requires fresh owned dependencies. Direct operands avoid
+  a helper call that would become a single dependency.
+  Two fixed documents (62 and 246 bytes) prepare one module and one owner per
+  backend. The added case has four parses/analyses, two lowers/finalizations,
+  four initializer BYTECODE entries, twelve maintenance calls, six state writes
+  and 714 expected assertions on the successful path. There are 48 root
+  evaluator calls and no authored helper calls; each maintenance receives the
+  existing 10,000 budget. Selected-backend entry counts are 6, 3, 4, 4, 4, 3 per
+  backend. All calls reject unexpected backends, inspection fallback and counter
+  overflow. Cache snapshots survive replacement of state and poisoned caller
+  storage, ECS text has independent ownership, and detached results survive
+  program/module/world teardown.
+  Across both backends, the complete five-case route expects 5,588 successful
+  assertions, 40 parses/analyses, 38 lowers/finalizations, 56 explicit maintenance
+  calls and six bootstrap BYTECODE entries. The 48 evaluator calls and four
+  initializer entries above are the new case's delta, not whole-route totals;
+  the original cases' query/body/failure work remains in the complete route.
+  Native runs select BYTECODE and SLJIT; the existing Wasm selector retains its
+  BYTECODE/Wasm pair. These are planned counts, not measured passes. Configuration
+  and build timing remain separate. The benchmark workload and aggregate
+  membership are unchanged.
 - `tool language-activation-cache` and `tool wasm-activation-cache` use five
   cases on both backends to check warm allocation counts, owner/default reset,
   nested tasks, read-only observation, reload, managed payloads, errors, suspended
@@ -892,8 +1101,8 @@ The language follow-up admits these focused C checks under the same supervisor:
   source/debug metadata, in normal and inspected modes.
   One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
-  flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
-  deadlines apply. The existing tooling driver loads the library and compares 120
+  flags, enabled sanitizers and assertions. The existing 10-second child timeout
+  applies. The existing tooling driver loads the library and compares 120
   normal/inspection executions against the canonical VM and runs two pause/resume
   samples including negative zero, then removes all files.
   Three additional five-instruction scalar-component functions add 132 calls:
@@ -901,7 +1110,14 @@ The language follow-up admits these focused C checks under the same supervisor:
   failures, exact metadata and alternate-world recovery despite stale cached
   columns. These coexist with the two query-variable definitions and sixteen
   query calls below, sharing the same compiler child and source-size bound.
-  The combined generated source requires independent admission before execution.
+  The combined generated source has no recorded execution result here.
+  The 2026-10-21 checked-shift extension is a second pico case in the same
+  dispatcher. It adds eight nine-instruction functions (eight integer types,
+  a direction argument), with six counts per direction and 192 paired
+  VM/generated-C calls. It checks valid values and invalid-count DATA metadata.
+  Its source is capped at 64 KiB; the original case retains its 128 KiB bound.
+  Each case has one compiler child with the existing 10-second limit. Cleanup
+  runs between cases.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
@@ -910,7 +1126,7 @@ The language follow-up admits these focused C checks under the same supervisor:
 - `tool unit-validation` runs the existing single controller unit-diagnostic
   case with its original setup/cleanup. Tiny component/system sources cover
   project/source errors and same-layout unit changes in one retained controller.
-  Its original child deadlines and shared 60-second limit remain unchanged;
+  Its original child deadlines remain unchanged;
   it runs no gameplay frames or GPU work.
 - `tool unit-fixtures` checks six fixed measured sources from
   `declared-components` and `feature-coverage` against their native and declared
@@ -963,10 +1179,10 @@ The call-view/reduction follow-up adds bounded affected-contract checks:
 - The component-setter source-presentation case also projects four tiny reduction
   spellings and checks receiver/value origins and reduction-mode cache identity.
 
-These are first-measurement admissions after independent workload review, not
-recorded passes. The original cases, assertions, sanitizers and 60-second limits
-remain intact. Separate semantic, syntax, formatting and prepared-boundary checks
-still cover their affected contracts; these selectors do not imply a full-suite pass.
+These descriptions record reviewed workloads, not passes. The original cases,
+assertions and sanitizers remain intact. Separate semantic, syntax, formatting
+and prepared-boundary checks still cover their affected contracts; these
+selectors do not imply a full-suite pass.
 
 The execution-storage and row-worker follow-up adds these reviewed bounds:
 
@@ -1016,27 +1232,52 @@ make test-list
 
 | Command | Current coverage |
 | --- | --- |
-| `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
-| `test-tools` | Complete C tooling and process integration group under one shared deadline. |
-| `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
-| `test-materials` | The CPU material simulation selectors under one shared deadline. |
-| `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
-| `test-language-all` | Every `test_language` selector under one shared deadline. |
-| `agent-test` | One admitted selector routed by `tools/agent.py`. |
-| `test-list`, `agent-list` | Admission inventory without test execution. |
-| `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
+| `test`, `test-short` | Six pure C execution-policy unit cases. |
+| `test-tools` | Complete C tooling and process integration group. |
+| `test-native` | Other CPU `test_tools` selectors with checked-in inputs. |
+| `test-materials` | The CPU material simulation selectors. |
+| `test-projects` | The project, asset import and Release `chibi_ctl` selectors. |
+| `test-language-all` | The native language group; standalone selectors are listed separately by `make test-list`. |
+| `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
+| `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
+| `agent-test` | One CPU selector routed by `tools/agent.py`; use `agent-gpu-test` for GPU selectors. |
+| `test-list`, `agent-list` | Command and selector inventory without test execution. |
+| `test-fast` | Build standalone tooling and run `TEST_BINARY` with tokenized `TEST_ARGS`, without shell interpretation. |
+| `test-full`, `test-slow` | Tooling, native, material, project and language groups; excludes GPU checks. |
+| `test-render` | Render selectors requiring a display and GPU; excludes Studio. |
+| `test-compiler-parity` | All Release package-compiler routes, including bootstrap. |
+| `benchmark` | The mapped native benchmark selectors. |
 
-Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
-a fresh aggregate budget. Multi-goal test execution is unadmitted. Direct native
-binaries, raw CMake checks and controller captures do not universally enforce
-the ceiling; do not use them to bypass it or rebuild slow suites from chunks.
-The supervisor verifies cleanup discovery before test work. Linux subreaping
-contains escaped sessions; arbitrary already-detached descendants are not proven
-contained on macOS. Platform validation must report what actually ran.
+The `language` and `wasm` groups list their members explicitly in
+`tools/test_policy.py`; they do not include every standalone selector. Both
+include the six-case row-array construction, alias, rejection, collection and
+in-place local array regression (200,000 appends, 100,000 record appends,
+aliasing through copies, borrowed arguments, `for` over arrays, record items and
+union payloads, on both backends in ordinary and collectable storage) and the
+packed storage regressions.
+Both also include the two-case Outliner selected-range projection
+specimen: twelve-field policy over owned synthetic inputs, filtering/windows,
+full-width keys and detached ownership. Its two mechanical text bindings are
+test-local; it is not live Studio integration or a production text API.
+Other focused record routes remain standalone, as do the dedicated Wasm
+formatter and root-state routes. Use `make test-list` to inspect the groups
+and standalone routes; registering a route alone does not add it to a group.
 
-For repeated admitted C workloads, `benchmark_trials` accepts three or five trials
-and a total 3–60-second timeout including cleanup. It preserves workload output
-and reports elapsed time. The Make benchmark aggregate remains quarantined.
+The Chrome C driver also includes counted-row construction and Outliner
+projection among its ten selectors. It retains its internal 55-second timeout.
+
+Exceeding an explicit timeout fails the run. The runner verifies cleanup
+discovery before test work. Portable process inspection allows five seconds for
+each `ps` snapshot, kills and reaps a stuck probe, and refuses to launch work if
+discovery fails. The C runner cases cover delayed inspection, stuck-probe refusal,
+descendant cleanup and sibling preservation. Linux subreaping contains escaped sessions;
+arbitrary already-detached descendants are not proven contained on macOS.
+Platform validation must report what actually ran.
+
+Use `make benchmark` for the mapped native C benchmarks or
+`python3 tools/test_policy.py tool <benchmark-name>` for one fixture. Each
+fixture owns its fixed trial count and reports timings alongside correctness
+assertions. Retain the workload output and compare matching build configurations.
 Retired Python drivers' generated-C comparisons and report formats were not
 migrated individually. Research/review command transcripts, measurements and
 hashes are historical records of their revisions, not current reproduction
@@ -1045,6 +1286,1074 @@ instructions or passes for this cleanup.
 CI remains partial coverage. Report the checks that actually ran. Applicable
 server-required checks, independent review, explicit holds and approval rules
 remain binding.
+
+## Package execution checks
+
+`python3 tools/test_policy.py tool language-package-execution` selects seven
+fixed C cases in `test_language`: sibling calls and mutual recursion on bytecode
+and SLJIT, stable exported identities, document-local errors, duplicate exports,
+declaration discovery, source ownership and sibling records/unions/constants.
+The workload has at most three documents per snapshot, twelve fixed texts below
+1 KiB each, 32 parses, 15 analyses, twelve lowering attempts, eight backend
+finalizations and sixteen direct calls with instruction budgets of 2,000. It
+performs no filesystem, subprocess, world or GPU work. Build separately. The
+independent package graph
+and syntax routes remain unchanged; this focused route is not in the aggregate.
+
+`python3 tools/test_policy.py tool language-package-resolution` selects eight
+fixed C cases for explicit roots, equivalent paths, file-local aliases, blank
+imports, located invalid paths and strings, duplicates, cycles, stable keys and
+owned input lifetimes. There are 24 snapshot constructions, at most 56 parses and
+34 import declarations, with up to five files and four imports per snapshot and
+three simultaneous owners. Each source is below 1 KiB. The route performs no
+filesystem, process, authored execution or GPU work. Build separately; this
+focused route is also outside the aggregate.
+
+`python3 tools/test_policy.py tool language-package-imports` selects thirteen
+fixed C cases for dependency execution, alias isolation, self imports, `pub`
+visibility and its private-member diagnostics, owned exported
+records/unions/constants, stable identities, incremental invalidation, retained
+generations, constrained generics and constant defaults. It also checks owned
+union payload defaults and malformed public export bindings. Cached closures
+track sibling addition, path-only renames and removal across the dependency
+chain while an unrelated package is reused; failed generations publish no module
+or exports, are never cache hits, and repair replaces them while a separately
+retained valid module keeps working. The workload has 67 preparations, 226
+parses, 121 import declarations, at most 205 package visits before reuse, and 50
+direct calls with instruction budgets of 2,000.
+One catalog snapshot and one additional parse/ten semantic-only analyses cover
+the metadata cases. At most four owners and five source files per snapshot are
+live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
+Build separately. This focused
+route is outside the language aggregate.
+
+## Disk package-source checks
+
+`python3 tools/test_policy.py tool language-package-files` selects eight fixed
+C cases on native Linux and macOS. It reads disposable source forests through
+`source_package_snapshot_load`, then prepares siblings, relative dependencies
+and an explicit `core:` collection on bytecode and SLJIT. Cases check relocation
+identities, unchanged reuse and dependent invalidation, missing-import source
+ranges, descendant symlink rejection, explicit root symlink canonicalization,
+duplicate physical roots and scanning overlapping roots once. An explicit root
+under a hidden ancestor remains visible. NUL, an oversized regular file and a
+`.chibi` FIFO are rejected; the FIFO has no writer.
+
+The finite workload has 22 loader calls, 12 preparations, at most 63 parses and
+30 imports, at most 36 package visits before reuse, and ten direct calls with
+instruction budget 2,000. Each loaded forest has four source files and at most
+20 visited directory entries, including dot entries. Eight disposable temporary directories contain
+at most 19 recorded cleanup paths per case; cleanup uses only those known paths
+and never follows links. Ordinary sources are below 1 KiB. One sparse oversized
+file is exactly 512 KiB plus one byte; one FIFO and five symlinks are created.
+There are no subprocesses, network operations, engine frames or GPU work.
+
+Build separately. This route
+is outside the language aggregate. Windows retains the explicit unsupported
+filesystem adapter; buffer-based package APIs are unaffected. Source registration
+records no execution result.
+
+`python3 tools/test_policy.py tool language-package-core` selects seven fixed
+C cases using the actual shipped `core:strings` source and pure text/array packs.
+It covers unsigned bytes, slice bounds and ownership, lexical ordering, ASCII
+identifiers, basename extraction, the byte procedures ported from Odin's
+`core:strings` against Odin's documented results and edge cases (search,
+counting, case, trimming, cutting, repetition, splitting, joining, replacement
+and partition), generic native arrays, binding-generation invalidation and
+retained modules on bytecode and SLJIT. Eighteen preparations supply 36 files
+and 18 imports, with at most 36 package visits before reuse and 386 direct
+calls, each with a 10,000-instruction budget. At most three owners and
+three-element arrays are live; the app is below 4 KiB. The shipped core source
+uses the production snapshot limits, with full retained bytes checked after
+the caller buffers are poisoned and freed. There is no filesystem, process, service or GPU work. Installed consumers
+embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately.
+This focused route is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
+cases for `chibi doc`'s authored generator: one preparation of the shipped
+`markdown`, `site`, `reference`, `grammar`, `compiler_syntax` and
+`syntax_diagnostics` packages with `core:strings` per case. The fixture opts into
+the existing private Tree-sitter bridge. Cases render blocks, tables and site
+links, lay out navigation, generate a package reference and a grammar page, and
+check grammar roles, exact escaped source bytes, recovery and GitHub theme colors
+on bytecode and SLJIT. A fence uses at most three parses: its original source,
+then declaration/signature contexts only when needed; synthetic context never
+reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
+There is no filesystem, process, service or GPU work. This focused route is
+outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-package-tests` selects two fixed C
+cases for the shared runner behind `chibi test`. One preparation per backend has
+five files: the shipped `core:strings` source, a collection package with a test
+that must not be found, a package at the project root and a two-file project
+package, with nine tests. They cover discovery order, names and positions,
+passes, a failed `assert` reported inside its helper, an `assert` without a
+message reported by its condition, an out-of-range read, an exhausted
+100,000-instruction budget, a wait and a task start on bytecode and SLJIT. There is no filesystem, process, service or GPU work. This focused route
+is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
+existing 23 C graph cases for differential comparison with the authored compiler
+component. Two package owners prepare the actual graph/core sources once for
+bytecode and SLJIT (four source parses). The corpus makes 28 graph constructions,
+so there are 56 authored Builds and 348 bounded public-query calls, with 684
+packed File and 590 Import rows across both backends. At most 256 files and 255
+imports are supplied in a case. The two maximum Builds allow 50 million
+instructions each; the other 402 calls allow 100,000 each. Authored edges are
+sparse, scalar arrays contain at most 256 elements, and per-call arenas retire
+between invocations. One host observation matrix uses at most 256 squared ints.
+The fixture compares complete memberships, order, dependency cells, bindings,
+error fields and cycle indices against C, plus public queries. It performs no
+filesystem, process, service or GPU work. Build separately. This focused route
+is outside the language aggregate.
+
+The shared compiler fixture checks every prepared snapshot's document count,
+owned source storage, full source length and every source byte on both backends.
+The shipped `core:strings` source currently exceeds 16 KiB; it uses the existing
+production snapshot limits (512 KiB per file and 8 MiB aggregate), without an
+additional stale fixture limit. This applies to syntax, paths, routes, snapshot,
+lexical/nominal binding, snapshot-reader and compiler-artifact fixtures. Their
+non-core source bounds, aggregate bounds, invocation budgets and process limits
+remain unchanged. These checks add no preparations or authored invocations.
+
+`python3 tools/test_policy.py tool language-syntax-chibi` compares authored
+diagnostic traversal with the C parser using fourteen shared source texts and
+two independent edits. Each edit compares the original, incremental and fresh
+tree: twenty raw Tree-sitter trees and twenty C oracle snapshots produce
+40 authored calls across bytecode and SLJIT. Two retained owners prepare the
+actual diagnostics and core sources once per backend (four source parses).
+Each call allows one million instructions; source inputs are at most 2 KiB,
+trees at most 1,024 nodes and depth 128. The adapter transports all public
+nodes, including anonymous children and ERROR descendants; Chibi selects
+diagnostics and controls subtree pruning. Every diagnostic field and message
+is compared after producer storage retires. This route uses no filesystem,
+process, service or GPU work. Build separately.
+It remains outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
+the authored tokenizer (`docs/source-tokenizer.md`) with Tree-sitter. It reads
+every `.chibi` file below `packages/`, `test/` and `tools/` at run time, about
+145 files under 1 MiB in all, and tokenizes each once on SLJIT; every token's
+kind, span, row and column must match the leaves of the cursor walk
+`compiler_syntax_parse` makes. The scanner's automatic terminators are hidden
+from that walk, so each is read from a node that ends after its last child, or
+after a prototype's field that no `,` or `;` follows. Files Tree-sitter
+rejects, two legacy fixtures today, compare leaves only, and a `>` leaf
+directly followed by `>` or `=` matches one `>>` or `>=`. Seventeen fixed
+sources cover forms the corpus lacks, such as attributes, keywords as names,
+bodies opened on the next line and prototype fields, and ten hand-written
+cases cover terminators directly after a token and Odin's errors with their
+offsets; both run on bytecode and SLJIT. One owner per backend prepares the
+package, and calls are capped at 64 steps per byte. There is no process,
+service or GPU work. The route took about 5 seconds in a local sanitizer build
+and is outside the language aggregate.
+
+The fixed syntax corpus exercises visible missing tokens, ERROR subtrees and
+UTF-8 byte columns after CRLF. It reports hidden-recovery diagnostic counts but
+does not require a witness: the current parser selects visible missing tokens
+for these inputs. The authored hidden-error rule matches the retained C code;
+this corpus does not establish execution coverage for that branch.
+
+`python3 tools/test_policy.py tool language-package-syntax-chibi` uses
+the existing eleven extraction cases and all 32 extraction attempts. It adds
+32 independent raw parses and 64 authored `Extract` invocations across both
+backends, each capped at one million instructions including its diagnostic
+traversal. Two retained owners prepare three actual authored sources each.
+Fixture texts remain below 256 bytes; raw trees are capped at 1,024 nodes and
+depth 128. Complete field names accompany raw nodes, with no native selection
+of package headers or imports. Results compare header, import, path and alias
+ranges, alias presence, names, source order and diagnostics after producer and
+input storage retire. This standalone route has no runtime files, children,
+services or GPU work. Build separately.
+
+`python3 tools/test_policy.py tool language-package-paths-chibi` selects three
+cases with 26 fixed lexical requests: twelve existing resolver inputs and
+fourteen boundary cases. The unchanged C helper supplies 26 oracle results;
+52 authored calls across bytecode and SLJIT allow one million instructions each.
+Two retained owners prepare the actual Paths and core sources once per backend
+(four source parses). Four fixed input buffers are at most 4,097 bytes including
+the terminator. Cases cover the path and joined-path limits before collapse,
+long segments, root boundaries, intermediate escapes, absent inputs and absolute
+paths ignoring the unused base. Returned strings are inspected after producer
+and input storage retire; retained 4,095-byte results survive subsequent invalid
+calls and owner teardown. Used bases and floors are canonical absolute paths.
+This corpus has at most four segments per request; it does not establish
+performance at the maximum segment count. The route has no runtime files,
+children, services or GPU work. Build separately; this route is outside the
+aggregate.
+
+`python3 tools/test_policy.py tool language-package-routes-chibi` compares
+thirteen collection-root requests, eleven file routes and sixteen import routes.
+Each file/import request also builds its roots independently in Chibi. The
+workload totals 67 C oracle calls and 134 authored calls across bytecode and
+SLJIT, capped at one million instructions per call. Two retained owners prepare
+four actual sources each (eight source parses). Inputs are at most 128 bytes,
+with at most three roots and seventeen directory segments. Fixed cases cover
+root validation and both duplicate errors, longest-root selection, relocated
+keys, depth boundaries, collection routing, Unicode and invalid/NUL JSON strings.
+A private yyjson binding supplies decoded values and byte lengths; Chibi owns
+all routing and diagnostic decisions. Success results and exact first errors
+are compared; the C helper's partial root prefix on rejection is not part of
+the authored rejection payload. Results outlive producer and input storage,
+and retained root/file/import outputs also survive owner teardown. There are
+no runtime files, children, services or GPU operations. Build separately. This
+route remains outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-package-snapshot-chibi` reuses the
+eight resolver cases and adds eight validation cases: 46 snapshots and
+92 authored calls across bytecode and SLJIT, capped at three million instructions
+per call. Two retained owners prepare eight actual sources each (sixteen source parses);
+the seven non-core sources are each smaller than 16 KiB. The cases offer 72 files total,
+bounding C parses at 72 and private raw parser calls at 144. Requests have at
+most five files and four imports; actual
+source buffers are smaller than 1 KiB and raw trees have at most 1,024 nodes.
+The explicit invalid-path case declares `SIZE_MAX` bytes against a tiny buffer;
+both loaders must reject its path before accessing source bytes. It does not
+allocate or parse that declared size. Other precedence cases cover file parsing
+before later file routing, all-file parsing before import routing, and file
+routing before NUL/UTF-8 checks. Three tables cover valid multibyte comments,
+five invalid UTF-8 classes, missing source bytes, oversized declarations, invalid
+option counts/pointers and an empty snapshot. Each authored collection array
+also contains one invalid trailing row, which its declared count must exclude.
+Exact first errors, retained document/import prefixes, raw syntax and graph
+observations are compared. Input and invocation
+storage retire before detached result inspection; retained valid and invalid
+results survive owner teardown. Native bindings supply raw Tree-sitter nodes
+and external JSON decoding only. There are no runtime files, children, services
+or GPU operations. Build separately; this route is outside the language
+aggregate. Comparison alone uses 39 C root setups, at most 72 file
+routes and at most 72 header/import extractions from existing trees, adding no
+parses. Each retained C tree is walked three times, with depth bounded at 128.
+The fixed corpus does not exercise the 8 MiB aggregate source limit or the
+4,096-import limit at full size.
+
+The private raw-facts extension appends Tree-sitter `is_named` and `is_extra`
+Boolean columns without changing node order, ranges, fields or topology.
+`SnapshotNode` retains both flags; `Document.syntax_root` is a rebased syntax
+index, or -1 before parsing, independent of its routing `root`. Every retained
+node and document is compared to C, including anonymous tokens, comments/extras,
+ERROR nodes and missing tokens. The one new 50-byte unclosed-body source adds
+one C snapshot and two authored calls (one additional parse per implementation).
+Category assertions require both named values, both extra values, an ERROR and a
+missing node. Existing error precedence and ownership assertions remain active.
+
+Snapshot.chibi is 15,704 bytes, below its unchanged strict 16,384-byte cap.
+The bridge adds two arrays per parse, each with one `pin_value` per raw node;
+the retained record adds two Boolean fields per node and one integer per document.
+No packages, imports, node limits or instruction budgets are added. The missing
+token case uses `return (1; }`, which the pinned grammar repairs with a MISSING
+`)`, followed by an unterminated declaration it recovers as ERROR.
+
+`python3 tools/test_policy.py tool language-constant-proof-chibi` compares active
+constant admissibility using 36 fixed IR requests and two requests copied from
+real analyzer output. Three pico cases run 38 C proofs and 76 authored calls
+across bytecode and SLJIT, with two million instructions per call. Two retained
+owners prepare the actual IR and Proof packages (four source parses, each source
+smaller than 16 KiB); two short analyzer fixtures add two parses. Requests contain
+at most 257 expressions, 32 symbols and four aggregate arguments, with at most
+256 visited proof nodes. Step inputs range from -1 to 1,024; selected requests
+omit step accounting while retaining the depth bound.
+
+The adapter copies expression, symbol, type, effect and argument facts without
+computing policy. Acceptance, remaining steps and every successful cache depth
+must match C. Cases cover scalar restrictions, effects, rejected calls, symbols,
+ordered child failures, shared DAG reuse at different depths, depth boundaries
+and a cycle without a step budget. Input and producer storage retire before
+comparison, and retained results survive owner teardown. The fixture does not
+exercise the production 65,536-visit limit at full size. There are no runtime
+files, services, children or GPU operations. Build separately; this route is
+outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
+scalar folding using 91 fixed requests and 182 authored calls across bytecode and
+SLJIT. Three pico cases prepare the four actual compiler packages once per
+backend (eight source parses, each below 64 KiB). Each call permits two million
+instructions and contains at most seven expressions, one symbol and no aggregate
+arguments. The C oracle runs admissibility followed by the extracted active
+evaluator; the authored implementation uses separate proof and evaluation
+budgets, preserving the production limit of 65,536 for each.
+
+The corpus covers all thirteen physical scalar variants, exact floating-point
+bits, numeric conversions, integer wrap and division failures, checked shift
+counts and discarded shift bits at fixed operand widths,
+result storage and float rounding, string presence, symbols, promotion and
+Boolean short-circuiting after full admissibility. Inputs retire before result
+inspection. Explicit arena checks verify detached union and string ownership;
+retained name and null-text results survive both owner teardowns. The repeated
+DAG workload needed to exhaust 65,536 evaluations is not included.
+There are no runtime files, services, children or GPU operations. Build
+separately; this route is outside the language aggregate.
+
+The folding interface consumes type-correct analyzer facts: literals carry their
+declared storage, comparisons and logical negation produce Boolean values, and
+integer and floating operators retain their result families. Admissibility does
+not establish these type invariants. The corpus also checks result-width changes
+within a family; malformed cross-family C union reinterpretation is outside this
+private interface's contract.
+
+`python3 tools/test_policy.py tool language-scalar-lowering-chibi` selects one
+C/pico_unit case in the existing `test_language --scalar-lowering-chibi`
+dispatcher. It compares an authored Bool/I32 value-evaluator lowering component
+with the production native emitter before optimization. It passes 1 case /
+33,382 assertions in 3.2s on macOS and is outside every native and Wasm aggregate.
+
+One embedded `tools/compiler/scalar_lowering/Lower.chibi` source, below 32 KiB,
+is prepared once for BYTECODE and once for SLJIT. Those two preparations execute
+31 named-constant bootstrap initializers each: 62 additional BYTECODE VM entries
+with the existing 100,000 context-budget argument. Source preparation and these
+initializer runs are part of the supervised workload, not configuration/build.
+Eight fixed raw typed-IR requests per backend make 16 top-level authored `Lower`
+calls. Each receives a 500,000 context budget, which child activations inherit
+and reset; neither that argument nor 16 times it is an aggregate work ceiling.
+
+Six accepted requests cover shared arithmetic/bitwise trees, signed comparisons,
+NOT and identity conversions, guarded AND/OR division, ordered Bool/I32 results,
+and nested short circuits. Two requests reject an optional type and a call
+expression. Raw expression counts are 16, 9, 8, 8, 4, 11, 1 and 1; accepted
+visited-instance counts are 22, 13, 9, 9, 6 and 15. Canonical instruction counts
+are 32, 26, 19, 18, 16 and 32; slot counts are 28, 18, 12, 12, 12 and 18.
+The component caps types/expressions/literals at 24, symbols/variables/results
+at two, IDs at four, ranges at 25 and document paths at three (240 bytes each).
+Accepted traversal allocates exactly 257 frame rows and permits at most 256
+visits/instructions, with no recursive helper call path or generated corpus.
+
+The six accepted requests across both backends and authored/reference routes
+produce 24 pre-finish canonical plans and 24 prepared serialization round trips.
+Each loaded definition runs two fixed state vectors: 48 target evaluator calls,
+24 authored-plan and 24 reference. The generated target bodies are call-free
+and receive budget 128. Four fixed AND-plan decoder mutations per backend add
+eight decoder-only rejections, with no extra authored or target invocation.
+The fixture requires actual SLJIT availability and checks backend entry counters;
+there is no Wasm fallback. Input arenas, compiler-package owners, plan/holder
+storage and serialized bytes retire before the corresponding retained outputs
+or loaded definitions are inspected or run. Pico teardown releases partial work.
+
+The only new execution-library code is a private bounded plan decoder and builder
+materializer. The private C oracle shares the existing native value-evaluator
+emitter, so its extraction also touches active production query predicates,
+binding values and dependency evaluators. Independent integration review must
+cover those callers, including managed results and zero-result dependencies;
+the new scalar-only differential does not establish that broader coverage.
+The oracle header remains private and is not installed as an SDK contract.
+
+There are no workload files, children, services, network requests, engine frames,
+GPU operations, sleeps or benchmark loops. The complete fixture includes
+preparation, initializers, calls, materialization, round trips and cleanup.
+Build/configuration timing stays separate. Native producer verification,
+optimization, finalization,
+liveness/borrowing/runtime rewriting, parallel proof, definition snapshots,
+module publication, prepared serialization and backend emission remain required.
+The shared emitter's managed binding and dependency callers pass the five-case
+`language-binding-schedule` and `language-binding-benchmark` routes on native and
+Wasm builds. This evaluator component is not a completed source compiler,
+stage-one/stage-two self-build or compiler-free normal build/link path.
+
+`python3 tools/test_policy.py tool language-lexical-binding-chibi` compares
+lexical lookup, declaration admission and stable identity construction. Three
+pico cases run 40 requests (24 fixed tables and 16 requests from four real
+analyses) through C and both authored backends: 80 authored calls, each capped at
+two million instructions. Two owners prepare Binding, Diagnostics and Strings
+once each; those six parses and four analyzer inputs total ten parses.
+
+Each request contains at most 32 symbols, eight scopes, four functions and two
+documents. Names are at most 220 bytes, identities and document keys 128 bytes,
+and declaration results contain at most three diagnostics. The adapter copies
+raw scopes, symbols, functions and document keys. Lookup precedence, parameter
+replacement, package namespace rules, exact uint64 identities, diagnostic order,
+ranges and 191-byte truncation must match. Fixed expected hashes and message
+prefixes supplement differential comparisons. Input and producer storage retire
+before comparison; retained declaration results survive both owner teardowns.
+There are no runtime files, services, children or GPU operations. Build
+separately; this route is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-nominal-binding-chibi` compares
+record and union header admission and nominal metadata publication. Three pico
+cases run twelve raw requests and four requests from real analyzed headers:
+32 authored calls across bytecode and SLJIT, each capped at 100,000 instructions.
+Two owners prepare the four sources once each (the three non-core sources are
+below 16 KiB), and
+four analyzed sources below 256 bytes add four parses, for twelve total.
+
+Inputs contain at most one symbol, one function, two scopes and two documents;
+strings are below 128 bytes. Cases compare placement rejection, source origin,
+record/union storage guards, exact uint64 IDs, inherited type metadata, catalog
+names and ordered diagnostics. Actual legacy and package headers supplement raw
+facts. The adapter copies input strings before execution and frees that storage
+before comparison. Retained published metadata and three diagnostics survive
+both owner teardowns. There are no runtime files, children, services or GPU
+operations. Build separately; this route is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-named-binding-chibi` compares ordinary
+named annotation binding and catalog/import type lookup. Three pico cases run
+28 fixed requests plus eight requests from four analyzed annotations: 72 authored
+calls across bytecode and SLJIT, each capped at two million instructions. Two
+owners prepare four compiler sources each, all below 32 KiB. The four analyzed
+sources add four parses, for twelve total; three quoted fallback requests invoke
+the existing private JSON codec six times.
+
+Per-request caps are 32 symbols, eight scopes, four functions, two documents,
+eight catalog entries, three imports/exports, four uses, eight raw tokens,
+64 semantic types and 128 exact uint64 IDs. Names are at most 220 bytes, fallback
+text 256 bytes; fact trees contain at most 128 nodes at depth sixteen. The adapter
+copies raw facts, including catalog spellings and export spans. The authored
+implementation decides builtin/lexical precedence, aliases, fuzzy ambiguity,
+exact matches, entity identity, modifiers, optional boxing and type-use records.
+Comparisons cover full IDs and ordered diagnostics; fixed lookup indices and
+191-byte truncation witnesses supplement C parity. Detached results and retained
+generic/diagnostic results survive input and owner retirement. There are no
+runtime files, children, services or GPU operations. Build separately; this route
+is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-type-constructors-chibi` compares
+structural union, task and await construction. Three pico cases run sixteen raw
+requests and four requests from actual analyzer facts, with forty authored calls
+across bytecode and SLJIT capped at 200,000 instructions each. Five compiler
+sources per backend, each below 32 KiB, plus four fact sources below 256 bytes
+total fourteen parses. The imported named-binding package requires the private
+JSON binding during preparation, but these entries make no JSON calls.
+
+Inputs contain at most 64 types, 128 IDs, eight definitions/variants, two
+capabilities, four functions, 32 symbols, eight result indices and four members.
+Outputs contain at most four variants, two fields and one diagnostic. Twenty C
+plans and twenty-one materialization attempts produce nineteen snapshots,
+including an extra metadata ownership witness. Fixed checks cover unsigned tag
+ordering across high and low bits, first-match deduplication, cache hits, native
+empty-result precedence, diagnostics and copied fields/defaults. Retained outputs survive source and
+module retirement. Sorting uses at most six comparisons of 64 scalar bit steps
+each. There are no runtime files, children, services or GPU work.
+Build separately; this route is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-type-relations-chibi` selects four
+C/pico_unit cases for the five pure catalog type relations. The finite tables
+contain 18 equality, 15 numeric, 37 assignment, 33 catalog-assignment and nine
+canonicalization requests: 112 requests, each once on bytecode and SLJIT, for
+224 direct authored calls with a supplied budget argument of 50,000. Outlined
+and inline child activations inherit/reset that budget; it is not a complete
+invocation or aggregate instruction ceiling. Five fixed compiler sources below
+32 KiB per backend produce ten preparation parses. Raw maxima are
+five catalog definitions, eight variants/type rows, four exact uint64 IDs and
+three alias links; there are no generated combinations or extra analyzed inputs.
+
+C parity and fixed answers cover task wildcard direction, boxed optional and
+error/literal precedence, numeric/generic/reference/name/string rules, full-width
+IDs, alias boundary/cycle behavior, and union tag inclusion, tagged exclusion and
+plain/literal membership. Inputs retire before comparison, and one canonicalized
+cycle result per backend survives compiler-owner destruction. The imported
+named-binding closure uses the existing private JSON binding during preparation;
+these entries make no JSON calls. There are no workload files, children, host
+services, frames or GPU work. Independently review the exact wired candidate
+before publication. Build separately. This route stays outside aggregates.
+Source registration records no measured pass, authored compiler dispatch or
+stage-one bootstrap.
+
+`python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
+parsing, dimension equality, multiplication/division and formatting. Four pico
+cases run 24 Parse, five Same, ten Product and nine Format requests, totaling
+96 authored calls across bytecode and SLJIT at two million instructions each.
+Units and CoreStrings are prepared once per backend: four preparation parses.
+Inputs contain at most eight terms and 240 bytes per input or name; format
+capacities range from one to 192 bytes including the C terminator.
+
+Each C result has an independent expected witness. Equality, product and format
+inputs are raw algebra values, independent of C parsing. Cases cover missing
+and empty annotations, integer powers, overflow before cancellation, term order,
+sticky denominators, superscript/dot UTF-8 truncation and tiny output buffers.
+Detached results and a retained unit/string survive input and owner retirement.
+There are no runtime files, children, services or GPU work. Build separately;
+this route is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
+annotation and signature reading. Four pico cases run seventeen Type and eight
+Signature requests, totaling 50 authored calls across bytecode and SLJIT at
+500,000 instructions each. Seven compiler sources per backend, each below
+48 KiB, and 25 raw Tree-sitter inputs total 39 parses. Quoted names make four
+private JSON callbacks. The original 24 sources are below 256 bytes with at most
+256 nodes at depth 32. One fixed 65-array annotation stays below 512 bytes,
+512 nodes and depth 256, checking helper call depth beyond the default limit.
+Raw fields, named/extra flags and source text are preserved.
+
+Input tables contain two scopes, two symbols, one function, two documents, three
+catalog definitions, two variants and one import/export; a chained returned
+environment adds one definition. Pools hold at most 64 types and 128 IDs, with
+at most four new definitions/publications/uses/diagnostics. Comparisons include
+constructor selections and both returned catalog views. One task result feeds a
+later array annotation directly from the authored returned environment. Four
+retained readings produce eight before/after serialization projections, each
+below 128 KiB, checking ownership after producer retirement. No runtime files,
+children, services or GPU work occur. Build separately; this route is outside
+the aggregate.
+
+`python3 tools/test_policy.py tool language-callable-headers-chibi` compares
+callable header registration from raw syntax and analyzer tables. Two pico cases
+run fifteen requests on both backends: 30 Register calls at two million
+instructions each. Eight sources per backend (Headers below 64 KiB, dependencies
+below 48 KiB) and fifteen raw trees total 31 parses, with four private JSON calls.
+Inputs are below 512 bytes with at most 256 nodes at depth 32.
+
+Inputs have one scope, at most one symbol and no functions or catalog definitions.
+Outputs have at most ten symbols, two scopes, three functions, two defaults, one
+body and four uses/diagnostics; this corpus publishes no constructor definitions.
+Membership banks hold sixteen cells, with 64 types and 128 IDs. Comparisons cover
+registration changes, final tables, active membership spans, pending syntax
+references and both refreshed reader views. A complete measured header survives
+input, syntax and module retirement. No runtime files, children, services or GPU
+work occur. Build separately; this route is outside the language aggregate.
+
+`python3 tools/test_policy.py tool language-union-members-chibi` selects three
+C/pico_unit cases: sixteen source requests and eight raw cycle-validation
+requests, each on bytecode and SLJIT, for 48 authored calls and 32 parses.
+Source calls supply 2,000,000 instructions; raw validation supplies 16,000,000.
+Both budgets are inherited/reset per activation, including outlined and inline
+children; neither is a whole-call or corpus instruction ceiling. Eight compiler
+sources per backend are below 48 KiB. Sixteen fact sources are at most 512 bytes,
+256 syntax nodes and depth 32; initial source tables hold at most two symbols
+and definitions, one scope and no functions, imports or capabilities.
+
+The fixed raw maximum is 257 definitions/fields, two variants, four roots,
+520 types and 1,024 IDs, with at most 66,049 nominal comparisons, 258 traversal
+calls and 514 persistent state writes. Cases preserve the 256-definition success
+boundary, 257-definition failure and cycle-before-depth ordering. Comparisons
+cover ordered diagnostics, uses, constructor publication/reuse, full-width tags,
+embedded NUL and results retained after input/module retirement. Positive native
+task capability-result metadata is uncovered, and this corpus does not establish
+all import/native/multi-document combinations or arbitrary state continuation.
+The validator remains recursive; source review is not evidence that the runtime
+executes its depth-boundary workload. The normal union analyzer is unchanged.
+
+`python3 tools/test_policy.py tool language-effect-analysis-chibi` selects four
+C/pico_unit cases: 24 raw Analyze graphs, six Order graphs and four analyzed
+source replays, for 34 requests and 68 authored calls across bytecode and SLJIT.
+The supplied 500,000 instruction budget is inherited/reset per activation,
+not a whole-call or corpus instruction ceiling. Three compiler sources per
+backend below 32 KiB plus four fact sources below 512 bytes total ten parses.
+Raw maxima are 24 expressions except one fixed 85-expression graph, 16 statements,
+six functions, eight symbols/scopes, two queries, four bindings, eight arguments,
+16 children, six capabilities, three catalog types and sixteen read/write IDs.
+Actual facts cap expressions/statements at 64, functions at eight, symbols at 32,
+scopes at sixteen, queries at four and bindings at eight; shared bounds are
+128 IDs, 256 ranges, 32 diagnostics and 240 text bytes.
+
+The corpus retains the function-count-plus-one propagation stop, dependency
+cycles, task masks, diagnostic phases, stable binding order and owned outputs.
+Raw seeds establish initial propagation; analyzed replays already contain final
+effects and only establish schema, diagnostics and ownership. The two existing
+forward-edge graphs assert the finite propagation stop, and actual diagnostic
+matching is an ordered subsequence without reusing matches. The reviewed
+explicit-int generic inference correction is included in `Effects.chibi`.
+The normal effect analyzer and binding finalizer are unchanged.
+
+These union/effects routes add private C reference helpers and exact authored
+source embeddings to the existing language driver; there is no active production
+adapter, new executable, public package or language syntax. No runtime files,
+workload children, network, sleeps, services, engine frames or GPU work occur.
+Both full routes stay outside all aggregates. Configuration/build timing is
+separate. Registration alone is not a measured
+pass, active authored compiler dispatch or complete compiler bootstrap; the
+landed-tree evidence and new integrated-tree requirements are recorded below.
+
+`python3 tools/test_policy.py tool language-record-members-chibi` is a standalone
+source-only differential route for record declaration selection and one-member
+name/type discovery. Five fixed C/pico_unit cases make 26 requests and 52 authored
+calls across bytecode and SLJIT, with 32 parses and four runtime JSON decodes.
+Each call supplies budget 500,000, which outlined and inline child activations
+inherit/reset. This is not a shared invocation or corpus instruction ceiling.
+
+Eight compiler sources per backend are below 48 KiB each. Sixteen fact-source
+parses use inputs below 256 bytes, at most 128 nodes and depth 32. Raw facts have
+one scope, at most one symbol, three definitions, two variants and three prior
+names; pools hold 64 type rows and 128 exact IDs. Per-member outputs have at most
+four combined diagnostics, one use and one constructor publication. Fixed
+annotation shapes are primitive/named types, a single modifier or a two-member
+structural union; bounded table scans and these finite shapes bound the work.
+
+Coverage includes original selection guards, ordered diagnostics, full reader
+results, a caller-supplied refreshed-fact boundary, publication continuation and
+owned results after producer retirement. Defaults are neither analyzed nor run;
+layout, final publication and the production record analyzer remain unchanged.
+There are no runtime files, workload children, services, network, sleeps, engine
+frames or GPU work. This route is outside all aggregates. Build/configuration
+timing is separate. Registration is not runtime evidence or
+a compiler-bootstrap claim. The landed-tree measurement is recorded below.
+
+The corrected semantic source `b57ac78c53c170139d8f807158c076f971a2202b` passed
+all five complete union/effects/records/unit/type selectors in hosted
+[run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564).
+Their case counts were 3/4/5/3/4, and each verified its execution identity and
+exact summary. PR444 merge
+`c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` has the same tested tree
+`09d520fe2a5723226126b0879faaee390e87b7b9`. The transport integration combines
+that landed dependency with PR445 and has no integrated measurement recorded
+here. Its coverage requires the ordinary compiler-only language/tools/host
+products, the private link/ownership/symbol audit, both full transport selectors
+and all five full semantic selectors. Configuration/build/audit timing is
+separate. The prior semantic pass does not establish integrated-tree evidence.
+
+`python3 tools/test_policy.py tool language-unit-analysis-chibi` selects three
+C/pico_unit cases for unit analysis. Twenty-five fixed raw typed-IR/catalog
+requests and four actual analyzed sources make 58 authored call attempts across
+bytecode and SLJIT, with 500,000 instructions per call. Five compiler sources
+below 48 KiB per backend plus four fact sources below 256 bytes total fourteen
+preparation/analysis parses. The raw maximum is sixteen expressions, except one
+fixed 81-expression forward cast chain; actual source has at most 64 expressions.
+Other maxima are 32 symbols, four functions, 64 statements, eight bindings, three
+capabilities, two catalog types, two fields, six ports, four arguments, two
+globals, 128 IDs, 256 ranges and 32 symbol indices. Outputs contain at most
+81 cache rows, 512 terms and 32 diagnostics. Detached results and retained
+outputs are checked after producer and module retirement. There are no workload
+files, child processes, host services, engine frames or GPU operations.
+
+The focused `language-unit-analysis-zero-id` and `language-unit-analysis-deep`
+commands each select one existing raw request in two independent pico cases,
+one per backend. Each command makes two call attempts and ten preparation parses.
+A failure in the first
+backend does not suppress the second. These are negative-baseline witnesses;
+they do not replace the complete differential corpus.
+C witnesses are asserted before the authored comparison. The zero-ID witness
+requires the exact argument-unit diagnostic and known `s` result. The deep
+witness requires 81 known `u` values and no diagnostics. Failure-only fixture
+logging distinguishes runtime depth exhaustion from budget, preparation and
+other failures. A nonzero command exit alone is not the intended red proof.
+
+The original baseline wired the extracted C oracle and authored draft into the
+language driver, retaining the zero-ID guard and recursive evaluator until both
+red witnesses executed. The merged repair and later full semantic regression pass
+are recorded in PLAN.md. The production analyzer remains unchanged.
+Configuration/build timing is separate. All three routes stay standalone and
+outside the aggregate.
+Prior measurements and source review do not validate a new integrated binary or
+establish a complete compiler bootstrap.
+
+The compiler port also adds separately reviewed language regressions to existing
+routes. Syntax adds two fixed parses for typed declarations, labels and system
+state; program adds two preparations and four calls with 1,000-instruction
+budgets, checking both backends. Semantic adds nine short sources covering
+owned writes and rejected external writes. `language-record-runtime` adds ten
+small preparations and fourteen calls with 10,000-instruction budgets. Two-row
+records verify that by-value mutation preserves caller snapshots, explicit
+references update caller roots, and returned snapshots survive module teardown.
+Scalar arguments, reference exposure, inline and standalone entries share these
+checks. That standalone route now has five cases and 28 calls total. These additions
+create no frames, workers, files, processes or GPU work.
+
+Scalar folding exposed an analyzer bug where unchanged union-element arrays
+were treated as single union values and unwrapped. Its `language-program`
+regression adds two preparation parses and four event dispatches across the two
+backends, each capped at 10,000 instructions. Arrays contain at most two tagged
+scalar values. Local append, reassignment and element writes preserve caller
+snapshots; a returned array retained in behavior state survives the first
+activation. The existing array capability pack supplies the append operation.
+
+## Compiler bootstrap checks
+
+`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
+check that the compiler host's `--bootstrap` mode refuses bad input before any
+compile runs:
+- mixed or missing options;
+- a missing or invalid `bootstrap.kdl`;
+- another manifest format, or a version older than the minimum;
+- a folder with no manifest, or a closure its manifest doesn't record;
+- a missing source, or a package that gained a file;
+- a closure recorded for another target;
+- a seed folder without a seed, or a seed whose sources aren't on disk.
+
+The SHA-256 check is pinned by four digests: FIPS 180-2's for "abc", and those
+of 55, 56 and 64 a's, which sit at the padding boundaries. The cases run about
+twenty host children on tiny folders. The target case loads the closure that
+`test_language --compiler-artifact-write` writes.
+
+`python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
+selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
+`git archive` and has the unsanitized Release host recover the compiler from
+the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
+`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
+
+## Game equivalence
+
+`python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
+M5 step 4. It rebuilds the stories in `test/stories` with a reference and a
+candidate compiler, and compares what the two artifacts of each story declare
+and how they play. It is a standalone selector, not part of any group, and
+takes about 6 s.
+
+- **Stories.** Each story is a small project that shows one feature, played
+  by its `content/scenarios/Story.kdl`. `test/stories/README.md` lists them in
+  the order stage one reaches them. Each compiles alone, so stage one can
+  pass one story before it compiles another.
+- **Compilers.** A compiler is any program that takes `--project-root ROOT
+  --output FILE`, as `chibi-compile` does, or a build program whose `Compile`
+  entry takes them. `CHIBI_REFERENCE_COMPILER` and `CHIBI_CANDIDATE_COMPILER`
+  select them. Both default to `build/sdk/chibi-compile`;
+  `game-equivalence-stage-one` takes stage one's route as the candidate.
+- **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
+  `chibi-build-host`. Its `Rebuild` entry compiles each story with each
+  compiler and plays them, and `Diff` compares two traces.
+- **Observer.** `test_tools --game-observe TRACE ARTIFACT SCENARIO...` reads
+  each artifact on the CPU and replays its scenario from the scenario's
+  scene. For each story, the trace holds:
+  - a `play NAME` line, NAME being the artifact's file name;
+  - what the artifact declares apart from its code: a digest of every byte
+    outside its module records, located by `player_prepared_modules`, then
+    each module's name and ID (`--native` checks that function);
+  - one line per fixed step, from frame 0 (after Begin) to the scenario's
+    last frame: hashes of the ECS world, saved state, materials, physics
+    bodies, contacts and events, and UI text. The ECS hash reads a string
+    field by its text, not its address, since the two compilers allocate
+    differently (`ecs_world_hash_reads_strings_by_text`). Frame N is the world after N
+    steps, so input keyed at step K first shows in frame K + 1.
+- **Cases.**
+  - Assembling each story from the modules of its own artifact, with
+    `authoring_project_assemble`, writes that artifact again byte for byte.
+    A source without its module, or a module of no source, is refused. This
+    is the assembly a stage-one route uses for modules stage one compiled.
+    `chibi-compile --modules` refuses a file that is no closure and writes no
+    artifact.
+  - `chibi-compile --project-root ROOT --stage-one-input FILE` exports stage
+    one's `CompileBehaviors` input for a story: its executable sources' identities
+    and texts, then what they link against. For Counter, the test checks the
+    behavior's identity and source. It compares the types with the
+    requirements of the module stage zero writes (all 112, in order: ID,
+    layout, storage, size and name), and the module's events (ID, ABI and
+    payload fields) and entity type, that the operators that combine
+    records hold `+` as the native `add`, that the globals hold `self` of
+    the owner's type, and that the record makes hold `vec2` making a `CF_V2`
+    of its `x` and `y`. Only the types modules require are compared;
+    namespaces such as `SceneGlobals` are listed too.
+  - Both compilers rebuild every story to the same trace.
+  - A variant of Motion whose drift is doubled is named in Motion at frame 1,
+    with both lines, and its declarations still match.
+  - Differing declarations are named. A missing trace, or a story with no
+    frames, is refused rather than matched; the observer removes the trace
+    unless every story played.
+
+`make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
+every story with `chibi-compile` and with stage one's route,
+`tools/toolchain/StageOne.chibi`, and compares them as above. The route:
+1. recovers stage one from the bootstrap artifact and the compiler sources
+   with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and
+   keeps it under `.chibi/stage-one` for the digest of those sources, the
+   artifact and the host, replacing the closure kept for an older digest;
+2. exports stage one's input with `chibi-compile --stage-one-input`;
+3. runs stage one's `CompileBehaviors` on it with `chibi-compiler-host
+   --output-bytes`. When stage one rejects a behavior, the route reports
+   `BehaviorRejection`'s identity, line, column and message;
+4. assembles the artifact with `chibi-compile --modules`.
+
+`CHIBI_COMPILE` and `CHIBI_STAGE_ONE_HOST` name the two tools. The selector
+takes about 19 s when it recovers stage one and 2 s once it is kept.
+
+## Compiler artifact runtime checks
+
+`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
+cases and two cases in one child producer. One checks that `--output-bytes`
+writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
+and `chibi-compiler-host` separately. The original producer prepares the actual
+eight-package source-snapshot compiler closure on both backends (16 source
+preparations), serializes its executable modules and checks that reversed record
+order yields identical container bytes. It writes five requests and expected
+results. A separate producer case prepares one <=4 KiB `binary_fixture` package
+on both backends, with exactly four authored exports: `Echo(byte[]) -> byte[]`,
+`Scalar() -> byte`, `Integers() -> int[]` and `Loop(bool) -> byte[]`. Stage zero
+serializes this <=32 KiB closure and writes its IDs and bounded inputs. It makes
+no source calls. This is transport fixture generation, not authored serialization.
+
+Two fresh original product processes load only the snapshot artifact and run
+five requests on bytecode and SLJIT. Actual entry counters must confirm the
+requested backend without inspection fallback. Requests include a three-file
+import graph, syntax failure, invalid UTF-8, embedded-NUL source length and an
+exact uint64 maximum declared size. Five source calls plus ten product calls
+each permit three million instructions. Four C oracle parses and twelve raw
+bridge parses are unchanged: with 18 preparation parses, the route has at most
+34 parser calls. Each original request contains at most three input files.
+The original artifact cap remains 16 MiB, request JSON 8 KiB, expected/captured
+output 256 KiB and stderr 4 KiB.
+
+The raw-facts producer also checks all retained syntax roots and named/extra
+flags directly against its four C trees before projecting the owned expected
+JSON. One 13-byte comment is added to the existing valid source so serialized
+results must contain both named values and both extra values; this adds no
+requests or parses. A 1,024-entry C raw-node scratch array and four bounded tree
+walks (depth 128) supply the comparison. Two Boolean JSON fields add at most
+34 bytes per node, plus the syntax-root integer per document. The existing
+producer/product assertions enforce the unchanged 256 KiB output and 16 MiB
+artifact caps. The eight-module closure and runtime host limits are unchanged.
+
+One additional native catalog reproduces the preceding thirteen-result parser
+signature. One bounded bytecode decode of the actual regenerated closure must
+reject that incompatible ABI, leave the aggregate decode budget it was given
+unchanged and publish no collection or root. The current descriptor has fifteen
+results, with the last two checked as named Boolean arrays and a distinct ABI. There is no
+callback invocation, source parse, child or compatibility alias in this check.
+The same ABI equality gate also rejects an old-signature artifact against the
+current host; this fixture directly exercises only the current artifact against
+the previous host descriptor. The language producer adds the runtime native-prepared helper dependency for
+this check; the product host still has no semantic analyzer/lowerer dependency.
+Existing on-runner cap assertions are the resource checks; exact size export is
+not a separate gate.
+
+The original three direct malformed-container reads reject truncation, duplicate
+IDs and trailing data before executable decoding. The original bad-magic CLI
+child remains. Two fixed C-built provenance artifacts (<=64 KiB each) declare a
+reference argument or a zero-initialized reference result using `BF_POINTER_TYPE`.
+The result fixture has no arguments or operand slots and only `BF_END`. The
+fixtures are prepared/loaded but never execute: numeric argument input and
+malformed result-fixture input must fail provenance admission. No raw-pointer
+execution or additional source parse is introduced.
+
+Nine added tooling cases cover these finite binary operations:
+
+- Four direct successes return all 256 octets and a typed empty array on both
+  backends. Input, prepared bytes and loaded host retire before retained bytes
+  are compared. Exact selected-backend entry counts are checked without fallback.
+- Two direct calls return 256 bytes against a 255-byte limit and fail atomically;
+  the 256-byte successes above cover the exact boundary. Two invalid API limits
+  (zero and `COMPILER_HOST_MAX_OUTPUT_BYTES + 1`) reject before execution.
+- Two wrong return signatures reject before malformed JSON parsing; malformed
+  JSON and wrong argument count add two more pre-execution rejections.
+- The reference-argument fixture adds one bytes-API rejection. The new result
+  fixture adds one JSON and one bytes-API rejection, with zero entry counts.
+- Two direct `Loop(true)` calls fail with a 100-instruction budget and no bytes.
+- Two fresh binary-output children echo the valid small closure on bytecode and
+  SLJIT, replace a preseeded pathname containing spaces, leave stdout empty,
+  report exact backend counts and leave no staging residue. Each output reloads
+  on its matching backend and makes one direct two-octet echo call after the
+  child and loaded-artifact input buffer have retired.
+- Three bytecode children echo nonartifact all-octet bytes, empty bytes and a
+  wrong-target prepared closure. They fail before publication and preserve a
+  preseeded sentinel. The last case changes only the little-endian pointer-width
+  u64 at prepared-payload offset 16; the CHIBICLO header, row and payload length
+  remain valid. It requires `prepared target ABI differs`, proving full runtime
+  validation rather than outer-header checking. This replaces the proposed new
+  truncated-output child; truncation remains the original direct decoder case.
+- One child targets a nonempty directory. Successful invocation/validation is
+  followed by rename failure; the directory, sentinel and staging cleanup are
+  checked. A child that omits the required explicit `--timeout-ms` fails usage
+  without changing its destination or leaving staging files. Two final usage
+  children reject duplicate output switches and batch plus binary output without
+  execution.
+
+Exact workload: 15 tooling cases, two producer cases, 13 supervised children
+(original producer, two JSON products and bad input; two publications, three
+bad outputs, rename failure and three usage checks). There are
+20 direct host-API attempts: the original reference-argument rejection plus ten
+new executions and nine new pre-execution rejections. The three direct malformed
+container reads and the one additional raw-syntax ABI decode are separate; the
+ABI check adds no source preparation, callback invocation or child process. There are 31 top-level calls that execute: five
+original source, ten JSON product, ten new direct and six new binary product
+calls. Backend entry counters can include nested calls; this total is not their
+sum. New echo calls permit <=10,000 instructions; the two loop calls permit 100.
+Binary input JSON is <=256 KiB, artifact <=32 KiB, stderr <=4 KiB and successful
+binary stdout empty. Each child retains its <=10-second timeout. There is no
+extra producer process, standalone probe, network, renderer or GPU work. The
+disposable directory and
+all fixture outputs are removed. This route remains outside the tooling aggregate.
+
+Extraction copies each `pin_array.items[i].u8`, not packed `pin_value` storage.
+The all-octet/boundary/empty cases cover this public path. The exact declaration,
+actual return header, element type, metadata, item types and count/capacity
+arithmetic are independent source-review gates. Verified authored code and
+array primitives construct typed, owned arrays; the fixture cannot
+produce a forged header, negative count, missing nonempty item storage or
+wrong-typed item. Such corruption cannot be safely introduced by executing
+fabricated native pointers. The fixture's echo capacity equals its bounded input
+count, so its 64 MiB representation ceiling cannot be reached; the division,
+header-plus-capacity and packed-length guards require static arithmetic review,
+not a huge allocation probe. No whole-arena runtime memory bound is claimed.
+
+Binary SIGPIPE handling, checked precommit counter write/flush and absence of
+post-rename I/O/status checks are source-review gates. This finite matrix does
+not claim closed-stderr, active-signal, partial-write, close-failure or crash-
+durability process coverage. Prepared/native capability compatibility still
+belongs to the existing runtime decoder; this slice adds no compatibility
+implementation or claim of exhaustive emitted-native-ABI mutation coverage.
+
+The private JSON input transport preserves invalid UTF-8 bytes and uint64 values;
+ordinary JSON adapters are unchanged. Product processes perform no compiler-source
+preparation, native semantic analysis or lowering. Echoing stage-zero prepared
+bytes does not prove a complete authored compiler, authored serializer,
+stage-one/stage-two bootstrap, cross-architecture portability or source-free SDK
+installation.
+
+Module-set validation measures generations with `execution_prepared_measure`
+instead of serializing them, so the runtime read path never references the
+public `execution_prepared_write` entry point. The Linux GNU/Clang production
+`chibi_execution` target's private function and data sections and Darwin's
+dead-strip link discard it from the host. This is an executable-link contract,
+not removal of every native encoder: the prepared reader legitimately uses
+shared canonical encoding for dependency fingerprints. The static archive still
+exports the writer, and direct producer/tooling fixture calls must retain it.
+Each platform needs actual linked-binary evidence; unsupported platforms gain
+no exclusion claim.
+
+Inspect the exact unstripped product's actual link inputs and defined symbols.
+Require the loader, JSON/bytes/batch invokers, artifact reader and prepared reader;
+exclude the public writer, source preparation, native authoring, semantic
+analysis and lowering. Positively require `execution_prepared_write` in both
+`test_language` and `test_tools` and execute their real fixtures. Use the normal
+production target flags; validation-only section flags, stripping or hidden
+symbols do not establish the boundary. Configuration/build timing and link
+inspection are separate from test execution.
+
+The existing two-case `package-ownership` route also verifies both private host
+executables and their directly linked implementation objects under Ninja and
+Makefiles. The compiler host adds four tiny C compilations, two executable links
+and one wrong-owner inspection. The route has 22 supervised child invocations
+(six configure/build/install commands and sixteen inspections), each bounded to
+ten seconds. It compiles thirteen tiny C
+units and one precompiled header; none of those fixture executables runs. Missing
+or changed installed compiler-host bytes and linking its implementation only
+into an unrelated executable must fail provenance checks.
+
+## Private build-host process checks
+
+`python3 tools/test_policy.py tool build-process` selects 23 C cases in the
+existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
+`policy_worker` dependency separately. The route uses one disposable directory,
+fixed authored sources and at most 58 controlled process launches or failed
+spawn attempts. It performs no
+engine configure/build, network, renderer or GPU work. Case deadlines are at
+most two seconds, with shorter deliberate timeout/cancellation budgets.
+
+Cases cover exact argv and cwd, explicit environment and parent isolation,
+separate output bounds, a step's 1,023-argument bound, exits/signals, spawn
+errors, timeout, active cancellation,
+and descendants whose leader exits first. The private host executes both the
+controlled source and unchanged recording workflow on bytecode and SLJIT, with
+actual backend counters and failure-path assertions. Compiler-enabled full
+native builds also verify absence from the ordinary game catalog; minimal
+compiler-only builds verify rejection by a catalog without build capabilities.
+Two CLI invocations cover source loading, a nonzero authored result and a missing
+entry. Seven additional cases cover argument and returned-value lifetimes,
+string operations, truncated or binary output rejection, regular-file and size
+limits, and atomic write failure cleanup. Five more cover a step's 1 MiB output
+and unreported probes, file kinds, stamps and sorted directory entries with
+their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
+vectors, and environment names. Their fixed file workload is about 10 MiB and 8,193 empty
+files. The original eight `language-build-workflow` recording cases remain an
+independent route.
+
+`python3 tools/test_policy.py tool build-toolchain` selects eight C cases for the
+installed authored build program, and a ninth on macOS. Six cases make 44 API
+invocations across bytecode and SLJIT, and the macOS case seven more that
+alternate them; one runs the host CLI with exact tail arguments. Fourteen tiny Git
+roots, fifteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
+cover compiler/environment/cache precedence, explicit typed and split
+definitions, loaded inputs, compiler identity, retired dependency switches, a
+third-party archive downloaded once through a `gh` stand-in, reused, refused
+for another SHA-256 and pruned unless a worktree pins it, failure/retry and
+exact argument forwarding.
+The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
+report, through links and shell-quoted `CC` words, and falls back to a stand-in
+`xcrun`. Another case uses the production Makefile to select recovery for a
+missing host, one that fails the protocol query and one that reports protocol 3,
+and authored orchestration for a compatible host, including paths with spaces;
+four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
+transition. Python runs only the production input probes; no Python tests are
+introduced. These cases never configure or build the engine. Actual clean-source
+configuration and compilation are separate build evidence.
+
+`python3 tools/test_policy.py tool build-graph` runs one C case for the Chibi
+build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
+configured CMake build: on macOS, where `make build` uses the graph, the one
+`make graph-reference` configures in `build-cmake`, elsewhere `build`;
+`CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
+`CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
+that profile's name, with CMake's compiler as `CC` and no `CXX` (and the
+debug directory, which depends on where a build is), the graph finds the
+rest of its profile on the machine and writes the compile commands of every
+target it owns, including the third-party archive's sources and include
+directories, the options of single sources and C++ and Objective-C sources,
+and each of them (1061 on macOS) must equal `compile_commands.json`'s for the same source
+in the same target, split as the shell splits it, apart from the object path
+and with the temporary build directory standing for CMake's. A second case
+requires each link command it writes in `link_commands.json` (thirteen on macOS,
+eight elsewhere), found in `build.ninja` by its linker rule, to equal its executable's `build.ninja` statement, with the
+C++ compiler for an executable CMake links as C++, apart from where objects, the
+output and archives sit. A third builds the `chibi` launcher with a compiler
+that always fails: the headers its libraries staged stay in place, since an
+executable stages none. Only `reflect` is linked by a test; the other links
+are compared, and a manual full build links and runs them. About 25 s.
+
+`python3 tools/test_policy.py tool build-graph-programs` runs the graph with
+`--commands-only on --target test_tools --target chibi`: its link commands
+name them and the programs they run (`policy_worker`, `chibi_ctl`,
+`chibi-compile`, `chibi-player`, the build and compiler hosts), where CMake
+writes them, and no other test driver (macOS only). A second case names `chibi_support`:
+its compile database lists only that library's compiles, and with
+`--all-commands on` every target's, on macOS as many as CMake's. A third case
+rejects four fixed invalid target requests before discovery or output creation:
+an unknown target, a valid and unknown pair, a missing value, and another option
+instead of a value. A fourth case calls the authored `graph:c.Dependencies`
+parser through the bytecode CLI, with one short escaped-path fixture containing
+LF and CRLF continuations, two empty or targetless texts, and one fixed
+128-header file below 16 KiB. It checks exact paths and counts without compiler
+children, frames or GPU work. At most eight host subprocesses retain the existing
+50-second child limit.
+
+`python3 tools/test_policy.py tool build-graph-resources` runs the graph for
+the launcher and `chibi_ctl` with a compiler that always fails: before any
+compile it writes `share/chibi` and `controller_resources`, all 213 files equal
+to CMake's (the build identity `engine.json` and the core and documentation
+sources) or, for the shaders, which CMake copies to `controller_resources`
+only when it configures, to `src/render/shaders`; an unchanged run leaves
+the identity's stamps. A second case runs it for `test_language`, whose
+`corpus.txt` must equal CMake's. macOS only. About 32 s.
+
+`python3 tools/test_policy.py tool build-graph-support` runs three cases in a
+copy of the sources: about ten runs that build only `chibi_support` check
+that an unchanged build compiles nothing, that changing a source, a header or
+the flags or deleting an object recompiles exactly what depends on it, that a
+staged header nothing publishes is removed, and that a source that fails to
+compile keeps no record and is retried alone. The archive must link a program
+that runs. It compiles about thirty C files with the profile's sanitizers,
+about 36 s at a load average of 9.
+
+`python3 tools/test_policy.py tool build-graph-reflect` builds and links
+`reflect` from the graph (27 C files with the profile's sanitizers), requires
+its link command to equal CMake's `build.ninja` statement apart from where
+objects, the output and archives sit, and runs it as CMake does, over the Cute
+math headers the graph staged from the third-party archive: its
+`native_types.c` and `native_capabilities.c` must equal CMake's byte for byte.
+About 42 s at a load average of 11; with other builds running, its first graph
+run can exceed its 50 s share.
+
+`python3 tools/test_policy.py tool build-graph-archive` builds
+`chibi_vector_capabilities` over the Cute math headers of the third-party
+archive CMake configured with, which the graph stages, and the task pool over
+the archive's prebuilt enkiTS: three C files with the profile's sanitizers. A
+second run compiles nothing, and the staged `cute_math.h` and the shared
+`private/physics` headers equal CMake's; a run naming an archive that is not
+unpacked, or one naming the UI host's C++ sources with no C++ compiler, fails
+before compiling and says so. About 12 s.
+
+`python3 tools/test_policy.py tool build-graph-generated` covers sources and
+headers the graph writes. One case builds `chibi_native_types` with the
+configured build's `reflect` (`--reflect`): the graph stages the math headers,
+runs reflect as CMake does and compiles the one source; both written sources
+equal CMake's byte for byte, an unchanged run neither reruns reflect nor
+compiles, and losing an output reruns it. Another builds
+`chibi_image_preparation`, whose codec headers the graph rewrites from Cute's
+with private symbols: they equal CMake's, staging keeps them, and an
+unchanged run compiles nothing and leaves their stamps. On macOS a third
+builds `test_behavior_consumer`, which writes the language tests' configured
+headers (byte initializers, C string lines and copies); they equal CMake's
+and keep their stamps when unchanged. A fourth builds
+`chibi_prepared_consumer`, which writes the tooling tests' copied fixtures
+and `export_compiler.h`, the profile's compiler and C flags; they equal
+CMake's and keep their stamps when unchanged. About 34 s at a load
+average of 4.
+
+`chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
+`CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
+`version` and `doctor`, then `check`, `fmt`, `build` and a native `export` of one tiny project,
+`test` on one package tree that imports the installed `core:` collection, and `doc` on one
+two-page site with the installed generator. It takes about three seconds and starts no
+player.
+
+`build-process`, `build-toolchain`, M0's `chibi-cli` and `chibi-cli-installed` remain focused routes. The complete
+`make test-tools` group builds a runtime-only tooling driver and does not build
+the private host or public launcher. Route registration does not add either
+fixture to that aggregate. Current platform results belong in `PLAN.md`;
+Windows does not build or select the private host.
 
 ## Batch validation (CUT62)
 
@@ -1055,12 +2364,12 @@ unavailable full suite does not automatically block landing.
 
 1. **Review and choose checks.** Independently inspect the diff, callers, tests
    and dependency/build effects. Record which contracts changed and why the
-   selected admitted checks cover them. Include applicable backend, sanitizer,
+   selected checks cover them. Include applicable backend, sanitizer,
    load, web/UI and release validation. File extensions and selector names alone
    do not establish coverage. Resolve unknown impact before publication. When
-   affected coverage is quarantined, provide a reviewed admitted replacement;
-   otherwise that specific coverage gap blocks landing. Unaffected quarantined
-   suites remain disabled and not passed, without blocking the change.
+   affected coverage is unavailable, provide a reviewed replacement; otherwise
+   that specific coverage gap blocks landing. Report unexecuted coverage
+   without claiming a pass.
 2. **Freeze and validate.** Use a clean candidate based on freshly fetched main.
    For a batch, pin each reviewed source and review the combined interactions
    and conflict resolutions. Record the candidate commit/tree, configuration,
@@ -1082,7 +2391,6 @@ possible jobs, not mandatory execution of every matrix row. Inspect applicable
 server requirements before landing; required checks and approvals remain binding.
 An absent CI job is not a pass. Preserve existing backend and configuration
 requirements for each selected check, and report other coverage as unexecuted.
-Full native/render suites remain quarantined under the 60-second policy.
 
 A server-created merge/squash commit may have a different ID. Prove identical
 tested tree and unchanged base and source revisions, and satisfy current-head
@@ -1096,19 +2404,19 @@ merge authority.
 python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--source-edit
 ```
 
-The helper records Git identity and admitted commands; it does not execute them
+The helper records Git identity and selected commands; it does not execute them
 or certify coverage. Both `focused` and `mixed` require a review note and selected
 checks. `unknown` records unresolved scope. Use `--tools` (or
 `--tool=native-tools`) for the C tooling group and repeat `--selector=--name` for
-admitted CPU selectors. For batches, repeat `--source` and confirm eligibility
+CPU selectors. For batches, repeat `--source` and confirm eligibility
 only after checking every source's review, holds and approvals.
 `--verify <saved-plan>` checks local identity, not remote freshness or execution.
 Keep saved plans outside the worktree.
 
 ## Historical timing evidence
 
-The original exact native admissions are recorded in
-[test quarantine](test-quarantine.md#retained-short-coverage). The former tooling
+The original native coverage is recorded in
+[test inventory](test-inventory.md). The former tooling
 suite's 24.4-second parallel run and longer native/Studio/render aggregates
 belong to their recorded revisions and removed runners. They are not measurements
 of the new C group. PR186 retains the original process-cleanup reproduction and
@@ -1123,7 +2431,7 @@ passes in 0.799 seconds under ASan/UBSan; there is no world, process or GPU work
 canonical ABI lookup, NaN comparisons, integer saturation, nominal enums, vector
 conversion and output ownership after input/table retirement. The scoped native
 consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
-`box3d` selects one in-tree check of the `chibi_box3d` package (Box3D v0.1.0,
+`box3d` selects one in-tree check of the archive's prebuilt Box3D (v0.1.0,
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
@@ -1150,13 +2458,13 @@ pointer ray against one displayed 64 x 64 image. Camera projection and ray
 inversion must agree, authored lens values remain unchanged, and out-of-image
 or non-perspective pointer requests must fail. A requested camera or resize keeps
 the pointer ray aligned with the last presented camera until the next draw.
-These checks stay in the same hidden app and shared deadline.
+These checks stay in the same hidden app.
 Its UI case draws one 64 x 64 frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB
-in the exported texture. The earlier four-case workload passed in 1.219 seconds under the shared 60-second
-deadline on macOS with the native Metal renderer. That measurement does not cover
+in the exported texture. The earlier four-case workload passed in 1.219 seconds
+on macOS with the native Metal renderer. That measurement does not cover
 the current nine-case selector. The combined nine-case run passed in 2.448
 seconds of execution, or 2.668 seconds including the production supervisor. The old presentation path
 failed the new case with red 255 where source-over required 128. Vulkan discovery
@@ -1255,7 +2563,7 @@ joining and parting, crisp unlit liquid edges, burning cores, plumes without
 holes, fading parcels and wisps along their velocity. Gas and liquid must take
 HRC's light and the wall's shadow with one and three traced cascades, a
 refracting liquid must bend only the background behind it, and a crystal must
-mirror the scene beside it. All cases share the production 60-second deadline.
+mirror the scene beside it.
 These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
@@ -1344,8 +2652,9 @@ and unit normals on every supported primitive. It passes 817 assertions in
 0.05 seconds under ASan/UBSan with leak checks.
 `arena` checks the support arena allocator: growth that keeps earlier
 allocations intact and aligned, a reset that hands back the retained blocks in
-order, and a zero-initialized arena. It passes 354 assertions in 0.06
-seconds.
+order, a zero-initialized arena, and collectable values found by address
+through the page index across sweeps and a reset. It passes 360 assertions in
+0.06 seconds.
 `shader-graphs` selects 15 shader graph cases on the CPU: planar and
 cylindrical mappings, bump and normal-map frames through part transforms and
 scaled seams, sampled and triplanar heights, triplanar axes, decal volumes,
@@ -1464,30 +2773,25 @@ called function is refused while the field keeps its revision, value and draft. 
 `validate_project` and `preview_field` link a field against a `.chibi` library.
 
 
-## External authored examples acceptance
+## Terrain Lab save and restart
 
-The Examples repository owns `projects/atrium` and `projects/tetris`. Engine
-unit and default CPU groups do not depend on that checkout. Run their explicit
-CPU acceptance with an absolute Examples root and a matching Release controller:
+`python3 tools/test_policy.py tool terrain-playable`, also part of `make
+test-projects`, drives the authored controls of `test/fixtures/terrain-lab` on
+the VM and SLJIT. For each backend a writer process digs across a 128-cell chunk
+seam and saves; a fresh reader process checks pristine terrain, then loads and
+checks the restored cells, their collision holes and an unchanged reference
+patch. No GPU is used. `--terrain-playable-render` runs an installed player on an
+artifact the installed compiler prepared from the same fixture
+(`CHIBI_TERRAIN_ARTIFACT` and `CHIBI_TERRAIN_RESOURCES`) for four hidden 640x360
+frames and checks the saved PNG.
 
-```sh
-CHIBI_EXAMPLES_ROOT=/absolute/path/to/chibi-examples \
-CHIBI_CTL=build-release/bin/chibi_ctl \
-python3 tools/test_policy.py tool examples-projects
-```
-
-`--examples-projects chibi_ctl` is the C tooling dispatcher route; `make
-agent-test AGENT_SELECTOR=--examples-projects` uses the same supervisor. Missing
-external roots or either project fail the cases; they never skip. Three cases
-validate Atrium without warnings, validate and exercise Tetris rotation/drop and
-restart, and verify blocked Hold ends its tick without changing the score. The
-Tetris cases clone their project with copy-on-write and remove the copies after
-each case. They run two 170-frame snapshots and one 22-frame snapshot, reporting
-at most three entities and one behavior per snapshot, without rendering. One
-shared production 60-second deadline covers both validations, all snapshots and
-fixture setup; each child also has the existing 10-second tooling limit.
-The inline language event, system cancellation and binding cases retain both
-VM and compiled-backend coverage without reading the Examples checkout.
+The CPU `scene3d-terrain` route also checks an empty volume before and after
+cache reuse and an origin change. One constant field bakes a 3x3x3 lattice;
+three surface queries must retain zero drawn meshes, caster meshes and boxes,
+while the rebuild counter distinguishes reuse from reconstruction. This adds
+one case and seven assertions to the existing six-case route, with no frames,
+rendering, files or child processes. ASan/UBSan validation keeps the zero-length
+mesh-copy regression observable.
 
 ### Configurable source layout and whitespace maps
 
@@ -1503,9 +2807,9 @@ The existing bounded native corpus (at most 256 files/8 MiB) now verifies three
 fixed configurations: defaults, two spaces at width 80, and tabs at width 40.
 Each configuration reparses the result and checks idempotence and immutable
 input. `language-format` owns that corpus; `wasm-format` runs the same finite C
-cases through Node without a browser or corpus filesystem dependency. Both use
-the unchanged production 60-second supervisor. Configuration/build timing is
-separate. This is SDK/printer evidence, not controller, Studio, RML/RCSS,
+cases through Node without a browser or corpus filesystem dependency.
+Configuration/build timing is separate. This is SDK/printer evidence, not
+controller, Studio, RML/RCSS,
 rendering or browser integration coverage.
 
 The first successful measured expanded runs passed 38 native cases/2,944
@@ -1516,19 +2820,44 @@ The initial expanded run exposed a test-oracle mistake: empty documents are
 syntax errors in the current grammar. The corrected case preserves that
 rejection and tests insertion affinity on a valid empty behavior instead.
 
-## Qualified module prerequisite: admitted fixed workload
+### Package-source separator compatibility
 
-`tool language-modules` and `tool wasm-modules` route the same seven pico_unit
-cases through the existing `test_language --modules` dispatcher. The exact
-[workload and coverage boundary](module-composition.md#fixed-workload-and-validation)
-limits each selector to 22 catalogs, 60 source preparations, at most 48 lowering
-requests and 42 finalization attempts, 20 programs and 56 budgeted dispatches.
-There are at most five sources, two libraries and six bodies per collection,
-with four bodies in one source. The arithmetic comes from Studio's horizontal
-scroll clamp, compared inline, locally and through an existing qualified library
-on bytecode and the platform compiled backend. Other cases check ambiguity,
-duplicate top-level qualified names, cycles, nonexported state, catalog isolation,
-and distinct same-named nested lexical helpers that never become catalog exports.
+The existing C `--format` dispatcher adds one case with sixteen fixed
+input/output pairs plus five preferred-width variants. It covers CR, LF, CRLF,
+mixed and blank lines, explicit semicolons, alias/blank imports, header-only
+input, inline/standalone/multiline block comments, line comments, contextual
+legacy names with internal CR blank lines, default/reflow indentation of a nested
+array, and package CR/LF/CRLF comment-column tracking with a legacy width
+control. CR remains
+part of a `//` comment until LF, matching the existing grammar. Comment and
+other token bytes remain exact; package whitespace gaps canonicalize to LF.
+
+The successful fixed path makes 42 formatter calls and 84 canonical parses
+across twenty-one configured formatting pairs. Each
+input and expected output is at most 58 bytes. Existing helpers check exact
+output, immutable input, idempotence and whitespace edit-map reconstruction.
+No source generation, files, processes, authored/backend execution, worlds,
+frames, network or GPU are added. The redesigned native/Wasm finite suite has
+47 cases, plus one bounded corpus case on native. The generated corpus manifest
+retains its 256-file and 8 MiB limits; record its exact migrated file/byte totals
+and assertion counts with the current run. These case counts are source-derived,
+not an execution result. Configuration and build timing remain separate.
+
+## Qualified module prerequisite: fixed workload
+
+`tool language-modules` and `tool wasm-modules` route seventeen fixed pico_unit
+cases through the existing `test_language --modules` dispatcher. The complete
+workload constructs 112 catalogs with 196 source input entries, at most 196 source
+lowering/finalization requests, 40 programs, 74 explicit event dispatches and ten
+program steps. Catalog discovery, specialization and effect analyses are
+additional bounded passes. Each preparation has at most five sources and two
+libraries; at most three collections and two programs coexist. Event and step
+calls retain their 1000-step arguments. Cases cover the original scroll and
+ownership scenarios, imported generic and constant ownership, the 32-pair float
+metadata matrix, incremental reuse and invalidation, retained library state,
+task-state rejection and empty compile bindings. These source-derived counts
+are not a current execution result. The earlier seven-case workload and results below
+are historical; see the [original coverage boundary](module-composition.md#fixed-workload-and-validation).
 
 The original six-case checks at `072be745a8f5c73e14c1e07b0a1704c4de8555a8`
 passed native/Wasm 6/348 (0.168/0.227 s), navigation 29/329 (0.183 s), and
@@ -1547,15 +2876,348 @@ complete Wasm (17 commands) passed 233/32,519 in 4.223 s. Exact-source
 Each check ran once, serially, and exited 0. Source/artifact hashes matched before
 and after; all three `-j2` build currency checks reported no work. No prior group
 member was removed. The native language group includes program/imported state,
-publication, navigation and incremental coverage. Each complete group retained
-one shared production 60-second deadline, with configuration/build time separate
-and no chunking or failure suppression. These are measured full commands, not
-sums of old timings. This documentation follow-up preserves tested product,
-test, policy and fixture bytes and performs no new runtime.
+publication, navigation and incremental coverage. Configuration/build time was
+separate; failures were not suppressed. These are measured full commands, not
+sums of old timings. That documentation follow-up preserved tested product,
+test, policy and fixture bytes and performed no new runtime.
 `wasm-format` remains a pre-existing standalone gap; this does not claim every
-admitted selector is covered. See the linked proof and
+selector is covered. See the linked proof and
 [machine-readable historical evidence and current status](module-composition-validation.json).
 No full-L07, application-scale, benchmark, or scheduling claim follows;
-full/quarantined gates remain disabled, not passed.
+those checks were not run.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
 status is asserted by this local validation.
+
+
+## Selected runtime attribution: fixed workload
+
+`tool language-runtime-attribution` and `tool wasm-runtime-attribution` run the
+same six C/pico_unit cases through the existing language dispatcher. Each occurs
+once in its ordinary native-language or serial-Wasm group. This does not add a
+second copy to the separate native `test_tools` selector group.
+
+The fixed envelope is 44 copy API operations, ten scoped copies/VM calls, three
+intern worlds with 32 unique edits and 32 repeats, four task owners with eight
+cycles and four boundaries each, six native/five Wasm backend attempts, and
+5,128 paired invocations. Tiny instruction/context budgets and the 512 KiB trial
+storage cap are unchanged. There are no new frames, GPU/browser/network workers
+or environment-controlled repetitions. Source review and exact artifact
+validation preceded measurement.
+
+The six cases passed with 69,013 native assertions and 69,000 Wasm assertions.
+The integrated complete language/Wasm groups, native-tools and installed
+compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
+raw timing samples, log hashes and limitations are in
+[the validation record](evidence/runtime-attribution/validation.md). Counters
+cover selected copy and backend operations; they are not a global allocation
+census or a whole-application performance/retention claim.
+
+### Private owner retention
+
+The retained-ownership simplification reuses the language, source-edit,
+query-program, publication and prepared selectors. Finite VM/compiled cases cover
+behavior-attachment isolation, registration isolation, retained helper/import
+values, row removal/reentry, zero matches and reload/restart. Query regressions
+keep ordinary locals independent across waits and cancel only the removed
+structural match. They do not introduce engine frames, GPU work or sleeps.
+Syntax and authoring cases reject `retain(system)` and keep plain `retain` in
+system roots and helpers. Historical migration cases preserve behavior/system
+owner retention but reject per-match system state before replacing files.
+
+### Name-first retained bindings (historical project version 25)
+
+The retention increment extends existing selectors without adding a new
+executable. Independent review covered the grammar, semantic kinds, authoring
+equivalence and migration.
+
+- `language-program`: three finite runtime cases on VM and the compiled backend
+  check per-owner helper retention, system versus query-row ownership, copied
+  values, membership reentry and publication/restart identity. Each dispatch has
+  a 1000-instruction budget. Two migration cases use small literal sources and
+  one temporary directory to check execution, idempotence and refusal before
+  staged replacement.
+- `language`, `language-semantic`, `language-format` and `language-navigation`:
+  accepted/rejected binding forms, ordinary value types, storage restrictions,
+  formatter/minimizer ownership preservation and source intelligence. Numeric
+  inference tests keep `int`/`float` annotations when removing them changes type.
+- `source-edit`: one additional case uses exactly three small sources to check
+  compact inferred retained retyping at behavior, callable and system scope.
+  It has no runtime execution, subprocess, network or GPU work.
+
+Existing implicit root lifetimes are unchanged. These checks do not establish
+the later unified system syntax, queryable embedded components, packed storage,
+or Studio/browser acceptance.
+
+### Redundant root-state canonicalization
+
+`language-root-state` and `wasm-root-state` select two finite C cases with five
+fixed source strings, at most 137 UTF-8 bytes each. They check behavior/library/
+system root storage, distinct callable storage, system shared storage, exact
+declaration and read ranges, stable symbol identities, comments, idempotence,
+formatter token preservation and invalid-source refusal. The full successful
+path makes six explicit semantic analyses, seven minimizer calls and two
+formatter calls. The minimizer's existing internal oracle rounds are unchanged.
+
+The format dispatcher includes these two cases and the package separator case:
+47 finite cases, plus the existing bounded corpus case on native. Wasm has no
+corpus file dependency. No catalog, generated source, runtime frame, world,
+subprocess, network or GPU workload is added. Configuration and compilation are
+separate from test execution. These SDK checks do not establish CLI/Studio
+integration or a
+caret map across semantic rewriting.
+
+### Authored record project publication
+
+`python3 tools/test_policy.py tool language-record-publication` is a standalone
+seven-case CPU route. It prepares a two-source project catalog with a declaring
+record library and an importing behavior, then stages and commits both sources.
+The BYTECODE and SLJIT variants cover preparation/code generation and canonical
+publication, not authored-function execution. The fixture has zero authored
+calls, attachments, event dispatches, frames, child processes or network work.
+It also checks independent ownership, 31 fixed catalog/analysis conflicts,
+qualified foreign-name separation, and three duplicate prepared tables through
+both writer and reader. Two additional source-only cases cover deduplication of
+all thirteen scalar default kinds, rejection after changing each default
+(including signed floating-point zero), and preservation of a native nested
+field's nominal layout. Prepared ID/name uniqueness stays strict.
+
+The redesigned fixed green path has nine parses, sixteen declaration analyses,
+at most twenty-five full analyses, 52 lower calls, four module finalizations, two source
+stages/commits, and eight direct prepared-table codec entries. The two stages
+serialize two unique modules and one import edge each. These are source-derived
+bounds, not a measured pass. The route remains outside aggregates.
+
+`language-record-publication-repro` runs only the first case's BYTECODE half
+with the same success expectation. On the fixture-only baseline it must fail
+at source staging with `duplicate prepared type requirement`, before commit.
+That red invocation has two parses, eight declaration analyses, at most ten full
+analyses, two lower calls, two module finalizations, one stage and no authored
+calls. Build/configuration is kept separate from red and green execution. This
+focused evidence does not establish
+full Studio startup, rendering or native-catalog-only helper coverage.
+
+## CUT-79 inferred string arrays: fixed standalone regression
+
+`tool language-inferred-string-arrays` selects two C/pico_unit cases in the
+existing language driver. This source-only workload is not included in a native
+or Wasm aggregate. Registration does not establish an execution result.
+
+The first case parses/analyzes 22 inline documents once each. It covers direct
+and parenthesized literals, a named-constant alias chain, local/state/return
+inference, name storage, contextual/empty arrays, unchanged numeric defaults,
+explicit literal-union acceptance/rejection and indexed ordinary strings.
+Literal expressions and named scalar constants retain their per-value facts;
+explicit array/union constraints remain strict. Negative controls check the
+diagnostic category and a range overlapping the offending source token.
+
+The second case prepares two fixed twelve-glyph sources, inferred and explicitly
+contextual, once each for BYTECODE and SLJIT. Each preparation has one named
+constant initializer evaluated by the existing lower.c BYTECODE path with its
+unchanged 100,000 budget. A separate run-counter scope requires exactly one
+BYTECODE entry for that initializer. There are four such initialization entries,
+distinct from the 48 direct Lookup calls (12 indices per module). Each direct
+call has budget 2,000 and must record exactly one selected backend entry, no
+other backend entry, no inspection entry/fallback and no counter overflow.
+Module backend identity is checked separately; SLJIT is never replaced silently.
+A Wasm build rejects this native runtime case before preparation.
+
+On full success the source-counted totals are 26 parses/analyses, four lowers,
+four finalizations, four initializer BYTECODE entries, 24 direct BYTECODE entries,
+24 direct SLJIT entries and 445 assertions (156 semantic plus 289 runtime).
+The fixture reports attempted work on failure too. Only one module, activation
+and result is live at a time. Teardown is registered with pico_unit and releases
+all fixture-owned objects after REQUIRE returns, before the next case/module.
+
+Every inline source is at most 1 KiB and semantic source text totals less than
+16 KiB. There are no files, workload children, engine frames, GPU operations,
+network requests, sleeps, benchmarks or environment-sized loops. The complete
+fixture includes setup, preparation, calls and cleanup. Configuration/build
+timing is separate.
+
+`tool language-inferred-string-array-repro` is an optional semantic-only route
+for the first specimen, using the same expected-success assertions. A successful
+patched run has one parse/analysis and eight assertions, with no lower,
+finalization or direct call. An unpatched baseline should fail analysis with
+eleven compatibility diagnostics. A separate baseline run is not mandatory;
+an invocation must not mutate a preserved donor.
+
+This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
+It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
+numeric-foundation or full-suite coverage. Wider affected-contract checks remain
+an integration-review decision. Source-only registration records no measured pass.
+
+
+## Tooling parent C++ language activation
+
+The existing `desktop-dependencies` C/pico_unit selector adds one finite case
+with four configure-only fixtures: a pure C runtime consumer with an invalid
+C++ compiler path, a child-enabled scheduler with a parent C consumer, a
+child-enabled renderer with a parent C++ consumer, and an imported renderer.
+The C++ consumers reuse the existing `test/draw_backend.cpp` pass-through shim;
+no new C++ logic or standalone executable is added. The fixtures generate real
+Ninja rules through the production tooling language include. They do not build
+the fixture targets, fetch dependencies, execute fixture code or use a GPU.
+CMake's compiler identification/try-compile subprocesses remain part of each
+bounded configuration child.
+
+The whole selector has five C cases and fifteen direct children on Linux
+(eight and twenty before the dependency package, its s2n pin and enkiTS
+acquisition cases were removed, 2026-10-20). Its existing ten-second child limits
+remain unchanged. The added case performs
+four `REQUIRE` checks, one per successful complete configuration/generation.
+Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK
+consumers alone. OpenGL fixtures configure explicit Linux and Darwin systems
+without enabling a compiler language. They relocate exact discovered paths and
+imported provider targets, verify consumer-side rediscovery, and reject spoofed
+provider locations, unowned paths and foreign-platform role rewriting. The complete selector
+passes 8 cases in 6.8s on macOS.
+### Snapshot-to-reader composition
+
+The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`
+selector uses the existing signature-reader pico_unit owner and language
+dispatcher. It does not add an executable or expand the old signature/snapshot
+selectors. `analysis_state.TreeForDocument` converts the actual retained snapshot
+forest into the existing `signature_reader.Tree.Raw`, carrying incoming fields,
+raw named/extra flags, text, local byte positions and the explicit local syntax
+root. Nonnegative topology links subtract the document's `node_start`; negative
+sentinels remain unchanged. Rejected snapshots expose only parsed retained
+prefixes. `DocumentsForPackage` preserves graph-member order, which is sorted by
+path, in both directions;
+nonmember source files remain `-1`, and a rejected graph has no package map.
+
+Three fixed requests cover interleaved app/lib/app source order, reordered
+lib/app/app source order, and a two-file rejected routing prefix. They prepare
+one fourteen-source closure per backend (28 preparation parses); seven C oracle
+trees and fourteen private raw parses make 49 total parses. Four private JSON
+string decodes resolve the fixed import literals. The 64 top-level
+calls are six snapshot builds, fourteen document-map calls, twenty tree-view
+calls and twenty-four reader calls. Builds retain the existing supplied
+three-million budget; adapters and readers use 500,000. Child activations inherit
+and reset these arguments; they are not aggregate instruction limits.
+
+Each request offers at most three files below 256 bytes, two packages and one
+import. Trees stay within 128 nodes/document, 384 forest nodes and depth 32.
+There are two package-local documents at most; map arrays have at most three
+entries; rejected snapshots retain the existing fixed 256-entry cycle bank.
+Reader fixture tables keep the existing 64-type/128-ID envelope,
+two scopes/two symbols/one function, two definitions/two variants and zero
+semantic import entries. A reading has at most four publications/new types,
+uses and diagnostics. Eight retained-result projections stay below 128 KiB each.
+Source bounds: reader sources below 48 KiB, non-core snapshot/shared sources
+below 16 KiB; the State source is below 8 KiB and the combined closure is below
+160 KiB. The exact source manifest records measured source bytes.
+
+Each adapted full tree is compared with the current Tree-sitter-derived reader
+input. For the six accepted document instances, direct and adapted inputs
+produce the same complete authored reading, additionally checked against the
+existing C reader oracle. The rejected parsed prefix checks full tree parity
+without a reader call. Named/unnamed and extra/nonextra witnesses,
+nonzero forest offsets, explicit package-local diagnostic document numbers,
+unit text and constructor publication are included. Input snapshots retire
+before the views are consumed, views retire before readings are compared, and
+retained readings survive all compiler owners. No reparse occurs in the adapter;
+C parser/reader calls are fixture oracles only. No runtime files, processes,
+services, GPU work, new semantic native calls, or compiler completion result is
+introduced.
+
+The selector passes 3 cases / 61,885 assertions in 3.1s on macOS;
+configuration/build time stays separate. Source and row limits remain part of
+the fixture contract. Header environments, semantic sidecars, body
+analysis, exports, lowering, artifact assembly and `Checked` remain
+unimplemented here.
+
+
+## Third-party publication recovery
+
+Seventeen C/pico_unit cases use the production tools dispatcher selector
+`python3 tools/test_policy.py tool third-party-publish`. Twenty-six disposable local
+Git repositories and a shell `gh` transport fixture exercise the production
+publication helper: invalid inputs, new publication, original-artifact retry,
+partial uploads, completed-release/main-pin no-ops, existing-branch/PR ownership,
+closed/retargeted/fork-owned PRs, different pin contents/source parents, unverified
+and duplicate assets, wrong/concurrently moved source tags and denied API reads. The fixture never contacts GitHub;
+all pushes target disposable local bare repositories. Both publication recovery
+and the SDK release-pin/public Studio checkout preflight cases run in the default
+`make test-tools` aggregate. Configuration and build
+results are separate from test execution.
+
+A failed Third-party **publish job** may be retried with the original workflow
+artifacts. Matching existing assets are verified and retained; only missing
+assets are uploaded. Existing pin branches must contain exactly one pin-only
+commit on the original source, and an existing PR must still be open against
+`main`. Closed or changed work requires an explicit owner decision, not a
+force-push or automatic reopening. A full workflow rebuild can change tarball
+bytes even at the same source commit; use a fresh release tag rather than
+replacing mismatched assets. API failures, absent asset digests and mismatches
+remain failures. This does not enable Actions PR creation, waive repository
+checks or prove a successful SDK build.
+
+Before any publication, the helper validates all nine gzip tar inventories and
+one nonempty regular root `third-party.cmake` per archive (100,000 members /
+8 GiB logical contents per archive), then checks pin-branch/PR ownership. It
+rechecks source tag binding after uploads and ownership before pin writes.
+
+
+### Prepared-source dependency releases
+
+The Third-party workflow accepts optional paired `source_pr` and `main_sha`
+inputs for a reviewed same-repository source branch. Dispatch at that exact
+branch commit and supply the current main SHA. The source PR must be open and
+ready for review against main, with matching repository, branch, source commit
+and frozen main. Main must remain at that SHA and be ancestral to the source.
+The publisher rechecks source/main/PR binding before publication and pin writes;
+any drift requires a newly reviewed binding and fresh release identity.
+
+The pin branch contains exactly one pin-only commit on the frozen source. The
+resulting integration PR is draft and includes the source changes and archive
+pins together, with a source/main marker required on retries. The source PR is
+not retargeted, closed or merged automatically. A non-draft source PR is not proof
+that explicit holds, independent review or required checks are cleared; the
+publication owner verifies those before dispatch. No new token, permission or
+`pull_request_target` route is used.
+
+With both inputs empty, ordinary main-source publication/recovery is unchanged.
+A completed release whose pins already match main is a read-only no-op even
+after source integration. Prepared-mode no-op recovery never uploads missing
+assets without a live source binding. Rebuilt archives require a new release
+tag, including after source, main or PR changes. The original artifacts and
+release digests remain the authority for an original-job retry.
+
+## Paired Studio SDK verification
+
+The registered CI workflow accepts an optional `studio_sha` dispatch input. Use
+a reviewed full lowercase 40-character commit SHA from the public
+`waldnercharles/chibi-studio` repository. This adds the distinct paired Studio
+native/Web verification job; the normal CI jobs keep their existing conditions
+and still run. Dispatch the reviewed engine branch at its frozen commit and
+retain the resulting run's engine and Studio source identities.
+
+The paired job packages a native Linux Debug SDK and a serial Emscripten 6.0.10
+Release SDK from that engine, compiles the exact Studio revision against each,
+and opens an external copy of the starter project for two hidden native frames.
+Sibling source checkouts stay clean while startup upgrades the disposable copy.
+SDK inventories, manifest identities, consumed CMake SDK bindings, source/format
+agreement and nonempty native/Web products are checked. The retained artifact
+records source revisions/trees, SDK manifests, compiler version, startup log and
+product hashes; failures retain evidence collected before the failed step.
+
+The default Studio CI job also uses sibling checkouts and an external starter
+copy, and retains clean SDK identity and consumer binding evidence. Its Studio
+revision follows that repository's default branch; use the paired job for an
+exact cross-repository candidate.
+
+The two hidden frames cover starter project startup. Web compilation does not
+establish browser execution, Studio UI interaction or visual acceptance. These
+checks do not publish packages or clear renderer, deployment or PR holds.
+
+### Authored exact shift-count parity
+
+The normal language group runs `language-integer-shift-counts-authored` once,
+alongside the existing stage-zero shift-count selector. `make test-language-all`
+and the existing Linux/macOS CI invocations therefore retain the nine literal
+shift oracles as a required authored-compiler parity gate. The selector checks
+actual bytecode and SLJIT entries; no optional environment switch exempts it.
+With matching compiler input it took 2.6 seconds on the Mac validation host. With a
+changed compiler source and retained older input it took 71 seconds including supported
+in-process recovery. It retains the existing process budget. No second workflow
+invocation or broader suite is added.

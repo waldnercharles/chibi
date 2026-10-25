@@ -1,5 +1,7 @@
 #include "support/arena.h"
 #include "types/array.h"
+#include "types/copy_internal.h"
+#include "types/text.h"
 #include "types/trace.h"
 
 #include <assert.h>
@@ -49,10 +51,11 @@ static unsigned hash(const pin_value *v)
         case PIN_STR:
         case PIN_NAME:
             bits = 2166136261u;
-            for (const unsigned char *s = (const unsigned char *)(v->str ? v->str : "");
-                 *s;
-                 s++) {
-                bits = (unsigned)bits * 16777619u ^ *s;
+            {
+                pin_string text = pin_text(*v);
+                for (uint32_t i = 0; i < text.length; i++) {
+                    bits = (unsigned)bits * 16777619u ^ (unsigned char)text.bytes[i];
+                }
             }
             break;
         default: assert(false);
@@ -84,8 +87,11 @@ static int *buckets(arena *storage, const pin_value *items, int count, unsigned 
 static unsigned position(const pin_array *array, const pin_value *value)
 {
     unsigned at = hash(value) & array->bucket_mask;
-    while (array->buckets[at] &&
-           !pin_value_equal(&array->items[array->buckets[at] - 1], value)) {
+    while (array->buckets[at]) {
+        pin_value item = pin_array_get(array, array->buckets[at] - 1);
+        if (pin_value_equal(&item, value)) {
+            break;
+        }
         at = (at + 1) & array->bucket_mask;
     }
     return at;
@@ -101,7 +107,8 @@ int pin_array_find(const pin_array *array, const pin_value *value)
                                      : -1;
     }
     for (int i = 0; i < array->count; i++) {
-        if (pin_value_equal(&array->items[i], value)) {
+        pin_value item = pin_array_get(array, i);
+        if (pin_value_equal(&item, value)) {
             return i;
         }
     }
@@ -114,39 +121,25 @@ static pin_array *grow_owned_set(arena *storage, const pin_array *source)
         return NULL;
     }
     int capacity = source->capacity ? source->capacity * 2 : 4;
-    size_t bytes = sizeof(pin_array) + (size_t)capacity * sizeof(pin_value);
-    pin_array *copy = arena_alloc(storage, bytes);
-    *copy = (pin_array){ .element_type = source->element_type,
-                         .type_name = source->type_name,
-                         .count = source->count,
-                         .capacity = capacity,
-                         .items = (pin_value *)(copy + 1) };
-    pin_arena_trace_array(storage, copy);
-    for (int i = 0; i < source->count; i++) {
-        if (pin_value_snapshot_to_arena(storage, &copy->items[i], &source->items[i])) {
-            return NULL;
-        }
+    pin_array *copy = pin_array_snapshot_like(storage, source, capacity);
+    if (!copy || pin_array_snapshot_copy(storage, copy, 0, source, 0, source->count)) {
+        return NULL;
     }
+    copy->count = source->count;
     return copy;
 }
 
 static pin_array *empty_owned_set(arena *storage, const pin_value *item)
 {
     int capacity = 4;
-    size_t bytes = sizeof(pin_array) + (size_t)capacity * sizeof(pin_value);
-    pin_array *array = arena_alloc(storage, bytes);
-    const char *type_name = NULL;
-    if (item->type_name) {
-        size_t size = strlen(item->type_name) + 1;
-        char *copy = arena_alloc(storage, size);
-        memcpy(copy, item->type_name, size);
-        type_name = copy;
+    pin_array source = { .element_type = item->type,
+                         .type_name = item->type_name,
+                         .record = item->record };
+    pin_array *array = pin_array_snapshot_like(storage, &source, capacity);
+    if (!array) {
+        return NULL;
     }
-    *array = (pin_array){ .element_type = item->type,
-                          .type_name = type_name,
-                          .capacity = capacity,
-                          .items = (pin_value *)(array + 1) };
-    pin_arena_trace_array(storage, array);
+    array->count = 0;
     return array;
 }
 
@@ -158,6 +151,9 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
     pin_array *array = *set;
     if (!array) {
         array = empty_owned_set(storage, item);
+        if (!array) {
+            return -1;
+        }
         *set = array;
     }
     bool nominal = item->type == PIN_ENUM || item->type == PIN_HANDLE ||
@@ -183,10 +179,15 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         array->buckets = NULL;
         array->bucket_mask = 0;
     }
-    if (pin_value_snapshot_to_arena(storage, &array->items[array->count], item)) {
+    int *index = array->buckets;
+    unsigned mask = array->bucket_mask;
+    array->count = next_count;
+    if (pin_array_snapshot_set(storage, array, next_count - 1, item)) {
+        array->count--;
         return -1;
     }
-    array->count = next_count;
+    array->buckets = index;
+    array->bucket_mask = mask;
     if (rebuild || (!array->buckets && array->count >= INDEX_MIN_COUNT)) {
         pin_array_index(storage, array);
     } else if (array->buckets && matches_itself(item)) {
@@ -201,16 +202,32 @@ void pin_array_index(arena *storage, pin_array *array)
     if (!array || array->buckets) {
         return;
     }
-    int *table = buckets(storage, array->items, array->count, &array->bucket_mask);
+    if (array->count < INDEX_MIN_COUNT || array->count > INT_MAX / 2) {
+        return;
+    }
+    for (int i = 0; i < array->count; i++) {
+        pin_value value = pin_array_get(array, i);
+        if (value.container != PIN_CONTAINER_SINGLE || !supported(value.type)) {
+            return;
+        }
+    }
+    unsigned capacity = 1;
+    while (capacity < (unsigned)array->count * 2) {
+        capacity *= 2;
+    }
+    int *table = arena_alloc(storage, (size_t)capacity * sizeof *table);
+    memset(table, 0, (size_t)capacity * sizeof *table);
+    array->bucket_mask = capacity - 1;
     if (!table) {
         return;
     }
     array->buckets = table;
     for (int i = 0; i < array->count; i++) {
-        if (!matches_itself(&array->items[i])) {
+        pin_value value = pin_array_get(array, i);
+        if (!matches_itself(&value)) {
             continue;
         }
-        unsigned at = position(array, &array->items[i]);
+        unsigned at = position(array, &value);
         if (!table[at]) {
             table[at] = i + 1;
         }

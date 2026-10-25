@@ -2,8 +2,14 @@
 #define CHIBI_LANGUAGE_SEMANTIC_H
 
 #include "capabilities/catalog.h"
+/* Includes nested collection/union payload schemas, even when values are empty. */
+bool script_type_contains_tasks(const script_catalog *, script_type);
 #include "language/syntax.h"
 #include "support/arena.h"
+#include "types/scalar.h"
+
+/* One language-wide recursion budget; authored source cannot override it. */
+#define SCRIPT_CALL_DEPTH_LIMIT 64
 
 typedef enum
 {
@@ -34,9 +40,10 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome;
-    bool boxed;                   /* A task keeps this local by reference. */
-    bool mixed_tasks;             /* Holds tasks of different functions. */
-    unsigned mutations;           /* Invalidates proofs after assignments. */
+    bool pub;           /* Package declaration other packages import. */
+    bool boxed;         /* A task keeps this local by reference. */
+    bool mixed_tasks;   /* Holds tasks of different functions. */
+    unsigned mutations; /* Invalidates proofs after assignments. */
     uint64_t source_relationship; /* Query component provider; zero is self. */
     int source_traversal;         /* script_query_source */
     int source_variable;          /* Query row variable; zero is self. */
@@ -74,6 +81,9 @@ typedef enum
     SCRIPT_EXPR_COMPONENT,
     SCRIPT_EXPR_INDEX,
     SCRIPT_EXPR_ARRAY,
+    SCRIPT_EXPR_MAP,
+    SCRIPT_EXPR_MAP_HAS,
+    SCRIPT_EXPR_MAP_REMOVE,
     SCRIPT_EXPR_STRUCT,
     SCRIPT_EXPR_NIL,
     SCRIPT_EXPR_FALLBACK,
@@ -111,6 +121,7 @@ typedef enum
     SCRIPT_OP_SHIFT_LEFT,
     SCRIPT_OP_SHIFT_RIGHT,
     SCRIPT_OP_BIT_NOT,
+    SCRIPT_OP_COALESCE,
 } script_operator;
 typedef struct
 {
@@ -140,6 +151,7 @@ typedef struct
     bool negated;
     uint64_t *pattern_tags;
     int pattern_tag_count;
+    behavior_cast_mode conversion; /* SCRIPT_EXPR_CAST range policy. */
 } script_expression;
 typedef enum
 {
@@ -173,11 +185,14 @@ typedef struct
     script_statement_kind kind;
     script_range range;
     int scope, symbol, expression, second, third, body, alternative;
+    int key_symbol; /* Map iterator key binding; -1 for a value-only iterator. */
     int *children;
     int child_count;
     script_operator op;
     script_reduction_op reduction;
     unsigned effects;
+    bool reverse;   /* `for <` counts down a range or an array. */
+    bool exclusive; /* A `..<` range stops before its last bound. */
 } script_statement;
 typedef enum
 {
@@ -192,9 +207,7 @@ typedef struct
     script_function_kind kind;
     int symbol, scope, body, receiver, parent;
     int *parameters, *results;
-    int *type_parameters;
     int parameter_count, result_count;
-    int type_parameter_count;
     int depth_limit;
     uint64_t event, action;
     char *entry;
@@ -202,6 +215,7 @@ typedef struct
     unsigned effects;
     bool pure, disabled;
     bool inferred; /* No `->`: its returns give the results. */
+    bool test;     /* Marked `@test`: chibi test runs it. */
 } script_function;
 typedef enum
 {
@@ -239,12 +253,93 @@ typedef enum
     SCRIPT_PROGRAM_LIBRARY,
     SCRIPT_PROGRAM_SYSTEM
 } script_program_kind;
+/* Package inputs borrow syntax only during analysis. Keys are explicit stable
+ * document identities; paths are display locations, not declaration identities. */
+enum
+{
+    SCRIPT_PACKAGE_MAX_DOCUMENTS = 256
+};
+typedef struct
+{
+    const char *path, *key;
+    const script_syntax *syntax;
+} script_package_document;
+typedef enum
+{
+    SCRIPT_PACKAGE_FUNCTION,
+    SCRIPT_PACKAGE_TYPE,
+    SCRIPT_PACKAGE_CONSTANT,
+} script_package_export_kind;
+typedef struct
+{
+    const char *name;
+    uint64_t id;
+    script_package_export_kind kind;
+    script_type type; /* Constant's exact semantic type, including literal facts. */
+    pin_value value; /* Constant payload; other kinds use metadata by ID. */
+    const char *unit;
+} script_package_export;
+typedef struct
+{
+    const char *identity;
+    const script_catalog *metadata; /* Complete by-ID signature/layout closure. */
+    const script_package_export *members;
+    int member_count; /* At most 4096 unique identifier names. */
+    /* Declarations without pub, named so a use can say why it fails. */
+    const char *const *private_names;
+    int private_count;
+} script_package_exports;
+/* Whether exports' package declares member without pub. */
+bool script_package_private(const script_package_exports *, const char *member);
+#define SCRIPT_PRIVATE_MEMBER                                                  \
+    "'%s' is private: declare it pub to use it from another package"
+typedef struct
+{
+    int document;
+    script_range range; /* Import start through path token end; terminator excluded. */
+    const char *alias, *identity;
+    /* One immutable exports view per dependency identity in this analysis.
+     * Repeated imports use the same pointer; prepared owner generations have
+     * their own independent lifetime and invalidation contract.
+     * NULL only for self or blank imports. */
+    const script_package_exports *exports;
+} script_package_import;
+typedef struct
+{
+    const script_package_document *documents;
+    int document_count;
+    const char *identity;
+    const script_catalog *native; /* The only ambient source-visible names. */
+    const script_package_import *imports;
+    int import_count;
+} script_package_options;
+
+typedef struct
+{
+    char *path, *key, *text;
+} script_source_document;
+
+typedef struct
+{
+    uint64_t id, template_id;
+    const char *owner;
+    const script_compile_binding *bindings;
+    int binding_count;
+    script_range origin;
+    bool evaluate;
+} script_specialization_request;
 /* The resolved program owns text, names, constants, origins and typed records.
  * Indices refer only to this immutable program, never to syntax/graph objects.
  * A failed analysis retains facts and diagnostics but is not executable. */
 typedef struct
 {
     char *text, *name, *identity;
+    /* Package ranges stay local to their original document. Indices follow the
+     * input array, never declaration/member sorting. Legacy analyses have none;
+     * package text retains only the first document for legacy field ownership. */
+    script_source_document *documents;
+    int document_count;
+    int package_scope; /* Shared package declaration scope; -1 for legacy roots. */
     arena constants;
     script_program_kind kind;
     script_symbol *symbols;
@@ -257,6 +352,12 @@ typedef struct
     script_binding *bindings;
     script_catalog_type *types; /* Authored and structural union definitions. */
     int type_count;
+    script_catalog_template *templates;
+    int template_count;
+    script_specialization_request *requests;
+    int request_count;
+    script_catalog_specialization *specializations;
+    int specialization_count;
     script_diagnostic *diagnostics;
     script_diagnostic *warnings; /* Advisory diagnostics; never invalidate. */
     int symbol_count, use_count, scope_count, expression_count, statement_count,
@@ -273,14 +374,47 @@ script_analysis *script_analyze(const script_syntax *, const script_catalog *);
 /* A stable document key is independent of its display path and declared name.
  * Project callers use a project-relative asset key for reproducible identities. */
 script_analysis *script_analyze_document(const script_syntax *, const script_catalog *, const char *key);
+/* Materializes requested specializations against this document's original
+ * syntax/text. The analysis owns all published descriptors and requests. */
+script_analysis *script_analyze_document_requested(
+    const script_syntax *,
+    const script_catalog *,
+    const char *key,
+    const script_specialization_request *,
+    int request_count
+);
 /* Signature discovery does not resolve bodies; useful for project catalogs. */
 script_analysis *script_declarations(const script_syntax *, const script_catalog *);
+/* Import normalization only: obsolete native accessors may be analyzed but
+ * must be rewritten and pass ordinary analysis before publication. */
+script_analysis *script_analyze_migration_document(
+    const script_syntax *,
+    const script_catalog *,
+    const char *identity,
+    const script_specialization_request *,
+    int count,
+    bool declarations
+);
 script_analysis *script_declarations_document(
     const script_syntax *,
     const script_catalog *,
     const char *key
 );
+/* Genuine sibling-package analysis; all declarations are collected before
+ * bodies. identity is a stable package key. Inputs and trees may retire after
+ * return; output documents own exact paths/keys/text. The seam accepts
+ * functions, constants, records and unions. Imports require explicit checked
+ * document-scoped bindings; no dependency names become ambient.
+ * count is bounded by SCRIPT_PACKAGE_MAX_DOCUMENTS; empty packages are invalid.
+ * Export identities are independent of input order and unrelated siblings;
+ * debug record ordinals and document-local byte ranges are not durable IDs. */
+script_analysis *script_analyze_package(const script_package_options *);
+script_analysis *script_declarations_package(const script_package_options *);
+const script_source_document *script_analysis_document(const script_analysis *, int document);
+/* Bounded admissibility proof only: no evaluation, host calls or mutation. */
+bool script_analysis_constant(const script_analysis *, int expression);
 void script_analysis_free(script_analysis *);
+/* Legacy offset-only navigation selects document zero. */
 const script_symbol *script_symbol_at(const script_analysis *, int offset);
 const script_use *script_use_at(const script_analysis *, int offset);
 #endif

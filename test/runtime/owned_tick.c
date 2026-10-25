@@ -6,6 +6,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -80,9 +81,10 @@ static bool prepare(int kind, behavior_backend backend, bool fails, bool replace
     snprintf(
         text,
         sizeof text,
-        "behavior Owned { source:%s[]=[]; saved:%s[]=[]; final:%s[]=[]; "
+        "Owned :: behavior { source:%s[]=[]; saved:%s[]=[]; final:%s[]=[]; "
         "runs:int=0; "
-        "on Tick { captured:=source; saved=captured; final=saved; runs+=1; %s "
+        "on Tick :: () { captured:=source; saved=captured; final=saved; "
+        "runs+=1; %s "
         "} }",
         names[kind],
         names[kind],
@@ -134,6 +136,7 @@ static bool seed(ecs_entity owner, int kind, int id)
     REQUIRE(declared && declared->container == PIN_CONTAINER_ARRAY);
     char labels[3][64];
     whole_managed records[3];
+    pin_string descriptors[3];
     pin_value items[3];
     for (int i = 0; i < 3; i++) {
         snprintf(labels[i], sizeof labels[i], "owner %d item %d", id, i);
@@ -149,6 +152,9 @@ static bool seed(ecs_entity owner, int kind, int id)
             items[i].i = id + i;
         } else if (kind == 3) {
             items[i].ptr = &records[i];
+        } else if (kind == 1) {
+            descriptors[i] = (pin_string){ labels[i], (uint32_t)strlen(labels[i]) };
+            items[i].text = &descriptors[i];
         } else {
             items[i].str = labels[i];
         }
@@ -185,13 +191,13 @@ static bool owned_values(ecs_entity owner, int kind, int id, int runs)
         char text[64];
         snprintf(text, sizeof text, "owner %d item %d", id, i);
         if (!kind) {
-            REQUIRE(array->items[i].i == id + i);
+            REQUIRE(pin_array_get(array, i).i == id + i);
         } else if (kind == 3) {
-            const whole_managed *record = array->items[i].ptr;
+            const whole_managed *record = pin_array_get(array, i).ptr;
             REQUIRE(record && record->count == id + i && !strcmp(record->label, text));
             REQUIRE(!strcmp(record->nested.text, text) && record->nested.weight == .5f);
         } else {
-            REQUIRE(!strcmp(array->items[i].str, text));
+            REQUIRE(!strcmp(pin_text(pin_array_get(array, i)).bytes, text));
         }
     }
     return true;
@@ -281,12 +287,12 @@ static bool scenario(int kind, behavior_backend backend, bool fails)
     const pin_array *snapshot = retained->value.ptr;
     REQUIRE(snapshot && snapshot->count == 3);
     if (!kind) {
-        REQUIRE(snapshot->items[0].i == 100);
+        REQUIRE(pin_array_get(snapshot, 0).i == 100);
     } else if (kind == 3) {
-        const whole_managed *record = snapshot->items[0].ptr;
+        const whole_managed *record = pin_array_get(snapshot, 0).ptr;
         REQUIRE(record && record->count == 100 && !strcmp(record->nested.text, "owner 100 item 0"));
     } else {
-        REQUIRE(!strcmp(snapshot->items[0].str, "owner 100 item 0"));
+        REQUIRE(!strcmp(pin_text(pin_array_get(snapshot, 0)).bytes, "owner 100 item 0"));
     }
     cleanup();
     return true;

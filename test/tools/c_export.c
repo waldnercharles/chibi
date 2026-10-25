@@ -10,6 +10,9 @@
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
+#include "types/scalar.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <dlfcn.h>
@@ -17,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 enum
 {
@@ -29,9 +33,39 @@ enum
     READ_FIXTURES = 3,
     WRITE_FIXTURE = READ_FIXTURE + READ_FIXTURES,
     WRITE_FIXTURES = 3,
-    FIXTURES = WRITE_FIXTURE + WRITE_FIXTURES
+    CAST_FIXTURE = WRITE_FIXTURE + WRITE_FIXTURES,
+    CAST_FIXTURES = 17,
+    INTEGER_FIXTURE = CAST_FIXTURE + CAST_FIXTURES,
+    INTEGER_FIXTURES = 8,
+    TEXT_FIXTURE = INTEGER_FIXTURE + INTEGER_FIXTURES,
+    FIXTURES = TEXT_FIXTURE + 1
+};
+/* Representative BF_CAST pairs; generated C must match the VM per sample. */
+static const struct
+{
+    pin_type from, to;
+    behavior_cast_mode mode;
+} casts[CAST_FIXTURES] = {
+    { PIN_I64, PIN_I32, BEHAVIOR_CAST_EXACT },
+    { PIN_I64, PIN_I32, BEHAVIOR_CAST_WRAP },
+    { PIN_I64, PIN_I32, BEHAVIOR_CAST_CLAMP },
+    { PIN_U64, PIN_U8, BEHAVIOR_CAST_EXACT },
+    { PIN_U64, PIN_U8, BEHAVIOR_CAST_WRAP },
+    { PIN_U64, PIN_U8, BEHAVIOR_CAST_CLAMP },
+    { PIN_I32, PIN_U64, BEHAVIOR_CAST_EXACT },
+    { PIN_I32, PIN_U64, BEHAVIOR_CAST_CLAMP },
+    { PIN_U64, PIN_I64, BEHAVIOR_CAST_EXACT },
+    { PIN_U64, PIN_I64, BEHAVIOR_CAST_CLAMP },
+    { PIN_I8, PIN_U16, BEHAVIOR_CAST_EXACT },
+    { PIN_U8, PIN_I32, BEHAVIOR_CAST_EXACT },
+    { PIN_F64, PIN_U64, BEHAVIOR_CAST_EXACT },
+    { PIN_F64, PIN_I16, BEHAVIOR_CAST_EXACT },
+    { PIN_F64, PIN_I64, BEHAVIOR_CAST_EXACT },
+    { PIN_U64, PIN_F64, BEHAVIOR_CAST_EXACT },
+    { PIN_I64, PIN_F64, BEHAVIOR_CAST_EXACT },
 };
 static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
+static const pin_string managed_text = { "managed", sizeof("managed") - 1 };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
 static char directory[128];
@@ -96,6 +130,94 @@ static int64_t number(pin_value value)
 {
     return value.type == PIN_I32 ? value.i : value.i64;
 }
+static bool cast_fixture(int index)
+{
+    pin_value from = { .type = casts[index].from }, to = { .type = casts[index].to };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &from, 1, &to, 1, NULL, 0);
+    int input = behavior_function_builder_slot(builder, from.type);
+    int output = behavior_function_builder_slot(builder, to.type);
+    behavior_function_instruction code[] = {
+        { .op = BF_ARGUMENT, .type = from.type, .output = input, .value = from },
+        { .op = BF_CAST,
+          .type = to.type,
+          .output = output,
+          .left = input,
+          .target = casts[index].mode,
+          .pin = 5 },
+        { .op = BF_RESULT, .type = to.type, .left = output },
+        { .op = BF_RETURN },
+        { .op = BF_END },
+    };
+    for (size_t i = 0; i < sizeof code / sizeof *code; i++) {
+        behavior_function_builder_emit(builder, code[i]);
+    }
+    char error[256];
+    functions[CAST_FIXTURE + index] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[CAST_FIXTURE + index]) {
+        fprintf(stderr, "C export cast fixture: %s\n", error);
+    }
+    REQUIRE(functions[CAST_FIXTURE + index]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    char name[40];
+    snprintf(name, sizeof name, "export_cast_%d", index);
+    behavior_function_write_c(functions[CAST_FIXTURE + index], source, name);
+    return true;
+}
+static uint64_t cast_bits(pin_value value)
+{
+    if (value.type != PIN_F64) {
+        return behavior_scalar_bits(value);
+    }
+    uint64_t bits;
+    memcpy(&bits, &value.d, sizeof bits);
+    return bits;
+}
+static bool exported_casts_match_the_vm()
+{
+    const uint64_t integers[] = { 0,
+                                  1,
+                                  200,
+                                  300,
+                                  UINT64_MAX,
+                                  UINT64_C(1) << 40,
+                                  UINT64_C(1) << 63,
+                                  UINT64_C(0x80000000) };
+    const double reals[] = { -5.5, 300.7,         1e30,    -1e30,
+                             NAN,  0x1p63 + 4096, -40000.5 };
+    for (int i = 0; i < CAST_FIXTURES; i++) {
+        char name[40];
+        snprintf(name, sizeof name, "export_cast_%d", i);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        bool real = casts[i].from == PIN_F64;
+        int samples = real ? (int)(sizeof reals / sizeof *reals)
+                           : (int)(sizeof integers / sizeof *integers);
+        for (int sample = 0; sample < samples; sample++) {
+            pin_value input = real
+                                ? (pin_value){ .type = PIN_F64, .d = reals[sample] }
+                                : behavior_scalar_from_bits(casts[i].from, integers[sample]);
+            pin_value expected = { .type = casts[i].to }, actual = expected;
+            behavior_function_context vm = { .arguments = &input,
+                                             .argument_count = 1,
+                                             .results = &expected,
+                                             .budget = 16 };
+            behavior_function_context compiled = { .arguments = &input,
+                                                   .argument_count = 1,
+                                                   .results = &actual,
+                                                   .budget = 16 };
+            REQUIRE(behavior_function_bind(functions[CAST_FIXTURE + i], &vm, NULL, 0));
+            int reference = behavior_function_run(functions[CAST_FIXTURE + i], &vm, false);
+            int status = generated(&compiled);
+            /* No cast fails: EXACT clamps a value that does not fit. */
+            REQUIRE(status == FLOW_OK && reference == FLOW_OK);
+            REQUIRE(cast_bits(actual) == cast_bits(expected));
+        }
+    }
+    return true;
+}
 static bool fixture(int index)
 {
     pin_type type = index < 6 ? PIN_I32 : PIN_I64;
@@ -152,6 +274,253 @@ static bool fixture(int index)
     behavior_function_write_c(functions[index], source, name);
     return true;
 }
+static const pin_type integer_types[INTEGER_FIXTURES] = {
+    PIN_I8, PIN_U8, PIN_I16, PIN_U16, PIN_I32, PIN_U32, PIN_I64, PIN_U64
+};
+static bool integer_fixture(int index)
+{
+    pin_type type = integer_types[index];
+    pin_value inputs[] = { { .type = type }, { .type = type } };
+    pin_value outputs[7];
+    for (int i = 0; i < 7; i++) {
+        outputs[i] = (pin_value){ .type = i < 5 ? type : PIN_BOOL };
+    }
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, inputs, 2, outputs, 7, NULL, 0);
+    int arguments[2], results[7];
+    for (int i = 0; i < 2; i++) {
+        arguments[i] = behavior_function_builder_slot(builder, type);
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = type,
+                                             .output = arguments[i],
+                                             .left = i,
+                                             .value = inputs[i] }
+        );
+    }
+    const behavior_function_op operations[] = { BF_ADD, BF_SUB, BF_MUL, BF_DIV,
+                                                BF_MOD, BF_LT,  BF_GT };
+    for (int i = 0; i < 7; i++) {
+        results[i] = behavior_function_builder_slot(builder, outputs[i].type);
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = operations[i],
+                                             .type = type,
+                                             .output = results[i],
+                                             .left = arguments[0],
+                                             .right = arguments[1],
+                                             .target = -1 }
+        );
+    }
+    for (int i = 0; i < 7; i++) {
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_RESULT,
+                                             .type = outputs[i].type,
+                                             .left = results[i],
+                                             .target = i }
+        );
+    }
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256], name[40];
+    functions[INTEGER_FIXTURE + index] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[INTEGER_FIXTURE + index]) {
+        fprintf(stderr, "C integer fixture: %s\n", error);
+    }
+    REQUIRE(functions[INTEGER_FIXTURE + index]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    snprintf(name, sizeof name, "export_integer_%d", index);
+    behavior_function_write_c(functions[INTEGER_FIXTURE + index], source, name);
+    return true;
+}
+static bool exported_integer_width_edges()
+{
+    /* Eight functions, six input pairs, two engines: 96 bounded calls. */
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        pin_type type = integer_types[i];
+        unsigned bits = (unsigned)behavior_scalar_size(type) * 8;
+        uint64_t mask = UINT64_MAX >> (64 - bits), high = UINT64_C(1) << (bits - 1);
+        bool sign = behavior_scalar_signed(type);
+        const uint64_t samples[][2] = { { mask, 1 },     { 0, 1 },
+                                        { high + 1, 3 }, { mask, 2 },
+                                        { high, mask },  { high, 0 } };
+        char name[40];
+        snprintf(name, sizeof name, "export_integer_%d", i);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        for (int sample = 0; sample < 6; sample++) {
+            pin_value arguments[] = {
+                behavior_scalar_from_bits(type, samples[sample][0]),
+                behavior_scalar_from_bits(type, samples[sample][1])
+            };
+            uint64_t x = behavior_scalar_bits(arguments[0]),
+                     y = behavior_scalar_bits(arguments[1]);
+            /* x / 0 is 0 with remainder x; x / -1 negates with remainder 0. */
+            int64_t sx = (int64_t)x, sy = (int64_t)y;
+            bool negate = sign && sy == -1;
+            uint64_t expected[7] = {
+                x + y,
+                x - y,
+                x * y,
+                !y       ? 0
+                : negate ? 0 - x
+                : sign   ? (uint64_t)(sx / sy)
+                         : x / y,
+                !y       ? x
+                : negate ? 0
+                : sign   ? (uint64_t)(sx % sy)
+                         : x % y,
+                sign ? sx < sy : x < y,
+                sign ? sx > sy : x > y,
+            };
+            for (int backend = 0; backend < 2; backend++) {
+                pin_value results[7];
+                for (int r = 0; r < 7; r++) {
+                    results[r] = (pin_value){ .type = r < 5 ? type : PIN_BOOL };
+                }
+                behavior_function_context context = { .arguments = arguments,
+                                                      .argument_count = 2,
+                                                      .results = results,
+                                                      .budget = 64 };
+                REQUIRE(
+                    behavior_function_bind(functions[INTEGER_FIXTURE + i], &context, NULL, 0)
+                );
+                int status = backend
+                               ? generated(&context)
+                               : behavior_function_run(functions[INTEGER_FIXTURE + i], &context, false);
+                REQUIRE(status == FLOW_OK);
+                for (int r = 0; r < 7; r++) {
+                    REQUIRE(
+                        r < 5 ? behavior_scalar_bits(results[r]) ==
+                                    behavior_scalar_bits(
+                                        behavior_scalar_from_bits(type, expected[r])
+                                    )
+                              : results[r].b == (expected[r] != 0)
+                    );
+                }
+                behavior_function_release_host(&context);
+            }
+        }
+    }
+    return true;
+}
+static bool shift_fixture(int index)
+{
+    pin_type type = integer_types[index];
+    pin_value inputs[] = { { .type = type }, { .type = type }, { .type = PIN_BOOL } };
+    pin_value result = { .type = type };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, inputs, 3, &result, 1, NULL, 0);
+    int left = behavior_function_builder_slot(builder, type);
+    int right = behavior_function_builder_slot(builder, type);
+    int direction = behavior_function_builder_slot(builder, PIN_BOOL);
+    int output = behavior_function_builder_slot(builder, type);
+    int operands[] = { left, right, direction };
+    for (int a = 0; a < 3; a++) {
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = inputs[a].type,
+                                             .output = operands[a],
+                                             .left = a,
+                                             .value = inputs[a] }
+        );
+    }
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_BRANCH, .left = direction, .target = 6 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_SHL,
+                                         .type = type,
+                                         .output = output,
+                                         .left = left,
+                                         .right = right,
+                                         .node_id = 73,
+                                         .pin = 3 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_JUMP, .target = 7 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_SHR,
+                                         .type = type,
+                                         .output = output,
+                                         .left = left,
+                                         .right = right,
+                                         .node_id = 73,
+                                         .pin = 3 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_RESULT, .type = type, .left = output }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256], name[40];
+    functions[INTEGER_FIXTURE + index] = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(functions[INTEGER_FIXTURE + index]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    snprintf(name, sizeof name, "export_shift_%d", index);
+    behavior_function_write_c(functions[INTEGER_FIXTURE + index], source, name);
+    return true;
+}
+static bool exported_shifts_past_the_width_give_zero_or_sign()
+{
+    /* Six count boundaries, eight widths, both directions, VM and generated C. */
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        pin_type type = integer_types[i];
+        unsigned width = (unsigned)behavior_scalar_size(type) * 8;
+        uint64_t mask = UINT64_MAX >> (64 - width);
+        const uint64_t counts[] = { 0, 1, width - 1, width, width + 1, mask };
+        char name[40];
+        snprintf(name, sizeof name, "export_shift_%d", i);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        for (int direction = 0; direction < 2; direction++) {
+            for (int c = 0; c < 6; c++) {
+                pin_value arguments[] = { behavior_scalar_from_bits(type, mask),
+                                          behavior_scalar_from_bits(type, counts[c]),
+                                          { .type = PIN_BOOL, .b = direction != 0 } };
+                /* A count at or past the width shifts every bit out; the
+                 * signed right shift of -1 keeps filling with ones. */
+                bool past = c >= 3;
+                uint64_t expected = direction ? (behavior_scalar_signed(type) ? mask
+                                                 : past ? 0
+                                                        : mask >> counts[c])
+                                  : past ? 0
+                                         : (mask << counts[c]) & mask;
+                for (int backend = 0; backend < 2; backend++) {
+                    pin_value result = { .type = type };
+                    behavior_function_context context = { .arguments = arguments,
+                                                          .argument_count = 3,
+                                                          .results = &result,
+                                                          .budget = 64 };
+                    REQUIRE(
+                        behavior_function_bind(functions[INTEGER_FIXTURE + i], &context, NULL, 0)
+                    );
+                    int status = backend ? generated(&context)
+                                         : behavior_function_run(
+                                               functions[INTEGER_FIXTURE + i],
+                                               &context,
+                                               false
+                                           );
+                    REQUIRE(status == FLOW_OK);
+                    REQUIRE((behavior_scalar_bits(result) & mask) == expected);
+                    behavior_function_release_host(&context);
+                }
+            }
+        }
+    }
+    return true;
+}
 static int inspect(void *user, const behavior_function_point *point)
 {
     (void)user;
@@ -164,8 +533,8 @@ static bool pause_fixture()
     const script_catalog catalog = { 0 };
     const script_lower_bindings bindings = { 0 };
     syntax = script_parse(
-        "library Scalar {\n"
-        "Eval :: pure (amount: number) -> number {\n"
+        "Scalar :: library {\n"
+        "Eval :: (amount: number) -> number {\n"
         "value: number | Cancelled = amount;\n"
         "if value is number found { return found; }\n"
         "return 0; } }"
@@ -387,7 +756,7 @@ static bool borrows_exported_plain_arrays()
         }
     }
     REQUIRE(guarded == 1 && result >= 0);
-    for (int sample = 0; sample < 5; sample++) {
+    for (int sample = 0; sample < 6; sample++) {
         for (int inspection = 0; inspection < 2; inspection++) {
             release_pause();
             pin_value items[] = { { .type = PIN_F64, .d = 1 },
@@ -397,14 +766,15 @@ static bool borrows_exported_plain_arrays()
                                  .count = 3,
                                  .capacity = 3,
                                  .items = items };
+            double packed[] = { 1, 2, 3 };
             if (sample == 1) {
                 values.element_type = PIN_STR;
                 for (int item = 0; item < 3; item++) {
-                    items[item] = (pin_value){ .type = PIN_STR, .str = "managed" };
+                    items[item] = (pin_value){ .type = PIN_STR, .text = &managed_text };
                 }
             } else if (sample == 2) {
                 /* A plain header cannot prove that each payload is plain. */
-                items[1] = (pin_value){ .type = PIN_STR, .str = "managed" };
+                items[1] = (pin_value){ .type = PIN_STR, .text = &managed_text };
             } else if (sample == 3) {
                 /* Native inputs can alias the public saved-value bank even
                  * when this function itself never suspends. */
@@ -415,6 +785,10 @@ static bool borrows_exported_plain_arrays()
                 values.items = (pin_value *)pause_activation.values;
                 values.items[0] = items[0];
                 values.count = values.capacity = 1;
+            } else if (sample == 5) {
+                values.items = NULL;
+                values.data = packed;
+                values.stride = sizeof *packed;
             }
             pin_value input = { .type = PIN_F64,
                                 .container = PIN_CONTAINER_ARRAY,
@@ -435,21 +809,27 @@ static bool borrows_exported_plain_arrays()
             REQUIRE(generated(&pause_context) == FLOW_OK);
             REQUIRE(output.d == values.count);
             const pin_array *snapshot = pause_context.data->values[result].ptr;
-            if (!sample && !inspection) {
+            if ((!sample || sample == 5) && !inspection) {
                 REQUIRE(snapshot == &values);
                 REQUIRE(!arena_storage_bytes(&pause_storage));
             } else {
                 REQUIRE(
                     snapshot && snapshot != &values && snapshot->count == values.count
                 );
-                REQUIRE(snapshot->items != values.items);
+                REQUIRE(
+                    values.stride ? snapshot->data != values.data
+                                  : snapshot->items != values.items
+                );
                 REQUIRE(arena_storage_bytes(&pause_storage) > 0);
                 if (sample == 1 || sample == 2) {
-                    REQUIRE(snapshot->items[1].str != items[1].str);
-                    REQUIRE(!strcmp(snapshot->items[1].str, "managed"));
+                    REQUIRE(
+                        pin_text(pin_array_get(snapshot, 1)).bytes !=
+                        pin_text(items[1]).bytes
+                    );
+                    REQUIRE(!strcmp(pin_text(pin_array_get(snapshot, 1)).bytes, "managed"));
                 } else {
-                    REQUIRE(snapshot->items[0].type == PIN_F64);
-                    REQUIRE(snapshot->items[0].d == 1);
+                    REQUIRE(pin_array_get(snapshot, 0).type == PIN_F64);
+                    REQUIRE(pin_array_get(snapshot, 0).d == 1);
                 }
             }
         }
@@ -481,7 +861,7 @@ static bool exported_call_snapshots_keep_the_standalone_abi()
     const pin_array *held = pause_context.data->values[f->calls[0].first].ptr;
     REQUIRE(held && held != &array && held->items != &item);
     item.d = 99;
-    REQUIRE(held->items[0].d == 7);
+    REQUIRE(pin_array_get(held, 0).d == 7);
     return true;
 }
 
@@ -1185,7 +1565,111 @@ static bool writes_exported_current_world_scalars()
     return true;
 }
 
-TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
+static const char binary_text_bytes[] = { 'A', 0, 'B', (char)0xff, 0 };
+static const char other_text_bytes[] = { 'A', 0, 'C', (char)0xff, 0 };
+static const pin_string binary_text = { binary_text_bytes,
+                                        sizeof binary_text_bytes - 1 };
+static const pin_string other_text = { other_text_bytes, sizeof other_text_bytes - 1 };
+static bool binary_text_fixture()
+{
+    pin_value argument = { .type = PIN_STR };
+    pin_value outputs[] = { argument, { .type = PIN_BOOL }, { .type = PIN_BOOL } };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &argument, 1, outputs, 3, NULL, 0);
+    int input = behavior_function_builder_slot(builder, PIN_STR);
+    int first = behavior_function_builder_slot(builder, PIN_STR);
+    int second = behavior_function_builder_slot(builder, PIN_STR);
+    int equal = behavior_function_builder_slot(builder, PIN_BOOL);
+    int different = behavior_function_builder_slot(builder, PIN_BOOL);
+    const behavior_function_instruction code[] = {
+        { .op = BF_ARGUMENT, .type = PIN_STR, .output = input, .value = argument },
+        { .op = BF_CONSTANT,
+          .type = PIN_STR,
+          .output = first,
+          .value = { .type = PIN_STR, .text = &binary_text } },
+        { .op = BF_CONSTANT,
+          .type = PIN_STR,
+          .output = second,
+          .value = { .type = PIN_STR, .text = &other_text } },
+        { .op = BF_STRING_EQUAL, .type = PIN_BOOL, .output = equal, .left = input, .right = first },
+        { .op = BF_STRING_EQUAL, .type = PIN_BOOL, .output = different, .left = first, .right = second },
+        { .op = BF_RESULT, .type = PIN_STR, .left = first, .target = 0 },
+        { .op = BF_RESULT, .type = PIN_BOOL, .left = equal, .target = 1 },
+        { .op = BF_RESULT, .type = PIN_BOOL, .left = different, .target = 2 },
+        { .op = BF_RETURN },
+        { .op = BF_END },
+    };
+    for (int i = 0; i < (int)(sizeof code / sizeof *code); i++) {
+        behavior_function_builder_emit(builder, code[i]);
+    }
+    char error[256];
+    functions[TEXT_FIXTURE] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[TEXT_FIXTURE]) {
+        fprintf(stderr, "C export text fixture: %s\n", error);
+    }
+    REQUIRE(functions[TEXT_FIXTURE]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    behavior_function_write_c(functions[TEXT_FIXTURE], source, "export_binary_text");
+    return true;
+}
+/* An unrelated call after the export returns exercises descriptor lifetime. */
+__attribute__((noinline)) static unsigned disturb_export_stack()
+{
+    volatile unsigned char bytes[4096];
+    unsigned sum = 0;
+    for (int i = 0; i < (int)sizeof bytes; i++) {
+        bytes[i] = (unsigned char)i;
+        sum += bytes[i];
+    }
+    return sum;
+}
+static bool exported_binary_text_matches_the_vm()
+{
+    typedef int (*entry)(behavior_function_context *);
+    entry generated = (entry)dlsym(library, "export_binary_text");
+    REQUIRE(generated);
+    const pin_string *samples[] = { &binary_text, &other_text };
+    for (int sample = 0; sample < 2; sample++) {
+        pin_value argument = { .type = PIN_STR, .text = samples[sample] };
+        pin_value expected[] = { { .type = PIN_STR },
+                                 { .type = PIN_BOOL },
+                                 { .type = PIN_BOOL } };
+        pin_value actual[] = { { .type = PIN_STR },
+                               { .type = PIN_BOOL },
+                               { .type = PIN_BOOL } };
+        arena vm_storage = { 0 }, generated_storage = { 0 };
+        behavior_function_context vm = { .arguments = &argument,
+                                         .argument_count = 1,
+                                         .results = expected,
+                                         .budget = 64 };
+        behavior_function_context compiled = { .arguments = &argument,
+                                               .argument_count = 1,
+                                               .results = actual,
+                                               .budget = 64 };
+        behavior_function_bind_storage(&vm, &vm_storage);
+        behavior_function_bind_storage(&compiled, &generated_storage);
+        REQUIRE(behavior_function_bind(functions[TEXT_FIXTURE], &vm, NULL, 0));
+        REQUIRE(behavior_function_run(functions[TEXT_FIXTURE], &vm, false) == FLOW_OK);
+        REQUIRE(generated(&compiled) == FLOW_OK);
+        REQUIRE(disturb_export_stack() == 522240);
+        for (int backend = 0; backend < 2; backend++) {
+            const pin_value *result = backend ? actual : expected;
+            REQUIRE(result[0].type == PIN_STR && result[0].text);
+            REQUIRE(pin_text(result[0]).length == sizeof binary_text_bytes - 1);
+            REQUIRE(
+                !memcmp(pin_text(result[0]).bytes, binary_text_bytes, sizeof binary_text_bytes - 1)
+            );
+            REQUIRE(result[1].type == PIN_BOOL && result[1].b == (sample == 0));
+            REQUIRE(result[2].type == PIN_BOOL && !result[2].b);
+        }
+        arena_free(&vm_storage);
+        arena_free(&generated_storage);
+    }
+    return true;
+}
+
+static bool begin_export()
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
     char *created = mkdtemp(directory);
@@ -1193,14 +1677,51 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         directory[0] = 0;
     }
     REQUIRE(created);
+    char input[256];
+    snprintf(input, sizeof input, "%s/aliases.c", directory);
+    source = fopen(input, "w");
+    REQUIRE(source);
+    return true;
+}
+static bool compile_export(long source_limit)
+{
     char input[256], output[256], log[256], includes[PATH_MAX], debug[PATH_MAX];
     snprintf(input, sizeof input, "%s/aliases.c", directory);
     snprintf(output, sizeof output, "%s/aliases.so", directory);
     snprintf(log, sizeof log, "%s/compiler.log", directory);
     snprintf(includes, sizeof includes, "%s/src", tool_root());
     snprintf(debug, sizeof debug, "%s/src/execution/source_debug.c", tool_root());
-    source = fopen(input, "w");
-    REQUIRE(source);
+    long bytes = ftell(source);
+    if (bytes <= 0 || bytes >= source_limit) {
+        fprintf(stderr, "Generated C fixture source is %ld bytes (limit: %ld)\n", bytes, source_limit);
+    }
+    REQUIRE(bytes > 0 && bytes < source_limit);
+    int closed = fclose(source);
+    source = NULL;
+    REQUIRE(!closed);
+    const char **argv = NULL;
+    for (int i = 0; export_compiler[i]; i++) {
+        apush(argv, export_compiler[i]);
+    }
+    const char *arguments[] = { "-std=c11", "-Werror", "-shared", "-fPIC",
+                                "-I",       includes,  input,     debug,
+                                "-o",       output,    NULL };
+    for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
+        apush(argv, arguments[i]);
+    }
+    int compiled = tool_run(argv, directory, log);
+    afree(argv);
+    REQUIRE(compiled == 0);
+    library = dlopen(output, RTLD_NOW | RTLD_LOCAL);
+    if (!library) {
+        fprintf(stderr, "C export load: %s\n", dlerror());
+    }
+    REQUIRE(library);
+    return true;
+}
+TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
+{
+    REQUIRE(begin_export());
     for (int i = 0; i < ALIAS_FIXTURES; i++) {
         REQUIRE(fixture(i));
     }
@@ -1216,29 +1737,13 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     for (int field = 0; field < WRITE_FIXTURES; field++) {
         REQUIRE(write_fixture(field));
     }
-    long bytes = ftell(source);
-    REQUIRE(bytes > 0 && bytes < 128 * 1024);
-    int closed = fclose(source);
-    source = NULL;
-    REQUIRE(!closed);
-    const char **argv = NULL;
-    for (int i = 0; export_compiler[i]; i++) {
-        apush(argv, export_compiler[i]);
+    for (int i = 0; i < CAST_FIXTURES; i++) {
+        REQUIRE(cast_fixture(i));
     }
-    const char *arguments[] = { "-std=c11", "-shared", "-fPIC", "-I",
-                                includes,   input,     debug,   "-o",
-                                output,     NULL };
-    for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
-        apush(argv, arguments[i]);
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        REQUIRE(integer_fixture(i));
     }
-    int compiled = tool_run(argv, directory, log);
-    afree(argv);
-    REQUIRE(compiled == 0);
-    library = dlopen(output, RTLD_NOW | RTLD_LOCAL);
-    if (!library) {
-        fprintf(stderr, "C export load: %s\n", dlerror());
-    }
-    REQUIRE(library);
+    REQUIRE(compile_export(128 * 1024));
     for (int i = 0; i < ALIAS_FIXTURES; i++) {
         char name[40];
         snprintf(name, sizeof name, "export_alias_%d", i);
@@ -1274,23 +1779,22 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
                 int reference = behavior_function_run(functions[i], &vm, false);
                 int status = generated(&compiled_context);
                 REQUIRE(status == reference);
-                REQUIRE(status == (sample >= 3 ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+                REQUIRE(status == FLOW_OK);
                 REQUIRE(number(actual[0]) == number(expected[0]));
                 REQUIRE(number(actual[1]) == number(expected[1]));
-                if (sample >= 3) {
-                    REQUIRE(number(actual[0]) == 77 && number(actual[1]) == 88);
-                    REQUIRE(compiled_context.failure == BEHAVIOR_FUNCTION_DATA);
-                } else {
-                    int64_t quotient = samples[sample][0] / samples[sample][1];
-                    int64_t remainder = samples[sample][0] % samples[sample][1];
-                    bool modulo = i % 6 >= 3;
-                    int64_t primary = modulo ? remainder : quotient;
-                    int64_t secondary = i % 3 == 2
-                                          ? primary
-                                          : (modulo ? quotient : remainder);
-                    REQUIRE(number(actual[0]) == primary);
-                    REQUIRE(number(actual[1]) == secondary);
-                }
+                /* The minimum / -1 wraps to the minimum with remainder 0;
+                 * x / 0 is 0 with remainder x. */
+                int64_t x = samples[sample][0], y = samples[sample][1];
+                int64_t quotient = !y      ? 0
+                                 : y == -1 ? (x == minimum ? minimum : -x)
+                                           : x / y;
+                int64_t remainder = !y ? x : y == -1 ? 0 : x % y;
+                bool modulo = i % 6 >= 3;
+                int64_t primary = modulo ? remainder : quotient;
+                int64_t secondary = i % 3 == 2 ? primary
+                                               : (modulo ? quotient : remainder);
+                REQUIRE(number(actual[0]) == primary);
+                REQUIRE(number(actual[1]) == secondary);
             }
         }
     }
@@ -1300,11 +1804,28 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(exported_query_variables_preserve_tuple_and_failure_contract());
     REQUIRE(reads_exported_current_world_scalars());
     REQUIRE(writes_exported_current_world_scalars());
+    REQUIRE(exported_casts_match_the_vm());
+    REQUIRE(exported_integer_width_edges());
+    return true;
+}
+TEST_CASE(generated_c_shifts_every_bit_out_past_the_width)
+{
+    REQUIRE(begin_export());
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        REQUIRE(shift_fixture(i));
+    }
+    /* Nine fixed functions share this compiler child. The binary fixture adds
+     * two VM and two generated-C calls, each with a 64-instruction budget. */
+    REQUIRE(binary_text_fixture());
+    REQUIRE(compile_export(64 * 1024));
+    REQUIRE(exported_shifts_past_the_width_give_zero_or_sign());
+    REQUIRE(exported_binary_text_matches_the_vm());
     return true;
 }
 void test_tool_c_export()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations);
+    RUN_TEST_CASE(generated_c_shifts_every_bit_out_past_the_width);
     pu_clear_setup();
 }

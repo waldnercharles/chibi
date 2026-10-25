@@ -4,7 +4,10 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
+#include "types/record.h"
 #include "types/scalar.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -34,12 +37,17 @@ static bool available(execution_wire *w, size_t bytes)
     }
     return true;
 }
+static size_t owned_limit(const execution_wire *w)
+{
+    return w->owned_limit ? w->owned_limit : EXECUTION_WIRE_MAX_BYTES;
+}
 void *execution_wire_allocate(execution_wire *w, size_t bytes)
 {
     if (w->error) {
         return NULL;
     }
-    if (!w->storage || bytes > EXECUTION_WIRE_MAX_BYTES - w->owned_bytes) {
+    if (!w->storage || w->owned_bytes > owned_limit(w) ||
+        bytes > owned_limit(w) - w->owned_bytes) {
         fail(w, "Prepared decoded storage limit exceeded");
         return NULL;
     }
@@ -217,6 +225,30 @@ void execution_wire_string(execution_wire *w, const char **value)
     w->size += length;
     w->offset = w->size;
 }
+/* Language text has an explicit length; metadata uses wire_string above. */
+static void text_value(execution_wire *w, pin_value *value)
+{
+    pin_string text = w->reading ? (pin_string){ 0 } : pin_text(*value);
+    const unsigned char *bytes = (const unsigned char *)text.bytes;
+    size_t length = text.length;
+    execution_wire_blob(w, &bytes, &length);
+    if (w->error || !w->reading) {
+        return;
+    }
+    if (length > UINT32_MAX || length > SIZE_MAX - sizeof(pin_string) - 1) {
+        fail(w, "Prepared text exceeds byte limit");
+        return;
+    }
+    pin_string *owned = execution_wire_allocate(w, sizeof *owned + length + 1);
+    if (!owned) {
+        return;
+    }
+    char *payload = (char *)(owned + 1);
+    memcpy(payload, bytes, length);
+    payload[length] = 0;
+    *owned = (pin_string){ .bytes = payload, .length = (uint32_t)length };
+    value->text = owned;
+}
 static bool same_name(const char *a, const char *b)
 {
     return !strcmp(a ? a : "", b ? b : "");
@@ -250,9 +282,16 @@ static uint64_t scalar_bits(pin_value v)
     }
     return behavior_scalar_bits(v);
 }
-static void value(execution_wire *, pin_value *, unsigned);
-static void tagged_value(execution_wire *w, pin_value *v, unsigned depth)
+typedef struct
 {
+    execution_wire *wire;
+    execution_wire_resolver resolve;
+    void *user;
+} value_codec;
+static void value(value_codec *, pin_value *, unsigned);
+static void tagged_value(value_codec *c, pin_value *v, unsigned depth)
+{
+    execution_wire *w = c->wire;
     const pin_union *source = w->reading ? NULL : v->ptr;
     bool present = source != NULL;
     execution_wire_bool(w, &present);
@@ -283,15 +322,17 @@ static void tagged_value(execution_wire *w, pin_value *v, unsigned depth)
     }
     for (int i = 0; i < count && !w->error; i++) {
         pin_value item = source ? source->values[i] : (pin_value){ 0 };
-        value(w, &item, depth + 1);
+        value(c, &item, depth + 1);
         if (decoded) {
             decoded->values[i] = item;
         }
     }
 }
-static void structure(execution_wire *w, pin_value *v, unsigned depth)
+static void value_into(value_codec *, pin_value *, unsigned, const pin_value *);
+static void structure(value_codec *c, pin_value *v, unsigned depth, void *destination)
 {
-    const type_desc *type = type_catalog_find(v->type_name);
+    execution_wire *w = c->wire;
+    const type_desc *type = pin_value_type(v);
     if (!type || !type->size || type->field_count < 0 ||
         (type->field_count && !type->fields) || type->size > EXECUTION_WIRE_MAX_BYTES) {
         fail(w, "Prepared struct type is unavailable");
@@ -313,7 +354,8 @@ static void structure(execution_wire *w, pin_value *v, unsigned depth)
     if (w->error) {
         return;
     }
-    if (fields != type->field_count) {
+    bool owned_header = c->resolve && !v->record && !present && fields == 0;
+    if (fields != type->field_count && !owned_header) {
         fail(w, "Prepared struct field count differs from linked type");
         return;
     }
@@ -328,11 +370,14 @@ static void structure(execution_wire *w, pin_value *v, unsigned depth)
         return;
     }
     if (w->reading) {
-        v->ptr = execution_wire_allocate(w, type->size);
+        v->ptr = destination ? destination : execution_wire_allocate(w, type->size);
         if (!v->ptr) {
             return;
         }
         memset(v->ptr, 0, type->size);
+        if (v->record && !destination) {
+            pin_arena_trace_struct(w->storage, v->ptr, type);
+        }
     }
     for (int i = 0; i < fields && !w->error; i++) {
         const type_field *field = &type->fields[i];
@@ -341,10 +386,34 @@ static void structure(execution_wire *w, pin_value *v, unsigned depth)
             return;
         }
         pin_value member = { 0 };
-        if (!w->reading) {
-            pin_read_field(v->ptr, field, &member);
+        pin_string borrowed = { 0 };
+        if (!w->reading && field->type == PIN_STR && !field->text_descriptor) {
+            const char *bytes = *(const char *const *)((const char *)v->ptr +
+                                                       field->offset);
+            bytes = bytes ? bytes : "";
+            size_t limit = EXECUTION_WIRE_MAX_BYTES - w->size;
+            size_t length = strnlen(bytes, limit);
+            if (length == limit) {
+                fail(w, "Prepared text exceeds remaining byte limit");
+                return;
+            }
+            borrowed = (pin_string){ .bytes = bytes, .length = (uint32_t)length };
+            member = (pin_value){ .type = PIN_STR,
+                                  .type_name = field->type_name,
+                                  .text = &borrowed };
+        } else if (!w->reading) {
+            /* All remaining reads borrow fields; no native C text is copied
+             * before its encoded payload has passed the writer byte bound. */
+            const char *error = pin_read_field(NULL, v->ptr, field, &member);
+            if (error) {
+                fail(w, error);
+                return;
+            }
         }
-        value(w, &member, depth + 1);
+        pin_value target = { .type = field->type,
+                             .type_name = field->type_name,
+                             .ptr = (unsigned char *)v->ptr + field->offset };
+        value_into(c, &member, depth + 1, w->reading && field->type == PIN_STRUCT ? &target : NULL);
         if (w->error) {
             return;
         }
@@ -354,13 +423,109 @@ static void structure(execution_wire *w, pin_value *v, unsigned depth)
             fail(w, "Prepared field type differs from linked type");
             return;
         }
-        if (w->reading) {
-            pin_write_field(v->ptr, field, member);
+        if (w->reading && field->type == PIN_STR) {
+            void *destination = (unsigned char *)v->ptr + field->offset;
+            if (field->text_descriptor) {
+                *(const pin_string **)destination = member.text;
+            } else {
+                const char *bytes;
+                const char *error = pin_text_cstring(w->storage, member, &bytes, NULL);
+                if (error) {
+                    fail(w, error);
+                    return;
+                }
+                *(const char **)destination = bytes;
+            }
+        } else if (w->reading && field->type != PIN_STRUCT) {
+            const char *error = pin_write_field(w->storage, v->ptr, field, member);
+            if (error) {
+                fail(w, error);
+                return;
+            }
         }
     }
 }
-static void collection(execution_wire *w, pin_value *v, unsigned depth)
+static void map_collection(value_codec *c, pin_value *v, unsigned depth)
 {
+    execution_wire *w = c->wire;
+    if (v->type != PIN_UNION || v->record) {
+        fail(w, "Prepared Map requires associative value storage");
+        return;
+    }
+    pin_map *map = w->reading ? NULL : v->ptr;
+    bool present = map != NULL;
+    execution_wire_bool(w, &present);
+    if (w->error) {
+        return;
+    }
+    if (!present) {
+        if (w->reading) {
+            v->ptr = NULL;
+        }
+        return;
+    }
+    int count = w->reading ? 0 : map->count;
+    if (!w->reading && count > 0 && !map->entries) {
+        fail(w, "Prepared Map has no entries storage");
+        return;
+    }
+    execution_wire_count(w, &count, 6);
+    if (w->error) {
+        return;
+    }
+    if (w->reading) {
+        map = execution_wire_allocate(w, sizeof *map);
+        if (!map) {
+            return;
+        }
+        *map = (pin_map){ .capacity = count };
+        map->entries = execution_wire_allocate(w, (size_t)count * sizeof *map->entries);
+        if (count && !map->entries) {
+            return;
+        }
+        if (count) {
+            memset(map->entries, 0, (size_t)count * sizeof *map->entries);
+        }
+        pin_map_trace_storage(w->storage, map);
+        v->ptr = map;
+    }
+    value(c, &map->key_type, depth + 1);
+    value(c, &map->value_type, depth + 1);
+    if (w->error || !pin_map_key_supported(map->key_type)) {
+        fail(w, "Prepared Map key type is unsupported");
+        return;
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        pin_map_entry entry = w->reading ? (pin_map_entry){ 0 } : map->entries[i];
+        value(c, &entry.key, depth + 1);
+        value(c, &entry.value, depth + 1);
+        if (w->error) {
+            return;
+        }
+        if (!pin_map_entry_valid(map, &entry.key, &entry.value)) {
+            fail(w, "Prepared Map entry differs from its key/value types");
+            return;
+        }
+        if (w->reading) {
+            if (pin_map_find(map, &entry.key) >= 0) {
+                fail(w, "Prepared Map contains duplicate keys");
+                return;
+            }
+            map->entries[map->count++] = entry;
+        }
+    }
+    if (w->reading && !w->error) {
+        size_t bytes = pin_map_index_bytes(map->count);
+        pin_map_slot *slots = bytes ? execution_wire_allocate(w, bytes) : NULL;
+        if (bytes && !slots) {
+            return;
+        }
+        pin_map_index(map, slots);
+    }
+}
+static void collection(value_codec *c, pin_value *v, unsigned depth)
+{
+    execution_wire *w = c->wire;
     pin_array *array = w->reading ? NULL : v->ptr;
     bool present = array != NULL;
     execution_wire_bool(w, &present);
@@ -379,41 +544,116 @@ static void collection(execution_wire *w, pin_value *v, unsigned depth)
         return;
     }
     if (w->reading) {
-        size_t bytes = sizeof *array + (size_t)count * sizeof(pin_value);
-        array = execution_wire_allocate(w, bytes);
+        array = execution_wire_allocate(w, sizeof *array);
         if (!array) {
             return;
         }
-        *array = (pin_array){ .element_type = v->type,
-                              .type_name = v->type_name,
-                              .count = count,
-                              .capacity = count,
-                              .items = (pin_value *)(array + 1) };
-        memset(array->items, 0, (size_t)count * sizeof *array->items);
+        *array = (pin_array){
+            .element_type = v->type,
+            .type_name = v->type_name,
+            .record = v->record,
+            .count = count,
+            .capacity = count,
+            .stride = v->type_name && !strncmp(v->type_name, "__collection_", 13)
+                        ? 0
+                        : pin_array_element_stride(v->type, v->type_name, v->record)
+        };
+        if (array->stride && (size_t)count > EXECUTION_WIRE_MAX_BYTES / array->stride) {
+            fail(w, "Prepared decoded storage limit exceeded");
+            return;
+        }
+        size_t bytes = (size_t)count *
+                       (array->stride ? array->stride : sizeof(pin_value));
+        void *payload = count ? execution_wire_allocate(w, bytes) : NULL;
+        if (count && !payload) {
+            return;
+        }
+        if (array->stride) {
+            array->data = payload;
+        } else {
+            array->items = payload;
+        }
+        if (bytes) {
+            memset(payload, 0, bytes);
+        }
         pin_arena_trace_array(w->storage, array);
         v->ptr = array;
     } else if (
-        array->element_type != v->type || !same_name(array->type_name, v->type_name) ||
-        array->capacity < count || (count && !array->items)
+        array->element_type != v->type ||
+        !same_name(array->type_name, v->type_name) || array->capacity < count ||
+        !pin_array_valid(array) || !pin_record_same(array->record, v->record)
     ) {
         fail(w, "Prepared collection schema differs from its value");
         return;
     }
+    pin_value element_shape = { 0 };
+    bool descriptor = !array->stride && !v->record && v->type_name &&
+                      !strncmp(v->type_name, "__collection_", 13);
     for (int i = 0; i < count && !w->error; i++) {
-        value(w, &array->items[i], depth + 1);
+        pin_value item = w->reading ? (pin_value){ 0 } : pin_array_get(array, i);
+        pin_value target = { .type = v->type,
+                             .type_name = v->type_name,
+                             .record = v->record,
+                             .ptr = array->stride && v->type == PIN_STRUCT
+                                      ? pin_array_data(array, i)
+                                      : NULL };
+        value_into(c, &item, depth + 1, w->reading && target.ptr ? &target : NULL);
         if (w->error) {
             return;
         }
-        if (array->items[i].type != v->type ||
-            array->items[i].container != PIN_CONTAINER_SINGLE ||
-            !same_name(array->items[i].type_name, v->type_name)) {
+        if (w->reading && array->stride && item.type == PIN_STRUCT && !item.ptr) {
+            pin_value *items = execution_wire_allocate(w, (size_t)count * sizeof *items);
+            if (!items) {
+                return;
+            }
+            /* Existing inline values keep pointing into the raw allocation;
+             * boxed storage is needed only to retain the null element. */
+            for (int j = 0; j < count; j++) {
+                items[j] = pin_array_get(array, j);
+            }
+            array->items = items;
+            array->data = NULL;
+            array->stride = 0;
+        }
+        bool nested = !array->stride && item.container != PIN_CONTAINER_SINGLE;
+        bool nested_descriptor = nested && !v->record && v->type_name &&
+                                 !strncmp(v->type_name, "__collection_", 13);
+        if (descriptor && i &&
+            (item.container != element_shape.container ||
+             !same_name(item.type_name, element_shape.type_name) ||
+             !pin_record_same(item.record, element_shape.record))) {
+            fail(w, "Prepared nested collection headers differ");
+            return;
+        }
+        if (descriptor && !i) {
+            element_shape = item;
+        }
+        if (item.type != v->type ||
+            (!nested && item.container != PIN_CONTAINER_SINGLE) ||
+            (!nested && !same_name(item.type_name, v->type_name)) ||
+            (!nested_descriptor && !pin_record_same(item.record, v->record)) ||
+            (w->reading && pin_array_set(array, i, &item))) {
             fail(w, "Prepared collection item differs from declared type");
             return;
         }
     }
 }
-static void value(execution_wire *w, pin_value *v, unsigned depth)
+static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_value *destination)
 {
+    execution_wire *w = c->wire;
+    if (!w->reading && v->record && !c->resolve) {
+        fail(w, "Authored record requires a prepared layout table");
+    }
+    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_UNION ||
+                        v->container < PIN_CONTAINER_SINGLE ||
+                        v->container > PIN_CONTAINER_MAP ||
+                        (v->type == PIN_FLOW && v->container))) {
+        fail(w, "Prepared value tag is invalid");
+    }
+    bool authored = !w->reading && v->record;
+    if (!w->reading && c->resolve) {
+        c->resolve(w, c->user, v, authored);
+    }
     if (w->error) {
         return;
     }
@@ -440,23 +680,60 @@ static void value(execution_wire *w, pin_value *v, unsigned depth)
     if (w->error) {
         return;
     }
+    if (c->resolve) {
+        execution_wire_bool(w, &authored);
+        if (w->error) {
+            return;
+        }
+        if (authored && v->type != PIN_STRUCT) {
+            fail(w, "Prepared authored flag requires a struct");
+            return;
+        }
+        if (w->reading) {
+            v->record = c->resolve(w, c->user, v, authored);
+            if (w->error) {
+                return;
+            }
+            if (authored && !v->record) {
+                fail(w, "Prepared authored layout is unavailable");
+                return;
+            }
+            if (v->record) {
+                v->type_name = v->record->type.name;
+            }
+        }
+    }
     if (v->type == PIN_ENUM && v->type_name && !type_catalog_enum_find(v->type_name)) {
         fail(w, "Prepared enum type is unavailable");
         return;
     }
+    if (destination && (v->type != destination->type || v->container != PIN_CONTAINER_SINGLE ||
+                        !same_name(v->type_name, destination->type_name) ||
+                        !pin_record_same(v->record, destination->record))) {
+        fail(w, "Prepared inline value differs from its destination type");
+        return;
+    }
+    if (container == PIN_CONTAINER_MAP) {
+        map_collection(c, v, depth);
+        return;
+    }
     if (container != PIN_CONTAINER_SINGLE) {
-        collection(w, v, depth);
+        collection(c, v, depth);
         return;
     }
     if (tag == PIN_STRUCT) {
-        structure(w, v, depth);
+        structure(c, v, depth, destination ? destination->ptr : NULL);
         return;
     }
     if (tag == PIN_UNION) {
-        tagged_value(w, v, depth);
+        tagged_value(c, v, depth);
         return;
     }
-    if (tag == PIN_STR || tag == PIN_NAME) {
+    if (tag == PIN_STR) {
+        text_value(w, v);
+        return;
+    }
+    if (tag == PIN_NAME) {
         execution_wire_string(w, &v->str);
         return;
     }
@@ -507,9 +784,31 @@ static void value(execution_wire *w, pin_value *v, unsigned depth)
         *v = decoded;
     }
 }
+static void value(value_codec *c, pin_value *v, unsigned depth)
+{
+    value_into(c, v, depth, NULL);
+}
 void execution_wire_value(execution_wire *w, pin_value *v)
 {
-    value(w, v, 0);
+    value_codec c = { .wire = w };
+    pin_value decoded = w->reading ? (pin_value){ 0 } : *v;
+    value(&c, &decoded, 0);
+    if (!w->error) {
+        *v = decoded;
+    }
+}
+void execution_wire_value_owned(execution_wire *w, pin_value *v, execution_wire_resolver resolve, void *user)
+{
+    if (!resolve) {
+        fail(w, "Prepared layout resolver is absent");
+        return;
+    }
+    value_codec c = { .wire = w, .resolve = resolve, .user = user };
+    pin_value decoded = w->reading ? (pin_value){ 0 } : *v;
+    value(&c, &decoded, 0);
+    if (!w->error) {
+        *v = decoded;
+    }
 }
 
 bool execution_wire_reserve(execution_wire *w, size_t bytes)
@@ -517,8 +816,7 @@ bool execution_wire_reserve(execution_wire *w, size_t bytes)
     if (w->error) {
         return false;
     }
-    if (w->owned_bytes > EXECUTION_WIRE_MAX_BYTES ||
-        bytes > EXECUTION_WIRE_MAX_BYTES - w->owned_bytes) {
+    if (w->owned_bytes > owned_limit(w) || bytes > owned_limit(w) - w->owned_bytes) {
         w->error = "Prepared shader decoded storage limit";
         return false;
     }

@@ -1,5 +1,5 @@
-behavior PanelProbe {
-    on Tick(dt) {
+PanelProbe :: behavior {
+    on Tick :: () {
         await set_ui_text(Element: "#title", Text: "Running")
         await set_ui_class(Element: "#panel", Class: "active", On: true)
         await set_ui_style(Element: "#panel", Property: "opacity", Value: "0.9")

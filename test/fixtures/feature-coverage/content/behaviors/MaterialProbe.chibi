@@ -1,5 +1,5 @@
-behavior MaterialProbe {
-    on Tick(dt) {
+MaterialProbe :: behavior {
+    on Tick :: () {
         damage_material(self, self.Transform, 6.0, 1.0, 0, self)
         if is_material_fragment(self) || is_pierceable_material_fragment(self) {
             release_material(self)

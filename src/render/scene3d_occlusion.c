@@ -88,11 +88,11 @@ void render_scene3d_occlusion_free(render_scene3d_occlusion *occlusion)
     free(occlusion);
 }
 
-static CF_Canvas make_target(int width, int height)
+static CF_Canvas make_target(int width, int height, CF_PixelFormat format)
 {
     CF_CanvasParams params = cf_canvas_defaults(width, height);
     /* Every device the HDR pass runs on can render half floats. */
-    params.target.pixel_format = CF_PIXEL_FORMAT_R16_FLOAT;
+    params.target.pixel_format = format;
     params.target.filter = CF_FILTER_NEAREST;
     params.target.wrap_u = params.target.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     return cf_make_canvas(params);
@@ -108,8 +108,9 @@ static void resize(render_scene3d_occlusion *occlusion, int width, int height, i
     }
     free_targets(occlusion);
     render_scene3d_depth_map_prepare(&occlusion->depth, width, height);
-    occlusion->raw = make_target((width + scale - 1) / scale, (height + scale - 1) / scale);
-    occlusion->blurred = make_target(width, height);
+    occlusion->raw = make_target((width + scale - 1) / scale, (height + scale - 1) / scale, CF_PIXEL_FORMAT_R16_FLOAT);
+    /* The lit pass reads screen light in rgb and occlusion in alpha. */
+    occlusion->blurred = make_target(width, height, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
     occlusion->width = width;
     occlusion->height = height;
     occlusion->scale = scale;
@@ -267,7 +268,7 @@ void render_scene3d_occlusion_bind(render_scene3d_occlusion *occlusion, bool com
         params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT;
         params.filter = CF_FILTER_NEAREST;
         occlusion->open = cf_make_texture(params);
-        CF_Pixel open = { .val = 0xffffffffu };
+        CF_Pixel open = { .val = 0xff000000u };
         cf_texture_update(occlusion->open, &open, sizeof open);
     }
     bool shown = computed && render_scene3d_occlusion_active(occlusion);
@@ -275,6 +276,16 @@ void render_scene3d_occlusion_bind(render_scene3d_occlusion *occlusion, bool com
         "scene_occlusion",
         shown ? cf_canvas_get_target(occlusion->blurred) : occlusion->open
     );
+}
+
+CF_Texture render_scene3d_occlusion_depth(const render_scene3d_occlusion *occlusion)
+{
+    return occlusion->depth.map;
+}
+
+CF_Texture render_scene3d_occlusion_map(const render_scene3d_occlusion *occlusion)
+{
+    return cf_canvas_get_target(occlusion->blurred);
 }
 
 void render_scene3d_occlusion_unbind()

@@ -1,7 +1,20 @@
-behavior "ProjectileBehavior" {
-    action set_gameprojectile_age = set_projectile_age(self.Projectile.age + delta_time())
-    on Tick {
-        await "Face Direction"(self.Velocity.x, self.Velocity.y)
+// Face the current velocity and expire after the authored lifetime. Physics
+// integrates movement.
+ProjectileBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    import_component_write_1 :: (import_arg_0: float, import_arg_1: entity = self) -> (Value: Projectile) {
+        if import_arg_1 == 0 {
+            import_arg_1 = self
+        }
+        import_arg_1.Projectile.age = import_arg_0
+        return import_arg_1.Projectile
+    }
+
+    action set_gameprojectile_age = import_component_write_1(self.Projectile.age + Step)
+    on Tick :: (dt: float s) {
+        Step = dt
+        await Face_Direction(self.Velocity.x, self.Velocity.y)
         set_gameprojectile_age()
     }
     after set_gameprojectile_age {
@@ -9,21 +22,19 @@ behavior "ProjectileBehavior" {
             destroy_entity(self)
         }
     }
-    "Face Direction" :: fn(X: float = 0.0, Y: float = 0.0) {
-        after entry {
-            if self.Orientation {
-                if greater_or_equal(0.0, "Direction Magnitude"(entry.X, entry.Y)) {
-                    return
-                } else {
-                    self.Orientation = "DirectionMath"."Direction Orientation"(entry.X, entry.Y)
-                    return
-                }
+    Face_Direction :: (X: float = 0.0, Y: float = 0.0) {
+        if self.Orientation {
+            if 0.0 >= Direction_Magnitude(X, Y) {
+                return
             } else {
+                self.Orientation = DirectionMath.Direction_Orientation(X, Y)
                 return
             }
+        } else {
+            return
         }
     }
-    "Direction Magnitude" :: pure fn<T0: float, T1: float, T2: float>(x: T0 = 0.0, y: T1 = 0.0) -> (Result: T2 = 0.0) {
-        return abs(entry.x) + abs(entry.y)
+    Direction_Magnitude :: (x: float = 0.0, y: float = 0.0) -> (Result: float = 0.0) {
+        return abs(x) + abs(y)
     }
 }

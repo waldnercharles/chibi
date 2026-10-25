@@ -1,7 +1,9 @@
 # Checked core engine operations, version 1
 
-This is the implemented contract for the callable `Self`, `Delta Time` and
-`Delay` definitions. It is the first bounded slice of verified engine operation
+This is the implemented contract for the internal Owner/Self definition and
+callable `Delay`. Public source reads its owner with `self`; `Self()` is rejected.
+The tests use a separate OwnerAlias definition to check callable effect propagation.
+It is the first bounded slice of verified engine operation
 descriptors, not a specification of all host calls or all language semantics.
 The definitions in `runtime/core_definition.c` select a closed operation identity.
 The shared `SCRIPT_ENGINE_OPERATIONS` rows generate both its versioned catalog
@@ -13,9 +15,13 @@ the execution binding; a second producer-supplied binding is rejected.
 
 - Owner is a pure, zero-argument function returning one scalar `ecs.entity`
   handle. It reads the current activation's owner, including after a resume.
-- Delta is a pure, zero-argument function returning one scalar `float`. It
-  converts the current context's double-precision delta seconds to float.
-  Neither context read is a compile-time constant.
+  Its conservative `SCRIPT_EFFECT_INVOCATION_READ` effect prevents callable
+  aliases from reading invocation context in a query predicate. It is not a
+  compile-time constant. Historical `Self()` migration imports use the effect
+  of the same bound `self`: invocation-read in libraries, stable owner in
+  behaviors and systems. That adapter requires the exact canonical identity,
+  valid Owner contract, matching type and unshadowed owner binding; the
+  migration equivalence checks remain exact.
 - Delay is an action with one execution entry, one scalar double duration,
   one completion outcome and no data result. Its effect is suspension, and it
   is not pure. Existing numeric argument conversions occur before it executes.
@@ -45,9 +51,9 @@ when an opaque host declaration is labeled pure. Unknown operations keep their
 existing checked host/command/query path and access policy; this change does
 not certify their effects, enable parallel execution or improve borrowing.
 
-Owner and Delta have only scalar outputs, no borrowed payload or result alias,
+Owner has only scalar outputs, no borrowed payload or result alias,
 no argument retention, and no payload allocation/copy. Ordinary scalar register
-or value-slot transfers are not payload copying. They execute on the thread
+or value-slot transfers are not payload copying. It executes on the thread
 owning the current activation, and cannot reenter authored execution. These
 thread facts do not grant concurrent access to a shared activation or world.
 
@@ -76,7 +82,7 @@ a distinct ABI. Opaque capability hashes remain unchanged. Native binding
 lookup checks the resulting ABI, and incremental source catalog comparison
 includes operation identity so compiled callers are not silently reused.
 
-Direct Owner, Delta and awaited Delay calls are already emitted as instructions,
+Direct Owner and awaited Delay calls are already emitted as instructions,
 not serialized native imports. Their prepared compatibility continues to use
 the instruction mapping/schema identity. Changing instruction payloads or
 semantics still requires the manual prepared semantic version guard; this
@@ -84,12 +90,18 @@ metadata does not inspect C bodies or replace that obligation. Rebuild prepared
 artifacts after a semantic contract change. No project asset migration or
 project version bump is required for this additive descriptor.
 
-Global `self`, `delta` and `dt` still have separate typed global bindings. Graph
-Self/Delta/Delay nodes consume the shared port definitions but keep their
-existing graph intrinsic/pure-kind mapping. This slice does not claim to have
-unified either mapping. No editor capability or authoring service is introduced
-into a game runtime package: the shared dependency is the neutral capabilities
-package, which itself depends only on types.
+Current main removed the public Delta Time callable and the `dt` and `delta`
+globals in `a0b73aba3`. This recovery reduces the historical PR to Owner and
+Delay. The private `BF_DELTA` instruction still supplies a system's explicit
+Tick payload; it gains no callable descriptor. Global `self` keeps its separate
+typed global binding. Graph Self/Delay nodes consume shared port definitions
+and retain their existing graph mapping.
+
+The existing Assert intrinsic stays `SCRIPT_OPERATION_UNKNOWN`, with its
+current execution binding and no added operation guarantees. Unknown
+capabilities cannot substitute Owner or Delay opcodes. No editor capability or
+authoring service is introduced into a game runtime package; the neutral
+capabilities package depends only on types.
 
 ## Evidence and remaining work
 
@@ -99,8 +111,8 @@ incremental source invalidation; custom linker rejection; and native/compiled
 execution with zero, negative, positive and NaN durations, scalar and string
 values surviving suspension. Existing program, incremental, native catalog and
 prepared checks remain applicable. Execution uses a synthetic clock.
-The [validation report](engine-operation-validation.md) records the reviewed
-implementation, bounded positive matrix, isolated controls and coverage limits.
+The [recovery validation report](engine-operation-validation.md) records the
+selective port, current checks, provenance and remaining coverage.
 
 Remaining L16 work includes verified generic host/capability ownership and
 effects, retained/asynchronous argument contracts, per-argument alias/copy

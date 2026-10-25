@@ -13,12 +13,14 @@
 #include "render/grid_2d.h"
 #include "render/material.h"
 #include "render/material_lod.h"
+#include "render/material_mesh.h"
 #include "render/material_raster.h"
 #include "render/mesh_projection.h"
 #include "render/mesh_surface.h"
 #include "render/post_2d.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
+#include "render/scene3d_cascades.h"
 #include "render/scene3d_post.h"
 #include "render/shader_catalog.h"
 #include "render/shader_dir.h"
@@ -95,9 +97,11 @@ struct app_scene_renderer
     int tile_groups;
     render_material_entity *entities;
     render_mesh_material_actor *meshes;
+    int *mesh_surface_slots;
     render_mesh_surface *mesh_surfaces;
     render_material_border_cache *border;
     render_material_lod *lod;
+    render_material_mesh_cache *material_meshes;
     draw_actor *actors;
     draw_tilemap *tilemaps;
     render_skip skip; /* the entities the current draw leaves out */
@@ -161,8 +165,12 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     if (!renderer) {
         return;
     }
+    if (renderer->material_meshes) {
+        render_material_mesh_cache_free(renderer->material_meshes, renderer->raster);
+    }
     render_material_raster_free(renderer->raster);
     afree(renderer->meshes);
+    afree(renderer->mesh_surface_slots);
     for (int i = 0; i < acount(renderer->mesh_surfaces); i++) {
         render_mesh_surface_free(&renderer->mesh_surfaces[i]);
     }
@@ -395,6 +403,11 @@ bool app_scene_renderer_draw3d(
         return false;
     }
     render_scene3d_set_size(renderer->scene3d, width, height);
+    /* The post canvas still holds the last frame until this one renders. */
+    render_scene3d_set_history(
+        renderer->scene3d,
+        cf_canvas_get_target(render_scene3d_post_target(renderer->post))
+    );
     render_gpu_timing_start();
     bool drawn = scene3d_finish(
         renderer,
@@ -416,6 +429,9 @@ bool app_scene_renderer_draw3d(
 
 void app_scene_renderer_reset(app_scene_renderer *renderer)
 {
+    if (renderer && renderer->material_meshes) {
+        render_material_mesh_cache_clear(renderer->material_meshes, renderer->raster);
+    }
     if (renderer) {
         clear_tilemaps(renderer);
     }
@@ -1106,8 +1122,13 @@ static bool collect(
         renderer->lod = render_material_lod_new();
     }
     render_material_lod_begin(renderer->lod);
+    if (!renderer->material_meshes) {
+        renderer->material_meshes = render_material_mesh_cache_new();
+    }
+    render_material_mesh_cache_begin(renderer->material_meshes);
     asetlen(renderer->entities, 0);
     aclear(renderer->meshes);
+    aclear(renderer->mesh_surface_slots);
     renderer->tile_groups = 0;
     aclear(renderer->reflectors);
     for (int i = 0; i < acount(renderer->tilemaps);) {
@@ -1164,7 +1185,7 @@ static bool collect(
             }
 
             int index = acount(renderer->meshes);
-            if (index == acount(renderer->mesh_surfaces)) {
+            while (index >= acount(renderer->mesh_surfaces)) {
                 apush(renderer->mesh_surfaces, ((render_mesh_surface){ 0 }));
             }
             render_mesh_surface *surface = &renderer->mesh_surfaces[index];
@@ -1214,7 +1235,56 @@ static bool collect(
                                                .surface = surface,
                                                .sdf_shape = detail })
             );
+            apush(renderer->mesh_surface_slots, index);
             apush(renderer->entities, draw);
+            continue;
+        }
+        const MaterialSurface3D *settings = MaterialSurface3D_get_const(world, entity);
+        const material_mask *surface_mask = settings && settings->enabled
+                                              ? materials_mask(engine_materials(runtime), entity)
+                                              : NULL;
+        if (surface_mask) {
+            MaterialFrame source = { 0 };
+            const MaterialFrame *authored_frame = MaterialFrame_get_const(world, entity);
+            if (authored_frame) {
+                source = *authored_frame;
+            }
+            const render_mesh_surface *surface = render_material_mesh_cache_get(
+                renderer->material_meshes,
+                material_mask_occupancy(surface_mask),
+                *settings,
+                source,
+                shown,
+                world,
+                entity,
+                renderer->error,
+                sizeof renderer->error
+            );
+            if (!surface) {
+                return false;
+            }
+            if (!acount(surface->parts)) {
+                continue;
+            }
+            CF_V2 min, max;
+            if (!render_mesh_project_bounds(view, surface->min, surface->max, &min, &max) ||
+                max.x < view.min_x || min.x > view.min_x + view.width ||
+                -min.y < view.max_y - view.height || -max.y > view.max_y) {
+                continue;
+            }
+            render_material_entity draw = { .shape_type = RENDER_SHAPE_MESH,
+                                            .layer = renderer->actors[actor].layer,
+                                            .points = { (float)acount(renderer->meshes) } };
+            apush(
+                renderer->meshes,
+                ((render_mesh_material_actor){ .entity = entity,
+                                               .position = shown.position,
+                                               .surface = surface })
+            );
+            apush(renderer->mesh_surface_slots, -1);
+            apush(renderer->entities, draw);
+            /* This mesh is the visible and optical material layer. Do not
+             * submit the same mask again as a planar colored fill. */
             continue;
         }
         const Tilemap *tilemap = Tilemap_get_const(world, entity);
@@ -1481,8 +1551,12 @@ static bool collect(
         append_entity(renderer, &position, &appearance, 0, NULL);
     }
     for (int i = 0; i < acount(renderer->meshes); i++) {
-        renderer->meshes[i].surface = &renderer->mesh_surfaces[i];
+        int slot = renderer->mesh_surface_slots[i];
+        if (slot >= 0) {
+            renderer->meshes[i].surface = &renderer->mesh_surfaces[slot];
+        }
     }
+    render_material_mesh_cache_end(renderer->material_meshes, renderer->raster);
     return true;
 }
 
@@ -1959,7 +2033,20 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Fluid raster");
     }
-    render_radiance_inputs inputs = { .material = textures };
+    render_spot_lights spots = { 0 };
+    if (renderer->lit && !render_spot_lights_collect(
+                             world,
+                             runtime,
+                             view,
+                             &spots,
+                             renderer->error,
+                             sizeof renderer->error
+                         )) {
+        return false;
+    }
+    render_radiance_inputs inputs = { .material = textures,
+                                      .spots = spots.lights,
+                                      .spot_count = spots.count };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
     bool hdr = renderer->lit && renderer->lighting.tone_mapping > 0;

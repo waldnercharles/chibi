@@ -1,5 +1,7 @@
 #include "execution/state.h"
 
+#include "types/text.h"
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -187,19 +189,17 @@ int native_state_transition(
             if (state->type == PIN_FLOW && entry) {
                 return NATIVE_STATE_SUPPRESSED;
             }
-            if (state->type != PIN_STR || !state->str) {
+            if (state->type != PIN_STR || pin_text(*state).length != (uint32_t)outcomes) {
                 return NATIVE_STATE_INVALID;
             }
             for (int i = 0; i < outcomes; i++) {
-                if (state->str[i] != '0' && state->str[i] != '1') {
+                if (pin_text(*state).bytes[i] != '0' &&
+                    pin_text(*state).bytes[i] != '1') {
                     return NATIVE_STATE_INVALID;
                 }
             }
-            if (state->str[outcomes]) {
-                return NATIVE_STATE_INVALID;
-            }
             return behavior_state_select(
-                (char *)state->str,
+                (char *)pin_text(*state).bytes,
                 outcomes,
                 entry ? 0 : inputs[2].i,
                 entry ? BEHAVIOR_STATE_RESET

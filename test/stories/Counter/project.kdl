@@ -1,0 +1,4 @@
+version 32
+name "Counter story"
+content "content"
+start_scene "scenes/Main.kdl"

@@ -65,11 +65,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     if (values > INT_MAX) {
         return SIZE_MAX;
     }
+    /* Live value and root sets are counted after liveness and allocated
+     * exactly from the bounded owned arena, so only the table is reserved. */
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
-    retained = sum(retained, product(pauses, bank(values, sizeof(int))));
-    /* Every live aggregate can contribute one logical shape per suspension.
-     * Shapes borrow decoded metadata; only the derived vectors grow here. */
-    retained = sum(retained, product(pauses, bank(acount(f->value_roots), sizeof(behavior_value_root))));
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
@@ -79,16 +77,17 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     /* Verification: provenance headers; defined_operands matrix+row,
      * reached/queued/queue; checked_control incoming+queue. */
     size_t words = slots / 64 + 1;
-    size_t scratch = product(count + 1, product(words, sizeof(uint64_t)));
-    scratch = sum(scratch, product(count, 2 * sizeof(bool) + 3 * sizeof(int)));
+    size_t defined = product(count + 1, product(words, sizeof(uint64_t)));
+    size_t scratch = product(count, 2 * sizeof(bool) + 3 * sizeof(int));
     scratch = sum(scratch, product(slots, sizeof(int)));
     if (acount(f->value_roots)) {
         scratch = sum(scratch, product(values + 1, sizeof(bool)));
     }
-    /* Suspension liveness uses a separate matrix+row. Summing phases is a
-     * conservative peak bound; none of these counts comes from file size. */
+    /* Defined-operands verification frees its matrix+row before suspension
+     * liveness begins. Reserve their larger phase, preserving overflow. */
     words = (values + 63) / 64 + 1;
-    scratch = sum(scratch, product(count + 1, product(words, sizeof(uint64_t))));
+    size_t live = product(count + 1, product(words, sizeof(uint64_t)));
+    scratch = sum(scratch, defined > live ? defined : live);
     /* runtime_code + reuse_reads simultaneously own live/keep/saved,
      * parents/slots/banks/unused/pinned/scratch/writes. */
     scratch = sum(scratch, product(count, sizeof(int) + 2 * sizeof(bool)));
@@ -235,6 +234,7 @@ bool behavior_function_own_decoded(behavior_function *f, size_t budget)
     }
     /* Every other pointer came from the decoder's bounded owned arena.
      * Runtime banks copy these headers and borrow that same immutable payload. */
+    behavior_function_note_derived(f);
     f->frozen = true;
     return true;
 }

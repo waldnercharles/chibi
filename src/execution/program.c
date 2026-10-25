@@ -15,7 +15,10 @@
 #include "runtime/tasks.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -174,6 +177,7 @@ static bool stream_function(const behavior_function *f, int depth, int *steps)
 bool program_same_type(pin_value a, pin_value b)
 {
     return a.type == b.type && a.container == b.container &&
+           pin_record_same(a.record, b.record) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -312,11 +316,25 @@ static void collect_imports(const execution_module *m, execution_module ***modul
         collect_imports(import, modules);
     }
 }
+static bool registration_state(const execution_program *p, int index)
+{
+    return p->registration_state || p->module->plan.states[index].shared;
+}
+static bool system_module(const execution_module *module)
+{
+    for (int i = 0; i < module->plan.function_count; i++) {
+        if (module->plan.functions[i].kind == EXECUTION_FUNCTION_SYSTEM) {
+            return true;
+        }
+    }
+    return false;
+}
 static execution_program *program_new(
     execution_module *m,
     ecs_world *world,
     const service_binding *services,
-    bool imports
+    bool imports,
+    bool registration
 )
 {
     assert(m);
@@ -328,6 +346,7 @@ static execution_program *program_new(
     p->enabled = true;
     p->module = m;
     p->owner_program = p;
+    p->registration_state = registration;
     execution_module_retain(m);
     p->world = world;
     p->budget = 10000;
@@ -357,7 +376,7 @@ static execution_program *program_new(
     }
     p->shared = xcalloc((size_t)(m->plan.state_count + 1), sizeof *p->shared);
     for (int i = 0; i < m->plan.state_count; i++) {
-        if (m->plan.states[i].shared &&
+        if (registration_state(p, i) &&
             state_assign(&p->shared[i], &m->plan.states[i].initial)) {
             execution_program_free(p);
             return NULL;
@@ -397,7 +416,7 @@ static execution_program *program_new(
                     apush(child_services, p->services[j]);
                 }
             }
-            execution_program *child = program_new(modules[i], world, child_services, false);
+            execution_program *child = program_new(modules[i], world, child_services, false, registration);
             afree(child_services);
             if (!child) {
                 afree(modules);
@@ -435,11 +454,11 @@ static execution_program *program_new(
 }
 execution_program *execution_program_new(execution_module *m, ecs_world *world, const service_binding *services)
 {
-    return program_new(m, world, services, true);
+    return program_new(m, world, services, true, system_module(m));
 }
 static state_value *instance_storage(execution_instance *instance, int index)
 {
-    return instance->program->module->plan.states[index].shared
+    return registration_state(instance->program, index)
              ? &instance->program->shared[index]
              : &instance->states[index];
 }
@@ -450,7 +469,7 @@ static void sync_state(execution_instance *instance)
         state_value *state = instance_storage(instance, i);
         instance->values[i] = state->value;
         const type_desc *type = state->value.type == PIN_STRUCT
-                                  ? type_catalog_find(state->value.type_name)
+                                  ? pin_value_type(&state->value)
                                   : NULL;
         instance->layouts[i] = (behavior_variable_storage){
             .data = state->value.ptr,
@@ -508,7 +527,7 @@ static void collect_state(execution_program *p, state_value *state)
 static void collect_scope(execution_program *owner, execution_program *scope)
 {
     for (int s = 0; s < scope->module->plan.state_count; s++) {
-        if (scope->module->plan.states[s].shared) {
+        if (registration_state(scope, s)) {
             collect_state(owner, &scope->shared[s]);
         } else {
             for (int i = 0; i < acount(scope->instances); i++) {
@@ -677,7 +696,7 @@ static int select_state(void *owner, const behavior_state_selection *selection, 
     int count = selection->outputs;
     if (flags & BEHAVIOR_STATE_RESET) {
         if (state->type == PIN_STR) {
-            memset((char *)state->str, '0', (size_t)count);
+            memset((char *)pin_text(*state).bytes, '0', (size_t)count);
         }
         return -1;
     }
@@ -685,9 +704,11 @@ static int select_state(void *owner, const behavior_state_selection *selection, 
         char *used = arena_alloc(&instance->selections, (size_t)count + 1);
         memset(used, '0', (size_t)count);
         used[count] = 0;
-        *state = (pin_value){ .type = PIN_STR, .str = used };
+        const char *error = pin_value_text(&instance->selections, state, used, (size_t)count);
+        assert(!error);
+        (void)error;
     }
-    return behavior_state_select((char *)state->str, count, start, flags);
+    return behavior_state_select((char *)pin_text(*state).bytes, count, start, flags);
 }
 execution_instance *execution_program_instance(execution_program *p, uint64_t owner)
 {
@@ -800,7 +821,7 @@ static execution_instance *attach_row(execution_program *p, uint64_t owner, cons
         );
     }
     for (int i = 0; i < count; i++) {
-        if (!p->module->plan.states[i].shared) {
+        if (!registration_state(p, i)) {
             int result = state_assign(
                 &instance->states[i],
                 &p->module->plan.states[i].initial
@@ -1387,7 +1408,6 @@ void program_bind_world_callbacks(behavior_function_context *ctx)
     ctx->store_component = store_component;
     ctx->reduce_component = reduce_component;
     ctx->failure_observer = record_failure;
-    ctx->event_argument = program_event_argument;
 }
 static int subscription_matches(
     execution_instance *instance,
@@ -1412,7 +1432,7 @@ static int subscription_matches(
     if (value.container >= PIN_CONTAINER_ARRAY) {
         const pin_array *array = value.ptr;
         for (int i = 0; array && i < array->count; i++) {
-            matches |= array->items[i].u64 == owner;
+            matches |= pin_array_get(array, i).u64 == owner;
         }
     } else {
         matches = value.u64 == owner;
@@ -2565,11 +2585,11 @@ static void preserve_shared(execution_program *next, const execution_program *be
 {
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
-        if (!state->shared) {
+        if (!registration_state(next, i)) {
             continue;
         }
         int old = matching_state(before->module, state);
-        if (old >= 0) {
+        if (old >= 0 && registration_state(before, old)) {
             int status = state_assign(&next->shared[i], &before->shared[old].value);
             assert(!status);
             (void)status;
@@ -2614,7 +2634,8 @@ static void preserve_state(
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
         int index = matching_state(before->module, state);
-        if (state->shared || index < 0) {
+        if (registration_state(next, i) || index < 0 ||
+            registration_state(before, index)) {
             continue;
         }
         int status = execution_instance_set_state(

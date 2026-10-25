@@ -2,6 +2,7 @@
 
 #include "graph/modeling/model_internal.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -65,7 +66,8 @@ bool model_profile_sample_cubic(
         return model_fail(error, node_id, "Cubic path must sample at most 32 edges and at least 3 closed edges");
     }
     for (int i = 0; i < controls->count; i++) {
-        const pin_value *value = &controls->items[i];
+        pin_value element = pin_array_get(controls, i);
+        const pin_value *value = &element;
         if (value->type != PIN_STRUCT || value->container != PIN_CONTAINER_SINGLE ||
             !value->type_name || strcmp(value->type_name, type) || !value->ptr) {
             return model_fail(error, node_id, "Cubic controls require typed vector values");
@@ -87,10 +89,10 @@ bool model_profile_sample_cubic(
             sample = steps;
         }
         double t = (double)sample / steps, u = 1 - t;
-        const float *a = controls->items[curve * 3].ptr;
-        const float *b = controls->items[curve * 3 + 1].ptr;
-        const float *c = controls->items[curve * 3 + 2].ptr;
-        const float *d = controls->items[(curve * 3 + 3) % controls->count].ptr;
+        const float *a = pin_array_data(controls, curve * 3);
+        const float *b = pin_array_data(controls, curve * 3 + 1);
+        const float *c = pin_array_data(controls, curve * 3 + 2);
+        const float *d = pin_array_data(controls, (curve * 3 + 3) % controls->count);
         float *point = xmalloc((size_t)width * sizeof *point);
         samples->items[i] = (pin_value){ .type = PIN_STRUCT,
                                          .container = PIN_CONTAINER_SINGLE,

@@ -123,18 +123,13 @@ TEST_CASE(validation_plans_native_tools_without_certifying_full_gate)
     REQUIRE(only_command(root, "iteration_commands", "make test-tools"));
     REQUIRE(only_command(root, "integration_commands", "make check-format"));
     REQUIRE(yyjson_is_false(yyjson_obj_get(root, "full_verification")));
-    yyjson_val *quarantined = yyjson_obj_get(root, "quarantined_commands");
-    bool full = false, render = false;
-    for (size_t i = 0; i < yyjson_arr_size(quarantined); i++) {
-        yyjson_val *command = yyjson_arr_get(quarantined, i);
-        full |= string_equals(command, "make test-full");
-        render |= string_equals(command, "make test-render");
-        REQUIRE(!string_equals(command, "make test-tools"));
-    }
-    REQUIRE(full && render);
-    REQUIRE(strstr(output, "DISABLED") && strstr(output, "NOT PASSED"));
+    REQUIRE(strstr(output, "Evidence covers only the checks actually run"));
     REQUIRE(plan("--tool=native-tools", NULL, NULL, NULL) == 0);
     REQUIRE(only_command(json(), "iteration_commands", "make test-tools"));
+    REQUIRE(plan("--tool=language-record-values", NULL, NULL, NULL) == 0);
+    REQUIRE(
+        only_command(json(), "iteration_commands", "python3 tools/test_policy.py tool language-record-values")
+    );
     REQUIRE(plan("--tool=quiet", NULL, NULL, NULL) == 2);
     REQUIRE(strstr(output, "invalid choice"));
     REQUIRE(plan("--tools", "--scope", "mixed", NULL) == 0);
@@ -163,23 +158,33 @@ TEST_CASE(validation_requires_review_and_checks_for_mixed_scope)
     return true;
 }
 
-TEST_CASE(validation_refuses_gpu_and_unadmitted_selectors)
+TEST_CASE(validation_routes_gpu_checks_and_refuses_unknown_selectors)
 {
     const char *selectors[] = {
-        "--selector=--player-installed-space-cadet-vm",
+        "--selector=--scene3d",
         "--selector=--studio-source-edit",
         "--selector=--not-a-test",
     };
-    for (int i = 0; i < 3; i++) {
-        REQUIRE(plan(selectors[i], NULL, NULL, NULL) == 2);
-        REQUIRE(strstr(output, i == 2 ? "unclassified selector" : "quarantined"));
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(plan(selectors[i], NULL, NULL, NULL) == 0);
+        char command[128];
+        snprintf(
+            command,
+            sizeof command,
+            "make agent-gpu-test AGENT_SELECTOR=%s",
+            selectors[i] + strlen("--selector=")
+        );
+        REQUIRE(only_command(json(), "iteration_commands", command));
     }
+    REQUIRE(plan(selectors[2], NULL, NULL, NULL) == 2);
+    REQUIRE(strstr(output, "unclassified selector"));
     return true;
 }
 
 TEST_CASE(make_selector_data_never_reaches_the_shell)
 {
-    char marker[160], makefile[1024], scripts[160], source[1024], destination[180];
+    char marker[160], makefile[1024], scripts[160], source[1024],
+        destination[180], binary[1024];
     path(marker, sizeof marker, directory, "injected");
     path(makefile, sizeof makefile, tool_root(), "Makefile");
     path(scripts, sizeof scripts, directory, "tools");
@@ -190,6 +195,7 @@ TEST_CASE(make_selector_data_never_reaches_the_shell)
         path(destination, sizeof destination, scripts, files[i]);
         assert(!symlink(source, destination));
     }
+    snprintf(binary, sizeof binary, "TEST_BINARY=%s", CHIBI_POLICY_WORKER_PATH);
     const char *targets[] = { "test-fast", "agent-test" };
     const char *variables[] = { "TEST_ARGS", "AGENT_SELECTOR" };
     const char *suffixes[] = { "; touch %s", " && touch %s", " `touch %s`", " $$(touch %s)" };
@@ -197,14 +203,15 @@ TEST_CASE(make_selector_data_never_reaches_the_shell)
         for (int j = 0; j < 4; j++) {
             char suffix[256], assignment[512];
             snprintf(suffix, sizeof suffix, suffixes[j], marker);
-            snprintf(assignment, sizeof assignment, "%s=--source-edit%s", variables[i], suffix);
-            /* Use the real Makefile without enrollment/locking unrelated to selector
-               transport. A broken guard still stops at the build wrapper. */
-            const char *argv[] = { "make",     "-f",          makefile,
-                                   targets[i], "QUIET=false", assignment,
+            snprintf(assignment, sizeof assignment, "%s=%s%s", variables[i], i ? "--source-edit" : "exit 0", suffix);
+            /* Skip building the worker that already runs this test. The real
+               recipes must transport selector data without shell evaluation. */
+            const char *argv[] = { "make", "-f",          makefile,
+                                   "-o",   "tools-build", targets[i],
+                                   binary, "QUIET=false", assignment,
                                    NULL };
-            REQUIRE(run(argv, directory) == 2);
-            REQUIRE(strstr(output, "DISABLED: unadmitted native invocation"));
+            REQUIRE(run(argv, directory) == (i ? 2 : 0));
+            REQUIRE(!strstr(output, "DISABLED"));
             REQUIRE(access(marker, F_OK) != 0);
             REQUIRE(!strstr(output, "configure-native"));
             REQUIRE(!strstr(output, "cmake --build"));
@@ -250,7 +257,7 @@ void test_tool_validation_plan()
     RUN_TEST_CASE(validation_identity_is_frozen_and_requires_clean_checkout);
     RUN_TEST_CASE(validation_plans_native_tools_without_certifying_full_gate);
     RUN_TEST_CASE(validation_requires_review_and_checks_for_mixed_scope);
-    RUN_TEST_CASE(validation_refuses_gpu_and_unadmitted_selectors);
+    RUN_TEST_CASE(validation_routes_gpu_checks_and_refuses_unknown_selectors);
     RUN_TEST_CASE(make_selector_data_never_reaches_the_shell);
     yyjson_doc_free(document);
     document = NULL;

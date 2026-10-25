@@ -1,6 +1,7 @@
 build/
 build-code-language/
 build-sdk/
+/build-sdk-tests/
 build-language/
 .worktrees/
 # A second build tree, so verifying a build cannot relink the binary a manual
@@ -10,6 +11,11 @@ build-release/
 build-package/
 dist/
 build-debug/
+# On macOS, the CMake trees beside graph builds: the first build host and the
+# build-graph checks' reference.
+build-cmake/
+build-debug-cmake/
+build-release-cmake/
 build-performance/
 build-web/
 build-web-profile/

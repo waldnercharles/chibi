@@ -9,10 +9,10 @@ The copied player deployment lives in the game's ignored `.chibi/runtime` direct
 The compiler, Studio, and controller are separate authoring tools; they do not
 ship inside the game runtime.
 
-Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
-`chibi-voidweaver`; labs and sampled models live in `chibi-examples`. Studio owns
-its starter and shell assets in `chibi-studio`. Pass the project root to an
-installed authoring tool rather than mounting a game under the engine checkout.
+Each game lives in its own repository. Studio owns its starter and shell assets
+in `chibi-studio`; [examples](examples.md) lists the checked-in projects to learn
+from. Pass the project root to an installed authoring tool rather than mounting a
+game under the engine checkout.
 
 ## Start a project
 
@@ -29,8 +29,8 @@ printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"B
   chibi_ctl --project-root tetris
 ```
 
-[`projects/tetris` in chibi-examples](https://github.com/waldnercharles/chibi-examples/tree/main/projects/tetris)
-is a complete game made this way.
+[`test/fixtures/terrain-lab`](../test/fixtures/terrain-lab/README.md) is a small
+playable game made this way.
 
 Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `material`, `shape`, `field`, `shader-library` and `model`. Before running content,
@@ -45,6 +45,16 @@ project as `chibi-compile` does and lists what preparation refuses, such as
 resources that together pass the player's 4,096 records or 64 MiB, so a valid
 project compiles. It never changes files: a project saved by an earlier build
 fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
+Version 30 rewrites each `on` handler as `on X :: (Field: Type)`, listing the
+payload fields it reads; the older `on X(a)`, `on X as e` and `on X` forms no
+longer parse. The migration refuses a handler that it cannot rewrite
+exactly, such as one that reads the whole `event` or whose alias an action
+reads; rewrite that handler by hand and migrate again. It does not see events
+that a game's own native table declares, so write those handlers in the named
+form first. Version 31 removes the step globals `dt`, `delta` and
+`delta_time()`: a read in an `on Tick` handler or a system becomes a listed
+`dt`, and the migration refuses one anywhere else, where the step must be
+passed in.
 A prototype is the `name` it declares, whatever its file is called: scenes and
 other prototypes' `(array)includes` find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over
@@ -97,7 +107,7 @@ comments directly above the component and each field describe them.
 
 ```code
 // Stored energy that refills over time.
-component Charge {
+Charge :: component {
     level: 0..100 charge
     // Charge gained per second.
     rate: charge/s
@@ -110,7 +120,7 @@ component Charge {
 A range such as `0..1` or `-1.5..2` is an inclusive stored-value contract. Scripts,
 asset loads, aggregate constructors, prepared players and native engine writes
 clamp values outside it to the nearest endpoint. Bounded `number` fields keep
-fractions: assigning `2.75` into `0..10` stores `2.75`. Explicit `cast<int>(2.75)`
+fractions: assigning `2.75` into `0..10` stores `2.75`. The conversion `int(2.75)`
 truncates toward zero. Each assignment clamps independently; two saturating
 updates cannot be reassociated. Floating arithmetic may overflow to infinity
 before the store; positive/negative infinity clamp to the high/low endpoint.
@@ -136,8 +146,10 @@ not authorize check elimination or arithmetic reassociation. Component range
 changes invalidate the linked storage contract, and prepared players retain
 their ranges. Reloaded scripts and whole-component snapshots use the world's
 registered component schema while a replacement catalog is being prepared.
-Generic local values and nested layouts still use the current nominal type
-catalog; replacing their physical layouts while those values are live remains
+Generic local values and nested layouts use the current nominal type catalog.
+Prototype operations instead resolve nested layouts through their registry for
+the duration of each transaction; the world retains copied values, not that
+resolver. Replacing physical layouts while generic values are live remains
 outside the existing runtime contract.
 
 A unit such as `u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the
@@ -164,7 +176,7 @@ Proven mismatches and malformed referenced unit metadata are compile errors;
 `validate_project` reports their source locations and prevents execution:
 
 ```code
-system Recharge(charge: Charge) {
+Recharge :: system(charge: Charge) {
     charge.level += charge.rate * dt // charge
     charge.level += charge.rate      // Units differ: charge += charge/s
 }
@@ -185,6 +197,66 @@ declarations in the prepared artifact, so the player needs no source.
 Projects saved before version 20 declared components in KDL; `--migrate`
 rewrites each into `.chibi`.
 
+## Authored prototypes and relationships
+
+Files under `content/prototypes` can declare prototypes in `.chibi`. Existing KDL
+prototypes remain readable. Component entries supply sparse defaults, and ordered
+bases compose before the declaration's own overrides:
+
+The following declarations belong in separate files:
+
+```chibi
+// content/prototypes/Enemy.chibi
+Enemy :: prototype {
+    Health { current: 100, maximum: 150 }
+    behaviors: [EnemyAI]
+    children: [{name: "enemy", prototype: Child}]
+    links: {Targets: child.enemy}
+}
+// content/prototypes/Elite.chibi
+Elite :: prototype(Enemy, Armored) {
+    Health { current: 200 }
+}
+```
+
+Each file declares one prototype. Referenced prototypes, behaviors and components
+must exist. Defaults support literals, static names, arrays and objects; executable
+calls are rejected. Overrides replace authored fields while preserving unspecified
+inherited defaults. Component/field spellings must resolve uniquely.
+
+Relationship declarations live under `content/relationships`:
+
+```chibi
+Targets :: relationship {
+    exclusive: true
+    acyclic: true
+    traversable: false
+    on_delete_target: Remove
+}
+```
+
+Boolean traits default to false. `traversable` requires `exclusive` and implies
+acyclic traversal. Target deletion defaults to `Remove`; `Delete` and `Panic`
+select the existing ECS policies. Relationships currently have no payload data.
+
+Initial prototype links address instance-local children, such as `child.enemy`.
+A nonexclusive relationship may name several targets in an array. An explicitly
+named relationship overrides inherited links for that relationship. Arbitrary
+scene-global initial targets and queryable embedded components are not supported.
+
+During execution, `add_pair(source, Targets, target)` and
+`remove_pair(source, Targets, target)` stage mutations through ECS commands.
+`has_pair(source, Targets, target)` reads committed state. The relationship is a
+typed symbol reference; a string or numeric ID cannot substitute for it. Mutations
+become visible at the normal structural command boundary, including query refresh
+and target-deletion handling. Prepared projects retain descriptors and initial
+pairs for compiler-free loading.
+
+Relationship iteration also reads committed edges. Removing an existing edge and
+immediately adding it back in the same handler is rejected as a duplicate: the
+removal is still queued. Retain the target and re-add it in a later handler after
+the removal commits.
+
 ## System queries
 
 A system's query header binds components and infers reads and writes from its
@@ -193,7 +265,7 @@ component membership with `and`, `or`, `not` and parentheses; an unqualified
 component always refers to the root entity, as does `self.Component`.
 
 ```code
-system Home query position: Transform, velocity: Velocity
+Home :: system(position: Transform, velocity: Velocity)
     join aim: Targets.Transform?
     where (Player or Ally) and not self.Frozen and not Targets.Frozen {
     if aim {
@@ -203,7 +275,7 @@ system Home query position: Transform, velocity: Velocity
 }
 ```
 
-Here `Targets` must be an engine relationship exposed in the script catalog
+Here `Targets` must be an authored or engine relationship exposed in the script catalog
 with the exclusive trait. A scalar `Targets.Transform` binding follows that
 single target and requires its component. Adding `?` keeps roots with no target
 or no target component; test the binding before reading its fields. Reads and
@@ -236,8 +308,8 @@ if a catalog also exposes a relationship with that name.
 Ancestor sources are explicit and independent of relationship paths:
 
 ```code
-system Inherit query position: Transform,
-    team: Team from ancestor(ChildOf) {
+Inherit :: system(position: Transform,
+    team: Team from ancestor(ChildOf)) {
     position.x = team.spawn_x
 }
 ```
@@ -254,11 +326,11 @@ Filters use the same source notation: `where ancestor(ChildOf).Team` or
 requested component; two ancestor terms need not select the same provider.
 
 For a relationship with multiple targets, a body loop visits one
-target at a time without materializing an array, while the system's state and
-outer body still run once per root:
+target at a time without materializing an array, while the outer body and its
+invocation-local variables still run once per root:
 
 ```code
-system DamageTargets query damage: Damage {
+DamageTargets :: system(damage: Damage) {
     for target in self.Targets {
         if target.Health {
             target.Health.value -= damage.amount
@@ -278,7 +350,7 @@ To give each matching target its own system execution, use an explicit generator
 in the header:
 
 ```code
-system DamageTargets query damage: Damage
+DamageTargets :: system(damage: Damage)
     join target in self.Targets
     join health: Health from target
     where health.value > 0 and changed(damage) {
@@ -299,15 +371,18 @@ has a row. `has(target.Health)` tests component membership on the bound entity,
 and `has(target.Targets)` tests relationship existence without creating more rows.
 The existing scalar join spelling continues to execute once per root.
 
-Each complete root/target tuple owns independent state and suspended work. Entity
-generations participate in identity: a tuple absent at the next membership
-refresh releases its state and cancels its work; a later entity reusing a slot
-cannot inherit it. Removing and restoring the same relationship entirely between
-refreshes preserves the tuple. Reordering
-relationships preserves surviving tuples' state. The cost grows with retained
-matches and live continuations. The query cache's byte cap does not cap this
-separate state. Use a body loop when one root should own the state for all its
-targets. Proven stateless, synchronous generator systems can stream through one
+Each complete root/target tuple owns independent invocation locals and suspended
+work. Ordinary locals survive suspension without `retain`; they end when the
+invocation ends. Explicit `retain` belongs to the system registration and is
+shared across all its tuples. Use components for durable entity state.
+Entity generations participate in identity: a tuple absent at the next membership
+refresh discards its locals and cancels its work; a later entity reusing a slot
+cannot inherit them. Removing and restoring the same relationship entirely
+between refreshes preserves the tuple. Reordering relationships preserves
+surviving continuations. The cost grows with retained matches and live
+continuations. The query cache's byte cap does not cap this separate storage.
+Use a body loop for one invocation covering all of a root's targets.
+Proven stateless, synchronous generator systems can stream through one
 temporary row instead of retaining an instance for every tuple. Each admitted
 body uses an activation. Serial synchronous invocations can reuse one idle
 activation per program, retaining at most 64 KiB of fixed frame storage. Payloads,
@@ -327,7 +402,8 @@ short-circuit order: `where aim and aim.x > 0` guards an optional binding; `wher
 aim or aim.x > 0` does not. Header predicates cannot write, suspend, perform host
 side effects, consume randomness, or read system state or event payloads. These
 restrictions also apply through helpers. Put conditions on persistent system
-state inside the body, so rejecting a query row need not construct that state.
+state inside the body. Registration-owned retained state exists independently of
+query admission, including when no rows match.
 
 `changed(damage)` observes published writes to the whole bound component, not
 only the fields used in the body. A same-value write counts. A new matching row
@@ -338,7 +414,7 @@ observable when their owner calls `ecs_component_modified`.
 The complete dynamic `where` expression gates new work in source order. Required
 header bindings and generators define structural membership; membership tests
 inside a mixed value/change expression belong to that gate. A false gate does not destroy
-existing tuple state or cancel an already suspended body. Structural tuple loss
+existing invocation locals or cancel an already suspended body. Structural tuple loss
 does. Changes are consumed only when new work is admitted, so a busy row does not
 lose a write while waiting. Writing a component watched by the same system can
 make that row eligible again on a later update.
@@ -474,9 +550,9 @@ Keep `game.chibip.resources.json` and all declared resources with the prepared
 artifact. Compilation resolves authored source and dependencies before deployment;
 the player loads the prepared artifact and its declared resource closure. The
 installed compiler and deployed player must satisfy the same format and native
-capability requirements. Final product package acceptance is still in progress.
-Package integrity and installed-consumer linking do not establish rendered
-player, Studio interaction or browser acceptance.
+capability requirements. Package integrity and installed-consumer linking alone
+do not establish rendered player, Studio interaction or browser acceptance;
+validate each affected consumer and report the workload actually exercised.
 
 The controller accepts one plain JSON request per stdin line and produces one
 JSON response per line. Requests use `contract: 1`, an `operation`, and the
@@ -509,7 +585,7 @@ printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"M
 ```
 
 Inspect `behavior_failures` and the deterministic state evidence in the response.
-Test invocations remain subject to the [60-second policy](testing.md#temporary-60-second-policy).
+Choose affected-contract checks using the [testing instructions](testing.md).
 A short sample run does not establish full runtime or rendering coverage.
 
 ## Switch scenes
@@ -659,9 +735,9 @@ Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `Gravity3D` sets it. 2D bodies
 fall only when one entity's `Gravity` sets an `acceleration` in units
 per second squared, which also moves material liquids and gas. Behaviors
-handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
-`on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
-and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
+handle `on ContactBegin3D :: (Other: handle<ecs.entity>, Point: struct<CF_V3>)`
+and `on ContactEnd3D :: (Other: handle<ecs.entity>)`, as 2D colliders report
+`on ContactBegin` and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
 renderer draws a body's `Geometry3D` at its Transform3D pose (see
 `docs/rendering-3d.md`).
 

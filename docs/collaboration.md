@@ -100,13 +100,12 @@ the collaboration wrapper does not change the project format.
 
 ## Access and deployment
 
-For local development, start the dependency-free Node service and configure the
-web build with its public URL:
+For local development, start the dependency-free Node service and build the
+browser Studio with its public URL:
 
 ```sh
 node tools/collab/server/server.mjs
-emcmake cmake -S . -B build-web -DCHIBI_COLLAB_URL=http://127.0.0.1:8787
-make web-serve PROJECT=projects/arena2d WEB_PORT=8099
+make web-serve CHIBI_COLLAB_URL=http://127.0.0.1:8787 WEB_PORT=8099
 ```
 
 Open `http://127.0.0.1:8099` in one browser session and choose **Host room**.

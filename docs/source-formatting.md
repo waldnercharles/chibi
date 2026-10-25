@@ -18,8 +18,15 @@ Start with `authoring_format_defaults()` and override the fields you need:
 
 A null options pointer selects the defaults. Invalid widths return an error;
 they are never clamped or silently replaced. The existing
-`authoring_source_format` entry point delegates to these defaults and keeps its
-successful output byte-for-byte unchanged.
+`authoring_source_format` entry point delegates to these defaults.
+
+A line that continues an expression keeps its break and gets a computed margin.
+Inside a bracket that ends its line, it indents one level past that line.
+Inside a bracket followed by an item, it aligns with that item, as in
+`return Pair(first,` followed by `second)` under `first`. A continued operand of
+a binary expression outside such a bracket aligns with the expression's first
+operand. With `use_tabs`, the margin uses one tab per indentation level and
+spaces for the rest of the alignment.
 
 Positive widths flatten groups that fit at their actual starting column. Longer
 argument lists, parameter lists, arrays and records break after the opening
@@ -58,9 +65,7 @@ replacement start and `AUTHORING_FORMAT_AFTER` chooses its end. Consumers remain
 responsible for supplying valid UTF-8 caret boundaries.
 
 Free text with `free` and the map with `authoring_format_map_free`. Free an old
-map before passing it as an output again. Failure leaves the map empty. Existing
-`authoring_source_metadata_remap` remains the separate identity/metadata check;
-a caret map does not replace its source-hash and CST validation.
+map before passing it as an output again. Failure leaves the map empty.
 
 ## Semantic simplification and integration
 
@@ -71,9 +76,23 @@ A layout map describes only the minimizer's output to the formatted text; it doe
 not map offsets from before semantic rewriting. Do not silently compose those
 coordinate spaces or weaken the CST check to accept token deletions.
 
-This SDK slice does not choose a new canonicalization policy, configuration-file
+The configurable formatter does not choose a new canonicalization policy, configuration-file
 schema, CLI flags, Studio pin or RML/RCSS dependency. Project configuration and
 explicit option precedence, atomic CLI write/check integration, editor undo and
 original-to-final mapping across semantic rewrites need their own caller review
 and validation. No project version bump is needed: this is an additive SDK API
 and whitespace-only transformation, with no persisted contract migration.
+
+### Root persistent storage
+
+The semantic minimizer omits a redundant `state` keyword from a direct
+behavior, library or system declaration. Those root declarations already have
+persistent storage with either spelling. Callable `state` and system `shared`
+keep their keywords and storage semantics. Comments are retained, and every
+candidate rewrite still passes the existing semantic and comment oracles;
+invalid source remains unchanged.
+
+Formatting alone preserves the `state` token. After minimization, reanalyze the
+new text to obtain its declaration and use ranges; the layout map does not map
+positions from before the semantic rewrite. No syntax, runtime storage contract,
+project version or asset migration changes are required by this spelling rule.

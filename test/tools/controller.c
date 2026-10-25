@@ -29,6 +29,7 @@ static const char *const paths[] = {
     "content/prototypes/Actor.kdl",
     "content/prototypes/Driver.kdl",
     "content/scenes/Proof.kdl",
+    "content/relationships/DifferentFile.chibi",
 };
 static char *sources[sizeof paths / sizeof *paths];
 enum
@@ -153,10 +154,13 @@ static void setup()
     strcpy(root, resolved);
     free(resolved);
     path(log_path, sizeof log_path, "output.log");
-    const char *directories[] = {
-        "content",         "content/behaviors",  "content/libraries",
-        "content/systems", "content/prototypes", "content/scenes"
-    };
+    const char *directories[] = { "content",
+                                  "content/behaviors",
+                                  "content/libraries",
+                                  "content/systems",
+                                  "content/prototypes",
+                                  "content/scenes",
+                                  "content/relationships" };
     for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
         char file[128];
         path(file, sizeof file, directories[i]);
@@ -167,22 +171,28 @@ static void setup()
     write_file(paths[MANIFEST], manifest);
     write_file(
         paths[PROBE],
-        "behavior Probe {\n"
+        "Probe :: behavior {\n"
         "    count := 0\n"
-        "    on Tick { count += Helpers.Twice(1) }\n"
-        "    on Begin { await delay(0.05); count += 100 }\n"
+        "    on Tick :: () { count += Helpers.Twice(1) }\n"
+        "    on Begin :: () { await delay(0.05); count += 100 }\n"
         "}\n"
     );
     write_file(
         paths[HELPERS],
-        "library Helpers {\n"
-        "    Twice :: fn(value: int) { return value * 2 }\n"
-        "    Taken :: fn(value: int) { return value }\n"
+        "Helpers :: library {\n"
+        "    Twice :: (value: int) { return value * 2 }\n"
+        "    Taken :: (value: int) { return value }\n"
         "}\n"
     );
-    write_file(paths[DRIFT], "system Drift(position: Transform) {\n    position.x += dt\n}\n");
+    write_file(
+        paths[DRIFT],
+        "Drift :: system(position: Transform) on Tick :: (dt: float s) {\n"
+        "    position.x += dt\n"
+        "}\n"
+    );
     write_file(paths[4], "name \"Actor\"\ncomponents {\n    (object)Transform\n    (object)Input\n    (object)Aim\n}\n");
     write_file(paths[5], "name \"Driver\"\ncomponents {\n    EngineSystem asset=\"Drift\"\n}\n");
+    write_file(paths[7], "Targets :: relationship { exclusive: true }\n");
     write_file(
         paths[6],
         "version 1\nname \"Proof\"\n(array)entities {\n"
@@ -334,7 +344,8 @@ TEST_CASE(controller_analysis_and_rename_preview)
 
 TEST_CASE(controller_diagnostics_preserve_source_ranges)
 {
-    const char *broken = "behavior Probe { on Tick { missing_call() } }\n";
+    const char
+        *broken = "Probe :: behavior { on Tick :: () { missing_call() } }\n";
     begin("analyze_code", paths[PROBE]);
     yyjson_mut_obj_add_str(request, input, "source", broken);
     send();
@@ -408,10 +419,18 @@ TEST_CASE(controller_inspection_and_execution_status)
         begin("validate_asset", paths[i]);
         send();
     }
+    begin("read_asset", NULL);
+    yyjson_mut_obj_add_str(request, input, "kind", "relationship");
+    yyjson_mut_obj_add_str(request, input, "name", "Targets");
+    send();
     REQUIRE(run() == 0);
-    for (int i = 0; i < reply_count; i++) {
+    for (int i = 0; i < 10; i++) {
         REQUIRE(ok(i) && yyjson_get_bool(get(result(i), "valid")));
     }
+    REQUIRE(reply_count == 11 && ok(10));
+    REQUIRE(string_is(get(result(10), "name"), "Targets"));
+    REQUIRE(string_is(get(result(10), "path"), paths[7]));
+    REQUIRE(strstr(yyjson_get_str(get(result(10), "source")), "Targets :: relationship"));
     yyjson_val *graph = get(result(0), "graph");
     uint64_t graph_id = yyjson_get_uint(get(graph, "id"));
     REQUIRE(graph_id && string_is(get(graph, "name"), "Tick"));
@@ -463,13 +482,32 @@ TEST_CASE(controller_inspection_and_execution_status)
     send();
     REQUIRE(run() != 0 && ok(0) && !ok(1));
     REQUIRE(uint_is(get(get(result(0), "graph"), "id"), graph_id));
-    REQUIRE(yyjson_get_str(get(result(0), "metadata")));
+    REQUIRE(!get(result(0), "metadata"));
     nodes = get(get(result(0), "graph"), "nodes");
     yyjson_arr_foreach(nodes, i, count, node)
     {
         REQUIRE(yyjson_is_num(get(node, "x")) && yyjson_is_num(get(node, "y")));
         REQUIRE(!get(node, "in") && !get(node, "out"));
     }
+    /* A prototype file matching the requested name must not hide a second
+     * declaration. Keep relationships valid: duplicate relationship schemas
+     * fail project admission before asset lookup. No scenario frames run. */
+    write_file("content/prototypes/OtherActor.kdl", "name \"Actor\"\n");
+    const char *duplicate_kinds[] = { "relationship", "prototype" };
+    const char *duplicate_names[] = { "Targets", "Actor" };
+    for (int n = 0; n < 2; n++) {
+        begin("read_asset", NULL);
+        yyjson_mut_obj_add_str(request, input, "kind", duplicate_kinds[n]);
+        yyjson_mut_obj_add_str(request, input, "name", duplicate_names[n]);
+        send();
+    }
+    REQUIRE(run() == 7);
+    REQUIRE(reply_count == 2 && ok(0) && !ok(1));
+    REQUIRE(string_is(get(result(0), "name"), "Targets"));
+    REQUIRE(string_is(get(result(0), "path"), paths[7]));
+    yyjson_val *error = get(yyjson_doc_get_root(replies[1]), "error");
+    REQUIRE(string_is(get(error, "code"), "asset_conflict"));
+    REQUIRE(strstr(yyjson_get_str(get(error, "message")), "both declare the prototype 'Actor'"));
     REQUIRE(unchanged());
     return true;
 }

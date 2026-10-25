@@ -1,8 +1,12 @@
 #include "authoring/source_literal.h"
 
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
+#include "types/catalog.h"
+#include "types/map.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <inttypes.h>
@@ -16,12 +20,46 @@
 #define LITERAL_MAX_VALUES 16384
 #define LITERAL_MAX_BYTES (1024 * 1024)
 
+char *authoring_source_identifier(const char *name, char *error, size_t size)
+{
+    if (!name || !*name || strlen(name) > 4096) {
+        if (size) {
+            snprintf(error, size, "Source symbols need a nonempty identifier within 4096 bytes");
+        }
+        return NULL;
+    }
+    char *out = xstrdup(name);
+    bool first = true;
+    for (char *p = out; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c == ' ' || c == '-') {
+            *p = '_';
+            c = '_';
+        }
+        if (c == '.' && !first && p[1]) {
+            first = true;
+            continue;
+        }
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' ||
+              (!first && c >= '0' && c <= '9'))) {
+            free(out);
+            if (size) {
+                snprintf(error, size, "Source symbols must use identifier names");
+            }
+            return NULL;
+        }
+        first = false;
+    }
+    return out;
+}
+
 typedef struct
 {
     const script_catalog *catalog;
     char *text, *error;
     size_t error_size;
     int values;
+    arena storage;
 } literal;
 
 static bool fail(literal *l, const char *message)
@@ -45,16 +83,14 @@ static bool token(literal *l, const char *text)
 {
     return append(l, text, strlen(text));
 }
-static bool string(literal *l, const char *text)
+static bool string(literal *l, pin_string text)
 {
-    if (!text) {
-        return token(l, "null");
-    }
     if (!token(l, "\"")) {
         return false;
     }
-    const unsigned char *p = (const unsigned char *)text;
-    while (*p) {
+    const unsigned char *p = (const unsigned char *)text.bytes;
+    const unsigned char *end = p + text.length;
+    while (p < end) {
         if (*p == '"' || *p == '\\') {
             char escape[] = { '\\', (char)*p++, 0 };
             if (!token(l, escape)) {
@@ -75,7 +111,7 @@ static bool string(literal *l, const char *text)
                   : *p >= 0xe0 && *p <= 0xef ? 3
                   : *p >= 0xf0 && *p <= 0xf4 ? 4
                                              : 0;
-        if (!bytes) {
+        if (!bytes || (size_t)(end - p) < (size_t)bytes) {
             return fail(l, "Source literal string is not valid UTF-8");
         }
         for (int i = 1; i < bytes; ++i) {
@@ -151,11 +187,25 @@ static bool aggregate(literal *l, script_type expected, const pin_value *v, int 
         const char *data = (const char *)v->ptr + field->offset;
         if (item.type == PIN_STRUCT && item.container == PIN_CONTAINER_SINGLE) {
             item.ptr = (void *)data;
+        } else if (
+            item.type == PIN_STR && item.container == PIN_CONTAINER_SINGLE &&
+            field->c_string
+        ) {
+            const char *text;
+            memcpy(&text, data, sizeof text);
+            const char *error = pin_value_text(&l->storage, &item, text, text ? strlen(text) : 0);
+            if (error) {
+                return fail(l, error);
+            }
+            item.type_name = nominal ? nominal->name : NULL;
         } else {
             memcpy(&item.d, data, size);
         }
-        if ((i && !token(l, ", ")) || !string(l, field->name) ||
-            !token(l, ": ") || !value(l, field->type, &item, depth + 1)) {
+        char *name = authoring_source_identifier(field->name, l->error, l->error_size);
+        bool valid = name && (!i || token(l, ", ")) && token(l, name) &&
+                     token(l, ": ") && value(l, field->type, &item, depth + 1);
+        free(name);
+        if (!valid) {
             return false;
         }
     }
@@ -165,7 +215,7 @@ static bool array(literal *l, script_type expected, const pin_value *v, int dept
 {
     const pin_array *items = v->ptr;
     if (!items || items->count < 0 || items->count > LITERAL_MAX_VALUES - l->values ||
-        items->element_type != expected.storage || (items->count && !items->items)) {
+        items->element_type != expected.storage || !pin_array_valid(items)) {
         return fail(l, "Array literal has an invalid payload shape or element limit");
     }
     if ((items->type_name || v->type_name) &&
@@ -175,10 +225,35 @@ static bool array(literal *l, script_type expected, const pin_value *v, int dept
     if (!token(l, "[")) {
         return false;
     }
-    expected.container = PIN_CONTAINER_SINGLE;
+    expected = script_catalog_element_type(l->catalog, expected);
     for (int i = 0; i < items->count; ++i) {
-        if ((i && !token(l, ", ")) ||
-            !value(l, expected, &items->items[i], depth + 1)) {
+        pin_value item = pin_array_get(items, i);
+        if ((i && !token(l, ", ")) || !value(l, expected, &item, depth + 1)) {
+            return false;
+        }
+    }
+    return token(l, "]");
+}
+static bool map(literal *l, script_type expected, const pin_value *v, int depth)
+{
+    const pin_map *items = v->ptr;
+    const script_catalog_type
+        *descriptor = script_catalog_type_by_id(l->catalog, expected.collection);
+    if (!descriptor || descriptor->container != PIN_CONTAINER_MAP ||
+        (items && (items->count < 0 || items->count > LITERAL_MAX_VALUES - l->values))) {
+        return fail(l, "Map literal requires its complete key/value descriptor");
+    }
+    if (!items || !items->count) {
+        return token(l, "[:]");
+    }
+    if (!token(l, "[")) {
+        return false;
+    }
+    for (int i = 0; i < items->count; i++) {
+        const pin_map_entry *entry = &items->entries[i];
+        if (!pin_map_key_supported(entry->key) || (i && !token(l, ", ")) ||
+            !value(l, descriptor->key_type, &entry->key, depth + 1) || !token(l, ": ") ||
+            !value(l, descriptor->element_type, &entry->value, depth + 1)) {
             return false;
         }
     }
@@ -222,6 +297,52 @@ static bool number(literal *l, const pin_value *v)
     }
     return token(l, text);
 }
+static bool reference(literal *l, script_reference_kind kind, const pin_value *v)
+{
+    const char *reference_text = NULL;
+    if (kind == SCRIPT_REFERENCE_PROTOTYPE || kind == SCRIPT_REFERENCE_COMPONENT) {
+        const char *error = pin_text_cstring(&l->storage, *v, &reference_text, NULL);
+        if (error) {
+            return fail(l, error);
+        }
+    }
+    const char *name = NULL;
+    if (kind == SCRIPT_REFERENCE_PROTOTYPE) {
+        int index = reference_text
+                      ? script_catalog_find_capability(l->catalog, reference_text, SCRIPT_CAPABILITY_PROTOTYPE)
+                      : -1;
+        if (index >= 0) {
+            name = l->catalog->capabilities[index].name;
+        }
+    } else if (kind == SCRIPT_REFERENCE_COMPONENT) {
+        int index = reference_text
+                      ? script_catalog_find_type(l->catalog, reference_text)
+                      : -1;
+        if (index >= 0 && l->catalog->types[index].component) {
+            const script_catalog_type *type = &l->catalog->types[index];
+            name = type->source_name ? type->source_name : type->name;
+        }
+    } else if (v->u64 == SCRIPT_CHILD_OF) {
+        name = "ChildOf";
+    } else {
+        for (int i = 0; i < l->catalog->relationship_count; i++) {
+            if (l->catalog->relationships[i].id == v->u64) {
+                name = l->catalog->relationships[i].name;
+                break;
+            }
+        }
+    }
+    if (!name) {
+        return fail(l, "Source reference must resolve to a symbol of its declared kind");
+    }
+    char *spelling = authoring_source_identifier(name, l->error, l->error_size);
+    if (!spelling) {
+        return false;
+    }
+    bool written = token(l, spelling);
+    free(spelling);
+    return written;
+}
 static bool value(literal *l, script_type expected, const pin_value *v, int depth)
 {
     if (depth >= LITERAL_MAX_DEPTH || ++l->values > LITERAL_MAX_VALUES) {
@@ -236,7 +357,10 @@ static bool value(literal *l, script_type expected, const pin_value *v, int dept
     if ((!text && expected.storage != v->type) || expected.container != v->container) {
         return fail(l, "Source literal does not match the declared value type");
     }
-    if (expected.nominal) {
+    script_type element = expected;
+    element.container = PIN_CONTAINER_SINGLE;
+    script_reference_kind reference_kind = script_reference_kind_for_type(element);
+    if (expected.nominal && reference_kind == SCRIPT_REFERENCE_NONE) {
         const script_catalog_type
             *type = script_catalog_type_by_id(l->catalog, expected.nominal);
         int actual = v->type_name ? script_catalog_find_type(l->catalog, v->type_name)
@@ -252,17 +376,22 @@ static bool value(literal *l, script_type expected, const pin_value *v, int dept
             return fail(l, "Source literal nominal type does not match its reflected layout");
         }
     }
-    if (expected.container == PIN_CONTAINER_SET ||
-        expected.container == PIN_CONTAINER_MAP) {
-        return fail(l, "Set and map values have no supported source literal contract");
+    if (expected.container == PIN_CONTAINER_MAP) {
+        return map(l, expected, v, depth);
+    }
+    if (expected.container == PIN_CONTAINER_SET) {
+        return fail(l, "Set values have no supported source literal contract");
     }
     if (expected.container == PIN_CONTAINER_ARRAY) {
         return array(l, expected, v, depth);
     }
+    if (reference_kind != SCRIPT_REFERENCE_NONE) {
+        return reference(l, reference_kind, v);
+    }
     switch (v->type) {
         case PIN_BOOL: return token(l, v->b ? "true" : "false");
         case PIN_NAME:
-        case PIN_STR: return string(l, v->str);
+        case PIN_STR: return string(l, pin_text(*v));
         case PIN_STRUCT: return aggregate(l, expected, v, depth);
         case PIN_FLOW:
         case PIN_HANDLE:
@@ -285,6 +414,7 @@ char *authoring_source_literal(
     literal l = { .catalog = catalog, .error = error, .error_size = size };
     if (!value(&l, expected, v, 0)) {
         afree(l.text);
+        arena_free(&l.storage);
         return NULL;
     }
     int length = acount(l.text);
@@ -292,5 +422,6 @@ char *authoring_source_literal(
     memcpy(result, l.text, (size_t)length);
     result[length] = 0;
     afree(l.text);
+    arena_free(&l.storage);
     return result;
 }

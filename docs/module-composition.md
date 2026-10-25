@@ -1,5 +1,19 @@
 # Qualified module composition: bounded prerequisite
 
+Current source syntax is documented in [code-language.md](code-language.md).
+Library declarations use `Scroll :: library { ... }`, named callables use
+`Step :: (...) -> Type { ... }`, and qualified calls use `Scroll.Step(...)`.
+The catalog now infers and propagates exported callable effects before consumer
+analysis, including task starts and retained/invocation reads. These source changes
+do not update the historical measurements recorded below.
+
+The current module suite additionally covers imported generic specialization,
+compile-time helper calls, constructed record metadata, owning-library source
+provenance and generation invalidation. It also checks that invalid requests
+publish no concrete generation and that floating compile-time values preserve
+their exact representations during catalog comparison. These additions do not
+change the historical acceptance results below.
+
 This is a narrow proof of existing qualified library composition for the Studio
 migration's L07 prerequisite. It does not complete L07, establish broader language
 readiness (B02/L00/B04 or L24), or add import aliases, export/private declarations,
@@ -70,6 +84,10 @@ binding, runtime service registry, or forced source flattening.
 - Library state is absent from exported global values and cannot be read as
   `Store.secret` by the caller. The existing public function remains discoverable.
   This does not invent export/private metadata or a security boundary.
+- Library retained state belongs to the consuming behavior attachment or system
+  registration, including retention inside helpers. Module namespaces remain
+  distinct, but all query matches of one system use the same library retained
+  values. Coroutine locals and tasks stay with their individual invocation.
 - Two simultaneously retained catalogs with the same document/module identities
   keep their own library bodies (results 3 and 7). A third catalog containing only
   the caller cannot acquire a missing library from either live collection.
@@ -104,6 +122,12 @@ scheduling proof. A pure imported helper still does not establish parallel safet
 
 ## Fixed workload and validation
 
+This section records the historical seven-case workload. The redesigned suite
+now has seventeen cases; its current source-derived bounds are in
+[testing.md](testing.md#qualified-module-prerequisite-fixed-workload).
+The table, concurrency limits and execution observations below apply only to
+the original seven-case suite.
+
 The single existing C dispatcher gains `--modules`, containing seven pico_unit
 cases. Numerical execution uses bytecode plus the platform compiled backend
 (SLJIT natively; Wasm in the Emscripten build). It checks backend availability and
@@ -134,10 +158,9 @@ collections and one program are live together. Each case creates and removes one
 empty temporary directory. It writes no source files and starts no child process,
 frame loop, world, renderer, GPU work, network operation, or sleep.
 
-Independent review admitted this seven-case workload and its native negative
-measurement. It then reviewed the exact correction and admitted a bounded first
-measurement of the expanded language and Wasm groups, run serially in the
-coordinator's slot. `language-modules` is added once to the language group (28 to 29
+Independent review covered this seven-case workload and its native negative
+measurement. It then reviewed the exact correction and the first measurement of
+the expanded language and Wasm groups, run serially by the coordinator. `language-modules` is added once to the language group (28 to 29
 commands), and `wasm-modules` once to the Wasm group (16 to 17 commands). No old
 member is removed. Makefile's `test-language-all` and `test-wasm` invoke these
 groups; native CI invokes `test-language-all`. Dedicated routes alone did not
@@ -147,16 +170,15 @@ At historical commit `cdf9adc540f1c1c0c9c8468820a1bf5b706629e4`, the unexpanded
 language group measured 382 cases/35,964 assertions in 22.245 s, and Wasm measured
 226/32,081 in 3.203 s. The complete changed groups were measured separately,
 as recorded below; component timings were not used to guarantee their totals.
-Each complete group retains one shared production 60-second deadline, including all child commands, without chunking or suppression.
 Configuration/build time is separate. The existing complete `native-tools` route
 also passed policy validation using its exact-source `policy_worker` and source
 root. Neither language group invokes that tooling executable.
 
-This addition does not claim literal coverage of every admitted selector:
+This addition does not claim literal coverage of every selected selector:
 `query-program` cases already run through `program`; the prepared producer/consumer
 workflow belongs to the native group. The pre-existing standalone `wasm-format`
 route remains outside the Wasm group and is not covered by another member.
-No full/quarantined suite is enabled or reconstructed in chunks.
+These selected results do not establish a full-suite pass.
 
 ## Regression and compatibility
 
@@ -210,8 +232,8 @@ Each check ran once, serially, under the unchanged production supervisor:
 | `group wasm` | 17 | 233 | 32,519 | 4.223 s |
 | `tool native-tools` | 1 | 116 | 29,566 | 21.699 s |
 
-All five exited 0 with no failed cases. Each entire command/group retained its
-shared 60-second ceiling, including fixture setup and owned process cleanup.
+All five exited 0 with no failed cases, including fixture setup and owned
+process cleanup.
 The group logs contain the module suite exactly once and reconcile to the prior
 aggregate case/assertion counts plus 7/438. The native language group includes
 navigation (29/329), incremental (13/235), program/imported-state and publication
@@ -228,8 +250,8 @@ no runtime execution.
 
 The [validation record](module-composition-validation.json) preserves the exact
 tested commit, source/artifact/log hashes, commands, environment, workload bounds,
-negative regressions and historical approval supersession. No full/quarantined
-gate, representative whole-app proof, L07/L24 completion, prepared producer/consumer
+negative regressions and historical approval supersession. No full-suite
+pass, representative whole-app proof, L07/L24 completion, prepared producer/consumer
 run, or standalone Wasm formatter pass is claimed. Publication, final published-head
 review and the explicit platform merge hold remain separate.
 
@@ -248,8 +270,7 @@ and the four selected checks passed on exact source commit
 | `language-navigation` | 29 | 329 | 0.183 s |
 | `language-incremental` | 13 | 235 | 0.430 s |
 
-Every command exited 0 under its unchanged shared 60-second ceiling, including
-fixture setup. Native used Clang 19 Debug with AddressSanitizer and UBSan;
+Every command exited 0, including fixture setup. Native used Clang 19 Debug with AddressSanitizer and UBSan;
 `ASAN_OPTIONS=detect_leaks=0` reflects the documented LeakSanitizer environment
 limitation. Wasm used Emscripten Release and Node 24. Builds were current before
 execution. These subsecond timings are functional-test durations, not performance
@@ -264,5 +285,5 @@ was run for those documentation-only changes. The current review correction
 changed product, test and group-membership bytes; its new validation is recorded
 above. Publication and final published-head review remain separate. At the initial
 six-case stage, imported-state/program and publication cases were not rerun; the
-corrected native language group now includes them. Full/quarantined gates,
+corrected native language group now includes them. Full-suite passes,
 whole-app behavior, L07 completion and broader readiness remain unclaimed.

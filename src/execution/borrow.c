@@ -2,6 +2,7 @@
 
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/module_effects.h"
 #include "execution/program_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -44,8 +45,8 @@ static bool vm_disjoint(
         return false;
     }
     /* The shared guard already checked count, shape, and byte arithmetic. */
-    const void *ranges[] = { array, array->items };
-    const size_t sizes[] = { sizeof *array, (size_t)array->count * sizeof *array->items };
+    const void *ranges[] = { array, array->stride ? array->data : (void *)array->items };
+    const size_t sizes[] = { sizeof *array, pin_array_storage_bytes(array) };
     for (int j = 0; j < 2; j++) {
         if (behavior_borrow_overlap(ranges[j], sizes[j], vm, 1, sizeof *vm) ||
             behavior_borrow_overlap(
@@ -88,8 +89,8 @@ static bool calls_disjoint(
             !program_view_disjoint(
                 current,
                 ctx,
-                array->items,
-                (size_t)array->count * sizeof *array->items
+                array->stride ? array->data : (void *)array->items,
+                pin_array_storage_bytes(array)
             )) {
             return false;
         }
@@ -146,8 +147,8 @@ bool behavior_function_borrow_argument(
         if (array && (!behavior_borrow_disjoint(parent, array, sizeof *array, banks) ||
                       !behavior_borrow_disjoint(
                           parent,
-                          array->items,
-                          (size_t)array->count * sizeof *array->items,
+                          array->stride ? array->data : (void *)array->items,
+                          pin_array_storage_bytes(array),
                           banks
                       ) ||
                       !vm_disjoint(owner, parent, array) ||
@@ -155,8 +156,8 @@ bool behavior_function_borrow_argument(
                       !program_view_disjoint(
                           owner,
                           parent,
-                          array->items,
-                          (size_t)array->count * sizeof *array->items
+                          array->stride ? array->data : (void *)array->items,
+                          pin_array_storage_bytes(array)
                       ))) {
             return false;
         }
@@ -328,10 +329,18 @@ static bool instruction(
                 out.kind = aggregate ? ARRAY : VALUE;
             } else if (array(a) && i->offset == offsetof(pin_array, count) && i->type == PIN_I32) {
                 out.kind = VALUE;
-            } else if (array(a) && i->offset == offsetof(pin_array, items) && i->type == BF_POINTER_TYPE) {
-                out.kind = ITEMS;
             } else if (
-                a.kind != ITEM || i->offset != offsetof(pin_value, d) ||
+                array(a) &&
+                (i->offset == offsetof(pin_array, items) ||
+                 i->offset == offsetof(pin_array, data)) &&
+                i->type == BF_POINTER_TYPE
+            ) {
+                out.kind = ITEMS;
+            } else if (array(a) && i->offset == offsetof(pin_array, stride) && i->type == BF_POINTER_TYPE) {
+                out.kind = VALUE;
+            } else if (
+                a.kind != ITEM ||
+                (i->offset != offsetof(pin_value, d) && i->offset != 0) ||
                 f->slot_kinds[i->output] != BEHAVIOR_VALUE ||
                 !behavior_borrow_plain((pin_value){ .type = i->type })
             ) {
@@ -343,6 +352,13 @@ static bool instruction(
                 return false;
             }
             out.kind = ITEM;
+            break;
+        case BF_ADD:
+            if ((a.kind == ITEMS || a.kind == ITEM) && b.kind == VALUE) {
+                out.kind = ITEM;
+            } else if (a.kind != VALUE || b.kind != VALUE) {
+                return false;
+            }
             break;
         case BF_WRITE:
             if (b.kind == CONTEXT) {
@@ -395,6 +411,8 @@ static bool instruction(
             }
             if (array(b) && array(other)) {
                 out.kind = ARRAY;
+            } else if (b.kind == ITEMS && other.kind == ITEMS) {
+                out.kind = ITEMS;
             } else if (b.kind != VALUE || other.kind != VALUE) {
                 return false;
             }
@@ -504,6 +522,10 @@ void behavior_function_prepare_borrows(behavior_function *f)
     if (!f || !f->frozen) {
         return;
     }
+    execution_prepare_argument_sharing(f);
+    /* With every callee's argument sharing known, a raw address to a built
+     * value may reach a callee that changes no argument. */
+    behavior_function_note_derived(f);
     borrow_proof proof = { 0 };
     f->readonly_collections = readonly(f, NULL, &proof);
     if (!f->readonly_collections) {

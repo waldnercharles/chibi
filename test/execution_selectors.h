@@ -1,5 +1,7 @@
 /* CPU-only entry points reviewed for agent iteration. Unknown/new selectors
  * fail closed until classified; tools/agent.py routes each one. */
+/* Bounded prepared scalar scopes and value-host admission; no source I/O. */
+CHIBI_CPU_SELECTOR("--execution-scope")
 CHIBI_CPU_SELECTOR("--source-presentation")
 CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
@@ -18,9 +20,6 @@ CHIBI_CPU_SELECTOR("--behavior-loader")
 CHIBI_CPU_SELECTOR("--engine-clock")
 CHIBI_CPU_SELECTOR("--preview-layout")
 CHIBI_CPU_SELECTOR("--fields")
-CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
-/* Required external Examples checkout: project validation and fixed CPU snapshots. */
-CHIBI_CPU_SELECTOR("--examples-projects")
 /* C-owned URL gesture lifecycle cases through Node; no browser/network/GPU. */
 CHIBI_CPU_SELECTOR("--player-url")
 /* Both platform clock initializers with a recorded limiter setter; no clocks. */
@@ -52,11 +51,26 @@ CHIBI_CPU_SELECTOR("--render-geometry")
 CHIBI_CPU_SELECTOR("--arena")
 /* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
 CHIBI_CPU_SELECTOR("--shader-graphs")
+CHIBI_CPU_SELECTOR("--shader-bake")
+/* Owned CPU intermediate/source snapshots; no device, files or resolver IO. */
+CHIBI_CPU_SELECTOR("--shader-source-debug")
+/* Authored provenance policy on two CPU backends, supplied tables only. */
+CHIBI_CPU_SELECTOR("--shader-source-chibi")
+CHIBI_CPU_SELECTOR("--asset-compiler-host")
+CHIBI_CPU_SELECTOR("--asset-packaging-chibi")
+CHIBI_CPU_SELECTOR("--material-bake")
+CHIBI_CPU_SELECTOR("--environment-authoring")
+CHIBI_CPU_SELECTOR("--terrain-seams")
+CHIBI_CPU_SELECTOR("--material-surface-mesh")
+CHIBI_CPU_SELECTOR("--scene3d-camera")
+CHIBI_CPU_SELECTOR("--scene3d-volume")
+CHIBI_CPU_SELECTOR("--scene3d-terrain")
+CHIBI_CPU_SELECTOR("--terrain-checkpoint")
+CHIBI_CPU_SELECTOR("--terrain-storage")
+CHIBI_CPU_SELECTOR("--terrain-storage-commands")
+CHIBI_CPU_SELECTOR("--terrain-playable")
 
-/* Explicit opt-in checks against installed products; each runs under the
- * shared 60-second supervisor. */
-CHIBI_GPU_SELECTOR("--player-installed-space-cadet-vm")
-CHIBI_GPU_SELECTOR("--player-installed-space-cadet-sljit")
+/* Explicit opt-in checks against installed products. */
 CHIBI_GPU_SELECTOR("--studio-source-edit")
 CHIBI_GPU_SELECTOR("--studio-graph-visibility")
 CHIBI_GPU_SELECTOR("--studio-scene-move")
@@ -90,6 +104,16 @@ CHIBI_GPU_SELECTOR("--material-sampling")
 /* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
  * readback. */
 CHIBI_GPU_SELECTOR("--scene2d")
+/* Six 64x64 readbacks of adjacent terrain chunks: borders, LOD and restored edits. */
+CHIBI_GPU_SELECTOR("--material-terrain-seams")
+CHIBI_GPU_SELECTOR("--terrain-playable-render")
+/* One hidden 64x64 draw of twelve mesh/SDF surfaces and two texture readbacks:
+ * independent visible color, absorption/filter coefficients and graph cutouts. */
+CHIBI_GPU_SELECTOR("--surface-transport")
+CHIBI_GPU_SELECTOR("--material-mesh-cache")
+CHIBI_GPU_SELECTOR("--scene3d-terrain-gpu")
+CHIBI_GPU_SELECTOR("--scene3d-volume-gpu")
+CHIBI_GPU_SELECTOR("--hrc-spot")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
 /* The same cases on GLES, under xvfb-run on Linux. */
@@ -113,13 +137,6 @@ CHIBI_GPU_SELECTOR("--radiance-horizons8")
 CHIBI_GPU_SELECTOR("--material-pixels")
 /* One hidden 64x64 app, seven glTF transform/control comparisons, 21 frames. */
 CHIBI_GPU_SELECTOR("--texture-transform")
-
-/* Pinned installed examples: one start scene, four 320x180 frames each. */
-CHIBI_GPU_SELECTOR("--installed-example-local_mesh_sampled")
-CHIBI_GPU_SELECTOR("--installed-example-hrc_lab")
-CHIBI_GPU_SELECTOR("--installed-example-modeling_lab")
-CHIBI_GPU_SELECTOR("--installed-example-sdf_lab")
-CHIBI_GPU_SELECTOR("--installed-example-suzanne_sampled")
 
 /* Compute shaders of shader graph GLSL against the CPU evaluator in a hidden
  * 32x32 app, with readback. */

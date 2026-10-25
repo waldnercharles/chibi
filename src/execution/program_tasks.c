@@ -9,6 +9,9 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
+#include "types/map.h"
+#include "types/record.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -174,7 +177,8 @@ static void box_detach(execution_box *box)
     int status = pin_value_snapshot_to_arena(&box->storage, &box->kept, box->value);
     assert(!status);
     (void)status;
-    box->detached = (behavior_function_context){ .value_storage = &box->storage };
+    box->detached = (behavior_function_context){ .value_storage = &box->storage,
+                                                 .result_storage = &box->storage };
     box->owner = &box->detached;
     box->value = &box->kept;
     box_release(box);
@@ -306,6 +310,7 @@ static void deliver(const execution_task *t, task_waiter waiter)
         *borrowed = (pin_union){ .tag = waiter.tag, .count = t->result_count };
         if (bytes) {
             memcpy(borrowed->values, t->results, bytes);
+            pin_copy_record(PIN_COPY_VALUE_BUFFER, bytes);
         }
         result = (pin_value){ .type = PIN_UNION, .ptr = borrowed };
     }
@@ -536,18 +541,28 @@ static void mark_fields(task_roots *roots, const type_desc *type, const void *da
 static void mark_value(void *user, const pin_value *value)
 {
     task_roots *roots = user;
-    /* Collection elements retain their declared storage kind (constructors
-     * and prepared decoding enforce homogeneous, scalar elements). Primitive
-     * arrays/sets/maps cannot hide tasks, so skip their entire payload. Struct
-     * fields and union payloads still need recursive inspection. */
-    if (value->type != PIN_TASK && value->type != PIN_UNION && value->type != PIN_STRUCT) {
+    if (value->container == PIN_CONTAINER_MAP) {
+        const pin_map *map = value->ptr;
+        for (int i = 0; map && i < map->count; i++) {
+            mark_value(roots, &map->entries[i].key);
+            mark_value(roots, &map->entries[i].value);
+        }
         return;
     }
     if (value->container != PIN_CONTAINER_SINGLE) {
         const pin_array *array = value->ptr;
-        for (int i = 0; array && i < array->count; i++) {
-            mark_value(roots, &array->items[i]);
+        /* Packed layouts contain only plain data. Boxed values can contain
+         * nested collections, including maps whose outer storage is scalar. */
+        if (array && array->stride) {
+            return;
         }
+        for (int i = 0; array && i < array->count; i++) {
+            pin_value item = pin_array_get(array, i);
+            mark_value(roots, &item);
+        }
+        return;
+    }
+    if (value->type != PIN_TASK && value->type != PIN_UNION && value->type != PIN_STRUCT) {
         return;
     }
     switch (value->type) {
@@ -561,7 +576,7 @@ static void mark_value(void *user, const pin_value *value)
         }
         case PIN_STRUCT:
             if (value->ptr) {
-                const type_desc *type = type_catalog_find(value->type_name);
+                const type_desc *type = pin_value_type(value);
                 assert(type);
                 mark_fields(roots, type, value->ptr);
             }

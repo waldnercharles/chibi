@@ -574,7 +574,9 @@ int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_ju
         return 0;
     }
     const behavior_function_instruction *literal = &f->instructions[pc + 1];
-    bool immediate = literal->op == BF_CONSTANT && literal->type == type;
+    /* SLJIT negates compare immediates, which INT64_MIN cannot survive. */
+    bool immediate = literal->op == BF_CONSTANT && literal->type == type &&
+                     behavior_scalar_bits(literal->value) != (uint64_t)INT64_MIN;
     int comparison = pc + 1 + immediate;
     bool invert;
     int last = predicate_branch(f, comparison, &invert);

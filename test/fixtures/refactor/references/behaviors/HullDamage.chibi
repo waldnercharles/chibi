@@ -1,9 +1,9 @@
-behavior "HullDamage" {
-    on Damage {
-        self.Health.Current -= event.Amount
-        await "WeaponActions"."Spawn Prototype At"("HitEmitter", self.Transform)
-        if cast<double>(self.Health.Current) <= 0 {
-            await "WeaponActions"."Spawn Prototype At"("DeathEmitter", self.Transform)
+HullDamage :: behavior {
+    on Damage :: (Amount: int) {
+        self.Health.Current -= Amount
+        await WeaponActions.Spawn_Prototype_At(HitEmitter, self.Transform)
+        if double(self.Health.Current) <= 0 {
+            await WeaponActions.Spawn_Prototype_At(DeathEmitter, self.Transform)
             release_material(self)
         }
     }

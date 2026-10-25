@@ -82,11 +82,12 @@ void shade_surface_points(vec3 v_world, vec3 v_normal, vec3 object_point, vec3 p
         opacity=clamp(surface[5].x,0.0,1.0);
         unlit=surface[6].x>0.5;
         albedo=unlit?vec3(0):base*(1.0-clamp(surface[3].x,0.0,1.0));
-        absorption=vec3(opacity); absorption_cover=opacity;
+        // Graph appearance preserves the entity's authored transport coefficients.
+        absorption*=opacity; absorption_cover*=opacity;
         gloss=1.0-clamp(surface[2].x,0.0,1.0);
         float n2=dot(surface[4].xyz,surface[4].xyz);
         if (n2>1e-8&&!isnan(n2)&&!isinf(n2)) normal=surface[4].xyz*inversesqrt(n2);
-        if (!isnan(surface[7].x)&&!isinf(surface[7].x)) height+=surface[7].x;
+        if (u_surface.w<4.0&&!isnan(surface[7].x)&&!isinf(surface[7].x)) height+=surface[7].x;
     }
     // This first mesh contract is opaque. Zero opacity supports cutouts.
     if (isnan(opacity)||opacity<=0.0) discard;
@@ -103,7 +104,7 @@ void shade_surface_points(vec3 v_world, vec3 v_normal, vec3 object_point, vec3 p
 
 void shade_surface(vec3 world, vec3 normal, vec3 local, vec3 object_normal, vec2 uv)
 {
-    if (u_surface.w<=0.5) {
+    if (mod(u_surface.w,4.0)<=0.5) {
         vec3 side=abs(object_normal);
         uv=side.y>=side.x&&side.y>=side.z ? local.xz+0.5
             : side.x>=side.z ? vec2(local.z+0.5,0.5-local.y)
@@ -114,7 +115,7 @@ void shade_surface(vec3 world, vec3 normal, vec3 local, vec3 object_normal, vec2
     vec3 object_point=local*u_dimensions.xyz;
     vec3 object_rows[3], uv_rows[2];
     surface_object_frame(object_rows);
-    if(u_surface.w>0.5) surface_uv_frame(world,uv,uv_rows);
+    if(mod(u_surface.w,4.0)>0.5) surface_uv_frame(world,uv,uv_rows);
     else {
         vec3 side=abs(object_normal);
         uv_rows[0]=(side.y>=side.x&&side.y>=side.z || side.x<side.z) ? object_rows[0]/u_dimensions.x : object_rows[2]/u_dimensions.z;

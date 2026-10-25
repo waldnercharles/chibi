@@ -12,6 +12,59 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+/* Actual entries through the interpreter/runner/Wasm path, including outlined
+ * calls and resumes. Inspected and fallback fields are subsets, not additional
+ * entries. Direct generated-C and batch/system calls are outside this measure. */
+typedef struct
+{
+    uint64_t bytecode_entries, sljit_entries, wasm_entries;
+    uint64_t inspected_sljit_entries, inspected_wasm_entries;
+    uint64_t inspection_bytecode_fallbacks;
+    /* Entries of definitions past the Wasm JIT's size budget. */
+    uint64_t size_bytecode_fallbacks;
+    bool overflow; /* Sticky saturation makes the sample inexact. */
+} behavior_run_counts;
+typedef struct behavior_run_scope
+{
+    behavior_run_counts counts;
+    struct behavior_run_scope *previous;
+    bool active;
+} behavior_run_scope;
+/* Caller-owned, initially zeroed scopes retain no runtime objects. Begin/end
+ * preserve counts across windows; reset requires an inactive scope. Nesting is
+ * exclusive: only the current thread's top scope receives events, including
+ * synchronous reentry. End that exact scope before releasing its storage.
+ * A hidden parent remains active and cannot be reset or begun again. Scopes do
+ * not propagate to workers. Concurrent access, cross-thread ending and cleanup
+ * bypassed by longjmp are invalid; inactive transfer needs synchronization.
+ * Counters saturate at UINT64_MAX. Totals/merges need checked arithmetic;
+ * saturated endpoint deltas are inexact. Recording does not allocate or enable
+ * inspection, profiling or clocks. */
+void behavior_run_scope_begin(behavior_run_scope *scope);
+void behavior_run_scope_end(behavior_run_scope *scope);
+void behavior_run_scope_reset(behavior_run_scope *scope);
+/* Thread-confined invocation budget shared by every outlined call. Scoped
+ * execution uses the canonical instruction stream; no context ABI changes. */
+typedef struct behavior_execution_scope
+{
+    uint64_t remaining;
+    bool (*cancelled)(void *user);
+    void *user;
+    bool pure;
+    /* Trusted packaged code may request guarded native execution. Pure scopes
+     * always use the VM. Unsupported native targets fall back to the VM. */
+    bool prefer_compiled;
+    struct behavior_execution_scope *previous;
+    bool active;
+} behavior_execution_scope;
+void behavior_execution_scope_begin(behavior_execution_scope *);
+void behavior_execution_scope_end(behavior_execution_scope *);
+bool behavior_execution_scope_active();
+bool behavior_execution_scope_pure();
+/* Cancellation-only preparation poll: never consumes instruction budget. */
+bool behavior_execution_scope_cancelled();
+/* NULL on success, otherwise a stable diagnostic. Called before each VM op. */
+const char *behavior_execution_scope_step();
 typedef enum
 {
     EXECUTION_REDUCTION_ADD,
@@ -52,7 +105,13 @@ typedef struct
     const behavior_function *function;
     behavior_data_binding *calls;
     pin_value *values;
+    /* What a reset restores: the initial values, each struct buffer's bound. */
+    pin_value *initial;
     void **buffers;
+    /* The cells that own a struct buffer. */
+    int *buffered;
+    /* The struct buffers' total size, fixed when the storage is made. */
+    size_t buffer_bytes;
 } behavior_data_storage;
 typedef struct
 {
@@ -112,6 +171,8 @@ typedef enum
     BEHAVIOR_FUNCTION_ARGUMENT,
     BEHAVIOR_FUNCTION_COMMAND,
 } behavior_function_failure;
+/* What a failure without its own message reports. */
+const char *behavior_function_failure_text(behavior_function_failure);
 typedef enum
 {
     BEHAVIOR_POINT_NODE,
@@ -200,7 +261,6 @@ typedef struct behavior_function_context
     uint64_t returned_outcome;
     int pending_commands;
     const pin_value *(*action_result)(struct behavior_function_context *, uint64_t action, int ordinal);
-    const pin_value *(*event_argument)(struct behavior_function_context *, uint64_t function, int ordinal);
     int (*complete_action)(struct behavior_function_context *, uint64_t action, const pin_value *, int count);
     int (*state_inputs)(struct behavior_function_context *, uint64_t action, int entry, int *demand);
     int (*state_transition)(
@@ -287,7 +347,11 @@ typedef struct behavior_function_context
     /* Invocation-owned copies outlive locals, suspension and returned values.
      * The caller resets this storage only after those values are released. */
     void *value_storage;
+    /* Where a function builds the locals it returns: its caller's value
+     * storage for a call, otherwise its own. */
+    void *result_storage;
     const char *(*copy_string)(void *storage, const char *text);
+    const pin_string *(*copy_text)(void *storage, const pin_string *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);
     void (*store_value)(void *owner, int variable, const pin_value *value);
     void (*add_set_value)(void *owner, int variable, const pin_value *item);
@@ -302,6 +366,9 @@ typedef struct behavior_function_context
     /* Keep optional state callbacks after the frequently read context fields. */
     int (*select_state)(void *owner, const behavior_state_selection *selection, int start, int flags);
 } behavior_function_context;
+/* Borrowed prepared-source origin of the last failure, including outlined
+ * callees propagated during unwind. NULL if no origin is available. */
+const behavior_function_source *behavior_function_failure_source(const behavior_function_context *);
 /* Deepest retained invocation, including a suspended or failed callee. */
 /* Visits the root and retained outlined contexts without changing their frames.
  * The visitor must not release or add call frames. */
@@ -472,6 +539,9 @@ void behavior_function_write_sequence_c(
 void behavior_function_write_system_c(const behavior_function *function, FILE *out, const char *name);
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
+/* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
+ * budget. */
+bool behavior_function_interpreted(const behavior_function *function);
 /* Caller-owned output storage outlives the invocation. Only aggregate results
  * allocate; scalar result slots are already initialized by the runtime. */
 void behavior_function_prepare_results(
@@ -503,5 +573,10 @@ const pin_value *behavior_function_frame_inputs(
     int frame,
     arena *storage,
     int *count
+);
+const pin_string *behavior_function_intern_text(
+    behavior_function_context *,
+    const struct ecs_execution_view *,
+    const pin_string *
 );
 #endif

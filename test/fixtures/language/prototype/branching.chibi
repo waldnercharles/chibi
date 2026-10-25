@@ -1,10 +1,10 @@
-behavior Branching {
-    elapsed := 0
+Branching :: behavior {
+    elapsed := 0.0
     paused := false
     active := true
-    intensity := 0
+    intensity := 0.0
 
-    on Tick(dt) {
+    on Tick :: (dt: float s) {
         if !paused && active {
             elapsed += dt
         }

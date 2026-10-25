@@ -11,9 +11,15 @@ on:
       - 'cmake/**'
       - 'third_party/**'
       - 'content/**'
+      - 'packages/core/**'
       - 'tools/**'
       - 'CMakeLists.txt'
       - 'Makefile'
+      - 'COPYING'
+      - 'COPYING.LESSER'
+      - 'COPYING.EXAMPLES'
+      - 'LICENSE.md'
+      - 'docs/distribution-licensing.md'
       - '.github/workflows/publish.yml'
 
 permissions:
@@ -68,12 +74,15 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               print(f'complete={str(complete).lower()}', file=output)
           PY
+      - name: Validate SDK release pins
+        if: steps.release.outputs.complete != 'true'
+        run: sh tools/check_publish_pins.sh
       - name: Install build dependencies
         if: steps.release.outputs.complete != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build ccache clang-18 libclang-18-dev libclang-rt-18-dev \
+            ninja-build ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
             libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
           pip install 'cmake==4.2.3'
@@ -82,15 +91,6 @@ jobs:
         with:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
-      - name: Restore dependency sources and packages
-        if: steps.release.outputs.complete != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-${{ hashFiles('engine/cmake/**', 'engine/tools/dependency_package.py', 'engine/tools/fetchcontent_cache.py') }}
-          restore-keys: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-
       - name: Restore compiler cache
         if: steps.release.outputs.complete != 'true'
         uses: hendrikmuhs/ccache-action@v1.2

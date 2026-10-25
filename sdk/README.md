@@ -49,8 +49,7 @@ target_link_libraries(my_target PRIVATE Chibi::types)
 Set `CMAKE_PREFIX_PATH` to the installation. `Chibi::support` provides arenas and
 allocation; `Chibi::ecs` provides entity storage, queries, structural commands and
 execution views without graph dependencies; `Chibi::execution_contract` provides
-instruction/host/status contracts and the checked engine-operation mapping,
-using the parser-free capabilities package for shared semantic descriptors.
+instruction/host/status contracts.
 `Chibi::asset_values` owns document values and their storage. `Chibi::value_document`
 converts reflected values to owned documents and reads documents into caller-owned
 arenas. Failed reads leave the output value unchanged. Both are optional dependencies for
@@ -58,11 +57,7 @@ consumers; execution and ECS do not depend on either target.
 `Chibi::capabilities` owns declaration identities, types, signatures and effects.
 It is available without the language parser. `Chibi::native_capabilities` joins
 those declarations to host, access, command and query descriptors and validates
-their declaration/layout ABI. The core Owner/Delta/Delay operations generate
-checked bindings from their shared definitions; their signatures, effects,
-ownership guarantees and lowering identity are described in
-[engine operation contracts](../docs/engine-operation-contracts.md).
-The compiler's native binding adapter resolves this
+their declaration/layout ABI. The compiler's native binding adapter resolves this
 table by stable identity. Prepared linkage checks the recorded declaration ABI.
 `Chibi::core_capabilities`, `Chibi::array_capabilities`,
 `Chibi::field_capabilities` and `Chibi::state_capabilities` supply shared native
@@ -126,8 +121,8 @@ Set `CHIBI_SDK_BUILD_NATIVE=ON` to include the engine's built-in component layou
 and the entity, audio, rhythm and vector packages. Standalone native builds require
 `CHIBI_REFLECT_EXECUTABLE`, a native host reflection generator. When its libclang
 needs an explicit builtin-header directory, supply
-`CHIBI_REFLECT_RESOURCE_INCLUDE_DIR`. Cute math headers are pinned independently
-of the renderer and can be supplied through `CHIBI_CUTE_MATH_INCLUDE_DIR`.
+`CHIBI_REFLECT_RESOURCE_INCLUDE_DIR`. Cute math headers come from the
+third-party archive's Cute sources, without its renderer.
 `Chibi::entity_runtime` owns entity commands, retained prototype generations and
 the source execution adapter. These optional packages do not require Studio or
 the language parser. The complete player and the remaining native capabilities
@@ -153,8 +148,8 @@ CHIBI_TOOLS_BUILD_DIR=build-verify/sdk-consumer \
   python3 tools/test_policy.py tool native-tools
 ```
 
-The last command uses the existing production test supervisor and its aggregate
-60-second deadline. Configuration and compilation are separate from that deadline.
+The last command uses the existing production test supervisor. Report
+configuration and compilation time separately from test execution.
 
 `test/language` also supports `CHIBI_INSTALLED_SDK=ON`. Its `--headless` case
 prepares source with the compiler and hands the module to a separately compiled
@@ -170,10 +165,8 @@ Run it through `python3 tools/test_policy.py tool language-headless`, setting
 `SDK_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF"`
 for a release configuration. The iteration default is Debug with sanitizers off.
 
-The compiler SDK installs packaging tools and `install_game_runtime.py` under
-`share/chibi/tools`. The installer includes its project-manifest reader and runs
-without an engine checkout. Supply `--package` and an explicit `--config` containing
-absolute game paths. Installed tools leave the SDK file inventory unchanged.
+The compiler SDK installs its packaging tools under `share/chibi/tools`. Installed
+tools leave the SDK file inventory unchanged.
 
 For browser Studio, `make package-web-sdk` configures the same packages with
 Emscripten and SLJIT disabled. Browser behavior execution defaults to the Wasm
@@ -226,3 +219,78 @@ The loader regenerates backend code and retains imported immutable modules.
 Opaque host handles and unreflected struct payloads cannot be persisted; such
 values need an explicit portable capability contract. Runtime type descriptor
 packs remain part of the final application and must outlive their values.
+
+## Linux desktop dependency validation
+
+When changing Linux dependency discovery, s2n-tls in the third-party archive, or
+desktop SDK ownership/relocation, build the tooling dispatcher and run this
+focused check on Linux before publishing:
+
+```sh
+make tools-build
+CHIBI_TOOLS_BUILD_DIR=build-tools \
+  python3 tools/test_policy.py tool desktop-dependencies
+```
+
+Set `CHIBI_TOOLS_BUILD_DIR` if the dispatcher was built outside `build-tools`.
+This is an explicit standalone gate; default cross-platform tooling does not run
+it automatically. Its six pico cases run eighteen commands on Linux, each with
+the existing 10-second child timeout.
+External tooling configuration/build is separate; all in-test CMake configuration,
+compiler detection and tiny fixture compilation remain inside those child timeouts.
+
+The fixture checks newly discovered crypto target visibility and relocated static
+archive/header ownership, unchanged caller-provided targets, rejection of
+mismatched OpenSSL metadata, and exact FindOpenGL role remapping with rejection
+of an unowned same-basename path.
+
+Synthetic archives and deterministic discovery modules establish CMake metadata
+and relocation behavior. None of the cases builds a dependency or executes a
+fixture program. Also build and package the actual intended SDK configuration and
+verify a relocated installed consumer when those contracts change. Record its real
+source revision, provider selection, and configured desktop backend set. These focused checks do not by
+themselves establish Fedora-host, cryptographic, application, or GPU acceptance.
+
+## Ninja package ownership validation
+
+When changing SDK package provenance, configured target outputs, or installed
+archive ownership, also run this explicit Linux standalone check:
+
+```sh
+CHIBI_TOOLS_BUILD_DIR=build-tools \
+  python3 tools/test_policy.py tool package-ownership
+```
+
+The one pico case has three sequential blocks and up to 15 child commands,
+each with the existing 10-second timeout. It builds
+six tiny C translation units and one precompiled header with CMake/Ninja, installs
+the fixture, and checks production packaging metadata. It never executes the
+produced programs. The positive check covers renamed/relocated archives, folded
+OBJECT and STATIC targets, an installed auxiliary archive, an auxiliary executable
+and the exact product executable. A host C compiler produces a `.res`-named output
+to check its real link ownership and declared manifest dependency hash. Eleven
+fixed rejection checks cover missing and stale objects, validation-only object or
+resource edges, order-only resource or PCH edges, a stale declared resource payload,
+an unrecorded linked resource output, duplicate configured target records, and
+missing or corrupt installed owners. This resource coverage is native-independent;
+native Windows resource compilation and SDK execution are untested by this check.
+
+Packaged SDK executables are linked with their selected `INSTALL_RPATH` so CMake
+installation preserves their bytes. Only the SDK product targets receive this
+setting; auxiliary and third-party targets retain their own build behavior. The
+packager continues to require exact installed-versus-built executable hashes. The
+ownership fixture selects distinct build and portable installation paths and
+checks that both the chosen install path and executable identity are preserved.
+
+For single-configuration Ninja builds, SDK packaging records configured target
+types and output paths separately from compiling targets. Actual explicit/implicit
+Ninja input edges prove object ownership; scheduling edges do not. PCH metadata
+must lead to a current linked object. Uninstalled folded archives retain their
+provenance and must have all their objects covered by verified installed owners.
+Auxiliary executables retain build evidence without becoming package products.
+Other generators retain their existing packaging behavior; this check does not
+establish new multi-configuration or non-Ninja support.
+
+Keep the real SDK package and relocated-consumer validation described above in
+addition to this small fixture. Record the exact compiler, configuration and
+source revision rather than transferring validation from another build.

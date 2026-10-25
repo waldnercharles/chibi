@@ -10,8 +10,10 @@
 #include "runtime/images/sky.h"
 #include "runtime/models/model_program.h"
 #include "runtime/shaders/volume.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <float.h>
@@ -73,6 +75,16 @@ const char *render_shader_name(int id)
 {
     assert(id > 0 && id <= acount(shader_catalog_assets));
     return shader_catalog_assets[id - 1].name;
+}
+
+const shader_graph *render_shader_material_graph(int index)
+{
+    if (index <= 0 || index > acount(shader_catalog_assets) ||
+        shader_catalog_assets[index - 1].shape ||
+        shader_catalog_assets[index - 1].is_model) {
+        return NULL;
+    }
+    return &shader_catalog_assets[index - 1].graph;
 }
 
 const char *render_shader_parameter_name(int index, int slot)
@@ -628,13 +640,22 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
                                             SHADER_IMAGE_REPEAT
                                       ? "uv-floor(uv)"
                                       : "clamp(uv,vec2(0),vec2(1))";
+            /* Gradients come from the unwrapped UV, continuous across repeat
+             * seams; programs without them sample the base level. */
             append(
                 &text,
                 "vec4 sg_asset_%d_image_%d(vec2 uv) { "
-                "if(any(isnan(uv))||any(isinf(uv))) return vec4(0); uv=%s; "
-                "return textureLod(sg_image_%d,uv,0.0); }\n",
+                "if(any(isnan(uv))||any(isinf(uv))) return vec4(0);\n"
+                "#ifdef SG_IMAGE_GRADIENTS\n"
+                " vec2 sg_dx=dFdx(uv),sg_dy=dFdy(uv); uv=%s; "
+                "return textureGrad(sg_image_%d,uv,sg_dx,sg_dy);\n"
+                "#else\n"
+                " uv=%s; return textureLod(sg_image_%d,uv,0.0);\n"
+                "#endif\n}\n",
                 i + 1,
                 j,
+                normalize,
+                set_slot(set, shader_catalog_assets[i].images[j]),
                 normalize,
                 set_slot(set, shader_catalog_assets[i].images[j])
             );
@@ -1698,20 +1719,19 @@ void render_shader_catalog_clear()
     render_skies_clear();
     shader_catalog_resources_changed();
 }
-const char *shader_catalog_write_parameter_value(void *service, const pin_value *inputs, bool shape)
+static const char *write_parameter_value(void *service, const pin_value *inputs, bool shape, const char *local_name)
 {
     ecs_world *world = service;
-    pin_value target = inputs[0], name = inputs[1], value = inputs[2];
+    pin_value target = inputs[0], value = inputs[2];
     ecs_entity entity = ecs_entity_from_u64(target.u64);
     const Shader *binding = world ? Shader_get_const(world, entity) : NULL;
     int id = binding ? render_shader_find(shape ? binding->shape : binding->material)
                      : 0;
-    if (!id || !name.str) {
+    if (!id) {
         return "Choose an entity with a shader binding and a named parameter.";
     }
     int slot = -1;
     shader_asset *asset = &shader_catalog_assets[id - 1];
-    const char *local_name = name.str;
     const char *prefix = shape ? "shape." : "material.";
     if (!strncmp(local_name, prefix, strlen(prefix))) {
         local_name += strlen(prefix);
@@ -1801,6 +1821,17 @@ const char *shader_catalog_write_parameter_value(void *service, const pin_value 
     atomic_flag_clear_explicit(&shader_catalog_override_lock, memory_order_release);
     return NULL;
 }
+const char *shader_catalog_write_parameter_value(void *service, const pin_value *inputs, bool shape)
+{
+    arena storage = { 0 };
+    const char *name;
+    const char *error = pin_text_cstring(&storage, inputs[1], &name, NULL);
+    if (!error) {
+        error = write_parameter_value(service, inputs, shape, name);
+    }
+    arena_free(&storage);
+    return error;
+}
 const char *render_shader_shape_parameter_set(
     ecs_world *world,
     ecs_entity entity,
@@ -1808,10 +1839,15 @@ const char *render_shader_shape_parameter_set(
     pin_value value
 )
 {
+    size_t length = name ? strlen(name) : 0;
+    if (length > UINT32_MAX) {
+        return "Shader parameter name exceeds string length range.";
+    }
+    pin_string text = { .bytes = name ? name : "", .length = (uint32_t)length };
     pin_value inputs[3] = { { .type = PIN_HANDLE,
                               .type_name = "ecs.entity",
                               .u64 = ecs_entity_to_u64(entity) },
-                            { .type = PIN_STR, .str = name },
+                            { .type = PIN_STR, .text = &text },
                             value };
     return shader_catalog_write_parameter_value(world, inputs, true);
 }

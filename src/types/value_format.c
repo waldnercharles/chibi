@@ -2,6 +2,8 @@
 
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <stdio.h>
@@ -18,6 +20,12 @@ const char *pin_value_to_string(const pin_value *v)
 
     if (!v) {
         snprintf(buf, PIN_FMT_CAP, "<null>");
+        return buf;
+    }
+
+    if (v->container == PIN_CONTAINER_MAP) {
+        const pin_map *map = v->ptr;
+        snprintf(buf, PIN_FMT_CAP, "Map[%d]", map ? map->count : 0);
         return buf;
     }
 
@@ -46,9 +54,38 @@ const char *pin_value_to_string(const pin_value *v)
         case PIN_F32: snprintf(buf, PIN_FMT_CAP, "%g", (double)v->f); break;
         case PIN_F64: snprintf(buf, PIN_FMT_CAP, "%g", v->d); break;
         case PIN_NAME:
-        case PIN_STR:
             snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
             break;
+        case PIN_STR: {
+            pin_string text = pin_text(*v);
+            size_t out = 0;
+            bool utf8 = pin_text_valid_utf8(text);
+            for (uint32_t i = 0; i < text.length && out + 1 < PIN_FMT_CAP; i++) {
+                unsigned char byte = (unsigned char)text.bytes[i];
+                if (utf8 && byte >= 128) {
+                    unsigned width = byte < 0xe0 ? 2 : byte < 0xf0 ? 3 : 4;
+                    if (out + width >= PIN_FMT_CAP) {
+                        break;
+                    }
+                    for (unsigned j = 0; j < width; j++) {
+                        buf[out++] = text.bytes[i + j];
+                    }
+                    i += width - 1;
+                    continue;
+                }
+                if (byte < 32 || byte == 127 || (byte >= 128 && !utf8) || byte == '\\') {
+                    if (out + 4 >= PIN_FMT_CAP) {
+                        break;
+                    }
+                    snprintf(buf + out, PIN_FMT_CAP - out, "\\x%02x", byte);
+                    out += 4;
+                } else {
+                    buf[out++] = (char)byte;
+                }
+            }
+            buf[out] = 0;
+            break;
+        }
         case PIN_TASK:
             snprintf(buf, PIN_FMT_CAP, "task(%llu)", (unsigned long long)v->u64);
             break;

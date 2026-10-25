@@ -2,10 +2,33 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <string.h>
 
+static const type_field *text_field(const type_desc *type, size_t offset, int depth)
+{
+    if (!type || depth >= TYPE_MAX_NESTING) {
+        return NULL;
+    }
+    for (int n = 0; n < type->field_count; n++) {
+        const type_field *field = &type->fields[n];
+        if (field->offset == offset && field->type == PIN_STR) {
+            return field;
+        }
+        if (field->type == PIN_STRUCT && offset >= field->offset &&
+            offset - field->offset < field->size) {
+            return text_field(
+                type_catalog_find(field->type_name),
+                offset - field->offset,
+                depth + 1
+            );
+        }
+    }
+    return NULL;
+}
 const pin_value *behavior_function_frame_inputs(
     const behavior_function *f,
     const behavior_function_activation *activation,
@@ -41,7 +64,7 @@ const pin_value *behavior_function_frame_inputs(
         *v = parameter->initial;
         present[index++] = true;
         if (v->type == PIN_STRUCT && v->container == PIN_CONTAINER_SINGLE) {
-            const type_desc *type = type_catalog_find(v->type_name);
+            const type_desc *type = pin_value_type(v);
             assert(type);
             v->ptr = arena_alloc(storage, type->size);
             memset(v->ptr, 0, type->size);
@@ -64,12 +87,30 @@ const pin_value *behavior_function_frame_inputs(
             void *target = v->type == PIN_STRUCT && v->container == PIN_CONTAINER_SINGLE
                              ? (char *)v->ptr + local->offset
                              : (void *)&v->d;
-            memcpy(target, bits, behavior_scalar_size(local->initial.type));
+            const type_field *field = local->initial.type == PIN_STR && v->type == PIN_STRUCT
+                                        ? text_field(pin_value_type(v), local->offset, 0)
+                                        : NULL;
+            if (field && !field->text_descriptor) {
+                pin_value value = local->initial;
+                memcpy(&value.text, bits, sizeof value.text);
+                type_field destination = *field;
+                destination.offset = 0;
+                if (pin_write_field(storage, target, &destination, value)) {
+                    *count = 0;
+                    return NULL;
+                }
+            } else {
+                memcpy(target, bits, behavior_scalar_size(local->initial.type));
+            }
         }
     }
     for (int i = 0; i < *count; i++) {
         if (!present[i]) {
             values[i].ptr = NULL;
+        }
+        if (pin_value_snapshot_to_arena(storage, &values[i], &values[i])) {
+            *count = 0;
+            return NULL;
         }
     }
     return values;

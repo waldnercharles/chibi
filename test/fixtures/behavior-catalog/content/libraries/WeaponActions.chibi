@@ -1,19 +1,18 @@
-library "WeaponActions" {
-    "Check Firing Interval" :: pure fn(Elapsed: float = 0.0, Cooldown: float = 0.0) -> (Ready: bool = false, Remainder: float = 0.0) {
-        return (entry.Elapsed >= max(entry.Cooldown, B: float = 0.01), entry.Elapsed - max(entry.Cooldown, B: float = 0.01))
+// Shared weapon cooldown and projectile initialization functions.
+WeaponActions :: library {
+    Check_Firing_Interval :: (Elapsed: float = 0.0, Cooldown: float = 0.0) -> (Ready: bool = false, Remainder: float = 0.0) {
+        return (Elapsed >= max(Cooldown, B: float = 0.01), Elapsed - max(Cooldown, B: float = 0.01))
     }
-    "Fire Projectile" :: fn(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "ArenaProjectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
-        action spawn_prototype = engine["Spawn Prototype"](entry.Prototype)
-        after spawn_prototype {
-            spawn_prototype.Entity.Transform = entry.Origin
-            spawn_prototype.Entity.Velocity = vec2_norm(entry.Direction).Result * spawn_prototype.Entity.Projectile.speed
-            spawn_prototype.Entity.Orientation = "DirectionMath"."Direction Orientation"(vec2_norm(entry.Direction).Result.x, vec2_norm(entry.Direction).Result.y)
-            spawn_prototype.Entity.Projectile.damage = entry.Damage
-            spawn_prototype.Entity.Collider.ignore_entity = entry.Shooter
-            return spawn_prototype.Entity
-        }
-        after entry {
-            spawn_prototype()
+    Fire_Projectile :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0, Prototype: Prototype = ArenaProjectile, Shooter: handle<ecs.entity> = 0) -> (Entity: handle<ecs.entity> = 0) {
+        action spawn_prototype_action = spawn_prototype(Prototype)
+        spawn_prototype_action()
+        after spawn_prototype_action {
+            spawn_prototype_action.Entity.Transform = Origin
+            spawn_prototype_action.Entity.Velocity = vec2_norm(Direction).Result * spawn_prototype_action.Entity.Projectile.speed
+            spawn_prototype_action.Entity.Orientation = DirectionMath.Direction_Orientation(vec2_norm(Direction).Result.x, vec2_norm(Direction).Result.y)
+            spawn_prototype_action.Entity.Projectile.damage = Damage
+            spawn_prototype_action.Entity.Collider.ignore_entity = Shooter
+            return spawn_prototype_action.Entity
         }
     }
 }

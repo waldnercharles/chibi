@@ -3,7 +3,7 @@
 
 /* Payload and semantic changes still require a version change even when the
  * stable instruction names and ordinals (checked separately) are unchanged. */
-#define EXECUTION_PREPARED_VERSION 13
+#define EXECUTION_PREPARED_VERSION 21
 #include "execution/host.h"
 #include "execution/module.h"
 #include "types/type.h"
@@ -48,13 +48,31 @@ typedef struct
     bool (*type)(void *, uint64_t id, execution_prepared_type *);
     /* Returns a retained immutable dependency matching the saved fingerprint. */
     execution_module *(*import)(void *, uint64_t id, uint64_t fingerprint);
+    /* Optional bounds for each module read: its decoded storage and its
+     * record-layout validation work. Zero keeps the defaults. */
+    size_t decoded_bytes, layout_work;
 } execution_prepared_linker;
+/* The header's target ABI: this build's context layout and instruction names at
+ * their ordinals. A producer outside C writes it as supplied. */
+uint64_t execution_prepared_abi();
+/* The instruction names that ABI hashes, in ordinal order. */
+int execution_prepared_instruction_count();
+const char *execution_prepared_instruction_name(int ordinal);
 /* The caller frees the returned byte buffer with free(). Failure produces no
  * buffer. The source module stays immutable and retains its normal ownership. */
 bool execution_prepared_write(
     const execution_module *,
     unsigned char **data,
     size_t *length,
+    char *error,
+    size_t size
+);
+/* Serialized length and the FNV-1a fingerprint import checks use, without
+ * materializing bytes. Equal results identify the same module generation. */
+bool execution_prepared_measure(
+    const execution_module *,
+    size_t *length,
+    uint64_t *fingerprint,
     char *error,
     size_t size
 );

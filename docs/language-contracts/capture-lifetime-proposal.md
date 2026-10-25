@@ -1,5 +1,12 @@
 # Inferred capture lifetime: decision proposal
 
+**Historical proposal.** Its immutable-snapshot recommendation was not approved
+and is superseded by the owner's 15 October 2026 selection of inferred shared
+mutable bindings. Read the [current decision record](../studio-migration-roadmap/decisions.md#selected-inferred-shared-mutable-captures)
+and [new concrete proposal](inferred-shared-captures-proposal.md). The text below
+is preserved as the earlier alternative; it is not the current implementation
+or permission to substitute snapshot capture.
+
 Status: **P, not implemented or fully approved**. The owner selected inferred
 captures; signature spelling, by-value/reference behavior, mutation and lifetime
 still need a decision. This proposal adds no grammar or callable implementation.
@@ -98,5 +105,5 @@ unsupported refs, transitive suspend/retention/reentry rejection, owner/generati
 invalidation and cleanup on failure. Compare bytecode with actual SLJIT and
 actual Wasm. Exercise both real comparator and filter decisions, repeated rebuild
 and independent instances, count environment copies/retained bytes, and preserve
-last-good output if construction fails. Admit the exact bounded workload under
-the unchanged production supervisor before running it.
+last-good output if construction fails. Review the workload and oracle, then run
+the affected checks through the production supervisor and report their results.

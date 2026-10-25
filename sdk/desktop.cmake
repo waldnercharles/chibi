@@ -4,43 +4,17 @@ enable_language(CXX)
 if(APPLE)
     enable_language(OBJC)
 endif()
-if(NOT CHIBI_DEPENDENCY_SOURCE_ROOT)
-    set(CHIBI_DEPENDENCY_SOURCE_ROOT "${CHIBI_SDK_ROOT}")
-endif()
-# On Windows, dependencies build without the project's strict warnings, as
-# their package does; SDL's Windows sources do not compile under them.
-get_directory_property(project_options COMPILE_OPTIONS)
-if(WIN32)
-    set(dependency_options ${project_options})
-    list(FILTER dependency_options EXCLUDE REGEX "^-W")
-    set_directory_properties(PROPERTIES COMPILE_OPTIONS "${dependency_options}")
-endif()
-if(NOT TARGET cute)
-    if(CHIBI_DEPENDENCY_PACKAGE)
-        include("${CHIBI_DEPENDENCY_PACKAGE}")
-    else()
-        # Preserve the product's exact Cute/SDL/physics pins and patch set.
-        set(saved_sljit "${CHIBI_ENABLE_SJLIT}")
-        set(CHIBI_ENABLE_SJLIT OFF)
-        include("${CHIBI_SDK_ROOT}/cmake/dependencies.cmake")
-        set(CHIBI_ENABLE_SJLIT "${saved_sljit}")
-    endif()
-endif()
-if(NOT TARGET RmlUi::Core)
-    include("${CHIBI_SDK_ROOT}/cmake/rmlui_dependencies.cmake")
-endif()
-set_directory_properties(PROPERTIES COMPILE_OPTIONS "${project_options}")
-include("${CMAKE_CURRENT_LIST_DIR}/desktop_dependencies.cmake")
-chibi_desktop_dependency(cute CHIBI_DESKTOP_CUTE)
-chibi_desktop_dependency(RmlUi::Core CHIBI_DESKTOP_RMLUI)
-install(FILES "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" DESTINATION lib/cmake/Chibi)
+# Cute (with SDL) and RmlUi (with FreeType) come prebuilt from the third-party
+# archive (cmake/third_party.cmake); the SDK installs copies of their archives.
+chibi_vendor_dependency(Chibi::vendor_cute CHIBI_DESKTOP_CUTE)
+chibi_vendor_dependency(Chibi::vendor_rmlui_core CHIBI_DESKTOP_RMLUI)
 
 add_library(chibi_platform STATIC "${CHIBI_SDK_ROOT}/src/support/resources.c")
 add_library(Chibi::platform ALIAS chibi_platform)
 set_target_properties(chibi_platform PROPERTIES EXPORT_NAME platform)
 chibi_sdk_headers(chibi_platform PUBLIC platform/cute.h support/resources.h)
 target_link_libraries(chibi_platform PUBLIC
-    $<BUILD_INTERFACE:cute> $<INSTALL_INTERFACE:${CHIBI_DESKTOP_CUTE}>)
+    ${CHIBI_DESKTOP_CUTE})
 
 configure_file("${CHIBI_SDK_ROOT}/src/assets/project.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/platform/assets/project.h" COPYONLY)
@@ -75,7 +49,7 @@ foreach(header ui/controls/controls_internal.h support/math.h diagnostics/tracy.
 endforeach()
 target_include_directories(chibi_ui_host PRIVATE "${ui_private}")
 target_link_libraries(chibi_ui_host PUBLIC chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_text_search
-    PRIVATE chibi_builtin_fonts chibi_support $<BUILD_INTERFACE:RmlUi::Core> $<INSTALL_INTERFACE:${CHIBI_DESKTOP_RMLUI}>)
+    PRIVATE chibi_builtin_fonts chibi_support ${CHIBI_DESKTOP_RMLUI})
 if(APPLE)
     target_link_libraries(chibi_ui_host PRIVATE c++)
 elseif(UNIX AND NOT EMSCRIPTEN)
@@ -84,11 +58,11 @@ endif()
 
 
 set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
-    shader_publish.c screenshot.c material.c material_lod.c shader_images.c
+    shader_publish.c screenshot.c material.c material_lod.c material_mesh.c material_height.c spot_lights.c shader_images.c
     shader_program.c fog.c material_raster.c fluid_raster.c
     reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c audio_input.c audio_web.c geometry_2d.c grid_2d.c
-    mesh_surface.c mesh_material.c scene3d.c scene3d_geometry.c scene3d_influence.c scene3d_mesh_cache.c
-    scene3d_visual.c scene3d_trail.c scene3d_particles.c scene3d_camera.c scene3d_pick.c scene3d_post.c scene3d_shadow.c scene3d_occlusion.c scene3d_gi.c
+    mesh_surface.c mesh_material.c scene3d.c scene3d_geometry.c scene3d_influence.c scene3d_mesh_cache.c scene3d_terrain.c scene3d_terrain_volume.c scene3d_volume.c
+    scene3d_visual.c scene3d_trail.c scene3d_particles.c scene3d_camera.c scene3d_pick.c scene3d_post.c scene3d_shadow.c scene3d_occlusion.c scene3d_cascades.c scene3d_gi.c
     scene3d_light_shadow.c scene3d_sky.c field_image.c ui.c device_controls.c)
 list(TRANSFORM render_sources PREPEND "${CHIBI_SDK_ROOT}/src/render/")
 add_library(chibi_renderer STATIC ${render_sources}
@@ -149,7 +123,7 @@ if(CHIBI_WEB_PLAYER)
         "${web}/index.html" DESTINATION . COMPONENT web_player EXCLUDE_FROM_ALL)
 elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     chibi_windows_manifest(chibi-player)
-    install(TARGETS chibi-player RUNTIME DESTINATION bin)
+    chibi_install_product(chibi-player)
 endif()
 
 

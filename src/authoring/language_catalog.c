@@ -1,8 +1,8 @@
 #include "authoring/language_catalog.h"
 
 #include "authoring/native_bindings.h"
-#include "authoring/source_catalog_snapshot.h"
 #include "capabilities/catalog_index.h"
+#include "capabilities/catalog_snapshot.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -21,10 +21,12 @@ struct authoring_language_catalog
     script_catalog_capability *capabilities;
     script_catalog_global *globals;
     script_catalog_relationship *relationships;
+    script_catalog_template *templates;
+    script_catalog_specialization *specializations;
 };
 typedef struct
 {
-    catalog_index types, capabilities, globals;
+    catalog_index types, capabilities, globals, templates, specializations;
 } catalog_indices;
 static bool relationship(authoring_language_catalog *c, script_catalog_relationship value)
 {
@@ -56,7 +58,7 @@ static bool append(authoring_language_catalog *c, const script_catalog *source, 
         return false;
     }
     script_catalog copy;
-    if (!source_catalog_snapshot(&c->storage, source, &copy)) {
+    if (!script_catalog_snapshot(&c->storage, source, &copy)) {
         return false;
     }
     for (int i = 0; i < copy.type_count; i++) {
@@ -83,6 +85,23 @@ static bool append(authoring_language_catalog *c, const script_catalog *source, 
         if (!relationship(c, copy.relationships[i])) {
             return false;
         }
+    }
+    for (int i = 0; i < copy.template_count; i++) {
+        if (catalog_index_add(&indices->templates, copy.templates[i].id, acount(c->templates)) >=
+            0) {
+            return false;
+        }
+        apush(c->templates, copy.templates[i]);
+    }
+    for (int i = 0; i < copy.specialization_count; i++) {
+        if (catalog_index_add(
+                &indices->specializations,
+                copy.specializations[i].id,
+                acount(c->specializations)
+            ) >= 0) {
+            return false;
+        }
+        apush(c->specializations, copy.specializations[i]);
     }
     return true;
 }
@@ -114,6 +133,8 @@ authoring_language_catalog *authoring_language_catalog_new(
     catalog_index_free(&indices.types);
     catalog_index_free(&indices.capabilities);
     catalog_index_free(&indices.globals);
+    catalog_index_free(&indices.templates);
+    catalog_index_free(&indices.specializations);
     if (!appended) {
         if (size) {
             snprintf(error, size, "Conflicting or unretainable project declarations");
@@ -129,6 +150,10 @@ authoring_language_catalog *authoring_language_catalog_new(
     c->view.global_count = acount(c->globals);
     c->view.relationships = c->relationships;
     c->view.relationship_count = acount(c->relationships);
+    c->view.templates = c->templates;
+    c->view.template_count = acount(c->templates);
+    c->view.specializations = c->specializations;
+    c->view.specialization_count = acount(c->specializations);
     if (size) {
         error[0] = 0;
     }
@@ -158,6 +183,8 @@ void authoring_language_catalog_free(authoring_language_catalog *c)
     afree(c->capabilities);
     afree(c->globals);
     afree(c->relationships);
+    afree(c->templates);
+    afree(c->specializations);
     arena_free(&c->storage);
     native_capabilities_free(c->native);
     free(c);

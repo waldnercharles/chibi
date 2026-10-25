@@ -19,6 +19,7 @@ static uint64_t generation_type(uint64_t hash, script_type type)
     hash = generation_mix(hash, type.container);
     hash = generation_mix(hash, type.nominal);
     hash = generation_mix(hash, type.parameter);
+    hash = generation_mix(hash, type.collection);
     return generation_mix(hash, type.flags);
 }
 static uint64_t generation_name(uint64_t hash, const char *name)
@@ -103,6 +104,9 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         MIX(s->range.end);
         MIX(s->scope);
         MIX(s->symbol);
+        if (s->kind == SCRIPT_STMT_FOREACH) {
+            MIX(s->key_symbol);
+        }
         MIX(s->expression);
         MIX(s->second);
         MIX(s->third);
@@ -145,6 +149,16 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         MIX(u->member);
         MIX(u->kind);
     }
+    MIX(catalog->type_count);
+    for (int i = 0; i < catalog->type_count; i++) {
+        const script_catalog_type *type = &catalog->types[i];
+        if (type->container) {
+            MIX(type->id);
+            MIX(type->container);
+            TYPE(type->key_type);
+            TYPE(type->element_type);
+        }
+    }
     MIX(catalog->capability_count);
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *c = &catalog->capabilities[i];
@@ -161,10 +175,58 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
             NAME(c->results[j].unit);
         }
     }
+    MIX(catalog->template_count);
+    for (int i = 0; i < catalog->template_count; i++) {
+        const script_catalog_template *definition = &catalog->templates[i];
+        MIX(definition->id);
+        MIX(definition->source_generation);
+        NAME(definition->name);
+        NAME(definition->owner);
+        MIX(definition->kind);
+        MIX(definition->start);
+        MIX(definition->end);
+        MIX(definition->generic);
+        MIX(definition->parameter_count);
+        for (int j = 0; j < definition->parameter_count; j++) {
+            const script_template_parameter *parameter = &definition->parameters[j];
+            NAME(parameter->name);
+            NAME(parameter->binder);
+            TYPE(parameter->type);
+            MIX(parameter->comptime);
+            MIX(parameter->type_value);
+            MIX(parameter->binds_type);
+        }
+    }
+    MIX(catalog->specialization_count);
+    for (int i = 0; i < catalog->specialization_count; i++) {
+        const script_catalog_specialization *specialization = &catalog->specializations[i];
+        MIX(specialization->id);
+        MIX(specialization->template_id);
+        MIX(specialization->executable);
+        MIX(specialization->result.is_type);
+        if (specialization->result.is_type) {
+            TYPE(specialization->result.type);
+        }
+        MIX(specialization->binding_count);
+        for (int j = 0; j < specialization->binding_count; j++) {
+            const script_compile_binding *binding = &specialization->bindings[j];
+            NAME(binding->name);
+            MIX(binding->value.is_type);
+            if (binding->value.is_type) {
+                TYPE(binding->value.type);
+            }
+        }
+    }
+    unsigned char *constants = NULL;
+    bool complete = script_catalog_values_key(catalog, &constants);
+    for (int i = 0; i < acount(constants); i++) {
+        MIX(constants[i]);
+    }
+    afree(constants);
 #undef MIX
 #undef TYPE
 #undef NAME
-    return hash;
+    return complete ? hash : 0;
 }
 bool authoring_source_presentation_matches(
     const authoring_source_presentation *p,
@@ -172,7 +234,8 @@ bool authoring_source_presentation_matches(
     const script_catalog *catalog
 )
 {
-    return !strcmp(p->text, a->text) && !strcmp(p->identity, a->identity) &&
+    return p->semantic_generation && !strcmp(p->text, a->text) &&
+           !strcmp(p->identity, a->identity) &&
            p->semantic_generation == semantic_generation(a, catalog);
 }
 uint64_t authoring_source_presentation_call_graph(
@@ -229,6 +292,7 @@ authoring_source_presentation *authoring_source_presentation_new(
         .out = out,
         .previous = previous,
         .analysis = analysis,
+        .occurrences = script_occurrences_new(analysis),
         .catalog = catalog,
         .function = -1,
         .expressions = xcalloc((size_t)analysis->expression_count + 1, sizeof(node *)),
@@ -287,6 +351,7 @@ authoring_source_presentation *authoring_source_presentation_new(
     graph_reindex(p.graph);
     free(p.expressions);
     free(p.statements);
+    script_occurrences_free(p.occurrences);
     if (previous && !source_presentation_details_carry(previous, out, NULL, 0)) {
         authoring_source_presentation_free(out);
         return NULL;

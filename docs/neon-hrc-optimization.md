@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 This log predates the 2026-09-28 field redesign. In its measurements, `scale`
 is the RGB grid. `luminance_scale` of 2, 4 or 8 times `scale` is now
@@ -975,7 +975,7 @@ Source's mipmaps are generated in that case, so `gather_resolution: Half` now
 reads real data.
 
 Fluid's camera-only visibility is a fifth target on the material canvas; the
-raster writes zero there. `cmake/patches/cute-eight-targets.patch` raises
+raster writes zero there. `third_party/cute_framework/eight-targets.patch` raises
 Cute's limit to SDL_GPU's eight color targets. WebGL2 guarantees four, so on
 GLES a canvas with more targets than the device's `GL_MAX_DRAW_BUFFERS` fails
 to create; desktop browsers report eight. Fluid draws over the tiles its

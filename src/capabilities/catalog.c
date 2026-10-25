@@ -1,5 +1,7 @@
 #include "capabilities/catalog.h"
 
+#include "types/scalar.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -19,13 +21,17 @@ const script_catalog *script_catalog_project()
 }
 uint64_t script_catalog_id(const char *domain, const char *name)
 {
+    return script_catalog_id_bytes(domain, name, strlen(name));
+}
+uint64_t script_catalog_id_bytes(const char *domain, const char *bytes, size_t length)
+{
     uint64_t hash = UINT64_C(14695981039346656037);
     for (const unsigned char *p = (const unsigned char *)domain; *p; p++) {
         hash = (hash ^ *p) * UINT64_C(1099511628211);
     }
     hash = (hash ^ ':') * UINT64_C(1099511628211);
-    for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
-        hash = (hash ^ *p) * UINT64_C(1099511628211);
+    for (size_t i = 0; i < length; i++) {
+        hash = (hash ^ (unsigned char)bytes[i]) * UINT64_C(1099511628211);
     }
     return hash ? hash : 1;
 }
@@ -156,8 +162,64 @@ const char *script_scalar_name(pin_type storage)
     };
     return storage >= PIN_FLOW && storage <= PIN_UNION ? names[storage] : "error";
 }
+const char *script_reference_type_name(script_reference_kind kind)
+{
+    switch (kind) {
+        case SCRIPT_REFERENCE_PROTOTYPE: return "Prototype";
+        case SCRIPT_REFERENCE_COMPONENT: return "Component";
+        case SCRIPT_REFERENCE_RELATIONSHIP: return "Relationship";
+        case SCRIPT_REFERENCE_NONE: return NULL;
+    }
+    return NULL;
+}
+script_type script_reference_type(script_reference_kind kind)
+{
+    const char *name = script_reference_type_name(kind);
+    assert(name);
+    return (script_type){ .storage = kind == SCRIPT_REFERENCE_RELATIONSHIP ? PIN_U64 : PIN_NAME,
+                          .nominal = script_catalog_id("symbol-type", name) };
+}
+script_reference_kind script_reference_kind_for_type(script_type type)
+{
+    if (!type.nominal || type.container != PIN_CONTAINER_SINGLE) {
+        return SCRIPT_REFERENCE_NONE;
+    }
+    for (int kind = SCRIPT_REFERENCE_PROTOTYPE; kind <= SCRIPT_REFERENCE_RELATIONSHIP;
+         kind++) {
+        if (type.nominal == script_reference_type((script_reference_kind)kind).nominal) {
+            return (script_reference_kind)kind;
+        }
+    }
+    return SCRIPT_REFERENCE_NONE;
+}
+script_type script_char_type()
+{
+    return (script_type){ .storage = PIN_I32,
+                          .nominal = script_catalog_id("type", "char") };
+}
+bool script_type_char(script_type type)
+{
+    return type.storage == PIN_I32 && type.container == PIN_CONTAINER_SINGLE &&
+           type.nominal == script_char_type().nominal;
+}
+const char *script_numeric_name(script_type type)
+{
+    return script_type_char(type) ? "char" : script_scalar_name(type.storage);
+}
+/* Every Unicode scalar, 0 through 0x10FFFF, fits the integer `to`. */
+static bool char_widens(pin_type to)
+{
+    return to >= PIN_I8 && to <= PIN_U64 && behavior_scalar_integer_low(to) <= 0 &&
+           behavior_scalar_integer_high(to) >= 0x10FFFF;
+}
 script_type script_builtin_type(const char *name)
 {
+    for (int kind = SCRIPT_REFERENCE_PROTOTYPE; kind <= SCRIPT_REFERENCE_RELATIONSHIP;
+         kind++) {
+        if (!strcmp(name, script_reference_type_name((script_reference_kind)kind))) {
+            return script_reference_type((script_reference_kind)kind);
+        }
+    }
     if (!strcmp(name, "Cancelled")) {
         return script_cancelled_type();
     }
@@ -168,6 +230,9 @@ script_type script_builtin_type(const char *name)
     }
     if (!strcmp(name, "number")) {
         return (script_type){ .storage = PIN_F64 };
+    }
+    if (!strcmp(name, "char")) {
+        return script_char_type();
     }
     if (!strcmp(name, "exec") || !strcmp(name, "flow")) {
         return (script_type){ .storage = PIN_FLOW };
@@ -192,24 +257,61 @@ bool script_type_equal(script_type a, script_type b)
                (a.flags & SCRIPT_TYPE_OPTIONAL) == (b.flags & SCRIPT_TYPE_OPTIONAL);
     }
     return a.storage == b.storage && a.container == b.container &&
-           a.nominal == b.nominal &&
+           a.collection == b.collection && a.nominal == b.nominal &&
            (!(a.flags & SCRIPT_TYPE_LITERAL) ||
             !(b.flags & SCRIPT_TYPE_LITERAL) || a.parameter == b.parameter) &&
            (a.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS)) ==
                (b.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS));
 }
+script_type script_catalog_element_type(const script_catalog *catalog, script_type type)
+{
+    const script_catalog_type *descriptor = script_catalog_type_by_id(catalog, type.collection);
+    if (descriptor) {
+        return descriptor->element_type;
+    }
+    type.container = PIN_CONTAINER_SINGLE;
+    type.collection = 0;
+    return type;
+}
+script_type script_catalog_key_type(const script_catalog *catalog, script_type type)
+{
+    const script_catalog_type *descriptor = script_catalog_type_by_id(catalog, type.collection);
+    return descriptor && descriptor->container == PIN_CONTAINER_MAP
+             ? descriptor->key_type
+             : (script_type){ .flags = SCRIPT_TYPE_ERROR };
+}
 bool script_type_numeric(script_type type)
 {
     return type.container == PIN_CONTAINER_SINGLE &&
-           (!type.nominal || (type.flags & SCRIPT_TYPE_GENERIC)) &&
+           (!type.nominal || (type.flags & SCRIPT_TYPE_GENERIC) ||
+            script_type_char(type)) &&
            type.storage >= PIN_I8 && type.storage <= PIN_F64 &&
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
+}
+/* Integers widen to integers and to floating types. Float widens to double;
+ * double narrows to float, and floating values become integers, only explicitly. */
+bool script_numeric_implicit(pin_type from, pin_type to)
+{
+    if (to > PIN_U64) {
+        return !(from == PIN_F64 && to == PIN_F32);
+    }
+    return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
 }
 bool script_type_assignable(script_type expected, script_type actual)
 {
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) {
         return true;
+    }
+    if (script_reference_kind_for_type(expected) != SCRIPT_REFERENCE_NONE ||
+        script_reference_kind_for_type(actual) != SCRIPT_REFERENCE_NONE) {
+        if ((actual.flags & SCRIPT_TYPE_OPTIONAL) &&
+            !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
+            return false;
+        }
+        expected.flags &= ~SCRIPT_TYPE_OPTIONAL;
+        actual.flags &= ~SCRIPT_TYPE_OPTIONAL;
+        return script_type_equal(expected, actual);
     }
     if (expected.flags & SCRIPT_TYPE_BOXED_OPTIONAL) {
         expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
@@ -237,7 +339,11 @@ bool script_type_assignable(script_type expected, script_type actual)
         actual.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     }
     if (script_type_numeric(expected) && script_type_numeric(actual)) {
-        return true;
+        if (script_type_char(expected) || script_type_char(actual)) {
+            return script_type_char(actual) &&
+                   (script_type_char(expected) || char_widens(expected.storage));
+        }
+        return script_numeric_implicit(actual.storage, expected.storage);
     }
     if ((expected.storage == PIN_NAME || expected.storage == PIN_STR) &&
         (actual.storage == PIN_NAME || actual.storage == PIN_STR)) {
@@ -334,7 +440,7 @@ uint64_t script_type_tag(script_type type)
     if (type.flags & SCRIPT_TYPE_LITERAL) {
         return type.parameter;
     }
-    char name[96];
+    char name[128];
     snprintf(
         name,
         sizeof name,
@@ -345,6 +451,15 @@ uint64_t script_type_tag(script_type type)
         (unsigned long long)(type.flags & SCRIPT_TYPE_TASK ? type.parameter : 0),
         type.flags & (SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK | SCRIPT_TYPE_OPTIONAL)
     );
+    if (type.collection) {
+        size_t length = strlen(name);
+        snprintf(
+            name + length,
+            sizeof name - length,
+            ":%llu",
+            (unsigned long long)type.collection
+        );
+    }
     return script_catalog_id("union-type", name);
 }
 
@@ -378,6 +493,23 @@ static uint64_t abi_type_shape(
     hash = abi_word(hash, type.nominal);
     hash = abi_word(hash, type.parameter);
     hash = abi_word(hash, type.flags);
+    hash = abi_word(hash, type.collection);
+    if (type.collection && depth < 64) {
+        const script_catalog_type *collection = script_catalog_type_by_id(catalog, type.collection);
+        if (collection) {
+            hash = abi_word(hash, collection->container);
+            for (int i = 0; i < depth; i++) {
+                if (parents[i] == type.collection) {
+                    return hash;
+                }
+            }
+            parents[depth++] = type.collection;
+            if (collection->container == PIN_CONTAINER_MAP) {
+                hash = abi_type_shape(hash, catalog, collection->key_type, parents, depth);
+            }
+            hash = abi_type_shape(hash, catalog, collection->element_type, parents, depth);
+        }
+    }
     if ((type.flags & SCRIPT_TYPE_TASK) && type.parameter && depth < 64) {
         const script_catalog_type *result = script_catalog_type_by_id(catalog, type.parameter);
         if (result) {
@@ -402,6 +534,9 @@ static uint64_t abi_type_shape(
         hash = abi_word(hash, record->layout);
         hash = abi_word(hash, record->size);
         hash = abi_word(hash, record->underlying);
+        for (int i = 0; i < record->field_count; i++) {
+            hash = abi_word(hash, record->fields[i].c_string);
+        }
         for (int i = 0; i < depth; i++) {
             if (parents[i] == record->id) {
                 return hash;
@@ -423,7 +558,12 @@ static uint64_t abi_type_shape(
             }
             if (v->is_literal) {
                 hash = abi_word(hash, v->literal.type);
-                hash = abi_text(hash, v->literal.str);
+                pin_string text = pin_text(v->literal);
+                for (uint32_t j = 0; j < text.length; j++) {
+                    hash = (hash ^ (unsigned char)text.bytes[j]) *
+                           UINT64_C(1099511628211);
+                }
+                hash = (hash ^ 0) * UINT64_C(1099511628211);
             }
             hash = abi_word(hash, v->field_count);
             for (int j = 0; j < v->field_count; j++) {
@@ -449,6 +589,7 @@ uint64_t script_catalog_capability_abi(const script_catalog *catalog, const scri
         hash = abi_type(hash, catalog, parameter->type);
         hash = abi_word(hash, parameter->reference_kind);
         hash = abi_word(hash, parameter->member);
+        hash = abi_word(hash, parameter->c_string);
     }
     hash = abi_word(hash, capability->result_count);
     for (int i = 0; i < capability->result_count; i++) {

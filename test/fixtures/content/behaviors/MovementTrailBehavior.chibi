@@ -1,28 +1,31 @@
-behavior "MovementTrailBehavior" {
-    state "Particle Carry": float = 0.0
-    on Input {
-        if "Is Stationary"(event.Direction) {
-            state."Particle Carry" = 0.0
+MovementTrailBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    on Tick :: (dt: float s) {
+        Step = dt
+    }
+    Particle_Carry: float = 0.0
+    on Input :: (Direction: struct<CF_V2>) {
+        if Is_Stationary(Direction) {
+            Particle_Carry = 0.0
         } else {
-            await "Emit Movement Trail"(event.Direction)
+            await Emit_Movement_Trail(Direction)
         }
     }
-    "Emit Movement Trail" :: fn(Direction: struct<"CF_V2"> = null) {
-        depth_limit 32
-        after entry {
-            state."Particle Carry" = state."Particle Carry" + "Emission Budget"(delta_time())
-            while state."Particle Carry" >= 1.0 {
-                await emit_directed_particles(convert<"transform_to_cf">(self.Transform) + multiply(multiply(vec2_norm(entry.Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(entry.Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
-                state."Particle Carry" = state."Particle Carry" - 1.0
-            }
-            return
+    Emit_Movement_Trail :: (Direction: struct<CF_V2> = null) {
+
+        Particle_Carry = Particle_Carry + Emission_Budget(Step)
+        while Particle_Carry >= 1.0 {
+            await emit_directed_particles(convert<transform_to_cf>(self.Transform) + multiply(multiply(vec2_norm(Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+            Particle_Carry = Particle_Carry - 1.0
         }
+        return
     }
-    "Emission Budget" :: pure fn<T0: float, T1: float>(dt: T0 = 0.0) -> (Result: T1 = 0.0) {
-        return clamp(entry, real(0.0), real(0.10000000149011612)) * real(64.0)
+    Emission_Budget :: (dt: float = 0.0) -> (Result: float = 0.0) {
+        return float(clamp(dt, real(0.0), real(0.10000000149011612)) * real(64.0))
     }
-    "Is Stationary" :: pure fn(Direction: struct<"CF_V2"> = null) -> (Stationary: bool = false) {
-        depth_limit 32
-        return 0.0 >= entry.Direction.x * entry.Direction.x + entry.Direction.y * entry.Direction.y
+    Is_Stationary :: (Direction: struct<CF_V2> = null) -> (Stationary: bool = false) {
+
+        return 0.0 >= Direction.x * Direction.x + Direction.y * Direction.y
     }
 }

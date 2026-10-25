@@ -93,7 +93,8 @@ static bool prepare(const char *source, behavior_backend backend)
         return false;
     }
     for (int i = 0; i < analysis->symbol_count; i++) {
-        if (analysis->symbols[i].kind == SCRIPT_STATE &&
+        if ((analysis->symbols[i].kind == SCRIPT_STATE ||
+             analysis->symbols[i].kind == SCRIPT_SHARED_STATE) &&
             !strcmp(analysis->symbols[i].name, "total")) {
             total_state = analysis->symbols[i].id;
         }
@@ -106,11 +107,16 @@ static bool prepare(const char *source, behavior_backend backend)
     for (int i = 0; i < OWNER_COUNT; i++) {
         ecs_entity owner = ecs_world_create_entity(world);
         instances[i] = execution_program_attach(program, ecs_entity_to_u64(owner));
-        if (!instances[i] || execution_instance_set_state(
-                                 instances[i],
-                                 total_state,
-                                 (pin_value){ .type = PIN_F64, .d = i }
-                             )) {
+        if (!instances[i]) {
+            return false;
+        }
+        /* System retain belongs to the registration, not each query owner. */
+        if ((analysis->kind != SCRIPT_PROGRAM_SYSTEM || !i) &&
+            execution_instance_set_state(
+                instances[i],
+                total_state,
+                (pin_value){ .type = PIN_F64, .d = i }
+            )) {
             return false;
         }
     }
@@ -138,27 +144,33 @@ static int iterate(bool system, int iteration, double now)
 static bool check_total(double expected)
 {
     double checksum = 0;
+    bool system = analysis->kind == SCRIPT_PROGRAM_SYSTEM;
     for (int i = 0; i < OWNER_COUNT; i++) {
         const pin_value *value = execution_instance_state(instances[i], total_state);
-        if (!value || value->type != PIN_F64 || value->d != expected + i ||
+        double total = system ? expected * OWNER_COUNT : expected + i;
+        if (!value || value->type != PIN_F64 || value->d != total ||
             execution_instance_pending(instances[i])) {
             return false;
         }
         checksum += value->d;
     }
-    return checksum == expected * OWNER_COUNT + OWNER_COUNT * (OWNER_COUNT - 1) / 2;
+    return checksum ==
+           (system ? expected * OWNER_COUNT * OWNER_COUNT
+                   : expected * OWNER_COUNT + OWNER_COUNT * (OWNER_COUNT - 1) / 2);
 }
 TEST_CASE(synchronous_activation_benchmark)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const char *names[] = { "system", "event", "helper-event" };
     const char *sources[] = {
-        "system Bench { state total:double=0; total+=1; }",
-        "behavior Bench { state total:double=0; on Run(amount:double) { "
+        "Bench :: system() { total:retain double=0; total+=1; }",
+        "Bench :: behavior { total:retain double=0; on Run :: (amount: double) "
+        "{ "
         "total+=amount; } }",
-        "behavior Bench { state total:double=0; "
-        "Add :: (value:double, amount:double)->double { return value+amount; } "
-        "on Run(amount:double) { total=Add(total,amount); } }",
+        "Bench :: behavior { total:retain double=0; Add :: (value:double, "
+        "amount:double)->double { return value+amount; } on Run :: (amount: "
+        "double) "
+        "{ total=Add(total,amount); } }",
     };
     for (int backend = 0; backend < 2; backend++) {
         for (int workload = 0; workload < 3; workload++) {

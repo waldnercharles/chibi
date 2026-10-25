@@ -2,10 +2,15 @@
 
 #include "fmt.h"
 #include "support/arena.h"
+#include "support/array.h"
 #include "types/array.h"
+#include "types/scalar.h"
+#include "types/text.h"
 #include "types/value_format.h"
 
 #include <assert.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #define FMT_TEXT_MAX_ARGS 12
@@ -15,7 +20,7 @@ static const char *fmt_text_of(const pin_value *v)
 {
     if (v->container == PIN_CONTAINER_SINGLE &&
         (v->type == PIN_STR || v->type == PIN_NAME)) {
-        return v->str ? v->str : "";
+        return pin_text(*v).bytes;
     }
     if (v->type == PIN_FLOW && v->container == PIN_CONTAINER_SINGLE) {
         return ""; /* unconnected Generic argument */
@@ -90,7 +95,7 @@ static bool fmt_modifier(
     char *letter
 )
 {
-    if (v->container != PIN_CONTAINER_SINGLE || size >= 64) {
+    if (v->container != PIN_CONTAINER_SINGLE || size >= 64 || memchr(mods, 0, size)) {
         return false;
     }
     char prefix[64];
@@ -230,144 +235,165 @@ static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t m
         }
         case PIN_STR:
         case PIN_NAME:
-            snprintf(buf, sizeof buf, conv, v->str ? v->str : "");
+            snprintf(buf, sizeof buf, conv, pin_text(*v).bytes);
             break;
         default: return fmt_arena_strdup(a, fmt_text_of(v));
     }
     return fmt_arena_strdup(a, buf);
 }
 
-pin_value native_format_text(const pin_value *inputs, int input_count, arena *a)
+static pin_string fmt_render_text(const pin_value *value, const char *mods, size_t size, arena *storage)
+{
+    if (value->container != PIN_CONTAINER_SINGLE ||
+        (value->type != PIN_STR && value->type != PIN_NAME)) {
+        char conv[80], letter;
+        if (size && !memchr(mods, '*', size) &&
+            fmt_modifier(value, mods, size, conv, sizeof conv, &letter) &&
+            letter == 'c') {
+            char buffer[FMT_RENDER_BUF];
+            int length = snprintf(
+                buffer,
+                sizeof buffer,
+                conv,
+                (int)(unsigned char)behavior_scalar_bits(*value)
+            );
+            assert(length >= 0 && length < FMT_RENDER_BUF);
+            char *bytes = arena_alloc(storage, (size_t)length + 1);
+            memcpy(bytes, buffer, (size_t)length + 1);
+            return (pin_string){ bytes, (uint32_t)length };
+        }
+        const char *text = fmt_render_arg(value, mods, size, storage);
+        return (pin_string){ text ? text : "", text ? (uint32_t)strlen(text) : 0 };
+    }
+    pin_string text = pin_text(*value);
+    char conv[80], letter;
+    if (!size || memchr(mods, '*', size) ||
+        !fmt_modifier(value, mods, size, conv, sizeof conv, &letter)) {
+        return text;
+    }
+    const char *p = conv + 1;
+    bool left = false;
+    while (*p == '-') {
+        left = true;
+        p++;
+    }
+    size_t width = 0;
+    while (*p >= '0' && *p <= '9') {
+        width = width * 10 + (unsigned)(*p++ - '0');
+    }
+    size_t length = text.length;
+    if (*p == '.') {
+        size_t precision = 0;
+        for (p++; *p >= '0' && *p <= '9'; p++) {
+            precision = precision * 10 + (unsigned)(*p - '0');
+        }
+        if (length > precision) {
+            length = precision;
+        }
+    }
+    size_t total = width > length ? width : length;
+    char *bytes = arena_alloc(storage, total + 1);
+    memset(bytes, ' ', total);
+    memcpy(bytes + (left ? 0 : total - length), text.bytes, length);
+    bytes[total] = 0;
+    return (pin_string){ bytes, (uint32_t)total };
+}
+pin_value native_format_text(const pin_value *inputs, int input_count, arena *storage)
 {
     assert(input_count >= 1);
-    pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
-    const char *format = fmt_text_of(&inputs[0]);
-    int nargs = input_count - 1;
-    if (nargs > FMT_TEXT_MAX_ARGS) {
-        nargs = FMT_TEXT_MAX_ARGS;
+    pin_value result = { .type = PIN_STR, .type_name = "const char *" };
+    bool scalar_text = inputs[0].container == PIN_CONTAINER_SINGLE &&
+                       (inputs[0].type == PIN_STR || inputs[0].type == PIN_NAME);
+    pin_string format = scalar_text ? pin_text(inputs[0])
+                                    : (pin_string){ fmt_text_of(inputs), 0 };
+    if (!scalar_text) {
+        format.length = (uint32_t)strlen(format.bytes);
     }
-
-    /* Reduce every placeholder to a bare {} and render each argument
-     * through its modifier, so fmt only assembles %s conversions while the
-     * value keeps its own type for precision formatting. */
-    const char *args[FMT_TEXT_MAX_ARGS] = { 0 };
-    char *sanitized = arena_alloc(a, strlen(format) + 1);
-    if (!sanitized) {
-        return r;
+    if (format.length > INT_MAX) {
+        return result;
     }
-    char *w = sanitized;
-    int seq = 0, at = 0;
-    for (const char *p = format; *p;) {
-        if (p[0] == '{' && p[1] == '{') {
-            *w++ = '{';
-            *w++ = '{';
-            p += 2;
+    char *bytes = NULL;
+    int sequential = 0, placeholders = 0;
+    for (size_t at = 0; at < format.length;) {
+        char c = format.bytes[at];
+        if ((c == '{' || c == '}') && at + 1 < format.length &&
+            format.bytes[at + 1] == c) {
+            apush(bytes, c);
+            at += 2;
             continue;
         }
-        if (p[0] == '}' && p[1] == '}') {
-            *w++ = '}';
-            *w++ = '}';
-            p += 2;
+        if (c != '{') {
+            apush(bytes, c);
+            at++;
             continue;
         }
-        if (p[0] != '{') {
-            *w++ = *p++;
-            continue;
-        }
-        const char *q = p + 1;
+        size_t q = at + 1;
         int index = -1;
-        if (*q >= '0' && *q <= '9') {
-            index = 0;
-            while (*q >= '0' && *q <= '9') {
-                index = index >= FMT_TEXT_MAX_ARGS ? FMT_TEXT_MAX_ARGS
-                                                   : index * 10 + (*q - '0');
-                q++;
-            }
-        }
-        if (*q != ':' && *q != '}') {
-            *w++ = *p++;
-            continue;
-        } /* literal '{' */
-        const char *mods = NULL;
-        if (*q == ':') {
-            mods = ++q;
-        }
-        while (*q && *q != '}') {
+        while (q < format.length && format.bytes[q] >= '0' && format.bytes[q] <= '9') {
+            index = index < 0 ? 0 : index;
+            index = index >= FMT_TEXT_MAX_ARGS ? FMT_TEXT_MAX_ARGS
+                                               : index * 10 + format.bytes[q] - '0';
             q++;
         }
-        if (*q != '}') {
-            *w++ = *p++;
+        if (q == format.length || (format.bytes[q] != ':' && format.bytes[q] != '}')) {
+            apush(bytes, c);
+            at++;
             continue;
-        } /* malformed: literal */
-        int arg_index = index >= 0 ? index : seq++;
-        size_t mods_len = mods ? (size_t)(q - mods) : 0;
-        p = q + 1;
-        if (arg_index >= nargs || at >= FMT_TEXT_MAX_ARGS) {
-            continue; /* empty */
         }
-        args[at] = fmt_render_arg(&inputs[arg_index + 1], mods, mods_len, a);
-        if (!args[at]) {
-            return r; /* OOM */
+        size_t mods = q;
+        bool modified = format.bytes[q] == ':';
+        if (modified) {
+            mods = ++q;
         }
-        at++;
-        *w++ = '{';
-        *w++ = '}';
-    }
-    *w = '\0';
-
-    const char *specs[FMT_TEXT_MAX_ARGS] = { 0 };
-    for (int i = 0; i < at; i++) {
-        specs[i] = "s";
-    }
-    size_t length = strlen(sanitized), extra = (size_t)at * 8 + 1;
-    if (length > (SIZE_MAX - extra) / 2) {
-        return r;
-    }
-    /* fmt escapes every literal percent for printf, doubling that byte. */
-    char *rewritten = arena_alloc(a, length * 2 + extra);
-    if (!rewritten) {
-        return r;
-    }
-    (void)_fmt_parse(rewritten, at, sanitized, specs);
-
-    fmt_stream ss = { 0 };
-    _fmt_sprint(
-        &ss,
-        rewritten,
-        args[0],
-        args[1],
-        args[2],
-        args[3],
-        args[4],
-        args[5],
-        args[6],
-        args[7],
-        args[8],
-        args[9],
-        args[10],
-        args[11]
-    );
-    if (ss.data) {
-        char *out = fmt_arena_strdup(a, ss.data);
-        fmt_close(&ss);
-        if (out) {
-            r.str = out;
+        while (q < format.length && format.bytes[q] != '}') {
+            q++;
         }
+        if (q == format.length) {
+            apush(bytes, c);
+            at++;
+            continue;
+        }
+        at = q + 1;
+        index = index >= 0 ? index : sequential++;
+        if (index >= input_count - 1 || index >= FMT_TEXT_MAX_ARGS ||
+            placeholders >= FMT_TEXT_MAX_ARGS) {
+            continue;
+        }
+        pin_string text = fmt_render_text(
+            &inputs[index + 1],
+            format.bytes + mods,
+            modified ? q - mods : 0,
+            storage
+        );
+        size_t maximum = (size_t)acount(bytes) + (format.length - at);
+        if (maximum > INT_MAX || text.length > (size_t)INT_MAX - maximum) {
+            afree(bytes);
+            return result;
+        }
+        for (uint32_t n = 0; n < text.length; n++) {
+            apush(bytes, text.bytes[n]);
+        }
+        placeholders++;
     }
-    return r;
+    const char *error = pin_value_text(storage, &result, bytes, (size_t)acount(bytes));
+    afree(bytes);
+    if (error) {
+        return (pin_value){ .type = PIN_STR };
+    }
+    return result;
 }
 
 static const char *fmt_text_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
 {
     *result = native_format_text(arguments, count, storage);
-    return result->str ? NULL : "text formatting allocation failed";
+    return result->text ? NULL : "text formatting allocation failed";
 }
 
 pin_value native_text_equal(const pin_value *inputs, int, arena *)
 {
     return (pin_value){ .type = PIN_BOOL,
                         .type_name = "bool",
-                        .b = !strcmp(fmt_text_of(&inputs[0]), fmt_text_of(&inputs[1])) };
+                        .b = pin_text_equal(pin_text(inputs[0]), pin_text(inputs[1])) };
 }
 
 static const char *text_equal_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
@@ -379,6 +405,98 @@ static const char *text_equal_call(arena *storage, const pin_value *arguments, i
 const node_host_call NATIVE_FORMAT_TEXT_HOST = { .value = fmt_text_call,
                                                  .variadic = true };
 const node_host_call NATIVE_TEXT_EQUAL_HOST = { .value = text_equal_call };
+static const char *text_bytes(
+    const pin_value *arguments,
+    int count,
+    int expected,
+    const char **text,
+    size_t *length
+)
+{
+    if (!arguments || count != expected || arguments[0].container != PIN_CONTAINER_SINGLE ||
+        (arguments[0].type != PIN_STR && arguments[0].type != PIN_NAME)) {
+        return "Invalid text byte operation arguments";
+    }
+    for (int i = 1; i < count; i++) {
+        if (arguments[i].container != PIN_CONTAINER_SINGLE ||
+            arguments[i].type != PIN_I32) {
+            return "Invalid text byte operation index";
+        }
+    }
+    pin_string view = pin_text(arguments[0]);
+    *text = view.bytes;
+    *length = view.length;
+    if (*length > INT_MAX) {
+        return "Text byte length exceeds int range";
+    }
+    return NULL;
+}
+static const char *text_byte_length_call(arena *, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 1, &text, &length);
+    if (error) {
+        return error;
+    }
+    *result = (pin_value){ .type = PIN_I32, .type_name = "int", .i = (int)length };
+    return NULL;
+}
+static const char *text_byte_at_call(arena *, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 2, &text, &length);
+    if (error) {
+        return error;
+    }
+    int index = arguments[1].i;
+    *result = (pin_value){ .type = PIN_I32,
+                           .type_name = "int",
+                           .i = index >= 0 && (size_t)index < length
+                                  ? (unsigned char)text[index]
+                                  : -1 };
+    return NULL;
+}
+static const char *text_slice_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 3, &text, &length);
+    if (error) {
+        return error;
+    }
+    size_t start = arguments[1].i > 0 ? (size_t)arguments[1].i : 0;
+    if (start > length) {
+        start = length;
+    }
+    size_t take = arguments[2].i > 0 ? (size_t)arguments[2].i : 0;
+    if (take > length - start) {
+        take = length - start;
+    }
+    return pin_value_text(storage, result, text + start, take);
+}
+static const char *text_bytes_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 1, &text, &length);
+    if (error) {
+        return error;
+    }
+    pin_array *bytes = pin_array_snapshot_allocate(storage, PIN_I32, "int", (int)length);
+    for (size_t i = 0; i < length; i++) {
+        bytes->items[i] = (pin_value){ .type = PIN_I32,
+                                       .type_name = bytes->type_name,
+                                       .i = (unsigned char)text[i] };
+    }
+    *result = (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = bytes };
+    return NULL;
+}
+const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL = { .value = text_byte_length_call };
+const node_host_call NATIVE_TEXT_BYTE_AT_CALL = { .value = text_byte_at_call };
+const node_host_call NATIVE_TEXT_SLICE_CALL = { .value = text_slice_call };
+const node_host_call NATIVE_TEXT_BYTES_CALL = { .value = text_bytes_call };
 #define SNAPSHOT(KEY, FN, VARIADIC)                                                                       \
     static const char *KEY##_snapshot(arena *storage, const pin_value *inputs, int count, pin_value *out) \
     {                                                                                                     \

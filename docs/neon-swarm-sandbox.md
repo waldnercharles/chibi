@@ -1,5 +1,9 @@
 # Neon Swarm material sandbox
 
+> Voidweaver was retired on 2026-10-17 and its repository is archived. This
+> guide records the sandbox it held. See [examples](examples.md) for maintained
+> projects.
+
 The authored sandbox is preserved in the extracted Voidweaver repository. Its
 startup scene is `content/scenes/Sandbox.kdl`. Open the external project with
 installed-SDK Studio:

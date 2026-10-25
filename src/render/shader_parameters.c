@@ -20,13 +20,14 @@ const node_access RENDER_SHADER_PARAMETER_ACCESS = {
     .flags = NODE_EFFECT_PARALLEL | NODE_EFFECT_ENTITY_SCOPED | NODE_EFFECT_HOST_SINK,
     .target_input = 0
 };
-#define PORT(NAME, KIND, STORAGE, TYPE_NAME, FLAGS, GROUP, INITIAL)            \
+#define PORT(NAME, KIND, STORAGE, TYPE_NAME, FLAGS, GROUP, INITIAL, C_STRING)  \
     { .name = NAME,                                                            \
       .kind = KIND,                                                            \
       .storage = STORAGE,                                                      \
       .type_name = TYPE_NAME,                                                  \
       .type_flags = FLAGS,                                                     \
       .generic_group = GROUP,                                                  \
+      .c_string = C_STRING,                                                    \
       .has_default = true,                                                     \
       .default_value = INITIAL },
 static const native_parameter_definition INPUTS[] = { RENDER_SHADER_PARAMETER_INPUTS(PORT) };

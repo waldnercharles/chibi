@@ -2,13 +2,22 @@
 
 Prepared 15 October 2026 from the owner-supplied **Chibi Studio in .chibi, Revision 2**. This is a dependency and coverage ledger, not evidence that its future features are implemented or tested.
 
+Language update, 16 October 2026: the [language redesign](../../PLAN.md) and
+[current language documentation](../code-language.md) supersede the syntax and
+storage choices recorded below. Current source uses name-first declarations and
+plain `retain` owned by the behavior attachment or system registration, with
+independent coroutine locals per query match. Historical `state`/`shared` and
+unresolved-record-syntax notes remain evidence of that earlier planning snapshot,
+not current authoring guidance. This does not complete Studio migration packages
+or their product-parity gates.
+
 ## Start here
 
 1. `packages.tsv` is the complete scoped PR/work-package register: 95 packages, with dependency IDs, decision gates, acceptance criteria and plan section references. It includes seven already-owned foundation packages so they are not implemented twice.
 2. `roadmap.md` renders that register as a human-readable checklist.
 3. `studio-path-coverage.csv` accounts for all 867 paths in the supplied exact-tree inventory. Every product source/header has an explicit primary package; shared responsibilities list additional packages. It retains the original immutable source URL, blob SHA, responsibility, candidate disposition and evidence level.
 4. `validation.json` records counts, dependency checks, source fingerprints and mapping completeness. It is document validation only, not an application test result.
-5. `source/plan.md` and `source/studio-file-inventory.csv` preserve the complete source evidence (CSV line endings normalized to LF; original fingerprint retained in validation.json). References such as `D6`, `6.6` and `11 Stage 3` mean those headings in the plan.
+5. `source/plan.md` is a curated copy with obsolete test-gate prose omitted. The [original unmodified plan](https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md) remains pinned in Git; `validation.json` records its original hash separately from the current copy's hash. `source/studio-file-inventory.csv` uses LF line endings and replaces retired test-policy build-membership wording with factual unrun coverage. Original source paths, identities and other fields are retained. References such as `D6`, `6.6` and `11 Stage 3` mean those headings in the plan.
 
 The package count is a decomposition for coordination, not an obligation to create one PR per package. A package can become a narrow stack when independently reviewable subcontracts require it; several compatible packages can share one PR only if ownership, dependencies and exact-head evidence stay clear. Every package must ultimately link its real PR(s), or carry a reviewed, reasoned not-needed disposition if it is conditional. A draft placeholder is not feature completion.
 
@@ -16,13 +25,32 @@ The `native-reload-audit.md` report verifies that a new native-reload deletion f
 
 The supplementary [current language contract](../language-contracts/v1.md) records
 L00's source-backed current semantics at engine `62906a504fee6b2e0bd6349a8eeff1450529cd90`,
-with existing admitted C fixture mappings and a separately labelled capture
+with existing C fixture mappings and a separately labelled capture
 lifetime proposal. It is a documentation prerequisite only: no runtime result,
 new syntax choice, completed L00 status or Stage 0–2 gate is implied.
 
+## Supplementary L04 progress, 16 October 2026
+
+The [owned add/append CALL result reduction](../row-array-construction.md)
+records exact baseline/candidate evidence for removing one redundant deep copy.
+[Local array construction](../counted-record-construction.md) now appends to
+and writes a local's own array in place, so building one is linear for every
+loop shape. The remaining L04/P01 criteria stay open. This supplementary note does not
+change the frozen generated ledger or complete the Outliner cutover.
+
+## Supplementary Outliner policy specimen, 16 October 2026
+
+The [selected-range projection specimen](../outliner-projection.md) exercises
+all twelve native row-field contracts as authored policy over owned synthetic
+inputs, with bytecode/native/Wasm and lifetime evidence. Its real helper and
+conditional shape uses canonical row construction; it does not inherit the
+counted-loop performance claim. Mechanical text bindings remain test-local.
+Live scene reads, current-SDK Studio integration, commands and panel cutover
+remain open; this note does not alter the frozen generated ledger.
+
 ## Regeneration and maintenance
 
-This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.
+This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source identities stay pinned; the curated plan's current hash is recorded separately from its original identity. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.
 
 From the repository root, the documentation-only regeneration command is:
 
@@ -40,7 +68,7 @@ git diff --check
 git diff --exit-code -- docs/studio-migration-roadmap/
 ```
 
-After intentional snapshot edits, inspect the expected diff, run the same generator again, and verify the second run introduces no additional changes. Keep original `source/` fingerprints unchanged. Recheck the 95-package/867-path results and obtain independent documentation review before publication. Product readiness remains governed by its separate admitted C/pico_unit evidence.
+After intentional snapshot edits, inspect the expected diff, run the same generator again, and verify the second run introduces no additional changes. Preserve the original source identities and record the current curated-copy hash separately. Recheck the 95-package/867-path results and obtain independent documentation review before publication. Product readiness remains governed by its separate affected-contract C/pico_unit evidence.
 
 The generator refuses before any output write if an existing coverage CSV contains a non-baseline `tracking_status`, a nonempty `implementation_pr` or `exact_head_evidence`, or lacks those tracking columns. This prevents later implementation progress from being silently erased. If it refuses, preserve the recorded fields and first change to a reviewed status-preserving maintenance workflow; do not clear progress fields to bypass the guard. The current empty baseline remains deterministic.
 
@@ -50,16 +78,14 @@ The committed endpoint is identical Studio product behavior and visuals with por
 
 The supplied plan pins engine `02f8453211dd4cc57965ba52c645f08a92e53c5e` and Studio `78cb4d4c47242db9f7af2b9573653d9756050e99`. These are provenance baselines, not an instruction to ignore newer reviewed changes. B00 refreshes and records the actual implementation pair, immutable SDK artifact and baseline environment before new acceptance claims.
 
-At handoff, the coordinator owns:
+Coordinator-verified checkpoint, 15 October 2026, after main `c02cff784e141ae33effa841a7c5b93047f35104`:
 
-- [Engine PR #397](https://github.com/waldnercharles/chibi/pull/397), query-variable load IR (R397)
-- [Engine PR #398](https://github.com/waldnercharles/chibi/pull/398), scalar component reads (R398)
-- [Engine PR #399](https://github.com/waldnercharles/chibi/pull/399), comment-preserving minimizer safety (R399)
-- [Engine PR #400](https://github.com/waldnercharles/chibi/pull/400), managed capture retention (RCAP), plus scalar writes (RWRITE), configurable existing-printer candidate (RFMT), and prepared opcode-schema safety (RSCHEMA)
+- All seven reserved foundations are merged: query loads [#397](https://github.com/waldnercharles/chibi/pull/397), checked scalar reads [#398](https://github.com/waldnercharles/chibi/pull/398), minimizer safety [#399](https://github.com/waldnercharles/chibi/pull/399), capture retention [#400](https://github.com/waldnercharles/chibi/pull/400), opcode schema identity [#401](https://github.com/waldnercharles/chibi/pull/401), formatter SDK [#402](https://github.com/waldnercharles/chibi/pull/402), and checked scalar writes [#408](https://github.com/waldnercharles/chibi/pull/408). Exact integration/test heads are recorded in the generated checklist and linked PR evidence.
+- Source/ownership inventory [#404](https://github.com/waldnercharles/chibi/pull/404), bounded module-composition work [#405](https://github.com/waldnercharles/chibi/pull/405), current-language contract documentation [#406](https://github.com/waldnercharles/chibi/pull/406), and shared-capture/lambda proposal [#409](https://github.com/waldnercharles/chibi/pull/409) are merged. These are partial prerequisites, not completion of all B00/B01/L00/L07/L10 acceptance requirements. Capturing lambda runtime remains unimplemented.
+- Core operation descriptors [#407](https://github.com/waldnercharles/chibi/pull/407) have an independently reviewed/tested repaired head, but remain unmerged under an explicit cancellation hold. Its repaired GitHub finding is still visibly unresolved. No other feature may integrate that held branch.
+- State/self and runtime-attribution implementation candidates remain under independent validation; neither is recorded as landed. The original installed Studio SDK baseline has compiled natively and for serial web, using its separate historical SDK pins; application acceptance and compatibility with the current engine SDK remain unfinished checks. Studio product-policy conversion has not begun in this work.
 
-These are ownership reservations. Coordinator verified PR #399 merged as `1de4810d49b3acf4ead7d910d0abd2b042293e18` and PR #400 as `ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec` after fresh independent validation; R399 and RCAP are completed foundation work. Schema PR #401 merged as `23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb` after exact-head independent review/tests. Shared formatter SDK foundation PR #402 merged as `64183a1c4ba5b367bf35604ddae45fa616fd3bd0` after independent checks of exact head `3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b`. R397 and R398 explicitly depend on RSCHEMA before landing. This remains a source/dependency inventory. Other current merge/readiness still needs verification. Recheck exact remote heads, reviews, tests and holds before relying on them. The source workspace disappeared during the earlier work. A checksum-verified main checkout has since been recovered. Capture recovery and fresh validation are complete. Scalar-write reconstruction remains coordinator-owned and needs fresh review/tests. The merged formatter SDK emits LF only; configurable line endings remain future F01 scope. This foundation does not complete layout-engine comparison (F00), all caller/configuration integration (F01), or RML/RCSS integration (F02). Do not assume unpublished content or historical test evidence survived intact.
-
-The seven `existing_owned` entries are excluded from new work ownership. Apart from verified PR #399/#400/#401/#402 foundation merges and the completed bounded B06 source/build audit, entries remain uncompleted in this ledger; many may be safely prepared now, but dependent implementation and acceptance must respect the gates below.
+The seven `existing_owned` entries remain reserved so they are not reimplemented. The formatter foundation emits LF only; configurable line endings, shared caller/configuration integration and RML/RCSS behavior remain F01/F02 work. The complete Outliner command/history/UI parity gate, not all 95 packages or optional storage refinements, controls the start of broader panel conversion. Gate only the next slice on the data, lifetime, service and formatting contracts it actually exercises, as required by the source plan.
 
 ## Decisions requiring the owner's choice
 
@@ -82,10 +108,12 @@ The latest request to produce remaining PRs authorizes implementation and stacki
 
 ### 3. Lambdas (D6)
 
-- Owner selected inferred captures over explicit capture lists. This does not yet choose by-value/ref semantics, callable signature spelling, or retention behavior.
-- Recommended safe next design: inferred immutable by-value captures with mutation remaining explicit, subject to the outstanding semantic choice; checked synchronous nonescaping consumers first. Static/borrowed/owned callable categories must remain semantically distinguishable, whether spelled with qualifiers or parameter lifetime effects.
-- Initial stored callbacks need a named feature and owner-bound lifetime/reload policy. Recommended: old-owner generation invalidation and re-registration. Do not infer this from a capture-syntax answer.
-- Escaping local `ref`, task-producing callable syntax, pinned old-generation closures and direct synchronous host reentry remain separate decisions, not implicit consequences of adding lambdas.
+- Selected: inferred shared mutable lexical bindings. Outer writes and sibling-closure writes are mutually visible; ordinary array/value assignment remains unchanged. The [decision record](decisions.md#selected-inferred-shared-mutable-captures) supersedes the historical immutable-snapshot recommendation.
+- Requested syntax direction: optional `fn`, an optional arrow body and inferred results. The [concrete proposal](../language-contracts/inferred-shared-captures-proposal.md) now gives equivalent `fn(value: int) { return ...; }`, `(value: int) { return ...; }` and `(value: int) => expression` forms, preserving explicit results for unresolved recursion. Exact grammar and canonicalization remain proposals; no lambda is implemented. Contextual parameter inference is unselected.
+- Recommend fn-free canonical expressions through checked semantic minimization, including a combined Format command; keep the whitespace-only layout SDK distinct. Keep `fn` and explicit nonvoid results in bodyless callable types. Extra arrow-block combinations and exact command defaults need scoped review; optional-keyword removal does not authorize block-to-arrow rewrites.
+- Pending lifetime/admission details: verified synchronous nonescape first, with the same shared-binding meaning for owned escape. Returned scalar/string/array captures and the named-result counter tuple are proposed; captured refs/task handles and general callable-bearing containers need their explicit lifetime/ownership contracts. No author allocator/free or Rust-style lifetime annotation is required by the selected semantics.
+- Proper capture-cycle support and automatic reclamation are required in a separate implementation PR. Initial rejection is only a temporary safety limitation and does not close that requirement. No collector or reclamation algorithm is selected.
+- Stored callbacks still need a named consumer and owner/reload contract. Old-owner generation invalidation and re-registration remain recommendations. Task-producing callables, cross-owner/thread access, pinned old generations and direct synchronous host reentry are not implicitly approved.
 
 ### 4. Packed AoS/SoA storage (D9)
 
@@ -106,9 +134,9 @@ GitHub `main` grammar was reread on 15 October 2026. Blob `ba6b8d5b6bb31dac14c5f
 
 ## Work that can proceed while answers are pending
 
-These are runnable scopes once source/toolchain access and required test admission are actually available; they are not a claim that all builds can run in the current environment.
+These are runnable scopes once source/toolchain access and the required capabilities are available; they are not a claim that all builds can run in the current environment.
 
-1. **B00–B02:** source/SDK oracle, exhaustive feature/command/ownership matrix and admitted selector map. Baseline source analysis can begin immediately; actual health checks wait for recovered tools.
+1. **B00–B02:** source/SDK oracle, exhaustive feature/command/ownership matrix and selected test map. Baseline source analysis can begin immediately; actual health checks wait for recovered tools.
 2. **B03–B04:** differential trace/recording architecture and missing attribution; preserve three-way comparison and single-owner side effects.
 3. **L00, L07, L14, L24:** existing semantic conformance, module-scale specimens, lifetime/FFI/string/task/generation retention, and representative game/effect tests. Do not duplicate RCAP.
 4. **L16–L18:** verified operation descriptors, bounded typed-call/native/Wasm import design and safe query-region optimization after existing foundation dependencies. No visible syntax needed.
@@ -131,7 +159,7 @@ This is a partial order, not a ban on independent design/measurement work. The t
 - Stack PRs only on eligible, reviewed dependency content; explicit holds must not enter through a base or cherry-pick. An unapproved syntax branch is not a workaround for a decision gate.
 - Keep feature-local native/authored switches only as transitional validation; one side owns mutations. Remove each old policy path once that slice's evidence is accepted, preserving rollback oracle outside shipped duplicate product code.
 - A stacked PR must identify its parent and incremental diff. Rebase/merge/conflict changes invalidate affected prior exact-head evidence. Independently review/test the actual integrated candidate.
-- Owner-authorized autonomous merging requires coordinating-worker confirmation that required independent review, addressed material findings, admitted tests, applicable builds and server checks pass for the exact head with clean integration. The phrase “all of three comments” is not a three-comment cap and never permits ignoring unresolved findings. Retain branches. No protection bypass or release of unrelated holds.
+- Owner-authorized autonomous merging requires coordinating-worker confirmation that required independent review, addressed material findings, affected tests, applicable builds and server checks pass for the exact head with clean integration. The phrase “all of three comments” is not a three-comment cap and never permits ignoring unresolved findings. Retain branches. No protection bypass or release of unrelated holds.
 - PR status is not feature readiness. An open draft that honestly records blockers satisfies publication progress only; completion requires the package and stage gates.
 
 ## Acceptance gates applied to every package
@@ -140,7 +168,7 @@ This is a partial order, not a ban on independent design/measurement work. The t
 
 **G1: Review.** Independent review covers the exact candidate and affected contract interactions. Address every material finding or obtain its explicit accepted disposition. An approval on an earlier head is insufficient for changed semantics. Update PR scope/tests/blockers accurately.
 
-**G2: Tests/builds.** Only admitted C/pico_unit selectors through the unchanged hard 60-second production supervisor. Build/configure time separate. No aggregate/quarantined/native/render/Studio suite reconstruction from chunks. Required unavailable affected-contract or server coverage blocks landing unless an admitted replacement/explicit scoped decision is valid. Distinguish passed/failed/not-run. Language work compares reference bytecode with actual SLJIT and actual Wasm execution, not an inspection fallback.
+**G2: Tests/builds.** Run the C/pico_unit checks for the affected contracts and report build/configure time separately. Required unavailable affected-contract or server coverage blocks landing unless a valid scoped decision supplies equivalent evidence. Distinguish passed/failed/not-run. Language work compares reference bytecode with actual SLJIT and actual Wasm execution, not an inspection fallback.
 
 **G3: Semantic/lifetime.** Positive and negative/fallback cases, exact error/evaluation order, numerics/IDs, ownership/snapshots/ref aliases, effects/threading, structural invalidation/reacquisition, owner close/cancel/reload, immutable generation compatibility and last-valid-draft isolation.
 
@@ -148,7 +176,7 @@ This is a partial order, not a ban on independent design/measurement work. The t
 
 **G5: Performance.** Representative real small/typical/stress distributions, cold preparation versus warm execution, allocations/copied/retained/peak bytes and source attribution, host calls/UI work, no idle regression or unexplained asymptotic/memory-retention regression. Numeric budgets follow measured evidence; no unsupported whole-app speedup inference.
 
-**G6: Tooling/recovery.** Parser/analyzer/lowering/formatter/graph/debug/source maps/serialization/reload agree. One editor undo, atomic writes, invalid draft handling, compatible schema identity, recoverable staging and truthful errors. All authored examples compile under admitted checks.
+**G6: Tooling/recovery.** Parser/analyzer/lowering/formatter/graph/debug/source maps/serialization/reload agree. One editor undo, atomic writes, invalid draft handling, compatible schema identity, recoverable staging and truthful errors. All authored examples compile under the selected checks.
 
 **G7: Cutover.** Remove touched old C policy and duplicate routes; provisional native labels require function-level justification. Preserve a reproducible oracle and recovery route. Final default switch requires exact shipping-pair acceptance and platform coverage; unavailable coverage is never silently passed.
 
@@ -174,7 +202,7 @@ Every workload in plan 7.2 must have a claimed scope/evidence or explicit blocke
 - Spawn/despawn/hierarchy churn and stale references
 - Hot strings/arrays/records/dictionaries and algorithmic scaling
 
-Long-session or platform proof that cannot run under current admission remains a readiness blocker to resolve; this checklist does not authorize a long test or quarantined capture.
+Missing long-session or platform evidence remains a readiness blocker when the affected contract requires it.
 
 ## Product edge-case matrix
 

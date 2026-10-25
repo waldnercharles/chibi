@@ -1,6 +1,7 @@
 #ifndef CHIBI_BEHAVIOR_SCALAR_H
 #define CHIBI_BEHAVIOR_SCALAR_H
 #include "execution/instruction.h"
+#include "support/cos_sin.h"
 #include "types/scalar.h"
 
 #include <assert.h>
@@ -17,30 +18,83 @@ static inline double behavior_sign(double x)
 {
     return (x > 0) - (x < 0);
 }
-
-static inline int behavior_string_equal(const char *a, const char *b)
+/* Keep the shared deterministic float approximation without widening. */
+static inline float cos_sin_sinef(float x)
 {
-    return a == b || strcmp(a ? a : "", b ? b : "") == 0;
+    return cos_sin_compute(x).s;
+}
+static inline float cos_sin_cosinef(float x)
+{
+    return cos_sin_compute(x).c;
+}
+static inline float behavior_fractf(float x)
+{
+    return x - floorf(x);
+}
+static inline float behavior_signf(float x)
+{
+    return (x > 0) - (x < 0);
 }
 
-static inline bool behavior_scalar_string(pin_type type)
+/* Integer arithmetic uses declared-width two's-complement bits and never
+ * fails. Overflow wraps. x / 0 is 0 and x % 0 is x. The signed minimum / -1
+ * wraps to the minimum, with remainder 0. */
+static inline void behavior_scalar_integer_op(
+    behavior_function_op op,
+    pin_value a,
+    pin_value b,
+    pin_value *out,
+    pin_value *other
+)
 {
-    return type == PIN_NAME || type == PIN_STR;
+    assert(a.type >= PIN_I8 && a.type <= PIN_U64);
+    bool sign = behavior_scalar_signed(a.type);
+    uint64_t x = behavior_scalar_bits(a),
+             y = op == BF_NEG || op == BF_ABS ? 0 : behavior_scalar_bits(b),
+             bits = 0;
+    int64_t sx = (int64_t)x, sy = (int64_t)y;
+    switch (op) {
+        case BF_ADD: bits = x + y; break;
+        case BF_SUB: bits = x - y; break;
+        case BF_MUL: bits = x * y; break;
+        case BF_DIV:
+        case BF_MOD: {
+            /* x / -1 negates, which wraps the minimum to itself. */
+            bool negate = sign && sy == -1;
+            uint64_t quotient = !y     ? 0
+                              : negate ? UINT64_C(0) - x
+                              : sign   ? (uint64_t)(sx / sy)
+                                       : x / y;
+            uint64_t remainder = !y     ? x
+                               : negate ? 0
+                               : sign   ? (uint64_t)(sx % sy)
+                                        : x % y;
+            bits = op == BF_DIV ? quotient : remainder;
+            if (other) {
+                *other = behavior_scalar_from_bits(a.type, op == BF_DIV ? remainder : quotient);
+            }
+            break;
+        }
+        case BF_NEG: bits = UINT64_C(0) - x; break;
+        case BF_ABS: bits = sign && sx < 0 ? UINT64_C(0) - x : x; break;
+        case BF_MIN: bits = (sign ? sx < sy : x < y) ? x : y; break;
+        case BF_MAX: bits = (sign ? sx > sy : x > y) ? x : y; break;
+        case BF_LT: out->b = sign ? sx < sy : x < y; return;
+        case BF_LE: out->b = sign ? sx <= sy : x <= y; return;
+        case BF_GT: out->b = sign ? sx > sy : x > y; return;
+        case BF_GE: out->b = sign ? sx >= sy : x >= y; return;
+        case BF_EQ: out->b = x == y; return;
+        case BF_NE: out->b = x != y; return;
+        default: assert(false);
+    }
+    *out = behavior_scalar_from_bits(a.type, bits);
 }
 
-static inline bool behavior_scalar_integer(pin_type type)
-{
-    return (type >= PIN_I8 && type <= PIN_U64) || type == PIN_ENUM;
-}
-static inline bool behavior_scalar_signed(pin_type type)
-{
-    return type == PIN_I8 || type == PIN_I16 || type == PIN_I32 || type == PIN_I64;
-}
-
-/* Integer bitwise operations preserve the declared width. Shift counts use
- * their low log2(width) bits, including negative counts. Left shifts wrap;
- * signed right shifts extend the sign bit, unsigned right shifts insert zeros.
- * Compute unsigned bits so no signed shift or overflow depends on C behavior. */
+/* Integer bitwise operations preserve the declared width. Left shifts discard
+ * bits; signed right shifts extend the sign bit, unsigned right shifts insert
+ * zeros. A count at or past the width shifts every bit out. The count is
+ * unsigned. Compute unsigned bits so no signed shift or overflow depends on C
+ * behavior. */
 static inline uint64_t behavior_scalar_bitwise_bits(
     behavior_function_op op,
     pin_type type,
@@ -51,21 +105,21 @@ static inline uint64_t behavior_scalar_bitwise_bits(
     assert(type >= PIN_I8 && type <= PIN_U64);
     unsigned width = (unsigned)behavior_scalar_size(type) * CHAR_BIT;
     uint64_t mask = UINT64_MAX >> (64 - width);
-    unsigned count = (unsigned)(right & (width - 1));
     left &= mask;
     switch (op) {
         case BF_BIT_AND: return (left & right) & mask;
         case BF_BIT_OR: return (left | right) & mask;
         case BF_BIT_XOR: return (left ^ right) & mask;
         case BF_BIT_NOT: return ~left & mask;
-        case BF_SHL: return (left << count) & mask;
+        case BF_SHL: return right < width ? (left << right) & mask : 0;
         case BF_SHR: {
-            uint64_t bits = left >> count;
-            if (count && behavior_scalar_signed(type) &&
-                (left & (UINT64_C(1) << (width - 1)))) {
-                bits |= mask ^ (mask >> count);
+            bool fill = behavior_scalar_signed(type) &&
+                        (left & (UINT64_C(1) << (width - 1)));
+            if (right >= width) {
+                return fill ? mask : 0;
             }
-            return bits;
+            uint64_t bits = left >> right;
+            return fill && right ? bits | (mask ^ (mask >> right)) : bits;
         }
         default: assert(false); return 0;
     }
@@ -90,73 +144,5 @@ static inline const char *behavior_scalar_c_type(pin_type type)
 #undef TYPE
         default: assert(false); return NULL;
     }
-}
-/* The numeric casts every backend implements. Lowering builds any other
- * conversion it needs from these and BF_CONVERT. */
-static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
-{
-    if (from == to && (to == PIN_F32 || to == PIN_F64)) {
-        return true;
-    }
-    if (to == PIN_F64) {
-        return from >= PIN_BOOL && from <= PIN_I64;
-    }
-    if (from == PIN_F32 || from == PIN_F64) {
-        return to == PIN_U8 || to == PIN_I32 || to == PIN_I64;
-    }
-    return from == PIN_I32 && (to == PIN_U32 || to == PIN_U64 || to == PIN_I64);
-}
-static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
-{
-    assert(behavior_scalar_cast_supported(a.type, type));
-    if (a.type == type) {
-        return a;
-    }
-    pin_value out = { .type = type };
-    if (a.type == PIN_I32 && (type == PIN_U32 || type == PIN_U64)) {
-        if (type == PIN_U32) {
-            out.u = (uint32_t)a.i;
-        } else {
-            out.u64 = (uint64_t)(int64_t)a.i;
-        }
-        return out;
-    }
-    if (type == PIN_F64) {
-        switch (a.type) {
-            case PIN_BOOL: out.d = a.b; break;
-            case PIN_I8: out.d = a.i8; break;
-            case PIN_U8: out.d = a.u8; break;
-            case PIN_I16: out.d = a.i16; break;
-            case PIN_U16: out.d = a.u16; break;
-            case PIN_I32: out.d = a.i; break;
-            case PIN_U32: out.d = a.u; break;
-            case PIN_I64: out.d = (double)a.i64; break;
-            default: assert(false); break;
-        }
-        return out;
-    }
-    if (a.type == PIN_I32 && type == PIN_I64) {
-        out.i64 = a.i;
-        return out;
-    }
-    double x = a.type == PIN_F32 ? a.f : a.d;
-    int64_t low = type == PIN_U8 ? 0 : type == PIN_I32 ? INT32_MIN : INT64_MIN;
-    int64_t high = type == PIN_U8  ? UINT8_MAX
-                 : type == PIN_I32 ? INT32_MAX
-                                   : INT64_MAX;
-    int64_t n = isnan(x)          ? 0
-              : x <= (double)low  ? low
-              : x >= (double)high ? high
-                                  : (int64_t)x;
-    if (type == PIN_U8) {
-        out.u8 = (uint8_t)n;
-    }
-    if (type == PIN_I32) {
-        out.i = (int32_t)n;
-    }
-    if (type == PIN_I64) {
-        out.i64 = n;
-    }
-    return out;
 }
 #endif

@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "execution/delay.h"
+#include "execution/function_builder.h"
 #include "execution/status.h"
 #include "language/lower.h"
 #include "runtime/behaviors/source.h"
@@ -66,6 +67,11 @@ static script_catalog catalog;
 static ecs_world *world;
 static source_registry *registry;
 static execution_module *modules[6];
+enum
+{
+    IMPORT_DIAMOND_MODULES = 32
+};
+static execution_module *diamond[IMPORT_DIAMOND_MODULES];
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -79,6 +85,10 @@ static void cleanup()
         source_registry_free(registry);
     }
     registry = NULL;
+    for (int i = IMPORT_DIAMOND_MODULES - 1; i >= 0; i--) {
+        execution_module_free(diamond[i]);
+        diamond[i] = NULL;
+    }
     for (int i = 0; i < 6; i++) {
         execution_module_free(modules[i]);
         modules[i] = NULL;
@@ -143,7 +153,7 @@ static bool compile(int index, const char *text, behavior_backend backend)
             !strcmp(analysis->symbols[i].name, "total")) {
             shared_ids[index] = analysis->symbols[i].id;
         }
-        if (analysis->symbols[i].kind == SCRIPT_STATE &&
+        if (analysis->symbols[i].kind == SCRIPT_SHARED_STATE &&
             !strcmp(analysis->symbols[i].name, "observed")) {
             observed_ids[index] = analysis->symbols[i].id;
         }
@@ -198,19 +208,19 @@ static bool setup(behavior_backend backend)
                                 .types = &ghost_type,
                                 .type_count = 1 };
     REQUIRE(
-        compile(0, "behavior Alpha { count:double=0; on Begin {count+=1;} on Pulse {count+=1;} on Wait {await timer(10);count+=100;} }", backend)
+        compile(0, "Alpha :: behavior { count:double=0; on Begin :: () {count+=1;} on Pulse :: () {count+=1;} on Wait :: () {await timer(10);count+=100;} }", backend)
     );
     REQUIRE(
-        compile(1, "behavior Beta { count:double=5; on Begin {count+=2;} on Pulse {count+=2;} }", backend)
+        compile(1, "Beta :: behavior { count:double=5; on Begin :: () {count+=2;} on Pulse :: () {count+=2;} }", backend)
     );
     REQUIRE(
-        compile(2, "behavior Alpha { count:double=999; on Begin {count+=100;} on Pulse {count+=10;} on Wait {await timer(10);count+=1000;} }", backend)
+        compile(2, "Alpha :: behavior { count:double=999; on Begin :: () {count+=100;} on Pulse :: () {count+=10;} on Wait :: () {await timer(10);count+=1000;} }", backend)
     );
     REQUIRE(
-        compile(3, "behavior Beta { count:double=555; on Begin {count+=200;} on Pulse {count+=20;} }", backend)
+        compile(3, "Beta :: behavior { count:double=555; on Begin :: () {count+=200;} on Pulse :: () {count+=20;} }", backend)
     );
-    REQUIRE(compile(4, "behavior Service {on Begin {Touch();}}", backend));
-    REQUIRE(compile(5, "behavior Schema {bind self.PublicationGhost.value=1;}", backend));
+    REQUIRE(compile(4, "Service :: behavior {on Begin :: () {Touch();}}", backend));
+    REQUIRE(compile(5, "Schema :: behavior {bind self.PublicationGhost.value=1;}", backend));
     world = ecs_world_new();
     registry = source_registry_new(world);
     REQUIRE(source_register(registry, "Alpha", modules[0], NULL) == 0);
@@ -321,27 +331,36 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
         cleanup();
         catalog = (script_catalog){ .capabilities = capabilities,
                                     .capability_count = 6 };
-        REQUIRE(
-            compile(0, "system SharedChild { shared total:double=0; Next :: fn()->(amount:double){total+=2;return(total);} }", backends[b])
-        );
+        REQUIRE(compile(
+            0,
+            "SharedChild :: system() { total:retain double=0; Next :: "
+            "()->(amount:double){total+=2;return(total);} }",
+            backends[b]
+        ));
         imported = modules[0];
         REQUIRE(compile(
             1,
-            "system SharedRoot { shared total:double=0; observed:double=0; on "
-            "Pulse {total+=1; v:=await shared_read(); observed=v.amount;} }",
+            "SharedRoot :: system() { total:retain double=0; observed: "
+            "retain double=0; on Pulse :: () {total+=1; v:=await "
+            "shared_read(); "
+            "observed=v.amount;} }",
             backends[b]
         ));
         REQUIRE(execution_module_import_count(modules[1]) == 1);
         REQUIRE(compile(
             2,
-            "system SharedChild { shared total:double=500; Next :: fn"
-            "()->(amount:double){total+=20;return(total);} }",
+            "SharedChild :: system() { total:retain double=500; Next "
+            ":: ()->(amount:double){total+=20;return(total);} }",
             backends[b]
         ));
         imported = modules[2];
-        REQUIRE(
-            compile(3, "system SharedRoot { shared total:double=999; observed:double=999; on Pulse {total+=10; v:=await shared_read(); observed=v.amount;} }", backends[b])
-        );
+        REQUIRE(compile(
+            3,
+            "SharedRoot :: system() { total:retain double=999; "
+            "observed: retain double=999; on Pulse :: () {total+=10; v:=await "
+            "shared_read(); observed=v.amount;} }",
+            backends[b]
+        ));
         imported = NULL;
         REQUIRE(shared_ids[0] && shared_ids[1] && shared_ids[0] != shared_ids[1]);
         REQUIRE(shared_ids[0] == shared_ids[2] && shared_ids[1] == shared_ids[3]);
@@ -357,12 +376,16 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
                                 ecs_world_create_entity(world) };
         for (int i = 0; i < 2; i++) {
             REQUIRE(source_attach(registry, owners[i], "Shared", true, 0, 0) == 0);
+        }
+        /* system() reconciles every live owner at dispatch/pump boundaries.
+         * Establish both explicit attachments before that reconciliation. */
+        for (int i = 0; i < 2; i++) {
             REQUIRE(source_dispatch(registry, owners[i], "Pulse", NULL, 0, i, 0) == 1);
             REQUIRE(source_pump(registry, i, 0) == 0);
         }
         REQUIRE(count_is(program, owners[0], shared_ids[1], 2));
         REQUIRE(count_is(program, owners[1], shared_ids[1], 2));
-        REQUIRE(count_is(program, owners[0], observed_ids[1], 2));
+        REQUIRE(count_is(program, owners[0], observed_ids[1], 4));
         REQUIRE(count_is(program, owners[1], observed_ids[1], 4));
         for (int i = 0; i < 2; i++) {
             REQUIRE(source_detach_entity(registry, owners[i]) == 1);
@@ -379,7 +402,7 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
         modules[2] = modules[3] = NULL;
         REQUIRE(source_attach(registry, owners[0], "Shared", true, 2, 0) == 0);
         REQUIRE(count_is(program, owners[0], shared_ids[1], 2));
-        REQUIRE(count_is(program, owners[0], observed_ids[1], 999));
+        REQUIRE(count_is(program, owners[0], observed_ids[1], 4));
         REQUIRE(source_dispatch(registry, owners[0], "Pulse", NULL, 0, 2, 0) == 1);
         REQUIRE(source_pump(registry, 2, 0) == 0);
         REQUIRE(count_is(program, owners[0], shared_ids[1], 12));
@@ -399,8 +422,9 @@ TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins)
                                     .entity_type = 700 };
         REQUIRE(compile(
             0,
-            "behavior Alpha { count:double=0; on Begin {count+=1;} on Pulse "
-            "{count+=1;} on Wait {await timer(10);count+=100;} }",
+            "Alpha :: behavior { count:double=0; on Begin :: () {count+=1;} on "
+            "Pulse :: () "
+            "{count+=1;} on Wait :: () {await timer(10);count+=100;} }",
             backends[b]
         ));
         uint64_t module_id = execution_module_id(modules[0]);
@@ -466,6 +490,63 @@ TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins)
     }
     return true;
 }
+TEST_CASE(publication_shared_import_dag_preserves_transitive_task_rejection)
+{
+    /* Each generation imports the prior two. There are only 32 modules, not
+     * one module for every path through the shared dependency graph. */
+    for (int tasks = 0; tasks < 2; tasks++) {
+        for (int i = 0; i < IMPORT_DIAMOND_MODULES; i++) {
+            plan = execution_module_plan_new();
+            plan->valid = true;
+            plan->id = (uint64_t)i + 1;
+            for (int j = i - 2; j < i; j++) {
+                if (j >= 0) {
+                    execution_module_retain(diamond[j]);
+                    apush(plan->imports, diamond[j]);
+                }
+            }
+            plan->import_count = acount(plan->imports);
+            if (!i && tasks) {
+                apush(
+                    plan->states,
+                    ((execution_module_state){ .id = 1,
+                                               .initial = { .type = PIN_TASK },
+                                               .contains_tasks = true })
+                );
+                plan->state_count = 1;
+            }
+            if (i == IMPORT_DIAMOND_MODULES - 1) {
+                behavior_function_builder *builder = behavior_function_builder_new();
+                behavior_function_builder_emit(
+                    builder,
+                    (behavior_function_instruction){ .op = BF_RETURN }
+                );
+                behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+                char error[192];
+                behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
+                behavior_function_builder_free(builder);
+                REQUIRE(body);
+                apush(
+                    plan->functions,
+                    ((execution_module_function){ .id = 1,
+                                                  .kind = EXECUTION_FUNCTION_SYSTEM,
+                                                  .body = body })
+                );
+                plan->function_count = 1;
+            }
+            char error[192] = "";
+            diamond[i] = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+            if (tasks && i == IMPORT_DIAMOND_MODULES - 1) {
+                REQUIRE(!diamond[i] && strstr(error, "cannot contain tasks"));
+            } else {
+                REQUIRE(diamond[i]);
+            }
+        }
+        cleanup();
+    }
+    return true;
+}
+
 void test_language_publication()
 {
     pu_setup(NULL, cleanup);
@@ -473,5 +554,6 @@ void test_language_publication()
     RUN_TEST_CASE(publication_name_swap_preserves_state_and_removal_cancels);
     RUN_TEST_CASE(publication_preserves_detached_root_and_imported_shared_state);
     RUN_TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins);
+    RUN_TEST_CASE(publication_shared_import_dag_preserves_transitive_task_rejection);
     pu_clear_setup();
 }

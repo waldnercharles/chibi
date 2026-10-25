@@ -20,7 +20,9 @@ packages=list(csv.DictReader((root/'packages.tsv').open(),delimiter='\t'))
 # The Studio cutover depends on features actually consumed, not unrelated storage/lambda refinements.
 for p in packages:
  if p['id']=='R397': p['dependencies']='RSCHEMA'
+ if p['id']=='R397': p['scope']='PR #397 merged as 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 after fresh exact-head review/tests on 6524d3fc090e27943e4bc3942e6b528ba311ae6c. Checked query-load foundation complete; no full Studio/browser readiness claim.'
  if p['id']=='R398': p['dependencies']='R397,RSCHEMA'
+ if p['id']=='R398': p['scope']='PR #398 merged as b1ada743d978a25ff8b0d5d677b491291eb4ddf5 after fresh exact-head review/tests on cdf9adc540f1c1c0c9c8468820a1bf5b706629e4. Explicit checked scalar getter complete; ordinary member reads retain debug-snapshot fallback.'
  if p['id']=='K08': p['dependencies']=','.join(d for d in p['dependencies'].split(',') if d not in {'K04','K07'})
  if p['id']=='P38': p['dependencies']=','.join(d for d in p['dependencies'].split(',') if d not in {'L11','L21','L22'})
  if p['id']=='B06':
@@ -30,15 +32,15 @@ for p in packages:
   p['acceptance']='Exact source/build/host references and surviving dynamic-loader uses inspected; no native deletion needed at these snapshots. Reopen only on evidence of a live path, preserving .chibi state/callback/generation safety and workspace recovery. No runtime test claimed.'
  if p['id']=='R399': p['scope']='PR #399 merged as 1de4810d49b3acf4ead7d910d0abd2b042293e18, verified by coordinating worker. Its safety fix is complete; broader Format policy/integration remain separate packages.'
  if p['id']=='RCAP': p['scope']='PR #400 merged as ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec, verified by coordinating worker after fresh independent validation. Capture-retention fix is complete; do not reimplement.'
- if p['id']=='RSCHEMA': p['scope']='PR #401 merged as 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb after exact-head review/tests verified by the coordinator. Schema-safety foundation is complete; R397 and R398 retain explicit RSCHEMA dependencies and still require their own refreshed exact-head integration evidence.'
- if p['id']=='RWRITE': p['scope']='Prior unpublished source is not currently recovered, only metadata. Coordinator owns reconstruction after schema identity; fresh exact-head reviews/tests required.'
+ if p['id']=='RSCHEMA': p['scope']='PR #401 merged as 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb after exact-head review/tests verified by the coordinator. Schema-safety foundation is complete; dependent query/read/write foundations subsequently landed with their own fresh exact-head integration evidence. Manual payload/semantic version obligations remain.'
+ if p['id']=='RWRITE': p['scope']='PR #408 merged as 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 after independent exact-head review/tests on 982e736e4f2d5922c2308f0b6017dcfd30dbd869. Checked scalar publication and its ownership/order/reacquisition safeguards are complete; no raw-store substitution or broad managed-write claim.'
  if p['id']=='RFMT': p['scope']='Shared formatter SDK foundation PR #402 merged as 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 after independent checks of exact head 3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b, verified by the coordinator. Output is LF only; configurable line endings are not implemented. This foundation does not complete F00 comparison or full F01/F02 caller/dialect integration.'
  if p['id']=='RFMT': p['acceptance']='CST/comments/determinism and supported width/indent configuration verified for the merged SDK slice; output remains LF only. Future line-ending configuration remains F01 scope, and corpus/layout-engine choice and remaining caller integration stay separate.'
  if p['id'] in {'L01','L21'}: p['scope']=p['scope'].replace('Approved ', 'After approval, implement ', 1)
  if p['id']=='L22': p['scope']=p['scope'].replace('Selected explicit layout family;', 'Once selected, implement the explicit layout family;', 1)
- if p['id']=='L10': p['decisions']='Inferred capture selected; callable grammar, capture/retention/ref contract still need specification'
- if p['id']=='L10': p['acceptance']='Inferred captures and costs inspectable; mutation must not silently change capture/alias lifetime; no borrowed escape or suspension; all owner/service effects tracked; zero environment allocation proved only on the chosen hot path.'
- if p['id']=='L10': p['scope']='Owner selected inferred captures. Define exact safe by-value/ref and callable lifetime contract before grammar; checked nonescaping authored-to-authored predicate/comparator/visitor APIs first, with complete owner/service effects.'
+ if p['id']=='L10': p['decisions']='Inferred shared mutable bindings selected; optional fn, arrow bodies and inferred results requested; exact grammar/canonicalization and lifetime admission pending; proper cycle reclamation required in a separate PR, mechanism unselected'
+ if p['id']=='L10': p['acceptance']='Optional-fn block and arrow forms preserve capture/result semantics; inference keeps explicit recursive fallback and bodyless callable types distinct. Grammar boundaries and checked canonical keyword removal preserve comments, binding/effect identity and source maps. Outer and sibling closures share one binding across stack/owned placement and copies; ordinary value copies remain unchanged. No dangling escape or unsupported suspension; owner/service effects and capture costs inspectable. Proper cycle reclamation remains required in a separate PR; temporary rejection cannot close it. Zero allocation claims need exact hot-path evidence.'
+ if p['id']=='L10': p['scope']='Owner selected inferred shared mutable captures and requested optional fn, arrow forms and inferred results. Resolve exact grammar/canonicalization and lifetime admission before parser/runtime work; recommend fn-free semantic canonicalization, distinct callable types and no implicit block-to-arrow rewriting. Checked synchronous authored-to-authored callbacks first with complete owner/service effects. Proper automatic capture-cycle reclamation remains a separate required PR; interim rejection is temporary.'
  if p['id'] in {'F03','F04','F05'}: p['decisions']='Exact state/self/meaning-preserving Format approval in decisions.md; full library/shared/callable self table and named-fn rejection/default policy not selected'
  if p['id'] in {'L21','L22'}: p['decisions']='D9 array-like spelling and possible storage inference under investigation; ownership unresolved'
 ids={p['id'] for p in packages}; assert len(ids)==len(packages)
@@ -127,16 +129,16 @@ for r in rows:
   assert primary,p
   feature=additional.get(stem,'');note='Retire with consumers or replace by narrow authored/public SDK contract; do not recreate a global script header.'
  elif cat=='BUILD_TOOLING':
-  primary='P38';feature='K09;B00;B01;B06';note='Preserve packaging/toolchain role and pins; update exact native allowlist, public SDK boundary, authored assets and provenance. Do not run quarantined coverage.'
+  primary='P38';feature='K09;B00;B01;B06';note='Preserve packaging/toolchain role and pins; update exact native allowlist, public SDK boundary, authored assets and provenance. Record the affected checks and their actual results.'
  elif cat=='PROVENANCE': primary='P38';feature='B01;K09';note='Update extraction/SDK ownership records; prevent source-sync tools from restoring removed C policy.'
  elif cat=='BROWSER_HOST': primary='P36';feature='K03;K06;K07;P31;P34;P35';note='Body-audit browser-only mechanism versus application policy; retain narrow browser ABI only.'
  elif cat in {'TEST_ORACLE','ACCEPTANCE_TEST'}:
   primary='B02';feature='B03'
-  # Relevant feature affinity supplements explicit admission ownership. Historical tests are never marked passing.
+  # Relevant feature affinity supplements explicit test ownership. Historical tests are never marked passing.
   keywords=[('outliner','P04'),('gizmo','P29'),('collider','P29'),('camera','P28'),('scene_view','P28'),('movement','L24'),('collab','P35'),('checkpoint','P15'),('scene_disk','P13'),('scene_history','P02'),('refactor','P17'),('designer','P25'),('inspector','P26'),('debug','P21'),('graph','P22'),('flow','P22'),('code','P19'),('members','P06'),('output','P07'),('palette','P10'),('settings','P08'),('thumbnail','P33'),('model','P32'),('asset','P16'),('shell','P09'),('chrome','P09'),('panel_idle','B04'),('bench','B04'),('documents','P12'),('scene','P27'),('runtime','K05'),('kit','P05'),('labels','P10')]
   affinity=next((owner for k,owner in keywords if k in p),'')
   if affinity:feature+=';'+affinity
-  note='Coverage source/fixture only; no current admission, runnable target or passing result inferred. Preserve assertions/provenance, adapt only through admitted C/pico_unit selectors.'
+  note='Coverage source/fixture only; no runnable target or passing result inferred. Preserve assertions/provenance and adapt through the owning C/pico_unit selectors.'
  elif cat=='AUTHORED_STUDIO':
   primary='B01';feature='F02;P38'
   if p.endswith('.chibi'):
@@ -162,11 +164,11 @@ refs={}
 for line in (root/'source/plan.md').read_text().splitlines():
  if line.startswith('[') and ']: ' in line:
   key,url=line.split(']: ',1);refs[key[1:]]=url
-lines=['# Dependency-ordered PR checklist','', 'Only coordinator-verified merged R399/RCAP/RSCHEMA/RFMT foundations and the bounded read-only B06 audit are checked. F00/F01/F02 remain open. Other existing-owned work is reserved to its coordinator; current PR/head/evidence status must be rechecked. Dependencies include preparation and readiness gates, not just code imports. Refer to README.md for universal G0–G7 gates, decisions and policy.','']
+lines=['# Dependency-ordered PR checklist','', 'Only coordinator-verified merged R397/R398/R399/RCAP/RWRITE/RSCHEMA/RFMT foundations and the bounded read-only B06 audit are checked. F00/F01/F02 remain open. Other existing-owned work is reserved to its coordinator; current PR/head/evidence status must be rechecked. Dependencies include preparation and readiness gates, not just code imports. Refer to README.md for universal G0–G7 gates, decisions and policy.','']
 byid={p['id']:p for p in packages}
 for i in order:
  p=byid[i]
- lines += [f"## [{'x' if i in {'R399','RCAP','RSCHEMA','RFMT','B06'} else ' '}] {i}: {p['name']}", '',f"Stage: {p['stage']} · Repository: {p['repository']} · Scope: {p['classification']}",f"Dependencies: {p['dependencies'] or 'none (preparation can start)'}",f"Decision gate: {p['decisions'] or 'none beyond existing contracts and applicable admission'}",'',p['scope'],'',f"Acceptance: {p['acceptance']}",'',f"Plan evidence: {p['plan_refs']}", ('PR #399 / merged integration head 1de4810d49b3acf4ead7d910d0abd2b042293e18 / merge verified by coordinator; consult PR evidence for exact validation.' if i == 'R399' else 'PR #400 / merged integration head ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec / merge and fresh independent validation verified by coordinator; consult PR evidence.' if i == 'RCAP' else 'PR #401 / merged integration head 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb / exact-head independent review/tests verified by coordinator; consult PR evidence.' if i == 'RSCHEMA' else 'PR #402 / merged integration head 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 / independently tested head 3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b / LF-only foundation; F00/F01/F02 remain open.' if i == 'RFMT' else 'Read-only audit complete; no removal PR needed. Exact snapshot, source links and limits in native-reload-audit.md; no product runtime test claimed.' if i == 'B06' else 'PR / exact head / review / tests / remaining blocker: **unrecorded**'),'']
+ lines += [f"## [{'x' if i in {'R397','R398','R399','RCAP','RWRITE','RSCHEMA','RFMT','B06'} else ' '}] {i}: {p['name']}", '',f"Stage: {p['stage']} · Repository: {p['repository']} · Scope: {p['classification']}",f"Dependencies: {p['dependencies'] or 'none (preparation can start)'}",f"Decision gate: {p['decisions'] or 'existing contracts and explicit holds'}",'',p['scope'],'',f"Acceptance: {p['acceptance']}",'',f"Plan evidence: {p['plan_refs']}", ('PR #397 / merged integration head 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 / exact tested head 6524d3fc090e27943e4bc3942e6b528ba311ae6c; consult PR evidence.' if i == 'R397' else 'PR #398 / merged integration head b1ada743d978a25ff8b0d5d677b491291eb4ddf5 / exact tested head cdf9adc540f1c1c0c9c8468820a1bf5b706629e4; consult PR evidence.' if i == 'R398' else 'PR #408 / merged integration head 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 / exact tested head 982e736e4f2d5922c2308f0b6017dcfd30dbd869; consult PR evidence.' if i == 'RWRITE' else 'PR #399 / merged integration head 1de4810d49b3acf4ead7d910d0abd2b042293e18 / merge verified by coordinator; consult PR evidence for exact validation.' if i == 'R399' else 'PR #400 / merged integration head ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec / merge and fresh independent validation verified by coordinator; consult PR evidence.' if i == 'RCAP' else 'PR #401 / merged integration head 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb / exact-head independent review/tests verified by coordinator; consult PR evidence.' if i == 'RSCHEMA' else 'PR #402 / merged integration head 64183a1c4ba5b367bf35604ddae45fa616fd3bd0 / independently tested head 3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b / LF-only foundation; F00/F01/F02 remain open.' if i == 'RFMT' else 'Read-only audit complete; no removal PR needed. Exact snapshot, source links and limits in native-reload-audit.md; no product runtime test claimed.' if i == 'B06' else 'PR / exact head / review / tests / remaining blocker: **unrecorded**'),'']
 lines+=['## Immutable source reference index','']
 for k,u in sorted(refs.items()):lines.append(f'- [{k}]({u})')
 (root/'roadmap.md').write_text('\n'.join(lines)+'\n')
@@ -185,7 +187,11 @@ validation={
  'product_dispositions':dict(collections.Counter(r['disposition'] for r in prod)),
  'all_product_sources_and_headers_explicitly_owned':True,'all_867_paths_have_tracking_owner':True,
  'original_inventory_sha256':'76d710e88e0a2d2ecb35a9bf895b3b8223a1fbf96b9029e51f185f2106089d87',
- 'inventory_normalization':'CRLF to LF only; CSV row/field content retained',
+ 'inventory_normalization':'CRLF to LF; retired test-policy build-membership wording replaced with factual unrun coverage; source paths, identities and other fields retained',
+ 'original_source_plan_sha256':'ff9559d8ceead0f2b8ec958e974050e428e74ea8ee2fa0ff5b1bf1f1858d6e31',
+ 'original_source_plan_url':'https://github.com/waldnercharles/chibi/blob/444e5b20e60d052e9e280788eec7163ca52f8390/docs/studio-migration-roadmap/source/plan.md',
+ 'source_plan_sha256':hashlib.sha256((root/'source/plan.md').read_bytes()).hexdigest(),
+ 'source_plan_edit':'Curated copy: obsolete test-gate prose omitted; original scope, contracts and results retained.',
  'input_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((root/'source').iterdir())},
  'external_mutations':'none; no PR publication or merges',
 }

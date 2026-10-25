@@ -4,6 +4,8 @@
 #include "support/arena.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -266,24 +268,35 @@ TEST_CASE(ecs_execution_view_refreshes_after_growth_and_registration)
 
 TEST_CASE(ecs_reflected_field_writes_retain_strings)
 {
+    arena storage = { 0 };
     ecs_entity entity = ecs_world_create_entity(world);
     REQUIRE(ecs_world_record_add(world, entity, record_desc.id, NULL, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     char text[] = "retained";
     REQUIRE(
-        ecs_component_write_field(world, entity, record_desc.id, 1, (pin_value){ .type = PIN_STR, .str = text }) ==
-        ECS_OK
+        ecs_component_write_field(
+            world,
+            entity,
+            record_desc.id,
+            1,
+            (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = text,
+                                                      .length = (uint32_t)strlen(text) } }
+        ) == ECS_OK
     );
     text[0] = 'X';
     pin_value value;
-    REQUIRE(ecs_component_read_field(world, entity, record_desc.id, 1, &value) == ECS_OK);
-    REQUIRE(value.type == PIN_STR && value.str != text && !strcmp(value.str, "retained"));
-    const char *retained = value.str;
+    REQUIRE(ecs_component_read_field(&storage, world, entity, record_desc.id, 1, &value) == ECS_OK);
+    REQUIRE(
+        value.type == PIN_STR && pin_text(value).bytes != text &&
+        !strcmp(pin_text(value).bytes, "retained")
+    );
+    const char *retained = pin_text(value).bytes;
     REQUIRE(
         ecs_component_write_field(world, entity, record_desc.id, 0, (pin_value){ .type = PIN_F32, .f = 31.5f }) ==
         ECS_OK
     );
-    REQUIRE(ecs_component_read_field(world, entity, record_desc.id, 0, &value) == ECS_OK);
+    REQUIRE(ecs_component_read_field(&storage, world, entity, record_desc.id, 0, &value) == ECS_OK);
     REQUIRE(value.type == PIN_F32 && value.f == 31.5f);
     REQUIRE(
         ecs_component_write_field(
@@ -291,12 +304,142 @@ TEST_CASE(ecs_reflected_field_writes_retain_strings)
             entity,
             record_desc.id,
             1,
-            (pin_value){ .type = PIN_STR, .str = "replacement" }
+            (pin_value){
+                .type = PIN_STR,
+                .text = &(const pin_string){ .bytes = "replacement",
+                                             .length = sizeof("replacement") - 1 } }
         ) == ECS_OK
     );
     REQUIRE(!strcmp(retained, "retained"));
-    REQUIRE(ecs_component_read_field(world, entity, record_desc.id, 1, &value) == ECS_OK);
-    REQUIRE(!strcmp(value.str, "replacement"));
+    REQUIRE(ecs_component_read_field(&storage, world, entity, record_desc.id, 1, &value) == ECS_OK);
+    REQUIRE(!strcmp(pin_text(value).bytes, "replacement"));
+    arena_free(&storage);
+    return true;
+}
+
+TEST_CASE(ecs_native_text_rejects_nul_without_publishing)
+{
+    REQUIRE(ecs_world_register_component(world, &managed_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_component_track_changes(world, record_desc.id) == ECS_OK);
+    REQUIRE(ecs_component_track_changes(world, managed_desc.id) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(world);
+    sdk_record initial = { .amount = 17, .label = "before" };
+    managed_record managed = { .amount = 23,
+                               .payload = { .label = "nested-before" },
+                               .borrowed = "other" };
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, entity, managed_desc.id, &managed, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    sdk_record before = *(
+        const sdk_record *
+    )ecs_component_data_const(world, entity, record_desc.id);
+    managed_record nested_before = *(
+        const managed_record *
+    )ecs_component_data_const(world, entity, managed_desc.id);
+    uint64_t version = ecs_component_version(world, entity, record_desc.id);
+    uint64_t nested_version = ecs_component_version(world, entity, managed_desc.id);
+    ecs_string_usage strings = ecs_world_string_usage(world);
+    const pin_string bad_text = { "save\0backup", 11 };
+    pin_value bad = { .type = PIN_STR, .text = &bad_text };
+    REQUIRE(ecs_component_write_field(world, entity, record_desc.id, 1, bad) == ECS_ERR_ARGUMENT);
+    REQUIRE(
+        ecs_component_write_value(
+            world,
+            entity,
+            managed_desc.id,
+            offsetof(managed_record, payload) + offsetof(managed_payload, label),
+            bad,
+            bad
+        ) == ECS_ERR_ARGUMENT
+    );
+
+    /* A carried authored layout has descriptors where native fields hold C
+     * pointers. Conversion must reject its nested string before publishing any
+     * of the otherwise valid frame data. */
+    arena source = { 0 };
+    const type_desc *native = type_catalog_find("test.record");
+    REQUIRE(native);
+    const pin_record *record = pin_record_create(
+        &source,
+        "test.record",
+        1,
+        native->fields,
+        native->field_count
+    );
+    REQUIRE(record && record->type.fields[1].text_descriptor);
+    void *payload = arena_alloc(&source, record->type.size);
+    memset(payload, 0, record->type.size);
+    memcpy(
+        (char *)payload + record->type.fields[0].offset,
+        &managed.payload.frame,
+        sizeof managed.payload.frame
+    );
+    REQUIRE(!pin_write_field(&source, payload, &record->type.fields[1], bad));
+    pin_value carried = { .type = PIN_STRUCT,
+                          .type_name = "test.record",
+                          .record = record,
+                          .ptr = payload };
+    pin_value declared = { .type = PIN_STRUCT, .type_name = "test.record" };
+    REQUIRE(
+        ecs_component_write_value(world, entity, managed_desc.id, offsetof(managed_record, payload), declared, carried) ==
+        ECS_ERR_ARGUMENT
+    );
+    REQUIRE(
+        !memcmp(ecs_component_data_const(world, entity, record_desc.id), &before, sizeof before)
+    );
+    REQUIRE(
+        !memcmp(ecs_component_data_const(world, entity, managed_desc.id), &nested_before, sizeof nested_before)
+    );
+    REQUIRE(ecs_component_version(world, entity, record_desc.id) == version);
+    REQUIRE(ecs_component_version(world, entity, managed_desc.id) == nested_version);
+    ecs_string_usage after = ecs_world_string_usage(world);
+    REQUIRE(
+        after.entries == strings.entries && after.payload_bytes == strings.payload_bytes &&
+        after.table_backing_bytes == strings.table_backing_bytes &&
+        after.overflow == strings.overflow
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_version(world, entity, record_desc.id) == version);
+    REQUIRE(ecs_component_version(world, entity, managed_desc.id) == nested_version);
+    arena_free(&source);
+    return true;
+}
+
+TEST_CASE(ecs_descriptor_fields_retain_every_byte)
+{
+    static const type_field field = { .name = "text",
+                                      .type = PIN_STR,
+                                      .size = sizeof(const pin_string *),
+                                      .type_name = "const char *",
+                                      .text_descriptor = true };
+    static const type_desc type = { .name = "sdk.ecs.text",
+                                    .size = sizeof(const pin_string *),
+                                    .fields = &field,
+                                    .field_count = 1 };
+    static const ecs_component_desc desc = { .id = 505,
+                                             .key = "sdk.ecs.text",
+                                             .name = "Text",
+                                             .element_size = sizeof(const pin_string *),
+                                             .type = &type };
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(world);
+    REQUIRE(ecs_world_record_add(world, entity, desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    char bytes[] = { 'A', 0, 'B', 0 };
+    pin_string text = { bytes, 3 };
+    REQUIRE(
+        ecs_component_write_field(world, entity, desc.id, 0, (pin_value){ .type = PIN_STR, .text = &text }) ==
+        ECS_OK
+    );
+    bytes[0] = 'X';
+    arena storage = { 0 };
+    pin_value value;
+    REQUIRE(ecs_component_read_field(&storage, world, entity, desc.id, 0, &value) == ECS_OK);
+    REQUIRE(pin_text(value).length == 3 && !memcmp(pin_text(value).bytes, "A\0B", 3));
+    REQUIRE(value.text != &text && pin_text(value).bytes != bytes);
+    ecs_string_usage usage = ecs_world_string_usage(world);
+    REQUIRE(!usage.entries);
+    arena_free(&storage);
     return true;
 }
 
@@ -398,7 +541,10 @@ TEST_CASE(ecs_managed_rows_outlive_sources_and_reclaim_replacements)
     REQUIRE_RETIRED(retired);
     REQUIRE(!strcmp(row->payload.label, "second") && row->amount == 255);
     char next[] = "nested";
-    pin_value label = { .type = PIN_STR, .str = next };
+    pin_value label = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = next, .length = (uint32_t)strlen(next) }
+    };
     REQUIRE(
         ecs_component_write_value(
             world,
@@ -582,7 +728,9 @@ TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set)
 
 static void seed_label(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id component, void *)
 {
-    pin_value label = { .type = PIN_STR, .str = "seed" };
+    pin_value label = { .type = PIN_STR,
+                        .text = &(const pin_string){ .bytes = "seed",
+                                                     .length = sizeof("seed") - 1 } };
     size_t offset = offsetof(sdk_record, label);
     assert(ecs_component_write_value(w, entity, component, offset, label, label) == ECS_OK);
 }
@@ -601,7 +749,10 @@ TEST_CASE(ecs_explicit_adds_replace_implied_rows_and_their_storage)
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     const sdk_record *row = ecs_component_data_const(world, entity, record_desc.id);
     REQUIRE(row->amount == 2 && row->label == mine);
-    pin_value label = { .type = PIN_STR, .str = mine };
+    pin_value label = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = mine, .length = (uint32_t)strlen(mine) }
+    };
     size_t offset = offsetof(sdk_record, label);
     REQUIRE(
         ecs_component_write_value(world, entity, record_desc.id, offset, label, label) == ECS_OK
@@ -765,6 +916,15 @@ TEST_CASE(ecs_observers_rewrite_rows_without_firing_again)
     return true;
 }
 
+void test_tool_ecs_strings()
+{
+    pu_setup(prepare_world, release_world);
+    RUN_TEST_CASE(ecs_reflected_field_writes_retain_strings);
+    RUN_TEST_CASE(ecs_native_text_rejects_nul_without_publishing);
+    RUN_TEST_CASE(ecs_descriptor_fields_retain_every_byte);
+    pu_clear_setup();
+}
+
 void test_tool_ecs()
 {
     pu_setup(prepare_world, release_world);
@@ -773,6 +933,8 @@ void test_tool_ecs()
     RUN_TEST_CASE(ecs_or_chains_and_negation_match_in_slot_order);
     RUN_TEST_CASE(ecs_execution_view_refreshes_after_growth_and_registration);
     RUN_TEST_CASE(ecs_reflected_field_writes_retain_strings);
+    RUN_TEST_CASE(ecs_native_text_rejects_nul_without_publishing);
+    RUN_TEST_CASE(ecs_descriptor_fields_retain_every_byte);
     RUN_TEST_CASE(ecs_strings_deduplicate_collisions_and_survive_growth);
     RUN_TEST_CASE(ecs_managed_rows_outlive_sources_and_reclaim_replacements);
     RUN_TEST_CASE(ecs_managed_storage_retires_on_remove_destroy_and_world_free);

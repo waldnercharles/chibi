@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 typedef struct
 {
@@ -62,7 +63,7 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
             execution_wire_int(&wire, &fields[i]);
         }
         size_t stride = 0, name_size = 0;
-        bool indirect = false;
+        bool indirect = false, authored = false;
         int component = 0, tag = 0, container = 0;
         uint64_t node = 0, identity = 0, layout = 0;
         execution_wire_size(&wire, &stride);
@@ -72,13 +73,14 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
         execution_wire_int(&wire, &tag);
         execution_wire_int(&wire, &container);
         execution_wire_size(&wire, &name_size);
+        execution_wire_bool(&wire, &authored);
         execution_wire_u64(&wire, &identity);
         execution_wire_u64(&wire, &layout);
         if (wire.error || fields[1] != PIN_BOOL ||
             fields[5] != (int)offsetof(prepared_counter, enabled) ||
             stride != sizeof(prepared_counter) || indirect || component < 0 ||
             tag != PIN_U64 || container != PIN_CONTAINER_SINGLE || name_size ||
-            identity != prepared_counter_component.id ||
+            authored || identity != prepared_counter_component.id ||
             layout != type_layout_hash(&prepared_counter_type)) {
             continue;
         }
@@ -86,6 +88,44 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
         matches++;
     }
     return matches == 1 && sizeof(prepared_counter) < 64;
+}
+
+/* Find a payload-free owned native header, not its module requirement or a
+ * component instruction. The schema marker includes its zero field count. */
+static bool prepared_native_header_layout(unsigned char *bytes, size_t length, size_t *target)
+{
+    static const char name[] = "PersistCounter";
+    for (size_t offset = 0; offset < length; offset++) {
+        execution_wire wire = { .data = bytes,
+                                .size = length,
+                                .offset = offset,
+                                .reading = true };
+        int tag = 0, container = 0, fields = -1;
+        size_t name_bytes = 0;
+        execution_wire_int(&wire, &tag);
+        execution_wire_int(&wire, &container);
+        execution_wire_size(&wire, &name_bytes);
+        if (wire.error || tag != PIN_STRUCT ||
+            container != PIN_CONTAINER_SINGLE || name_bytes != sizeof name ||
+            wire.offset > length || sizeof name - 1 > length - wire.offset ||
+            memcmp(bytes + wire.offset, name, sizeof name - 1)) {
+            continue;
+        }
+        wire.offset += sizeof name - 1;
+        bool authored = true, present = true;
+        uint64_t layout = 0;
+        execution_wire_bool(&wire, &authored);
+        size_t layout_offset = wire.offset;
+        execution_wire_u64(&wire, &layout);
+        execution_wire_bool(&wire, &present);
+        execution_wire_int(&wire, &fields);
+        if (!wire.error && !authored && !present && !fields &&
+            layout == type_layout_hash(&prepared_counter_type)) {
+            *target = layout_offset;
+            return true;
+        }
+    }
+    return false;
 }
 
 #endif

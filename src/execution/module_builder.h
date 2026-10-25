@@ -7,6 +7,7 @@
 typedef struct
 {
     int start, end, line, column;
+    int document; /* Source snapshot index; zero for single-document callers. */
 } execution_source_range;
 typedef struct
 {
@@ -18,6 +19,7 @@ typedef struct
     uint64_t id;
     pin_value initial; /* Payload may be borrowed until finish snapshots it. */
     bool shared;
+    bool contains_tasks; /* Schema fact, including empty task collections. */
 } execution_module_state;
 typedef struct
 {
@@ -102,7 +104,8 @@ typedef struct
 {
     uint64_t id, layout;
     pin_type storage;
-    const char *name; /* String belongs to plan.storage. */
+    const pin_record *record; /* Authored layout owned by plan.storage. */
+    const char *name;         /* String belongs to plan.storage. */
     size_t size;
 } execution_type_requirement;
 typedef struct

@@ -3,15 +3,21 @@
 #include "ecs/ecs.h"
 #include "ecs/execution.h"
 #include "execution/function.h"
+#include "execution/map_intrinsics.h"
 #include "execution/scalar.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
+#include "types/map.h"
+#include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +28,32 @@ static const char *snapshot_value(arena *storage, const pin_value *args, int cou
 {
     assert(count == 1);
     (void)count;
+    if (out->container == PIN_CONTAINER_SINGLE &&
+        args[0].container == PIN_CONTAINER_SINGLE) {
+        if (out->type == PIN_STR && args[0].type == PIN_NAME) {
+            pin_string text = pin_text(args[0]);
+            pin_value value;
+            const char *error = pin_value_text(storage, &value, text.bytes, text.length);
+            if (error) {
+                return error;
+            }
+            value.type_name = out->type_name;
+            *out = value;
+            return NULL;
+        }
+        if (out->type == PIN_NAME && args[0].type == PIN_STR) {
+            const char *text;
+            const char *error = pin_text_cstring(storage, args[0], &text, NULL);
+            if (error) {
+                return error;
+            }
+            pin_value value = *out;
+            value.str = text;
+            return pin_value_snapshot_to_arena(storage, out, &value)
+                     ? "Cannot retain native name conversion"
+                     : NULL;
+        }
+    }
     return pin_value_snapshot_to_arena(storage, out, args)
              ? "Cannot retain language value"
              : NULL;
@@ -29,29 +61,76 @@ static const char *snapshot_value(arena *storage, const pin_value *args, int cou
 static const char *construct_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count >= 1);
-    *out = args[0];
-    if (out->container != PIN_CONTAINER_SINGLE) {
-        pin_array *array = pin_array_snapshot_allocate(storage, out->type, out->type_name, count - 1);
+    pin_value result = args[0];
+    if (result.container == PIN_CONTAINER_MAP) {
+        return "Map construction requires typed key/value pairs";
+    }
+    if (result.record &&
+        (!pin_record_current(result.record) || !pin_value_type(&result))) {
+        return "Invalid authored constructor layout";
+    }
+    if (result.container != PIN_CONTAINER_SINGLE) {
+        pin_array source = { .element_type = result.type,
+                             .type_name = result.type_name,
+                             .record = result.record };
+        pin_array *array = pin_array_snapshot_like(storage, &source, count - 1);
+        if (!array) {
+            return "Cannot retain array element";
+        }
         for (int i = 1; i < count; i++) {
-            if (pin_value_snapshot_to_arena(storage, &array->items[i - 1], &args[i])) {
+            if (pin_array_snapshot_set(storage, array, i - 1, &args[i])) {
                 return "Cannot retain array element";
             }
         }
-        out->ptr = array;
+        result.record = array->record;
+        result.type_name = array->type_name;
+        result.ptr = array;
+        *out = result;
         return NULL;
     }
-    const type_desc *type = type_catalog_find(out->type_name);
-    if (!type || out->type != PIN_STRUCT) {
+    const type_desc *type = pin_value_type(&result);
+    if (!type || result.type != PIN_STRUCT || !(count & 1)) {
         return "Unknown language constructor layout";
     }
-    if (args[0].ptr) {
-        if (pin_value_snapshot_to_arena(storage, out, &args[0])) {
+    if (result.record) {
+        if (!result.ptr && (count - 1) / 2 != type->field_count) {
+            return "Authored record requires every initialized field";
+        }
+        for (int i = 1; i < count; i += 2) {
+            bool found = false;
+            for (int j = 0; j < type->field_count; j++) {
+                const type_field *field = &type->fields[j];
+                found |= args[i].type == PIN_U64 &&
+                         args[i].container == PIN_CONTAINER_SINGLE &&
+                         args[i].u64 == field->offset &&
+                         args[i + 1].type == field->type &&
+                         args[i + 1].container == PIN_CONTAINER_SINGLE &&
+                         !args[i + 1].record;
+            }
+            for (int j = 1; j < i; j += 2) {
+                if (args[j].u64 == args[i].u64) {
+                    return "Duplicate authored record constructor field";
+                }
+            }
+            if (!found) {
+                return "Authored record constructor field differs from its "
+                       "layout";
+            }
+        }
+    }
+    if (result.ptr) {
+        if (pin_value_snapshot_to_arena(storage, &result, &args[0])) {
             return "Cannot retain struct base";
         }
     } else {
-        out->ptr = arena_alloc(storage, type->size);
-        memset(out->ptr, 0, type->size);
-        pin_arena_trace_struct(storage, out->ptr, type);
+        if (result.record) {
+            result.record = pin_record_snapshot(storage, result.record);
+            result.type_name = result.record->type.name;
+            type = &result.record->type;
+        }
+        result.ptr = arena_alloc(storage, type->size);
+        memset(result.ptr, 0, type->size);
+        pin_arena_trace_struct(storage, result.ptr, type);
     }
     for (int i = 1; i + 1 < count; i += 2) {
         size_t offset = (size_t)args[i].u64;
@@ -59,25 +138,231 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
         if (pin_value_snapshot_to_arena(storage, &value, &args[i + 1])) {
             return "Cannot retain struct field";
         }
+        const type_desc *field_type = pin_value_type(&value);
         size_t size = value.container != PIN_CONTAINER_SINGLE ? sizeof(void *)
-                    : value.type == PIN_STRUCT
-                        ? type_catalog_find(value.type_name)->size
-                        : behavior_scalar_size(value.type);
-        if (offset > type->size || size > type->size - offset) {
+                    : value.type == PIN_STRUCT ? (field_type ? field_type->size : 0)
+                                               : behavior_scalar_size(value.type);
+        if (!size || offset > type->size || size > type->size - offset) {
             return "Struct field exceeds declared layout";
         }
         if (value.type == PIN_STRUCT &&
             value.container == PIN_CONTAINER_SINGLE && !value.ptr) {
             return "Struct field has no payload";
         }
+        if (value.type == PIN_STR && value.container == PIN_CONTAINER_SINGLE) {
+            const type_field *field = NULL;
+            for (int n = 0; n < type->field_count; n++) {
+                if (type->fields[n].offset == offset && type->fields[n].type == PIN_STR) {
+                    field = &type->fields[n];
+                    break;
+                }
+            }
+            if (!field) {
+                return "Unknown string constructor field";
+            }
+            const char *error = pin_write_field(storage, result.ptr, field, value);
+            if (error) {
+                return error;
+            }
+            continue;
+        }
         const void *data = value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE
                              ? value.ptr
                              : (const void *)&value.d;
-        memcpy((char *)out->ptr + offset, data, size);
+        memcpy((char *)result.ptr + offset, data, size);
     }
-    type_validate_ranges(type, out->ptr);
+    type_validate_ranges(type, result.ptr);
+    *out = result;
     return NULL;
 }
+static const char *value_equal(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    if (count != 2) {
+        return "Record equality requires two operands";
+    }
+    if (args[0].container == PIN_CONTAINER_MAP && args[1].container == PIN_CONTAINER_MAP) {
+        *out = (pin_value){ .type = PIN_BOOL,
+                            .b = pin_value_equal(&args[0], &args[1]) };
+        return NULL;
+    }
+    for (int i = 0; i < 2; i++) {
+        if (args[i].type != PIN_STRUCT ||
+            args[i].container != PIN_CONTAINER_SINGLE || !args[i].record ||
+            !pin_record_current(args[i].record) || !pin_value_type(&args[i])) {
+            return "Invalid authored record equality operand";
+        }
+    }
+    if (!pin_record_same(args[0].record, args[1].record)) {
+        return "Record equality operands have different nominal layouts";
+    }
+    *out = (pin_value){ .type = PIN_BOOL, .b = pin_value_equal(&args[0], &args[1]) };
+    return NULL;
+}
+const node_host_call EXECUTION_value_equal_call = { .value = value_equal };
+/* Whether an array of `type` keeps its elements inline while it changes in
+ * place: plain scalars do, so a byte grows the array by a byte. */
+static bool inline_scalar(pin_type type)
+{
+    return type >= PIN_BOOL && type <= PIN_F64;
+}
+/* Boxes a packed array's elements in place; false when they cannot fit.
+ * In-place updates of records grow boxed items; the packed records stay in
+ * their owned allocation. */
+static bool box(arena *storage, pin_array *array)
+{
+    int capacity = array->capacity > array->count ? array->capacity : array->count;
+    if ((size_t)capacity > SIZE_MAX / sizeof(pin_value)) {
+        return false;
+    }
+    pin_value *items = arena_alloc(storage, (size_t)(capacity ? capacity : 1) * sizeof *items);
+    for (int i = 0; i < array->count; i++) {
+        items[i] = pin_array_get(array, i);
+    }
+    array->items = items;
+    array->capacity = capacity;
+    array->data = NULL;
+    array->stride = 0;
+    return true;
+}
+/* A local's array, owned by storage and ready to change in place; NULL when
+ * it cannot be boxed. */
+static pin_array *owned_array(arena *storage, pin_value *header)
+{
+    assert(header && header->container == PIN_CONTAINER_ARRAY);
+    if (!header->ptr) {
+        pin_array *array = arena_alloc(storage, sizeof *array);
+        *array = (pin_array){ .element_type = header->type,
+                              .type_name = header->type_name,
+                              .record = header->record
+                                          ? pin_record_snapshot(storage, header->record)
+                                          : NULL };
+        if (inline_scalar(header->type)) {
+            array->stride = pin_array_element_stride(
+                header->type,
+                header->type_name,
+                array->record
+            );
+        }
+        pin_arena_trace_array(storage, array);
+        header->ptr = array;
+    }
+    pin_array *array = header->ptr;
+    /* A local's array and its layout live in this storage: every store into the
+     * local snapshots there. The optional lookup index is rebuilt on demand. */
+    if (array->stride && !inline_scalar(array->element_type) && !box(storage, array)) {
+        return NULL;
+    }
+    array->buckets = NULL;
+    array->bucket_mask = 0;
+    return array;
+}
+/* Appends item to an owned array: inline when it is packed and the item fits,
+ * otherwise as a boxed copy. Its capacity must already hold it. */
+static const char *append_item(arena *storage, pin_array *array, const pin_value *item)
+{
+    assert(array->count < array->capacity);
+    if (array->stride) {
+        array->count++;
+        if (!pin_array_set(array, array->count - 1, item)) {
+            return NULL;
+        }
+        array->count--;
+        if (!box(storage, array)) {
+            return "Array exceeds its length limit";
+        }
+    }
+    if (pin_array_snapshot_owned_items(
+            storage,
+            array->record,
+            &array->items[array->count],
+            item,
+            1
+        )) {
+        return "Cannot retain array item";
+    }
+    array->count++;
+    return NULL;
+}
+static const char *array_push(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
+    if (!array || array->count == INT_MAX ||
+        pin_array_reserve_owned(storage, array, array->count + 1)) {
+        return "Array exceeds its length limit";
+    }
+    const char *error = append_item(storage, array, &args[1]);
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return error;
+}
+static const char *array_store(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 3);
+    (void)count;
+    pin_value *header = (pin_value *)(uintptr_t)args[0].u64;
+    const pin_array *current = header->ptr;
+    int index = args[1].i;
+    if (!current || index < 0 || index >= current->count) {
+        return "Array index out of range";
+    }
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    pin_array *array = owned_array(storage, header);
+    if (!array) {
+        return "Array exceeds its length limit";
+    }
+    if (array->stride && !pin_array_set(array, index, &args[2])) {
+        return NULL;
+    }
+    pin_value item;
+    if (pin_array_snapshot_owned_items(storage, array->record, &item, &args[2], 1)) {
+        return "Cannot retain array item";
+    }
+    if (array->stride && !box(storage, array)) {
+        return "Array exceeds its length limit";
+    }
+    array->items[index] = item;
+    return NULL;
+}
+static const char *array_extend(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
+    const pin_array *items = args[1].ptr;
+    int added = items ? items->count : 0;
+    if (!array || added > INT_MAX - array->count ||
+        pin_array_reserve_owned(storage, array, array->count + added)) {
+        return "Array exceeds its length limit";
+    }
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    /* Packed scalars of one type copy as bytes; `xs.extend(xs)` reads the
+     * items it had before. */
+    if (added && array->stride && items->stride == array->stride &&
+        items->element_type == array->element_type) {
+        memmove(
+            (char *)array->data + (size_t)array->count * array->stride,
+            items->data,
+            (size_t)added * array->stride
+        );
+        array->count += added;
+        return NULL;
+    }
+    int before = array->count;
+    for (int i = 0; i < added; i++) {
+        pin_value item = pin_array_get(items, i);
+        const char *error = append_item(storage, array, &item);
+        if (error) {
+            array->count = before;
+            return error;
+        }
+    }
+    return NULL;
+}
+const node_host_call EXECUTION_array_push_call = { .value = array_push };
+const node_host_call EXECUTION_array_extend_call = { .value = array_extend };
+const node_host_call EXECUTION_array_store_call = { .value = array_store };
 const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK };
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
@@ -93,6 +378,16 @@ static const char *union_make(arena *storage, const pin_value *args, int count, 
         return NULL;
     }
     return pin_union_value(storage, args[0].u64, args + 1, count - 1, out)
+             ? "Cannot retain union payload"
+             : NULL;
+}
+static const char *union_keep(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count >= 2);
+    if (!args[0].u64) {
+        return "Union constructor requires a nonzero tag";
+    }
+    return pin_union_kept(storage, args[0].u64, args[1].u64, args + 2, count - 2, out)
              ? "Cannot retain union payload"
              : NULL;
 }
@@ -141,6 +436,7 @@ static const char *union_get(arena *storage, const pin_value *args, int count, p
     return NULL;
 }
 const node_host_call EXECUTION_union_make_call = { .value = union_make };
+const node_host_call EXECUTION_union_keep_call = { .value = union_keep };
 const node_host_call EXECUTION_union_test_call = { .value = union_test };
 const node_host_call EXECUTION_union_get_call = { .value = union_get };
 typedef struct language_reference_path
@@ -150,6 +446,8 @@ typedef struct language_reference_path
     size_t offset;
     int index;
     bool element;
+    bool map;
+    pin_value key;
 } language_reference_path;
 typedef struct
 {
@@ -184,6 +482,7 @@ static void reference_path_trace(const void *value, const void *shape, arena_mar
     const language_reference_path *path = value;
     mark(user, path->parent);
     pin_value_trace(&path->type, mark, user);
+    pin_value_trace(&path->key, mark, user);
 }
 static behavior_function_context *value_context(pin_value value)
 {
@@ -235,6 +534,9 @@ static const language_reference_path *capture_path(arena *storage, const languag
     }
     language_reference_path *copy = arena_alloc(storage, sizeof *copy);
     *copy = *path;
+    if (path->map && pin_value_snapshot_to_arena(storage, &copy->key, &path->key)) {
+        return NULL;
+    }
     copy->parent = capture_path(storage, path->parent);
     arena_set_trace(storage, copy, reference_path_trace, NULL);
     return copy;
@@ -309,6 +611,30 @@ static const char *field_reference(arena *storage, const pin_value *args, int co
     *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)ref };
     return NULL;
 }
+static const char *key_reference(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 3);
+    (void)count;
+    if (!pin_map_key_supported(args[2])) {
+        return "Invalid or nonfinite Map reference key";
+    }
+    language_reference *base = (language_reference *)(uintptr_t)args[0].u64;
+    language_reference *ref = arena_alloc(storage, sizeof *ref);
+    language_reference_path *path = arena_alloc(storage, sizeof *path);
+    *ref = *base;
+    *path = (language_reference_path){ .parent = base->path, .type = args[1], .map = true };
+    if (pin_value_snapshot_to_arena(storage, &path->key, &args[2])) {
+        return "Cannot retain Map reference key";
+    }
+    ref->path = path;
+    ref->type = args[1];
+    arena_set_trace(storage, path, reference_path_trace, NULL);
+    arena_set_trace(storage, ref, reference_trace, NULL);
+    *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)ref };
+    return NULL;
+}
+const node_host_call EXECUTION_reference_key_call = { .value = key_reference };
+
 static pin_value reference_root(language_reference *ref)
 {
     if (ref->kind == LANGUAGE_REFERENCE_COMPONENT) {
@@ -339,6 +665,23 @@ static const type_desc *reference_root_layout(const language_reference *ref)
              ? column->type
              : NULL;
 }
+/* Whether layout has a field of the claimed type at offset: a field path
+ * copies by its claimed type, which must be the field's own. Names of scalar
+ * types do not change their storage. */
+static bool field_at(const type_desc *layout, size_t offset, pin_value type)
+{
+    for (int i = 0; i < layout->field_count; i++) {
+        const type_field *field = &layout->fields[i];
+        bool named = type.type != PIN_STRUCT ||
+                     (field->type_name && type.type_name &&
+                      !strcmp(field->type_name, type.type_name));
+        if (field->offset == offset && field->type == type.type &&
+            type.container == PIN_CONTAINER_SINGLE && named) {
+            return true;
+        }
+    }
+    return false;
+}
 static void *reference_path_data(
     const language_reference_path *path,
     pin_value *type,
@@ -353,9 +696,28 @@ static void *reference_path_data(
     if (!data) {
         return NULL;
     }
+    if (path->map) {
+        if (type->container != PIN_CONTAINER_MAP) {
+            return NULL;
+        }
+        pin_map *map;
+        memcpy(&map, data, sizeof map);
+        int index = pin_map_find(map, &path->key);
+        if (index < 0) {
+            return NULL;
+        }
+        pin_value *item = &map->entries[index].value;
+        pin_map expected = { .key_type = map->key_type, .value_type = path->type };
+        if (!pin_map_entry_valid(&expected, &path->key, item)) {
+            return NULL;
+        }
+        *type = *item;
+        return item->type == PIN_STRUCT && item->container == PIN_CONTAINER_SINGLE
+                 ? item->ptr
+                 : &item->d;
+    }
     if (path->element) {
-        if (type->container != PIN_CONTAINER_ARRAY &&
-            type->container != PIN_CONTAINER_MAP) {
+        if (type->container != PIN_CONTAINER_ARRAY) {
             return NULL;
         }
         pin_array *array;
@@ -363,17 +725,14 @@ static void *reference_path_data(
         if (!array || path->index < 0 || path->index >= array->count) {
             return NULL;
         }
-        pin_value *item = &array->items[path->index];
-        *type = *item;
-        return item->type == PIN_STRUCT && item->container == PIN_CONTAINER_SINGLE
-                 ? item->ptr
-                 : &item->d;
+        *type = pin_array_get(array, path->index);
+        return pin_array_data(array, path->index);
     }
     const type_desc *layout = !path->parent && root_layout ? root_layout
                             : type->type == PIN_STRUCT && type->container == PIN_CONTAINER_SINGLE
-                                ? type_catalog_find(type->type_name)
+                                ? pin_value_type(type)
                                 : NULL;
-    if (!layout || path->offset >= layout->size) {
+    if (!layout || !field_at(layout, path->offset, path->type)) {
         return NULL;
     }
     *type = path->type;
@@ -388,7 +747,29 @@ static void *reference_data(language_reference *ref, pin_value *root)
                    : &root->d;
     return reference_path_data(ref->path, &type, data, reference_root_layout(ref));
 }
-static pin_value *reference_item(const language_reference *ref, pin_value *root)
+static const type_field *reference_text_field(const language_reference *ref, pin_value root)
+{
+    const language_reference_path *path = ref->path;
+    if (!path || path->element || path->map || path->type.type != PIN_STR) {
+        return NULL;
+    }
+    pin_value type = root;
+    void *data = root.type == PIN_STRUCT && root.container == PIN_CONTAINER_SINGLE
+                   ? root.ptr
+                   : &root.d;
+    const type_desc *root_layout = reference_root_layout(ref);
+    data = reference_path_data(path->parent, &type, data, root_layout);
+    const type_desc *layout = !path->parent && root_layout ? root_layout
+                                                           : pin_value_type(&type);
+    for (int n = 0; data && layout && n < layout->field_count; n++) {
+        const type_field *field = &layout->fields[n];
+        if (field->offset == path->offset && field->type == PIN_STR) {
+            return field;
+        }
+    }
+    return NULL;
+}
+static pin_array *reference_array(const language_reference *ref, pin_value *root)
 {
     const language_reference_path *path = ref->path;
     assert(path && path->element);
@@ -397,15 +778,12 @@ static pin_value *reference_item(const language_reference *ref, pin_value *root)
                    ? root->ptr
                    : &root->d;
     data = reference_path_data(path->parent, &type, data, reference_root_layout(ref));
-    if (!data || (type.container != PIN_CONTAINER_ARRAY &&
-                  type.container != PIN_CONTAINER_MAP)) {
+    if (!data || type.container != PIN_CONTAINER_ARRAY) {
         return NULL;
     }
     pin_array *array;
     memcpy(&array, data, sizeof array);
-    return array && path->index >= 0 && path->index < array->count
-             ? &array->items[path->index]
-             : NULL;
+    return array && path->index >= 0 && path->index < array->count ? array : NULL;
 }
 size_t execution_value_size(pin_value type)
 {
@@ -413,7 +791,7 @@ size_t execution_value_size(pin_value type)
         return sizeof(void *);
     }
     if (type.type == PIN_STRUCT) {
-        const type_desc *layout = type_catalog_find(type.type_name);
+        const type_desc *layout = pin_value_type(&type);
         return layout ? layout->size : 0;
     }
     return behavior_scalar_size(type.type);
@@ -425,37 +803,108 @@ static int snapshot_reference_root(
     const type_desc *layout
 )
 {
-    if (!layout) {
+    if (!layout || source->record) {
         return pin_value_snapshot_to_arena(storage, out, source);
     }
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
     *out = *source;
+    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     size_t name_size = strlen(layout->name) + 1;
     char *name = arena_alloc(storage, name_size);
     memcpy(name, layout->name, name_size);
+    pin_copy_record(PIN_COPY_NOMINAL, name_size);
     out->type_name = name;
     out->ptr = arena_alloc(storage, layout->size);
     memcpy(out->ptr, source->ptr, layout->size);
+    pin_copy_record(PIN_COPY_RECORD, layout->size);
     return pin_struct_snapshot_fields(storage, layout, out->ptr);
 }
+/* Whether two headers describe the same storage: the same type and
+ * container and, for records and unions, the same declaration. Names of
+ * scalar types do not change their storage. Union headers name their
+ * declaration only when the lowering knows it; two unnamed unions match. */
+static bool same_storage(pin_value a, pin_value b)
+{
+    if (a.type != b.type || a.container != b.container) {
+        return false;
+    }
+    if (a.type != PIN_STRUCT && a.type != PIN_UNION) {
+        return true;
+    }
+    if (a.record || b.record) {
+        return pin_record_same(a.record, b.record);
+    }
+    if (!a.type_name || !b.type_name) {
+        return a.type == PIN_UNION && !a.type_name && !b.type_name;
+    }
+    return !strcmp(a.type_name, b.type_name);
+}
+/* A reference's root must hold the type it was made with: reads and writes
+ * size and walk the root by that type. A component's root is its column's
+ * record, when the column is the one the reference was made for. */
+static bool root_matches(const language_reference *ref, pin_value root)
+{
+    if (ref->kind != LANGUAGE_REFERENCE_COMPONENT) {
+        return same_storage(ref->root, root);
+    }
+    const type_desc *layout = reference_root_layout(ref);
+    return !layout ||
+           (ref->root.type == PIN_STRUCT && ref->root.container == PIN_CONTAINER_SINGLE &&
+            ref->root.type_name && !strcmp(ref->root.type_name, layout->name));
+}
+/* A second argument is what an absent map key reads, its value type's zero. */
 static const char *read_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    assert(count == 1);
-    (void)count;
+    assert(count == 1 || count == 2);
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
-    pin_value root;
+    /* The result keeps the header it was declared with, which the verifier
+     * checked every later use against. */
+    pin_value declared = *out, root;
     void *data = reference_data(ref, &root);
+    if (!root_matches(ref, root)) {
+        return "Reference type differs from its storage";
+    }
     if (ref->path && ref->path->element) {
-        const pin_value *item = reference_item(ref, &root);
-        return !item || pin_value_snapshot_to_arena(storage, out, item)
-                 ? "Referenced array element is unavailable"
+        const pin_array *array = reference_array(ref, &root);
+        if (!array) {
+            return "Referenced array element is unavailable";
+        }
+        pin_value item = pin_array_get(array, ref->path->index), copy;
+        if (pin_value_snapshot_to_arena(storage, &copy, &item)) {
+            return "Referenced array element is unavailable";
+        }
+        if (!same_storage(declared, copy)) {
+            return "Reference read differs from its declared result";
+        }
+        *out = copy;
+        return NULL;
+    }
+    if (!same_storage(declared, ref->type)) {
+        return "Reference read differs from its declared result";
+    }
+    if (!data && count == 2 && ref->path && ref->path->map) {
+        return pin_value_snapshot_to_arena(storage, out, &args[1])
+                 ? "Cannot retain referenced value"
                  : NULL;
     }
     const type_desc *layout = !ref->path ? reference_root_layout(ref) : NULL;
     size_t size = layout ? layout->size : execution_value_size(ref->type);
     if ((!data && (ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) || !size) {
         return "Referenced storage is unavailable";
+    }
+    const type_field *text_field = reference_text_field(ref, root);
+    if (text_field && !text_field->text_descriptor) {
+        const char *text;
+        memcpy(&text, data, sizeof text);
+        pin_value value;
+        const char *error = pin_value_text(storage, &value, text ? text : "", text ? strlen(text) : 0);
+        if (error) {
+            return error;
+        }
+        value.type_name = ref->type.type_name;
+        *out = value;
+        return NULL;
     }
     *out = ref->type;
     if (out->type == PIN_STRUCT && out->container == PIN_CONTAINER_SINGLE) {
@@ -477,7 +926,7 @@ static bool component_scalar_path(const language_reference *ref)
         return false;
     }
     for (const language_reference_path *path = ref->path; path; path = path->parent) {
-        if (path->element) {
+        if (path->element || path->map) {
             return false;
         }
     }
@@ -487,13 +936,31 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
 {
     pin_value root;
     void *current = reference_data(ref, &root);
+    /* The value is copied by the reference's type, and an unpathed or element
+     * write replaces the root's or the item's header with the value's. */
     bool element = ref->path && ref->path->element;
-    if (!current && (element ? !reference_item(ref, &root)
-                             : ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) {
+    bool map = ref->path && ref->path->map;
+    const pin_array *array = element ? reference_array(ref, &root) : NULL;
+    pin_value item = array ? pin_array_get(array, ref->path->index)
+                           : (pin_value){ 0 };
+    if (!root_matches(ref, root) || !same_storage(ref->type, args[1]) ||
+        (array && !same_storage(item, args[1]))) {
+        return "Reference write differs from the reference's type";
+    }
+    if (!current && !map &&
+        (element ? !array : ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) {
         return "Referenced storage is unavailable";
     }
     if (!owner_storage) {
         return "Referenced owner has no retained value storage";
+    }
+    const type_field *text_field = reference_text_field(ref, root);
+    if (text_field && !text_field->text_descriptor) {
+        const char *text;
+        const char *error = pin_text_cstring(owner_storage, args[1], &text, NULL);
+        if (error) {
+            return error;
+        }
     }
     if (component_scalar_path(ref)) {
         size_t offset = (const char *)current - (const char *)root.ptr;
@@ -530,12 +997,30 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
     }
     if (!ref->path) {
         retained = value;
+    } else if (map) {
+        pin_value type = retained;
+        void *data = retained.type == PIN_STRUCT && retained.container == PIN_CONTAINER_SINGLE
+                       ? retained.ptr
+                       : &retained.d;
+        void *parent = reference_path_data(ref->path->parent, &type, data, root_layout);
+        if (!parent || type.container != PIN_CONTAINER_MAP) {
+            return "Referenced Map owner is unavailable";
+        }
+        pin_map *old;
+        memcpy(&old, parent, sizeof old);
+        pin_map *updated = pin_map_set(owner_storage, old, &ref->path->key, &value);
+        if (!updated) {
+            return "Cannot retain Map update";
+        }
+        memcpy(parent, &updated, sizeof updated);
     } else if (element) {
-        pin_value *item = reference_item(ref, &retained);
-        if (!item) {
+        pin_array *array = reference_array(ref, &retained);
+        if (!array ||
+            (array->stride && value.type == PIN_STRUCT && !value.ptr
+                 ? pin_array_snapshot_set(owner_storage, array, ref->path->index, &value)
+                 : pin_array_set(array, ref->path->index, &value))) {
             return "Referenced array element is unavailable";
         }
-        *item = value;
     } else {
         pin_value type = retained;
         void *data = retained.type == PIN_STRUCT && retained.container == PIN_CONTAINER_SINGLE
@@ -549,11 +1034,20 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
         const void *source = value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE
                                ? value.ptr
                                : &value.d;
-        memcpy(target, source, size);
+        if (text_field && !text_field->text_descriptor) {
+            type_field field = *text_field;
+            field.offset = 0;
+            const char *error = pin_write_field(owner_storage, target, &field, value);
+            if (error) {
+                return error;
+            }
+        } else {
+            memcpy(target, source, size);
+        }
     }
     if (ref->kind != LANGUAGE_REFERENCE_COMPONENT && retained.type == PIN_STRUCT &&
         retained.container == PIN_CONTAINER_SINGLE) {
-        const type_desc *type = type_catalog_find(retained.type_name);
+        const type_desc *type = pin_value_type(&retained);
         assert(type);
         type_validate_ranges(type, retained.ptr);
     }
@@ -801,21 +1295,6 @@ static const char *break_take_value(arena *storage, const pin_value *args, int c
 }
 const node_host_call EXECUTION_break_request_call = { .value = break_request_value };
 const node_host_call EXECUTION_break_take_call = { .value = break_take_value };
-static const char *event_read_value(arena *storage, const pin_value *args, int count, pin_value *out)
-{
-    assert(count == 3);
-    (void)count;
-    behavior_function_context *context = value_context(args[0]);
-    const pin_value
-        *value = context->event_argument
-                   ? context->event_argument(context, args[1].u64, args[2].i)
-                   : NULL;
-    if (!value || pin_value_snapshot_to_arena(storage, out, value)) {
-        return "Cannot read originating event argument";
-    }
-    return NULL;
-}
-const node_host_call EXECUTION_event_read_call = { .value = event_read_value };
 static const char *state_demand_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -861,9 +1340,119 @@ static const char *retrigger_action_value(arena *storage, const pin_value *args,
 const node_host_call EXECUTION_state_demand_call = { .value = state_demand_value };
 const node_host_call EXECUTION_state_transition_call = { .value = state_transition_value };
 const node_host_call EXECUTION_retrigger_action_call = { .value = retrigger_action_value };
+/* A loop cursor measures bytes; the yielded value is exactly one Unicode
+ * scalar. Reject overlong encodings, surrogate code points and values above
+ * U+10FFFF rather than splitting malformed bytes into apparent characters. */
+static int scalar_bytes(const unsigned char *p, int remaining)
+{
+    int count = p[0] < 0x80                  ? 1
+              : p[0] >= 0xc2 && p[0] <= 0xdf ? 2
+              : p[0] >= 0xe0 && p[0] <= 0xef ? 3
+              : p[0] >= 0xf0 && p[0] <= 0xf4 ? 4
+                                             : 0;
+    if (!count || count > remaining) {
+        return 0;
+    }
+    for (int i = 1; i < count; i++) {
+        if (p[i] < 0x80 || p[i] > 0xbf) {
+            return 0;
+        }
+    }
+    if ((p[0] == 0xe0 && p[1] < 0xa0) || (p[0] == 0xed && p[1] >= 0xa0) ||
+        (p[0] == 0xf0 && p[1] < 0x90) || (p[0] == 0xf4 && p[1] >= 0x90)) {
+        return 0;
+    }
+    return count;
+}
+typedef struct
+{
+    int bytes;
+    char text[];
+} string_snapshot;
+static const char *string_cursor(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 1);
+    (void)count;
+    pin_string text = pin_text(args[0]);
+    size_t bytes = text.length;
+    if (bytes > INT_MAX) {
+        return "String iterator exceeds its byte cursor range";
+    }
+    string_snapshot *cursor = arena_alloc(storage, sizeof *cursor + bytes + 1);
+    cursor->bytes = (int)bytes;
+    if (bytes) {
+        memcpy(cursor->text, text.bytes, bytes);
+    }
+    cursor->text[bytes] = 0;
+    *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)cursor };
+    return NULL;
+}
+/* Executable provenance permits only STRING_CURSOR-produced values here.
+ * The snapshot owns its inline bytes, so GC needs no borrowed string edge. */
+static const char *string_bytes(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 1);
+    (void)count;
+    const string_snapshot *cursor = (const void *)(uintptr_t)args[0].u64;
+    if (!cursor) {
+        return "String iterator requires a live cursor";
+    }
+    *out = (pin_value){ .type = PIN_I32, .i = cursor->bytes };
+    return NULL;
+}
+static const char *string_step(arena *storage, const pin_value *args, int count, pin_value *out, bool next)
+{
+    assert(count == 2);
+    (void)count;
+    const string_snapshot *cursor = (const void *)(uintptr_t)args[0].u64;
+    int offset = args[1].i;
+    if (!cursor || offset < 0 || offset >= cursor->bytes) {
+        return "String iterator is outside its snapshot";
+    }
+    const unsigned char *p = (const unsigned char *)cursor->text + offset;
+    int width = scalar_bytes(p, cursor->bytes - offset);
+    if (!width) {
+        return "String iterator requires valid UTF-8";
+    }
+    if (next) {
+        *out = (pin_value){ .type = PIN_I32, .i = offset + width };
+        return NULL;
+    }
+    return pin_value_text(storage, out, (const char *)p, (size_t)width);
+}
+static const char *string_item(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return string_step(storage, args, count, out, false);
+}
+static const char *string_next(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    return string_step(storage, args, count, out, true);
+}
+const node_host_call EXECUTION_string_bytes_call = { .value = string_bytes };
+const node_host_call EXECUTION_string_item_call = { .value = string_item };
+const node_host_call EXECUTION_string_next_call = { .value = string_next };
+const node_host_call EXECUTION_string_cursor_call = { .value = string_cursor };
 const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 {
     switch (id) {
+        case EXECUTION_INTRINSIC_STRING_CURSOR:
+            return &EXECUTION_string_cursor_call;
+        case EXECUTION_INTRINSIC_STRING_BYTES:
+            return &EXECUTION_string_bytes_call;
+        case EXECUTION_INTRINSIC_STRING_ITEM:
+            return &EXECUTION_string_item_call;
+        case EXECUTION_INTRINSIC_STRING_NEXT:
+            return &EXECUTION_string_next_call;
+        case EXECUTION_INTRINSIC_MAP_MAKE: return &EXECUTION_map_make_call;
+        case EXECUTION_INTRINSIC_MAP_GET: return &EXECUTION_map_get_call;
+        case EXECUTION_INTRINSIC_MAP_HAS: return &EXECUTION_map_has_call;
+        case EXECUTION_INTRINSIC_MAP_REMOVE: return &EXECUTION_map_remove_call;
+        case EXECUTION_INTRINSIC_MAP_ITEM: return &EXECUTION_map_item_call;
+        case EXECUTION_INTRINSIC_MAP_STORE: return &EXECUTION_map_store_call;
+        case EXECUTION_INTRINSIC_MAP_DELETE: return &EXECUTION_map_delete_call;
+        case EXECUTION_INTRINSIC_REFERENCE_KEY:
+            return &EXECUTION_reference_key_call;
         case EXECUTION_INTRINSIC_STATE_DEMAND:
             return &EXECUTION_state_demand_call;
         case EXECUTION_INTRINSIC_STATE_TRANSITION:
@@ -872,7 +1461,15 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_retrigger_action_call;
         case EXECUTION_INTRINSIC_SNAPSHOT: return &EXECUTION_snapshot_call;
         case EXECUTION_INTRINSIC_CONSTRUCT: return &EXECUTION_construct_call;
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
+            return &EXECUTION_value_equal_call;
+        case EXECUTION_INTRINSIC_ARRAY_PUSH: return &EXECUTION_array_push_call;
+        case EXECUTION_INTRINSIC_ARRAY_STORE:
+            return &EXECUTION_array_store_call;
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            return &EXECUTION_array_extend_call;
         case EXECUTION_INTRINSIC_UNION_MAKE: return &EXECUTION_union_make_call;
+        case EXECUTION_INTRINSIC_UNION_KEEP: return &EXECUTION_union_keep_call;
         case EXECUTION_INTRINSIC_UNION_TEST: return &EXECUTION_union_test_call;
         case EXECUTION_INTRINSIC_UNION_GET: return &EXECUTION_union_get_call;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
@@ -900,7 +1497,6 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_BREAK_REQUEST:
             return &EXECUTION_break_request_call;
         case EXECUTION_INTRINSIC_BREAK_TAKE: return &EXECUTION_break_take_call;
-        case EXECUTION_INTRINSIC_EVENT_READ: return &EXECUTION_event_read_call;
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return &EXECUTION_local_release_call;
         default: return NULL;
@@ -908,11 +1504,39 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
+    for (int id = EXECUTION_INTRINSIC_STRING_BYTES;
+         id <= EXECUTION_INTRINSIC_STRING_CURSOR;
+         id++) {
+        if (call == execution_intrinsic_call((execution_intrinsic)id)) {
+            return UINT64_C(0x4348494900000000) | (unsigned)id;
+        }
+    }
+    for (int id = EXECUTION_INTRINSIC_MAP_MAKE; id <= EXECUTION_INTRINSIC_MAP_DELETE;
+         id++) {
+        if (call == execution_intrinsic_call((execution_intrinsic)id)) {
+            return UINT64_C(0x4348494900000000) | (unsigned)id;
+        }
+    }
+    if (call == &EXECUTION_value_equal_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_VALUE_EQUAL;
+    }
     if (call == &EXECUTION_query_target_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_TARGET;
     }
+    if (call == &EXECUTION_array_push_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ARRAY_PUSH;
+    }
+    if (call == &EXECUTION_array_store_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ARRAY_STORE;
+    }
+    if (call == &EXECUTION_array_extend_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ARRAY_EXTEND;
+    }
     if (call == &EXECUTION_union_make_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MAKE;
+    }
+    if (call == &EXECUTION_union_keep_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_KEEP;
     }
     if (call == &EXECUTION_union_test_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_TEST;
@@ -971,28 +1595,56 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     if (call == &EXECUTION_break_take_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_BREAK_TAKE;
     }
-    if (call == &EXECUTION_event_read_call) {
-        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_EVENT_READ;
-    }
     if (call == &EXECUTION_local_release_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_LOCAL_RELEASE;
     }
     return 0;
 }
+/* The intrinsics that may build a returned local in the caller's storage;
+ * union_keep runs only there. */
+static bool result_kind(execution_intrinsic kind)
+{
+    return kind == EXECUTION_INTRINSIC_CONSTRUCT ||
+           kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+           kind == EXECUTION_INTRINSIC_ARRAY_STORE ||
+           kind == EXECUTION_INTRINSIC_ARRAY_EXTEND ||
+           kind == EXECUTION_INTRINSIC_UNION_KEEP;
+}
 const node_host_call *execution_intrinsic_resolve(uint64_t id)
 {
-    if ((id & UINT64_C(0xffffffffffffff00)) != UINT64_C(0x4348494900000000)) {
+    execution_intrinsic kind = execution_intrinsic_kind(id);
+    if (((id & ~EXECUTION_INTRINSIC_IN_RESULT) & UINT64_C(0xffffffffffffff00)) !=
+        UINT64_C(0x4348494900000000)) {
         return NULL;
     }
-    return execution_intrinsic_call((execution_intrinsic)(id & 255));
+    if (execution_intrinsic_in_result(id) ? !result_kind(kind)
+                                          : kind == EXECUTION_INTRINSIC_UNION_KEEP) {
+        return NULL;
+    }
+    return execution_intrinsic_call(kind);
 }
 const node_access *execution_intrinsic_access(uint64_t id)
 {
     if (!execution_intrinsic_resolve(id)) {
         return NULL;
     }
-    switch ((execution_intrinsic)(id & 255)) {
+    /* Building in the caller's storage writes outside the call. */
+    if (execution_intrinsic_in_result(id)) {
+        return &EXECUTION_assignment_access;
+    }
+    switch (execution_intrinsic_kind(id)) {
+        case EXECUTION_INTRINSIC_STRING_BYTES:
+        case EXECUTION_INTRINSIC_STRING_CURSOR:
+        case EXECUTION_INTRINSIC_STRING_ITEM:
+        case EXECUTION_INTRINSIC_STRING_NEXT:
+        case EXECUTION_INTRINSIC_MAP_MAKE:
+        case EXECUTION_INTRINSIC_MAP_GET:
+        case EXECUTION_INTRINSIC_MAP_HAS:
+        case EXECUTION_INTRINSIC_MAP_REMOVE:
+        case EXECUTION_INTRINSIC_MAP_ITEM:
+        case EXECUTION_INTRINSIC_REFERENCE_KEY:
         case EXECUTION_INTRINSIC_SNAPSHOT:
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
@@ -1008,5 +1660,10 @@ const node_access *execution_intrinsic_access(uint64_t id)
 }
 uint64_t execution_intrinsic_abi(uint64_t id)
 {
+    if (execution_intrinsic_kind(id) >= EXECUTION_INTRINSIC_STRING_BYTES &&
+        execution_intrinsic_kind(id) <= EXECUTION_INTRINSIC_STRING_NEXT &&
+        execution_intrinsic_resolve(id)) {
+        return 2;
+    }
     return execution_intrinsic_resolve(id) ? 1 : 0;
 }

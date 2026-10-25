@@ -7,6 +7,7 @@
 #include "support/xalloc.h"
 #include "test/graph/packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -58,7 +59,11 @@ static behavior_asset *asset(const shader_node *spec)
          *part = graph_add_node(g, &NODE_ModelPart),
          *out = model_graph_add_output(g);
     pin_value values[] = {
-        { .type = PIN_STR, .str = "content/sdf/0000000000000000.sdf.png" },
+        { .type = PIN_STR,
+          .text = &(
+              const pin_string
+          ){ .bytes = "content/sdf/0000000000000000.sdf.png",
+             .length = sizeof("content/sdf/0000000000000000.sdf.png") - 1 } },
         { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = (void *)spec->value },
         { .type = PIN_I32, .i = spec->parameter },
         { .type = PIN_F32, .f = spec->volume_range },
@@ -170,7 +175,9 @@ TEST_CASE(sampled_sdf_models)
     invalid.parameter = -20;
     REQUIRE(!shader_volume_validate(&invalid, &image, &error));
     float rejected;
-    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected));
+    error = (shader_error){ 0 };
+    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected, &error));
+    REQUIRE(error.node == invalid.source_id && strstr(error.message, "metadata"));
     shader_graph part_distance, part_hit;
     shader_graph_init(&part_distance);
     shader_graph_init(&part_hit);
@@ -368,7 +375,10 @@ TEST_CASE(sampled_images_keep_the_last_good_on_reload)
     save_fixture(path, &image);
     REQUIRE(render_image_reload(key, message, sizeof message));
     behavior_asset *model = asset(&spec);
-    pin_value image_key = { .type = PIN_STR, .str = key };
+    pin_value image_key = {
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = key, .length = (uint32_t)strlen(key) }
+    };
     REQUIRE(!graph_set_pin_default(model->graph, model->graph->nodes[0], 0, 0, &image_key));
     REQUIRE(render_shader_upsert(model, &error));
     int id = render_shader_find(model->name);

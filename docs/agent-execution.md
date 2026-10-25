@@ -1,20 +1,11 @@
 # Bounded agent execution
 
-**Temporary override:** the [60-second test policy](testing.md#temporary-60-second-policy)
-supersedes test deadlines, full-gate commands and selector admission below.
-Only exact measured invocations in `make test-list` are admitted. CPU classification
-is not timing evidence. Agent test commands now have a 60-second ceiling; full
-hardware opt-in cannot clear quarantine. Preview/MP4 authoring budgets below are
-not permission to run test/profiling captures beyond 60 seconds (including CUT61).
-The remaining text records the underlying capability policy and historical evidence.
-
 Use the smallest check that answers the current question. A GPU-heavy game still
 needs GPU evidence for shader, lighting, temporal and rendering changes. Avoid
 paying for a full suite after a parser or logic edit. Profiles are explicit and
 work on any machine; no hostname, driver name or assumed device capability selects
-a profile. `hardware` permits underlying hardware operations but does not clear
-test quarantine or prove a physical GPU is present. CI currently reports partial
-coverage.
+a profile. `hardware` permits underlying hardware operations but does not prove
+a physical GPU is present. CI currently reports partial coverage.
 
 ## Inspect, build, select
 
@@ -38,8 +29,8 @@ and require the actual runtime result to establish the backend/device.
 `plan logic|render|temporal` chooses focused commands using the explicit purpose
 and discovered capabilities. Logic plans avoid render initialization even when
 no graphics device exists. Render plans keep native reference assertions intact;
-hardware/software classification only guides preview resolution and reporting,
-not assertion thresholds or authorization for full suites. Temporal plans require
+hardware/software classification only guides preview resolution and reporting;
+assertion thresholds stay unchanged. Temporal plans require
 an explicit MP4 request before their suggested capture command is executed.
 
 `doctor` enumerates Vulkan devices without rendering. Device type 4 is CPU; integrated/discrete types identify hardware candidates.
@@ -51,22 +42,22 @@ Discovery is not a rendered-device guarantee: execution results separately repor
 the actual native backend and device name from renderer logs when available,
 or explicitly leave the device unknown. They also include image dimensions,
 planned frame counts, elapsed wall time, and time/RSS budgets. Native render results
-carry the same execution metadata. Full checks remain explicitly pending.
+carry the same execution metadata. Unexecuted checks remain explicitly pending.
 
 Shared GPU assertion fixtures use native hidden windows on macOS and Windows.
 On Linux they prefer SDL's offscreen driver while honoring explicit
 `SDL_VIDEO_DRIVER` or legacy `SDL_VIDEODRIVER` settings.
 
-The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
+The default `CHIBI_EXECUTION_PROFILE=iteration` allows CPU selectors and
 bounded authoring previews. `test/execution_selectors.h` is the CPU allowlist.
 Other selectors are GPU/mixed or unclassified, and are blocked with an outstanding
 check rather than silently trimmed. New selectors must be inspected and
 classified before adding them to this list.
 
 The `gpu-check` profile routes the installed-player and Studio source-edit
-selectors; each needs the installed products named in `tools/agent.py`. CPU checks use existing sanitizer settings;
-the agent wrapper imposes a 60-second deadline without suppressing assertions or
-leak checks. Timeouts are failures/blocked results, never passes.
+selectors; each needs the installed products named in `tools/agent.py`. CPU checks
+use existing sanitizer settings without suppressing assertions or leak checks.
+Timeouts are failures/blocked results, never passes.
 
 ## One output image and explicit MP4
 
@@ -153,9 +144,8 @@ There is deliberately no cross-process scheduler or global frame quota.
 ## Reviewed checks and truthful handoff
 
 `make test` runs the fast C execution-policy unit checks. `make test-tools`
-runs all retained C tooling and process integrations under one 60-second
-deadline. Use admitted native selectors for the affected runtime contracts.
-`make test-full` and `make test-render` remain quarantined and do not pass.
+runs all retained C tooling and process integrations. Select native and render
+checks for the affected runtime contracts, preserving hardware opt-in where required.
 
 Choose publication checks through independent review of the affected contracts
 and their interactions. Preserve each selected check's backend, sanitizer and
@@ -269,28 +259,7 @@ CLI. Native execution metadata distinguishes offscreen, hidden-window,
 visible-window, and unreported window state. Hardware validation remains
 separate from CPU policy evidence.
 
-### Installed SpaceCadet acceptance routes
-
-The installed routes require explicit absolute `CHIBI_SPACE_CADET_ROOT` and
-`CHIBI_COMPILER_SDK` paths. They verify package file checksums, the game's exact
-`.chibi-engine.json` pin against `.chibi/runtime/share/chibi/package.json`, and the
-reviewed project/content fingerprint before invocation. No development binary
-substitution is permitted.
-
-`make agent-test AGENT_SELECTOR=--compile-installed-space-cadet` uses that SDK's
-`bin/chibi-compile` and writes the game's `.chibi/prepared/project.chibip`. Its
-resource manifest must contain exactly HUD, PauseMenu, four Inter faces, and the
-reviewed empty parts/shader-values catalogs, with no external resources.
-
-`make agent-gpu-test AGENT_SELECTOR=--player-installed-space-cadet-vm` and the
-corresponding `--player-installed-space-cadet-sljit` route run the game's installed
-`.chibi/runtime/bin/chibi-player` against that artifact. Each requires exactly four
-hidden 1280×720 frames and exactly three simulation steps at fixed dt 0.0166667
-under the shared 60-second deadline.
-These are GPU checks. Configuration and packaging are separate from execution.
-The existing development SpaceCadet routes remain available. New installed-route
-execution evidence is pending independent admission and a supervised run.
-
+### Installed Studio acceptance routes
 
 The `--studio-source-edit` GPU route accepts explicit absolute
 `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD`, and
@@ -303,7 +272,7 @@ edit, undo and redo. UI initialization or runtime-frame diagnostics reject the
 run. The ordinary startup route remains separate.
 
 The Studio interaction routes use the same provenance checks and disposable
-fixture. Each runs independently under the shared 60-second supervisor deadline:
+fixture:
 
 | Agent selector | Hidden frames | Accepted interaction |
 | --- | ---: | --- |
@@ -325,5 +294,5 @@ Restore `projects/studio/project.kdl` from `CHIBI_STUDIO_SOURCE` into
 Studio migrates the build copy on startup, so a second invocation otherwise fails
 the unchanged-resource preflight. The engine route removes its disposable user
 project after every run. See Studio's `tests/acceptance/README.md` for the exact
-interactions. These admissions do not enable the held acceptance suite, establish
-web input coverage or assert a particular GPU backend.
+interactions. These focused routes do not release the held acceptance suite,
+establish web input coverage or assert a particular GPU backend.

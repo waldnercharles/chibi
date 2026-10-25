@@ -77,6 +77,7 @@ typedef struct
     bool pass_timestamps;
     char *initial_state, *final_state;
     render_mesh_material_work mesh_work;
+    render_scene3d_work scene3d_work;
     render_model_stats model_before, model_measured, model_after;
     render_horizon_work horizon_work;
     render_surface_work surface_work;
@@ -365,6 +366,7 @@ static bool render_scene(
         measurement->resolution = lighting.resolution;
         measurement->scene_gpu_ms = lighting.gpu_ms;
         measurement->mesh_work = app_scene_renderer_mesh_work(scene.renderer);
+        measurement->scene3d_work = app_scene_renderer_last_work(scene.renderer);
         measurement->model_after = render_shader_model_stats();
         measurement->horizon_work = app_scene_renderer_horizon_work(scene.renderer);
         measurement->surface_work = app_scene_renderer_surface_work(scene.renderer);
@@ -733,6 +735,50 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             "scene_gpu_ms",
             measurement.scene_gpu_ms
         );
+        yyjson_mut_val *scene_work = yyjson_mut_obj_add_obj(response, performance, "scene3d_work");
+        yyjson_mut_obj_add_str(response, scene_work, "scope", "last rendered frame; not cumulative or peak");
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "entities",
+            measurement.scene3d_work.entities
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "meshes",
+            measurement.scene3d_work.meshes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "terrain_meshes",
+            measurement.scene3d_work.terrain_meshes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "terrain_rebuilds",
+            measurement.scene3d_work.terrain_rebuilds
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "terrain_uploads",
+            measurement.scene3d_work.terrain_uploads
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "terrain_gi_proxies",
+            measurement.scene3d_work.terrain_gi_proxies
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            scene_work,
+            "light_shadows",
+            measurement.scene3d_work.light_shadows
+        );
         yyjson_mut_val *work = yyjson_mut_obj_add_obj(response, performance, "mesh_work");
         yyjson_mut_obj_add_str(response, work, "scope", "last rendered frame surface submissions");
         yyjson_mut_obj_add_int(
@@ -746,6 +792,18 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             work,
             "draw_calls",
             measurement.mesh_work.draw_calls
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "mesh_uploads",
+            measurement.mesh_work.mesh_uploads
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "dynamic_meshes",
+            measurement.mesh_work.dynamic_meshes
         );
         yyjson_mut_obj_add_int(
             response,

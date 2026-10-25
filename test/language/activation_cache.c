@@ -1,6 +1,7 @@
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
+#include "execution/function.h"
 #include "execution/function_builder.h"
 #include "execution/inspection.h"
 #include "execution/module.h"
@@ -10,6 +11,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -187,13 +189,12 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(
-            "behavior Cache { state total:double=0; "
-            "Work :: (value:double) { total+=value; if value<0 { await "
-            "Delay(1); } } "
-            "Leaf :: fn(value:double)->double { return value; } "
-            "Forward :: fn(value:double)->double { return Leaf(value); } "
-            "on Run(amount:double) { total+=Forward(amount); } "
-            "on Reenter(amount:double) { total+=amount; child:task=Work(7); "
+            "Cache :: behavior { total:retain double=0; Work :: (value:double) "
+            "{ total+=value; if value<0 { await Delay(1); } } Leaf :: "
+            "(value:double)->double { return value; } Forward :: "
+            "(value:double)->double { return Leaf(value); } on "
+            "Run :: (amount: double) { total+=Forward(amount); } on "
+            "Reenter :: (amount: double) { total+=amount; child:task=Work(7); "
             "total+=amount; } }",
             backends[backend]
         ));
@@ -247,46 +248,79 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
 }
 TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
 {
-    const char *source =
-        "behavior Cache { state total:double=0; state kept:string=\"\"; "
-        "Echo :: (value:string)->string { return value; } "
-        "on Text(value:string) { kept=Echo(value); } "
-        "on Run(amount:double) { if amount<0 { values:=[10,20]; "
-        "total=values[cast<int>(-amount)]; } else { total+=amount; } } }";
+    const char
+        *source = "Cache :: behavior { total:retain double=0; kept:retain "
+                  "string=\"\"; Echo :: (value:string)->string { return value; "
+                  "} on Text :: (value: string) { kept=Echo(value); } on "
+                  "Run :: (amount: double) { if amount<0 { values:=[10,20]; "
+                  "total=values[int(-amount)]; } else { total+=amount; } "
+                  "} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
         char first[] = "first", second[] = "second", third[] = "third!";
         REQUIRE(
-            dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = first }, 0) ==
-                FLOW_OK &&
+            dispatch(
+                0,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = first,
+                                                          .length = (uint32_t)strlen(first) } },
+                0
+            ) == FLOW_OK &&
             cached()
         );
         REQUIRE(
-            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = second }, 1) ==
-                FLOW_OK &&
+            dispatch(
+                1,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = second,
+                                                          .length = (uint32_t)strlen(second) } },
+                1
+            ) == FLOW_OK &&
             cached()
         );
         first[0] = second[0] = 'X';
         const pin_value *one = execution_instance_state(instances[0], state_id("kept"));
         const pin_value *two = execution_instance_state(instances[1], state_id("kept"));
-        REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "second"));
         REQUIRE(
-            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = third }, 1.5) ==
-                FLOW_OK &&
+            one && two && !strcmp(pin_text(*one).bytes, "first") &&
+            !strcmp(pin_text(*two).bytes, "second")
+        );
+        REQUIRE(
+            dispatch(
+                1,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = third,
+                                                          .length = (uint32_t)strlen(third) } },
+                1.5
+            ) == FLOW_OK &&
             cached()
         );
         third[0] = 'X';
         one = execution_instance_state(instances[0], state_id("kept"));
         two = execution_instance_state(instances[1], state_id("kept"));
-        REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "third!"));
+        REQUIRE(
+            one && two && !strcmp(pin_text(*one).bytes, "first") &&
+            !strcmp(pin_text(*two).bytes, "third!")
+        );
         REQUIRE(run(0, 1, 2) == FLOW_OK && cached());
         REQUIRE(run(0, -2, 3) < 0);
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         REQUIRE(execution_program_error(program));
         REQUIRE(run(1, 3, 4) == FLOW_OK && total(0, 1) && total(1, 3) && cached());
         REQUIRE(
-            dispatch(0, RUN_EVENT, (pin_value){ .type = PIN_STR, .str = "wrong" }, 5) == FLOW_ERR_ARGUMENT
+            dispatch(
+                0,
+                RUN_EVENT,
+                (pin_value){
+                    .type = PIN_STR,
+                    .text = &(const pin_string){ .bytes = "wrong",
+                                                 .length = sizeof("wrong") - 1 } },
+                5
+            ) == FLOW_ERR_ARGUMENT
         );
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         REQUIRE(run(0, 2, 6) == FLOW_OK && total(0, 3) && cached());
@@ -296,11 +330,10 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
 }
 TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
 {
-    const char *source = "behavior Cache { state total:double=0; "
-                         "on Run(amount:double) { values:=[amount,amount+1]; "
-                         "values[0]+=2; "
-                         "total+=values[0]+values[1]; } "
-                         "on Text(value:string) { total+=1; } }";
+    const char *source = "Cache :: behavior { total:retain double=0; on "
+                         "Run :: (amount: double) { values:=[amount,amount+1]; "
+                         "values[0]+=2; total+=values[0]+values[1]; } on "
+                         "Text :: () { total+=1; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
@@ -319,7 +352,14 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
         memset(large_payload, 'x', CACHE_LIMIT);
         large_payload[CACHE_LIMIT] = '\0';
         REQUIRE(
-            dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = large_payload }, 3) == FLOW_OK
+            dispatch(
+                0,
+                TEXT_EVENT,
+                (pin_value){ .type = PIN_STR,
+                             .text = &(const pin_string){ .bytes = large_payload,
+                                                          .length = (uint32_t)strlen(large_payload) } },
+                3
+            ) == FLOW_OK
         );
         REQUIRE(
             total(0, 15) &&
@@ -329,12 +369,26 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
         large_payload = NULL;
 
         REQUIRE(
-            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 4) ==
-                FLOW_OK &&
+            dispatch(
+                1,
+                TEXT_EVENT,
+                (pin_value){
+                    .type = PIN_STR,
+                    .text = &(const pin_string){ .bytes = "tiny",
+                                                 .length = sizeof("tiny") - 1 } },
+                4
+            ) == FLOW_OK &&
             total(1, 8) && cached()
         );
         xalloc_stats_get(&before);
-        int small = dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 5);
+        int small = dispatch(
+            0,
+            TEXT_EVENT,
+            (pin_value){ .type = PIN_STR,
+                         .text = &(const pin_string){ .bytes = "tiny",
+                                                      .length = sizeof("tiny") - 1 } },
+            5
+        );
         xalloc_stats_get(&after);
         REQUIRE(small == FLOW_OK && total(0, 16) && cached());
         REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
@@ -342,12 +396,83 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
     }
     return true;
 }
+/* A helper called many times in one run reuses its spare frame each time:
+ * retention is counted once per retired frame, never drifting toward the
+ * budget, so later runs allocate nothing and keep the same cache size. */
+TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls)
+{
+    const char *source = "Cache :: behavior { total: retain double=0; "
+                         "Leaf :: (value:double)->double { return value + 1; } "
+                         "on Run :: (amount: double) { i:int=0; "
+                         "while i < 300 { total += Leaf(amount); i += 1; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 1, 0) == FLOW_OK && total(0, 600) && cached());
+        size_t bytes = execution_program_memory_usage(program).activation_cache_bytes;
+        for (int pass = 1; pass <= 3; pass++) {
+            xalloc_stats before, after;
+            xalloc_stats_get(&before);
+            int status = run(0, 1, pass);
+            xalloc_stats_get(&after);
+            REQUIRE(status == FLOW_OK && total(0, 600.0 * (pass + 1)) && cached());
+            REQUIRE(
+                after.calls == before.calls && after.requested_bytes == before.requested_bytes
+            );
+            REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == bytes);
+        }
+        cleanup();
+    }
+    return true;
+}
+/* A callee whose frame alone exceeds the idle budget is reused while its run
+ * lasts, so a run sets up the same frames however often it calls it; the
+ * settled activation keeps no more than the idle budget. */
+TEST_CASE(activation_cache_reuses_large_frames_within_a_run)
+{
+    enum
+    {
+        ITEMS = 3000
+    };
+    static const char
+        head[] = "Cache :: behavior { total: retain double=0; "
+                 "Big :: (value:double)->double { values:=[value",
+        item[] = ",value",
+        tail[] = "]; return values[0]; } "
+                 "on Run :: (amount: double) { i:int=0; "
+                 "while i < int(amount) { total += Big(1); i += 1; } } }";
+    char *source = xmalloc(sizeof head + (ITEMS - 1) * (sizeof item - 1) + sizeof tail);
+    char *at = source;
+    memcpy(at, head, sizeof head - 1);
+    at += sizeof head - 1;
+    for (int i = 1; i < ITEMS; i++) {
+        memcpy(at, item, sizeof item - 1);
+        at += sizeof item - 1;
+    }
+    memcpy(at, tail, sizeof tail);
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 2, 0) == FLOW_OK && total(0, 2));
+        uint64_t frames[2];
+        for (int pass = 0; pass < 2; pass++) {
+            uint64_t before = behavior_function_data_allocations();
+            REQUIRE(run(0, pass ? 12 : 2, pass + 1) == FLOW_OK);
+            REQUIRE(execution_program_memory_usage(program).activation_cache_bytes <= CACHE_LIMIT);
+            frames[pass] = behavior_function_data_allocations() - before;
+        }
+        REQUIRE(total(0, 16) && frames[1] == frames[0]);
+        cleanup();
+    }
+    free(source);
+    return true;
+}
 TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
 {
-    const char *source = "behavior Cache { state total:double=0; "
-                         "on Run(amount:double) { total+=amount; } "
-                         "on Wait(amount:double) { total+=amount; await "
-                         "Delay(1); total+=amount; } }";
+    const char *source = "Cache :: behavior { total:retain double=0; on "
+                         "Run :: (amount: double) { total+=amount; } on Wait "
+                         ":: (amount: double) "
+                         "{ total+=amount; await Delay(1); total+=amount; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
@@ -443,6 +568,8 @@ void test_language_activation_cache()
     RUN_TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work);
     RUN_TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs);
     RUN_TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention);
+    RUN_TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls);
+    RUN_TEST_CASE(activation_cache_reuses_large_frames_within_a_run);
     RUN_TEST_CASE(activation_cache_keeps_waits_and_inspection_independent);
     RUN_TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks);
     pu_clear_setup();

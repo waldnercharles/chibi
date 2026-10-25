@@ -179,6 +179,9 @@ render_programs *render_programs_new(render_program_kind kind)
         free(body);
     } else if (kind == RENDER_PROGRAM_FRAGMENT) {
         programs->body = render_shader_fragment_source();
+    } else if (kind == RENDER_PROGRAM_SKY) {
+        programs->vertex = render_shader_source("scene3d_sky.vert");
+        programs->body = render_shader_source("scene3d_sky_material.frag");
     } else {
         programs->vertex = render_shader_source("hrc/pass.vert");
         programs->body = render_shader_source("hrc/entity_raster.frag");
@@ -321,9 +324,15 @@ static bool compile(render_programs *programs, program *entry)
               "int u_metaball_group; vec4 u_mesh_rect; vec2 u_mesh_extent; "
               "vec4 u_plane_right; vec4 u_plane_down; vec4 u_plane_target; };\n"
             : "";
-    char gi[48] = "";
+    char gi[96] = "";
     if (reads_probes(programs->kind, entry->set.count)) {
         snprintf(gi, sizeof gi, "#define SG_GI_BINDING %d\n", entry->set.count + SCENE3D_MAPS + 1);
+    }
+    /* Lit 3D surfaces, with or without probe lighting, rasterize once per
+     * pixel, so images can filter by screen-space gradients through their mip
+     * chains. Shadow passes keep base-level sampling. */
+    if (scene3d_kind(programs->kind) && !shadow_kind(programs->kind)) {
+        strcat(gi, "#define SG_IMAGE_GRADIENTS 1\n");
     }
     /* Room for the defines ahead of the sources. */
     size_t bytes = strlen(graphs) + strlen(programs->body) + strlen(scene) +

@@ -1,8 +1,9 @@
-behavior "WeaponBehavior" {
-    on Fire {
-        await "WeaponActions"."Fire Projectile"(self.Transform, {
+// Spawns a projectile beside the owning entity when Fire is dispatched.
+WeaponBehavior :: behavior {
+    on Fire :: () {
+        await WeaponActions.Fire_Projectile(self.Transform, {
             x: 1.0,
             y: 0.0
-        }, self.Weapon.damage, "Projectile", self)
+        }, self.Weapon.damage, Projectile, self)
     }
 }

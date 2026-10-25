@@ -79,14 +79,14 @@ native behavior compiler.
 
 `authoring/source_format.h` formats complete canonical snapshots while preserving
 comments, literal bytes, leaf tokens and CST structure. Incomplete syntax returns
-a diagnostic. `authoring/source_metadata.h` binds optional sidecars to exact
-source bytes and remaps anchors only when token/CST preservation is established.
-Malformed or stale sidecars cannot change executable meaning.
+a diagnostic. Editor state snapshots (`authoring_source_presentation_metadata`)
+bind to exact source text and are never saved to the project. Malformed or
+stale snapshots cannot change executable meaning.
 
 The Text Editor's `asset_code` session retains draft syntax, current resolved
 facts and the last valid generation. Invalid edits retain the last valid runtime
-and presentation generation. History owns source text and optional metadata;
-save checks pending validation, source and sidecar disk conflicts. Source-backed
+and presentation generation. History owns source text and optional editor state;
+save checks pending validation and source disk conflicts. Source-backed
 presentation edits use exact origin ranges followed by canonical reanalysis.
 There is no graph-to-source parser reconciliation authority.
 
@@ -106,8 +106,8 @@ Studio's [bounded acceptance inventory](https://github.com/waldnercharles/chibi-
 covers selected history, keyboard, dirty-prompt and rendered graph/asset pointer
 interactions. Debugger-source-history covers invalid drafts and undo/redo against
 a retained paused generation. Valid live-generation replacement and broader
-graph gestures remain outside those cases; the
-[test policy](test-quarantine.md) still governs admission.
+graph gestures remain outside those cases. The
+[test inventory](test-inventory.md) describes how to report selected and unrun coverage.
 
 ## Controller integration status
 

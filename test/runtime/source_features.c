@@ -203,16 +203,15 @@ static int pump(double now, double delta, unsigned budget)
 }
 TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 {
-    const char *format =
-        "behavior Reaction { owner \"ecs.entity\"; state done:bool=false; "
-        "state rotation:struct<\"CF_V3\">={x:-1.0,y:2.0,z:3.0}; state "
-        "target:handle<\"ecs.entity\">=0; "
-        "Apply :: fn"
-        "(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
-        "await delay(Duration:0.125); await "
-        "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } "
-        "on Tick { await Apply(Rotation:rotation,Target:target); done=true; } "
-        "}";
+    const char
+        *format = "Reaction :: behavior { done:retain bool=false; "
+                  "rotation:retain struct<CF_V3>={x:-1.0,y:2.0,z:3.0}; "
+                  "target:retain handle<ecs.entity>=0; Apply :: "
+                  "(Rotation:struct<CF_V3>,Target:handle<ecs.entity>)->(){ "
+                  "await delay(Duration:0.125); await "
+                  "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } on "
+                  "Tick :: () { await Apply(Rotation:rotation,Target:target); "
+                  "done=true; } }";
     for (int backend = 0; backend < 2; backend++) {
         for (int explicit_target = 0; explicit_target < 2; explicit_target++) {
             char text[1024];
@@ -283,20 +282,18 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 {
     const char
-        *text = "behavior Rhythm { state phase:double=0; state pulse:double=0; "
-                "state period:double=0; state duration:double=0; "
-                "Read :: fn"
-                "()->(Phase:double,Pulse:double,Period:double,Duration:"
-                "double){ r:=scene_rhythm(); "
+        *text = "Rhythm :: behavior { phase:retain double=0; pulse:retain "
+                "double=0; period:retain double=0; duration:retain double=0; "
+                "Read :: "
+                "()->(Phase:double,Pulse:double,Period:double,Duration:double){"
+                " r:=scene_rhythm(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
-                "Duration); } "
-                "Apply :: fn"
-                "()->(Phase:double,Pulse:double,Period:double,Duration:"
-                "double){ await delay(Duration:0.125); r:=Read(); "
+                "Duration); } Apply :: "
+                "()->(Phase:double,Pulse:double,Period:double,Duration:double){"
+                " await delay(Duration:0.125); r:=Read(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
-                "Duration); } "
-                "on Tick { r:=await Apply(); phase=r.Phase; pulse=r.Pulse; "
-                "period=r.Period; duration=r.Duration; } }";
+                "Duration); } on Tick :: () { r:=await Apply(); phase=r.Phase; "
+                "pulse=r.Pulse; period=r.Period; duration=r.Duration; } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Rhythm, NULL) == 0);
@@ -325,16 +322,14 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 }
 TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 {
-    const char *text = "behavior Particles { state done:bool=false; Emit :: fn"
-                       "()->(){ "
-                       "await "
-                       "emit_particles(Position:{x:1.0,y:-2.0},Color:"
-                       "4040002047,Count:3,Speed:80.0,Lifetime:0.3); "
-                       "await delay(Duration:0.125); "
-                       "await "
-                       "emit_particles(Position:{x:1.0,y:-2.0},Color:"
-                       "4040002047,Count:3,Speed:80.0,Lifetime:0.3); } "
-                       "on Tick { Emit(); done=true; } }";
+    const char *
+        text = "Particles :: behavior { done:retain bool=false; Emit :: "
+               "()->(){ await "
+               "emit_particles(Position:{x:1.0,y:-2.0},Color:4040002047,Count:"
+               "3,Speed:80.0,Lifetime:0.3); await delay(Duration:0.125); await "
+               "emit_particles(Position:{x:1.0,y:-2.0},Color:4040002047,Count:"
+               "3,Speed:80.0,Lifetime:0.3); } on Tick :: () { Emit(); "
+               "done=true; } }";
     for (int backend = 0; backend < 2; backend++) {
         test_particles = particles_new();
         expected_particles = particles_new();
@@ -379,24 +374,22 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 }
 TEST_CASE(source_native_motion_retains_numeric_outputs)
 {
-    const char *
-        text = "behavior Motion { state input:double=0; state angle:double=0; "
-               "state smooth:double=0; state root:double=0; state "
-               "low:double=0; state high:double=0; state nearest:double=0; "
-               "state position:float=0; state velocity:float=0; "
-               "Calculate :: fn"
-               "(Value:double)->(Angle:double,Smooth:double,Root:"
-               "double,Low:double,High:double,Nearest:double){ "
-               "return(Angle:quantize_angle(Angle:Value,Step:1."
-               "5707963267948966),Smooth:smooth_step(Value:Value),Root:sqrt("
-               "Value:Value),Low:floor(Value:Value),High:ceil(Value:Value),"
-               "Nearest:round(Value:Value)); } "
-               "on Tick { r:=Calculate(Value:input); angle=r.Angle; "
-               "smooth=r.Smooth; root=r.Root; low=r.Low; high=r.High; "
-               "nearest=r.Nearest; "
-               "spring:=advance_damped_spring(Position:0.0,Velocity:0.0,Target:"
-               "1.0,Frequency:1.0,Damping:1.0,Delta:0.125); "
-               "position=spring.Position; velocity=spring.Velocity; } }";
+    const char *text =
+        "Motion :: behavior { input:retain double=0; angle:retain double=0; "
+        "smooth:retain double=0; root:retain double=0; low:retain double=0; "
+        "high:retain double=0; nearest:retain double=0; position:retain "
+        "float=0; velocity:retain float=0; Calculate :: "
+        "(Value:double)->(Angle:double,Smooth:double,Root:double,Low:double,"
+        "High:double,Nearest:double){ "
+        "return(Angle:quantize_angle(Angle:Value,Step:1.5707963267948966),"
+        "Smooth:smooth_step(Value:Value),Root:sqrt(Value:Value),Low:floor("
+        "Value:Value),High:ceil(Value:Value),Nearest:round(Value:Value)); } on "
+        "Tick :: () { r:=Calculate(Value:input); angle=r.Angle; "
+        "smooth=r.Smooth; "
+        "root=r.Root; low=r.Low; high=r.High; nearest=r.Nearest; "
+        "spring:=advance_damped_spring(Position:0.0,Velocity:0.0,Target:1.0,"
+        "Frequency:1.0,Damping:1.0,Delta:0.125); position=spring.Position; "
+        "velocity=spring.Velocity; } }";
     const char *names[] = { "angle", "smooth",  "root",     "low",
                             "high",  "nearest", "position", "velocity" };
     const double samples[] = {
@@ -477,14 +470,13 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
 }
 TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
-    const char *text = "behavior Query { state visits:int=0; state "
-                       "last:handle<\"ecs.entity\">=0; "
-                       "Count :: fn()->(){ foreach (outer in "
-                       "find_entities_with_component(Component:\"Health\")) { "
-                       "foreach (inner in "
-                       "find_entities_with_component(Component:\"Health\")) { "
-                       "visits+=1; last=inner; } } } "
-                       "on Tick { visits=0; last=0; Count(); } }";
+    const char *
+        text = "Query :: behavior { visits:retain int=0; last:retain "
+               "handle<ecs.entity>=0; Count :: ()->(){ for (outer in "
+               "find_entities_with_component(Component:Health)) { for (inner "
+               "in find_entities_with_component(Component:Health)) { "
+               "visits+=1; last=inner; } } } on Tick :: () { visits=0; last=0; "
+               "Count(); } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Health, NULL) == 0);
@@ -542,34 +534,69 @@ TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
     return true;
 }
 
+TEST_CASE(source_native_relationship_snapshot_mutations_commit_between_handlers)
+{
+    const char *text =
+        "Links :: behavior { count:retain int=0; phase:retain int=0; "
+        "targets:retain handle<ecs.entity>[]=[]; on Tick :: () { if phase==0 { "
+        "for target in self.ChildOf { "
+        "targets=append(targets,target); } for target in targets { "
+        "if has_pair(self,ChildOf,target) { remove_pair(self,ChildOf,target); "
+        "count+=1; } } phase=1; } else { for target in targets { "
+        "if not has_pair(self,ChildOf,target) { add_pair(self,ChildOf,target); "
+        "count+=1; } } targets=[]; } } }";
+    for (int backend = 0; backend < 2; backend++) {
+        test_world = ecs_world_new();
+        ecs_entity owner = ecs_world_create_entity(test_world);
+        ecs_entity parent = ecs_world_create_entity(test_world);
+        REQUIRE(!ecs_world_record_add_pair(test_world, owner, ECS_CHILD_OF, parent, 0));
+        REQUIRE(!ecs_world_apply_commands(test_world));
+        test_entities = entities_new(test_world, NULL);
+        REQUIRE(test_entities);
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick");
+        uint64_t count = state_id("count");
+        REQUIRE(tick && count);
+        instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, count)->i == 1);
+        REQUIRE(ecs_has_pair(test_world, owner, ECS_CHILD_OF, parent));
+        REQUIRE(!ecs_world_apply_commands(test_world));
+        REQUIRE(!ecs_has_pair(test_world, owner, ECS_CHILD_OF, parent));
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, count)->i == 2);
+        REQUIRE(!ecs_has_pair(test_world, owner, ECS_CHILD_OF, parent));
+        REQUIRE(!ecs_world_apply_commands(test_world));
+        REQUIRE(ecs_has_pair(test_world, owner, ECS_CHILD_OF, parent));
+        cleanup();
+    }
+    return true;
+}
+
 /* Contextual EntityCondition literals query a retained entity snapshot against
  * current declared Boolean fields and fractional transforms. Rectangle contact
  * is strict, while a point includes the low edge and excludes the high edge. */
 TEST_CASE(source_native_query_matches_authored_rectangles)
 {
     const char *text =
-        "behavior Query { state members:entity[]; state boxes:int=0; "
-        "state left:number=0; state top:number=0; state right:number=8; "
-        "state bottom:number=8; state x:number=8; state y:number=4; "
-        "state points:int=0; on Begin { "
-        "members=find_entities_with_component(\"SolidTile\"); } "
-        "on Tick { boxes=count_matching_entities(members,["
-        "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
-        "{component:\"Transform\",field:\"x\",test:\">\",value:left-4}"
-        ","
-        "{component:\"Transform\",field:\"x\",test:\"<\",value:right+"
-        "4},"
-        "{component:\"Transform\",field:\"y\",test:\">\",value:top-4},"
-        "{component:\"Transform\",field:\"y\",test:\"<\",value:bottom+"
-        "4}]);"
-        "points=count_matching_entities(members,["
-        "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
-        "{component:\"Transform\",field:\"x\",test:\"<=\",value:x+4},"
-        "{component:\"Transform\",field:\"x\",test:\">\",value:x-4},"
-        "{component:\"Transform\",field:\"y\",test:\"<=\",value:y+4},"
-        "{component:\"Transform\",field:\"y\",test:\">\",value:y-4}]);"
-        " "
-        "} }";
+        "Query :: behavior { members:retain entity[]; boxes:retain int=0; "
+        "left:retain number=0; top:retain number=0; right:retain number=8; "
+        "bottom:retain number=8; x:retain number=8; y:retain number=4; "
+        "points:retain int=0; on Begin :: () { "
+        "members=find_entities_with_component(SolidTile); } on Tick :: () { "
+        "boxes=count_matching_entities(members,[{component:\"SolidTile\",field:"
+        "\"enabled\",test:\"==\",value:1},{component:\"Transform\",field:\"x\","
+        "test:\">\",value:left-4},{component:\"Transform\",field:\"x\",test:\"<"
+        "\",value:right+4},{component:\"Transform\",field:\"y\",test:\">\","
+        "value:top-4},{component:\"Transform\",field:\"y\",test:\"<\",value:"
+        "bottom+4}]);points=count_matching_entities(members,[{component:"
+        "\"SolidTile\",field:\"enabled\",test:\"==\",value:1},{component:"
+        "\"Transform\",field:\"x\",test:\"<=\",value:x+4},{component:"
+        "\"Transform\",field:\"x\",test:\">\",value:x-4},{component:"
+        "\"Transform\",field:\"y\",test:\"<=\",value:y+4},{component:"
+        "\"Transform\",field:\"y\",test:\">\",value:y-4}]); } }";
     static const struct
     {
         float x, y;
@@ -666,24 +693,20 @@ static ecs_entity place_collider(CF_V3 position, Collider3D collider)
  * units, 32 per meter, so a cast stops Box3D's linear slop of .16 short. */
 TEST_CASE(source_native_physics3d_queries_read_colliders)
 {
-    const char *
-        text = "behavior Probe { owner \"ecs.entity\"; "
-               "state start:struct<\"CF_V3\">={x:0.0,y:320.0,z:0.0}; "
-               "state finish:struct<\"CF_V3\">={x:0.0,y:-32.0,z:0.0}; "
-               "state push:struct<\"CF_V3\">={x:320.0,y:0.0,z:0.0}; "
-               "state found:bool=false; state target:handle<\"ecs.entity\">=0; "
-               "state distance:float=0.0; state "
-               "normal:struct<\"CF_V3\">={x:0.0,y:0.0,z:0.0}; "
-               "state blocked:handle<\"ecs.entity\">=0; state "
-               "travel:float=0.0; "
-               "state touching:int=0; "
-               "on Tick { found=raycast_3d(start,finish,1,0,false).Found; "
-               "target=raycast_3d(start,finish,1,0,false).Entity; "
-               "distance=raycast_3d(start,finish,1,0,false).Distance; "
-               "normal=raycast_3d(start,finish,1,0,false).Normal; "
-               "blocked=shape_cast_3d(self,push,1,false).Entity; "
-               "travel=shape_cast_3d(self,push,1,false).Distance; "
-               "touching=length(contact_entities_3d(self,2)); } }";
+    const char *text =
+        "Probe :: behavior { start:retain struct<CF_V3>={x:0.0,y:320.0,z:0.0}; "
+        "finish:retain struct<CF_V3>={x:0.0,y:-32.0,z:0.0}; push:retain "
+        "struct<CF_V3>={x:320.0,y:0.0,z:0.0}; found:retain bool=false; "
+        "target:retain handle<ecs.entity>=0; distance:retain float=0.0; "
+        "normal:retain struct<CF_V3>={x:0.0,y:0.0,z:0.0}; blocked:retain "
+        "handle<ecs.entity>=0; travel:retain float=0.0; touching:retain int=0; "
+        "on Tick :: () { found=raycast_3d(start,finish,1,0,false).Found; "
+        "target=raycast_3d(start,finish,1,0,false).Entity; "
+        "distance=raycast_3d(start,finish,1,0,false).Distance; "
+        "normal=raycast_3d(start,finish,1,0,false).Normal; "
+        "blocked=shape_cast_3d(self,push,1,false).Entity; "
+        "travel=shape_cast_3d(self,push,1,false).Distance; "
+        "touching=length(contact_entities_3d(self,2)); } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Transform3D, NULL) == 0);
@@ -772,7 +795,7 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
     const char *payloads[] = { "float=0.25",
                                "double=0.5",
                                "bool=true",
-                               "struct<\"CF_V2\">={x:0.25,y:-0.5}" };
+                               "struct<CF_V2>={x:0.25,y:-0.5}" };
     const float expected[][2] = { { .25f, 0 }, { .5f, 0 }, { 1, 0 }, { .25f, -.5f } };
     for (int backend = 0; backend < 2; backend++) {
         for (int kind = 0; kind < 4; kind++) {
@@ -790,9 +813,9 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
             snprintf(
                 text,
                 sizeof text,
-                "behavior Material { owner \"ecs.entity\"; state "
-                "done:bool=false; state payload:%s; "
-                "Apply :: fn(Value:%s,Target:handle<\"ecs.entity\">)->(){ "
+                "Material :: behavior { "
+                "done:retain bool=false; payload:retain %s; "
+                "Apply :: (Value:%s,Target:handle<ecs.entity>)->(){ "
                 "await delay(Duration:0.125); "
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Value\",Value:"
@@ -800,13 +823,14 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Second\",Value:"
                 "Value); } "
-                "on Tick { await Apply(Value:payload,Target:self); done=true; "
+                "on Tick :: () { await Apply(Value:payload,Target:self); "
+                "done=true; "
                 "} }",
                 payloads[kind],
                 kind == 0   ? "float"
                 : kind == 1 ? "double"
                 : kind == 2 ? "bool"
-                            : "struct<\"CF_V2\">"
+                            : "struct<CF_V2>"
             );
             REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             uint64_t tick = execution_module_event(prepared->module, "Tick");
@@ -843,11 +867,11 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
 TEST_CASE(source_tilemap_queries_use_live_authored_cells)
 {
     const char
-        *text = "behavior Grid { state frame:int=-1; state count:int=0; "
-                "state point:struct<\"CF_V2\">={x:11,y:-4}; "
-                "state minimum:struct<\"CF_V2\">={x:10,y:-5}; "
-                "state maximum:struct<\"CF_V2\">={x:13,y:0}; "
-                "on Tick { frame=tilemap_frame_at(self,point); "
+        *text = "Grid :: behavior { frame:retain int=-1; count:retain int=0; "
+                "point:retain struct<CF_V2>={x:11,y:-4}; minimum:retain "
+                "struct<CF_V2>={x:10,y:-5}; maximum:retain "
+                "struct<CF_V2>={x:13,y:0}; on Tick :: () { "
+                "frame=tilemap_frame_at(self,point); "
                 "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
@@ -949,13 +973,12 @@ TEST_CASE(url_requests_validate_copy_replace_and_cancel)
 
 TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
 {
-    const char
-        *text = "behavior Links { state done:bool=true; state mode:int=0; "
-                "on Tick { if mode==0 { result := await "
-                "open_url(Url:\"https://example.org/help\"); "
-                "done=result.Accepted; } "
-                "if mode==1 { open_url(\"http://localhost/help\"); } "
-                "if mode==2 { cancel_open_url(); } } }";
+    const char *text = "Links :: behavior { done:retain bool=true; mode:retain "
+                       "int=0; on Tick :: () { if mode==0 { result := await "
+                       "open_url(Url:\"https://example.org/help\"); "
+                       "done=result.Accepted; } if mode==1 { "
+                       "open_url(\"http://localhost/help\"); } if mode==2 { "
+                       "cancel_open_url(); } } }";
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick"),
@@ -991,11 +1014,12 @@ TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
 
 TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
 {
-    const char *text = "behavior Pointer { state active:bool=true; "
-                       "state origin:struct<\"CF_V3\">={}; state "
-                       "direction:struct<\"CF_V3\">={}; "
-                       "on Tick { ray:=get_pointer_ray(); active=ray.Active; "
-                       "origin=ray.Origin; direction=ray.Direction; } }";
+    const char
+        *text = "Pointer :: behavior { active:retain bool=true; origin:retain "
+                "struct<CF_V3>={}; direction:retain struct<CF_V3>={}; on Tick "
+                ":: () "
+                "{ ray:=get_pointer_ray(); active=ray.Active; "
+                "origin=ray.Origin; direction=ray.Direction; } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
@@ -1044,18 +1068,16 @@ void test_source_native_features()
 TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
 {
     const char *source =
-        "behavior Ranges { state input:number=0; state observed:number=0; "
-        "state steps:number=0; state converted:int=0; state "
-        "constructed:number=0; state fresh:Bounded={}; state "
-        "defaulted:number=0; "
-        "on Tick { self.Bounded.value=input; observed=self.Bounded.value; "
+        "Ranges :: behavior { input:retain number=0; observed:retain number=0; "
+        "steps:retain number=0; converted:retain int=0; constructed:retain "
+        "number=0; fresh:retain Bounded={}; defaulted:retain number=0; on Tick "
+        ":: () "
+        "{ self.Bounded.value=input; observed=self.Bounded.value; "
         "self.Bounded.value+=100; self.Bounded.value-=1; "
-        "steps=self.Bounded.value; "
-        "self.Bounded.count=cast<int>(observed); converted=self.Bounded.count; "
-        "local:Bounded={value:input}; constructed=local.value; "
-        "defaulted=fresh.positive; } "
-        "on Begin { copy:=self.Bounded; self.Bounded=copy; "
-        "observed=self.Bounded.value; } "
+        "steps=self.Bounded.value; self.Bounded.count=int(observed); "
+        "converted=self.Bounded.count; local:Bounded={value:input}; "
+        "constructed=local.value; defaulted=fresh.positive; } on Begin :: () { "
+        "copy:=self.Bounded; self.Bounded=copy; observed=self.Bounded.value; } "
         "}";
     static const struct
     {
@@ -1138,7 +1160,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         authoring_source *replacement = authoring_source_prepare_document(
             "features.chibi",
             "test/native-features",
-            "behavior Ranges { state input:number=0; on Tick { "
+            "Ranges :: behavior { input:retain number=0; on Tick :: () { "
             "self.Bounded.value=input*input; } }",
             authoring_language_catalog_view(catalog),
             &bindings,
@@ -1154,7 +1176,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
          * publication sees +infinity and stores the finite high endpoint. */
         REQUIRE(dispatch(tick, 4096) >= 0);
         pin_value actual;
-        REQUIRE(ecs_component_read_field(test_world, owner, desc->id, 0, &actual) == ECS_OK);
+        REQUIRE(ecs_component_read_field(NULL, test_world, owner, desc->id, 0, &actual) == ECS_OK);
         REQUIRE(actual.d == 10);
         cleanup();
     }
@@ -1166,6 +1188,7 @@ void test_source_native_numeric_queries()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_native_motion_retains_numeric_outputs);
     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);
+    RUN_TEST_CASE(source_native_relationship_snapshot_mutations_commit_between_handlers);
     RUN_TEST_CASE(source_native_query_matches_authored_rectangles);
     RUN_TEST_CASE(source_native_physics3d_queries_read_colliders);
     RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);

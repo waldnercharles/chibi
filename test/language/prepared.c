@@ -1,12 +1,16 @@
 #include "execution/prepared.h"
 
+#include "authoring/native_bindings.h"
 #include "execution/log.h"
 #include "language/lower.h"
+#include "runtime/core_definition.h"
 #include "runtime/state_definition.h"
 #include "support/array.h"
 #include "test/prepared_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/map.h"
+#include "types/union.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,7 +160,11 @@ static bool save_checked(const char *name, bool scalar_getter)
 {
     char error[192];
     size_t length = 0, second = 0;
-    REQUIRE(execution_prepared_write(module, &bytes, &length, error, sizeof error));
+    bool encoded = execution_prepared_write(module, &bytes, &length, error, sizeof error);
+    if (!encoded) {
+        fprintf(stderr, "prepared save %s: %s\n", name, error);
+    }
+    REQUIRE(encoded);
     REQUIRE(length > 32 && length <= PREPARED_TEST_MAX_BYTES);
     REQUIRE(execution_prepared_write(module, &again, &second, error, sizeof error));
     REQUIRE(length == second && !memcmp(bytes, again, length));
@@ -164,6 +172,11 @@ static bool save_checked(const char *name, bool scalar_getter)
         size_t target = 0;
         REQUIRE(length <= 16 * 1024);
         REQUIRE(prepared_scalar_getter_target(bytes, length, &target));
+    }
+    if (!strcmp(name, "native-header.prepared")) {
+        size_t target = 0;
+        REQUIRE(length <= 16 * 1024);
+        REQUIRE(prepared_native_header_layout(bytes, length, &target));
     }
     char path[PREPARED_TEST_MAX_PATH];
     int n = snprintf(path, sizeof path, "%s/%s", directory, name);
@@ -182,6 +195,118 @@ static bool save(const char *name)
 {
     return save_checked(name, false);
 }
+TEST_CASE(prepared_operations_write_after_catalog_retirement)
+{
+    native_capability_definition alias = { 0 };
+    for (int i = 0; i < CORE_DEFINITION_PACK.definition_count; i++) {
+        if (CORE_DEFINITION_PACK.definitions[i].operation == SCRIPT_OPERATION_OWNER) {
+            alias = CORE_DEFINITION_PACK.definitions[i];
+        }
+    }
+    REQUIRE(alias.operation == SCRIPT_OPERATION_OWNER);
+    alias.canonical_name = "OwnerAlias";
+    alias.source_name = "owner_alias";
+    const native_definition_pack definitions[] = {
+        CORE_DEFINITION_PACK,
+        { .definitions = &alias, .definition_count = 1 },
+    };
+    const uint64_t entity = script_catalog_id("type", "ecs.entity");
+    const script_catalog base_catalog = { .capabilities = capabilities,
+                                          .capability_count = 1,
+                                          .entity_type = entity };
+    const native_capability_pack base = { .catalog = &base_catalog };
+    char error[256];
+    state_native = native_capabilities_from_definition_packs(
+        &base,
+        1,
+        definitions,
+        NATIVE_COUNT(definitions),
+        error,
+        sizeof error
+    );
+    if (!state_native) {
+        fprintf(stderr, "prepared operation catalog: %s\n", error);
+    }
+    REQUIRE(state_native);
+    const script_catalog *native = native_capabilities_catalog(state_native);
+    syntax = script_parse(
+        "Operations :: behavior { before: entity = 0; resumed: entity = 0; "
+        "same: bool = false; text: string = \"old\"; count: int = 0; "
+        "action pending = delay(Duration: 0.25); on Begin :: () { "
+        "before = owner_alias(); saved := before; saved_text := text; "
+        "text = \"new\"; await delay(0.25); resumed = owner_alias(); "
+        "same = resumed == self && resumed == saved; text = saved_text; "
+        "pending(); } after pending.Completed { count += 1; } }"
+    );
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze(syntax, native);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "prepared operation semantic: %s\n",
+            analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(analysis->valid);
+    const char *const names[] = { "before", "resumed", "same", "text", "count" };
+    uint64_t states[NATIVE_COUNT(names)] = { 0 };
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *symbol = &analysis->symbols[i];
+        if (symbol->kind != SCRIPT_STATE) {
+            continue;
+        }
+        for (int j = 0; j < NATIVE_COUNT(names); j++) {
+            if (!strcmp(symbol->name, names[j])) {
+                states[j] = symbol->id;
+            }
+        }
+    }
+    for (int i = 0; i < NATIVE_COUNT(states); i++) {
+        REQUIRE(states[i]);
+    }
+    const script_lower_bindings bindings = authoring_native_bindings(state_native);
+    plan = script_lower(analysis, native, &bindings);
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "prepared operation lowering: %s\n",
+            plan->diagnostics[i].message
+        );
+    }
+    REQUIRE(plan->valid && !plan->import_count);
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "prepared operation finish: %s\n", error);
+    }
+    REQUIRE(module && !execution_module_import_count(module));
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    native_capabilities_free(state_native);
+    analysis = NULL;
+    syntax = NULL;
+    state_native = NULL;
+    REQUIRE(!plan);
+    REQUIRE(save("operations.prepared"));
+    char path[PREPARED_TEST_MAX_PATH];
+    int n = snprintf(path, sizeof path, "%s/operations-state.txt", directory);
+    REQUIRE(n > 0 && n < (int)sizeof path);
+    FILE *file = fopen(path, "w");
+    REQUIRE(file);
+    int written = fprintf(
+        file,
+        "%llu %llu %llu %llu %llu %llu\n",
+        (unsigned long long)entity,
+        (unsigned long long)states[0],
+        (unsigned long long)states[1],
+        (unsigned long long)states[2],
+        (unsigned long long)states[3],
+        (unsigned long long)states[4]
+    );
+    bool closed = fclose(file) == 0;
+    REQUIRE(written > 0 && closed);
+    return true;
+}
+
 TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
 {
     type = (script_catalog_type){ .id = 101,
@@ -202,13 +327,13 @@ TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
                                 .entity_type = 700,
                                 .tick_event = 11 };
     REQUIRE(
-        compile_source("library Depot { count:int=10; Next :: fn() -> (amount:int) { count+=1; return(count); } }")
+        compile_source("Depot :: library { count:int=10; Next :: () -> (amount:int) { count+=1; return(count); } }")
     );
     REQUIRE(save("library.prepared"));
     library = module;
     module = NULL;
     REQUIRE(
-        compile_source("behavior Persist { count:int=0; on Begin() {count+=1;} on Tick() {PrintString(\"persistent\"); count+=2;} on Add(amount:int) {v := await library_next(); count+=amount+v.amount;} bind self.PersistCounter.value=count; }")
+        compile_source("Persist :: behavior { count:int=0; on Begin :: () {count+=1;} on Tick :: () {PrintString(\"persistent\"); count+=2;} on Add :: (amount: int) {v := await library_next(); count+=amount+v.amount;} bind self.PersistCounter.value=count; }")
     );
     REQUIRE(execution_module_import_count(module) == 1);
     REQUIRE(save("main.prepared"));
@@ -217,7 +342,7 @@ TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
     execution_module_free(library);
     library = NULL;
     REQUIRE(
-        compile_source("library Depot { count:int=10; Next :: fn() -> (amount:int) { count+=2; return(count); } }")
+        compile_source("Depot :: library { count:int=10; Next :: () -> (amount:int) { count+=2; return(count); } }")
     );
     REQUIRE(save("wrong-library.prepared"));
     char path[PREPARED_TEST_MAX_PATH];
@@ -246,26 +371,26 @@ TEST_CASE(prepared_external_closure_generations)
                                             .type = { .storage = PIN_BOOL } };
     catalog = (script_catalog){ .capabilities = variant, .capability_count = 5 };
     const char *leaves[] = {
-        ("behavior Leaf { on Add(amount:int) {} Next :: fn"
+        ("Leaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(1);} }"),
-        ("behavior Leaf { on Add(amount:int) {} Next :: fn"
+        ("Leaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(1);} }"),
-        ("behavior Leaf { on Add(amount:int) {} Next :: fn"
+        ("Leaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(2);} }"),
-        ("behavior EventLeaf { on Add(amount:bool) {} Next :: fn"
+        ("EventLeaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(1);} }"),
     };
     const char *middle[] = {
-        "library Middle { Next :: fn()->(amount:int){return(1);} }",
-        "library GoodMiddle { Next :: fn()->(amount:int){return(1);} }",
-        "library BadMiddle { Next :: fn()->(amount:int){return(1);} }",
-        "library EventMiddle { Next :: fn()->(amount:int){return(1);} }",
+        "Middle :: library { Next :: ()->(amount:int){return(1);} }",
+        "GoodMiddle :: library { Next :: ()->(amount:int){return(1);} }",
+        "BadMiddle :: library { Next :: ()->(amount:int){return(1);} }",
+        "EventMiddle :: library { Next :: ()->(amount:int){return(1);} }",
     };
     const char *roots[] = {
-        "behavior Closure { on Begin {} }",
-        "behavior GoodClosure { on Begin {} }",
-        "behavior BadClosure { on Begin {} }",
-        "behavior EventClosure { on Begin {} }",
+        "Closure :: behavior { on Begin :: () {} }",
+        "GoodClosure :: behavior { on Begin :: () {} }",
+        "BadClosure :: behavior { on Begin :: () {} }",
+        "EventClosure :: behavior { on Begin :: () {} }",
     };
     const char *leaf_files[] = { "leaf.prepared",
                                  NULL,
@@ -330,17 +455,9 @@ TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement)
     }
     REQUIRE(state_native);
     catalog = *native_capabilities_catalog(state_native);
-    REQUIRE(compile_source(
-        "behavior StatePersist { count:int=0;"
-        " action once=do_once(); action flip=flip_flop();"
-        " action pending=retriggerable_delay(Duration:3);"
-        " action multi=multi_gate(Loop:false,Random:false,\"Start Index\":0);"
-        " on Tick(){once();flip();multi();} on Add(amount){pending();}"
-        " after once.Completed{count+=100;}"
-        " after flip.A{count+=10;} after flip.B{count+=1;}"
-        " after multi.Out0{count+=1000;} after multi.Out1{count+=10000;}"
-        " after pending.Completed{count+=100000;} }"
-    ));
+    REQUIRE(
+        compile_source("StatePersist :: behavior { count:int=0; action once=do_once(); action flip=flip_flop(); action pending=retriggerable_delay(Duration:3); action multi=multi_gate(Loop:false,Random:false,Start_Index:0); on Tick :: () {once();flip();multi();} on Add :: () {pending();} after once.Completed{count+=100;} after flip.A{count+=10;} after flip.B{count+=1;} after multi.Out0{count+=1000;} after multi.Out1{count+=10000;} after pending.Completed{count+=100000;} }")
+    );
     REQUIRE(state_id);
     native_capabilities_free(state_native);
     state_native = NULL;
@@ -402,11 +519,9 @@ TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema)
         .entity_type = 700,
     };
     state_id = target_id = 0;
-    REQUIRE(compile_source(
-        "behavior FieldWatch { count:int=0; target:entity=0;"
-        " on Retarget(destination){target=destination;}"
-        " on target.PersistCounter.ValueChanged(changed){count+=changed;} }"
-    ));
+    REQUIRE(
+        compile_source("FieldWatch :: behavior { count:int=0; target:entity=0; on Retarget :: (destination: entity){target=destination;} on target.PersistCounter.ValueChanged :: (changed: int){count+=changed;} }")
+    );
     REQUIRE(state_id && target_id);
     catalog = (script_catalog){ 0 };
     type = (script_catalog_type){ 0 };
@@ -431,11 +546,9 @@ TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement)
                                 .entity_type = 700,
                                 .tick_event = 11 };
     state_id = 0;
-    REQUIRE(compile_source(
-        "behavior Inspect {count:int=0; Work :: fn"
-        "()->(Value:int){count+=1;return count;}"
-        "on Tick(){last:=Work();count+=last;}}"
-    ));
+    REQUIRE(
+        compile_source("Inspect :: behavior {count:int=0; Work :: ()->(Value:int){count+=1;return count;}on Tick :: () {last:=Work();count+=last;}}")
+    );
     REQUIRE(state_id);
     catalog = (script_catalog){ 0 };
     REQUIRE(save("source-debug.prepared"));
@@ -457,20 +570,21 @@ TEST_CASE(prepared_scalar_getter_write_after_catalog_retirement)
         .name = "enabled",
         .type = { .storage = PIN_BOOL },
         .offset = offsetof(prepared_counter, enabled),
+        .read = 82,
     };
-    const script_catalog_parameter result = { .name = "enabled",
+    const script_catalog_parameter output = { .name = "enabled",
                                               .type = { .storage = PIN_BOOL } };
     const script_catalog_capability getter = {
         .id = 82,
         .name = "read_enabled",
         .kind = SCRIPT_CAPABILITY_FUNCTION,
-        .results = &result,
-        .result_count = 1,
         .component_access = SCRIPT_COMPONENT_ACCESS_READ,
         .component = 101,
         .component_field = 812,
         .component_entity = -1,
         .component_value = -1,
+        .results = &output,
+        .result_count = 1,
         .effects = SCRIPT_EFFECT_READ,
     };
     type = (script_catalog_type){
@@ -486,15 +600,18 @@ TEST_CASE(prepared_scalar_getter_write_after_catalog_retirement)
     };
     catalog = (script_catalog){ .types = &type,
                                 .type_count = 1,
-                                .capabilities = &getter,
-                                .capability_count = 1,
                                 .globals = &owner,
                                 .global_count = 1,
+                                .capabilities = &getter,
+                                .capability_count = 1,
                                 .entity_type = 700 };
     const type_desc *const reflected[] = { &prepared_counter_type };
     const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
     type_catalog_set_project(&pack);
-    bool compiled = compile_source("library ScalarRead { Read :: fn()->(enabled:bool){return read_enabled();} }");
+    bool compiled = compile_source(
+        "ScalarRead :: library { Read :: ()->(enabled:bool) { "
+        "return self.PersistCounter.enabled; } }"
+    );
     type_catalog_set_project(NULL);
     REQUIRE(compiled);
     catalog = (script_catalog){ 0 };
@@ -504,15 +621,87 @@ TEST_CASE(prepared_scalar_getter_write_after_catalog_retirement)
     return true;
 }
 
+TEST_CASE(prepared_native_header_write_after_catalog_retirement)
+{
+    const script_catalog_field enabled = { .id = 812,
+                                           .name = "enabled",
+                                           .type = { .storage = PIN_BOOL },
+                                           .offset = offsetof(prepared_counter, enabled) };
+    type = (script_catalog_type){ .id = 101,
+                                  .name = prepared_counter_type.name,
+                                  .type = { .storage = PIN_STRUCT, .nominal = 101 },
+                                  .fields = &enabled,
+                                  .field_count = 1,
+                                  .size = prepared_counter_type.size,
+                                  .layout = type_layout_hash(&prepared_counter_type),
+                                  .component_id = prepared_counter_component.id,
+                                  .component = true };
+    catalog = (script_catalog){ .types = &type,
+                                .type_count = 1,
+                                .globals = &owner,
+                                .global_count = 1,
+                                .entity_type = 700 };
+    const type_desc *const reflected[] = { &prepared_counter_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    bool compiled = compile_source(
+        "NativeHeader :: library { Read :: ()->bool { "
+        "snapshot:=self.PersistCounter; return snapshot.enabled; } }"
+    );
+    type_catalog_set_project(NULL);
+    REQUIRE(compiled);
+    catalog = (script_catalog){ 0 };
+    type = (script_catalog_type){ 0 };
+    REQUIRE(!syntax && !analysis && !plan);
+    REQUIRE(save("native-header.prepared"));
+    return true;
+}
+
+TEST_CASE(prepared_rejects_hidden_empty_collection_task_schema)
+{
+    pin_map empty = { .key_type = { .type = PIN_STR },
+                      .value_type = { .type = PIN_TASK } };
+    pin_array array = { .element_type = PIN_U64, .count = 1, .capacity = 1 };
+    pin_value nested = { .type = PIN_U64, .container = PIN_CONTAINER_MAP, .ptr = &empty };
+    array.items = &nested;
+    arena storage = { 0 };
+    pin_value tagged, task = { .type = PIN_TASK };
+    REQUIRE(!pin_union_value(&storage, 1, &task, 1, &tagged));
+    for (int variant = 0; variant < 3; variant++) {
+        plan = execution_module_plan_new();
+        plan->valid = true;
+        apush(
+            plan->states,
+            ((execution_module_state){
+                .id = 1,
+                .initial = variant == 2 ? tagged
+                         : variant ? (pin_value){ .type = PIN_U64,
+                                                  .container = PIN_CONTAINER_ARRAY,
+                                                  .ptr = &array }
+                                   : nested })
+        );
+        plan->state_count = 1;
+        char error[192] = "";
+        module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(!module && strstr(error, "task metadata"));
+        execution_module_plan_free(plan);
+        plan = NULL;
+    }
+    arena_free(&storage);
+    return true;
+}
 void test_language_prepared_write(const char *path)
 {
     directory = path;
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prepared_rejects_hidden_empty_collection_task_schema);
+    RUN_TEST_CASE(prepared_operations_write_after_catalog_retirement);
     RUN_TEST_CASE(prepared_source_generations_write_after_analysis_retirement);
     RUN_TEST_CASE(prepared_external_closure_generations);
     RUN_TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement);
     RUN_TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema);
     RUN_TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement);
     RUN_TEST_CASE(prepared_scalar_getter_write_after_catalog_retirement);
+    RUN_TEST_CASE(prepared_native_header_write_after_catalog_retirement);
     pu_clear_setup();
 }

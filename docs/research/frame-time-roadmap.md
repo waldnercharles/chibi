@@ -191,8 +191,8 @@ implementation checklist.
 - [x] Fix headless collaboration checkpoint restoration by guarding app-dependent
   Cute and renderer work. The full native suite passes.
 - [ ] Restore hosted CI. Local checks pass, but repository Actions are disabled
-  and GitHub reports failed payments or a spending limit. An account owner must
-  resolve hosted execution; no Actions or billing setting was changed.
+  and hosted execution is unavailable. An account owner must
+  restore hosted execution; no Actions or account setting was changed.
 
 The [next field optimization batch](field-optimization-implementation.md) reuses
 parameter bindings and worker scratch across streamed slices and enables

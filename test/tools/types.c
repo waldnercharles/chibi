@@ -4,6 +4,9 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
+#include "types/record.h"
+#include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
 #include "types/value_document.h"
@@ -12,6 +15,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 #include "runtime/component_catalog.h"
@@ -268,16 +272,33 @@ TEST_CASE(types_nested_reflection_reads_writes_and_checks_layout)
     test_frame frame = { .enabled = true, .position = { 1.25f, -4.0f } };
     pin_value value;
     REQUIRE(pin_type_field_path(&frame_type, "position.y") == &position_fields[1]);
-    REQUIRE(pin_read_field_path(&frame, &frame_type, "position.y", &value) == 0);
+    REQUIRE(pin_read_field_path(&snapshots, &frame, &frame_type, "position.y", &value) == 0);
     REQUIRE(value.type == PIN_F32 && value.f == -4.0f);
-    pin_read_field(&frame, &frame_fields[1], &value);
+    {
+        const char *error = pin_read_field(&snapshots, &frame, &frame_fields[1], &value);
+        if (error) {
+            abort();
+        }
+    };
     REQUIRE(value.type == PIN_STRUCT && value.ptr == &frame.position);
     REQUIRE(!strcmp(value.type_name, "test.position"));
-    pin_write_field(value.ptr, &position_fields[0], (pin_value){ .type = PIN_F32, .f = 8.0f });
+    {
+        const char *error = pin_write_field(
+            &snapshots,
+            value.ptr,
+            &position_fields[0],
+            (pin_value){ .type = PIN_F32, .f = 8.0f }
+        );
+        if (error) {
+            abort();
+        }
+    };
     REQUIRE(frame.position.x == 8.0f && frame.position.y == -4.0f && frame.enabled);
-    REQUIRE(pin_read_field_path(&frame, &frame_type, "enabled", &value) == 0);
+    REQUIRE(pin_read_field_path(&snapshots, &frame, &frame_type, "enabled", &value) == 0);
     REQUIRE(value.type == PIN_BOOL && value.b);
-    REQUIRE(pin_read_field_path(&frame, &frame_type, "position.absent", &value) == -1);
+    REQUIRE(
+        pin_read_field_path(&snapshots, &frame, &frame_type, "position.absent", &value) == -1
+    );
     REQUIRE(pin_type_field_path(&frame_type, "enabled.x") == NULL);
     REQUIRE(type_is_plain(&frame_type));
     REQUIRE(!type_is_plain(&record_type));
@@ -301,20 +322,26 @@ TEST_CASE(types_array_snapshot_owns_strings_and_names)
     char nominal_name[] = "test.text";
     char text[] = "original";
     source = pin_array_new(PIN_STR, nominal_name, 0);
-    pin_value item = { .type = PIN_STR, .str = text, .type_name = nominal_name };
+    pin_value item = { .type = PIN_STR,
+                       .text = &(const pin_string){ .bytes = text,
+                                                    .length = (uint32_t)strlen(text) },
+                       .type_name = nominal_name };
     REQUIRE(pin_array_push(source, &item) == 0);
     text[0] = 'X';
-    REQUIRE(!strcmp(source->items[0].str, "original"));
+    REQUIRE(!strcmp(pin_text(pin_array_get(source, 0)).bytes, "original"));
     pin_array *snapshot = pin_array_snapshot_to_arena(&snapshots, source);
     REQUIRE(snapshot != NULL && snapshot->count == 1);
     REQUIRE(snapshot->items != source->items);
-    REQUIRE(snapshot->items[0].str != source->items[0].str);
+    REQUIRE(
+        pin_text(pin_array_get(snapshot, 0)).bytes !=
+        pin_text(pin_array_get(source, 0)).bytes
+    );
     nominal_name[0] = 'X';
     pin_array_free(source);
     source = NULL;
     REQUIRE(!strcmp(snapshot->type_name, "test.text"));
-    REQUIRE(!strcmp(snapshot->items[0].type_name, "test.text"));
-    REQUIRE(!strcmp(snapshot->items[0].str, "original"));
+    REQUIRE(!strcmp(pin_array_get(snapshot, 0).type_name, "test.text"));
+    REQUIRE(!strcmp(pin_text(pin_array_get(snapshot, 0)).bytes, "original"));
     return true;
 }
 
@@ -329,7 +356,10 @@ TEST_CASE(types_collection_follows_values_across_arenas)
     memcpy(text, "kept", sizeof "kept");
     arena_alloc(&first, 32);
     pin_array *array = pin_array_snapshot_allocate(&second, PIN_STR, NULL, 1);
-    array->items[0] = (pin_value){ .type = PIN_STR, .str = text };
+    array->items[0] = (pin_value){
+        .type = PIN_STR,
+        .text = &(const pin_string){ .bytes = text, .length = (uint32_t)strlen(text) }
+    };
     arena_alloc(&second, 32);
     arena *arenas[] = { &first, &second };
     arena_collection collection;
@@ -353,7 +383,10 @@ TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values)
 {
     arena producer = { 0 };
     char text[] = "retained", name[] = "payload.name";
-    pin_value field = { .type = PIN_STR, .str = text, .type_name = name };
+    pin_value field = { .type = PIN_STR,
+                        .text = &(const pin_string){ .bytes = text,
+                                                     .length = (uint32_t)strlen(text) },
+                        .type_name = name };
     pin_value inner, outer, copied, snapshot;
     REQUIRE(pin_union_value(&producer, 7, &field, 1, &inner) == 0);
     REQUIRE(pin_union_value(&producer, 9, &inner, 1, &outer) == 0);
@@ -366,12 +399,12 @@ TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values)
     const pin_union *outer_copy = copied.ptr;
     const pin_union *inner_copy = outer_copy->values[0].ptr;
     REQUIRE(outer_copy->tag == 9 && inner_copy->tag == 7);
-    REQUIRE(!strcmp(inner_copy->values[0].str, "retained"));
+    REQUIRE(!strcmp(pin_text(inner_copy->values[0]).bytes, "retained"));
     REQUIRE(!strcmp(inner_copy->values[0].type_name, "payload.name"));
     pin_value_destroy(&copied);
     outer_copy = snapshot.ptr;
     inner_copy = outer_copy->values[0].ptr;
-    REQUIRE(!strcmp(inner_copy->values[0].str, "retained"));
+    REQUIRE(!strcmp(pin_text(inner_copy->values[0]).bytes, "retained"));
     pin_union_cancelled(&outer);
     REQUIRE(pin_value_copy(&copied, &outer) == 0);
     REQUIRE(pin_value_equal(&copied, &outer));
@@ -395,7 +428,10 @@ TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays)
     arena decoded;
     arena_init_collectable(&decoded);
     pin_array *array = pin_array_snapshot_allocate(&snapshots, PIN_STR, NULL, 1);
-    array->items[0] = (pin_value){ .type = PIN_STR, .str = "wire-retained" };
+    array->items[0] = (pin_value){ .type = PIN_STR,
+                                   .text = &(const pin_string){
+                                       .bytes = "wire-retained",
+                                       .length = sizeof("wire-retained") - 1 } };
     pin_value payload = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
     pin_value original, restored;
     REQUIRE(pin_union_value(&snapshots, 7, &payload, 1, &original) == 0);
@@ -420,7 +456,7 @@ TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays)
     const pin_union *value = restored.ptr;
     const pin_array *items = value->values[0].ptr;
     REQUIRE(value->tag == 7 && value->count == 1 && items->count == 1);
-    REQUIRE(!strcmp(items->items[0].str, "wire-retained"));
+    REQUIRE(!strcmp(pin_text(items->items[0]).bytes, "wire-retained"));
     size_t bytes, capacity;
     arena_usage(&decoded, &bytes, &capacity);
     REQUIRE(bytes < 4096);
@@ -429,6 +465,63 @@ TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays)
     arena_usage(&decoded, &bytes, &capacity);
     REQUIRE(bytes == 0);
     arena_free(&decoded);
+    return true;
+}
+
+TEST_CASE(types_plain_struct_array_codecs_preserve_inline_values_and_nulls)
+{
+    test_frame frames[3] = {
+        { .enabled = true, .position = { 1, 2 } },
+        { .position = { 3, 4 } },
+        { .enabled = true, .position = { 5, 6 } },
+    };
+    for (int null_at = -1; null_at < 3; null_at++) {
+        pin_value items[3];
+        for (int i = 0; i < 3; i++) {
+            items[i] = (pin_value){ .type = PIN_STRUCT,
+                                    .type_name = "test.frame",
+                                    .ptr = i == null_at ? NULL : &frames[i] };
+        }
+        pin_array array = { .element_type = PIN_STRUCT,
+                            .type_name = "test.frame",
+                            .count = 3,
+                            .capacity = 3,
+                            .items = items };
+        pin_value original = { .type = PIN_STRUCT,
+                               .container = PIN_CONTAINER_ARRAY,
+                               .type_name = "test.frame",
+                               .ptr = &array };
+        execution_wire writer = { 0 };
+        execution_wire_value(&writer, &original);
+        REQUIRE(!writer.error);
+        execution_wire reader = { .reading = true,
+                                  .data = writer.data,
+                                  .size = writer.size,
+                                  .storage = &snapshots };
+        pin_value restored;
+        execution_wire_value(&reader, &restored);
+        afree(writer.data);
+        REQUIRE(!reader.error && reader.offset == reader.size);
+        REQUIRE(pin_value_equal(&original, &restored));
+        const pin_array *wire_array = restored.ptr;
+        REQUIRE(wire_array->stride == (null_at < 0 ? sizeof(test_frame) : 0));
+        REQUIRE(pin_array_valid(wire_array));
+
+        source_document = av_doc_new();
+        av_value *document = pin_value_to_document(source_document, &restored);
+        REQUIRE(document);
+        char error[192];
+        pin_value from_document;
+        REQUIRE(
+            !pin_value_read_document(&snapshots, original, document, &from_document, error, sizeof error)
+        );
+        REQUIRE(pin_value_equal(&original, &from_document));
+        const pin_array *document_array = from_document.ptr;
+        REQUIRE(document_array->stride == (null_at < 0 ? sizeof(test_frame) : 0));
+        REQUIRE(pin_array_valid(document_array));
+        av_doc_free(source_document);
+        source_document = NULL;
+    }
     return true;
 }
 
@@ -504,11 +597,11 @@ TEST_CASE(types_struct_array_snapshot_retains_nested_payload)
     source = pin_array_new(PIN_STRUCT, nominal_name, 1);
     pin_value item = { .type = PIN_STRUCT, .ptr = &record, .type_name = nominal_name };
     REQUIRE(pin_array_push(source, &item) == 0);
-    REQUIRE(source->items[0].ptr == &record);
+    REQUIRE(pin_array_get(source, 0).ptr == &record);
     pin_array *snapshot = pin_array_snapshot_to_arena(&snapshots, source);
     REQUIRE(snapshot != NULL && snapshot->count == 1);
-    REQUIRE(snapshot->items[0].ptr != &record);
-    test_record *copy = snapshot->items[0].ptr;
+    REQUIRE(pin_array_get(snapshot, 0).ptr != &record);
+    test_record *copy = pin_array_get(snapshot, 0).ptr;
     REQUIRE(copy->label != record.label);
     record.frame.position.x = 99;
     record.frame.enabled = false;
@@ -517,10 +610,12 @@ TEST_CASE(types_struct_array_snapshot_retains_nested_payload)
     pin_array_free(source);
     source = NULL;
     pin_value value;
-    REQUIRE(pin_read_field_path(copy, &record_type, "frame.position.x", &value) == 0);
+    REQUIRE(
+        pin_read_field_path(&snapshots, copy, &record_type, "frame.position.x", &value) == 0
+    );
     REQUIRE(value.type == PIN_F32 && value.f == 2);
     REQUIRE(copy->frame.enabled && !strcmp(copy->label, "retained"));
-    REQUIRE(!strcmp(snapshot->items[0].type_name, "test.record"));
+    REQUIRE(!strcmp(pin_array_get(snapshot, 0).type_name, "test.record"));
     REQUIRE(!strcmp(snapshot->type_name, "test.record"));
     return true;
 }
@@ -569,14 +664,222 @@ TEST_CASE(types_document_snapshot_survives_source_release)
     source_document = NULL;
     const pin_array *array = value.ptr, *choices = mode_values.ptr;
     REQUIRE(array->count == 1 && !strcmp(array->type_name, "test.record"));
-    const test_record *copy = array->items[0].ptr;
+    const test_record *copy = pin_array_get(array, 0).ptr;
     REQUIRE(
         copy->frame.enabled && copy->frame.position.x == 2.5f &&
         copy->frame.position.y == -4
     );
     REQUIRE(!strcmp(copy->label, "retained document"));
     REQUIRE(mode_values.container == PIN_CONTAINER_SET && choices->count == 2);
-    REQUIRE(choices->items[0].e == 7 && choices->items[1].e == 3);
+    REQUIRE(pin_array_get(choices, 0).e == 7 && pin_array_get(choices, 1).e == 3);
+    return true;
+}
+
+static bool map_document_roundtrip(pin_value original, pin_value *restored)
+{
+    source_document = av_doc_new();
+    av_value *document = pin_value_to_document(source_document, &original);
+    REQUIRE(document && av_is_obj(document));
+    REQUIRE(av_obj_size(document) == 3);
+    char error[192];
+    REQUIRE(
+        !pin_value_read_document(&snapshots, original, document, restored, error, sizeof error)
+    );
+    REQUIRE(pin_value_equal(&original, restored));
+    REQUIRE(!strcmp(original.type_name, restored->type_name));
+    av_doc_free(source_document);
+    source_document = NULL;
+    return true;
+}
+
+TEST_CASE(types_map_documents_own_nested_maps_arrays_and_native_structs)
+{
+    arena producer = { 0 };
+    pin_value string = { .type = PIN_STR }, integer = { .type = PIN_I32 };
+    pin_map_entry counts[] = {
+        { { .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = "first", .length = sizeof("first") - 1 } },
+          { .type = PIN_I32, .i = 7 } },
+        { { .type = PIN_STR,
+            .text = &(const pin_string){ .bytes = "second",
+                                         .length = sizeof("second") - 1 } },
+          { .type = PIN_I32, .i = 9 } },
+    };
+    pin_map *inner = pin_map_create(&producer, string, integer, counts, 2);
+    REQUIRE(inner);
+    pin_value child = { .type = PIN_UNION,
+                        .container = PIN_CONTAINER_MAP,
+                        .type_name = "__map_string_int",
+                        .ptr = inner };
+    pin_map_entry nested = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "child", .length = sizeof("child") - 1 } },
+        child
+    };
+    pin_map *outer = pin_map_create(&producer, string, child, &nested, 1);
+    REQUIRE(outer);
+    pin_value values[] = { child, child };
+    pin_array rows = { .element_type = PIN_UNION,
+                       .type_name = "__array_of_maps",
+                       .count = 2,
+                       .capacity = 2,
+                       .items = values };
+    pin_value array = { .type = PIN_UNION,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = rows.type_name,
+                        .ptr = &rows };
+    pin_map_entry arrays = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "rows", .length = sizeof("rows") - 1 } },
+        array
+    };
+    pin_map *with_arrays = pin_map_create(&producer, string, array, &arrays, 1);
+    REQUIRE(with_arrays);
+    test_frame frame = { .enabled = true, .position = { 2.5f, -4 } };
+    pin_value record = { .type = PIN_STRUCT, .type_name = "test.frame", .ptr = &frame };
+    pin_map_entry native = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "frame", .length = sizeof("frame") - 1 } },
+        record
+    };
+    pin_map *with_structs = pin_map_create(&producer, string, record, &native, 1);
+    REQUIRE(with_structs);
+    pin_map *maps[] = { outer, with_arrays, with_structs };
+    pin_value restored[3];
+    for (int i = 0; i < 3; i++) {
+        pin_value original = { .type = PIN_UNION,
+                               .container = PIN_CONTAINER_MAP,
+                               .type_name = "__outer_map",
+                               .ptr = maps[i] };
+        REQUIRE(map_document_roundtrip(original, &restored[i]));
+    }
+    arena_free(&producer);
+    const pin_map *copy = restored[0].ptr;
+    const pin_map *copied_child = copy->entries[0].value.ptr;
+    REQUIRE(!strcmp(pin_text(copy->entries[0].key).bytes, "child"));
+    REQUIRE(
+        copied_child->entries[0].value.i == 7 && copied_child->entries[1].value.i == 9
+    );
+    REQUIRE(!strcmp(pin_text(copied_child->entries[1].key).bytes, "second"));
+    copy = restored[1].ptr;
+    const pin_array *copied_rows = copy->entries[0].value.ptr;
+    REQUIRE(copied_rows->count == 2 && !strcmp(copied_rows->type_name, "__array_of_maps"));
+    child = pin_array_get(copied_rows, 1);
+    REQUIRE(child.container == PIN_CONTAINER_MAP && !strcmp(child.type_name, "__map_string_int"));
+    copied_child = child.ptr;
+    REQUIRE(copied_child->entries[0].value.i == 7);
+    copy = restored[2].ptr;
+    const test_frame *copied_frame = copy->entries[0].value.ptr;
+    REQUIRE(
+        copied_frame->enabled && copied_frame->position.x == 2.5f &&
+        copied_frame->position.y == -4
+    );
+    return true;
+}
+
+TEST_CASE(types_map_documents_require_authored_declarations_and_reject_malformed_input)
+{
+    const type_field fields[] = { { .name = "count", .type = PIN_I32 } };
+    const pin_record *layout = pin_record_create(&snapshots, "Document.Row", 3451, fields, 1);
+    REQUIRE(layout);
+    void *row = arena_alloc(&snapshots, layout->type.size);
+    {
+        const char *error = pin_write_field(
+            &snapshots,
+            row,
+            &layout->type.fields[0],
+            (pin_value){ .type = PIN_I32, .i = 11 }
+        );
+        if (error) {
+            abort();
+        }
+    };
+    pin_value string = { .type = PIN_STR }, record = {
+        .type = PIN_STRUCT,
+        .type_name = layout->type.name,
+        .record = layout,
+        .ptr = row,
+    };
+    pin_map_entry entry = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "row", .length = sizeof("row") - 1 } },
+        record
+    };
+    pin_map *map = pin_map_create(&snapshots, string, record, &entry, 1);
+    REQUIRE(map);
+    pin_value original = { .type = PIN_UNION,
+                           .container = PIN_CONTAINER_MAP,
+                           .type_name = "__authored_map",
+                           .ptr = map },
+              restored;
+    REQUIRE(map_document_roundtrip(original, &restored));
+    source_document = av_doc_new();
+    av_value *document = pin_value_to_document(source_document, &original);
+    REQUIRE(document);
+    pin_value missing_layout = original;
+    missing_layout.ptr = NULL;
+    pin_value output = { .type = PIN_I32, .i = 73 };
+    char error[192];
+    REQUIRE(
+        pin_value_read_document(&snapshots, missing_layout, document, &output, error, sizeof error)
+    );
+    REQUIRE(output.type == PIN_I32 && output.i == 73 && strstr(error, "type"));
+    av_value *entries = av_obj_get(document, "entries");
+    av_arr_append(entries, av_clone(source_document, av_arr_get(entries, 0)));
+    REQUIRE(pin_value_read_document(&snapshots, original, document, &output, error, sizeof error));
+    REQUIRE(output.type == PIN_I32 && output.i == 73 && strstr(error, "duplicate key"));
+    av_arr_remove(entries, 1);
+    av_obj_set(source_document, av_obj_get(document, "key_type"), "storage", av_str(source_document, "int"));
+    REQUIRE(pin_value_read_document(&snapshots, original, document, &output, error, sizeof error));
+    REQUIRE(output.type == PIN_I32 && output.i == 73);
+    av_doc_free(source_document);
+    source_document = NULL;
+
+    pin_map_entry cycle_entry = {
+        { .type = PIN_STR,
+          .text = &(const pin_string){ .bytes = "loop", .length = sizeof("loop") - 1 } },
+        { 0 }
+    };
+    pin_value recursive = { .type = PIN_UNION,
+                            .container = PIN_CONTAINER_MAP,
+                            .type_name = "Recursive" };
+    pin_map cycle = { .key_type = string,
+                      .value_type = recursive,
+                      .count = 1,
+                      .entries = &cycle_entry };
+    cycle_entry.value = recursive;
+    cycle_entry.value.ptr = &cycle;
+    source_document = av_doc_new();
+    REQUIRE(!pin_value_to_document(source_document, &cycle_entry.value));
+    av_value *nested = av_null(source_document), *leaf = NULL;
+    for (int i = 0; i < 66; i++) {
+        av_value *node = av_obj(source_document),
+                 *key_type = av_obj(source_document),
+                 *value_type = av_obj(source_document),
+                 *entries = av_arr(source_document),
+                 *pair = av_arr(source_document);
+        av_obj_add_str(source_document, key_type, "storage", "const char *");
+        av_obj_add_str(source_document, key_type, "container", "value");
+        av_obj_add_str(source_document, value_type, "storage", "union");
+        av_obj_add_str(source_document, value_type, "container", "map");
+        av_obj_add_str(source_document, value_type, "name", "Recursive");
+        av_arr_append(pair, av_str(source_document, "loop"));
+        av_arr_append(pair, nested);
+        av_arr_append(entries, pair);
+        av_obj_set(source_document, node, "key_type", key_type);
+        av_obj_set(source_document, node, "value_type", value_type);
+        av_obj_set(source_document, node, "entries", entries);
+        if (!leaf) {
+            leaf = node;
+        }
+        nested = node;
+    }
+    REQUIRE(pin_value_read_document(&snapshots, recursive, nested, &output, error, sizeof error));
+    REQUIRE(output.type == PIN_I32 && output.i == 73);
+    av_obj_set(source_document, av_obj_get(leaf, "key_type"), "storage", av_str(source_document, "double"));
+    av_arr_replace(av_arr_get(av_obj_get(leaf, "entries"), 0), 0, av_real(source_document, NAN));
+    REQUIRE(pin_value_read_document(&snapshots, recursive, leaf, &output, error, sizeof error));
+    REQUIRE(output.type == PIN_I32 && output.i == 73);
     return true;
 }
 
@@ -607,16 +910,27 @@ TEST_CASE(types_document_rejects_invalid_values_without_publication)
         ) == -1
     );
     const char embedded[] = { 'x', 0, 'y' };
+    av_value *encoded_text = av_strn(source_document, embedded, sizeof embedded);
+    pin_value text;
     REQUIRE(
-        pin_value_read_document(
-            &snapshots,
-            (pin_value){ .type = PIN_STR },
-            av_strn(source_document, embedded, sizeof embedded),
-            &value,
-            error,
-            sizeof error
-        ) == -1
+        !pin_value_read_document(&snapshots, (pin_value){ .type = PIN_STR }, encoded_text, &text, error, sizeof error)
     );
+    REQUIRE(text.type == PIN_STR && !text.type_name);
+    REQUIRE(pin_text(text).length == sizeof embedded);
+    REQUIRE(!memcmp(pin_text(text).bytes, embedded, sizeof embedded));
+    REQUIRE(pin_text(text).bytes[sizeof embedded] == 0);
+    REQUIRE(pin_text(text).bytes != av_get_str(encoded_text));
+    REQUIRE(arena_contains(&snapshots, text.text));
+    REQUIRE(arena_contains(&snapshots, pin_text(text).bytes));
+    REQUIRE(
+        pin_value_read_document(&snapshots, (pin_value){ .type = PIN_NAME }, encoded_text, &value, error, sizeof error) ==
+        -1
+    );
+    REQUIRE(value.type == PIN_I32 && value.i == 99);
+    av_doc_free(source_document);
+    source_document = av_doc_new();
+    REQUIRE(pin_text(text).length == sizeof embedded);
+    REQUIRE(!memcmp(pin_text(text).bytes, embedded, sizeof embedded));
     REQUIRE(
         pin_value_read_document(
             NULL,
@@ -684,18 +998,101 @@ TEST_CASE(types_document_rejects_invalid_values_without_publication)
     return true;
 }
 
+TEST_CASE(types_document_array_collection_retains_split_payloads)
+{
+    arena_init_collectable(&snapshots);
+    source_document = av_doc_new();
+    for (int strings = 0; strings < 2; strings++) {
+        av_value *document = av_arr(source_document);
+        av_arr_append(document, strings ? av_str(source_document, "owned") : av_sint(source_document, 17));
+        pin_value declaration = { .type = strings ? PIN_STR : PIN_I32,
+                                  .container = PIN_CONTAINER_ARRAY },
+                  value;
+        char error[192];
+        REQUIRE(
+            !pin_value_read_document(&snapshots, declaration, document, &value, error, sizeof error)
+        );
+        pin_array *array = value.ptr;
+        REQUIRE(array && pin_array_valid(array));
+        const void *payload = array->stride ? array->data : (void *)array->items;
+        arena_collection collection;
+        arena *arenas[] = { &snapshots };
+        arena_collect_begin(&collection, arenas, 1);
+        pin_value_trace(&value, arena_collect_mark, &collection);
+        arena_collect_end(&collection);
+        REQUIRE(arena_contains(&snapshots, payload));
+        pin_value item = pin_array_get(array, 0);
+        if (strings) {
+            REQUIRE(arena_contains(&snapshots, pin_text(item).bytes));
+            REQUIRE(!strcmp(pin_text(item).bytes, "owned"));
+        } else {
+            REQUIRE(item.i == 17);
+        }
+    }
+    return true;
+}
+TEST_CASE(types_authored_record_document_uses_nested_native_layout)
+{
+    const type_field fields[] = {
+        { .name = "frame", .type = PIN_STRUCT, .type_name = "test.frame" },
+        { .name = "code", .type = PIN_I32 }
+    };
+    const pin_record *record = pin_record_create(&snapshots, "Authored.Frame", 9871, fields, 2);
+    REQUIRE(record && pin_record_valid(record));
+    test_frame frame = { .enabled = true, .position = { 3.5f, -2.25f } };
+    void *data = arena_alloc(&snapshots, record->type.size);
+    memset(data, 0, record->type.size);
+    REQUIRE(!pin_write_field(
+        &snapshots,
+        data,
+        &record->type.fields[0],
+        (pin_value){ .type = PIN_STRUCT, .type_name = "test.frame", .ptr = &frame }
+    ));
+    REQUIRE(!pin_write_field(
+        &snapshots,
+        data,
+        &record->type.fields[1],
+        (pin_value){ .type = PIN_I32, .i = 19 }
+    ));
+    pin_value original = { .type = PIN_STRUCT,
+                           .type_name = record->type.name,
+                           .record = record,
+                           .ptr = data };
+    source_document = av_doc_new();
+    av_value *document = pin_value_to_document(source_document, &original);
+    REQUIRE(document);
+    pin_value restored;
+    char error[192];
+    REQUIRE(
+        !pin_value_read_document(&snapshots, original, document, &restored, error, sizeof error)
+    );
+    REQUIRE(pin_value_equal(&original, &restored));
+    pin_value nested;
+    REQUIRE(!pin_read_field(&snapshots, restored.ptr, &record->type.fields[0], &nested));
+    const test_frame *result = nested.ptr;
+    REQUIRE(
+        result && result->enabled && result->position.x == 3.5f &&
+        result->position.y == -2.25f
+    );
+    return true;
+}
 void test_tool_types()
 {
     pu_setup(NULL, release_values);
+    RUN_TEST_CASE(types_document_array_collection_retains_split_payloads);
+    RUN_TEST_CASE(types_authored_record_document_uses_nested_native_layout);
     RUN_TEST_CASE(types_catalog_composes_ordered_packs);
     RUN_TEST_CASE(types_nested_reflection_reads_writes_and_checks_layout);
     RUN_TEST_CASE(types_array_snapshot_owns_strings_and_names);
     RUN_TEST_CASE(types_collection_follows_values_across_arenas);
     RUN_TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values);
     RUN_TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays);
+    RUN_TEST_CASE(types_plain_struct_array_codecs_preserve_inline_values_and_nulls);
     RUN_TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth);
     RUN_TEST_CASE(types_struct_array_snapshot_retains_nested_payload);
     RUN_TEST_CASE(types_document_snapshot_survives_source_release);
+    RUN_TEST_CASE(types_map_documents_own_nested_maps_arrays_and_native_structs);
+    RUN_TEST_CASE(types_map_documents_require_authored_declarations_and_reject_malformed_input);
     RUN_TEST_CASE(types_document_rejects_invalid_values_without_publication);
     pu_clear_setup();
 }

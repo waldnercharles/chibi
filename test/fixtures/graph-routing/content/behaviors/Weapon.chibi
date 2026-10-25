@@ -1,15 +1,20 @@
-behavior "Weapon" {
+// Aim at the nearest enemy when manual aim is absent; emit shots only while
+// Fire is held.
+Weapon :: behavior {
     macro AdvanceElapsed(elapsed: ref float, dt: double) {
-        elapsed = cast<float>(cast<double>(elapsed) + dt)
+        elapsed = float(double(elapsed) + dt)
     }
-    state elapsed: float = 0.125
-    action elapsed_dt = AdvanceElapsed(elapsed, delta)
-    on Tick {
+    elapsed: float = 0.125
+    // The step the next advance adds.
+    step: double = 0
+    action elapsed_dt = AdvanceElapsed(elapsed, step)
+    on Tick :: (dt: float s) {
+        step = dt
         if self.Aim.Manual {
             elapsed_dt()
         } else {
-            if find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Found {
-                self.Aim.direction = convert<"transform_to_cf">(direction_to(self.Transform, convert<"transform_to_cf">(find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Position)))
+            if find_nearest_entity(self.Transform, 2000.0, 2, self).Found {
+                self.Aim.direction = convert<transform_to_cf>(direction_to(self.Transform, convert<transform_to_cf>(find_nearest_entity(self.Transform, 2000.0, 2, self).Position)))
                 elapsed_dt()
             } else {
                 elapsed_dt()
@@ -19,7 +24,7 @@ behavior "Weapon" {
     after elapsed_dt {
         if self.Aim.Firing {
             while elapsed >= self.Weapon.Cooldown {
-                await "WeaponActions"."Fire Projectile"("position + offset"(self.Transform, transform_visual_offset({
+                await WeaponActions.Fire_Projectile(position_offset(self.Transform, transform_visual_offset({
                     x: 16.0,
                     y: 0.0
                 }, 0.0, self.Orientation.Radians, {
@@ -27,14 +32,14 @@ behavior "Weapon" {
                     yaw: 0.0,
                     roll: 0.0,
                     scale: 1.0
-                }).Offset), self.Aim.Direction, self.Weapon.Damage, "Projectile", engine["Self"]())
-                elapsed -= cast<double>(self.Weapon.Cooldown)
+                }).Offset), self.Aim.Direction, self.Weapon.Damage, Projectile, self)
+                elapsed = float(double(elapsed) - double(self.Weapon.Cooldown))
             }
         } else {
-            elapsed = min(elapsed, cast<double>(self.Weapon.Cooldown))
+            elapsed = float(min(elapsed, double(self.Weapon.Cooldown)))
         }
     }
-    "position + offset" :: pure fn<T0: struct<"CF_V2">, T1: struct<"CF_V2">, T2: struct<"CF_V2">>(position: T0 = null, offset: T1 = null) -> (Result: T2 = null) {
-        return add(entry.position, entry.offset)
+    position_offset :: (position: struct<CF_V2> = null, offset: struct<CF_V2> = null) -> (Result: struct<CF_V2> = null) {
+        return add(position, offset)
     }
 }

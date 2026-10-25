@@ -93,9 +93,11 @@ typedef struct
     int index;
     pin_value shape;
 } behavior_value_root;
+/* Live sets are exact and belong to the definition's owned arena. */
 typedef struct
 {
     int pc;
+    int value_count, root_count;
     int *values; /* Slots followed by locals, in the activation's scalar storage. */
     behavior_value_root *roots; /* Aggregate shapes for the live saved values. */
 } behavior_function_suspension;
@@ -112,6 +114,15 @@ typedef struct
     uint64_t *components;
     bool result;
 } behavior_component_proof;
+/* Whether a call may pass arguments without copying them; zero is unknown. */
+typedef enum
+{
+    BEHAVIOR_SHARING_UNKNOWN,
+    BEHAVIOR_SHARING_SAFE,
+    BEHAVIOR_SHARING_COPY,
+    BEHAVIOR_SHARING_PENDING_SAFE,
+    BEHAVIOR_SHARING_PENDING_COPY
+} behavior_argument_sharing;
 struct behavior_function
 {
     arena owned;
@@ -131,6 +142,12 @@ struct behavior_function
         checkpoints, pin_watches;
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
+    /* Some host call builds a returned local in the caller's storage. */
+    bool builds_results;
+    /* It reads components, or takes a reference that may name one, so a call
+     * binds the execution world. */
+    bool binds_world;
+    behavior_argument_sharing argument_sharing;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -152,6 +169,10 @@ struct behavior_function
     behavior_function_result *results;
     execution_artifact *artifact;
     struct behavior_function *fast;
+    /* Development builds only: an occurrence byte per source and report kind,
+     * then the matching delivered bytes. Such a body has no fast body. */
+    atomic_uchar *integer_reports;
+    int integer_report_sites;
     behavior_function_instruction *runtime_instructions;
     behavior_function_instruction *runtime_body; /* Optimized values at canonical PCs. */
     int *runtime_map; /* Canonical PC to compact, uninspected instruction index. */
@@ -228,12 +249,53 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
 /* Prepared readers reconstruct this canonical definition, then use the same
  * producer verifier and finalizer. Ownership remains with the caller on failure. */
 bool behavior_function_prepare_definition(behavior_function *, size_t arena_budget, char *error, size_t size);
-void behavior_function_finalize(behavior_function *function);
-void behavior_function_own(behavior_function *function);
+/* Private per-attempt descriptor checks. Entries borrow immutable records.
+ * Preflight uses `seen` for reservation; verification uses it only after a
+ * successful full validation. Neither table escapes its current catalog scope.
+ * Budget covers both constructions, bounded comparisons, and temporary bytes. */
+typedef struct
+{
+    const pin_record *record;
+    bool seen;
+} behavior_record_check;
+size_t behavior_function_record_check_budget(const behavior_function *, size_t *bytes);
+behavior_record_check *behavior_function_record_checks(
+    const behavior_function *,
+    size_t bytes,
+    int *count
+);
+int behavior_record_check_find(const behavior_record_check *, int count, const pin_record *);
+/* arena_budget caps the owned arena's total storage before each allocation;
+ * SIZE_MAX leaves it unbounded. */
+bool behavior_function_finalize(behavior_function *function, size_t arena_budget);
+bool behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
+/* Gives this definition and its owned definitions report sites, dropping
+ * their fast bodies, before any backend compiles them (integer_report.c). */
+void behavior_function_report_integers(behavior_function *);
+bool behavior_integer_reportable(const behavior_function *, const behavior_function_instruction *);
+/* The report kind these operands cause, or -1 when the operation is exact. */
+int behavior_integer_event(const behavior_function_instruction *, pin_value left, pin_value right);
+/* The instruction's occurrence byte for kind, or NULL without report sites. */
+atomic_uchar *behavior_integer_site(
+    const behavior_function *,
+    const behavior_function_instruction *,
+    int kind
+);
+/* A float at or below the first bound, or at or above the second, does not
+ * fit the integer type once truncated. */
+const double *behavior_integer_cast_bounds(pin_type);
+void behavior_integer_report(
+    const behavior_function *,
+    const behavior_function_instruction *,
+    pin_value left,
+    pin_value right
+);
 bool behavior_function_compile_inspection(const behavior_function *function);
+bool behavior_function_compile_scoped(const behavior_function *function);
+void *behavior_function_jit_scoped(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);
@@ -248,6 +310,10 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
 void behavior_function_prepare_borrows(behavior_function *function);
+/* Sets what a frozen function's body implies: builds_results and binds_world. */
+void behavior_function_note_derived(behavior_function *function);
+/* The instructions control may reach next from `pc`; returns their count. */
+int behavior_function_successors(const behavior_function *function, int pc, int targets[2]);
 bool program_call_views_allowed(const behavior_function_context *context);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);

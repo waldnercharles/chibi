@@ -4,6 +4,7 @@
 #include "render/fog.h"
 #include "render/gpu_timing.h"
 #include "render/mesh_surface.h"
+#include "render/scene3d_cascades.h"
 #include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_parts.h"
 #include "render/scene3d_post.h"
@@ -11,13 +12,17 @@
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
 #include "render/viewport.h"
+#include "runtime/behaviors/entities.h"
 #include "runtime/camera.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
+#include "runtime/fields/program.h"
 #include "runtime/geometry/mesh_asset.h"
 #include "runtime/geometry/mesh_pick.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
+#include "runtime/material_field.h"
+#include "runtime/materials.h"
 #include "runtime/particles.h"
 #include "runtime/transform_propagation.h"
 #include "runtime/visibility.h"
@@ -230,6 +235,8 @@ static bool render_at(const Environment *environment, float time)
     if (backdrop) {
         cf_draw_quad_fill(cf_make_aabb((CF_V2){ -SIDE, -SIDE }, (CF_V2){ SIDE, SIDE }), 0);
     }
+    /* As the app does: the post canvas still holds the last frame. */
+    render_scene3d_set_history(scene3d, cf_canvas_get_target(canvas));
     bool drawn = render_scene3d_draw(
         scene3d,
         test_world,
@@ -3174,6 +3181,43 @@ TEST_CASE(global_illumination_carries_emitted_light)
     return true;
 }
 
+/* Screen light carries the light of an emissive solid the last frame showed
+ * to the floor beside it, where no other light reaches, and needs the
+ * occlusion's depth. */
+TEST_CASE(screen_light_carries_emitted_light_it_sees)
+{
+    add_ground(0xffffffffu);
+    ecs_entity glow = add_solid((CF_V3){ 0, .5f, 0 }, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1 }, 0xffffffffu);
+    Material *material = Material_get(test_world, glow);
+    material->emission_color = 0xff8000ffu;
+    material->emission_intensity = 4;
+    material->emission_multiplier = 1;
+    const CF_V3 near = { 1.5f, 0, 0 };
+    Environment environment = unlit_environment();
+    environment.occlusion = OCCLUSION_LOW;
+    environment.occlusion_radius = 1;
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(near).colors.r == 0);
+    environment.screen_light = SCREEN_LIGHT_SCREEN;
+    /* The first frame's light comes from what the frame before it showed. */
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(render(&environment));
+    }
+    CF_Pixel floor = pixel_at(near);
+    REQUIRE(floor.colors.r > 10 && floor.colors.r > floor.colors.b + 5);
+    /* Accumulated over jittered frames, light falls off with distance and
+     * leaves the far floor well below the near. */
+    for (int i = 0; i < 40; i++) {
+        REQUIRE(render(&environment));
+    }
+    CF_Pixel close = pixel_at(near), far = pixels[SIDE / 2];
+    REQUIRE(close.colors.r > far.colors.r + 60 && far.colors.r < 128);
+    environment.occlusion = OCCLUSION_OFF;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "screen light needs occlusion"));
+    return true;
+}
+
 /* On open ground the probes give back the light the ambient colors give
  * without them, the sky's above the horizon and the ground's below, at every
  * quality. */
@@ -3500,6 +3544,239 @@ TEST_CASE(mirrors_reflect_the_sky_in_its_directions)
         }
         REQUIRE(checked[0] > 20 && checked[1] > 20 && checked[2] > 20);
     }
+    return true;
+}
+
+/* A materials world whose 16 x 16 terrain at the origin is a TerrainVolume
+ * over field `name`, run by the test's runtime until volume_scene_free. */
+typedef struct
+{
+    entities *actors;
+    materials *rock;
+    ecs_entity source;
+} volume_scene;
+
+static volume_scene volume_scene_new(const char *name, const field_ir *code, int count, TerrainVolume volume)
+{
+    volume_scene s = { entities_new(test_world, NULL) };
+    s.rock = materials_new(test_world, s.actors, test_particles);
+    entities_bind_materials(s.actors, s.rock);
+    runtime = engine_new(
+        test_world,
+        &(engine_modules){ .entities = s.actors, .materials = s.rock, .particles = test_particles }
+    );
+    char error[256];
+    field_program *program = field_program_new(code, count, count - 1, NULL, 0, error, sizeof error);
+    assert(program && material_field_register(materials_fields(s.rock), name, program));
+    s.source = add(COMPONENT_Transform.id, &(Transform){ 0 });
+    MaterialTerrain terrain = { .width = 16,
+                                .height = 16,
+                                .cell_size = 1,
+                                .field = name,
+                                .min_fragment_cells = 1,
+                                .category = 1,
+                                .mask = 1 };
+    assert(
+        ecs_world_record_add(test_world, s.source, COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(test_world, s.source, COMPONENT_TerrainVolume.id, &volume, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
+    assert(!materials_prepare(s.rock));
+    return s;
+}
+
+static void volume_scene_free(volume_scene *s)
+{
+    engine_free(runtime);
+    runtime = NULL;
+    materials_free(s->rock);
+    entities_free(s->actors);
+}
+
+/* Rock ahead of a terrain volume's play plane only casts shadows until the
+ * volume names a front material, which then draws it. */
+TEST_CASE(terrain_volume_front_rock_draws_with_its_front_material)
+{
+    look((CF_V3){ 0, 12, 0 }, (CF_V3){ 0, -1, 0 }, (CF_V3){ 0, 0, -1 });
+    REQUIRE(test_register_tint("Red", (const float[3]){ 1, 0, 0 }));
+    /* Solid from four units ahead of the plane back through it. */
+    const field_ir code[] = { { .op = FIELD_Z },
+                              { .op = FIELD_CONSTANT, .value = -4 },
+                              { .op = FIELD_SUBTRACT, .count = 2, .inputs = { 1, 0 } } };
+    TerrainVolume volume = { .enabled = true,
+                             .voxel = 1,
+                             .depth = 4,
+                             .refine = 1,
+                             .front = 8,
+                             .slab = 2 };
+    volume_scene s = volume_scene_new("Front", code, 3, volume);
+    materials *rock = s.rock;
+    ecs_entity source = s.source;
+    Environment environment = environment_defaults();
+    REQUIRE(render(&environment));
+    CF_Pixel hidden = pixels[SIDE / 2 * SIDE + SIDE / 2];
+    REQUIRE(hidden.colors.r < 30);
+    volume.front_material = "Red";
+    REQUIRE(ecs_world_record_remove(test_world, source, COMPONENT_TerrainVolume.id, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+    REQUIRE(
+        ecs_world_record_add(test_world, source, COMPONENT_TerrainVolume.id, &volume, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+    REQUIRE(!materials_prepare(rock));
+    REQUIRE(render(&environment));
+    CF_Pixel drawn = pixels[SIDE / 2 * SIDE + SIDE / 2];
+    REQUIRE(drawn.colors.r > 150 && drawn.colors.r > 3 * drawn.colors.g);
+    volume_scene_free(&s);
+    return true;
+}
+
+/* World screen light meets an emissive solid in its grid and takes the light
+ * the last frame showed there to the floor beside it, with global
+ * illumination off and the scene collected in parallel chunks. A terrain
+ * volume of open air gives the rays their world. */
+TEST_CASE(world_screen_light_meets_the_solids_it_traces)
+{
+    add_ground(0xffffffffu);
+    /* Tall and wide enough to hold a two-unit grid cell's center. */
+    ecs_entity glow = add_solid((CF_V3){ 0, 1.5f, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 3, 2 }, 0xffffffffu);
+    Material *material = Material_get(test_world, glow);
+    material->emission_color = 0xff8000ffu;
+    material->emission_intensity = 4;
+    material->emission_multiplier = 1;
+    /* Far solids, out of view, make the scene two collection chunks. */
+    for (int i = 0; i < 1100; i++) {
+        add_solid(
+            (CF_V3){ 200.0f + i % 40, 0, 200.0f + i / 40 },
+            (Geometry3D){ PRIMITIVE_BOX, .1f, .1f, .1f },
+            0xffffffffu
+        );
+    }
+    const field_ir air[] = { { .op = FIELD_CONSTANT, .value = 1 } };
+    volume_scene s = volume_scene_new(
+        "Air",
+        air,
+        1,
+        (TerrainVolume){ .enabled = true, .voxel = 1, .depth = 4, .refine = 1, .slab = 2 }
+    );
+    const CF_V3 near = { 2, 0, 0 };
+    Environment environment = unlit_environment();
+    environment.occlusion = OCCLUSION_LOW;
+    environment.occlusion_radius = 1;
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(near).colors.r == 0);
+    environment.screen_light = SCREEN_LIGHT_WORLD;
+    for (int i = 0; i < 20; i++) {
+        REQUIRE(render(&environment));
+    }
+    REQUIRE(render_scene3d_last_work(scene3d).tasks > 1);
+    CF_Pixel floor = pixel_at(near);
+    REQUIRE(floor.colors.r > 10 && floor.colors.r > floor.colors.b + 5);
+    volume_scene_free(&s);
+    return true;
+}
+/* A sky material of constant radiance draws and lights exactly as a uniform
+ * sky image of that radiance does. */
+TEST_CASE(sky_materials_draw_and_light_like_sky_images)
+{
+    look_level();
+    add_solid((CF_V3){ 0, 0, -6 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    int box = SIDE / 2 * SIDE + SIDE / 2;
+    publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
+    Environment environment = sky_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel imaged[PIXELS];
+    memcpy(imaged, pixels, sizeof pixels);
+    REQUIRE(imaged[0].colors.r > 100 && imaged[box].colors.r > 100);
+    REQUIRE(test_register_tint("Gray", (const float[3]){ .5f, .5f, .5f }));
+    environment.sky = NULL;
+    environment.sky_material = "Gray";
+    REQUIRE(render(&environment));
+    REQUIRE(abs(pixels[0].colors.r - imaged[0].colors.r) <= 2);
+    REQUIRE(abs(pixels[box].colors.r - imaged[box].colors.r) <= 3);
+    return true;
+}
+
+/* Another sky material bakes again: the box it lights and the sky behind it
+ * turn red, then gray again. */
+TEST_CASE(sky_materials_bake_again_when_they_change)
+{
+    look_level();
+    add_solid((CF_V3){ 0, 0, -6 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    int box = SIDE / 2 * SIDE + SIDE / 2;
+    REQUIRE(test_register_tint("Gray", (const float[3]){ .5f, .5f, .5f }));
+    REQUIRE(test_register_tint("Red", (const float[3]){ 1, 0, 0 }));
+    Environment environment = sky_environment();
+    environment.sky = NULL;
+    environment.sky_material = "Gray";
+    REQUIRE(render(&environment));
+    CF_Pixel gray = pixels[box];
+    REQUIRE(abs(gray.colors.r - gray.colors.g) <= 3 && gray.colors.r > 30);
+    environment.sky_material = "Red";
+    REQUIRE(render(&environment));
+    REQUIRE(
+        pixels[0].colors.r > 100 && pixels[0].colors.r > 3 * pixels[0].colors.g
+    );
+    REQUIRE(
+        pixels[box].colors.r > 100 &&
+        pixels[box].colors.r > 3 * pixels[box].colors.g
+    );
+    environment.sky_material = "Gray";
+    REQUIRE(render(&environment));
+    REQUIRE(abs(pixels[box].colors.r - gray.colors.r) <= 2);
+    REQUIRE(abs(pixels[box].colors.g - gray.colors.g) <= 2);
+    return true;
+}
+
+/* A sky material sees each direction it is drawn along: red only where
+ * the view ray leans far enough toward +X. */
+TEST_CASE(sky_materials_follow_view_directions)
+{
+    look((CF_V3){ 0 }, (CF_V3){ 1, 0, -1 }, (CF_V3){ 0, 1, 0 });
+    REQUIRE(test_register_world_step("Step"));
+    Environment environment = sky_environment();
+    environment.sky = NULL;
+    environment.sky_material = "Step";
+    REQUIRE(render(&environment));
+    int red = 0, black = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            CF_V3 d = cf_norm_v3(pixel_ray(x, y, (CF_V3){ 0 }).d);
+            if (fabsf(d.x - .5f) < .03f) {
+                continue;
+            }
+            bool lit = pixel(x, y).colors.r > 100;
+            REQUIRE(lit == (d.x > .5f));
+            red += lit;
+            black += !lit;
+        }
+    }
+    REQUIRE(red > 100 && black > 100);
+    return true;
+}
+
+/* An Environment draws a sky image or a sky material, and the material must
+ * be a surface material that reads no images. */
+TEST_CASE(sky_material_settings_must_be_valid)
+{
+    publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
+    REQUIRE(test_register_tint("Gray", (const float[3]){ .5f, .5f, .5f }));
+    REQUIRE(test_register_images("Pictured", 1, false));
+    Environment environment = sky_environment();
+    environment.sky_material = "Gray";
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "a sky image or a sky material, not both"));
+    environment.sky = NULL;
+    environment.sky_material = "Missing";
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "Missing is not a surface material"));
+    environment.sky_material = "Pictured";
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "reads images"));
+    environment.sky_material = "Gray";
+    REQUIRE(render(&environment));
     return true;
 }
 
@@ -4694,6 +4971,11 @@ void test_render_scene3d(bool gles)
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
+    RUN_TEST_CASE(sky_materials_draw_and_light_like_sky_images);
+    RUN_TEST_CASE(sky_materials_bake_again_when_they_change);
+    RUN_TEST_CASE(sky_materials_follow_view_directions);
+    RUN_TEST_CASE(sky_material_settings_must_be_valid);
+    RUN_TEST_CASE(terrain_volume_front_rock_draws_with_its_front_material);
     RUN_TEST_CASE(color_ramps_color_surfaces_from_any_table_offset);
     RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
@@ -4717,14 +4999,18 @@ void test_render_scene3d(bool gles)
     close_app();
 }
 
-/* Global illumination's cases, apart from the rest so that each selector
- * compiles and runs within the time limit with a cold shader cache. */
+/* Global illumination's dedicated selector keeps its cold-shader-cache
+ * preparation and execution separate from the other scene cases. */
 void test_render_scene3d_gi(bool gles)
 {
     open_app(gles);
     RUN_TEST_CASE(global_illumination_bounces_light_between_solids);
     RUN_TEST_CASE(global_illumination_reaches_across_vast_solids);
     RUN_TEST_CASE(global_illumination_carries_emitted_light);
+    RUN_TEST_CASE(screen_light_carries_emitted_light_it_sees);
+#if CHIBI_TEST_MATERIAL_GRAPHS
+    RUN_TEST_CASE(world_screen_light_meets_the_solids_it_traces);
+#endif
     RUN_TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors);
     RUN_TEST_CASE(global_illumination_settings_must_be_valid);
     RUN_TEST_CASE(global_illumination_lights_pass_their_bulbs);

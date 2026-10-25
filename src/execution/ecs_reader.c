@@ -1,8 +1,11 @@
 #include "execution/ecs_reader.h"
 
+#include "types/text.h"
+
 #include <string.h>
 
 static int read_field(
+    arena *storage,
     void *user,
     uint64_t owner,
     const char *component_key,
@@ -40,7 +43,7 @@ static int read_field(
         };
         return EVAL_COMPONENT_READ_OK;
     }
-    return pin_read_field_path(data, component->type, field_name, out) == 0
+    return pin_read_field_path(storage, data, component->type, field_name, out) == 0
              ? EVAL_COMPONENT_READ_OK
              : EVAL_COMPONENT_READ_MISSING_FIELD;
 }

@@ -5,6 +5,7 @@
 #include "execution/status.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -215,7 +216,10 @@ TEST_CASE(scene_snapshot_and_complete_deferred_begin)
         ecs_entity first = scene_instance_entity(instances[0], 0);
         ecs_entity other = scene_instance_entity(instances[1], 0);
         REQUIRE(first.slot != other.slot);
-        pin_value changed = { .type = PIN_STR, .str = "changed" };
+        pin_value changed = { .type = PIN_STR,
+                              .text = &(const pin_string){
+                                  .bytes = "changed",
+                                  .length = sizeof("changed") - 1 } };
         REQUIRE(
             ecs_component_write_value(
                 world,

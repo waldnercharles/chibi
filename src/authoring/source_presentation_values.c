@@ -13,8 +13,8 @@ static const char *operator_name(script_operator op)
     static const char *names[] = { "Value", "+",  "-",  "*",  "/",  "%",
                                    "-",     "!",  "&&", "||", "==", "!=",
                                    "<",     "<=", ">",  ">=", "&",  "|",
-                                   "^",     "<<", ">>", "~" };
-    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_BIT_NOT);
+                                   "^",     "<<", ">>", "~",  "??" };
+    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_COALESCE);
     return names[op];
 }
 static const char *expression_name(source_projection *p, const script_expression *e)
@@ -43,6 +43,9 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_UNWRAP: return "Matched value";
         case SCRIPT_EXPR_INDEX: return "Index";
         case SCRIPT_EXPR_ARRAY: return "Array";
+        case SCRIPT_EXPR_MAP: return "Map";
+        case SCRIPT_EXPR_MAP_HAS: return "Map Has";
+        case SCRIPT_EXPR_MAP_REMOVE: return "Map Remove";
         case SCRIPT_EXPR_STRUCT: return "Struct";
         case SCRIPT_EXPR_NIL: return "nil";
         case SCRIPT_EXPR_FALLBACK: return "Fallback";
@@ -135,7 +138,8 @@ bool source_view_expression_action(source_projection *p, int index)
         return false;
     }
     const script_catalog_capability *capability = source_view_capability(p, e->capability);
-    return e->awaited || (e->effects & ~SCRIPT_EFFECT_READ) ||
+    return e->awaited ||
+           (e->effects & ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ)) ||
            (capability && capability->kind == SCRIPT_CAPABILITY_ACTION);
 }
 static void formula_inputs(source_projection *p, int index, int **children, int **arguments)
@@ -168,15 +172,18 @@ node *source_view_expression(source_projection *p, int index)
     const script_expression *e = &p->analysis->expressions[index];
     /* Lazy effects remain one source operation; exposing both operands would
      * imply unconditional execution of the short-circuited side. */
-    bool lazy = (e->effects & ~SCRIPT_EFFECT_READ) &&
+    bool lazy = (e->effects & ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ)) &&
                 (e->kind == SCRIPT_EXPR_FALLBACK ||
                  (e->kind == SCRIPT_EXPR_BINARY &&
-                  (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR)));
+                  (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR ||
+                   e->op == SCRIPT_OP_COALESCE)));
     /* Keep read-only formulas as one editable source expression. Calls and
      * members retain their ports; operations with effects stay explicit. */
-    bool formula = lazy || ((e->kind == SCRIPT_EXPR_UNARY || e->kind == SCRIPT_EXPR_BINARY ||
-                             e->kind == SCRIPT_EXPR_CAST) &&
-                            !(e->effects & ~SCRIPT_EFFECT_READ));
+    bool formula = lazy ||
+                   ((e->kind == SCRIPT_EXPR_UNARY || e->kind == SCRIPT_EXPR_BINARY ||
+                     e->kind == SCRIPT_EXPR_CAST) &&
+                    !(e->effects &
+                      ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ)));
     pin_spec *inputs = NULL, *outputs = NULL;
     int *children = NULL, *arguments = NULL;
     if (formula && !lazy) {

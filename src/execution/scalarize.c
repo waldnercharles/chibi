@@ -393,7 +393,7 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
         if (code[s->pc].op == BF_POINT || code[s->pc].op == BF_SOURCE_POINT) {
             continue;
         }
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             pinned[s->values[k]] = true;
         }
     }

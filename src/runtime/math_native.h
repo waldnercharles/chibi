@@ -5,13 +5,17 @@
 #define DECLARE(KEY)                                                           \
     pin_value native_math_##KEY(const pin_value *, int, arena *);              \
     extern const node_host_call NATIVE_MATH_##KEY##_CALL;
-#define UNARY(KEY, NAME, SOURCE, FN, DESCRIPTION) DECLARE(KEY)
+#define UNARY(KEY, NAME, SOURCE, FN, DESCRIPTION)                              \
+    DECLARE(KEY) DECLARE(F32_##KEY)
 #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)           \
-    DECLARE(KEY)
+    DECLARE(KEY) DECLARE(F32_##KEY)
 #define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) DECLARE(KEY)
 NATIVE_MATH_UNARIES(UNARY)
 NATIVE_MATH_BINARIES(BINARY)
 NATIVE_MATH_VALUES(VALUE)
+#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS) DECLARE(F32_##KEY)
+NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+#undef FLOAT_VALUE
 #undef UNARY
 #undef BINARY
 #undef VALUE

@@ -165,8 +165,8 @@ pin_value graph_pin_initial_default(const pin_spec *template_pin)
     value.type = template_pin->type;
     value.container = template_pin->container;
     value.type_name = template_pin->type_name;
-    if (value.container == PIN_CONTAINER_SINGLE &&
-        (value.type == PIN_STR || value.type == PIN_NAME) && !value.str) {
+    if (value.container == PIN_CONTAINER_SINGLE && value.type == PIN_NAME &&
+        !value.str) {
         value.str = "";
     }
     return value;
@@ -908,7 +908,6 @@ int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_bi
     }
     if (binding->kind != PIN_BINDING_VARIABLE &&
         binding->kind != PIN_BINDING_COMPONENT_FIELD &&
-        binding->kind != PIN_BINDING_DELTA_TIME &&
         binding->kind != PIN_BINDING_COMPONENT && binding->kind != PIN_BINDING_LOCAL &&
         binding->kind != PIN_BINDING_EVENT_OUTPUT) {
         return -1;
@@ -1328,10 +1327,12 @@ const char *graph_node_name_literal(const graph *g, const node *n)
         node *source = NULL;
         int pin = -1;
         if (p->name && !strcmp(p->name, "Name") &&
-            (p->type == PIN_STR || p->type == PIN_NAME) &&
-            p->default_value.str && p->default_value.str[0] && !p->binding &&
+            (p->type == PIN_STR || p->type == PIN_NAME) && !p->binding &&
             !graph_input_source(g, n, i, &source, &pin)) {
-            return p->default_value.str;
+            const char *text = graph_text_cstring(g, p->default_value);
+            if (text && *text) {
+                return text;
+            }
         }
     }
     return NULL;

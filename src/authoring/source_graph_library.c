@@ -3,25 +3,42 @@
 #include "graph/authoring/asset_edit.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
+/* One library's lowering. Each function lowers once, before its first caller
+ * in any library; its graph is NULL while it lowers and when it cannot, so a
+ * recursive call, or one to a function that cannot lower, is left out. */
 typedef struct
 {
-    const script_analysis *analysis;
     const script_catalog *catalog;
+    const script_analysis *analysis;
+    behavior_asset *asset;
+    graph **graphs;
+    bool *visited;
+} library;
+typedef struct
+{
+    library *all; /* array.h vector of every source library */
+    library *library;
     const script_function *function;
     graph *graph;
     node *entry;
 } lowering;
 
+static graph *lower_function(library *all, library *, int function);
+
 static const script_catalog_capability *capability(const lowering *l, uint64_t id)
 {
-    for (int i = 0; i < l->catalog->capability_count; i++) {
-        if (l->catalog->capabilities[i].id == id) {
-            return &l->catalog->capabilities[i];
+    const script_catalog *catalog = l->library->catalog;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        if (catalog->capabilities[i].id == id) {
+            return &catalog->capabilities[i];
         }
     }
     return NULL;
@@ -37,15 +54,14 @@ static int parameter(const lowering *l, int symbol)
     return -1;
 }
 
-/* A native call becomes the graph node of its qualified name, as the graph
- * catalog declares it. The node and capability share every port, in order. */
+/* A call becomes a node fed by its arguments. */
 static node *call(const lowering *l, const script_expression *e);
 
 /* Feeds `to`'s input from an expression: a constant becomes the input's
  * default, a parameter an entry output and a call its node. */
 static bool feed(const lowering *l, int expression, node *to, int input)
 {
-    const script_expression *e = &l->analysis->expressions[expression];
+    const script_expression *e = &l->library->analysis->expressions[expression];
     if (e->kind == SCRIPT_EXPR_CONSTANT) {
         return !graph_set_pin_default(l->graph, to, 0, input, &e->constant);
     }
@@ -60,19 +76,101 @@ static bool feed(const lowering *l, int expression, node *to, int input)
     return false;
 }
 
-static node *call(const lowering *l, const script_expression *e)
+/* A call to another function of this library calls its graph, lowered first.
+ * An expression takes one value, so the function returns one. */
+static node *function_call(const lowering *l, int function)
 {
-    const script_catalog_capability *c = capability(l, e->capability);
-    const node_desc *desc = c && c->pure
-                              ? registry_node_by_name(
-                                    c->qualified_name ? c->qualified_name : c->name
-                                )
-                              : NULL;
-    if (!desc || desc->input_count != c->parameter_count || !desc->output_count) {
+    graph *target = lower_function(l->all, l->library, function);
+    if (!target || graph_node_by_id(target, target->return_id)->input_count != 1) {
+        return NULL;
+    }
+    return behavior_asset_add_function_call_node_to_graph(l->library->asset, l->graph, target);
+}
+
+/* Another library's function, called by name: the field that links this
+ * library links that one too. Pins and defaults follow the catalog. */
+static node *library_call(const lowering *l, const script_catalog_capability *c, const char *library)
+{
+    if (c->result_count != 1) {
+        return NULL;
+    }
+    graph *g = l->graph;
+    node *n = graph_add_node(g, &NODE_CallPureFunction);
+    assert(n);
+    int named = graph_set_node_reference(g, n, 0, c->name) |
+                graph_set_node_reference_asset(g, n, library);
+    assert(!named);
+    (void)named;
+    for (int side = 0; side < 2; side++) {
+        const script_catalog_parameter *pins = side ? c->results : c->parameters;
+        int count = side ? c->result_count : c->parameter_count;
+        for (int i = 0; i < count; i++) {
+            pin_spec pin = {
+                .name = graph_own_str(g, pins[i].name, strlen(pins[i].name)),
+                .type = pins[i].type.storage
+            };
+            int added = graph_add_pin(g, n, side, &pin);
+            assert(added == i);
+            (void)added;
+            if (pins[i].has_default &&
+                graph_set_pin_default(g, n, side, i, &pins[i].default_value)) {
+                return NULL;
+            }
+        }
+    }
+    return n;
+}
+
+/* A capability without a node may be another source library's function,
+ * which lowers first: the call needs its graph. */
+static node *source_call(const lowering *l, const script_catalog_capability *c)
+{
+    for (int i = 0; i < acount(l->all); i++) {
+        library *other = &l->all[i];
+        const script_analysis *a = other->analysis;
+        if (other == l->library) {
+            continue;
+        }
+        for (int f = 0; f < a->function_count; f++) {
+            int symbol = a->functions[f].symbol;
+            if (symbol >= 0 && a->symbols[symbol].id == c->id) {
+                return lower_function(l->all, other, f) ? library_call(l, c, a->name)
+                                                        : NULL;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* A native call becomes the graph node of its qualified name, as the graph
+ * catalog declares it. The node and capability share every port, in order. */
+static node *native_call(const lowering *l, uint64_t id)
+{
+    const script_catalog_capability *c = capability(l, id);
+    if (!c || !c->pure) {
+        return NULL;
+    }
+    const node_desc *desc = registry_node_by_name(
+        c->qualified_name ? c->qualified_name : c->name
+    );
+    if (!desc) {
+        return source_call(l, c);
+    }
+    if (desc->input_count != c->parameter_count || !desc->output_count) {
         return NULL;
     }
     node *n = graph_add_node(l->graph, desc);
     assert(n);
+    return n;
+}
+
+static node *call(const lowering *l, const script_expression *e)
+{
+    node *n = e->right >= 0 ? function_call(l, e->right)
+                            : native_call(l, e->capability);
+    if (!n) {
+        return NULL;
+    }
     for (int i = 0; i < e->argument_count; i++) {
         if (!feed(l, e->arguments[i].value, n, e->arguments[i].parameter)) {
             return NULL;
@@ -120,7 +218,7 @@ static const script_statement *returned(const script_analysis *a, const script_f
 static bool lowerable(const script_analysis *a, const script_function *f)
 {
     if (f->kind != SCRIPT_FUNCTION_AUTHORED || !f->pure || f->symbol < 0 ||
-        f->type_parameter_count || !f->result_count || !returned(a, f)) {
+        !f->result_count || !returned(a, f)) {
         return false;
     }
     for (int i = 0; i < f->parameter_count; i++) {
@@ -139,19 +237,20 @@ static bool lowerable(const script_analysis *a, const script_function *f)
     return true;
 }
 
-static void lower_function(
-    behavior_asset *asset,
-    const script_catalog *catalog,
-    const script_analysis *a,
-    const script_function *f
-)
+static graph *lower_function(library *all, library *lib, int function)
 {
-    if (!lowerable(a, f)) {
-        return;
+    if (lib->visited[function]) {
+        return lib->graphs[function];
     }
-    graph *g = behavior_asset_add_function(asset, a->symbols[f->symbol].name, true);
+    lib->visited[function] = true;
+    const script_analysis *a = lib->analysis;
+    const script_function *f = &a->functions[function];
+    if (!lowerable(a, f)) {
+        return NULL;
+    }
+    graph *g = behavior_asset_add_function(lib->asset, a->symbols[f->symbol].name, true);
     assert(g);
-    lowering l = { a, catalog, f, g, graph_node_by_id(g, g->entry_id) };
+    lowering l = { all, lib, f, g, graph_node_by_id(g, g->entry_id) };
     node *ret = graph_node_by_id(g, g->return_id);
     bool fed = true;
     for (int i = 0; i < f->parameter_count; i++) {
@@ -170,29 +269,45 @@ static void lower_function(
         fed = feed(&l, a->statements[exit->children[i]].second, ret, i);
     }
     if (!fed) {
-        int deleted = behavior_asset_delete_graph(asset, g->graph_id);
+        int deleted = behavior_asset_delete_graph(lib->asset, g->graph_id);
         assert(!deleted);
         (void)deleted;
+        return NULL;
     }
+    lib->graphs[function] = g;
+    return g;
 }
 
 behavior_asset **authoring_source_graph_libraries(const authoring_sources *sources)
 {
-    behavior_asset **libraries = NULL;
+    library *all = NULL;
     for (int i = 0; i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
         const script_analysis *a = source->analysis;
         if (!source->valid || a->kind != SCRIPT_PROGRAM_LIBRARY) {
             continue;
         }
-        behavior_asset *asset = behavior_asset_new(a->name);
-        asset->domain = BEHAVIOR_DOMAIN_LIBRARY;
-        asset->transient_function_ids = true;
-        for (int f = 0; f < a->function_count; f++) {
-            lower_function(asset, authoring_sources_catalog(sources), a, &a->functions[f]);
-        }
-        apush(libraries, asset);
+        library lib = { authoring_sources_catalog(sources),
+                        a,
+                        behavior_asset_new(a->name),
+                        xcalloc((size_t)a->function_count + 1, sizeof(graph *)),
+                        xcalloc((size_t)a->function_count + 1, sizeof(bool)) };
+        lib.asset->domain = BEHAVIOR_DOMAIN_LIBRARY;
+        lib.asset->transient_function_ids = true;
+        apush(all, lib);
     }
+    for (int i = 0; i < acount(all); i++) {
+        for (int f = 0; f < all[i].analysis->function_count; f++) {
+            lower_function(all, &all[i], f);
+        }
+    }
+    behavior_asset **libraries = NULL;
+    for (int i = 0; i < acount(all); i++) {
+        free(all[i].graphs);
+        free(all[i].visited);
+        apush(libraries, all[i].asset);
+    }
+    afree(all);
     return libraries;
 }
 

@@ -4,7 +4,7 @@
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
 > files and [native checks](runtime-authoring.md); see [testing](testing.md) for
-> admitted checks. These results do not verify the current checkout.
+> current checks. These results do not verify the current checkout.
 
 Tracking: https://github.com/waldnercharles/c-blueprints/issues/44
 
@@ -160,7 +160,7 @@ Automation contracts use src/automation, tools/chibi_ctl and tools/mcp, with con
 
 #43 accepted locally: delegated make build, make test, make ui-native, make render-checks, make dev-smoke, MCP smoke and make web all passed after the final UI/font/settings migration. Public export inspection found _chibi_application. Primary independently confirmed the owned-source name sweep and git diff --check, captured and inspected the renamed native editor, and loaded the finished WebGL editor and Arena3D play mode in the browser. Both rendered successfully. Play reported the bounded 64-sample surface influence limit and continued rendering; the strongest effects are retained by the renderer. No browser shader compilation or context error was observed.
 
-Rename inventory: /tmp/chibi-43-pre-rename.inventory. Final delegated audit: /tmp/chibi-43-final-owned-audit.txt. Rename command output was retained in the delegated task rather than per-command log files. Final native capture: /Users/cwaldner/.codex/visualizations/2026/09/10/01a088a6-48df-7531-9706-04c26ed09e63/chibi-editor.png.
+Rename inventory: /tmp/chibi-43-pre-rename.inventory. Final delegated audit: /tmp/chibi-43-final-owned-audit.txt. Rename command output was retained in the delegated task rather than per-command log files. Final native capture: `<local-evidence>/chibi-editor.png`.
 
 All eight implementation tickets are verified locally. No files were staged, committed or pushed. The original dirty work remains part of the checkout; the original generated cache remains locally ignored and untouched.
 

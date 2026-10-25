@@ -167,7 +167,7 @@ static void write_field(ecs_entity owner, const ecs_component_desc *desc, int fi
 static pin_value read_field(ecs_entity owner, const ecs_component_desc *desc, int field)
 {
     pin_value value = { 0 };
-    int status = ecs_component_read_field(f.world, owner, desc->id, field, &value);
+    int status = ecs_component_read_field(NULL, f.world, owner, desc->id, field, &value);
     assert(!status);
     (void)status;
     return value;
@@ -227,22 +227,18 @@ static bool effects(const char *name)
     REQUIRE(summary.read_count == 0 && summary.write_count == 0);
     return true;
 }
+static const char *numeric_a =
+    "ReduceA :: system(t:ReductionTotals){reduce t.total += 10000000000000000; "
+    "reduce t.total += -10000000000000000;reduce t.single += 16777216; reduce "
+    "t.single += -16777216;reduce t.count += 1;reduce t.bounded += 100; reduce "
+    "t.bounded += -1;reduce t.limited += 100; reduce t.limited += -1;reduce "
+    "min(t.minimum,-4); reduce max(t.maximum,4);}";
 static const char
-    *numeric_a = "system ReduceA(t:ReductionTotals){"
-                 "reduce t.total += 10000000000000000; reduce t.total += "
-                 "-10000000000000000;"
-                 "reduce t.single += 16777216; reduce t.single += -16777216;"
-                 "reduce t.count += 1;"
-                 "reduce t.bounded += 100; reduce t.bounded += -1;"
-                 "reduce t.limited += 100; reduce t.limited += -1;"
-                 "reduce min(t.minimum,-4); reduce max(t.maximum,4);}";
-static const char
-    *numeric_b = "system ReduceB(t:ReductionTotals){"
-                 "reduce t.total += 1; reduce t.single += 1; reduce t.count += "
-                 "1;"
-                 "reduce t.bounded += 100; reduce t.bounded += -1;"
-                 "reduce t.limited += 100; reduce t.limited += -1;"
-                 "reduce min(t.minimum,-6); reduce max(t.maximum,6);}";
+    *numeric_b = "ReduceB :: system(t:ReductionTotals){reduce t.total += 1; "
+                 "reduce t.single += 1; reduce t.count += 1;reduce t.bounded "
+                 "+= 100; reduce t.bounded += -1;reduce t.limited += 100; "
+                 "reduce t.limited += -1;reduce min(t.minimum,-6); reduce "
+                 "max(t.maximum,6);}";
 
 TEST_CASE(source_reductions_publish_before_dependent_filtered_query)
 {
@@ -251,12 +247,9 @@ TEST_CASE(source_reductions_publish_before_dependent_filtered_query)
             REQUIRE(create(4, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             REQUIRE(publish("ReduceA", numeric_a));
             REQUIRE(publish("ReduceB", numeric_b));
-            REQUIRE(publish(
-                "Observe",
-                "system Observe query t:ReductionTotals, s:ReductionSeen "
-                "where t.total == 1 and changed(t) {"
-                "s.total=t.total; s.count=t.count; s.hits+=1;}"
-            ));
+            REQUIRE(
+                publish("Observe", "Observe :: system( t:ReductionTotals, s:ReductionSeen) where t.total == 1 and changed(t) {s.total=t.total; s.count=t.count; s.hits+=1;}")
+            );
             REQUIRE(effects("ReduceA") && effects("ReduceB"));
             uint64_t versions[4];
             for (int i = 0; i < 4; i++) {
@@ -332,13 +325,9 @@ TEST_CASE(source_reductions_keep_row_order_and_comparison_select_values)
 {
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(create(1, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
-        REQUIRE(publish(
-            "Ordered",
-            "system Ordered(c:ReductionContribution){"
-            "reduce c.target.ReductionTotals.total += c.amount;"
-            "reduce min(c.target.ReductionTotals.minimum,c.candidate);"
-            "reduce max(c.target.ReductionTotals.maximum,c.candidate);}"
-        ));
+        REQUIRE(
+            publish("Ordered", "Ordered :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += c.amount;reduce min(c.target.ReductionTotals.minimum,c.candidate);reduce max(c.target.ReductionTotals.maximum,c.candidate);}")
+        );
         ecs_entity target = f.owners[0];
         contribution(target, target, 1e16, NAN);
         contribution(target, target, -1e16, 4);
@@ -355,7 +344,7 @@ TEST_CASE(source_reductions_keep_row_order_and_comparison_select_values)
         cleanup();
         REQUIRE(create(1, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         REQUIRE(
-            publish("Zero", "system Zero(t:ReductionTotals){reduce min(t.minimum,-0.0);reduce max(t.maximum,-0.0);}")
+            publish("Zero", "Zero :: system(t:ReductionTotals){reduce min(t.minimum,-0.0);reduce max(t.maximum,-0.0);}")
         );
         REQUIRE(source_run_system(f.sources, "Zero", 0, .01) >= 0);
         REQUIRE(signbit(read_field(f.owners[0], f.totals, MINIMUM).d));
@@ -371,13 +360,13 @@ TEST_CASE(source_reductions_discard_failed_system_and_later_peers)
         for (int parallel = 0; parallel < 2; parallel++) {
             REQUIRE(create(1, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             REQUIRE(
-                publish("Earlier", "system Earlier(c:ReductionContribution){reduce c.target.ReductionTotals.total += 1;}")
+                publish("Earlier", "Earlier :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += 1;}")
             );
             REQUIRE(
-                publish("Failed", "system Failed(c:ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}")
+                publish("Failed", "Failed :: system(c:ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}")
             );
             REQUIRE(
-                publish("Later", "system Later(c:ReductionContribution){reduce c.target.ReductionTotals.total += 100;}")
+                publish("Later", "Later :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += 100;}")
             );
             ecs_entity target = f.owners[0],
                        missing = ecs_world_create_entity(f.world);
@@ -406,7 +395,7 @@ TEST_CASE(source_unordered_reductions_regroup_only_when_requested)
             snprintf(
                 source,
                 sizeof source,
-                "system Sum(c:ReductionContribution){"
+                "Sum :: system(c:ReductionContribution){"
                 "reduce %sc.target.ReductionTotals.total += c.amount;"
                 "reduce %sc.target.ReductionTotals.count += 1;}",
                 unordered ? "unordered " : "",
@@ -659,7 +648,7 @@ static bool simple_sources(int mode)
         snprintf(
             source,
             sizeof source,
-            "system %s(c:ReductionContribution){"
+            "%s :: system(c:ReductionContribution){"
             "%sc.target.ReductionTotals.total += %s;"
             "%sc.target.ReductionTotals.count += %d;}",
             i ? "ReduceB" : "ReduceA",
@@ -741,7 +730,9 @@ TEST_CASE(source_reductions_preflight_all_records_before_publication)
     for (int backend = 0; backend < 2; backend++) {
         for (int reused = 0; reused < 2; reused++) {
             REQUIRE(create(2, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
-            REQUIRE(publish("Preflight", "system Preflight(t:ReductionTotals){reduce t.total += 1;}"));
+            REQUIRE(
+                publish("Preflight", "Preflight :: system(t:ReductionTotals){reduce t.total += 1;}")
+            );
             execution_program *program = source_program(f.sources, "Preflight");
             REQUIRE(execution_program_prepare_system(program, 0, .01, 10000) == FLOW_OK);
             f.pending_program = program;
@@ -955,11 +946,11 @@ TEST_CASE(source_reductions_cancel_later_paused_peer_after_earlier_failure)
 {
     REQUIRE(create(1, BEHAVIOR_SLJIT));
     REQUIRE(
-        publish("Failed", "system Failed(c:ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}")
+        publish("Failed", "Failed :: system(c:ReductionContribution){reduce c.alternate.ReductionTotals.total += 10;}")
     );
     REQUIRE(publish(
         "Later",
-        "system Later(c:ReductionContribution){\n"
+        "Later :: system(c:ReductionContribution){\n"
         "reduce c.target.ReductionTotals.total += 1;\n"
         "reduce c.target.ReductionTotals.total += 2;\n"
         "}"
@@ -998,13 +989,13 @@ TEST_CASE(source_reductions_resume_post_physics_without_replaying_prior_stages)
         REQUIRE(create(2, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         REQUIRE(publish(
             "Paused",
-            "system Paused(t:ReductionTotals){\n"
+            "Paused :: system(t:ReductionTotals){\n"
             "reduce t.total += 1;\n"
             "reduce t.total += 2;\n"
             "}"
         ));
         REQUIRE(
-            publish("Consumer", "system Consumer(t:ReductionTotals,s:ReductionSeen){s.total=t.total;s.hits+=1;}")
+            publish("Consumer", "Consumer :: system(t:ReductionTotals,s:ReductionSeen){s.total=t.total;s.hits+=1;}")
         );
         const char *names[] = { "Paused", "Consumer" };
         for (int i = 0; i < 2; i++) {
@@ -1177,7 +1168,7 @@ TEST_CASE(source_reductions_discard_paused_log_when_descriptor_edit_restarts_pha
     REQUIRE(create(1, BEHAVIOR_SLJIT));
     REQUIRE(publish(
         "B",
-        "system B(c:ReductionContribution){\n"
+        "B :: system(c:ReductionContribution){\n"
         "reduce c.target.ReductionTotals.total += c.amount;\n"
         "reduce c.target.ReductionTotals.total += c.amount;\n"
         "}"
@@ -1315,12 +1306,12 @@ static bool row_benchmark(int rows, int iterations, bool parallel, bool unordere
     snprintf(
         source,
         sizeof source,
-        "system Work(c:ReductionContribution){"
-        "Mix :: pure fn(seed:int)->int { value:=seed; i:int=0;"
+        "Work :: system(c:ReductionContribution){"
+        "Mix :: (seed:int)->int { value:=seed; i:int=0;"
         "while i < %d {value=value*1664525+1013904223; i+=1;} return value;}"
-        "if true {value:=Mix(cast<int>(c.amount));"
+        "if true {value:=Mix(int(c.amount));"
         "reduce %sc.target.ReductionTotals.count += value;"
-        "reduce %sc.target.ReductionTotals.total += cast<number>(value);}}",
+        "reduce %sc.target.ReductionTotals.total += number(value);}}",
         iterations,
         unordered ? "unordered " : "",
         unordered ? "unordered " : ""
@@ -1433,12 +1424,9 @@ TEST_CASE(source_parallel_rows_keep_order_and_discard_failed_dispatch)
 {
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(create(1, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
-        REQUIRE(publish(
-            "Rows",
-            "system Rows(c:ReductionContribution){"
-            "reduce c.target.ReductionTotals.total += c.amount;"
-            "reduce c.target.ReductionTotals.count += 1;}"
-        ));
+        REQUIRE(
+            publish("Rows", "Rows :: system(c:ReductionContribution){reduce c.target.ReductionTotals.total += c.amount;reduce c.target.ReductionTotals.count += 1;}")
+        );
         ecs_entity target = f.owners[0], first_bad = { 0 }, last = { 0 };
         for (int i = 0; i < ROW_TEST_COUNT; i++) {
             /* The later chunk's cancellation loses the first chunk's 1 when
@@ -1513,16 +1501,12 @@ static void count_profile(void *user, const execution_profile_sample *)
 TEST_CASE(source_parallel_rows_publish_through_scheduler_hook)
 {
     REQUIRE(create(1, BEHAVIOR_SLJIT));
-    REQUIRE(publish(
-        "Rows",
-        "system Rows(c:ReductionContribution){"
-        "reduce unordered c.target.ReductionTotals.total += c.amount;}"
-    ));
-    REQUIRE(publish(
-        "Observe",
-        "system Observe query t:ReductionTotals, s:ReductionSeen "
-        "where t.total == 256 {s.total=t.total; s.hits+=1;}"
-    ));
+    REQUIRE(
+        publish("Rows", "Rows :: system(c:ReductionContribution){reduce unordered c.target.ReductionTotals.total += c.amount;}")
+    );
+    REQUIRE(
+        publish("Observe", "Observe :: system( t:ReductionTotals, s:ReductionSeen) where t.total == 256 {s.total=t.total; s.hits+=1;}")
+    );
     for (int i = 0; i < ROW_TEST_COUNT; i++) {
         contribution(f.owners[0], f.owners[0], 1, 0);
     }
@@ -1563,11 +1547,9 @@ TEST_CASE(source_parallel_rows_fall_back_for_inspection_and_profiling)
 {
     for (int observed = 0; observed < 2; observed++) {
         REQUIRE(create(1, BEHAVIOR_SLJIT));
-        REQUIRE(publish(
-            "Rows",
-            "system Rows(c:ReductionContribution){"
-            "reduce unordered c.target.ReductionTotals.total += c.amount;}"
-        ));
+        REQUIRE(
+            publish("Rows", "Rows :: system(c:ReductionContribution){reduce unordered c.target.ReductionTotals.total += c.amount;}")
+        );
         for (int i = 0; i < ROW_TEST_COUNT; i++) {
             contribution(f.owners[0], f.owners[0], 1, 0);
         }

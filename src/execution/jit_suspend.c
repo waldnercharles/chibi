@@ -136,7 +136,7 @@ static void values(const behavior_machine *m, const behavior_function_suspension
         SLJIT_MEM1(SLJIT_R3),
         offsetof(behavior_function_activation, values)
     );
-    for (int j = 0; j < acount(s->values); j++) {
+    for (int j = 0; j < s->value_count; j++) {
         scalar(m, s->values[j], restore);
     }
     int base = acount(f->slots) + acount(f->locals);
@@ -268,8 +268,9 @@ void behavior_jit_resume(const behavior_machine *m, struct sljit_jump **jumps, s
         SLJIT_R0,
         0,
         SLJIT_IMM,
-        (sljit_sw)(m->inspected ? f->artifact->inspection_addresses
-                                : f->artifact->resume_addresses)
+        (sljit_sw)(m->scoped      ? f->artifact->scoped_addresses
+                   : m->inspected ? f->artifact->inspection_addresses
+                                  : f->artifact->resume_addresses)
     );
     sljit_emit_ijump(
         m->compiler,

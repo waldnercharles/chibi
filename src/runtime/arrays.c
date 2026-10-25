@@ -1,7 +1,10 @@
 #include "runtime/arrays.h"
 
 #include "types/array.h"
+#include "types/array_internal.h"
 #include "types/catalog.h"
+#include "types/map.h"
+#include "types/record.h"
 
 #include <string.h>
 
@@ -26,26 +29,17 @@ static pin_value array_result(arena *a, const pin_array *src)
         .type = src ? src->element_type : PIN_FLOW,
         .container = PIN_CONTAINER_ARRAY,
         .type_name = copy ? copy->type_name : NULL,
+        .record = copy ? copy->record : NULL,
         .ptr = copy,
     };
 }
 
-/* Fill the final array directly. Every retained payload remains deep owned;
- * no intermediate descriptor buffer needs to be copied into another array. */
-static int array_copy_items(arena *a, pin_value *out, const pin_value *items, int count)
-{
-    for (int i = 0; i < count; i++) {
-        if (pin_value_snapshot_to_arena(a, &out[i], &items[i])) {
-            return -1;
-        }
-    }
-    return 0;
-}
 static pin_value owned_array(const pin_array *source, pin_array *array)
 {
     return (pin_value){ .type = source->element_type,
                         .container = PIN_CONTAINER_ARRAY,
                         .type_name = array ? array->type_name : NULL,
+                        .record = array ? array->record : NULL,
                         .ptr = array };
 }
 /* Discarded values still need valid snapshot layouts, but their payloads need
@@ -68,17 +62,28 @@ static bool snapshot_type_valid(const type_desc *type)
 }
 static bool snapshot_value_valid(const pin_value *value)
 {
+    if (value->container == PIN_CONTAINER_MAP && value->ptr) {
+        const pin_map *map = value->ptr;
+        for (int i = 0; i < map->count; i++) {
+            if (!snapshot_value_valid(&map->entries[i].key) ||
+                !snapshot_value_valid(&map->entries[i].value)) {
+                return false;
+            }
+        }
+        return true;
+    }
     if (value->container >= PIN_CONTAINER_ARRAY && value->ptr) {
         const pin_array *array = value->ptr;
         for (int i = 0; i < array->count; i++) {
-            if (!snapshot_value_valid(&array->items[i])) {
+            pin_value item = pin_array_get(array, i);
+            if (!snapshot_value_valid(&item)) {
                 return false;
             }
         }
         return true;
     }
     return value->type != PIN_STRUCT || !value->ptr ||
-           snapshot_type_valid(type_catalog_find(value->type_name));
+           snapshot_type_valid(pin_value_type(value));
 }
 
 pin_value native_array_make(const pin_value *inputs, int count, arena *a)
@@ -89,6 +94,7 @@ pin_value native_array_make(const pin_value *inputs, int count, arena *a)
     pin_array source = {
         .element_type = inputs[0].type,
         .type_name = inputs[0].type_name,
+        .record = inputs[0].record,
         .count = count,
         .capacity = count,
         .items = (pin_value *)inputs,
@@ -104,8 +110,8 @@ pin_value native_array_get(const pin_value *inputs, int count, arena *a)
     if (!array || index < 0 || index >= array->count) {
         return (pin_value){ .type = PIN_FLOW };
     }
-    pin_value value;
-    if (pin_value_snapshot_to_arena(a, &value, &array->items[index])) {
+    pin_value value, item = pin_array_get(array, index);
+    if (pin_value_snapshot_to_arena(a, &value, &item)) {
         return (pin_value){ .type = PIN_FLOW };
     }
     return value;
@@ -158,16 +164,7 @@ pin_value native_array_contains(const pin_value *inputs, int count, arena *a)
     (void)count;
     (void)a;
     const pin_array *array = array_arg(inputs, 0);
-    int found = 0;
-    if (array) {
-        for (int i = 0; i < array->count; i++) {
-            if (pin_value_equal(&array->items[i], &inputs[1])) {
-                found = 1;
-                break;
-            }
-        }
-    }
-    return (pin_value){ .type = PIN_BOOL, .b = found };
+    return (pin_value){ .type = PIN_BOOL, .b = pin_array_find(array, &inputs[1]) >= 0 };
 }
 
 pin_value native_array_find(const pin_value *inputs, int count, arena *a)
@@ -175,16 +172,7 @@ pin_value native_array_find(const pin_value *inputs, int count, arena *a)
     (void)count;
     (void)a;
     const pin_array *array = array_arg(inputs, 0);
-    int found = -1;
-    if (array) {
-        for (int i = 0; i < array->count; i++) {
-            if (pin_value_equal(&array->items[i], &inputs[1])) {
-                found = i;
-                break;
-            }
-        }
-    }
-    return scalar(PIN_I32, found);
+    return scalar(PIN_I32, pin_array_find(array, &inputs[1]));
 }
 
 pin_value native_array_identical(const pin_value *inputs, int count, arena *a)
@@ -199,22 +187,7 @@ pin_value native_array_identical(const pin_value *inputs, int count, arena *a)
 
 pin_value native_array_add(const pin_value *inputs, int count, arena *a)
 {
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count + 1
-    );
-    if (array_copy_items(a, array->items, source->items, source->count) ||
-        pin_value_snapshot_to_arena(a, &array->items[source->count], &inputs[1])) {
-        return owned_array(source, NULL);
-    }
-    return owned_array(source, array);
+    return pin_array_add(inputs, count, a);
 }
 
 pin_value native_array_add_unique(const pin_value *inputs, int count, arena *a)
@@ -223,26 +196,24 @@ pin_value native_array_add_unique(const pin_value *inputs, int count, arena *a)
     if (!source) {
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
-    for (int i = 0; i < source->count; i++) {
-        if (pin_value_equal(&source->items[i], &inputs[1])) {
-            return array_result(a, source);
-        }
+    if (pin_array_find(source, &inputs[1]) >= 0) {
+        return array_result(a, source);
     }
     return native_array_add(inputs, count, a);
 }
 
-pin_value native_array_append(const pin_value *inputs, int count, arena *a)
+pin_value native_array_extend(const pin_value *inputs, int count, arena *a)
 {
     (void)count;
     const pin_array *left = array_arg(inputs, 0);
     const pin_array *right = array_arg(inputs, 1);
-    if (!left || !right) {
+    if (!left || !right || !pin_record_same(left->record, right->record)) {
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
     int total = left->count + right->count;
-    pin_array *array = pin_array_snapshot_allocate(a, left->element_type, left->type_name, total);
-    if (array_copy_items(a, array->items, left->items, left->count) ||
-        array_copy_items(a, array->items + left->count, right->items, right->count)) {
+    pin_array *array = pin_array_snapshot_like(a, left, total);
+    if (!array || pin_array_snapshot_copy(a, array, 0, left, 0, left->count) ||
+        pin_array_snapshot_copy(a, array, left->count, right, 0, right->count)) {
         return owned_array(left, NULL);
     }
     return owned_array(left, array);
@@ -259,18 +230,14 @@ pin_value native_array_set_elem(const pin_value *inputs, int count, arena *a)
     if (index < 0 || index >= source->count) {
         return array_result(a, source);
     }
-    if (!snapshot_value_valid(&source->items[index])) {
+    pin_value previous = pin_array_get(source, index);
+    if (!snapshot_value_valid(&previous)) {
         return (pin_value){ .type = PIN_FLOW };
     }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count
-    );
-    if (array_copy_items(a, array->items, source->items, index) ||
-        pin_value_snapshot_to_arena(a, &array->items[index], &inputs[2]) ||
-        array_copy_items(a, array->items + index + 1, source->items + index + 1, source->count - index - 1)) {
+    pin_array *array = pin_array_snapshot_like(a, source, source->count);
+    if (!array || pin_array_snapshot_copy(a, array, 0, source, 0, index) ||
+        pin_array_snapshot_set(a, array, index, &inputs[2]) ||
+        pin_array_snapshot_copy(a, array, index + 1, source, index + 1, source->count - index - 1)) {
         return (pin_value){ .type = PIN_FLOW };
     }
     return owned_array(source, array);
@@ -290,20 +257,10 @@ pin_value native_array_insert(const pin_value *inputs, int count, arena *a)
     if (index > source->count) {
         index = source->count;
     }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count + 1
-    );
-    if (array_copy_items(a, array->items, source->items, index) ||
-        pin_value_snapshot_to_arena(a, &array->items[index], &inputs[2]) ||
-        array_copy_items(
-            a,
-            array->items + index + 1,
-            index < source->count ? source->items + index : NULL,
-            source->count - index
-        )) {
+    pin_array *array = pin_array_snapshot_like(a, source, source->count + 1);
+    if (!array || pin_array_snapshot_copy(a, array, 0, source, 0, index) ||
+        pin_array_snapshot_set(a, array, index, &inputs[2]) ||
+        pin_array_snapshot_copy(a, array, index + 1, source, index, source->count - index)) {
         return (pin_value){ .type = PIN_FLOW };
     }
     return owned_array(source, array);
@@ -320,17 +277,13 @@ pin_value native_array_remove_index(const pin_value *inputs, int count, arena *a
     if (index < 0 || index >= source->count) {
         return array_result(a, source);
     }
-    if (!snapshot_value_valid(&source->items[index])) {
+    pin_value previous = pin_array_get(source, index);
+    if (!snapshot_value_valid(&previous)) {
         return (pin_value){ .type = PIN_FLOW };
     }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count - 1
-    );
-    if (array_copy_items(a, array->items, source->items, index) ||
-        array_copy_items(a, array->items + index, source->items + index + 1, source->count - index - 1)) {
+    pin_array *array = pin_array_snapshot_like(a, source, source->count - 1);
+    if (!array || pin_array_snapshot_copy(a, array, 0, source, 0, index) ||
+        pin_array_snapshot_copy(a, array, index, source, index + 1, source->count - index - 1)) {
         return owned_array(source, NULL);
     }
     return owned_array(source, array);
@@ -354,7 +307,8 @@ pin_value native_array_clear(const pin_value *inputs, int count, arena *a)
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
     pin_array empty = { .element_type = source->element_type,
-                        .type_name = source->type_name };
+                        .type_name = source->type_name,
+                        .record = source->record };
     return array_result(a, &empty);
 }
 
@@ -365,9 +319,7 @@ pin_value native_array_reverse(const pin_value *inputs, int count, arena *a)
     pin_array *array = (pin_array *)result.ptr;
     if (array) {
         for (int i = 0; i < array->count / 2; i++) {
-            pin_value temp = array->items[i];
-            array->items[i] = array->items[array->count - i - 1];
-            array->items[array->count - i - 1] = temp;
+            pin_array_swap(array, i, array->count - i - 1);
         }
     }
     return result;
@@ -380,9 +332,7 @@ pin_value native_array_swap(const pin_value *inputs, int count, arena *a)
     pin_array *array = (pin_array *)result.ptr;
     if (array && inputs[1].i >= 0 && inputs[2].i >= 0 &&
         inputs[1].i < array->count && inputs[2].i < array->count) {
-        pin_value temp = array->items[inputs[1].i];
-        array->items[inputs[1].i] = array->items[inputs[2].i];
-        array->items[inputs[2].i] = temp;
+        pin_array_swap(array, inputs[1].i, inputs[2].i);
     }
     return result;
 }
@@ -394,7 +344,8 @@ static pin_array array_or_empty(const pin_value *inputs, int index)
     const pin_array *array = array_arg(inputs, index);
     return array ? *array
                  : (pin_array){ .element_type = inputs[index].type,
-                                .type_name = inputs[index].type_name };
+                                .type_name = inputs[index].type_name,
+                                .record = inputs[index].record };
 }
 
 pin_value native_array_resize(const pin_value *inputs, int count, arena *a)
@@ -406,16 +357,27 @@ pin_value native_array_resize(const pin_value *inputs, int count, arena *a)
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
     int size = inputs[1].i < 0 ? 0 : inputs[1].i;
-    pin_array *array = pin_array_allocate(a, source->element_type, source->type_name, size);
-    for (int i = 0; i < size && i < source->count; i++) {
-        if (pin_value_snapshot_to_arena(a, &array->items[i], &source->items[i])) {
+    if (source->record && size > source->count) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    pin_array
+        *array = source->element_type == PIN_STRUCT && size > source->count
+                   ? pin_array_snapshot_allocate(a, source->element_type, source->type_name, size)
+                   : pin_array_snapshot_like(a, source, size);
+    if (!array) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    int retained = size < source->count ? size : source->count;
+    if (pin_array_snapshot_copy(a, array, 0, source, 0, retained)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    for (int i = retained; i < size; i++) {
+        pin_value value = { .type = source->element_type, .type_name = array->type_name };
+        if (pin_array_set(array, i, &value)) {
             return (pin_value){ .type = PIN_FLOW };
         }
     }
-    return (pin_value){ .type = source->element_type,
-                        .type_name = array->type_name,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = array };
+    return owned_array(source, array);
 }
 
 /* The Count elements from Start, clamped to the array, as JavaScript's
@@ -433,27 +395,46 @@ pin_value native_array_slice(const pin_value *inputs, int count, arena *a)
                                             : inputs[1].i;
     int size = inputs[2].i < 0 ? 0 : inputs[2].i;
     size = size > source->count - start ? source->count - start : size;
-    pin_array *array = pin_array_allocate(a, source->element_type, source->type_name, size);
-    for (int i = 0; i < size; i++) {
-        if (pin_value_snapshot_to_arena(a, &array->items[i], &source->items[start + i])) {
-            return (pin_value){ .type = PIN_FLOW };
-        }
+    /* The copied elements alone decide the copy's representation, so a small
+     * slice of a large array costs its own size. */
+    pin_array range = *source;
+    range.count = range.capacity = size;
+    range.buckets = NULL;
+    range.bucket_mask = 0;
+    if (range.stride) {
+        range.data = size ? (char *)range.data + (size_t)start * range.stride : NULL;
+    } else {
+        range.items = size ? range.items + start : NULL;
     }
-    return (pin_value){ .type = source->element_type,
-                        .type_name = array->type_name,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = array };
+    pin_array *array = pin_array_snapshot_like(a, &range, size);
+    if (!array || pin_array_snapshot_copy(a, array, 0, &range, 0, size)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    return owned_array(source, array);
+}
+
+static const char *resize_error(const pin_value *inputs)
+{
+    pin_array source = array_or_empty(inputs, 0);
+    return source.record && inputs[1].i > source.count
+             ? "Cannot grow an authored record array without initialized rows"
+             : NULL;
 }
 
 #define CALL(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                                                   \
     static const char *KERNEL##_owned(arena *storage, const pin_value *inputs, int count, pin_value *result)    \
     {                                                                                                           \
-        *result = native_array_##KERNEL(inputs, count, storage);                                                \
-        if (result->type == PIN_FLOW)                                                                           \
+        if (native_array_##KERNEL == native_array_resize) {                                                     \
+            const char *error = resize_error(inputs);                                                           \
+            if (error) return error;                                                                            \
+        }                                                                                                       \
+        pin_value value = native_array_##KERNEL(inputs, count, storage);                                        \
+        if (value.type == PIN_FLOW)                                                                             \
             return "data function produced an invalid result";                                                  \
-        if (result->type == PIN_STRUCT &&                                                                       \
-            result->container == PIN_CONTAINER_SINGLE && !result->ptr)                                          \
+        if ((value.container >= PIN_CONTAINER_ARRAY || value.type == PIN_STRUCT) &&                             \
+            !value.ptr)                                                                                         \
             return "arena allocation failed";                                                                   \
+        *result = value;                                                                                        \
         return NULL;                                                                                            \
     }                                                                                                           \
     static const char *KERNEL##_snapshot(arena *storage, const pin_value *inputs, int count, pin_value *result) \
@@ -461,6 +442,11 @@ pin_value native_array_slice(const pin_value *inputs, int count, arena *a)
         pin_value value;                                                                                        \
         const char *error = KERNEL##_owned(storage, inputs, count, &value);                                     \
         if (error) return error;                                                                                \
+        /* These kernels already snapshot every item into storage. */                                           \
+        if (native_array_##KERNEL == native_array_extend) {                                                     \
+            *result = value;                                                                                    \
+            return NULL;                                                                                        \
+        }                                                                                                       \
         return pin_value_snapshot_to_arena(storage, result, &value)                                             \
                  ? "Cannot retain native value result"                                                          \
                  : NULL;                                                                                        \
@@ -469,6 +455,10 @@ pin_value native_array_slice(const pin_value *inputs, int count, arena *a)
                                                           .variadic = VARIADIC };                               \
     const node_host_call NATIVE_ARRAY_##KERNEL##_CALL = { .value = KERNEL##_snapshot,                           \
                                                           .variadic = VARIADIC };
-NATIVE_ARRAY_OPERATIONS(CALL)
+#define ADD(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                      \
+    const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call }; \
+    const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call };
+NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
+#undef ADD
 #undef CALL
 const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_PURE };

@@ -1,5 +1,5 @@
-behavior ToneProbe {
-    on Begin {
+ToneProbe :: behavior {
+    on Begin :: () {
         set_audio_source(0)
         await play_tone(440.0, 220.0, 0.1, 0.2, 0.0, 0.0)
         await set_master_volume(0.8)
@@ -10,7 +10,7 @@ behavior ToneProbe {
         await stop_music()
     }
 
-    on Tick(dt) {
+    on Tick :: () {
         signal := get_audio_analysis()
         print_string(format_text("Audio {} {}", signal.Bass, signal.Treble))
     }

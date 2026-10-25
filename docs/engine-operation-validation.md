@@ -1,266 +1,253 @@
-# Core operation contract validation
+# PR407 selective recovery validation
 
-## Reviewed checked-write integration
+Development checkpoint, 2026-10-25. This is not merge or release approval.
 
-Candidate `2ae4981bdf7ad6370c904d27a76c114cf05c39d7`, tree
-`5be061a6509e066a57720cb09b9a90c652fdb5d0`, combines the independently tested
-operation fix `f17e7b1406622e8f67f6105c9854aece366cc10c` with eligible main
-`3c65bb60b6f3443aef6ccf4ab15acbe09b04b191`, including checked scalar writes.
-Only the language source list, dispatcher and policy lists needed conflict
-resolution. The lowerer retains the catalog-wide operation guard before the
-checked-write path. The publication ordering, range checks, optimizer barriers,
-register stack-cell reservations and backend implementation remain intact.
-All previous group members and relative order remain; operation, module and
-write selectors each occur once in the 31-selector language and 19-selector
-Wasm groups. The structural sizing subset is not additionally selected.
+## Provenance and scope
 
-Independent source/workload review approved this exact combination before the
-five complete production commands below. All exited zero, ran serially, and
-retained their original single shared 60-second deadline. Times exclude builds.
+The integration parent is main `d1154cdb8677cbfe479d4be40db7ca480d10f103`
+(tree `fd29ffd46f613eb2a05b7b5eec05e172767d2e89`). Operation-specific source
+was selectively recovered from public checkpoint
+`f61db252418f0d2d01dc8f43a56f5ff97e9a5351`, branch
+`codex/pr407-recovery-handoff-20261023`:
 
-| Invocation | Selectors | Cases passed | Assertions | Seconds |
-| --- | ---: | ---: | ---: | ---: |
-| `group language` | 31 | 412 | 39,562 | 21.345 |
-| `group wasm` | 19 | 256 | 35,641 | 3.531 |
-| `tool native-tools` | 1 | 116 | 33,227 | 23.185 |
-| `tool native-catalog` | 1 | 6 | 346 | 0.103 |
-| `tool language-prepared` | 1 | 19 | 833 | 0.246 |
+- Full source checkpoint tree: `ec404482ec984c4266923d9284ee9e2b6e1c7121`.
+- Tree excluding its recovery metadata: `fa24367aa5284d67160118716c538207d3672cd8`.
+- All 84 active-source file SHA-256 and byte-length entries in its
+  [manifest](https://github.com/waldnercharles/chibi/blob/f61db252418f0d2d01dc8f43a56f5ff97e9a5351/.handoff/pr407-20261023/manifest.json)
+  were verified locally.
+- The checkpoint copied `d0de4a84ecf50badcab661411470bdf6f3da5fa2` content
+  without that commit's ancestry. This recovery does not represent it as a merge
+  or cherry-pick. Historical receipts do not validate this candidate.
 
-All nine operation cases ran once per language group, including the complete
-36-rejection matrix and canonical accepts. Module and checked-write cases also
-ran once. Prepared totals combine producer 6/199, runtime-only consumer 12/629
-and parent 1/5. Native-tools uses the compiler-enabled minimal closure; the
-catalog route uses the separately built native/compiler closure with both
-native-runtime and preparation support. Four compile-only currency builds
-passed separately. The 2,897 tracked source files, 89-file/63,497-byte corpus,
-five compiled artifacts and policy worker retained their pre-run identities.
-No unexpected failure, sanitizer report, crash or timeout occurred.
+Retained scope: Owner/Delay closed declarations, dormant/scalar metadata
+validation, generated opcode bindings, known-operation ABI identities,
+incremental identity comparison, lowerer validation, and the narrow migration-only
+Self effect adapter. The SDK exports the new operation header with its declared
+capabilities dependency. Graph source/header/include/link inventories retain
+current main's compiler, asset, shader, and integer work.
 
-This is exact local-combination evidence, not a claim about a future published
-head. Final documentation/content identity, remote-head verification, current
-integration, server requirements and the explicit publication/merge holds still
-apply. Native VM/SLJIT, Wasm VM/generated execution and the bounded generated-C
-tooling case are covered; browser/GPU/full-engine and leak checks remain unrun.
-The earlier isolated failure and five historical controls below stay separate.
+Excluded historical changes include implicit double-to-float narrowing, integer
+conversion and clamp syntax changes, integer-report deletions, native memory
+accounting removal, compiler-host packaging reversions, bootstrap artifacts,
+runtime pins, and unrelated compiler/SDK/build changes. The current runtime pin
+remains `b1fcb5e006d8e2e16b4a39dddff6aafbd92075d1`. Public Delta stays removed;
+private `BF_DELTA` is unchanged. No project-version bump is needed.
 
-## Isolated dormant metadata regression and repair
+Already identical to main and not recopied: project migration, function builder,
+prepared record implementation, project compilation, record-prepared runtime
+tests, navigation tests, and SDK build tests.
 
-A review of published `b255df023158d6b7af3bce644d37c3ca640c29fa` found that
-known-operation declarations rejected active component/aggregate/flow kinds but
-accepted noncanonical dormant metadata. All twelve fields in the
-[closed declaration contract](engine-operation-contracts.md#checked-declaration-and-execution-boundaries)
-are zero in the actual shared and raw Owner/Delta/Delay producers. Active
-unknown-operation contracts can use negative ordinals and are unaffected.
-The three dormant IDs affect the capability ABI; dormant component/flow
-ordinals are not hashed when their kinds are absent, but all twelve fields
-participate in source-catalog snapshot comparison.
+## Independent review and checks
 
-Independent review admitted the regression-only
-`d581d39e3a8d393f89170e500bf5840f5640e009`, tree
-`5268109b9919e52032a957336beed3aab49242a1`. The native production route failed
-exactly at `Owner.component = 1`: required declaration rejection was absent.
-It exited one with 8/9 cases passing, 161 assertions, in 0.092 seconds.
-No malformed catalog was lowered or executed; there was no sanitizer finding,
-crash or timeout. The failing source, binary and log are preserved.
+Two parallel Mac reviews inspected operation/compatibility and consumer/build
+boundaries. A second review of the reconciled implementation found no actionable
+correctness or ownership defect. The runtime-only consumer build exposed a
+missing `types/text.h` include in the recovered test; it was fixed before passing.
 
-Fix `f17e7b1406622e8f67f6105c9854aece366cc10c`, tree
-`434bfcfff23473870c079bd19b46df46dae8151c`, adds only twelve explicit canonical
-zero checks after the unchanged unknown-operation early return. The regression
-inputs, loops and assertions are byte-identical to the failing baseline.
-Independent source review and serial production routes passed under their
-unchanged 60-second ceilings:
+AppleClang 21, macOS arm64, Release, sanitizers off. Native language and separate
+runtime-only tooling builds used the repository-pinned cached third-party archive.
+The runtime tooling configuration has compiler, native components, and desktop
+packages all OFF; its prepared consumer object links only `Chibi::behavior_runtime`.
+Emscripten 6.0.9 and Node executed the actual Wasm test binary. The pinned web
+archive was downloaded into a task-local cache; installed Emscripten was reused.
 
-| Route | Cases passed | Assertions | Seconds |
-| --- | ---: | ---: | ---: |
-| `language-operations` | 9 | 208 | 0.097 |
-| `wasm-operations` | 9 | 208 | 0.200 |
+At checkpoint `422c6569a96a790c7d08d08cdea99028723ec583`, all ten selectors
+below passed after formatting and restoring mutation controls.
+Each ran through `tools/test_policy.py --timeout 60 tool <selector>` with the
+language, tooling, or Wasm build directory selected by its documented environment
+variable.
 
-The full 36-rejection matrix and three canonical raw accepts were reached;
-all eight existing cases passed. Source and five compiled artifact hashes were
-unchanged after both runs. Four compile-only currency builds passed separately.
-The fixed route has 82 catalog attempts (13 accepted, 69 rejected), seven source
-prepare/lower attempts, four finalizations, eight dispatches and two synthetic
-updates capped at 1,000 steps each; prepared bytes remain zero. Only catalog
-construction grew. Newer checked-write main was excluded from this isolated
-red-to-green proof and is integrated separately above. The five older controls
-remain evidence for their exact guard removals, not tests of this new guard.
+| Check | Cases / assertions |
+| --- | ---: |
+| language-operations | 11 / 196 |
+| language-format | 61 / 5327 |
+| language-query-program | 65 / 11607 |
+| language-incremental | 13 / 235 |
+| language-numeric-exact-core | 22 / 567 |
+| language-integer-semantics | 1 / 325 |
+| language-record-prepared | 11 / 1658 |
+| language-prepared producer | 9 / 238 |
+| language-prepared runtime-only consumer | 14 / 725 |
+| language-prepared process harness | 1 / 5 |
+| wasm-operations | 11 / 196 |
+| wasm-record-prepared | 11 / 1658 |
 
-## Historical operation/module combination
+An independently configured installed-header object consumer included
+`execution/operation.h` and linked only `Chibi::execution_contract`. It compiled
+with `-Wall -Wextra -Werror`; its include roots were exclusively installed
+execution_contract, types, support, and capabilities headers. No source-tree
+include root was supplied.
 
-The operation/module combination was independently reviewed and tested on
-2026-10-15 at `a26d0246feb343c93f28979d96cc9e1dd1fd4df8`, tree
-`a6926ee97b9dad41d3e99ab74429b8d2a2f7f95e`, against eligible main
-`f1bfe133afbf214de679ca3da9a12c08b6511788`. Its other parent is the earlier
-published operation head `b4d4c1f9e8ff2b98743958ac899038b49d8cc4c1`.
-Operation implementations/fixtures match that parent; the module export fix and
-fixtures match main. Only build-list, dispatcher and policy membership conflicts
-needed combining. Every previous group member and relative order is preserved.
+The Graph review checked all 141 include arrays preserve every non-capabilities
+entry and its order. The reduced native CMake build matched public-include order
+for 67 targets; four additional differences were existing `public/math` omissions.
+This is not full desktop command/link parity evidence.
 
-All five checks passed serially, each as one unchanged production 60-second
-invocation. Times exclude configuration/builds; every command exited zero.
+## Fixed oracles and controls
 
-| Invocation | Selectors | Cases passed | Assertions | Seconds |
-| --- | ---: | ---: | ---: | ---: |
-| `group language` | 30 | 397 | 36,563 | 22.088 |
-| `group wasm` | 18 | 241 | 32,680 | 7.618 |
-| `tool native-tools` | 1 | 116 | 29,566 | 22.075 |
-| `tool native-catalog` | 1 | 6 | 346 | 0.199 |
-| `tool language-prepared` | 1 | 19 | 833 | 0.265 |
+- UNKNOWN ABI tests use three literal ABI-v1 hashes for explicit raw function,
+  scalar-result, and action declarations, independent of generated operation
+  definitions. Rebuilding with main's original `catalog.c` passed those vectors;
+  the known-versus-opaque distinction test failed as expected.
+- Deliberately hashing UNKNOWN as a known operation failed the fixed ABI case.
+- Deliberately omitting dormant `component_field` validation failed the raw
+  metadata rejection case. The matrix covers both Owner and Delay.
+- Hardcoded `BF_OWNER`/`BF_DELAY` expectations check generated mappings. Execution
+  checks owner `7`, immediate zero/negative delays, positive suspension, NaN
+  pending state, and retained strings against literal expected results.
+- The prepared producer retires its source/catalog before writing. Its separate
+  consumer has no native callbacks/imports and checks owner, strings, completion
+  count, and synthetic times 0.25/0.5. It overwrites the original input string
+  buffer before dispatch to test ownership.
 
-Each operation and module case ran exactly once per applicable group. Prepared
-counts combine producer 6/199, runtime-only consumer 12/629 and parent 1/5.
-Native-tools used the compiler-only tooling closure; native-catalog used the
-native/compiler-enabled closure and retained all six preparation/native cases.
-Four build-currency checks passed separately. The 64-file reviewed source
-closure, 89-file corpus, policy worker and five output artifacts retained their
-pre-run hashes. The backend/sanitizer limitations below still apply.
+All mutation source changes were restored. The two defect controls built only the
+capabilities library and relinked the existing dispatcher after an initial full
+target attempt exposed the intentionally broken opaque ABI in the packaged-asset
+build. No changed runtime pin or seed was used to make that control pass.
 
-This is approval of the exact local combination, not approval of a future
-published head. Final documentation/content identity, updated remote blobs,
-current integration eligibility, server requirements and holds still need
-verification. Earlier operation controls remain historical evidence for their
-unchanged guards and fixtures; they were not rerun for this combination.
+## Successor: actual backend entries and bounded consumer checks
 
-## Historical operation validation on the earlier base
+Independent review found that selecting a compiled backend did not prove entry
+into generated code. The successor wraps actual dispatch and each resume window
+in the existing `behavior_run_scope`. It requires positive intended-backend
+entries, zero entries into either other backend, zero inspection/size fallbacks,
+zero inspected entries, and no counter overflow. Scopes end before assertions,
+and each resume resets the counters. Existing semantic values and step budgets
+are unchanged. An independent review checked these scope lifetimes and assertions.
 
-The following results predate module integration and are not current-combination
-runs. The earlier published `b4d4c1f9` tree also passed its separate five-check
-review on base `62906a50`; integration was then blocked by main advancing. Its
-retained report and hashes remain distinct from the later combined evidence.
-The older implementation was validated on 2026-10-15 against eligible main
-`62906a504fee6b2e0bd6349a8eeff1450529cd90`:
+| Focused successor check | Cases / assertions | Observed entries per backend |
+| --- | ---: | --- |
+| language-operations | 11 / 266 | Bytecode and SLJIT: 1 per dispatch, 1 at positive-delay resume |
+| wasm-operations | 11 / 266 | Bytecode and Wasm: 1 per dispatch, 1 at positive-delay resume |
+| language-prepared producer | 9 / 238 | Producer semantics unchanged |
+| language-prepared runtime-only consumer | 14 / 767 | Bytecode and SLJIT: dispatch 1, resume 1, stored completion 2 |
+| language-prepared process harness | 1 / 5 | Separate producer/consumer processes |
+| c-export-alias | 2 / 8035 | Compiler-enabled tooling; fixed existing C-export assertions |
+| record-c-export | 1 / 1428 | Compiler-enabled tooling; fixed existing record assertions |
 
-- Implementation and isolated controls: `986a100726357fdff43deba746ff59674bd53faf`,
-  tree `c948328774187efa69cec3b9e6f0b40342f6362c`.
-- Regular-gate integration: `5fbe3ce5ecc38a2316e57100fbfb92072817ac2f`,
-  tree `c73937726968e019a1137302a4d2dca7c1766902`. Product and fixture sources
-  are identical; the policy adds the operation selector once to each group.
+All listed successor checks passed. Every observed wrong-backend, inspection,
+fallback, and overflow count was zero. The counters increment at actual
+interpreter/SLJIT/Wasm entry sites; selecting an artifact is insufficient to pass.
+These synchronous cases do not establish direct generated-C, batch/system,
+worker-thread, or browser-embedding coverage.
 
-This section records those historical tested heads. It covers
-the [bounded Owner/Delta/Delay contract](engine-operation-contracts.md), not all L16.
+Compiler-enabled tooling reused the native SDK object cache through a task-local
+CMake inclusion hook; repository CMake configuration was not changed for that
+reuse. Its dry run estimated 65 compilations and five links, with no generation.
+The two-job build completed in 8.76 seconds with maximum child RSS 145,408,000
+bytes. C-export selectors took 2.127 and 1.360 seconds, with peak child RSS
+61,390,848 and 77,447,168 bytes. Backend selectors took 0.967, 0.437, and 0.257
+seconds; their maximum observed child RSS was 144,097,280 bytes.
 
-## Historical review and build conditions
+The full desktop CMake reference was configured from cached dependencies without
+building it. Graph command/link/header comparisons exposed and corrected two
+recovery omissions: SDK-contracts include ordering for seven source files, and
+the repeated capabilities archive required by reflect's direct and transitive
+CMake links. Independent review confirmed both corrections. The reference's
+architecture and SDK were explicitly aligned with Graph's discovered arm64/Mac
+SDK profile. The bounded AppleClang Graph run passed all 13 executable
+link-command comparisons and executable header staging. AppleClang
+compile-command parity fails:
+4 of 982 commands match; each of the other 978 reports Graph `-std=gnu23` versus
+AppleClang/CMake `-std=gnu2x` as its first difference. The flag-selection code in
+`tools/graph/engine/Engine.chibi` is unchanged from main. This remains a failed
+AppleClang parity check; flags and comparator assertions were not weakened. The final comparison took 8.03 seconds with maximum child RSS
+851,853,312 bytes. Graph used a task-local wrapper to cap jobs at two and retained
+its 50-second internal deadline and the test-policy cleanup deadline.
 
-Independent review checked declaration shape, generated opcode identity, catalog
-ABI domain separation, incremental invalidation, raw/custom binding validation,
-and the whole-catalog boundary before state-read/write rewrites. Unknown host
-operations gain no guarantees. Delay makes no no-reentry promise. The merged
-query/scalar-read implementation remained intact; module work was excluded at
-that earlier stage and is included in the later operation/module combination above.
+A configure-only check of isolated main
+`d1154cdb8677cbfe479d4be40db7ca480d10f103` reproduced the same flag mismatch
+using `/usr/bin/cc` (AppleClang 21.0.0.21000334), CMake 4.4.3, Release, arm64,
+and the same SDK. CMake's installed `Compiler/AppleClang-C.cmake` maps C23 GNU
+extensions to `gnu2x`; Graph's production `Engine.chibi::Flags` hardcodes
+`gnu23` for C. Its existing `Profile.chibi::CompilerId` distinguishes AppleClang.
+A proposed-only fix is to extend the existing `gnu2x` condition in `Flags` to
+AppleClang while preserving C++ handling. No production flag change was made
+for this recovery.
 
-Four build trees were current: native language, compiler-only tools, native tools
-with compiler support, and Wasm language. Native uses Clang 19.1.7 Debug,
-ASan/UBSan and assertions; leak detection is disabled for the existing tracing
-limitation. Wasm uses Emscripten 6.0.10 Release and Node 24.19.0. Native tools retain
-both native and preparation-gated catalog cases with desktop support disabled.
-Official pinned dependencies and Debian libclang package checksums were verified.
-Existing instrumented C++ dependencies require the C++ sanitizer and standard
-runtime at link time; warnings and sanitizers were not suppressed.
+The supported Homebrew/Mac-CI configuration passed the unchanged comparator on
+`b99c21baa566641635729b8c1939acb8d22aec72`: **982/982 compile commands across
+142 libraries, 13/13 executable links, and executable header staging** (three
+cases, 1015 assertions). Exact local configuration:
 
-Eight positional test initializers were converted to designated members in two
-isolated prerequisite commits. Review checked every explicit value and implicit
-zero against the actual struct fields; fixture inputs, calls and assertions are
-unchanged. They compiled successfully. Their prototype/UI fixture selectors were
-not independently executed by this matrix.
+- CMake 4.4.3 and Ninja; `CMAKE_BUILD_TYPE=Release`.
+- `CMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang` and
+  `CMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++`, Homebrew LLVM 23.1.1.
+- `CMAKE_OSX_ARCHITECTURES=arm64`.
+- Both `CMAKE_OSX_SYSROOT` and the Graph process's `SDKROOT` set to
+  `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk`.
+- `CHIBI_ENABLE_SANITIZERS=OFF`, `CHIBI_ENABLE_CCACHE=OFF`, the same pinned
+  task-local third-party archive, and `CMAKE_EXPORT_COMPILE_COMMANDS=ON`.
+- `test_policy.py --timeout 120 tool build-graph`, using the cached tooling
+  driver, the configure-only LLVM reference, and the two-job Graph host wrapper.
 
-## Historical selected positive results
+This toolchain is already selected by the Makefile's native default and the
+Mac CI workflow. Explicit SDK agreement matters: without shared `SDKROOT`, this
+installed LLVM selected the Command Line Tools SDK while the reference selected
+Xcode's SDK, correctly failing the comparator. No arguments were normalized or
+ignored. The successful check took 6.42 seconds with maximum child RSS
+965,165,056 bytes. The header-staging test deliberately uses a failing compiler;
+its expected failure output is not a failed test. No target build was performed
+for either configure-only reference.
 
-These seven routes ran on implementation `986a1007`, serially under the unchanged
-production 60-second supervisor. Times include in-test setup and exclude
-configuration/builds. All exited zero.
+Native-catalog's root `test_tools` dependency closure was estimated at 856
+compilations, 112 links, and 18 generation steps (986 total). This substantial
+build was reported and left unstarted. A repeated `ninja -n test_tools` and
+`ninja -t query test_tools` confirmed this is the closure of the specific
+`test/tools/test_tools` executable, not an all-target build. No claim is made
+for local native-catalog fixture execution.
 
-| Route | Cases passed | Assertions | Seconds |
-| --- | ---: | ---: | ---: |
-| `native-catalog` | 6 | 346 | 0.112 |
-| `language-program` | 124 | 10,894 | 2.204 |
-| `wasm-program` | 124 | 10,899 | 0.532 |
-| `language-incremental` | 13 | 235 | 0.423 |
-| `language-prepared` | 19 | 833 | 0.235 |
-| `language-operations` | 8 | 153 | 0.083 |
-| `wasm-operations` | 8 | 153 | 0.199 |
+Hosted coverage is defined in `.github/workflows/ci.yml`: both `native`
+(ubuntu-24.04) and `native-macos` (macos-15) run `make test-native`, which builds
+the full native drivers and dispatches `tools/test_policy.py group native`.
+That group includes `native-catalog`, mapped to
+`build/test/tools/test_tools --native-catalog`; the full native build enables
+`CHIBI_TEST_NATIVE_RUNTIME`, and the dispatcher calls
+`test_tool_native_catalog()`. Workflow dispatch can validate the recovery branch;
+its actual run head and results must be checked separately. Windows engine and
+Windows Studio jobs are disabled in the existing CI definition; paired Studio
+requires its optional `studio_sha` input. The separate compiler self-build
+workflow covers macOS, Linux, and Windows plus cross-platform comparison. Task-local caches, builds, diagnostic commands, and logs remain
+outside the published source tree for independent review.
 
-Prepared totals combine producer 6/199, runtime-only consumer 12/629 and parent
-1/5. Native execution covers VM/SLJIT; Wasm covers VM/generated Wasm. Source and
-all five output artifact hashes were unchanged after this selected matrix. The
-subsequent regular-group integration is recorded below. The operation fixture's
-then-admitted bounds were eight cases, 42 catalog attempts, seven source
-preparation/lowering attempts, four tiny
-finalizations, eight dispatches and two synthetic updates, with 1,000 steps per
-dispatch/update; see [testing](testing.md#temporary-60-second-policy).
+## Restored task-write diagnostic protection
 
-Earlier failures remain part of the evidence: scalar semantic flags were
-incorrectly accepted; a state rewrite bypassed the call-only boundary; Delay's
-initial no-reentry claim was false; fixture syntax and two missing raw Delay
-bindings needed correction. Four existing semantic-negative program calls now
-assert their intended diagnostic. An earlier native-catalog invocation ran zero
-cases because its tools build lacked native support; the six-case result above
-resolves that coverage gap. Those earlier failures are not counted as passes.
+The history-handoff audit found ten assertions from the original PR that the
+first selective recovery had omitted. They are restored verbatim in
+`program_task_state_awaits_its_function_results`: successful native catalog and
+parsing, semantic rejection, and the specific expected-double diagnostic are
+required in addition to generic compile failure. No diagnostic spelling,
+fixture value, production behavior, or numeric rule needed adaptation.
 
-## Historical isolated negative controls
+The case passed through its existing `language-program` selector (165 cases /
+12,391 assertions, 0.78 seconds). The small `language-operations` regression
+also passed (11 / 266, 0.16 seconds). Both retained 60-second cleanup deadlines.
+The two-job cached build compiled one object and relinked the dispatcher in
+2.58 seconds under a 90-second deadline, with maximum child RSS 135,266,304
+bytes. Test peak RSS was 23,904,256 bytes. The complete original-scope and
+per-path merge disposition is recorded in [handoff](engine-operation-handoff.md).
 
-On implementation `986a1007`, each control removed exactly one reviewed
-production guard/comparison, leaving fixtures and assertions unchanged. Every run exited one with 7/8 cases passing
-and exactly one predicted assertion failure; no timeout or sanitizer finding.
+## Resources and remaining coverage
 
-| Control removed | Observed detection | Assertions | Seconds |
-| --- | --- | ---: | ---: |
-| A: known-operation ABI domain | Known and opaque identities compared equal | 147 | 0.135 |
-| B: snapshot operation comparison | Inappropriate source reuse | 153 | 0.087 |
-| C: native binding guard | Mismatched raw binding was accepted | 145 | 0.092 |
-| D: custom lowerer binding guard | Required boundary diagnostic was missing | 153 | 0.087 |
-| E: whole-catalog entry guard | Direct state-rewrite rejection requirement failed | 149 | 0.087 |
+Builds used two jobs each (at most two independent builds overlapped). Initial
+native target build took 62.29 seconds; final native rebuild took 15.76 seconds
+under a 90-second cleanup deadline, including its existing packaged-asset fixture.
+That final build's measured maximum child RSS was 1,847,525,376 bytes. Final ten
+selector runs totaled about 3.4 seconds; maximum observed child RSS in that batch
+was 218,824,704 bytes. No compiler full self-compile, seed regeneration, runtime
+pin change, render, Studio session, release, or deployment was performed.
 
-For D, the plan remained invalid with one diagnostic: downstream verification
-still rejected it. This control detects loss of the required boundary diagnostic,
-not unsafe execution. A/C stop before lowering the altered table; D/E never
-finalize or execute altered plans. B uses the two already-admitted valid constant
-libraries. Later unchanged valid cases continue after each expected case failure.
+Clang-format 22.1.8 and `git diff --check` passed for changed sources. Full required
+native/materials/projects/language-all/tools groups, native-catalog fixture
+execution, sanitizers, Linux/Windows, and browser embedding were not run.
+Full desktop Graph parity passed for the supported Homebrew configuration;
+the separate inherited AppleClang compile-command mismatch remains as detailed above.
+Wasm operation and record-prepared execution
+does not establish a separate Wasm runtime-only operation consumer; the separate
+runtime-only proof here is macOS bytecode/SLJIT. These remain explicit coverage
+limits for the integration owner.
 
-Exact clean source bytes were restored between controls; mutations never
-accumulated. The final restored binary was byte-identical to the clean control
-baseline and passed 8/8 cases, 153 assertions, in 0.092 seconds. The author tree
-and binaries were untouched. Control builds were removed after preserving logs,
-configuration, commands, patches and hashes. Log digests are recorded in
-[evidence](evidence/engine-operations/log-sha256.txt).
-
-## Historical regular gate integration
-
-The standalone routes initially left a regular regression-coverage gap. After
-independent workload admission, `5fbe3ce5` added `language-operations` once to
-`GROUPS["language"]` and `wasm-operations` once to `GROUPS["wasm"]`, preserving
-all previous members and their order. Both complete groups and the C tooling
-policy integration then passed serially, each under one shared 60-second
-production deadline, with no aggregate reconstruction:
-
-| Invocation | Selectors | Cases passed | Assertions | Seconds |
-| --- | ---: | ---: | ---: | ---: |
-| `tool native-tools` | 1 | 116 | 29,566 | 23.114 |
-| `group language` | 29 | 390 | 36,125 | 22.867 |
-| `group wasm` | 17 | 234 | 32,242 | 3.289 |
-
-Each of the eight operation cases ran exactly once in each language group.
-`native-tools` used the compiler-only tools build and exercised the C-owned
-policy integrations against the current checkout; it was neither the unit-only
-route nor the wider native-enabled optional tooling closure. Native corpus
-coverage used exactly 89 files, 63,497 bytes total, largest file 5,489 bytes.
-Source, policy, corpus, all five output artifacts and the policy worker retained
-their pre-run hashes. Configuration/builds were separate from these measurements.
-
-The regular-gate coverage gap is closed. The native language gate is used by the
-existing Linux/macOS CI workflow; the Wasm group is used by `make test-wasm`.
-This does not add or activate a server CI job. These measurements establish
-success for the exact candidate/environment, not a future runtime guarantee.
-The earlier seven selected passes and five controls remain evidence for the
-unchanged implementation, rather than being reported as reruns on `5fbe3ce5`.
-
-## Scope of the result
-
-Independent source/workload/test review approved the bounded implementation and
-its regular-gate integration at the exact tested heads above.
-Publication still requires final head/content identity, integration eligibility,
-applicable server checks and all explicit holds. This matrix does not claim full
-engine, browser, GPU, leak-detection or Wasm-incremental coverage. The five controls
-are detection evidence for those exact removals, not exhaustive ABI verification.
-Direct prepared semantics still require the manual semantic version guard.
-Generic host ownership/effects and separate global/graph mappings remain future
-work described in the contract.
+The denied action resolving review thread `PRRT_kwDOT_IpgM6s41Mg` /
+`discussion_r4286144466` remains prohibited and unattempted. No old PR branch,
+review state, old owner's worktree, or recovery directory was modified. The
+integration owner must handle PR state and any subsequent merge authorization.

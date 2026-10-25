@@ -5,7 +5,11 @@
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
+#include "types/record.h"
+#include "types/text.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -523,6 +527,12 @@ static bool fields_size(size_t *total, const type_desc *type, const void *data, 
                 !fields_size(total, nested, field, nesting + 1)) {
                 return false;
             }
+        } else if (f->type == PIN_STR && f->text_descriptor) {
+            const pin_string *text = *(const pin_string *const *)field;
+            if (f->size != sizeof text || (!add_size(total, sizeof *text + 1) ||
+                                           !add_size(total, text ? text->length : 0))) {
+                return false;
+            }
         } else if (f->type == PIN_STR || f->type == PIN_NAME) {
             if (f->size != sizeof(char *) ||
                 !text_size(total, *(const char *const *)field)) {
@@ -532,33 +542,78 @@ static bool fields_size(size_t *total, const type_desc *type, const void *data, 
     }
     return true;
 }
-static bool value_size(size_t *total, const pin_value *v, int nesting)
+static bool value_size(size_t *total, const pin_value *v, int nesting, const pin_record *shared)
 {
-    if (nesting >= 16 || !text_size(total, v->type_name)) {
+    if (nesting >= 16) {
         return false;
+    }
+    if (v->record) {
+        if (!pin_record_valid(v->record) || !pin_value_type(v) ||
+            (shared && !pin_record_same(shared, v->record)) ||
+            (!shared && !add_size(total, v->record->bytes))) {
+            return false;
+        }
+    } else if (shared || !text_size(total, v->type_name)) {
+        return false;
+    }
+    if (v->container == PIN_CONTAINER_MAP) {
+        const pin_map *map = v->ptr;
+        if (v->type != PIN_UNION || v->record) {
+            return false;
+        }
+        if (!map) {
+            return true;
+        }
+        if (map->count < 0 || map->count > 65536 || (map->count && !map->entries) ||
+            !pin_map_key_supported(map->key_type) ||
+            !add_size(total, sizeof *map + (size_t)map->count * sizeof *map->entries) ||
+            !value_size(total, &map->key_type, nesting + 1, NULL) ||
+            !value_size(total, &map->value_type, nesting + 1, NULL)) {
+            return false;
+        }
+        for (int n = 0; n < map->count; n++) {
+            const pin_map_entry *entry = &map->entries[n];
+            if (!pin_map_entry_valid(map, &entry->key, &entry->value) ||
+                !value_size(total, &entry->key, nesting + 1, NULL) ||
+                !value_size(total, &entry->value, nesting + 1, map->value_type.record)) {
+                return false;
+            }
+        }
+        return true;
     }
     if (v->container >= PIN_CONTAINER_ARRAY) {
         const pin_array *a = v->ptr;
         if (!a) {
             return true;
         }
-        if (!text_size(total, a->type_name) || a->count < 0 ||
-            a->count > 65536 || (a->count && !a->items) ||
+        if ((v->record && (!pin_record_valid(a->record) ||
+                           !pin_record_same(v->record, a->record) ||
+                           a->element_type != PIN_STRUCT || !a->type_name ||
+                           strcmp(a->type_name, v->type_name))) ||
+            (!v->record && (a->record || !text_size(total, a->type_name))) ||
+            !pin_array_valid(a) || a->count > 65536 ||
             !add_size(total, sizeof *a + (size_t)a->count * (sizeof(pin_value) + 2 * sizeof(int)))) {
             return false;
         }
         for (int n = 0; n < a->count; n++) {
-            if (!value_size(total, &a->items[n], nesting + 1)) {
+            pin_value item = pin_array_get(a, n);
+            if ((v->record && (item.type != PIN_STRUCT ||
+                               item.container != PIN_CONTAINER_SINGLE)) ||
+                !value_size(total, &item, nesting + 1, v->record)) {
                 return false;
             }
         }
         return true;
     }
-    if (v->type == PIN_STR || v->type == PIN_NAME) {
+    if (v->type == PIN_STR) {
+        return add_size(total, sizeof(pin_string) + 1) &&
+               add_size(total, pin_text(*v).length);
+    }
+    if (v->type == PIN_NAME) {
         return text_size(total, v->str);
     }
     if (v->type == PIN_STRUCT && v->ptr) {
-        const type_desc *type = type_catalog_find(v->type_name);
+        const type_desc *type = pin_value_type(v);
         return type && add_size(total, type->size) &&
                fields_size(total, type, v->ptr, nesting + 1);
     }
@@ -569,7 +624,7 @@ static bool value_size(size_t *total, const pin_value *v, int nesting)
             return false;
         }
         for (int n = 0; n < value->count; n++) {
-            if (!value_size(total, &value->values[n], nesting + 1)) {
+            if (!value_size(total, &value->values[n], nesting + 1, NULL)) {
                 return false;
             }
         }
@@ -642,7 +697,7 @@ static void capture(
         return;
     }
     size_t bytes = 0;
-    if (!value_size(&bytes, value, 0)) {
+    if (!value_size(&bytes, value, 0, NULL)) {
         r->view.availability = bytes == SNAPSHOT_LIMIT ? EXECUTION_WATCH_BUDGET
                                                        : EXECUTION_WATCH_UNSUPPORTED;
         return;

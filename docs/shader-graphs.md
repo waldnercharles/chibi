@@ -99,6 +99,7 @@ editing an explicit vector overrides that default.
 | Fractal Noise | Position, Scale, Detail, Roughness → Factor | Object Position; accepts connected 1D/2D/3D coordinates. Scale 1, Detail 4, Roughness 0.5. |
 | Voronoi | Position, Scale, Randomness → Distance and Cell Color | Object Position; supports 2D/3D. Scale 1, Randomness 1. Zero randomness centers a feature in every grid cell. |
 | Color Ramp | Factor → Color and Alpha | Factor 0.5; two opaque stops, black at 0 and white at 1. Stops and interpolation are authored settings. |
+| Star Field | Direction 3D, Density, Brightness → Color 3D | World Position, the direction looked along in a sky material. One candidate star per cell of a 1024-cell grid on each cube face; Density is stars per square degree (0 to 100). Each star is a Gaussian about half a pixel wide from the direction's screen derivatives, keeping its energy at any pixel size, so Brightness is the brightest star's peak where a pixel spans 0.03 degrees. CPU evaluation uses that pixel size. |
 | Surface Influence | Position 3D → Color 3D | World Position; planar activity from scene Surface Influence components. Returns black without a scene signal. |
 
 Surface Influence samples colored activity in the world XZ plane. Connect it to
@@ -227,8 +228,8 @@ migrated directly to Surface Output; the old lighting-buffer output is removed.
 
 ## Arena development
 
-Voidweaver and Arena3D are separate extracted repositories with separate
-Surface materials. Their graphs live in each repository's `content/materials`.
+Voidweaver and Arena3D, retired on 2026-10-17, kept their Surface materials in
+their own archived repositories' `content/materials`.
 The engine keeps focused regression fixtures rather than duplicate game assets. Shared pulse/ring functions and the designer effect nodes
 keep each project's example roots focused on their visible effects.
 
@@ -312,9 +313,10 @@ batches with different programs. Repeated opaque actors sharing a program and
 mesh remain instanced. Native 2D compute uses ordered passes; WebGL 2D and the
 3D renderer bind their own contiguous sampler sets.
 
-Sampling currently uses the base image level, with no mipmaps or anisotropic
-filtering. Small distant image detail can therefore alias; those filtering modes
-remain future work. Images are limited to 2048 pixels per side. The loader checks
+CPU inspection samples the base image level. GPU bilinear image variants have
+mipmaps and anisotropic filtering, and lit 3D materials use coordinate gradients
+to select their sampling footprint. A CPU base-level sample therefore does not
+reproduce a minified GPU pixel. Images are limited to 2048 pixels per side. The loader checks
 dimensions before full decoding and GPU upload, so oversized replacements report
 an error and preserve the previous image. The initial image format is RGBA8, so HDR and higher-bit-depth
 image data are not preserved. CPU/GPU checks allow 0.003 absolute channel error

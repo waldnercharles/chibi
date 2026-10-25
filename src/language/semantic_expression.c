@@ -1,3 +1,4 @@
+#include "language/scalar_constant.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -10,24 +11,65 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Beside another integer, a char takes part as int, or as uint beside a
+ * 32- or 64-bit unsigned operand, since every Unicode scalar fits both; the
+ * result is then the other operand's type, as int's would be. */
+script_type script_analyzer_char_operand(script_type operand, script_type other)
+{
+    if (!script_type_char(operand) || script_type_char(other) ||
+        (other.flags & SCRIPT_TYPE_UNTYPED)) {
+        return operand;
+    }
+    bool wide_unsigned = other.storage == PIN_U32 || other.storage == PIN_U64;
+    return (script_type){ .storage = wide_unsigned ? PIN_U32 : PIN_I32,
+                          .flags = operand.flags };
+}
+/* Two untyped constants combine as a char, then a floating number, then the
+ * wider integer, as Go's untyped constant kinds do. */
+static script_type untyped_common(script_type left, script_type right)
+{
+    if (script_type_char(left) || script_type_char(right)) {
+        return script_char_type();
+    }
+    if (left.storage > PIN_U64 || right.storage > PIN_U64) {
+        return (script_type){ .storage = PIN_F64 };
+    }
+    pin_type common = behavior_scalar_common_integer(left.storage, right.storage);
+    return (script_type){ .storage = common == PIN_FLOW ? PIN_U64 : common };
+}
 script_type script_analyzer_arithmetic_type(script_type left, script_type right)
 {
     if (left.flags & SCRIPT_TYPE_UNTYPED) {
         if (!(right.flags & SCRIPT_TYPE_UNTYPED)) {
             return right;
         }
-        return (script_type){ .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+        script_type untyped = untyped_common(left, right);
+        untyped.flags = SCRIPT_TYPE_UNTYPED;
+        return untyped;
     }
     if (right.flags & SCRIPT_TYPE_UNTYPED) {
         return left;
     }
+    left = script_analyzer_char_operand(left, right);
+    right = script_analyzer_char_operand(right, left);
     if (left.storage == PIN_F64 || right.storage == PIN_F64) {
         return (script_type){ .storage = PIN_F64 };
     }
     if (left.storage == PIN_F32 || right.storage == PIN_F32) {
         return (script_type){ .storage = PIN_F32 };
     }
-    return left.storage >= right.storage ? left : right;
+    bool integers = left.storage >= PIN_I8 && left.storage <= PIN_U64 &&
+                    right.storage >= PIN_I8 && right.storage <= PIN_U64;
+    if (!integers) {
+        return left.storage >= right.storage ? left : right;
+    }
+    pin_type common = behavior_scalar_common_integer(left.storage, right.storage);
+    if (common == PIN_FLOW) {
+        return script_analyzer_bad_type();
+    }
+    return common == left.storage  ? left
+         : common == right.storage ? right
+                                   : (script_type){ .storage = common };
 }
 bool script_analyzer_numeric_aggregate(const script_catalog *catalog, script_type type, int depth)
 {
@@ -90,7 +132,8 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
     int arity = expression->right >= 0 ? 2 : 1;
     for (int i = 0; i < a->catalog->capability_count; i++) {
         const script_catalog_capability *candidate = &a->catalog->capabilities[i];
-        if (!candidate->operator_name || strcmp(candidate->operator_name, name) ||
+        if (!script_analyzer_native_capability(a, candidate->id) ||
+            !candidate->operator_name || strcmp(candidate->operator_name, name) ||
             candidate->parameter_count != arity || candidate->result_count != 1) {
             continue;
         }
@@ -166,14 +209,49 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
     return true;
 }
 
-static int number_constant(analyzer *a, TSNode node, script_type expected, bool negate)
+/* Without a type from context a literal is typed by its spelling, as in C#:
+ * an integer is int, or the first of int64 and uint64 that holds it, and a
+ * decimal point or exponent makes a number. Hex digits include e. */
+static script_type untyped_number(const char *text, long double value)
 {
+    script_type type = { .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+    if (!strpbrk(text, "xX") && strpbrk(text, ".eE")) {
+        return type;
+    }
+    type.storage = value >= -0x1p31L && value < 0x1p31L ? PIN_I32
+                 : value >= -0x1p63L && value < 0x1p63L ? PIN_I64
+                                                        : PIN_U64;
+    return type;
+}
+/* A union such as `number | Cancelled` gives a literal its one numeric
+ * alternative's type. */
+static script_type numeric_alternative(const analyzer *a, script_type expected)
+{
+    const script_catalog_type
+        *type = (expected.flags & SCRIPT_TYPE_UNION) && expected.container == PIN_CONTAINER_SINGLE
+                  ? script_catalog_type_by_id(a->catalog, expected.nominal)
+                  : NULL;
+    script_type found = expected;
+    int count = 0;
+    for (int i = 0; type && i < type->variant_count; i++) {
+        if (!type->variants[i].tagged && script_type_numeric(type->variants[i].type)) {
+            found = type->variants[i].type;
+            count++;
+        }
+    }
+    return count == 1 ? found : expected;
+}
+script_expression script_analyzer_number_literal(analyzer *a, TSNode node, script_type expected, bool negate)
+{
+    expected = numeric_alternative(a, expected);
     expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     script_expression result = { .kind = SCRIPT_EXPR_CONSTANT,
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) };
+                                 .range = script_analyzer_range(a, node) };
+    /* A negated literal's range starts at its minus sign. */
+    TSNode literal = negate ? ts_node_parent(node) : node;
     char *text = script_analyzer_text_copy(a, node);
     if (negate) {
         size_t size = strlen(text);
@@ -185,7 +263,7 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
     errno = 0;
     long double value = strtold(text, &end);
     if (*end || !isfinite(value) || errno == ERANGE) {
-        script_analyzer_diagnostic(a, node, "Numeric literal must be finite");
+        script_analyzer_diagnostic(a, literal, "Numeric literal must be finite");
     }
     result.kind = SCRIPT_EXPR_CONSTANT;
     bool enumeration = expected.storage == PIN_ENUM &&
@@ -193,7 +271,7 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
     result.type = (script_type_numeric(expected) || enumeration) &&
                           !(expected.flags & SCRIPT_TYPE_UNTYPED)
                     ? expected
-                    : (script_type){ .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+                    : untyped_number(text, value);
     if (enumeration && expected.nominal) {
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
@@ -219,7 +297,7 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
             result.constant.type_name = name;
         }
         free(text);
-        return script_analyzer_expr_add(a, result);
+        return result;
     }
     result.constant.type = result.type.storage;
     long double limit = 0;
@@ -287,14 +365,19 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
         fits = parsed <= UINT64_MAX && text[0] != '-' && !*end &&
                errno != ERANGE && exact <= maximum;
     }
+    if (script_type_char(result.type) && fits) {
+        fits = (value >= 0 && value < 0xD800) || (value > 0xDFFF && value <= 0x10FFFF);
+    }
     if (!fits) {
         exact = 0;
         exact_signed = 0;
         script_analyzer_diagnostic(
             a,
-            node,
-            "Numeric literal is outside the range of %s",
-            script_scalar_name(result.type.storage)
+            literal,
+            integer && isfinite(value) && truncl(value) != value
+                ? "Numeric literal has a fraction, which %s cannot hold"
+                : "Numeric literal is outside the range of %s",
+            script_numeric_name(result.type)
         );
         value = 0;
     }
@@ -318,6 +401,48 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
         default: result.constant.d = value; break;
     }
     free(text);
+    return result;
+}
+static int number_constant(analyzer *a, TSNode node, script_type expected, bool negate)
+{
+    return script_analyzer_expr_add(a, script_analyzer_number_literal(a, node, expected, negate));
+}
+/* A character literal takes an integer type from context when its scalar
+ * fits, as Odin types an untyped rune constant, and is a char otherwise. */
+static int character_constant(analyzer *a, TSNode node, script_type expected)
+{
+    expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    int value = 0;
+    script_analyzer_character_value(a, node, &value);
+    script_expression result = { .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = script_char_type(),
+                                 .constant = { .type = PIN_I32, .i = value },
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 };
+    bool typed = script_type_numeric(expected) &&
+                 !(expected.flags & SCRIPT_TYPE_UNTYPED);
+    if (!typed) {
+        result.type.flags |= expected.flags & SCRIPT_TYPE_UNTYPED;
+        return script_analyzer_expr_add(a, result);
+    }
+    if (expected.storage > PIN_U64) {
+        script_analyzer_diagnostic(a, node, "A character literal needs an integer or char type");
+        result.type = script_analyzer_bad_type();
+        return script_analyzer_expr_add(a, result);
+    }
+    if (value < behavior_scalar_integer_low(expected.storage) ||
+        (uint64_t)value > behavior_scalar_integer_high(expected.storage)) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "Character literal is outside the range of %s",
+            script_numeric_name(expected)
+        );
+    }
+    result.type = expected;
+    result.constant = behavior_scalar_from_bits(expected.storage, (uint64_t)value);
     return script_analyzer_expr_add(a, result);
 }
 
@@ -329,16 +454,23 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
     if (expression->kind == SCRIPT_EXPR_CONSTANT) {
         script_range range = expression->range;
-        bool negative = signbit(expression->constant.d);
+        pin_value constant = expression->constant;
+        bool negative = constant.type == PIN_F32 ? signbit(constant.f)
+                      : constant.type == PIN_F64
+                          ? signbit(constant.d)
+                          : behavior_scalar_signed(constant.type) &&
+                                (int64_t)behavior_scalar_bits(constant) < 0;
         TSNode node = ts_node_descendant_for_byte_range(
-            ts_tree_root_node(a->syntax->tree),
+            ts_tree_root_node(script_analyzer_document_syntax(a, range.document)->tree),
             (uint32_t)range.start,
             (uint32_t)range.end
         );
         if (script_analyzer_is(node, "unary_expression")) {
             node = script_analyzer_field(node, "operand");
         }
-        int converted = number_constant(a, node, type, negative);
+        int converted = script_analyzer_is(node, "character")
+                          ? character_constant(a, node, type)
+                          : number_constant(a, node, type, negative);
         a->out->expressions[index] = a->out->expressions[converted];
         a->out->expressions[index].range = range;
         return;
@@ -355,6 +487,83 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
 }
 
+static bool typed_integer(script_type type)
+{
+    return script_type_numeric(type) && !(type.flags & SCRIPT_TYPE_UNTYPED) &&
+           type.storage >= PIN_I8 && type.storage <= PIN_U64;
+}
+/* Integer operands of a binary operation share one type; the author converts
+ * one of them, as in Odin. A char holds every Unicode scalar in 32 bits, so it
+ * takes part beside any 32- or 64-bit integer as that integer. */
+bool script_analyzer_integers_match(script_type x, script_type y)
+{
+    if (script_type_char(x) != script_type_char(y)) {
+        return behavior_scalar_size(script_type_char(x) ? y.storage : x.storage) >= 4;
+    }
+    return x.storage == y.storage;
+}
+void script_analyzer_mismatched_integers(analyzer *a, TSNode node, script_type x, script_type y)
+{
+    script_analyzer_diagnostic(
+        a,
+        node,
+        "Mismatched integer types %s and %s; convert one operand",
+        script_numeric_name(x),
+        script_numeric_name(y)
+    );
+}
+/* A shift has its left operand's type; the count keeps its own unsigned
+ * type, and lowering converts it, so a count past the width stays past it.
+ * An untyped left operand takes the expected type. An untyped integer beside
+ * a typed count stays untyped, so the other operand of a comparison or an
+ * arithmetic operation types it as it would type the literal alone; any other
+ * untyped left operand is an int. */
+static int shift_expression(analyzer *a, TSNode node, script_expression result, script_type expected)
+{
+    TSNode count = script_analyzer_field(node, "right");
+    script_type x = script_analyzer_expr_type(a, result.left),
+                y = script_analyzer_expr_type(a, result.right);
+    const script_expression *right = &a->out->expressions[result.right];
+    bool negative = right->kind == SCRIPT_EXPR_CONSTANT &&
+                    behavior_scalar_integer(right->constant.type) &&
+                    behavior_scalar_signed(right->constant.type) &&
+                    (int64_t)behavior_scalar_bits(right->constant) < 0;
+    /* A negative constant count is reported with the other constants. */
+    if (!negative && typed_integer(y) && !script_type_char(y) &&
+        behavior_scalar_signed(y.storage)) {
+        script_analyzer_diagnostic(a, count, "Shift count must be unsigned; convert it with uint(value)");
+    } else if (!negative && !(y.flags & SCRIPT_TYPE_UNTYPED) && (!typed_integer(y) || script_type_char(y))) {
+        script_analyzer_diagnostic(a, count, "Shift count must be an unsigned integer");
+    }
+    script_type value = x;
+    if (x.flags & SCRIPT_TYPE_UNTYPED) {
+        bool both = y.flags & SCRIPT_TYPE_UNTYPED,
+             typed = script_type_numeric(expected) &&
+                     !(expected.flags & SCRIPT_TYPE_UNTYPED),
+             open = !typed && !both && x.storage >= PIN_I8 && x.storage <= PIN_U64;
+        value = typed        ? expected
+              : both || open ? x
+                             : (script_type){ .storage = PIN_I32 };
+        if (!open && (!both || script_type_numeric(expected))) {
+            value.flags &= ~SCRIPT_TYPE_UNTYPED;
+        }
+        contextual_numeric(a, result.left, value);
+        value = script_analyzer_expr_type(a, result.left);
+    }
+    if (!typed_integer(value) && !(value.flags & SCRIPT_TYPE_UNTYPED)) {
+        script_analyzer_diagnostic(a, node, "Shift requires an integer value");
+    }
+    if ((y.flags & SCRIPT_TYPE_UNTYPED) && !negative) {
+        /* Counts keep their exact expression and an independent type until
+         * constant folding. Lowering converts runtime counts to the value's
+         * type only after the constant checks have finished. */
+        contextual_numeric(a, result.right, script_analyzer_conversion_operand(a, count));
+    }
+    result.effects = script_analyzer_expr_effects(a, result.left) |
+                     script_analyzer_expr_effects(a, result.right);
+    result.type = value;
+    return script_analyzer_expr_add(a, result);
+}
 /* Awaiting a task handle waits for that task and takes the results of the
  * function that started it, when the handle's type names one. */
 static int join_task(analyzer *a, TSNode node, int value)
@@ -362,7 +571,7 @@ static int join_task(analyzer *a, TSNode node, int value)
     script_type task = script_analyzer_expr_type(a, value);
     script_expression result = { .kind = SCRIPT_EXPR_JOIN,
                                  .type = { .storage = PIN_FLOW },
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = -1,
                                  .left = value,
                                  .right = -1,
@@ -425,11 +634,291 @@ static int join_task(analyzer *a, TSNode node, int value)
     asetlen(a->narrowed, 0);
     return script_analyzer_expr_add(a, result);
 }
+/* Add immutable defaults after explicit expressions, preserving their authored
+ * evaluation order. Required members can never be supplied by zero storage. */
+static void record_defaults(analyzer *a, TSNode node, script_expression *result)
+{
+    const script_catalog_type
+        *type = script_catalog_type_by_id(a->catalog, result->type.nominal);
+    if (!type || !type->authored_record ||
+        result->type.container != PIN_CONTAINER_SINGLE) {
+        return;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        bool provided = false;
+        for (int j = 0; j < acount(result->arguments); j++) {
+            provided |= result->arguments[j].parameter == i;
+        }
+        if (provided) {
+            continue;
+        }
+        const script_catalog_field *field = &type->fields[i];
+        if (!field->has_default) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "Missing required record field '%s'",
+                field->name
+            );
+            continue;
+        }
+        pin_value owned = { 0 };
+        if (pin_value_snapshot_to_arena(&a->out->constants, &owned, &field->default_value)) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "Cannot retain record field default '%s'",
+                field->name
+            );
+            continue;
+        }
+        int value = script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = field->type,
+                                 .constant = owned,
+                                 .constant_snapshot = true,
+                                 .range = result->range,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .entry = -1 }
+        );
+        apush(result->arguments, ((script_argument){ value, i, field->id, result->range }));
+    }
+}
+/* Whether symbol is a payload name a handler without a parameter list binds,
+ * spelled like a parameter of the function the handler runs in. A bare read
+ * would take the payload, though the function's parameter is in sight. An
+ * `after entry` payload is the macro's own parameters, so it is exempt. */
+static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
+{
+    if (symbol->kind != SCRIPT_PARAMETER || symbol->declaration.start >= 0 ||
+        symbol->function < 0) {
+        return false;
+    }
+    const script_function *handler = &a->out->functions[symbol->function];
+    if ((handler->kind != SCRIPT_FUNCTION_CONTINUATION &&
+         handler->kind != SCRIPT_FUNCTION_HANDLER) ||
+        handler->parent < 0) {
+        return false;
+    }
+    const script_function *owner = &a->out->functions[handler->parent];
+    for (int i = 0; i < acount(owner->parameters); i++) {
+        if (!strcmp(a->out->symbols[owner->parameters[i]].name, symbol->name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* The value `null` makes of a nonoptional type: an empty container, a record
+ * of its field defaults, or zero. */
+static int zero_value(analyzer *a, TSNode node, script_type type)
+{
+    script_expression result = {
+        .kind = type.container == PIN_CONTAINER_MAP    ? SCRIPT_EXPR_MAP
+              : type.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
+              : type.storage == PIN_STRUCT             ? SCRIPT_EXPR_STRUCT
+                                                       : SCRIPT_EXPR_CONSTANT,
+        .type = type,
+        .range = script_analyzer_range(a, node),
+        .constant = { .type = type.storage, .container = type.container },
+        .symbol = -1,
+        .left = -1,
+        .right = -1
+    };
+    if (result.kind == SCRIPT_EXPR_STRUCT) {
+        record_defaults(a, node, &result);
+    }
+    return script_analyzer_expr_add(a, result);
+}
+/* What reading an absent key yields, as Odin does: the value type's zero, or
+ * nil for a boxed optional. A union, task or reference value has no zero, nor
+ * does a record with a required field; reading those keys stays checked. */
+static int absent_value(analyzer *a, TSNode node, script_type type)
+{
+    if ((type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) && !(type.flags & SCRIPT_TYPE_TASK)) {
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_NIL,
+                                 .type = type,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 }
+        );
+    }
+    if (type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNION | SCRIPT_TYPE_TASK |
+                      SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED) ||
+        (type.storage == PIN_UNION && type.container == PIN_CONTAINER_SINGLE)) {
+        return -1;
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(a->catalog, type.nominal);
+    if (type.storage == PIN_STRUCT && type.container == PIN_CONTAINER_SINGLE) {
+        if (!record || !record->authored_record) {
+            return -1;
+        }
+        for (int i = 0; i < record->field_count; i++) {
+            if (!record->fields[i].has_default) {
+                return -1;
+            }
+        }
+    }
+    return zero_value(a, node, type);
+}
+static bool map_key_supported(script_type key)
+{
+    return key.container == PIN_CONTAINER_SINGLE &&
+           !(key.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK | SCRIPT_TYPE_UNION)) &&
+           (key.storage == PIN_BOOL ||
+            (key.storage >= PIN_I8 && key.storage <= PIN_F64) ||
+            key.storage == PIN_STR || key.storage == PIN_NAME ||
+            key.storage == PIN_ENUM || key.storage == PIN_HANDLE);
+}
+/* `["Ada": 3]` takes its key and value types from context, or else from its
+ * first entry; `[:]` needs context. */
+static int map_literal(analyzer *a, TSNode node, script_type expected)
+{
+    script_expression result = { .kind = SCRIPT_EXPR_MAP,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 };
+    bool inferred = expected.container != PIN_CONTAINER_MAP || !expected.collection;
+    if (!inferred && (expected.flags & SCRIPT_TYPE_OPTIONAL)) {
+        expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    }
+    script_type untyped = { .flags = SCRIPT_TYPE_UNTYPED };
+    script_type key = inferred ? untyped
+                               : script_catalog_key_type(a->catalog, expected);
+    script_type value_type = inferred
+                               ? untyped
+                               : script_catalog_element_type(a->catalog, expected);
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode entry = ts_node_named_child(node, i);
+        if (ts_node_is_extra(entry)) {
+            continue;
+        }
+        int key_value = script_analyzer_expression(a, script_analyzer_field(entry, "key"), key);
+        int value = script_analyzer_expression(a, script_analyzer_field(entry, "value"), value_type);
+        if (inferred && !acount(result.arguments)) {
+            key = script_analyzer_expr_type(a, key_value);
+            value_type = script_analyzer_expr_type(a, value);
+            key.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+            value_type.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+        }
+        script_analyzer_require(a, entry, value_type, script_analyzer_expr_type(a, value));
+        script_type actual_key = script_analyzer_expr_type(a, key_value);
+        actual_key.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+        if (!script_type_equal(key, actual_key)) {
+            script_analyzer_diagnostic(a, entry, "Map key type does not match");
+        }
+        script_range range = script_analyzer_range(a, entry);
+        apush(result.arguments, ((script_argument){ key_value, -1, 0, range }));
+        apush(result.arguments, ((script_argument){ value, -1, 0, range }));
+        result.effects |= script_analyzer_expr_effects(a, key_value) |
+                          script_analyzer_expr_effects(a, value);
+    }
+    if (!acount(result.arguments) && inferred) {
+        script_analyzer_diagnostic(a, node, "An empty map needs its key and value types from context");
+        result.type = script_analyzer_bad_type();
+        return script_analyzer_expr_add(a, result);
+    }
+    if (!map_key_supported(key)) {
+        script_analyzer_diagnostic(a, node, "Unsupported map key type");
+    }
+    result.type = script_analyzer_collection_type(a, PIN_CONTAINER_MAP, key, value_type);
+    return script_analyzer_expr_add(a, result);
+}
+/* `m.has(k)`, `k in m` and removal look key up in map, an analyzed value. */
+int script_analyzer_map_operation(analyzer *a, TSNode node, script_expression_kind kind, int map, TSNode key_node)
+{
+    script_type type = script_analyzer_expr_type(a, map);
+    script_type key = script_catalog_key_type(a->catalog, type);
+    script_expression result = { .kind = kind,
+                                 .type = kind == SCRIPT_EXPR_MAP_HAS
+                                           ? script_analyzer_boolean_type()
+                                           : type,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = map,
+                                 .right = -1 };
+    if ((type.container != PIN_CONTAINER_MAP || !type.collection) &&
+        !(type.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, node, "Map operation requires a map");
+    }
+    result.right = script_analyzer_expression(a, key_node, key);
+    if (!script_type_equal(key, script_analyzer_expr_type(a, result.right))) {
+        script_analyzer_diagnostic(a, key_node, "Map key type does not match");
+    }
+    result.effects = script_analyzer_expr_effects(a, map) |
+                     script_analyzer_expr_effects(a, result.right);
+    return script_analyzer_expr_add(a, result);
+}
+/* Whether `function` calls method `name` on a value, such as `m.has`, rather
+ * than a package or type member. */
+bool script_analyzer_map_method(analyzer *a, TSNode function, const char *name)
+{
+    if (!script_analyzer_is(function, "member_expression") ||
+        !script_analyzer_text_is(a, script_analyzer_field(function, "member"), name)) {
+        return false;
+    }
+    TSNode root = script_analyzer_field(function, "object");
+    while (script_analyzer_is(root, "member_expression") ||
+           script_analyzer_is(root, "index_expression")) {
+        root = script_analyzer_field(root, "object");
+    }
+    return !script_analyzer_is(root, "identifier") ||
+           script_analyzer_lookup(a, root) >= 0;
+}
+/* `m.has(k)`; `m.delete(k)` is a statement. */
+static int map_method(analyzer *a, TSNode node)
+{
+    TSNode function = script_analyzer_field(node, "function"),
+           arguments = script_analyzer_field(node, "arguments");
+    int map = script_analyzer_expression(
+        a,
+        script_analyzer_field(function, "object"),
+        (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+    );
+    if (!script_analyzer_map_method(a, function, "has")) {
+        script_analyzer_diagnostic(a, node, "delete changes the map; write it as a statement");
+    }
+    if (script_analyzer_named_count(arguments) != 1) {
+        script_analyzer_diagnostic(a, node, "Map method requires one key");
+    }
+    return script_analyzer_map_operation(a, node, SCRIPT_EXPR_MAP_HAS, map, ts_node_named_child(arguments, 0));
+}
+/* `a ?? b` reads a's value, or b when a is nil, as Swift's `??` and Odin's
+ * `or_else` do. b runs only then; an optional b keeps the result optional. */
+static int coalesce(analyzer *a, TSNode node, script_expression result)
+{
+    TSNode left = script_analyzer_field(node, "left"),
+           right = script_analyzer_field(node, "right");
+    script_type optional = script_analyzer_expr_type(a, result.left), value = optional;
+    value.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    if ((!(optional.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
+         (optional.flags & SCRIPT_TYPE_TASK)) &&
+        !(optional.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, left, "?? requires an optional value on its left");
+        value = script_analyzer_bad_type();
+    }
+    result.right = script_analyzer_expression(a, right, value);
+    script_type actual = script_analyzer_expr_type(a, result.right);
+    result.type = (actual.flags & SCRIPT_TYPE_OPTIONAL) &&
+                          !(value.flags & SCRIPT_TYPE_ERROR)
+                    ? optional
+                    : value;
+    script_analyzer_require(a, right, result.type, actual);
+    result.effects = script_analyzer_expr_effects(a, result.left) |
+                     script_analyzer_expr_effects(a, result.right);
+    return script_analyzer_expr_add(a, result);
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
                                  .type = script_analyzer_bad_type(),
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1 };
@@ -471,6 +960,13 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             (expected.storage != PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED))) {
             script_analyzer_diagnostic(a, node, "Cannot capture an awaited shared action result");
         }
+        if (script_analyzer_synchronous_await(a, inner) && capability &&
+            capability->component_access != SCRIPT_COMPONENT_ACCESS_NONE &&
+            !(capability->effects & SCRIPT_EFFECT_SUSPEND)) {
+            /* Component access completes in place; await adds no task or
+             * completion ownership to the resolved call. */
+            return value;
+        }
         call->awaited = true;
         /* Component accessors complete in place, awaited or not. */
         if (!capability || capability->component_access == SCRIPT_COMPONENT_ACCESS_NONE) {
@@ -481,6 +977,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     }
     if (script_analyzer_is(node, "number")) {
         return number_constant(a, node, expected, false);
+    }
+    if (script_analyzer_is(node, "character")) {
+        return character_constant(a, node, expected);
     }
     if (script_analyzer_is(node, "boolean")) {
         result.kind = SCRIPT_EXPR_CONSTANT;
@@ -494,14 +993,22 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.type = (script_type){ .storage = expected.storage == PIN_NAME
                                                   ? PIN_NAME
                                                   : PIN_STR };
-        result.constant = (pin_value){ .type = result.type.storage,
-                                       .str = script_analyzer_name_copy(a, node) };
+        result.constant = result.type.storage == PIN_NAME
+                            ? (pin_value){ .type = PIN_NAME,
+                                           .str = script_analyzer_name_copy(a, node) }
+                            : script_analyzer_string_value(a, node);
+        result.constant_snapshot = result.type.storage == PIN_STR;
         result.type.flags |= SCRIPT_TYPE_LITERAL;
-        result.type
-            .parameter = script_catalog_id("union-literal", result.constant.str);
+        pin_string text = pin_text(result.constant);
+        result.type.parameter = script_catalog_id_bytes("union-literal", text.bytes, text.length);
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "nil")) {
+        if (script_reference_kind_for_type(expected) != SCRIPT_REFERENCE_NONE &&
+            !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
+            script_analyzer_diagnostic(a, node, "A nonoptional symbol reference must name a declared symbol");
+            return script_analyzer_expr_add(a, result);
+        }
         if ((expected.flags & SCRIPT_TYPE_TASK) &&
             !(expected.flags & SCRIPT_TYPE_OPTIONAL) &&
             expected.container == PIN_CONTAINER_SINGLE) {
@@ -514,19 +1021,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
             script_analyzer_diagnostic(a, node, "A nonoptional union requires one of its alternatives");
         }
-        result.kind = SCRIPT_EXPR_NIL;
-        result.type = expected;
         if (script_analyzer_text_is(a, node, "null") &&
             !(expected.flags & SCRIPT_TYPE_OPTIONAL) &&
             !(expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            result.kind = expected.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
-                        : expected.storage == PIN_STRUCT ? SCRIPT_EXPR_STRUCT
-                                                         : SCRIPT_EXPR_CONSTANT;
-            result.constant = (pin_value){ .type = expected.storage,
-                                           .container = expected.container };
-        } else {
-            result.type.flags |= SCRIPT_TYPE_OPTIONAL;
+            return zero_value(a, node, expected);
         }
+        result.kind = SCRIPT_EXPR_NIL;
+        result.type = expected;
+        result.type.flags |= SCRIPT_TYPE_OPTIONAL;
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "identifier") ||
@@ -539,21 +1041,44 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         int index = script_analyzer_lookup(a, node);
         if (index < 0) {
+            int reference = script_analyzer_symbol_reference(a, node, expected);
+            if (reference >= 0) {
+                return reference;
+            }
             char *name = script_analyzer_name_copy(a, node);
             script_analyzer_diagnostic(a, node, "Unknown value '%s'", name);
             free(name);
             return script_analyzer_expr_add(a, result);
         }
         script_analyzer_resolve_initializer(a, index);
-        if (script_analyzer_is(node, "builtin_reference") &&
-            script_analyzer_text_is(a, node, "entry")) {
-            int function = a->out->symbols[index].function;
-            if (function >= 0 && acount(a->out->functions[function].parameters) == 1) {
-                index = a->out->functions[function].parameters[0];
-            }
-        }
         script_symbol symbol = a->out->symbols[index];
+        if (symbol.kind == SCRIPT_PARAMETER && symbol.function >= 0 &&
+            !a->query && symbol.function != a->function &&
+            a->out->functions[symbol.function].kind == SCRIPT_FUNCTION_SYSTEM) {
+            script_analyzer_diagnostic(a, node, "Read the step in the system's body, and pass it to what it calls");
+        }
+        if ((symbol.type.flags & SCRIPT_TYPE_RESULTS) &&
+            symbol.kind == SCRIPT_PARAMETER && symbol.function >= 0 &&
+            a->out->functions[symbol.function].kind == SCRIPT_FUNCTION_HANDLER) {
+            script_analyzer_diagnostic(a, node, "This handler reads its payload by the field names it lists; list the field instead");
+        }
+        if (hides_parameter(a, &symbol)) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "'%s' names both this handler's payload and a parameter of the "
+                "function around it; "
+                "list the payload's parameters to give them other names",
+                symbol.name
+            );
+        }
         int owner = symbol.scope >= 0 ? a->out->scopes[symbol.scope].function : -1;
+        if (a->out->kind == SCRIPT_PROGRAM_SYSTEM &&
+            symbol.kind == SCRIPT_LOCAL && owner < 0 && a->function >= 0 &&
+            a->out->functions[a->function].kind != SCRIPT_FUNCTION_SYSTEM &&
+            a->out->functions[a->function].kind != SCRIPT_FUNCTION_CONTINUATION) {
+            script_analyzer_diagnostic(a, node, "Pass system invocation locals as parameters across callable boundaries");
+        }
         if (a->function >= 0 && owner >= 0 && owner != a->function &&
             a->out->functions[a->function].kind == SCRIPT_FUNCTION_AUTHORED &&
             (symbol.kind == SCRIPT_LOCAL || symbol.kind == SCRIPT_PARAMETER ||
@@ -573,6 +1098,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                  symbol.kind == SCRIPT_COMPONENT
                            ? SCRIPT_EFFECT_READ
                            : 0;
+        if (a->out->kind == SCRIPT_PROGRAM_LIBRARY && index == a->out->owner_symbol) {
+            result.effects |= SCRIPT_EFFECT_INVOCATION_READ;
+        }
         script_analyzer_use(a, node, index, SCRIPT_READ, 0);
         script_type narrowed = script_analyzer_narrowed_type(a, index, result.type);
         if ((symbol.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
@@ -580,6 +1108,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             narrowed.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
         }
         if (((symbol.type.flags & SCRIPT_TYPE_UNION) &&
+             symbol.type.container == PIN_CONTAINER_SINGLE &&
              (!(narrowed.flags & SCRIPT_TYPE_UNION) || narrowed.container != PIN_CONTAINER_SINGLE ||
               ((narrowed.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
                !(symbol.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL)))) ||
@@ -615,32 +1144,16 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         return script_analyzer_member_expression(a, node, expected);
     }
     if (script_analyzer_is(node, "call_expression")) {
+        TSNode function = script_analyzer_field(node, "function");
+        if (script_analyzer_map_method(a, function, "has") ||
+            script_analyzer_map_method(a, function, "delete")) {
+            return map_method(a, node);
+        }
         int variant = script_analyzer_union_constructor(a, node);
         if (variant >= 0) {
             return variant;
         }
         return script_analyzer_call_expression(a, node, expected);
-    }
-    if (script_analyzer_is(node, "cast_expression")) {
-        result.kind = SCRIPT_EXPR_CAST;
-        result.type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
-        result.left = script_analyzer_expression(
-            a,
-            script_analyzer_field(node, "value"),
-            result.type
-        );
-        script_type actual = script_analyzer_expr_type(a, result.left);
-        bool numeric = script_type_numeric(actual) && script_type_numeric(result.type);
-        if (!numeric &&
-            script_catalog_type_assignable(a->catalog, result.type, actual)) {
-            /* The cast only supplied the expected type, as for a polymorphic call. */
-            return result.left;
-        }
-        if (!numeric) {
-            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types or the value's own type");
-        }
-        result.effects = script_analyzer_expr_effects(a, result.left);
-        return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "unary_expression")) {
         result.kind = SCRIPT_EXPR_UNARY;
@@ -649,7 +1162,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         if (script_analyzer_text_is(a, op, "-") &&
             script_analyzer_is(operand, "number")) {
             int constant = number_constant(a, operand, expected, true);
-            a->out->expressions[constant].range = script_analyzer_range(node);
+            a->out->expressions[constant].range = script_analyzer_range(a, node);
             return constant;
         }
         result.op = script_analyzer_operator_node(a, op);
@@ -693,8 +1206,25 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         TSNode left = script_analyzer_field(node, "left"),
                right = script_analyzer_field(node, "right"),
                op = script_analyzer_field(node, "operator");
+        bool not_in = script_analyzer_is(op, "not_in");
+        if (not_in || script_analyzer_text_is(a, op, "in")) {
+            int map = script_analyzer_expression(a, right, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+            int has = script_analyzer_map_operation(a, node, SCRIPT_EXPR_MAP_HAS, map, left);
+            if (!not_in) {
+                return has;
+            }
+            result.kind = SCRIPT_EXPR_UNARY;
+            result.op = SCRIPT_OP_NOT;
+            result.left = has;
+            result.type = script_analyzer_boolean_type();
+            result.effects = script_analyzer_expr_effects(a, has);
+            return script_analyzer_expr_add(a, result);
+        }
         result.op = script_analyzer_operator_node(a, op);
         result.left = script_analyzer_expression(a, left, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+        if (result.op == SCRIPT_OP_COALESCE) {
+            return coalesce(a, node, result);
+        }
         if (result.op == SCRIPT_OP_AND || result.op == SCRIPT_OP_OR) {
             narrowing *saved = NULL;
             for (int i = 0; i < acount(a->narrowed); i++) {
@@ -719,6 +1249,15 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.right = script_analyzer_expression(a, right, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
         script_type x = script_analyzer_expr_type(a, result.left),
                     y = script_analyzer_expr_type(a, result.right);
+        bool shift = result.op == SCRIPT_OP_SHIFT_LEFT ||
+                     result.op == SCRIPT_OP_SHIFT_RIGHT;
+        if (shift && script_type_numeric(x) && script_type_numeric(y)) {
+            return shift_expression(a, node, result, expected);
+        }
+        if (typed_integer(x) && typed_integer(y) &&
+            !script_analyzer_integers_match(x, y)) {
+            script_analyzer_mismatched_integers(a, node, x, y);
+        }
         if (script_type_numeric(x) && script_type_numeric(y)) {
             script_type operands = script_analyzer_arithmetic_type(x, y);
             if ((x.flags & y.flags & SCRIPT_TYPE_UNTYPED) &&
@@ -758,6 +1297,18 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         } else if ((!script_type_numeric(x) || !script_type_numeric(y)) && script_analyzer_resolve_operator(a, node, op, &result)) {
             /* Catalog operands and result are already resolved. */
         } else if (equality && !script_type_numeric(x)) {
+            if (behavior_scalar_string(x.storage) &&
+                behavior_scalar_string(y.storage) && x.container == PIN_CONTAINER_SINGLE &&
+                y.container == PIN_CONTAINER_SINGLE) {
+                if (x.flags & SCRIPT_TYPE_LITERAL) {
+                    x.flags &= ~SCRIPT_TYPE_LITERAL;
+                    x.parameter = 0;
+                }
+                if (y.flags & SCRIPT_TYPE_LITERAL) {
+                    y.flags &= ~SCRIPT_TYPE_LITERAL;
+                    y.parameter = 0;
+                }
+            }
             script_analyzer_require(a, right, x, y);
             result.type = script_analyzer_boolean_type();
         } else if (script_type_numeric(x) && script_type_numeric(y)) {
@@ -777,24 +1328,37 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_field(node, "object"),
             (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
         );
-        result.right = script_analyzer_expression(
-            a,
-            script_analyzer_field(node, "index"),
-            (script_type){ .storage = PIN_I32 }
-        );
+        script_type collection_type = script_analyzer_expr_type(a, result.left);
+        script_type key_type = collection_type.container == PIN_CONTAINER_MAP
+                                 ? script_catalog_key_type(a->catalog, collection_type)
+                                 : (script_type){ .storage = PIN_I32 };
+        result.right = script_analyzer_expression(a, script_analyzer_field(node, "index"), key_type);
         result.type = script_analyzer_expr_type(a, result.left);
         if (result.type.container != PIN_CONTAINER_ARRAY &&
             result.type.container != PIN_CONTAINER_MAP) {
             script_analyzer_diagnostic(a, node, "Index requires an array or map");
             result.type = script_analyzer_bad_type();
         }
-        result.type.container = PIN_CONTAINER_SINGLE;
+        result.type = script_catalog_element_type(a->catalog, result.type);
         script_analyzer_require(
             a,
             script_analyzer_field(node, "index"),
-            (script_type){ .storage = PIN_I32 },
+            key_type,
             script_analyzer_expr_type(a, result.right)
         );
+        if (collection_type.container == PIN_CONTAINER_MAP &&
+            !script_type_equal(key_type, script_analyzer_expr_type(a, result.right))) {
+            script_analyzer_diagnostic(a, node, "Map key type does not match");
+        }
+        int absent = collection_type.container == PIN_CONTAINER_MAP
+                       ? absent_value(a, node, result.type)
+                       : -1;
+        if (absent >= 0) {
+            apush(
+                result.arguments,
+                ((script_argument){ absent, -1, 0, script_analyzer_range(a, node) })
+            );
+        }
         result.effects = script_analyzer_expr_effects(a, result.left) |
                          script_analyzer_expr_effects(a, result.right);
         result.writable = a->out->expressions[result.left].writable;
@@ -802,8 +1366,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     }
     if (script_analyzer_is(node, "array_expression")) {
         result.kind = SCRIPT_EXPR_ARRAY;
-        script_type element = expected;
-        element.container = PIN_CONTAINER_SINGLE;
+        script_type element = script_catalog_element_type(a->catalog, expected);
         bool inferred = expected.flags & SCRIPT_TYPE_UNTYPED;
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
             TSNode child = ts_node_named_child(node, i);
@@ -814,20 +1377,41 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             if (inferred && !acount(result.arguments)) {
                 element = script_analyzer_expr_type(a, value);
                 element.flags &= ~SCRIPT_TYPE_UNTYPED;
+                /* A constant's value is not an inferred array constraint. */
+                if (element.container == PIN_CONTAINER_SINGLE &&
+                    (element.storage == PIN_STR || element.storage == PIN_NAME) &&
+                    (element.flags & SCRIPT_TYPE_LITERAL)) {
+                    element.flags &= ~SCRIPT_TYPE_LITERAL;
+                    element.parameter = 0;
+                }
             }
-            script_analyzer_require(a, child, element, script_analyzer_expr_type(a, value));
-            apush(result.arguments, ((script_argument){ value, -1, 0, script_analyzer_range(child) }));
+            script_type actual = script_analyzer_expr_type(a, value);
+            if (inferred && element.container == PIN_CONTAINER_SINGLE &&
+                (element.storage == PIN_STR || element.storage == PIN_NAME)) {
+                /* Untyped numbers cannot inhabit string/name element storage. */
+                actual.flags &= ~SCRIPT_TYPE_UNTYPED;
+            }
+            script_analyzer_require(a, child, element, actual);
+            apush(
+                result.arguments,
+                ((script_argument){ value, -1, 0, script_analyzer_range(a, child) })
+            );
             result.effects |= script_analyzer_expr_effects(a, value);
         }
         if (!acount(result.arguments) && inferred) {
             script_analyzer_diagnostic(a, node, "Empty arrays need an explicit element type");
             element = script_analyzer_bad_type();
         }
-        result.type = element;
+        result.type = element.collection || element.container != PIN_CONTAINER_SINGLE
+                        ? script_analyzer_collection_type(a, PIN_CONTAINER_ARRAY, (script_type){ 0 }, element)
+                        : element;
         result.type.container = expected.container == PIN_CONTAINER_SINGLE
                                   ? PIN_CONTAINER_ARRAY
                                   : expected.container;
         return script_analyzer_expr_add(a, result);
+    }
+    if (script_analyzer_is(node, "map_expression")) {
+        return map_literal(a, node, expected);
     }
     if (script_analyzer_is(node, "struct_expression")) {
         result.kind = SCRIPT_EXPR_STRUCT;
@@ -835,7 +1419,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
         if (!type || expected.storage != PIN_STRUCT) {
-            script_analyzer_diagnostic(a, node, "Struct literal needs an explicit reflected type");
+            script_analyzer_diagnostic(a, node, "Struct literal needs an explicit record or reflected type");
             result.type = script_analyzer_bad_type();
         }
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
@@ -863,9 +1447,17 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                 ((script_argument){ value,
                                     index,
                                     index >= 0 ? type->fields[index].id : 0,
-                                    script_analyzer_range(child) })
+                                    script_analyzer_range(a, child) })
             );
             if (index >= 0) {
+                if (type->fields[index].c_string) {
+                    script_analyzer_c_string_argument(
+                        a,
+                        script_analyzer_field(child, "value"),
+                        value,
+                        type->fields[index].name
+                    );
+                }
                 script_analyzer_require(
                     a,
                     child,
@@ -876,6 +1468,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.effects |= script_analyzer_expr_effects(a, value);
             free(name);
         }
+        record_defaults(a, node, &result);
         return script_analyzer_expr_add(a, result);
     }
     script_analyzer_diagnostic(a, node, "Unsupported expression '%s'", ts_node_type(node));
@@ -892,7 +1485,7 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) }
+                                 .range = script_analyzer_range(a, node) }
         );
     }
     a->depth++;
@@ -900,7 +1493,7 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
     const script_expression *resolved = &a->out->expressions[result];
     bool unknown_effects = resolved->kind == SCRIPT_EXPR_CALL &&
                            resolved->right >= 0 &&
-                           !a->out->functions[resolved->right].pure;
+                           !script_analyzer_readonly_callable(a, resolved->right);
     if (unknown_effects || (script_analyzer_expr_effects(a, result) &
                             (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL |
                              SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST))) {

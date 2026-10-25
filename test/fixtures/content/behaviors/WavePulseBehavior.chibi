@@ -1,16 +1,22 @@
-behavior "WavePulseBehavior" {
-    state Age: float = 0.0
-    action age_2 = set_variable<"Age">(state."Age" + delta_time())
-    on Tick {
+// An authored wave announcement expands a thin red band through floor cells and
+// expires after 0.8 seconds.
+WavePulseBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: float = 0
+    // State
+    Age: float = 0.0
+    action age_2 = set_variable<Age>(Age + Step)
+    on Tick :: (dt: float s) {
+        Step = dt
         age_2()
     }
     after age_2 {
-        if greater_or_equal(divide(age_2.Value, B: plain double = 0.8), 1.0) {
+        if float(divide(age_2.Value, B: plain double = 0.8)) >= 1.0 {
             destroy_entity(self)
         } else {
-            self.SurfaceInfluence.radius = 24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8)
-            self.SurfaceInfluence.inner_radius = max(A: plain double = 0.0, 24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8) - 28.0)
-            self.SurfaceInfluence.strength = 0.65 * (1.0 - divide(age_2.Value, B: plain double = 0.8))
+            self.SurfaceInfluence.radius = float(24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8))
+            self.SurfaceInfluence.inner_radius = float(max(0.0, 24.0 + 336.0 * divide(age_2.Value, B: plain double = 0.8) - 28.0))
+            self.SurfaceInfluence.strength = float(0.65 * (1.0 - divide(age_2.Value, B: plain double = 0.8)))
         }
     }
 }

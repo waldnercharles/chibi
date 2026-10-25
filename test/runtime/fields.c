@@ -20,6 +20,7 @@
 #include "test/support/code_fixture.h"
 #include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <float.h>
@@ -168,9 +169,15 @@ TEST_CASE(field_parameters_and_errors)
         NULL
     ));
     node *param = add(a, "Field Parameter"), *output = add(a, "Field Output");
-    REQUIRE(
-        !graph_set_pin_default(a->graph, param, 0, 0, &(pin_value){ .type = PIN_STR, .str = "Radius" })
-    );
+    REQUIRE(!graph_set_pin_default(
+        a->graph,
+        param,
+        0,
+        0,
+        &(pin_value){ .type = PIN_STR,
+                      .text = &(const pin_string){ .bytes = "Radius",
+                                                   .length = sizeof("Radius") - 1 } }
+    ));
     wire(a, param, output, 0);
     field_program *p = compile(a);
     REQUIRE(sample(p, 0, 0) == 4);
@@ -374,9 +381,15 @@ TEST_CASE(field_rows_match_scalar_samples)
         NULL
     ));
     node *x = add(asset, "Field X"), *parameter = add(asset, "Field Parameter");
-    REQUIRE(
-        !graph_set_pin_default(asset->graph, parameter, 0, 0, &(pin_value){ .type = PIN_STR, .str = "Offset" })
-    );
+    REQUIRE(!graph_set_pin_default(
+        asset->graph,
+        parameter,
+        0,
+        0,
+        &(pin_value){ .type = PIN_STR,
+                      .text = &(const pin_string){ .bytes = "Offset",
+                                                   .length = sizeof("Offset") - 1 } }
+    ));
     node *sum = add(asset, "Field Add"), *subtract = add(asset, "Field Subtract");
     node *output = add(asset, "Field Output");
     wire(asset, x, sum, 0);
@@ -984,10 +997,10 @@ TEST_CASE(field_links_source_library)
 TEST_CASE(field_source_library_keeps_parameter_defaults)
 {
     const char
-        *text = "library \"Discs\" {\n"
-                "    \"Disc\" :: pure fn(X: float = 0.0, Y: float = 0.0, "
-                "Radius: float = 40.0) -> (Value: float = 0.0) {\n"
-                "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
+        *text = "Discs :: library {\n"
+                "    Disc :: (X: float = 0.0, Y: float = 0.0, Radius: float = "
+                "40.0) -> (Value: float = 0.0) {\n"
+                "        return field_circle(X, Y, Radius)\n"
                 "    }\n"
                 "}\n";
     test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
@@ -1019,18 +1032,15 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
 TEST_CASE(field_source_library_calls_follow_names)
 {
     static const char *sources[] = {
-        "library \"Values\" {"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
-        "\"Difference\" :: pure fn(X: float = 10.0, Y: float = 3.0) "
-        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
-        "library \"Values\" {"
-        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
-        "\"Difference\" :: pure fn(Y: float = 30.0, X: float = 100.0) "
-        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
-        "library \"Values\" {"
-        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 } }",
+        "Values :: library {Other :: () -> (Value: float) { return 111.0 "
+        "}Difference :: (X: float = 10.0, Y: float = 3.0) -> (Value: float) { "
+        "return field_subtract(X, Y) } }",
+        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+        "}Other :: () -> (Value: float) { return 111.0 }Difference :: (Y: "
+        "float = 30.0, X: float = 100.0) -> (Value: float) { return "
+        "field_subtract(X, Y) } }",
+        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+        "}Other :: () -> (Value: float) { return 111.0 } }",
     };
     test_source_fixture fixture = test_source_prepare("content/libraries/Values.chibi", sources[0]);
     behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
@@ -1088,6 +1098,245 @@ TEST_CASE(field_source_library_calls_follow_names)
     }
     REQUIRE(named_call);
     behavior_asset_free(field);
+    return true;
+}
+
+/* Bakes a and b over one depth slice with a seed and compares their bits. */
+static bool same_bakes(const field_program *a, const field_program *b)
+{
+    char error[256];
+    field_grid grid = { 3, 2, .5f, .25f, -.5f, 1.25f };
+    float baked[2][6];
+    field_context context = { .seed = 5 };
+    bool baked_a = field_program_bake(a, context, grid, baked[0], NULL, error, sizeof error);
+    bool baked_b = field_program_bake(b, context, grid, baked[1], NULL, error, sizeof error);
+    return baked_a && baked_b && !memcmp(baked[0], baked[1], sizeof baked[0]);
+}
+
+/* Each field node's library spelling, with operands in its domain. */
+static const struct
+{
+    field_op op;
+    const char *call;
+    float operands[FIELD_INPUT_MAX];
+} NODE_CALLS[] = {
+    { FIELD_CONSTANT, "field_constant(1.5)", { 1.5f } },
+    { FIELD_X, "field_x()" },
+    { FIELD_Y, "field_y()" },
+    { FIELD_Z, "field_z()" },
+    { FIELD_PARAMETER, "field_parameter(\"Bias\")" },
+    { FIELD_ADD, "field_add(0.75, 0.25)", { .75f, .25f } },
+    { FIELD_SUBTRACT, "field_subtract(0.75, 0.25)", { .75f, .25f } },
+    { FIELD_MULTIPLY, "field_multiply(0.75, 3.0)", { .75f, 3 } },
+    { FIELD_DIVIDE, "field_divide(0.75, 2.0)", { .75f, 2 } },
+    { FIELD_MIN, "field_min(0.75, 0.25)", { .75f, .25f } },
+    { FIELD_MAX, "field_max(0.75, 0.25)", { .75f, .25f } },
+    { FIELD_ABS, "field_abs(-0.75)", { -.75f } },
+    { FIELD_NEGATE, "field_negate(0.75)", { .75f } },
+    { FIELD_SIN, "field_sin(0.75)", { .75f } },
+    { FIELD_COS, "field_cos(0.75)", { .75f } },
+    { FIELD_FLOOR, "field_floor(2.75)", { 2.75f } },
+    { FIELD_CLAMP, "field_clamp(2.75, 0.25, 2.0)", { 2.75f, .25f, 2 } },
+    { FIELD_REMAP, "field_remap(0.75, 0.25, 2.0, 3.0, 5.0)", { .75f, .25f, 2, 3, 5 } },
+    { FIELD_NOISE, "field_noise(0.75, 0.25, 3.0)", { .75f, .25f, 3 } },
+    { FIELD_FRACTAL,
+      "field_fractal(0.75, 0.25, 3.0, 4.0, 2.0, 0.5)",
+      { .75f, .25f, 3, 4, 2, .5f } },
+    { FIELD_HASH, "field_hash(0.75, 1.25, 3.0)", { .75f, 1.25f, 3 } },
+    { FIELD_CIRCLE, "field_circle(0.75, 0.25, 2.0)", { .75f, .25f, 2 } },
+    { FIELD_BOX, "field_box(0.75, 0.25, 2.0, 0.5)", { .75f, .25f, 2, .5f } },
+    { FIELD_CAPSULE,
+      "field_capsule(0.75, 0.25, 0.0, 0.0, 2.0, 1.0, 0.5)",
+      { .75f, .25f, 0, 0, 2, 1, .5f } },
+    { FIELD_ROTATE_X, "field_rotate_x(0.75, 0.25, 0.5)", { .75f, .25f, .5f } },
+    { FIELD_ROTATE_Y, "field_rotate_y(0.75, 0.25, 0.5)", { .75f, .25f, .5f } },
+    { FIELD_SMOOTH_UNION, "field_smooth_union(0.75, 0.25, 1.0)", { .75f, .25f, 1 } },
+    { FIELD_SMOOTH_SUBTRACT, "field_smooth_subtract(0.75, 0.25, 1.0)", { .75f, .25f, 1 } },
+    { FIELD_SELECT, "field_select(0.75, 2.0, 3.0)", { .75f, 2, 3 } },
+    { FIELD_CELL_X, "field_cell_x(0.75, 0.25, 0.25, 3.0)", { .75f, .25f, .25f, 3 } },
+    { FIELD_CELL_Y, "field_cell_y(0.75, 0.25, 0.25, 3.0)", { .75f, .25f, .25f, 3 } },
+    { FIELD_CELL_EDGE, "field_cell_edge(0.75, 0.25, 0.25, 3.0)", { .75f, .25f, .25f, 3 } },
+};
+
+/* The node a call names, alone in a program: its operands as constants. */
+static field_program *node_program(int index)
+{
+    const float *operands = NODE_CALLS[index].operands;
+    field_op op = NODE_CALLS[index].op;
+    int arity = field_op_arity(op);
+    /* Field Constant holds its Value and Field Parameter names Bias. */
+    field_ir code[FIELD_INPUT_MAX + 1] = { 0 };
+    code[arity] = (field_ir){ .op = op, .count = arity, .value = operands[0] };
+    for (int i = 0; i < arity; i++) {
+        code[i] = (field_ir){ .op = FIELD_CONSTANT, .value = operands[i] };
+        code[arity].inputs[i] = i;
+    }
+    field_parameter bias = { "Bias", { .type = PIN_F32, .f = .375f } };
+    char error[256];
+    field_program *p = field_program_new(code, arity + 1, arity, &bias, 1, error, sizeof error);
+    assert(p);
+    return p;
+}
+
+/* Every field node is a library call, and a field that calls the function
+ * evaluates it as the node alone: with the field's seed, sample and
+ * parameters. */
+TEST_CASE(field_source_library_calls_every_field_node)
+{
+    enum
+    {
+        CALLS = sizeof NODE_CALLS / sizeof *NODE_CALLS
+    };
+    REQUIRE(CALLS == FIELD_OP_COUNT - 1);
+    char text[8192];
+    int length = snprintf(text, sizeof text, "Nodes :: library {\n");
+    for (int i = 0; i < CALLS; i++) {
+        length += snprintf(
+            text + length,
+            sizeof text - (size_t)length,
+            "    Node%d :: () -> (Value: float) { return %s }\n",
+            i,
+            NODE_CALLS[i].call
+        );
+    }
+    snprintf(text + length, sizeof text - (size_t)length, "}\n");
+    REQUIRE((size_t)length < sizeof text - 2);
+    test_source_fixture fixture = test_source_prepare("content/libraries/Nodes.chibi", text);
+    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+    REQUIRE(acount(libraries) == 1);
+    const behavior_asset *catalog = libraries[0];
+    for (int i = 0; i < CALLS; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "Node%d", i);
+        graph *function = behavior_asset_find_graph_by_name(libraries[0], name);
+        REQUIRE(function);
+        behavior_asset *nodes = field("NodeField");
+        REQUIRE(behavior_asset_add_variable(
+            nodes,
+            "Bias",
+            PIN_F32,
+            NULL,
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_F32, .f = .375f },
+            NULL
+        ));
+        node *call = behavior_asset_add_function_call_node(nodes, function);
+        REQUIRE(call);
+        wire(nodes, call, add(nodes, "Field Output"), 0);
+        char error[256];
+        behavior_asset *linked = behavior_asset_link_libraries(nodes, &catalog, 1, error, sizeof error);
+        REQUIRE(linked);
+        field_program *lowered = compile(linked), *expected = node_program(i);
+        bool named = false;
+        for (int k = 0; k < field_program_instruction_count(lowered); k++) {
+            named |= field_program_instruction_at(lowered, k).op ==
+                     NODE_CALLS[i].op;
+        }
+        REQUIRE(named && same_bakes(lowered, expected));
+        field_program_free(expected);
+        field_program_free(lowered);
+        behavior_asset_free(linked);
+        behavior_asset_free(nodes);
+    }
+    authoring_source_graph_libraries_free(libraries);
+    test_source_free(&fixture);
+    return true;
+}
+
+/* Pure functions call functions declared before or after them, taking their
+ * defaults, and functions of other libraries, which the field links too.
+ * Recursive functions are left out, and so is a call to another library's
+ * function that has no graph. */
+TEST_CASE(field_source_library_functions_call_functions)
+{
+    const source_catalog_edit sources[] = {
+        { .path = "content/libraries/Cave.chibi",
+          .text = "Cave :: library {\n"
+                  "Rock :: (X: float = 0.0, Y: float = 0.0)\n"
+                  "    -> (Value: float) {\n"
+                  "    return field_negate(Shapes.Pair(X, Y))\n"
+                  "}\n"
+                  "Bad :: (X: float = 0.0) -> (Value: float) {\n"
+                  "    return field_abs(Shapes.Twice(X))\n"
+                  "}\n"
+                  "}\n" },
+        { .path = "content/libraries/Shapes.chibi",
+          .text = "Shapes :: library {\n"
+                  "Pair :: (X: float = 0.0, Y: float = 0.0)\n"
+                  "    -> (Value: float) {\n"
+                  "    return field_min(\n"
+                  "        Disc(field_subtract(X, 3.0), Y),\n"
+                  "        Ring(X, Y))\n"
+                  "}\n"
+                  "Disc :: (X: float = 0.0, Y: float = 0.0,\n"
+                  "    Radius: float = 4.0) -> (Value: float) {\n"
+                  "    return field_circle(X, Y, Radius)\n"
+                  "}\n"
+                  "Ring :: (X: float = 0.0, Y: float = 0.0)\n"
+                  "    -> (Value: float) {\n"
+                  "    return field_abs(Disc(X, Y, 2.0))\n"
+                  "}\n"
+                  "Loop :: (X: float = 0.0) -> (Value: float) {\n"
+                  "    return field_abs(Loop(X))\n"
+                  "}\n"
+                  "Twice :: (X: float = 0.0) -> (Value: float) {\n"
+                  "    return X * 2.0\n"
+                  "}\n"
+                  "}\n" },
+    };
+    test_source_fixture fixture = test_sources_prepare(sources, 2);
+    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+    REQUIRE(acount(libraries) == 2);
+    const behavior_asset *catalog[2] = { NULL };
+    for (int i = 0; i < 2; i++) {
+        catalog[strcmp(libraries[i]->name, "Cave") != 0] = libraries[i];
+    }
+    REQUIRE(catalog[0] && catalog[1]);
+    graph *rock = behavior_asset_find_graph_by_name(catalog[0], "Rock");
+    REQUIRE(rock);
+    REQUIRE(!behavior_asset_find_graph_by_name(catalog[0], "Bad"));
+    REQUIRE(
+        behavior_asset_find_graph_by_name(catalog[1], "Pair") &&
+        behavior_asset_find_graph_by_name(catalog[1], "Disc") &&
+        behavior_asset_find_graph_by_name(catalog[1], "Ring") &&
+        !behavior_asset_find_graph_by_name(catalog[1], "Loop") &&
+        !behavior_asset_find_graph_by_name(catalog[1], "Twice")
+    );
+    behavior_asset *cave = field("CaveField");
+    node *call = behavior_asset_add_function_call_node(cave, rock);
+    REQUIRE(call);
+    wire(cave, add(cave, "Field X"), call, 0);
+    wire(cave, add(cave, "Field Y"), call, 1);
+    wire(cave, call, add(cave, "Field Output"), 0);
+    char error[256];
+    REQUIRE(!behavior_asset_link_libraries(cave, catalog, 1, error, sizeof error));
+    REQUIRE(strstr(error, "missing function library"));
+    behavior_asset *linked = behavior_asset_link_libraries(cave, catalog, 2, error, sizeof error);
+    REQUIRE(linked);
+    field_program *lowered = compile(linked);
+    /* -min(circle(x - 3, y, 4), |circle(x, y, 2)|) */
+    field_ir code[] = {
+        { .op = FIELD_X },
+        { .op = FIELD_Y },
+        { .op = FIELD_CONSTANT, .value = 3 },
+        { .op = FIELD_SUBTRACT, .count = 2, .inputs = { 0, 2 } },
+        { .op = FIELD_CONSTANT, .value = 4 },
+        { .op = FIELD_CIRCLE, .count = 3, .inputs = { 3, 1, 4 } },
+        { .op = FIELD_CONSTANT, .value = 2 },
+        { .op = FIELD_CIRCLE, .count = 3, .inputs = { 0, 1, 6 } },
+        { .op = FIELD_ABS, .count = 1, .inputs = { 7 } },
+        { .op = FIELD_MIN, .count = 2, .inputs = { 5, 8 } },
+        { .op = FIELD_NEGATE, .count = 1, .inputs = { 9 } },
+    };
+    field_program *expected = field_program_new(code, 11, 10, NULL, 0, error, sizeof error);
+    REQUIRE(expected);
+    REQUIRE(field_program_instruction_count(lowered) == 11 && same_bakes(lowered, expected));
+    field_program_free(expected);
+    field_program_free(lowered);
+    behavior_asset_free(linked);
+    behavior_asset_free(cave);
+    authoring_source_graph_libraries_free(libraries);
+    test_source_free(&fixture);
     return true;
 }
 
@@ -1208,9 +1457,9 @@ TEST_CASE(field_source_library_hot_apply)
     REQUIRE(definition->dirty && definition->unsaved);
     REQUIRE(behavior_asset_equal(definition->working, saved_draft));
 
-    char *renamed = strstr(text, "\"Islands\"");
+    char *renamed = strstr(text, "Islands ::");
     REQUIRE(renamed);
-    memcpy(renamed, "\"Isles\"  ", 9);
+    memcpy(renamed, "Isles  ", 7);
     REQUIRE(!preview_source_edit(live, path, text, error, sizeof error));
     REQUIRE(preview_sources_publish(live, NULL, error, sizeof error));
     REQUIRE(strstr(error, "missing library function"));
@@ -1249,6 +1498,8 @@ void test_fields()
     RUN_TEST_CASE(field_links_source_library);
     RUN_TEST_CASE(field_source_library_keeps_parameter_defaults);
     RUN_TEST_CASE(field_source_library_calls_follow_names);
+    RUN_TEST_CASE(field_source_library_calls_every_field_node);
+    RUN_TEST_CASE(field_source_library_functions_call_functions);
     RUN_TEST_CASE(field_source_library_hot_apply);
     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
     test_graph_packs_clear();

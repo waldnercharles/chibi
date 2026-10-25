@@ -25,10 +25,10 @@ static script_catalog catalog;
 static script_lower_bindings bindings;
 static authoring_sources *previous, *current;
 static execution_program *program;
-static const char ORIGINAL[] = "library Leaf { Value :: (amount: number u = 2) "
-                               "-> number u { return amount; } }";
-static const char EDITED[] = "library Leaf { Value :: (amount: number u = 2) "
-                             "-> number u { return amount + 7; } }";
+static const char ORIGINAL[] = "Leaf :: library { Value :: (amount: number u = "
+                               "2) -> number u { return amount; } }";
+static const char EDITED[] = "Leaf :: library { Value :: (amount: number u = "
+                             "2) -> number u { return amount + 7; } }";
 static const char CATEGORY[] = "Lifecycle", KEYWORDS[] = "tick update",
                   DESCRIPTION[] = "Run one update.";
 
@@ -44,11 +44,13 @@ static void setup()
     };
     static const char *const texts[SOURCE_COUNT] = {
         ORIGINAL,
-        "library Middle { Value :: () -> u { return Leaf.Value() + 1; } }",
-        "behavior Caller { state value: number = 0; on Tick() { value = "
+        "Middle :: library { Value :: () -> u { return Leaf.Value() + 1; } }",
+        "Caller :: behavior { value: retain number = 0; on Tick :: () { value "
+        "= "
         "Middle.Value(); } }",
-        "behavior Independent { state value: number = 0; on Tick() { value = "
-        "7; } }"
+        "Independent :: behavior { value: retain number = 0; on Tick :: () { "
+        "value "
+        "= 7; } }"
     };
     for (int i = 0; i < SOURCE_COUNT; i++) {
         snprintf(paths[i], sizeof paths[i], "%s/%s", root, names[i]);

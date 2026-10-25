@@ -125,6 +125,25 @@ static const unsigned char tag = 1;
 
 void authoring_objects_add(authoring_objects *objects, const prototype *document, const char *name, int parent)
 {
+    for (int i = 0; document->registry && i < document->registry->relationship_count;
+         i++) {
+        const ecs_relationship_desc *desc = document->registry->relationships[i];
+        int at = 0;
+        while (at < acount(objects->relationships) &&
+               objects->relationships[at].id != desc->id) {
+            at++;
+        }
+        if (at == acount(objects->relationships)) {
+            apush(objects->relationships, *desc);
+        } else {
+            const ecs_relationship_desc *prior = &objects->relationships[at];
+            objects->relationship_conflict |= strcmp(prior->name, desc->name) ||
+                                              strcmp(prior->key, desc->key) ||
+                                              prior->traits != desc->traits ||
+                                              prior->on_delete_target !=
+                                                  desc->on_delete_target;
+        }
+    }
     scene_component *components = NULL;
     for (int i = 0; i < acount(document->components); i++) {
         const prototype_component *component = &document->components[i];
@@ -188,6 +207,21 @@ void authoring_objects_add_children(authoring_objects *objects, const prototype 
         authoring_objects_add_children(objects, child, alast(added));
     }
     authoring_objects_add_links(objects, index, document, false, children, added);
+    for (int i = 0; i < acount(document->pairs); i++) {
+        const prototype_pair *pair = &document->pairs[i];
+        int target = children ? scene_document_entity_index(children, pair->path)
+                              : -1;
+        if (target < 0) {
+            objects->missing_pair = pair;
+            continue;
+        }
+        int relationship = 0;
+        while (relationship < acount(objects->relationships) &&
+               objects->relationships[relationship].id != pair->relationship->id) {
+            relationship++;
+        }
+        apush(objects->pairs, ((scene_pair){ index, relationship, added[target] }));
+    }
     for (int i = 0; children && i < acount(children->entities); i++) {
         authoring_objects_add_links(objects, added[i], document->child_prototypes[i], true, children, added);
     }
@@ -201,6 +235,10 @@ scene *authoring_objects_prepare(authoring_objects *objects, scene_spec spec, ch
     spec.parents = objects->parents;
     spec.links = objects->links;
     spec.link_count = acount(objects->links);
+    spec.relationships = objects->relationships;
+    spec.relationship_count = acount(objects->relationships);
+    spec.pairs = objects->pairs;
+    spec.pair_count = acount(objects->pairs);
     const prototype_link *missing = objects->missing;
     scene *prepared_scene = NULL;
     if (missing && size) {
@@ -213,7 +251,19 @@ scene *authoring_objects_prepare(authoring_objects *objects, scene_spec spec, ch
             missing->path
         );
     }
-    if (!missing) {
+    if (size && objects->missing_pair) {
+        snprintf(
+            error,
+            size,
+            "Relationship %s names missing child.%s",
+            objects->missing_pair->relationship->name,
+            objects->missing_pair->path
+        );
+    }
+    if (size && objects->relationship_conflict) {
+        snprintf(error, size, "Conflicting authored relationship schemas");
+    }
+    if (!missing && !objects->missing_pair && !objects->relationship_conflict) {
         prepared_scene = scene_prepare(&spec, error, size);
     }
     for (int i = 0; i < acount(objects->components); i++) {
@@ -223,6 +273,8 @@ scene *authoring_objects_prepare(authoring_objects *objects, scene_spec spec, ch
     afree(objects->parents);
     afree(objects->objects);
     afree(objects->links);
+    afree(objects->relationships);
+    afree(objects->pairs);
     return prepared_scene;
 }
 

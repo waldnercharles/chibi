@@ -3,6 +3,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/value_wire.h"
 
@@ -700,7 +701,7 @@ TEST_CASE(prepared_wire_bounds_use_encoded_width)
     execution_wire_value(&reader, &read);
     const pin_array *decoded_array = read.ptr;
     bool same = !reader.error && reader.offset == writer.size && decoded_array &&
-                decoded_array->count == 4 && decoded_array->items[3].i == 3;
+                decoded_array->count == 4 && pin_array_get(decoded_array, 3).i == 3;
     arena_free(&storage);
     afree(writer.data);
     REQUIRE(same);

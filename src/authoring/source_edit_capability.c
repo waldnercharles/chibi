@@ -1,4 +1,5 @@
 #include "authoring/source_edit_internal.h"
+#include "authoring/source_edit_refactor_internal.h"
 #include "authoring/source_literal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -40,13 +41,157 @@ static char *take(char **text)
 }
 static char *quoted(const script_catalog *catalog, const char *name, char *error, size_t size)
 {
-    return authoring_source_literal(
-        catalog,
-        (script_type){ .storage = PIN_STR },
-        &(pin_value){ .type = PIN_STR, .str = name },
+    (void)catalog;
+    return authoring_source_identifier(name, error, size);
+}
+static char *component_expression(
+    const script_catalog *catalog,
+    const script_catalog_capability *cap,
+    char **inputs,
+    int producer,
+    int *producer_offset,
+    char *error,
+    size_t size
+)
+{
+    const script_catalog_type *type = script_catalog_type_by_id(catalog, cap->component);
+    if (!type || !type->component) {
+        fail(error, size, "Component access requires a declared component type");
+        return NULL;
+    }
+    char *name = authoring_source_identifier(
+        type->source_name ? type->source_name : type->name,
         error,
         size
     );
+    if (!name) {
+        return NULL;
+    }
+    const char *entity = cap->component_entity >= 0 &&
+                                 cap->component_entity < cap->parameter_count
+                           ? inputs[cap->component_entity]
+                           : NULL;
+    char *text = NULL;
+    if (!entity || !strcmp(entity, "self")) {
+        append(&text, "self.%s", name);
+        if (producer == cap->component_entity) {
+            *producer_offset = 0;
+        }
+    } else {
+        append(&text, "(%s).%s", entity, name);
+        if (producer == cap->component_entity) {
+            *producer_offset = 1;
+        }
+    }
+    free(name);
+    if (cap->component_field) {
+        const script_catalog_field *field = NULL;
+        for (int i = 0; i < type->field_count; i++) {
+            if (type->fields[i].id == cap->component_field) {
+                field = &type->fields[i];
+                break;
+            }
+        }
+        name = field ? authoring_source_identifier(field->name, error, size) : NULL;
+        if (!name) {
+            afree(text);
+            fail(error, size, "Component access requires a declared field");
+            return NULL;
+        }
+        append(&text, ".%s", name);
+        free(name);
+    }
+    if (cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
+        const char *value = cap->component_value >= 0 &&
+                                    cap->component_value < cap->parameter_count
+                              ? inputs[cap->component_value]
+                              : NULL;
+        if (!value) {
+            afree(text);
+            fail(error, size, "Supply a component value before creating its assignment");
+            return NULL;
+        }
+        append(&text, " = ");
+        if (producer == cap->component_value) {
+            *producer_offset = acount(text);
+        }
+        append(&text, "%s", value);
+    } else if (cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS) {
+        append(&text, " != nil");
+    }
+    return take(&text);
+}
+static bool default_inputs(
+    const script_catalog *catalog,
+    const script_catalog_capability *cap,
+    char **inputs,
+    char *error,
+    size_t size
+)
+{
+    for (int i = 0; i < cap->parameter_count; i++) {
+        if (inputs[i]) {
+            continue;
+        }
+        const script_catalog_parameter *p = &cap->parameters[i];
+        if (p->default_owner) {
+            inputs[i] = xstrdup("self");
+        } else if (p->has_default) {
+            inputs[i] = authoring_source_literal(catalog, p->type, &p->default_value, error, size);
+        } else if (p->type.flags & SCRIPT_TYPE_OPTIONAL) {
+            inputs[i] = xstrdup("nil");
+        }
+        if (!inputs[i]) {
+            return fail(error, size, "Supply the operation's required operands");
+        }
+    }
+    return true;
+}
+static char *operator_expression(
+    const script_catalog_capability *cap,
+    char **inputs,
+    int producer,
+    int *producer_offset,
+    char *error,
+    size_t size
+)
+{
+    const char *op = cap->operator_name;
+    const char *binary[] = { "+",  "-",  "*",   "/",  "%",  "==", "!=",
+                             "<",  "<=", ">",   ">=", "&",  "|",  "^",
+                             "<<", ">>", "and", "or", "&&", "||" };
+    bool valid = cap->parameter_count == 1 &&
+                 (!strcmp(op, "!") || !strcmp(op, "not") || !strcmp(op, "-") ||
+                  !strcmp(op, "~"));
+    for (int i = 0;
+         cap->parameter_count == 2 && i < (int)(sizeof binary / sizeof *binary);
+         i++) {
+        valid |= !strcmp(op, binary[i]);
+    }
+    if (!valid) {
+        fail(error, size, "This capability has no supported operator spelling");
+        return NULL;
+    }
+    char *text = NULL;
+    if (cap->parameter_count == 1) {
+        append(&text, "%s ", op);
+    }
+    for (int i = 0; i < cap->parameter_count; i++) {
+        if (i) {
+            append(&text, " %s ", op);
+        }
+        append(&text, "(");
+        script_type expected = cap->parameters[i].type;
+        bool convert = script_type_numeric(expected);
+        if (convert) {
+            append(&text, "%s(", script_scalar_name(expected.storage));
+        }
+        if (producer == i) {
+            *producer_offset = acount(text);
+        }
+        append(&text, "%s%s)", inputs[i], convert ? ")" : "");
+    }
+    return take(&text);
 }
 static const source_presentation_origin *origin(const authoring_source_presentation *p, uint64_t id)
 {
@@ -79,6 +224,41 @@ static const script_catalog_capability *capability(
     }
     return found;
 }
+/* A created handler lists every payload field with its type, so each one can
+ * be wired at once; the fields it does not read can be deleted. A measured
+ * field spells its storage before its unit, as `double charge`, since a lone
+ * name reads as a unit only for a few shorthands. */
+static bool handler_header(
+    const script_catalog *catalog,
+    const char *callee,
+    const script_catalog_capability *event,
+    char **fragment,
+    char *error,
+    size_t size
+)
+{
+    append(fragment, "on %s :: (", callee);
+    for (int i = 0; i < event->parameter_count; i++) {
+        const script_catalog_parameter *field = &event->parameters[i];
+        char *name = quoted(catalog, field->name, error, size), *type = NULL;
+        if (!name) {
+            return false;
+        }
+        if (!source_refactor_type(catalog, field->type, false, &type, error, size)) {
+            free(name);
+            return false;
+        }
+        if (field->unit) {
+            source_refactor_append(&type, " %s", field->unit);
+        }
+        char *spelled = source_refactor_take(&type);
+        append(fragment, "%s%s: %s", i ? ", " : "", name, spelled);
+        free(name);
+        free(spelled);
+    }
+    append(fragment, ") {}\n");
+    return true;
+}
 static void unique_name(const script_analysis *a, char *name, size_t size)
 {
     for (int n = 1;; n++) {
@@ -100,13 +280,35 @@ static char *reference(
     size_t size
 )
 {
+    if (p->reference_kind == SCRIPT_REFERENCE_RELATIONSHIP) {
+        if (script_name_matches(name, "ChildOf")) {
+            return xstrdup("ChildOf");
+        }
+        const script_catalog_relationship *relationship = NULL;
+        for (int i = 0; i < catalog->relationship_count; i++) {
+            if (!script_name_matches(catalog->relationships[i].name, name)) {
+                continue;
+            }
+            if (relationship) {
+                fail(error, size, "Choose one unambiguous relationship reference");
+                return NULL;
+            }
+            relationship = &catalog->relationships[i];
+        }
+        if (!relationship) {
+            fail(error, size, "Choose a registered relationship reference");
+            return NULL;
+        }
+        return quoted(catalog, relationship->name, error, size);
+    }
     if (p->reference_kind == SCRIPT_REFERENCE_COMPONENT) {
         int index = script_catalog_find_type(catalog, name);
         if (index < 0 || !catalog->types[index].component) {
             fail(error, size, "Choose a registered component reference");
             return NULL;
         }
-        return quoted(catalog, catalog->types[index].name, error, size);
+        const script_catalog_type *type = &catalog->types[index];
+        return quoted(catalog, type->source_name ? type->source_name : type->name, error, size);
     }
     int index = script_catalog_find_capability(catalog, name, SCRIPT_CAPABILITY_PROTOTYPE);
     if (index < 0) {
@@ -258,7 +460,7 @@ static bool create_variable_access(
         const script_catalog_type
             *type = script_catalog_type_by_id(catalog, state->type.nominal);
         zero.type_name = type ? type->name : NULL;
-        if (zero.type == PIN_STR || zero.type == PIN_NAME) {
+        if (zero.type == PIN_NAME) {
             zero.str = "";
         }
         value = authoring_source_literal(catalog, state->type, r->value ? r->value : &zero, error, size);
@@ -439,7 +641,10 @@ bool source_edit_capability(
         selected.parameter_count = acount(parameters);
         c = &selected;
     }
-    char *callee = quoted(catalog, c->qualified_name ? c->qualified_name : c->name, error, size);
+    const char *call_name = c->qualified_name && strchr(c->qualified_name, '.')
+                              ? c->qualified_name
+                              : c->name;
+    char *callee = quoted(catalog, call_name, error, size);
     if (!callee) {
         afree(parameters);
         afree(owned_parameters);
@@ -447,9 +652,14 @@ bool source_edit_capability(
         return false;
     }
     char *call = NULL, *fragment = NULL;
+    char **inputs = NULL;
+    asetlen(inputs, c->parameter_count);
+    for (int i = 0; i < c->parameter_count; i++) {
+        inputs[i] = NULL;
+    }
     source_edit_connection producer = { 0 };
     bool ok = false, supplied = false;
-    int producer_call = -1, producer_fragment = -1;
+    int producer_call = -1, producer_fragment = -1, producer_parameter = -1;
     if (r->producer) {
         producer = source_edit_producer(a, catalog, p, r->producer, r->producer_result, error, size);
         if (!producer.text) {
@@ -463,7 +673,9 @@ bool source_edit_capability(
             fail(error, size, "Create event handlers in the declaration body");
             goto done;
         }
-        append(&fragment, "on %s as %s {}\n", callee, name);
+        if (!handler_header(catalog, callee, c, &fragment, error, size)) {
+            goto done;
+        }
     } else {
         append(&call, "%s", callee);
         if (c->state_access != SCRIPT_STATE_ACCESS_NONE) {
@@ -488,6 +700,7 @@ bool source_edit_capability(
         }
         append(&call, "(");
         int count = 0;
+        bool positional = true;
         for (int i = 0; i < c->parameter_count; i++) {
             const script_catalog_parameter *parameter = &c->parameters[i];
             char *value = NULL;
@@ -506,6 +719,7 @@ bool source_edit_capability(
             ) {
                 value = xstrdup(producer.text);
                 supplied = true;
+                producer_parameter = i;
             } else if (
                 !parameter->has_default && !parameter->default_owner &&
                 !(parameter->type.flags & SCRIPT_TYPE_OPTIONAL)
@@ -514,21 +728,23 @@ bool source_edit_capability(
                 goto done;
             }
             if (!value) {
+                positional = false;
                 continue;
             }
-            char *argument = quoted(catalog, parameter->name, error, size);
+            inputs[i] = value;
+            char *argument = positional
+                               ? xstrdup("")
+                               : quoted(catalog, parameter->name, error, size);
             if (!argument) {
-                free(value);
                 goto done;
             }
             if (producer.text && !strcmp(value, producer.text) && supplied &&
                 producer_call < 0) {
                 producer_call = acount(call) + (count ? 2 : 0) +
-                                (int)strlen(argument) + 2;
+                                (positional ? 0 : (int)strlen(argument) + 2);
             }
-            append(&call, "%s%s: %s", count++ ? ", " : "", argument, value);
+            append(&call, "%s%s%s%s", count++ ? ", " : "", argument, positional ? "" : ": ", value);
             free(argument);
-            free(value);
         }
         if (producer.text && !supplied) {
             fail(error, size, "Producer has no compatible capability input");
@@ -536,6 +752,60 @@ bool source_edit_capability(
         }
         append(&call, ")");
         char *expression = take(&call);
+        bool component_path = c->component &&
+                              (c->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
+                               c->component_access == SCRIPT_COMPONENT_ACCESS_WRITE ||
+                               c->component_access == SCRIPT_COMPONENT_ACCESS_HAS);
+        if (component_path) {
+            free(expression);
+            if (c->component_access == SCRIPT_COMPONENT_ACCESS_WRITE &&
+                (!r->origin || r->previous)) {
+                fail(error, size, "Create component assignments inside an executable body");
+                goto done;
+            }
+            if (!default_inputs(catalog, c, inputs, error, size)) {
+                goto done;
+            }
+            expression = component_expression(catalog, c, inputs, producer_parameter, &producer_call, error, size);
+            if (!expression) {
+                goto done;
+            }
+            if (c->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
+                selected = *c;
+                selected.kind = SCRIPT_CAPABILITY_ACTION;
+                selected.result_count = 0;
+                c = &selected;
+            }
+        } else if (
+            c != &authored && !c->parameter_count && c->result_count == 1 &&
+            c->results[0].type.storage == PIN_HANDLE &&
+            c->results[0].type.nominal == catalog->entity_type &&
+            c->id == script_catalog_id("capability", "Self")
+        ) {
+            free(expression);
+            expression = xstrdup("self");
+        } else if (c->operator_name && *c->operator_name) {
+            free(expression);
+            if (!default_inputs(catalog, c, inputs, error, size)) {
+                goto done;
+            }
+            bool short_circuit = !strcmp(c->operator_name, "and") ||
+                                 !strcmp(c->operator_name, "or") ||
+                                 !strcmp(c->operator_name, "&&") ||
+                                 !strcmp(c->operator_name, "||");
+            const source_presentation_origin *source = origin(p, r->producer);
+            if (short_circuit && producer_parameter == 1 && source &&
+                source->kind == SOURCE_PRESENTATION_EXPRESSION &&
+                (a->expressions[source->record].effects &
+                 ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ))) {
+                fail(error, size, "A short-circuit operator cannot skip an effectful producer");
+                goto done;
+            }
+            expression = operator_expression(c, inputs, producer_parameter, &producer_call, error, size);
+            if (!expression) {
+                goto done;
+            }
+        }
         if (r->field) {
             const script_catalog_type *type = script_catalog_type_by_id(
                 catalog,
@@ -556,8 +826,8 @@ bool source_edit_capability(
                 free(expression);
                 goto done;
             }
-            append(&call, "(%s).%s", expression, field);
-            if (producer_call >= 0) {
+            append(&call, component_path ? "%s.%s" : "(%s).%s", expression, field);
+            if (producer_call >= 0 && !component_path) {
                 producer_call++;
             }
             free(expression);
@@ -699,6 +969,10 @@ bool source_edit_capability(
         ok = change->text != NULL;
     }
 done:
+    for (int i = 0; i < acount(inputs); i++) {
+        free(inputs[i]);
+    }
+    afree(inputs);
     free(callee);
     afree(parameters);
     afree(owned_parameters);

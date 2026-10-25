@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_CONSTANT_SCALAR_CHIBI_H
+#define CHIBI_TEST_CONSTANT_SCALAR_CHIBI_H
+void test_language_constant_scalar_chibi();
+#endif

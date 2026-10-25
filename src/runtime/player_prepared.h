@@ -1,6 +1,6 @@
 #pragma once
 
-#define PLAYER_PREPARED_VERSION 15
+#define PLAYER_PREPARED_VERSION 16
 #include "runtime/player.h"
 
 #define PLAYER_PREPARED_MAX_BYTES (64 * 1024 * 1024)
@@ -49,6 +49,21 @@ player *player_prepared_read(
     size_t length,
     const player_host *,
     behavior_backend,
+    char *error,
+    size_t size
+);
+/* Locates an artifact's executable module records without opening the game,
+ * so a tool can compare what two compilers declare apart from their code. The
+ * records borrow their bytes from the artifact and their names from names;
+ * every other byte lies before *first or from *end on. Free the records with
+ * afree. False with why when the artifact is malformed up to its last module. */
+bool player_prepared_modules(
+    const void *,
+    size_t length,
+    arena *names,
+    package_module **modules,
+    size_t *first,
+    size_t *end,
     char *error,
     size_t size
 );

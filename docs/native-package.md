@@ -10,9 +10,9 @@ artifacts and their declared resources.
 The engine repository owns the language, compiler, execution, runtime, shared
 authoring services and native tools. Studio owns its application loop, editor
 UI, starter project and authored shell assets in the separate `chibi-studio`
-repository. Arena3D, SpaceCadet and Voidweaver have separate game repositories;
-the labs and sampled-model content live in `chibi-examples`. Engine tests retain
-focused fixtures. Product packaging does not discover or ship `projects/*`.
+repository. Games have their own repositories. Engine tests retain focused
+fixtures, listed in [examples](examples.md). Product packaging does not discover
+or ship `projects/*`.
 
 Project format 10 uses `.chibi` as complete executable source for behaviors,
 callable libraries and systems. Declarative assets use KDL. The compiler resolves
@@ -86,26 +86,13 @@ make package-player PLAYER_OUTPUT=dist/game-runtime
 This builds a native reflection tool and an optimized compiler-free desktop
 runtime SDK before deriving the player package. `RUNTIME_SDK_BUILD_DIR` and
 `RUNTIME_SDK_PREFIX` select the intermediate build and installed SDK.
-`SDK_REFLECT_BUILD_DIR` selects the host tool build. Packaging does not install
-into registered games.
-
-```sh
-COMPILER_SDK=/absolute/path/to/packaged/compiler-sdk
-python3 "$COMPILER_SDK/share/chibi/tools/install_game_runtime.py" \
-  --package /absolute/path/to/game-runtime \
-  --config /absolute/path/to/game-runtime.json
-```
-
-`make update-game-runtime` performs this refresh for the checkout registration
-when `UPDATE_RUNTIME=1`. Installation verifies complete package inventories,
-project format requirements, and the captured prior deployment. A valid formerly
-managed combined runtime can be replaced; unmanaged or modified directories are
-preserved. Restart running games after installation.
+`SDK_REFLECT_BUILD_DIR` selects the host tool build.
 
 Use a compiler-enabled installed SDK for `chibi-compile` and the separate Studio
 package for authoring. See [runtime authoring](runtime-authoring.md) for preparation,
 resource retention, and exact SDK pins. Packaging checks do not establish rendered
-game acceptance; runtime execution and GPU checks retain their admission limits.
+game acceptance; runtime execution and GPU checks need their affected-contract
+evidence and required hardware.
 
 The workflow below records the retired combined product and its earlier evidence.
 Its commands and package layout do not describe the current deployment contract.
@@ -148,11 +135,11 @@ name "Main"
 (array)entities
 ```
 
-Open the project or run it with the installed application:
+Check the project, or build and run it, with the installed launcher:
 
 ```sh
-/path/to/chibi/bin/chibi --project-root /path/to/my-game
-/path/to/chibi/bin/chibi --play --project-root /path/to/my-game
+/path/to/chibi/bin/chibi check /path/to/my-game
+/path/to/chibi/bin/chibi run /path/to/my-game
 ```
 
 Edit `.chibi` executable source and KDL declarative assets directly or through
@@ -195,36 +182,10 @@ project directly. The browser workspace owns its imported project files. Use
 `chibi_ctl --project-root` for native inspection and validation, or prepare an
 artifact with `chibi-compile` and run it with the installed `chibi-player`.
 
-Engine-owned web deployment is retired. `make publish-web` reports that no
-publication was performed; deployment belongs to the extracted Studio product.
-Engine CI compiles owned SDK/CLI targets and runs admitted C tooling checks.
+Engine-owned web deployment is retired and its publisher removed; deployment
+belongs to the extracted Studio product.
+Engine CI compiles owned SDK/CLI targets and runs selected C tooling checks.
 Historical browser publication fixtures do not establish current deployment.
-
-## Deliver runtime updates to local games
-
-Register game workspaces in the editor checkout's ignored
-`.chibi/game-runtime.json`:
-
-```json
-{
-  "games": ["/path/to/neon-swarm"]
-}
-```
-
-`make update-game-runtime` explicitly packages the player and refreshes
-registered games. Ordinary build and test commands do not update external
-runtimes. Games are selected by absolute paths in the registration file;
-there is no implicit engine-owned game root.
-
-Delivery verifies the complete package and each game's project version, then
-stages a full copy inside each game's `.chibi` directory. It replaces
-`.chibi/runtime` with regular files and refreshes `.chibi-engine.json`.
-Codex configuration is preserved exactly. A failed copy leaves the active runtime alone;
-a failed activation restores the previous runtimes and metadata. Runtime
-delivery creates no symlinks or hardlinks to external packages. New game launches use the update; restart existing sessions after delivery.
-
-Browser publishing and runtime delivery are separate operations. Use the
-installed compiler/player packages for authored game preparation and playback.
 
 ## Build and verify
 
@@ -237,9 +198,13 @@ make test-tools
 invalid build profiles. The former script-based relocation tests
 are retired; the minimal suite does not establish their former coverage.
 
-`share/chibi/engine.json` records SHA-256 hashes of the payload, a build ID
-derived from those hashes, the project version, host platform, and source
-revision. The ID includes resources as well as binaries.
+`share/chibi/engine.json` is the build identity document `chibi version` reads:
+the SDK version, the platform and execution backends it was built for, the
+project format and each prepared artifact format with its owning sources'
+hashes, as configuring generates them, plus the build ID SDK packaging derives
+from the compiled inputs and archives. `chibi doctor` compares the platform with
+the host and reports the backends. The package manifest
+records the payload's file hashes, platform and source revision.
 Distribution builds have no resource fallback to the engine checkout.
 `CHIBI_RESOURCE_DIR` can explicitly override the resource directory;
 `CHIBI_RENDER_SHADER_DIR` can override only the shaders. Development and web

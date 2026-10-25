@@ -11,9 +11,9 @@ endif()
 
 set(packages asset_authoring asset_json asset_text authoring behavior_runtime
     component_presentation ecs execution execution_contract field_catalog graph_authoring
-    graph_compilation graph_model graph_catalog host_native_default image_preparation input_map json
+    graph_compilation graph_model graph_catalog host_native_default image_preparation json
     model_authoring model_import model_runtime native_capabilities native_types platform project_document
-    project_preparation project_compilation prototype_document reference_index render
+    project_preparation project_compilation project_format prototype_document reference_index render
     scenario_document scene_document shader_preparation source_catalog source_presentation
     studio_capabilities studio_graph support text_search text_source types ui ui_authoring
     ui_document ui_runtime visual_catalog)
@@ -26,9 +26,9 @@ if(NOT Chibi_RESOURCE_DIR)
     message(FATAL_ERROR "The installed SDK must export Chibi_RESOURCE_DIR")
 endif()
 get_filename_component(tool_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(automation_units controller field_preview navigation content_hash ui_inspect
+set(automation_units controller field_preview material_bake navigation content_hash ui_inspect
     execution_policy render_preview scene_preview)
-set(automation_headers controller field_preview navigation content_hash ui_inspect
+set(automation_headers controller field_preview material_bake navigation content_hash ui_inspect
     execution_policy render_preview gpu_capture)
 set(private_headers "${CMAKE_CURRENT_BINARY_DIR}/private")
 foreach(header IN LISTS automation_headers)

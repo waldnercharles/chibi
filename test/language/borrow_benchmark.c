@@ -75,18 +75,18 @@ static uint64_t state_id(const char *name)
 static bool compile(behavior_backend backend, int helpers)
 {
     const char *sources[] = {
-        "behavior BorrowBench { values: double[] = []; total: double = 0;"
-        "on Run { sum := 0.0; for value in values { sum += value; } total += "
-        "sum; } }",
-        "behavior BorrowBench { values: double[] = []; total: double = 0;"
-        "Sum :: pure (input: double[]) -> double { sum := 0.0; "
-        "for value in input { sum += value; } return sum; }"
-        "on Run { total += Sum(values); } }",
-        "behavior BorrowBench { values: double[] = []; total: double = 0;"
-        "Sum :: pure (input: double[]) -> double { sum := 0.0; "
-        "for value in input { sum += value; } return sum; }"
-        "Forward :: pure (input: double[]) -> double { return Sum(input); }"
-        "on Run { total += Forward(values); } }"
+        "BorrowBench :: behavior { values: double[] = []; total: double = 0;on "
+        "Run :: () { sum := 0.0; for value in values { sum += value; } total "
+        "+= sum; "
+        "} }",
+        "BorrowBench :: behavior { values: double[] = []; total: double = "
+        "0;Sum :: (input: double[]) -> double { sum := 0.0; for value in input "
+        "{ sum += value; } return sum; }on Run :: () { total += Sum(values); } "
+        "}",
+        "BorrowBench :: behavior { values: double[] = []; total: double = "
+        "0;Sum :: (input: double[]) -> double { sum := 0.0; for value in input "
+        "{ sum += value; } return sum; }Forward :: (input: double[]) -> double "
+        "{ return Sum(input); }on Run :: () { total += Forward(values); } }"
     };
     syntax = script_parse(sources[helpers]);
     REQUIRE(syntax && !syntax->diagnostic_count);

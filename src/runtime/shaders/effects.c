@@ -64,6 +64,88 @@ static void normalize3(const float *v, float out[3])
     }
 }
 
+/* Star Field: one candidate star per cell of a cube-face grid, STAR_CELLS
+ * along each face edge, drawn as a Gaussian about half a pixel wide. A GPU
+ * pixel's angle comes from the direction's screen derivatives; CPU
+ * evaluation has no pixel and uses STAR_POINT radians. Each star keeps its
+ * energy at any pixel size: Brightness is its peak where a pixel spans
+ * STAR_POINT, so a coarse light cube receives starlight, not blobs. */
+#define STAR_CELLS 1024
+#define STAR_POINT .0005f
+#define STAR_DENSITY_MAX 100
+
+static uint32_t star_hash(uint32_t x, uint32_t y, uint32_t z)
+{
+    uint32_t h = x * 374761393u + y * 668265263u + z * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+static float star_unit(uint32_t x, uint32_t y, uint32_t z)
+{
+    return (float)(star_hash(x, y, z) >> 8) / 16777215.0f;
+}
+
+static void star_field(const float *direction, float density, float brightness, float pixel, float out[3])
+{
+    out[0] = out[1] = out[2] = 0;
+    float d[3];
+    normalize3(direction, d);
+    density = fminf(density, STAR_DENSITY_MAX);
+    if (!(d[0] || d[1] || d[2]) || !(density > 0) || !(brightness > 0)) {
+        return;
+    }
+    float cell_degrees = 90.0f / STAR_CELLS;
+    float chance = fminf(density * cell_degrees * cell_degrees, 1);
+    float a[3] = { fabsf(d[0]), fabsf(d[1]), fabsf(d[2]) };
+    int axis = a[0] > a[1] ? (a[0] > a[2] ? 0 : 2) : (a[1] > a[2] ? 1 : 2);
+    float n[3] = { 0 }, t[3] = { 0 }, b[3];
+    n[axis] = d[axis] < 0 ? -1.0f : 1.0f;
+    t[axis == 0 ? 1 : 0] = 1;
+    b[0] = n[1] * t[2] - n[2] * t[1];
+    b[1] = n[2] * t[0] - n[0] * t[2];
+    b[2] = n[0] * t[1] - n[1] * t[0];
+    float face[2] = { (d[0] * t[0] + d[1] * t[1] + d[2] * t[2]) / a[axis],
+                      (d[0] * b[0] + d[1] * b[1] + d[2] * b[2]) / a[axis] };
+    int base[2] = { (int)floorf((face[0] * .5f + .5f) * STAR_CELLS),
+                    (int)floorf((face[1] * .5f + .5f) * STAR_CELLS) };
+    uint32_t side = (uint32_t)(axis * 2 + (d[axis] < 0)) * 8;
+    float sigma = .55f * pixel;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            uint32_t cx = (uint32_t)(base[0] + x), cy = (uint32_t)(base[1] + y);
+            if (star_unit(cx, cy, side) >= chance) {
+                continue;
+            }
+            float at[2] = {
+                ((float)(int)cx + .15f + .7f * star_unit(cx, cy, side + 1)) /
+                        STAR_CELLS * 2 -
+                    1,
+                ((float)(int)cy + .15f + .7f * star_unit(cx, cy, side + 2)) / STAR_CELLS * 2 - 1
+            };
+            float s[3];
+            for (int i = 0; i < 3; i++) {
+                s[i] = n[i] + at[0] * t[i] + at[1] * b[i];
+            }
+            float star[3];
+            normalize3(s, star);
+            float c[3] = { d[1] * star[2] - d[2] * star[1],
+                           d[2] * star[0] - d[0] * star[2],
+                           d[0] * star[1] - d[1] * star[0] };
+            float angle2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+            float level = fminf(.02f * powf(fmaxf(star_unit(cx, cy, side + 3), 1e-3f), -1.2f), 1);
+            float warm = star_unit(cx, cy, side + 4);
+            float tint[3] = { 1 + (.72f - 1) * warm,
+                              .78f + (.82f - .78f) * warm,
+                              .6f + (1 - .6f) * warm };
+            float k = level * brightness * expf(-.5f * angle2 / (sigma * sigma));
+            for (int i = 0; i < 3; i++) {
+                out[i] += tint[i] * k;
+            }
+        }
+    }
+}
+
 static void mapping(
     const shader_node *n,
     const float *p,
@@ -264,6 +346,9 @@ void shader_effect_eval(
             }
             break;
         }
+        case SHADER_STAR_FIELD:
+            star_field(a, b[0], c[0], STAR_POINT, out);
+            break;
         default: assert(false);
     }
 }
@@ -377,6 +462,55 @@ const char *shader_effects_glsl()
            "  }\n"
            " }\n"
            " return vec4(sqrt(nearest),color);\n"
+           "}\n"
+           "#endif\n";
+}
+
+const char *shader_star_field_glsl()
+{
+    return "#ifndef SG_STAR_FIELD_DEFINED\n"
+           "#define SG_STAR_FIELD_DEFINED\n"
+           "uint sgx_star_hash(uvec3 v) {\n"
+           " uint h=v.x*374761393u+v.y*668265263u+v.z*2246822519u;\n"
+           " h=(h^(h>>13u))*1274126177u; return h^(h>>16u);\n"
+           "}\n"
+           "float sgx_star_unit(uvec2 c,uint z) "
+           "{ return float(sgx_star_hash(uvec3(c,z))>>8u)/16777215.0; }\n"
+           "vec3 sgx_star_field(vec3 direction,float density,float brightness) "
+           "{\n"
+           " float "
+           "scale=max(abs(direction.x),max(abs(direction.y),abs(direction.z)));"
+           "\n"
+           " vec3 d=scale>0.0?normalize(direction/scale):vec3(0);\n"
+           " float sigma=0.55*length(fwidth(d));\n"
+           " density=min(density,100.0);\n"
+           " if(scale==0.0||!(sigma>0.0)||!(density>0.0)||!(brightness>0.0)) "
+           "return vec3(0);\n"
+           " float cell_degrees=90.0/1024.0;\n"
+           " float chance=min(density*cell_degrees*cell_degrees,1.0);\n"
+           " vec3 a=abs(d); int axis=a.x>a.y?(a.x>a.z?0:2):(a.y>a.z?1:2);\n"
+           " vec3 n=vec3(0); n[axis]=d[axis]<0.0?-1.0:1.0;\n"
+           " vec3 t=axis==0?vec3(0,1,0):vec3(1,0,0); vec3 b=cross(n,t);\n"
+           " vec2 face=vec2(dot(d,t),dot(d,b))/a[axis];\n"
+           " ivec2 base=ivec2(floor((face*0.5+0.5)*1024.0));\n"
+           " uint side=uint(axis*2+(d[axis]<0.0?1:0))*8u;\n"
+           " vec3 sum=vec3(0);\n"
+           " for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++) {\n"
+           "  ivec2 c=base+ivec2(x,y); uvec2 u=uvec2(c);\n"
+           "  if(sgx_star_unit(u,side)>=chance) continue;\n"
+           "  vec2 at=(vec2(c)+0.15+0.7*vec2(sgx_star_unit(u,side+1u),"
+           "sgx_star_unit(u,side+2u)))/1024.0*2.0-1.0;\n"
+           "  vec3 s=normalize(n+at.x*t+at.y*b);\n"
+           "  vec3 c3=cross(d,s); float angle2=dot(c3,c3);\n"
+           "  float "
+           "level=min(0.02*pow(max(sgx_star_unit(u,side+3u),1e-3),-1.2),1.0);\n"
+           "  vec3 "
+           "tint=mix(vec3(1.0,0.78,0.6),vec3(0.72,0.82,1.0),sgx_star_unit(u,"
+           "side+4u));\n"
+           "  sum+=tint*level*exp(-0.5*angle2/(sigma*sigma));\n"
+           " }\n"
+           " float point=0.0005*0.55/sigma;\n"
+           " return sum*brightness*point*point;\n"
            "}\n"
            "#endif\n";
 }

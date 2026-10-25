@@ -30,7 +30,34 @@ typedef struct
     float *distance;
     material_rect *rects;
     material_polygon *surface;
+    /* Derived owned compact exterior ring. Use sample(), not array indexing.
+     * Never part of persistent edits. */
+    unsigned char *halo_cells;
+    float *halo_distance;
+    int halo_radius, lod_limit;
+    unsigned content_revision; /* Occupancy/distance rebuilds, excluding halo changes. */
+    uint64_t halo_signature; /* Derived neighborhood cache; never saved. */
 } material_mask;
+
+enum
+{
+    MATERIAL_HALO_UNAVAILABLE = 2,
+    MATERIAL_HALO_RADIUS_MAX = 128
+};
+typedef struct
+{
+    int radius, lod_limit;
+    /* Padded (width+2*radius)*(height+2*radius) row-major samples. Interior
+     * entries are ignored. Cells are 0/1 or MATERIAL_HALO_UNAVAILABLE. */
+    const unsigned char *cells;
+    const float *distance;
+} material_mask_halo;
+/* Copies a derived snapshot; changed neighbors rebuild surfaces and advance
+ * revision. Identical snapshots allocate nothing. Zero radius clears it.
+ * lod_limit is shared by all chunks of a source (0 means finest only). */
+bool material_mask_set_halo(material_mask *, material_mask_halo);
+/* False means unavailable, distinct from known empty. Interior uses live edits. */
+bool material_mask_sample(const material_mask *, int x, int y, bool *, float *);
 
 /* Processing-owned temporary geometry/connectivity storage, shared across masks.
  * No borrowed work storage survives these calls or a host callback. */
@@ -59,7 +86,11 @@ typedef struct
     float cell_size;
     unsigned revision;
     uint64_t incarnation;
+    const unsigned char *halo_cells;
+    const float *halo_distance;
+    int halo_radius, lod_limit;
 } material_occupancy_view;
+bool material_occupancy_sample(material_occupancy_view, int x, int y, bool *, float *);
 typedef struct
 {
     const material_rect *rects;
@@ -88,6 +119,10 @@ material_mask material_mask_reduce(const material_mask *mask);
 void material_mask_free(material_mask *mask);
 /* Carving and splitting retain the original local origin. */
 int material_mask_carve(material_mask *mask, float x, float y, float radius);
+/* Signed-field subtraction only; retains every occupancy sign. Returns whether
+ * distances changed. Successful cross-chunk damage uses this on neighboring
+ * masks even when they lost no cells; rebuild changed masks before consumers. */
+bool material_mask_cut_field(material_mask *, float x, float y, float radius);
 /* Batch damage edits cells locally. Rebuild once before using rectangles. */
 int material_mask_apply_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness);
 void material_mask_rebuild(material_mask *mask);

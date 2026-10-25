@@ -256,6 +256,10 @@ int ecs_world_command_count(const ecs_world *world);
  * uses the command buffer and sync point internally. */
 ecs_entity ecs_world_create_entity(ecs_world *world);
 int ecs_world_destroy_entity(ecs_world *world, ecs_entity entity);
+/* At a quiescent point, preflight destruction of an owned set and unlink its
+ * internal custom relationships. External PANIC links refuse without changes.
+ * ChildOf stays intact; callers can then destroy children before parents. */
+int ecs_world_prepare_owned_destruction(ecs_world *, const ecs_entity *, int count);
 
 uint64_t ecs_entity_to_u64(ecs_entity entity);
 ecs_entity ecs_entity_from_u64(uint64_t value);
@@ -289,6 +293,7 @@ bool ecs_component_has_entities(
 void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component);
 const void *ecs_component_data_const(const ecs_world *world, ecs_entity entity, ecs_component_id component);
 int ecs_component_read_field(
+    arena *storage,
     const ecs_world *world,
     ecs_entity entity,
     ecs_component_id component,
@@ -301,6 +306,16 @@ int ecs_component_write_field(
     ecs_component_id component,
     int field,
     pin_value value
+);
+/* Call-only native layout resolution for documents with registry-local types.
+ * The world retains copied payloads and never retains the resolver. */
+int ecs_component_write_field_resolved(
+    ecs_world *world,
+    ecs_entity entity,
+    ecs_component_id component,
+    int field,
+    pin_value value,
+    type_resolver resolver
 );
 /* Retain a reflected value in its component row. offset and declared identify
  * either the whole component or one nested reflected field. Managed writes
@@ -322,6 +337,19 @@ int ecs_component_write_value(
 bool ecs_component_accepts_value(const ecs_world *, ecs_component_id, size_t offset, pin_value declared);
 /* Retain reflected string values until the world is freed. */
 const char *ecs_world_intern_string(ecs_world *world, const char *text);
+
+/* On-demand, quiescent-world retained intern storage, not semantic live text or
+ * process peak. Excludes allocator overhead and all other world storage. No
+ * concurrent intern/free; return values retain no world pointers. Same-world
+ * exact payload deltas are newly interned text copy bytes, including NUL. */
+typedef struct
+{
+    uint64_t entries;
+    uint64_t payload_bytes;
+    uint64_t table_backing_bytes;
+    bool overflow;
+} ecs_string_usage;
+ecs_string_usage ecs_world_string_usage(const ecs_world *world);
 
 /* Queries visit results in a deterministic order: ascending slot through a
  * selected component index, or a pair target's sources in the order they

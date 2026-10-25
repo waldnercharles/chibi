@@ -38,6 +38,14 @@ typedef enum
     PIN_CONTAINER_MAP,
 } pin_container;
 
+typedef struct pin_record pin_record;
+typedef struct arena arena;
+typedef struct pin_string
+{
+    const char *bytes;
+    uint32_t length;
+} pin_string;
+
 typedef struct
 {
     pin_type type;
@@ -55,11 +63,13 @@ typedef struct
         float f;
         double d;
         const char *str;
+        const pin_string *text;
         void *ptr;
         int32_t e;
     };
     pin_container container;
     const char *type_name;
+    const pin_record *record; /* Authored layout; native reflected values use NULL. */
 } pin_value;
 
 #endif

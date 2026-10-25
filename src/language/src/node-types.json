@@ -10,10 +10,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
@@ -64,11 +60,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -81,6 +73,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -152,11 +148,7 @@
           "named": true
         },
         {
-          "type": "cast_expression",
-          "named": true
-        },
-        {
-          "type": "engine_reference",
+          "type": "character",
           "named": true
         },
         {
@@ -169,6 +161,10 @@
         },
         {
           "type": "is_expression",
+          "named": true
+        },
+        {
+          "type": "map_expression",
           "named": true
         },
         {
@@ -221,10 +217,6 @@
         {
           "type": "identifier",
           "named": true
-        },
-        {
-          "type": "string",
-          "named": true
         }
       ]
     }
@@ -266,11 +258,7 @@
           "named": true
         },
         {
-          "type": "cast_expression",
-          "named": true
-        },
-        {
-          "type": "engine_reference",
+          "type": "character",
           "named": true
         },
         {
@@ -283,6 +271,10 @@
         },
         {
           "type": "is_expression",
+          "named": true
+        },
+        {
+          "type": "map_expression",
           "named": true
         },
         {
@@ -363,11 +355,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -380,6 +368,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -493,11 +485,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -510,6 +498,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -575,11 +567,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -592,6 +580,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -620,6 +612,22 @@
           },
           {
             "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "attribute",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -663,11 +671,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -680,6 +684,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -735,10 +743,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -781,11 +785,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -798,6 +798,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -895,12 +899,24 @@
             "named": false
           },
           {
+            "type": "??",
+            "named": false
+          },
+          {
             "type": "^",
             "named": false
           },
           {
             "type": "and",
             "named": false
+          },
+          {
+            "type": "in",
+            "named": false
+          },
+          {
+            "type": "not_in",
+            "named": true
           },
           {
             "type": "or",
@@ -949,11 +965,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -966,6 +978,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -1037,11 +1053,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -1054,6 +1066,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -1119,11 +1135,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -1136,6 +1148,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -1199,15 +1215,15 @@
           "named": true
         },
         {
+          "type": "delete_statement",
+          "named": true
+        },
+        {
           "type": "expression_statement",
           "named": true
         },
         {
           "type": "for_statement",
-          "named": true
-        },
-        {
-          "type": "foreach_statement",
           "named": true
         },
         {
@@ -1311,10 +1327,6 @@
             "named": true
           },
           {
-            "type": "engine_reference",
-            "named": true
-          },
-          {
             "type": "identifier",
             "named": true
           },
@@ -1328,10 +1340,6 @@
           },
           {
             "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -1385,6 +1393,10 @@
           "named": true
         },
         {
+          "type": "delete_statement",
+          "named": true
+        },
+        {
           "type": "entry_declaration",
           "named": true
         },
@@ -1406,10 +1418,6 @@
         },
         {
           "type": "for_statement",
-          "named": true
-        },
-        {
-          "type": "foreach_statement",
           "named": true
         },
         {
@@ -1438,10 +1446,6 @@
         },
         {
           "type": "macro_declaration",
-          "named": true
-        },
-        {
-          "type": "metadata_declaration",
           "named": true
         },
         {
@@ -1520,11 +1524,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -1537,6 +1537,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -1602,11 +1606,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -1622,101 +1622,7 @@
             "named": true
           },
           {
-            "type": "member_expression",
-            "named": true
-          },
-          {
-            "type": "nil",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          },
-          {
-            "type": "struct_expression",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "cast_expression",
-    "named": true,
-    "fields": {
-      "type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "array_expression",
-            "named": true
-          },
-          {
-            "type": "as_expression",
-            "named": true
-          },
-          {
-            "type": "await_expression",
-            "named": true
-          },
-          {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "builtin_reference",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "index_expression",
-            "named": true
-          },
-          {
-            "type": "is_expression",
+            "type": "map_expression",
             "named": true
           },
           {
@@ -1778,10 +1684,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -1812,10 +1714,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -1851,9 +1749,15 @@
           {
             "type": "identifier",
             "named": true
-          },
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
           {
-            "type": "string",
+            "type": "type",
             "named": true
           }
         ]
@@ -1891,11 +1795,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -1908,6 +1808,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -1937,6 +1841,16 @@
           {
             "type": "unary_expression",
             "named": true
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
           }
         ]
       }
@@ -1996,11 +1910,11 @@
           "named": true
         },
         {
-          "type": "metadata_declaration",
+          "type": "query_declaration",
           "named": true
         },
         {
-          "type": "query_declaration",
+          "type": "record_declaration",
           "named": true
         },
         {
@@ -2015,15 +1929,15 @@
     }
   },
   {
-    "type": "engine_reference",
+    "type": "delete_statement",
     "named": true,
     "fields": {
-      "name": {
+      "target": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "string",
+            "type": "index_expression",
             "named": true
           }
         ]
@@ -2051,10 +1965,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -2070,10 +1980,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -2125,11 +2031,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -2142,6 +2044,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -2197,10 +2103,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -2216,10 +2118,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -2263,11 +2161,7 @@
           "named": true
         },
         {
-          "type": "cast_expression",
-          "named": true
-        },
-        {
-          "type": "engine_reference",
+          "type": "character",
           "named": true
         },
         {
@@ -2280,6 +2174,10 @@
         },
         {
           "type": "is_expression",
+          "named": true
+        },
+        {
+          "type": "map_expression",
           "named": true
         },
         {
@@ -2327,6 +2225,20 @@
           }
         ]
       },
+      "bound": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "..<",
+            "named": false
+          }
+        ]
+      },
       "first": {
         "multiple": false,
         "required": false,
@@ -2360,11 +2272,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -2377,6 +2285,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -2405,6 +2317,16 @@
           },
           {
             "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "key": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -2442,11 +2364,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -2459,6 +2377,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -2498,10 +2420,26 @@
           {
             "type": "identifier",
             "named": true
-          },
+          }
+        ]
+      },
+      "reference": {
+        "multiple": false,
+        "required": false,
+        "types": [
           {
-            "type": "string",
-            "named": true
+            "type": "ref",
+            "named": false
+          }
+        ]
+      },
+      "reverse": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "<",
+            "named": false
           }
         ]
       },
@@ -2538,11 +2476,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -2558,115 +2492,7 @@
             "named": true
           },
           {
-            "type": "member_expression",
-            "named": true
-          },
-          {
-            "type": "nil",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          },
-          {
-            "type": "struct_expression",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "foreach_statement",
-    "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "array_expression",
-            "named": true
-          },
-          {
-            "type": "as_expression",
-            "named": true
-          },
-          {
-            "type": "await_expression",
-            "named": true
-          },
-          {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "builtin_reference",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "index_expression",
-            "named": true
-          },
-          {
-            "type": "is_expression",
+            "type": "map_expression",
             "named": true
           },
           {
@@ -2705,6 +2531,16 @@
     "type": "function_declaration",
     "named": true,
     "fields": {
+      "attribute": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "attribute",
+            "named": true
+          }
+        ]
+      },
       "body": {
         "multiple": false,
         "required": true,
@@ -2721,10 +2557,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -2761,13 +2593,13 @@
           }
         ]
       },
-      "type_parameters": {
+      "visibility": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "type_parameter_list",
-            "named": true
+            "type": "pub",
+            "named": false
           }
         ]
       }
@@ -2784,10 +2616,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -2797,17 +2625,13 @@
     "type": "handler",
     "named": true,
     "fields": {
-      "alias": {
+      "binding": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
+            "type": "::",
+            "named": false
           }
         ]
       },
@@ -2849,10 +2673,6 @@
           },
           {
             "type": "member_expression",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -2920,11 +2740,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -2937,6 +2753,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -2982,6 +2802,32 @@
     }
   },
   {
+    "type": "import_declaration",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "index_expression",
     "named": true,
     "fields": {
@@ -3018,11 +2864,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3035,6 +2877,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3100,11 +2946,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3117,6 +2959,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3222,11 +3068,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3239,6 +3081,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3284,10 +3130,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -3314,10 +3156,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       }
@@ -3333,10 +3171,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -3384,11 +3218,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3401,6 +3231,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3456,10 +3290,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
@@ -3494,13 +3324,214 @@
             "named": true
           }
         ]
-      },
-      "type_parameters": {
+      }
+    }
+  },
+  {
+    "type": "map_entry",
+    "named": true,
+    "fields": {
+      "key": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "type_parameter_list",
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "as_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "character",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "as_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "character",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "map_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "map_entry",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "map_type",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
             "named": true
           }
         ]
@@ -3570,10 +3601,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
@@ -3610,11 +3637,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3627,6 +3650,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3655,56 +3682,6 @@
           },
           {
             "type": "unary_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "metadata_declaration",
-    "named": true,
-    "fields": {
-      "kind": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "dataflow",
-            "named": false
-          },
-          {
-            "type": "depth_limit",
-            "named": false
-          },
-          {
-            "type": "description",
-            "named": false
-          },
-          {
-            "type": "domain",
-            "named": false
-          },
-          {
-            "type": "owner",
-            "named": false
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -3758,11 +3735,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3775,6 +3748,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3815,7 +3792,12 @@
     "fields": {}
   },
   {
-    "type": "parameter",
+    "type": "not_in",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "package_header",
     "named": true,
     "fields": {
       "name": {
@@ -3825,9 +3807,31 @@
           {
             "type": "identifier",
             "named": true
-          },
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "parameter",
+    "named": true,
+    "fields": {
+      "comptime": {
+        "multiple": false,
+        "required": false,
+        "types": [
           {
-            "type": "string",
+            "type": "$",
+            "named": false
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -3865,11 +3869,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3882,6 +3882,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -3965,11 +3969,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -3982,6 +3982,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4068,11 +4072,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4085,6 +4085,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4135,6 +4139,102 @@
     }
   },
   {
+    "type": "prototype_bases",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "prototype_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "prototype_component",
+          "named": true
+        },
+        {
+          "type": "struct_field",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "prototype_component",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "struct_expression",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "prototype_declaration",
+    "named": true,
+    "fields": {
+      "bases": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "prototype_bases",
+            "named": true
+          }
+        ]
+      },
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "prototype_body",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "query_declaration",
     "named": true,
     "fields": {
@@ -4171,11 +4271,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4188,6 +4284,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4233,10 +4333,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
@@ -4273,11 +4369,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4290,6 +4382,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4400,6 +4496,175 @@
     }
   },
   {
+    "type": "record_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "record_field",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "record_declaration",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "record_body",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "parameter_list",
+            "named": true
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "record_field",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "as_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "character",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "reduce_statement",
     "named": true,
     "fields": {
@@ -4464,11 +4729,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4481,6 +4742,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4546,11 +4811,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4563,6 +4824,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4598,6 +4863,32 @@
     }
   },
   {
+    "type": "relationship_declaration",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "struct_expression",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "return_statement",
     "named": true,
     "fields": {
@@ -4607,10 +4898,6 @@
         "types": [
           {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
             "named": true
           }
         ]
@@ -4652,11 +4939,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4669,6 +4952,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4722,10 +5009,21 @@
     "type": "source_file",
     "named": true,
     "root": true,
-    "fields": {},
+    "fields": {
+      "package": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "package_header",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": false,
-      "required": true,
+      "multiple": true,
+      "required": false,
       "types": [
         {
           "type": "behavior",
@@ -4736,11 +5034,47 @@
           "named": true
         },
         {
+          "type": "constant_declaration",
+          "named": true
+        },
+        {
+          "type": "function_declaration",
+          "named": true
+        },
+        {
+          "type": "import_declaration",
+          "named": true
+        },
+        {
           "type": "library",
           "named": true
         },
         {
+          "type": "macro_declaration",
+          "named": true
+        },
+        {
+          "type": "prototype_declaration",
+          "named": true
+        },
+        {
+          "type": "record_declaration",
+          "named": true
+        },
+        {
+          "type": "relationship_declaration",
+          "named": true
+        },
+        {
+          "type": "state_declaration",
+          "named": true
+        },
+        {
           "type": "system",
+          "named": true
+        },
+        {
+          "type": "union_declaration",
           "named": true
         }
       ]
@@ -4757,10 +5091,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
@@ -4769,11 +5099,7 @@
         "required": false,
         "types": [
           {
-            "type": "shared",
-            "named": false
-          },
-          {
-            "type": "state",
+            "type": "retain",
             "named": false
           }
         ]
@@ -4821,11 +5147,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4838,6 +5160,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -4898,10 +5224,6 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
@@ -4938,11 +5260,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -4955,6 +5273,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5036,11 +5358,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -5053,6 +5371,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5128,11 +5450,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -5145,6 +5463,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5193,12 +5515,40 @@
     "type": "system",
     "named": true,
     "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "::",
+            "named": false
+          }
+        ]
+      },
       "body": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "system_body",
+            "named": true
+          }
+        ]
+      },
+      "event": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "member_expression",
             "named": true
           }
         ]
@@ -5220,23 +5570,25 @@
           {
             "type": "identifier",
             "named": true
-          },
-          {
-            "type": "string",
-            "named": true
           }
         ]
       },
       "parameters": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "parameter_list",
             "named": true
-          },
+          }
+        ]
+      },
+      "payload": {
+        "multiple": false,
+        "required": false,
+        "types": [
           {
-            "type": "query_parameter_list",
+            "type": "parameter_list",
             "named": true
           }
         ]
@@ -5274,11 +5626,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -5291,6 +5639,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5372,6 +5724,10 @@
           "named": true
         },
         {
+          "type": "delete_statement",
+          "named": true
+        },
+        {
           "type": "entry_declaration",
           "named": true
         },
@@ -5393,10 +5749,6 @@
         },
         {
           "type": "for_statement",
-          "named": true
-        },
-        {
-          "type": "foreach_statement",
           "named": true
         },
         {
@@ -5425,10 +5777,6 @@
         },
         {
           "type": "macro_declaration",
-          "named": true
-        },
-        {
-          "type": "metadata_declaration",
           "named": true
         },
         {
@@ -5484,10 +5832,24 @@
           }
         ]
       },
+      "map": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "map_type",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "type_binder",
+            "named": true
+          },
           {
             "type": "type_name",
             "named": true
@@ -5542,10 +5904,40 @@
       "required": false,
       "types": [
         {
+          "type": "type_application",
+          "named": true
+        },
+        {
           "type": "union_type",
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "type_application",
+    "named": true,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "argument_list",
+            "named": true
+          }
+        ]
+      },
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -5564,26 +5956,7 @@
     }
   },
   {
-    "type": "type_name",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        },
-        {
-          "type": "string",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "type_parameter",
+    "type": "type_binder",
     "named": true,
     "fields": {
       "name": {
@@ -5595,21 +5968,11 @@
             "named": true
           }
         ]
-      },
-      "type": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
       }
     }
   },
   {
-    "type": "type_parameter_list",
+    "type": "type_name",
     "named": true,
     "fields": {},
     "children": {
@@ -5617,7 +5980,7 @@
       "required": true,
       "types": [
         {
-          "type": "type_parameter",
+          "type": "identifier",
           "named": true
         }
       ]
@@ -5670,11 +6033,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -5687,6 +6046,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5762,11 +6125,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -5779,6 +6138,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5850,11 +6213,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -5867,6 +6226,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -5938,10 +6301,16 @@
           {
             "type": "identifier",
             "named": true
-          },
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
           {
-            "type": "string",
-            "named": true
+            "type": "pub",
+            "named": false
           }
         ]
       }
@@ -6101,11 +6470,7 @@
             "named": true
           },
           {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
+            "type": "character",
             "named": true
           },
           {
@@ -6118,6 +6483,10 @@
           },
           {
             "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "map_expression",
             "named": true
           },
           {
@@ -6178,6 +6547,10 @@
   },
   {
     "type": "!=",
+    "named": false
+  },
+  {
+    "type": "$",
     "named": false
   },
   {
@@ -6249,6 +6622,10 @@
     "named": false
   },
   {
+    "type": "..<",
+    "named": false
+  },
+  {
     "type": "/",
     "named": false
   },
@@ -6293,6 +6670,10 @@
     "named": false
   },
   {
+    "type": "=>",
+    "named": false
+  },
+  {
     "type": ">",
     "named": false
   },
@@ -6306,6 +6687,14 @@
   },
   {
     "type": "?",
+    "named": false
+  },
+  {
+    "type": "??",
+    "named": false
+  },
+  {
+    "type": "@",
     "named": false
   },
   {
@@ -6369,8 +6758,8 @@
     "named": false
   },
   {
-    "type": "cast",
-    "named": false
+    "type": "character",
+    "named": true
   },
   {
     "type": "component",
@@ -6381,15 +6770,7 @@
     "named": false
   },
   {
-    "type": "dataflow",
-    "named": false
-  },
-  {
-    "type": "depth_limit",
-    "named": false
-  },
-  {
-    "type": "description",
+    "type": "delete",
     "named": false
   },
   {
@@ -6397,15 +6778,7 @@
     "named": false
   },
   {
-    "type": "domain",
-    "named": false
-  },
-  {
     "type": "else",
-    "named": false
-  },
-  {
-    "type": "engine",
     "named": false
   },
   {
@@ -6429,15 +6802,7 @@
     "named": false
   },
   {
-    "type": "fn",
-    "named": false
-  },
-  {
     "type": "for",
-    "named": false
-  },
-  {
-    "type": "foreach",
     "named": false
   },
   {
@@ -6454,6 +6819,10 @@
   },
   {
     "type": "if",
+    "named": false
+  },
+  {
+    "type": "import",
     "named": false
   },
   {
@@ -6509,7 +6878,7 @@
     "named": false
   },
   {
-    "type": "owner",
+    "type": "package",
     "named": false
   },
   {
@@ -6517,7 +6886,11 @@
     "named": false
   },
   {
-    "type": "pure",
+    "type": "prototype",
+    "named": false
+  },
+  {
+    "type": "pub",
     "named": false
   },
   {
@@ -6530,6 +6903,14 @@
   },
   {
     "type": "ref",
+    "named": false
+  },
+  {
+    "type": "relationship",
+    "named": false
+  },
+  {
+    "type": "retain",
     "named": false
   },
   {
@@ -6553,10 +6934,6 @@
     "named": false
   },
   {
-    "type": "shared",
-    "named": false
-  },
-  {
     "type": "split",
     "named": false
   },
@@ -6567,6 +6944,10 @@
   {
     "type": "string",
     "named": true
+  },
+  {
+    "type": "struct",
+    "named": false
   },
   {
     "type": "switch",

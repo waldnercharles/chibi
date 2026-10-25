@@ -359,11 +359,12 @@ static void set_icon(const char *root, const char *icon)
 static void log_message(void *, const execution_log_message *message)
 {
     printf(
-        "[%s %.6f] %s\n",
+        "[%s %.6f] ",
         message->program_name ? message->program_name : "source",
-        message->now,
-        message->text
+        message->now
     );
+    fwrite(message->text, 1, message->text_length, stdout);
+    fputc('\n', stdout);
 }
 /* Starts the scene scripts asked for during the frame that just drew, or
  * prints why it could not. */

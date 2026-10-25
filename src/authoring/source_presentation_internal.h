@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUTHORING_SOURCE_PRESENTATION_INTERNAL_H
 #define CHIBI_AUTHORING_SOURCE_PRESENTATION_INTERNAL_H
 #include "authoring/source_presentation.h"
+#include "language/identity.h"
 
 struct authoring_source_presentation
 {
@@ -16,6 +17,7 @@ typedef struct
     const authoring_source_presentation *previous;
     const script_analysis *analysis;
     const script_catalog *catalog;
+    script_occurrences *occurrences;
     graph *graph;
     int function;
     node **expressions, **statements;

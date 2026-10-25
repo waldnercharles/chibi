@@ -212,6 +212,10 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
     if (i->indirect) {
         return false;
     }
+    /* The machine helper checks what a development build reports. */
+    if (behavior_integer_site(f, i, 0) && behavior_integer_reportable(f, i)) {
+        return false;
+    }
     if (i->op == BF_SAVE) {
         return !behavior_function_inspectable(f) || !f->locals[i->target].parameter;
     }
@@ -249,8 +253,7 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
     if (i->op == BF_EQ || i->op == BF_NE || behavior_function_bitwise(i->op)) {
         return binary_op(i->op, type) != 0;
     }
-    if (type != PIN_F32 && type != PIN_F64 && type != PIN_I32 &&
-        type != PIN_I64 && type != PIN_U32 && type != PIN_U64) {
+    if (type != PIN_F32 && type != PIN_F64 && !(type >= PIN_I8 && type <= PIN_U64)) {
         return false;
     }
     return binary_op(i->op, type) != 0;
@@ -357,10 +360,6 @@ static void emitted_value(writer *w, const behavior_function *f, const behavior_
         byte(w, value_type(type) == 0x7e ? 0x85 : 0x73);
     } else {
         load(w, i->right, type);
-        if ((i->op == BF_SHL || i->op == BF_SHR) && behavior_scalar_size(type) < 4) {
-            constant(w, (int)behavior_scalar_size(type) * 8 - 1);
-            byte(w, 0x71);
-        }
         byte(w, binary_op(i->op, type));
     }
     memory(w, store_op(f->slots[i->output]), slot_offset(i->output));
@@ -734,7 +733,25 @@ bool execution_wasm_emit(
             } else if (i->op == BF_COMPONENT_READ) {
                 component_read(&code, i, pc);
             } else if (direct(f, i)) {
+                bool shift = i->op == BF_SHL || i->op == BF_SHR;
+                if (shift) {
+                    // Wasm masks raw shift counts, so a count at or past the
+                    // width takes the canonical step instead of the direct one.
+                    pin_type type = f->slots[i->left];
+                    bool wide = value_type(type) == 0x7e;
+                    load(&code, i->right, type);
+                    byte(&code, wide ? 0x42 : 0x41);
+                    signed_leb(&code, (int)behavior_scalar_size(type) * 8);
+                    byte(&code, wide ? 0x5a : 0x4f); // i64.ge_u / i32.ge_u
+                    byte(&code, 0x04);
+                    byte(&code, 0x40);
+                    helper(&code, pc);
+                    byte(&code, 0x05);
+                }
                 emitted_value(&code, f, i);
+                if (shift) {
+                    byte(&code, 0x0b);
+                }
             } else {
                 /* Checked component writes deliberately use the canonical step
                  * import, including its authoritative publication callback. */

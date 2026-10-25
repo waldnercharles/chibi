@@ -3,8 +3,8 @@
 Chibi separates executable source, prepared definitions, live execution and
 authoring views. The engine repository owns their shared C implementations and
 SDK contracts. Studio is a separate application built against an installed SDK.
-Game repositories own composition, rules and tuning; `chibi-examples` owns labs
-and sampled content. Engine regression tests use focused fixtures.
+Game repositories own composition, rules and tuning. Engine regression tests use
+focused fixtures, which double as the [examples](examples.md).
 
 ## Source and execution authority
 
@@ -52,9 +52,9 @@ retain constant payloads until calls finish. Loading is synchronous in this
 version. Fields keep their separate evaluator.
 
 Authoring graphs project resolved source records. Graph edits produce source
-edits, followed by analysis and preparation before adoption. Optional
-`.chibi.meta` holds layout and debugger presentation; it supplies no executable
-values or connections. Native shader/model/field graphs have separate compilers.
+edits, followed by analysis and preparation before adoption. Graphs lay out
+automatically; in-session layout, breakpoints and watches are editor state that
+projects never store. Native shader/model/field graphs have separate compilers.
 Their producer API rejects executable behavior domains and metadata-only nodes.
 
 ## Package boundaries
@@ -161,5 +161,3 @@ passed functional acceptance. Installed-consumer builds establish dependency
 boundaries; package checks establish integrity. Rendered player behavior, Studio
 interaction and browser execution require their own reviewed captures. Current
 evidence and outstanding requirements are tracked in [PLAN](../PLAN.md).
-All tests retain the [60-second admission policy](testing.md#temporary-60-second-policy);
-quarantined coverage is not treated as passed.

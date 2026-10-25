@@ -154,8 +154,8 @@ The results file records both executable hashes.
 
 ## Directional sparse ray-query prototype
 
-[`tools/hrc_sparse_sweep.c`](../../tools/hrc_sparse_sweep.c) converts a regular
-2D optical grid into parallel, world-anchored line samples for each direction.
+The standalone probe `tools/hrc_sparse_sweep.c` converts a regular 2D optical
+grid into parallel, world-anchored line samples for each direction.
 Each line uses exact cell-crossing lengths and stores only nonidentity optical
 segments in a balanced binary tree. Parent intervals compose their actual ordered
 children. Pure black occluders are retained; empty segments transmit light.
@@ -226,11 +226,13 @@ different paths. Conservative source footprints and visibility-aware receiver
 reconstruction remain necessary. The broader research report describes why a
 nearest-two parent rule alone does not enforce those dependencies.
 
-Build and run the standalone study:
+The probe left the tree on 2026-10-19 with the other retired one-off probes.
+Recover it from the commit that added it, then build and run the study:
 
 ```sh
+git show d837dbe7b:tools/hrc_sparse_sweep.c > /tmp/hrc_sparse_sweep.c
 cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
-  tools/hrc_sparse_sweep.c -lm -o /tmp/hrc_sparse_sweep
+  /tmp/hrc_sparse_sweep.c -lm -o /tmp/hrc_sparse_sweep
 /tmp/hrc_sparse_sweep > /tmp/hrc-sparse-tree.json
 /tmp/hrc_sparse_sweep --directions 16 --pitch 1 --phase .37
 ```

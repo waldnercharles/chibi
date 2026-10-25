@@ -5945,11 +5945,18 @@ enum
     SCALAR_LITERAL_ROW = 6,
     SCALAR_READ_ROW = 7,
     SCALAR_CALL_ROW = 8,
-    SCALAR_GUARD_ROW = 9,
+    SCALAR_IF_ROW = 9,
     SCALAR_COMPARE_ROW = 10,
     SCALAR_ARITHMETIC_ROW = 11,
     SCALAR_UNARY_ROW = 12,
     SCALAR_CONVERT_ROW = 13,
+    SCALAR_LOCAL_ROW = 14,
+    SCALAR_ASSIGN_ROW = 15,
+    SCALAR_ELSE_ROW = 16,
+    SCALAR_END_ROW = 17,
+    SCALAR_LOGICAL_ROW = 18,
+    SCALAR_MAX_LOCALS = 16,
+    SCALAR_MAX_STATEMENTS = 32,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2,
     SCALAR_INT8 = 3,
@@ -5967,11 +5974,11 @@ static const int GUARD_KINDS[] = {
     SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
     SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
     SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
-    SCALAR_PARAMETER_ROW, SCALAR_GUARD_ROW,    SCALAR_READ_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_IF_ROW,       SCALAR_READ_ROW,
     SCALAR_READ_ROW,      SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,
-    SCALAR_READ_ROW,      SCALAR_CALL_ROW,     SCALAR_RETURN_ROW,
-    SCALAR_READ_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
-    SCALAR_RETURN_ROW,    SCALAR_READ_ROW,
+    SCALAR_READ_ROW,      SCALAR_CALL_ROW,     SCALAR_END_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_READ_ROW,     SCALAR_FUNCTION_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
 };
 enum
 {
@@ -5980,10 +5987,57 @@ enum
     GUARD_COMPARE = 13,
     GUARD_ARM = 14,
     GUARD_ARM_READ = 15,
-    GUARD_FINAL = 17,
-    GUARD_ID_READ = 22,
+    GUARD_END = 17,
+    GUARD_FINAL = 18,
+    GUARD_ID_READ = 23,
     GUARD_ROWS = (int)(sizeof GUARD_KINDS / sizeof *GUARD_KINDS),
     GUARD_EDITS = 5
+};
+/* Pick declares x, then in an if statement whose condition is a logical
+ * and its consequence's own local y, adds y to x, and otherwise returns b.
+ * Pick(1, 2) is 3. */
+static const char
+    CONTROL_ROWS_SOURCE[] = "package scalar\n"
+                            "Main :: () -> int { return Pick(1, 2); }\n"
+                            "Pick :: (a: int, b: int) -> int {\n"
+                            "    x := a;\n"
+                            "    if (a < b && !(b < 0)) {\n"
+                            "        y := b;\n"
+                            "        x += y;\n"
+                            "    } else {\n"
+                            "        return b;\n"
+                            "    }\n"
+                            "    return x;\n"
+                            "}\n";
+/* The kind of each of CONTROL_ROWS_SOURCE's rows, and the rows edited. */
+static const int CONTROL_KINDS[] = {
+    SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
+    SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,
+    SCALAR_IF_ROW,        SCALAR_READ_ROW,     SCALAR_READ_ROW,
+    SCALAR_COMPARE_ROW,   SCALAR_LOGICAL_ROW,  SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW,   SCALAR_COMPARE_ROW,  SCALAR_UNARY_ROW,
+    SCALAR_LOCAL_ROW,     SCALAR_READ_ROW,     SCALAR_ASSIGN_ROW,
+    SCALAR_READ_ROW,      SCALAR_READ_ROW,     SCALAR_ARITHMETIC_ROW,
+    SCALAR_ELSE_ROW,      SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
+    SCALAR_END_ROW,       SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
+};
+enum
+{
+    CONTROL_X = 10,
+    CONTROL_X_VALUE = 11,
+    CONTROL_IF = 12,
+    CONTROL_LOGICAL = 16,
+    CONTROL_NOT = 20,
+    CONTROL_Y = 21,
+    CONTROL_ASSIGN = 23,
+    CONTROL_ELSE = 27,
+    CONTROL_ELSE_READ = 29,
+    CONTROL_END = 30,
+    CONTROL_FINAL = 31,
+    CONTROL_FINAL_READ = 32,
+    CONTROL_ROWS = (int)(sizeof CONTROL_KINDS / sizeof *CONTROL_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -6002,8 +6056,9 @@ typedef struct malformed_guard
 } malformed_guard;
 #define EDIT(r, f, v) { .row = (r), .field = (f), .value = (v), .from = -1 }
 #define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
-static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its number operands",
-                  SEGMENT[] = "invalid scalar return row";
+static const char LAYOUT[] = "invalid scalar module layout",
+                  COMPARISON[] = "scalar comparison differs from its operands",
+                  SEGMENT[] = "invalid scalar statement row";
 /* The kind of each of ARITHMETIC_SOURCE's rows, and the rows edited. */
 static const int ARITHMETIC_KINDS[] = {
     SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
@@ -6021,20 +6076,30 @@ enum
     ARITHMETIC_LAST_READ = 15,
     ARITHMETIC_ROWS = (int)(sizeof ARITHMETIC_KINDS / sizeof *ARITHMETIC_KINDS)
 };
+static const char
+    ARITHMETIC[] = "scalar arithmetic differs from its number operands";
 static const malformed_guard MALFORMED_GUARDS[] = {
-    /* A guard with no condition, and a second guard past the bound. */
+    /* An if statement with no condition, one that never ends, and an else
+     * with no end. */
     { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
-    { { EDIT(GUARD_FINAL, "kind", SCALAR_GUARD_ROW) }, LAYOUT },
+    { { EDIT(GUARD_FINAL, "kind", SCALAR_IF_ROW) }, LAYOUT },
+    { { EDIT(GUARD_END, "kind", SCALAR_ELSE_ROW) }, LAYOUT },
     /* A comparison's operator, arity and result. */
     { { EDIT(GUARD_COMPARE, "value", 0) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "value", 7) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "count", 1) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "type", SCALAR_INT) }, COMPARISON },
-    /* A comparison of a bool. */
+    /* A comparison of an int with a bool, and an ordering of two bools. */
     { { EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
         EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
         EDIT(GUARD_CONDITION + 1, "value", 0),
         EDIT(GUARD_CONDITION + 1, "literal", 1) },
+      COMPARISON },
+    { { EDIT(GUARD_CONDITION, "kind", SCALAR_LITERAL_ROW),
+        EDIT(GUARD_CONDITION, "type", SCALAR_BOOL),
+        EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
+        EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
+        EDIT(GUARD_CONDITION + 1, "value", 0) },
       COMPARISON },
     /* A condition that leaves three ints rather than one bool: the
      * comparison becomes a read of b. */
@@ -6042,29 +6107,76 @@ static const malformed_guard MALFORMED_GUARDS[] = {
         EDIT(GUARD_COMPARE, "type", SCALAR_INT),
         EDIT(GUARD_COMPARE, "count", 0) },
       "scalar condition is not one bool" },
-    /* A guard row that carries a type, an arm that ends past its guard, a
-     * condition operand inside the arm and a final return that starts inside
-     * the guard. */
+    /* An if row that carries a type, a consequence that ends past its if
+     * statement, a condition operand inside the consequence, a final return
+     * that starts inside the if statement, and an end with another range. */
     { { EDIT(GUARD_ROW, "type", SCALAR_INT) }, SEGMENT },
     { { COPY(GUARD_ARM, "end", GUARD_FINAL) }, SEGMENT },
     { { COPY(GUARD_CONDITION, "start", GUARD_ARM_READ),
         COPY(GUARD_CONDITION, "end", GUARD_ARM_READ),
         COPY(GUARD_CONDITION, "line", GUARD_ARM_READ),
         COPY(GUARD_CONDITION, "column", GUARD_ARM_READ) },
-      "invalid scalar operand row" },
+      SEGMENT },
     { { COPY(GUARD_FINAL, "start", GUARD_ROW),
         COPY(GUARD_FINAL, "line", GUARD_ROW),
         COPY(GUARD_FINAL, "column", GUARD_ROW) },
       SEGMENT },
+    { { COPY(GUARD_END, "end", GUARD_FINAL) }, SEGMENT },
+    /* A read past the variables, and a body that ends in an assignment. */
+    { { EDIT(GUARD_ARM_READ, "value", 2) }, "scalar read differs from its variable" },
+    { { EDIT(GUARD_FINAL, "kind", SCALAR_ASSIGN_ROW),
+        EDIT(GUARD_FINAL, "type", SCALAR_INT),
+        EDIT(GUARD_FINAL, "value", 1) },
+      "scalar function can end without returning" },
     /* Id calls Main, so the arm's call closes a cycle. */
     { { EDIT(GUARD_ID_READ, "kind", SCALAR_CALL_ROW),
         EDIT(GUARD_ID_READ, "value", 0),
         { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
       "scalar module calls are recursive" },
 };
+static const char LOGIC[] = "scalar logic differs from its bool operands",
+                  READ[] = "scalar read differs from its variable";
+static const malformed_guard MALFORMED_CONTROL[] = {
+    /* A logical with no right rows, with right rows past its condition, whose
+     * right side is an int, or with another operator. */
+    { { EDIT(CONTROL_LOGICAL, "count", 0) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "count", 5) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "count", 1) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "value", 3) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "type", SCALAR_INT) }, LOGIC },
+    /* A not of an int. */
+    { { EDIT(CONTROL_NOT, "type", SCALAR_INT) }, ARITHMETIC },
+    /* x read in its own initializer, y after its consequence and in the
+     * alternative. */
+    { { EDIT(CONTROL_X_VALUE, "value", 2) }, READ },
+    { { EDIT(CONTROL_FINAL_READ, "value", 3) }, READ },
+    { { EDIT(CONTROL_ELSE_READ, "value", 3) }, READ },
+    /* A local that is not the next variable, has no name or no scalar type. */
+    { { EDIT(CONTROL_X, "value", 3) }, "invalid scalar local row" },
+    { { { .row = CONTROL_X, .field = "name", .text = "", .from = -1 } },
+      "invalid scalar local row" },
+    { { EDIT(CONTROL_X, "type", 0) }, "invalid scalar local row" },
+    /* An assignment to no visible variable, or of another type. */
+    { { EDIT(CONTROL_ASSIGN, "value", 5) }, "scalar assignment differs from its variable" },
+    { { EDIT(CONTROL_ASSIGN, "type", SCALAR_BOOL) },
+      "scalar assignment differs from its variable" },
+    /* A second else, an else outside its if statement, and an end of
+     * another range. */
+    { { EDIT(CONTROL_END, "kind", SCALAR_ELSE_ROW) }, LAYOUT },
+    { { COPY(CONTROL_ELSE, "end", CONTROL_FINAL) }, SEGMENT },
+    { { COPY(CONTROL_END, "start", CONTROL_ELSE),
+        COPY(CONTROL_END, "line", CONTROL_ELSE),
+        COPY(CONTROL_END, "column", CONTROL_ELSE) },
+      SEGMENT },
+    /* An if statement with an else whose consequence falls through ends the
+     * body only when its alternative does too: the final return becomes an
+     * assignment. */
+    { { EDIT(CONTROL_FINAL, "kind", SCALAR_ASSIGN_ROW),
+        EDIT(CONTROL_FINAL, "type", SCALAR_INT),
+        EDIT(CONTROL_FINAL, "value", 2) },
+      "scalar function can end without returning" },
+};
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
-static const char
-    ARITHMETIC[] = "scalar arithmetic differs from its number operands";
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_ADD, "value", 11) }, ARITHMETIC },
@@ -6241,7 +6353,7 @@ static bool widened_rows(const pin_value *rows)
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2], guarded[2], computed[2], widened[2];
+    pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -6264,6 +6376,18 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &widened[b])
         );
+        args[2] = text(CONTROL_ROWS_SOURCE);
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            b,
+            PACKAGE,
+            "CollectScalar",
+            args,
+            5,
+            COMPILE_BUDGET,
+            &detached,
+            &controlled[b]
+        ));
     }
     compiler_fixture_free(&fixture);
     arena_free(&input);
@@ -6328,6 +6452,14 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             WIDTH_ROWS,
             MALFORMED_WIDTHS,
             (int)(sizeof MALFORMED_WIDTHS / sizeof *MALFORMED_WIDTHS)
+        ));
+        REQUIRE(rejects_malformed(
+            b,
+            &controlled[b],
+            CONTROL_KINDS,
+            CONTROL_ROWS,
+            MALFORMED_CONTROL,
+            (int)(sizeof MALFORMED_CONTROL / sizeof *MALFORMED_CONTROL)
         ));
     }
     return true;
@@ -6840,7 +6972,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 36
+    SCALAR_ACCEPTED_CASES = 43
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -6912,6 +7044,13 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "shift", "Shl", 1, { -1 }, -4 },
     { "shift", "Shl", 1, { INT32_MIN }, 0 },
     { "shift", "Shl", 1, { INT32_MAX }, -4 },
+    /* Each path of a && b's short circuit. */
+    { "logical_and", "Mid", 3, { 2, 1, 3 }, 2 },
+    { "logical_and", "Mid", 3, { 1, 3, 2 }, 1 },
+    { "logical_and", "Mid", 3, { 1, 2, 3 }, 2 },
+    { "bool_comparison", "Same", 2, { 1, 1 }, 1 },
+    { "bool_comparison", "Same", 2, { 0, 1 }, 0 },
+    { "helper_statement", "Id", 1, { INT32_MIN }, INT32_MIN },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
@@ -7538,39 +7677,63 @@ static char *definition(const char *ir, const char *start)
     text[length] = 0;
     return text;
 }
-/* Unoptimized IR keeps what the source decides at run time. Min compares its
- * two parameters and branches on the result. Choose calls Skipped between its
- * branch and the branch's true target, and Taken only after that target, so
- * an arm's call runs only when its guard holds. */
+/* The text of `ir` from label `p<pc>` on, or NULL. */
+static const char *labelled(const char *ir, int pc)
+{
+    char label[32];
+    snprintf(label, sizeof label, "\np%d:\n", pc);
+    return strstr(ir, label);
+}
+/* Unoptimized IR keeps what the source decides at run time. Min moves its
+ * parameters to locals, compares them and branches on the result. Choose's
+ * branch goes to its consequence, which calls Taken, and otherwise jumps past
+ * it to the call of Skipped, so each runs only on its own path. Mid compares
+ * b with c only after branching on a < b. */
 static bool keeps_guards(const char *name, const char *ir)
 {
     if (!strcmp(name, "min")) {
         char *min = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1)");
         bool kept = strstr(min, "store i32 %arg0, ptr %s0") &&
                     strstr(min, "store i32 %arg1, ptr %s1") &&
-                    strstr(min, "%a3 = load i32, ptr %s0\n  %b3 = load i32, ptr %s1\n  %v3 = icmp slt i32 %a3, %b3") &&
-                    strstr(min, "store i1 %v3, ptr %s2") &&
-                    strstr(min, "br i1 %a4, label %p");
+                    strstr(min, "%a5 = load i32, ptr %l0\n  store i32 %a5, ptr %s2") &&
+                    strstr(min, "%a7 = load i32, ptr %s2\n  %b7 = load i32, ptr %s3\n  %v7 = icmp slt i32 %a7, %b7") &&
+                    strstr(min, "store i1 %v7, ptr %s4") &&
+                    strstr(min, "br i1 %a8, label %p");
         free(min);
         REQUIRE(kept);
     }
     if (!strcmp(name, "lazy_arm")) {
         char *choose = definition(ir, "define internal i32 @chibi_scalar.1(i1 %arg0)");
-        /* The guard's branch, not a budget check's `br i1 %available`. */
+        /* The if statement's branch, not a budget check's `br i1 %available`. */
         const char *branch = strstr(choose, "  br i1 %a");
         while (branch && !isdigit((unsigned char)branch[strlen("  br i1 %a")])) {
             branch = strstr(branch + 1, "  br i1 %a");
         }
-        int target = -1;
-        REQUIRE(branch && sscanf(branch, "  br i1 %%a%*d, label %%p%d", &target) == 1);
-        char label[32];
-        snprintf(label, sizeof label, "\np%d:\n", target);
-        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
-        const char *arm = strstr(choose, label);
+        int consequence = -1, otherwise = -1, past = -1;
+        REQUIRE(
+            branch &&
+            sscanf(branch, "  br i1 %%a%*d, label %%p%d, label %%p%d", &consequence, &otherwise) == 2
+        );
+        const char *jump = labelled(choose, otherwise);
+        REQUIRE(jump && sscanf(strchr(jump + 1, '\n'), "\n  br label %%p%d", &past) == 1);
+        const char *arm = labelled(choose, consequence),
+                   *rest = labelled(choose, past);
         const char *taken = strstr(choose, "call i32 @chibi_scalar.2()");
-        bool lazy = skipped && arm && taken && branch < skipped && skipped < arm &&
-                    arm < taken && !strstr(taken + 1, "call i32 @chibi_scalar.2()");
+        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
+        bool lazy = arm && rest && taken && skipped && branch < arm &&
+                    arm < taken && taken < rest && rest < skipped &&
+                    !strstr(taken + 1, "call i32 @chibi_scalar.2()") &&
+                    !strstr(skipped + 1, "call i32 @chibi_scalar.3()");
         free(choose);
+        REQUIRE(lazy);
+    }
+    if (!strcmp(name, "logical_and")) {
+        char *mid = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1, i32 %arg2)");
+        const char *first = strstr(mid, "icmp slt");
+        const char *branch = first ? strstr(first, "  br i1 %a") : NULL;
+        const char *second = branch ? strstr(branch, "icmp slt") : NULL;
+        bool lazy = second && !strstr(second + 1, "icmp slt");
+        free(mid);
         REQUIRE(lazy);
     }
     return true;
@@ -8511,9 +8674,11 @@ static bool width_module_agrees(
         const pin_array *array = rows.ptr;
         fprintf(
             stderr,
-            "scalar case %s: %s\n",
+            "scalar case %s: %s at %d:%d\n",
             name,
-            pin_text(scalar_field(&array->items[1], "text")).bytes
+            pin_text(scalar_field(&array->items[1], "text")).bytes,
+            scalar_field(&array->items[1], "line").i,
+            scalar_field(&array->items[1], "column").i
         );
     }
     REQUIRE(ir);
@@ -8928,6 +9093,370 @@ static bool floats_agree(const char *directory)
     return true;
 }
 
+/* Control flow over every statement form: else-if chains that end or fall
+ * through, nested consequences with locals of their own, compound
+ * assignments to parameters and to a byte local, every logical form and
+ * bool equality. */
+static const char CONTROL_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Flow(30, 5) + Grade(85); }\n"
+         "Sign :: (x: int) -> int {\n"
+         "    if (x < 0) {\n"
+         "        return -1;\n"
+         "    } else if (x == 0) {\n"
+         "        return 0;\n"
+         "    } else {\n"
+         "        return 1;\n"
+         "    }\n"
+         "}\n"
+         "Grade :: (x: int) -> int {\n"
+         "    if (x >= 90) {\n"
+         "        return 4;\n"
+         "    } else if (x >= 80) {\n"
+         "        return 3;\n"
+         "    } else if (x >= 70) {\n"
+         "        return 2;\n"
+         "    } else if (x >= 60) {\n"
+         "        return 1;\n"
+         "    }\n"
+         "    return 0;\n"
+         "}\n"
+         "Parity :: (x: int) -> int {\n"
+         "    kind := 0;\n"
+         "    if (x > 0) {\n"
+         "        if (x % 2 == 0) {\n"
+         "            kind = 2;\n"
+         "        } else {\n"
+         "            kind = 1;\n"
+         "        }\n"
+         "    } else {\n"
+         "        offset := 3;\n"
+         "        kind = kind + offset;\n"
+         "    }\n"
+         "    return kind;\n"
+         "}\n"
+         "Flow :: (a: int, b: int) -> int {\n"
+         "    r := 0;\n"
+         "    if (a > b) {\n"
+         "        r = a - b;\n"
+         "    }\n"
+         "    if (a == b) {\n"
+         "        return 100;\n"
+         "    }\n"
+         "    if (r > 10 && a > 0) {\n"
+         "        r = 10;\n"
+         "    } else if (!(r > 0)) {\n"
+         "        r = -1;\n"
+         "    }\n"
+         "    return r;\n"
+         "}\n"
+         "Steps :: (a: int, b: int) -> int {\n"
+         "    a += b;\n"
+         "    a *= 3;\n"
+         "    a -= 1;\n"
+         "    a = a << 2;\n"
+         "    a = a >> 1;\n"
+         "    a /= b;\n"
+         "    a %= 7;\n"
+         "    a ^= b;\n"
+         "    a |= 1;\n"
+         "    a &= 255;\n"
+         "    return a;\n"
+         "}\n"
+         "Low :: (a: byte, b: byte) -> byte {\n"
+         "    x := a;\n"
+         "    x += b;\n"
+         "    x *= 3;\n"
+         "    x = x >> 1;\n"
+         "    return x;\n"
+         "}\n"
+         "Far :: (a: byte, n: uint) -> byte {\n"
+         "    x := a;\n"
+         "    x = x << n;\n"
+         "    y := a;\n"
+         "    y = y >> 300;\n"
+         "    return x + y;\n"
+         "}\n"
+         "Shadow :: (x: int) -> int {\n"
+         "    y := x + 1;\n"
+         "    if (x > 0) {\n"
+         "        y := x * 2;\n"
+         "        return y;\n"
+         "    }\n"
+         "    return y;\n"
+         "}\n"
+         "Choose :: (c: bool, a: int, b: int) -> int {\n"
+         "    picked: int = b;\n"
+         "    if (c && a > b || !c && a < b) {\n"
+         "        picked = a;\n"
+         "    }\n"
+         "    return picked;\n"
+         "}\n"
+         "Both :: (a: bool, b: bool) -> bool { return a && b; }\n"
+         "Either :: (a: bool, b: bool) -> bool { return a || b; }\n"
+         "Not :: (a: bool) -> bool { return !a; }\n"
+         "Same :: (a: bool, b: bool) -> bool { return a == b; }\n"
+         "Differ :: (a: bool, b: bool) -> bool { return a != b; }\n"
+         "Mixed :: (a: bool, b: bool, c: bool) -> bool { return a && !b || c; "
+         "}\n"
+         "Nested :: (a: bool, b: bool, c: bool) -> bool { return a || (b && "
+         "!c) || !(a || c); }\n";
+static scalar_call control_call(const char *function, int count, int64_t a, int64_t b, int64_t c, int64_t expected)
+{
+    return (scalar_call){ .probe = { "control", function, count, { a, b, c }, expected } };
+}
+/* What CONTROL_SOURCE's integer functions give, as C computes them with the
+ * integer contract: nothing fails, and a byte keeps its low bits. */
+static int64_t control_int(const char *function, int64_t a, int64_t b, int64_t c)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b;
+    if (!strcmp(function, "Sign")) {
+        return x < 0 ? -1 : x == 0 ? 0 : 1;
+    }
+    if (!strcmp(function, "Grade")) {
+        return x >= 90 ? 4 : x >= 80 ? 3 : x >= 70 ? 2 : x >= 60 ? 1 : 0;
+    }
+    if (!strcmp(function, "Parity")) {
+        return x > 0 ? (total(11, x, 2) == 0 ? 2 : 1) : 3;
+    }
+    if (!strcmp(function, "Flow")) {
+        int32_t r = x > y ? total(8, x, y) : 0;
+        return x == y ? 100 : r > 10 && x > 0 ? 10 : !(r > 0) ? -1 : r;
+    }
+    if (!strcmp(function, "Steps")) {
+        x = total(7, x, y);
+        x = total(9, x, 3);
+        x = total(8, x, 1);
+        x = total(17, x, 2);
+        x = total(18, x, 1);
+        x = total(10, x, y);
+        x = total(11, x, 7);
+        return ((x ^ y) | 1) & 255;
+    }
+    if (!strcmp(function, "Low")) {
+        uint8_t v = (uint8_t)((uint8_t)(a + b) * 3);
+        return v >> 1;
+    }
+    if (!strcmp(function, "Far")) {
+        /* The count clamps to the byte, and 300 to its largest, 255. */
+        int64_t count = b > 255 ? 255 : b;
+        return count >= 8 ? 0 : (uint8_t)(a << count);
+    }
+    if (!strcmp(function, "Shadow")) {
+        return x > 0 ? total(9, x, 2) : total(7, x, 1);
+    }
+    assert(!strcmp(function, "Choose"));
+    return (a && y > (int32_t)c) || (!a && y < (int32_t)c) ? y : (int32_t)c;
+}
+static int64_t control_bool(const char *function, bool a, bool b, bool c)
+{
+    if (!strcmp(function, "Both")) {
+        return a && b;
+    }
+    if (!strcmp(function, "Either")) {
+        return a || b;
+    }
+    if (!strcmp(function, "Not")) {
+        return !a;
+    }
+    if (!strcmp(function, "Same")) {
+        return a == b;
+    }
+    if (!strcmp(function, "Differ")) {
+        return a != b;
+    }
+    if (!strcmp(function, "Mixed")) {
+        return (a && !b) || c;
+    }
+    assert(!strcmp(function, "Nested"));
+    return a || (b && !c) || !(a || c);
+}
+/* The entry, then each integer function on its samples, Far with each byte
+ * and count, Choose with each
+ * condition and ordered pair, and each bool function with every
+ * combination of its arguments. */
+static int control_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const char *const INTS[] = { "Sign", "Grade", "Parity", "Shadow" };
+    static const char *const PAIRS_OF[] = { "Flow", "Steps" };
+    static const char *const BOOLS[] = { "Both",   "Either", "Not",   "Same",
+                                         "Differ", "Mixed",  "Nested" };
+    static const int BOOL_ARITY[] = { 2, 2, 1, 2, 2, 3, 3 };
+    static const int64_t SAMPLES[] = { INT32_MIN, -7, -1, 0,   1,
+                                       2,         59, 60, 69,  70,
+                                       80,        89, 90, 100, INT32_MAX };
+    static const int64_t PAIRED[] = { INT32_MIN, -11, -1, 0,        1,
+                                      5,         16,  30, INT32_MAX };
+    static const int64_t BYTES[] = { 0, 1, 85, 127, 128, 200, 255 };
+    static const int64_t COUNTS[] = { 0, 1, 7, 8, 9, 255, 256, UINT32_MAX };
+    int count = 0;
+    calls[count++] = control_call("Main", 0, 0, 0, 0, 13);
+    for (int f = 0; f < 4; f++) {
+        for (int i = 0; i < (int)(sizeof SAMPLES / sizeof *SAMPLES); i++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                INTS[f],
+                1,
+                SAMPLES[i],
+                0,
+                0,
+                control_int(INTS[f], SAMPLES[i], 0, 0)
+            );
+        }
+    }
+    for (int f = 0; f < 2; f++) {
+        for (int i = 0; i < (int)(sizeof PAIRED / sizeof *PAIRED); i++) {
+            for (int j = 0; j < (int)(sizeof PAIRED / sizeof *PAIRED); j++) {
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = control_call(
+                    PAIRS_OF[f],
+                    2,
+                    PAIRED[i],
+                    PAIRED[j],
+                    0,
+                    control_int(PAIRS_OF[f], PAIRED[i], PAIRED[j], 0)
+                );
+            }
+        }
+    }
+    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
+        for (int j = 0; j < (int)(sizeof BYTES / sizeof *BYTES); j++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                "Low",
+                2,
+                BYTES[i],
+                BYTES[j],
+                0,
+                control_int("Low", BYTES[i], BYTES[j], 0)
+            );
+        }
+    }
+    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
+        for (int j = 0; j < (int)(sizeof COUNTS / sizeof *COUNTS); j++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                "Far",
+                2,
+                BYTES[i],
+                COUNTS[j],
+                0,
+                control_int("Far", BYTES[i], COUNTS[j], 0)
+            );
+        }
+    }
+    for (int condition = 0; condition < 2; condition++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = control_call(
+                    "Choose",
+                    3,
+                    condition,
+                    PAIRED[i + 2],
+                    PAIRED[j + 2],
+                    control_int("Choose", condition, PAIRED[i + 2], PAIRED[j + 2])
+                );
+            }
+        }
+    }
+    for (int f = 0; f < (int)(sizeof BOOLS / sizeof *BOOLS); f++) {
+        for (int bits = 0; bits < 1 << BOOL_ARITY[f]; bits++) {
+            bool a = bits & 1, b = bits >> 1 & 1, c = bits >> 2 & 1;
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                BOOLS[f],
+                BOOL_ARITY[f],
+                a,
+                b,
+                c,
+                control_bool(BOOLS[f], a, b, c)
+            );
+        }
+    }
+    return count;
+}
+/* Locals, assignments, nested if statements and logic run natively as C and
+ * both VMs give them. */
+static bool control_agrees(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = control_calls(calls);
+    bool agreed = width_module_agrees(directory, 0, "control", CONTROL_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+
+/* A function of `locals` locals, then `assignments` assignments, then a
+ * return: one statement each. */
+static void bounded_source(char *source, size_t size, int locals, int assignments)
+{
+    int at = snprintf(source, size, "package scalar\nMain :: () -> int {\n");
+    for (int i = 0; i < locals; i++) {
+        at += snprintf(source + at, size - (size_t)at, "    x%d := %d;\n", i, i);
+    }
+    for (int i = 0; i < assignments; i++) {
+        at += snprintf(source + at, size - (size_t)at, "    x0 = %d;\n", i);
+    }
+    snprintf(source + at, size - (size_t)at, "    return x0;\n}\n");
+}
+/* `rows` with the two rows from `at` repeated after them. */
+static bool repeated_rows(pin_value *rows, int at, pin_value *longer)
+{
+    const pin_array *array = rows->ptr;
+    pin_array *copy = pin_array_snapshot_like(&detached, array, array->count + 2);
+    for (int i = 0; i < copy->count; i++) {
+        pin_value item = pin_array_get(array, i < at + 2 ? i : i - 2);
+        REQUIRE(!pin_array_snapshot_set(&detached, copy, i, &item));
+    }
+    *longer = *rows;
+    longer->ptr = copy;
+    return true;
+}
+/* Main's statements and locals reach the facts bounds on both VMs, and one
+ * more of either is rejected with its bound, by the producer and, for
+ * statements, by the consumer. */
+static bool statement_bounds_agree()
+{
+    static const struct
+    {
+        int locals, assignments;
+        const char *message;
+    } BOUNDS[] = {
+        { SCALAR_MAX_LOCALS, SCALAR_MAX_STATEMENTS - SCALAR_MAX_LOCALS - 1, NULL },
+        { SCALAR_MAX_LOCALS + 1, 0, "scalar proof admits at most 16 locals per function" },
+        { 1, SCALAR_MAX_STATEMENTS - 1, "scalar proof admits at most 32 statements per function" }
+    };
+    char source[2048];
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < (int)(sizeof BOUNDS / sizeof *BOUNDS); i++) {
+            bounded_source(source, sizeof source, BOUNDS[i].locals, BOUNDS[i].assignments);
+            pin_value rows;
+            REQUIRE(collected_rows(b, "bounds", text(source), &rows));
+            char *ir;
+            REQUIRE(emitted_ir(b, &rows, &ir));
+            const pin_array *array = rows.ptr;
+            const char *message = pin_text(scalar_field(&array->items[1], "text"))
+                                      .bytes;
+            REQUIRE(BOUNDS[i].message ? !ir && !strcmp(message, BOUNDS[i].message) : ir != NULL);
+            free(ir);
+            if (!BOUNDS[i].message) {
+                /* An assignment and its literal, after the source, document,
+                 * function and each local's two rows. */
+                pin_value longer;
+                REQUIRE(repeated_rows(&rows, 3 + 2 * SCALAR_MAX_LOCALS, &longer));
+                REQUIRE(
+                    scalar_field(guard_row(&rows, 3 + 2 * SCALAR_MAX_LOCALS), "kind")
+                        .i == SCALAR_ASSIGN_ROW
+                );
+                REQUIRE(validated(b, &rows, "") && validated(b, &longer, LAYOUT));
+            }
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
 /* A new directory for the native builds' files. */
 static bool native_directory(char directory[PATH_MAX])
 {
@@ -9207,7 +9736,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
     }
     agreed = agreed && folded_sources_agree(directory) &&
              folded_overflow_rejected() && widths_agree(directory) &&
-             floats_agree(directory);
+             floats_agree(directory) && control_agrees(directory) &&
+             statement_bounds_agree();
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

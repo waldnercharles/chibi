@@ -33,8 +33,9 @@ interface, or the complete allocation/memory/output/free native island.
   visible at O0. The call graph must be acyclic: recursion is rejected.
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
-  `>>` are unsigned for an unsigned type. Limits per function are eight parameters, 128 slots, 64 locals,
-  256 body instructions and 256 call arguments. These are plan bounds, not a
+  `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,
+  its `!`. Limits per function are eight parameters, 128 slots, 64 locals,
+  512 body instructions and 256 call arguments. These are plan bounds, not a
   source-language acceptance claim.
 - Integer operations never fail, as the language's integer contract says.
   Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.

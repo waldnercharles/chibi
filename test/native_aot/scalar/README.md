@@ -18,24 +18,34 @@ function is the module's entry and must be `() -> int`. Every function:
   `int16`, `uint16`, `int`, `uint`, `int64`, `uint64`, `float` or `double`; no
   `ref`, defaults or managed, nominal or container types) and returns one
   plain number or `bool`;
-- has a body of at most one guard `if (CONDITION) { return EXPR; }`, then
-  exactly one final `return EXPR;`, and no other statement, reachable or not;
-- has a `bool` condition and returns expressions of its result type, or of a
-  type that widens to it, as a return widens: a narrower integer, or `float`
-  to `double`. Each is a number literal within its type, possibly signed,
-  `true` or `false`, one of its parameters, integer arithmetic `a + b` (or
+- has a body of locals (`x := EXPR;` or `x: T = EXPR;`), assignments to its
+  parameters and locals (`x = EXPR;`, or compound, `x += EXPR;` and the other
+  arithmetic and shift operators), if statements with any `else` or
+  `else if`, and returns, at most 32 statements and 16 locals. It ends in a
+  terminating statement, as stage zero requires: a return, or an if
+  statement with an `else` whose branches both end in one; otherwise it is
+  rejected with stage zero's "Missing return". Statements after a return are
+  kept, though they never run; any other statement is rejected, reachable or
+  not;
+- has `bool` conditions and returns, assigns and declares expressions of the
+  type expected, or of a type that widens to it, as a return widens: a
+  narrower integer, or `float` to `double`. Each is a number literal within
+  its type, possibly signed, `true` or `false`, a parameter or local in scope,
+  integer arithmetic `a + b` (or
   `-`, `*`, `/`, `%`, `&`, `|`, `^`), floating arithmetic `a + b` (or `-`,
   `*`, `/`), a shift `a << n` or `a >> n`, an integer negation `-a` or
   complement `~a`, a comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of
-  two numbers, a conversion `T(a)` or `T(wrap: a)` to an integer type,
+  two numbers, `a == b` or `a != b` of two bools, `a && b`, `a || b` or `!a`
+  (or `and`, `or` and `not`), a conversion `T(a)` or `T(wrap: a)` to an
+  integer type,
   `float(a)` or `double(a)`, or a direct call
   `F(a, b, ...)` of a function of the same source with exactly its arity and
   parameter types, whose operands are again such expressions: at most 64
-  operands per function, counted over its condition and returns.
+  operands per function, counted over all its statements.
 
 Any expression may be parenthesized. Each operand has the type the ordinary
 compiler gives it, so mixed integer types and a signed shift count are its
-errors, and `bool` equality is rejected. Comparisons, division, remainders and
+errors. Comparisons, division, remainders and
 `>>` are unsigned for an unsigned type. Arithmetic follows the language's
 integer contract and never fails: it wraps, `x / 0` is 0, `x % 0` is `x`,
 `MIN / -1` is `MIN` and `MIN % -1` is 0, and a shift count at or past the
@@ -53,9 +63,14 @@ makes every comparison false except `!=`. An integer beside a float, or a
 2^60 + 2^36 + 1 rounds twice. A float or double converted to an integer type
 truncates toward zero, saturates at the type's bounds and gives 0 for NaN, in
 either mode. A floating literal is the binary64 nearest it, and a `float` one
-the binary32 nearest that, as stage zero reads it. The arm's
-expression is evaluated only when the condition holds, and the final
-return's only when it does not.
+the binary32 nearest that, as stage zero reads it.
+
+A consequence runs only when its condition holds and its alternative only
+when it does not, and `&&` and `||` evaluate their right side only when the
+left does not decide them. A local is visible from the end of its
+declaration to the end of its block, so one may hide an outer name, and a
+compound assignment combines its variable with its value as `x = x op v`
+would, at the variable's type.
 
 Calls form a bounded acyclic set, so recursion (direct or mutual) is rejected.
 Calls may repeat and nest. Arguments evaluate left to right, each operand
@@ -90,13 +105,12 @@ Third :: (a: int, b: int, c: int) -> int { return c; }
 LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
 Everything else is rejected with a located diagnostic and no partial result:
-floating negation and remainder, `&&`, `||` and `!`, `bool` comparisons, `else`
-branches, a second guard, a guard that does not return, loops and other
-control flow, locals and other statements, function values, qualified or imported calls, native or foreign calls
-(`print`), named arguments, strings and other managed values, attributes,
-structs and constants. Sources are at most 16,384 bytes.
-`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (37
-accepted) with each accepted value and operand trace and each rejection's
+floating negation and remainder, ordering `bool`s, loops, `switch` and other
+statements, function values, qualified or imported calls, native or foreign
+calls (`print`), named arguments, strings and other managed values,
+attributes, structs and constants. Sources are at most 16,384 bytes.
+`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (44
+accepted) with each accepted value and statement trace and each rejection's
 exact message and source excerpt, including both sides of every bound.
 
 A constant expression, such as `(2147483647 + 1) / 2` or `int(42)`, is one
@@ -111,8 +125,9 @@ spelled type, as stage zero types them; the ordinary compiler's
 
 `CollectScalar` adds no second frontend. It runs the ordinary snapshot,
 package graph and `Declare`, so duplicate declarations, unknown types and
-signature errors are the compiler's own. Parameters bind through `Prologue` and
-`Lookup`, literals through `ReadIntegerLiteral`, and callees through
+signature errors are the compiler's own. Parameters bind through `Prologue`,
+and every name through `Lookup` over the scopes the ordinary compiler keeps,
+with each local bound after its value as `StatementStep` binds it; literals through `ReadIntegerLiteral`, and callees through
 `CalledFunction`, the resolution the ordinary call step makes. Each body must
 pass `EmitBody` first, which types every name, argument and result, with no
 effects, host calls or roots, and no cells but its calls' argument and result
@@ -124,9 +139,9 @@ private `Code`/`Slot` identity crosses the boundary.
 
 The compiler host passes arrays of flat records, so a module is one array of
 rows: its source, then either one rejection or its document key and each
-function's signature, parameters, guard with its condition operands and its
-arm's return, and final return, each followed by its operands in evaluation
-order
+function's signature, parameters and statements in source order, each
+followed by its operands in evaluation order; an if statement's rows bracket
+its consequence and any alternative with Else and End rows
 (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
 rows own their strings and, once snapshotted, their record shape.
 
@@ -135,11 +150,15 @@ rows own their strings and, once snapshotted, their record shape.
 - In one process, `tool language-package-compiler-chibi-scalar` produces the
   rows on both VMs, frees the producer's packages and inputs, reads the
   retained rows, then prepares the consumer and emits them as IR with the call.
-  It also validates a guarded module's rows and 13 malformed variants of them:
-  guard layout, comparison operator, arity, result and operand types, the
-  condition's stack, guard, arm and final-return ranges, and an arm call that
-  closes a cycle. An arithmetic module's rows get 9 more: binary and unary
-  operators, arity, result type and bool operands.
+  It also validates a guarded module's rows and 19 malformed variants of them:
+  if statement layout, comparison operator, arity, result and operand types,
+  the condition's stack, statement and end ranges, a read past the variables,
+  a body that can end without returning, and an arm call that closes a cycle.
+  An arithmetic module's rows get 9 more: binary and unary operators, arity,
+  result type and bool operands. A module with locals, an else and a logical
+  gets 18: logical counts, operators and right sides, a `!` of an int, reads
+  of a local in its own initializer and out of its block, local and
+  assignment rows, else and end layout and ranges, and return paths.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks, callee signatures
@@ -150,6 +169,10 @@ the caller binds the trusted producer artifact, source bytes and envelope.
 `Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
 `EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
 under budget 1; neither the export name nor the budget comes from source.
+Each variable is a native local, the parameters moved into theirs first. An if
+statement branches into its consequence or jumps past it, and a logical saves
+its left operand in a local that its right operand replaces only on the path
+that evaluates it, as stage one emits it.
 
 ## Native objects
 
@@ -183,14 +206,15 @@ such as `Min`, `Max`, `Clamp` and each comparison with `INT32_MIN`,
 through a validation-only IR adapter that passes int64 arguments, truncated
 to each parameter's type, and extends the result to int64, so a `bool` is 0 or
 1 and a `uint64` is its bits. The adapter is not an ABI. The O0 IR must keep `Min`'s
-parameter-dependent `icmp` and `br`, and `lazy_arm` must call the arm's
-callee only after the branch's true target and the fallback's only on the
-false path.
+parameter-dependent `icmp` and `br`; `lazy_arm` must call the consequence's
+callee only after the branch's true target and the fallback's only past the
+jump it takes otherwise; and `logical_and` must compare `b < c` only after
+branching on `a < b`.
 
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 36 accepted sources build, run and agree at O0 and O2.
+other 42 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and
@@ -216,13 +240,22 @@ adapter passes a float or double as its encoding's bits, zero-extended, and
 returns any NaN as the canonical quiet NaN, since IEEE leaves a NaN's sign
 and payload open.
 
+A generated control module runs else-if chains that end and that fall
+through, nested consequences with locals of their own and a local that hides
+another, compound assignments to `int` parameters and a `byte` local, shifts
+assigned to `byte` locals by a `uint` count and by a constant past the
+width, `&&`,
+`||`, `!` and `bool` equality on every combination of their operands, and a
+condition mixing them. Each call must give the value C gives on both VMs and
+natively at O0 and O2.
+
 ## Portable recovery regression
 
 `Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
 runs the authored `Tests` (28 malformed-row fixtures plus emission checks).
-Guarded-row validation is asserted in C, by the scalar selector above.
+Statement-row validation is asserted in C, by the scalar selector above.
 Every corpus source then crosses all four producer/consumer VM combinations:
 `Regression.Check` asserts the case and the complete rejection or emitted IR,
 which must define every function and call each recorded callee. The runner

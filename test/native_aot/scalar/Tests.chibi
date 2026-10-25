@@ -176,7 +176,7 @@ Malformed :: (index: int) -> facts.Row[] {
             return Renamed(rows, 0, "Scalar.chibi", Padded(rows[0].text, facts.MaxSource + 1)); // source bound
     }
     long := rows;
-    while (length(long) <= 2434) {
+    while (length(long) <= 5410) {
         long.append(rows[11]);
     }
     return long; // row bound

@@ -759,6 +759,18 @@ Suggestion: lower floating `-x` to `BF_NEG` in stage one and to `fneg`
 natively. Floating `%` stays rejected, as Odin and Go reject it; `math.mod`
 or an explicit `fmod`-style helper covers it.
 
+## There is no compound shift assignment
+
+Language. Every other binary integer operator has a compound assignment, but
+`x <<= n` and `x >>= n` are unexpected syntax in both stages, so a shift is
+written `x = x << n`. Both stages already type a compound assignment through
+the binary operator's step, and a shift's count rules would carry over.
+
+- Odin, C, Go, Rust and Zig all have `<<=` and `>>=`.
+
+Suggestion: add `<<=` and `>>=` to the grammar and both stages' compound
+operator tables; the scalar producer then reads them as it reads `+=`.
+
 ## An untyped array element is `int` to stage zero and `double` to stage one
 
 Language. `storages := [6, 1, 2];` is an `int[]` to stage zero but a
@@ -838,8 +850,11 @@ can fall off its end, with "Missing return", and counts a `while (true)`
 without a `break` as an end, as Go and Odin do; the tokenizer's loop no longer
 needs to break out to a return after it (#518). Stage one compiles only what
 stage zero has checked, but on its own it would accept such a function.
+The scalar proof's producer applies the rule itself for its subset (M3), so
+native code never sees a function that can fall off its end.
 
-Suggestion: stage one applies the same terminating-statement rule.
+Suggestion: stage one applies the same terminating-statement rule, and the
+scalar producer's `ScalarEnds` gives way to it.
 
 ### Stage one's element stores into call results copy arguments
 

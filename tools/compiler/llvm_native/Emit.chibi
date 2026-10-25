@@ -78,7 +78,7 @@ MaxFunctions: int : 32;
 MaxParameters: int : 8;
 MaxSlots: int : 128;
 MaxLocals: int : 64;
-MaxCode: int : 256;
+MaxCode: int : 512;
 MaxArguments: int : 256;
 
 Index :: (value: int, count: int) -> bool {
@@ -130,7 +130,7 @@ ReadsRight :: (op: int) -> bool {
 }
 // Whether the backend computes `op` in `type`: every operation on integers,
 // IEEE arithmetic other than remainders and every comparison on floats, and
-// equality on bool.
+// equality and negation on bool.
 Computes :: (op: int, type: int) -> bool {
     if (Integer(type)) {
         return true;
@@ -138,7 +138,7 @@ Computes :: (op: int, type: int) -> bool {
     if (abi.Floating(type)) {
         return op == Add || op == Sub || op == Mul || op == Div || Comparison(op);
     }
-    return type == abi.BoolStorage && (op == Eq || op == Ne);
+    return type == abi.BoolStorage && (op == Eq || op == Ne || op == BitNot);
 }
 // The conversions the backend implements, as the runtime's casts: integers
 // to one another and to double, float and double to one another and to the

@@ -1741,7 +1741,7 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
         "game/content/behaviors/Pointer.chibi",
         "Pointer :: behavior { on Tick :: () {\n"
         " ray := get_pointer_ray()\n"
-        " x := -1.0\n"
+        " x: float = -1.0\n"
         " if ray.Active { x = ray.Origin.x + ray.Direction.x }\n"
         " request := await open_url(\"https://example.org/\")\n"
         " if request.Accepted { x = 10000.0 }\n"

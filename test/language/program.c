@@ -26,6 +26,7 @@
 #include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -8328,20 +8329,219 @@ TEST_CASE(program_version_32_numbers_take_odin_names)
         REQUIRE(!migrated && strstr(error, "named like a number type"));
     }
     /* Graph pins and event fields name their types in KDL. */
-    char *asset = chibi_migrate_number_types(
-        "graphs {\n    - {\n        nodes {\n            - name=\"Add\" {\n"
+    char *asset = NULL;
+    REQUIRE(!chibi_migrate_number_types(
+        "(array)graphs {\n    - {\n        (array)nodes {\n            - "
+        "name=\"Add\" {\n"
         "                inputs {\n                    A id=1 type=\"float\"\n"
         "                    B id=2 type=\"int\" type_name=\"double\"\n"
-        "                }\n            }\n        }\n    }\n}\n"
-    );
+        "                }\n            }\n        }\n    }\n}\n",
+        &asset,
+        error,
+        sizeof error
+    ));
     REQUIRE(
         asset && strstr(asset, "\"number\"") && strstr(asset, "\"f64\"") &&
         strstr(asset, "\"int\"") && !strstr(asset, "float") && !strstr(asset, "double")
     );
     free(asset);
-    REQUIRE(!chibi_migrate_number_types("name \"double\"\nvalue 1.5\n"));
+    asset = NULL;
+    REQUIRE(
+        !chibi_migrate_number_types("name \"double\"\nvalue 1.5\n", &asset, error, sizeof error)
+    );
+    REQUIRE(!asset);
     return true;
 }
+/* Compare the whole decoded document with an independently authored oracle;
+ * serialization whitespace is not the contract, but every payload value is. */
+static bool migration32_asset_matches(const char *path, const char *expected)
+{
+    char text[4096], error[256] = { 0 };
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return false;
+    }
+    size_t length = fread(text, 1, sizeof text - 1, file);
+    bool complete = feof(file) && !ferror(file);
+    fclose(file);
+    if (!complete) {
+        return false;
+    }
+    text[length] = 0;
+    av_doc *actual = asset_text_read(text, error, sizeof error);
+    av_doc *wanted = asset_text_read(expected, error, sizeof error);
+    bool same = actual && wanted &&
+                av_equals(av_doc_root(actual), av_doc_root(wanted));
+    if (!same) {
+        fprintf(stderr, "%s: unexpected migrated asset:\n%s\n%s\n", path, text, error);
+    }
+    av_doc_free(actual);
+    av_doc_free(wanted);
+    return same;
+}
+
+TEST_CASE(program_version_32_metadata_preserves_payload_fields)
+{
+    const struct
+    {
+        const char *name, *source, *expected;
+    } assets[] = {
+        { "Graph.kdl",
+          "version 3\nname \"Graph\"\ndomain \"material\"\n"
+          "(array)variables {\n"
+          "    - id=1 name=\"Amount\" type=\"double\" type_name=\"double\" "
+          "default=1.25\n"
+          "}\n(array)graphs {\n    - kind=\"event\" name=\"Main\" {\n"
+          "        (array)nodes {\n            - id=2 type=\"double\" {\n"
+          "                inputs {\n                    Value type=\"float\" "
+          "type_name=\"float\"\n"
+          "                    Payload type=\"struct\" type_name=\"Payload\" "
+          "{\n"
+          "                        default type=\"double\" type_name=\"float\" "
+          "{\n"
+          "                            nested type=\"byte\" "
+          "type_name=\"uint\"\n"
+          "                        }\n                    }\n                "
+          "}\n"
+          "                (array)outputs {\n                    - id=3 "
+          "type=\"uint\" type_name=\"User.double\"\n"
+          "                }\n            }\n        }\n    }\n}\n",
+          "version 3\nname \"Graph\"\ndomain \"material\"\n"
+          "(array)variables {\n"
+          "    - id=1 name=\"Amount\" type=\"f64\" type_name=\"f64\" "
+          "default=1.25\n"
+          "}\n(array)graphs {\n    - kind=\"event\" name=\"Main\" {\n"
+          "        (array)nodes {\n            - id=2 type=\"double\" {\n"
+          "                inputs {\n                    Value type=\"number\" "
+          "type_name=\"number\"\n"
+          "                    Payload type=\"struct\" type_name=\"Payload\" "
+          "{\n"
+          "                        default type=\"double\" type_name=\"float\" "
+          "{\n"
+          "                            nested type=\"byte\" "
+          "type_name=\"uint\"\n"
+          "                        }\n                    }\n                "
+          "}\n"
+          "                (array)outputs {\n                    - id=3 "
+          "type=\"u32\" type_name=\"User.double\"\n"
+          "                }\n            }\n        }\n    }\n}\n" },
+        { "Event.kdl",
+          "version 3\nname \"Damage\"\ndomain \"event\"\n"
+          "(array)variables {\n    - id=1 name=\"double\" type=\"double\" "
+          "type_name=\"double\"\n}\n",
+          "version 3\nname \"Damage\"\ndomain \"event\"\n"
+          "(array)variables {\n    - id=1 name=\"double\" type=\"f64\" "
+          "type_name=\"f64\"\n}\n" },
+        { "Scene.kdl",
+          "version 1\nname \"Scene\"\n(array)entities {\n    - name=\"Player\" "
+          "{\n"
+          "        components {\n            Payload type=\"double\" "
+          "type_name=\"float\" {\n"
+          "                nested type=\"byte\" type_name=\"uint\"\n"
+          "            }\n        }\n    }\n}\n",
+          NULL },
+        { "RawGraph.kdl",
+          "version 3\n(array)nodes {\n    - id=1 type=\"float\" {\n"
+          "        (array)inputs {\n            - id=2 type=\"byte\" "
+          "type_name=\"byte\"\n"
+          "        }\n        outputs {\n            Value type=\"double\"\n   "
+          "     }\n    }\n}\n",
+          "version 3\n(array)nodes {\n    - id=1 type=\"float\" {\n"
+          "        (array)inputs {\n            - id=2 type=\"u8\" "
+          "type_name=\"u8\"\n"
+          "        }\n        outputs {\n            Value type=\"f64\"\n      "
+          "  }\n    }\n}\n" },
+    };
+    char root[] = "/tmp/chibi-number-metadata-XXXXXX", path[300], error[256] = { 0 };
+    REQUIRE(mkdtemp(root));
+    for (size_t i = 0; i < sizeof assets / sizeof *assets; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, assets[i].name);
+        write_whole(path, assets[i].source);
+    }
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 32, error, sizeof error));
+    for (size_t i = 0; i < sizeof assets / sizeof *assets; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, assets[i].name);
+        REQUIRE(migration32_asset_matches(
+            path,
+            assets[i].expected ? assets[i].expected : assets[i].source
+        ));
+        if (!assets[i].expected) {
+            REQUIRE(!strcmp(read_whole(path), assets[i].source));
+        }
+    }
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 32, error, sizeof error));
+    for (size_t i = 0; i < sizeof assets / sizeof *assets; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, assets[i].name);
+        REQUIRE(migration32_asset_matches(
+            path,
+            assets[i].expected ? assets[i].expected : assets[i].source
+        ));
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    return true;
+}
+
+TEST_CASE(program_version_32_invalid_asset_preserves_project_for_retry)
+{
+    const char
+        *manifest = "version 32\ncontent \"content\"\nstart_scene "
+                    "\"Start.kdl\"\n",
+        *source = "L :: library { F :: (x: double) -> double { return "
+                  "double(x) } }",
+        *expected = "L :: library { F :: (x: f64) -> f64 { return f64(x) } }",
+        *broken = "name \"Broken\"\n}\n", *repaired = "name \"Broken\"\ncomponents {\n    Payload type=\"double\"\n}\n",
+        *event = "domain \"event\"\n(array)variables {\n    - name=\"Amount\" "
+                 "type=\"double\"\n}\n",
+        *migrated_event = "domain \"event\"\n(array)variables {\n    - "
+                          "name=\"Amount\" type=\"f64\"\n}\n";
+    char root[] = "/tmp/chibi-number-retry-XXXXXX", content[300], paths[4][320],
+         error[512] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(content, sizeof content, "%s/content", root);
+    REQUIRE(!mkdir(content, 0700));
+    snprintf(paths[0], sizeof paths[0], "%s/project.kdl", root);
+    snprintf(paths[1], sizeof paths[1], "%s/Source.chibi", content);
+    snprintf(paths[2], sizeof paths[2], "%s/Broken.kdl", content);
+    snprintf(paths[3], sizeof paths[3], "%s/Event.kdl", content);
+    const char *originals[] = { manifest, source, broken, event };
+    for (int i = 0; i < 4; i++) {
+        write_whole(paths[i], originals[i]);
+    }
+    int result = chibi_project_migrate(root, error, sizeof error);
+    fprintf(stderr, "version 32 invalid asset: result %d, %s\n", result, error);
+    REQUIRE(result < 0);
+    const char *located = strstr(error, "Broken.kdl:");
+    REQUIRE(located && !strcmp(located, "Broken.kdl: line 2, column 1: Unexpected '}'"));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(!strcmp(read_whole(paths[i]), originals[i]));
+        char staged[340];
+        snprintf(staged, sizeof staged, "%s.migrating", paths[i]);
+        REQUIRE(access(staged, F_OK) < 0 && errno == ENOENT);
+    }
+    write_whole(paths[2], repaired);
+    error[0] = 0;
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(
+        !strcmp(read_whole(paths[0]), "version 33\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
+    );
+    REQUIRE(!strcmp(read_whole(paths[1]), expected));
+    REQUIRE(!strcmp(read_whole(paths[2]), repaired));
+    REQUIRE(migration32_asset_matches(paths[3], migrated_event));
+    char *after[4];
+    for (int i = 0; i < 4; i++) {
+        after[i] = xstrdup(read_whole(paths[i]));
+    }
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(!strcmp(read_whole(paths[i]), after[i]));
+        free(after[i]);
+        REQUIRE(!unlink(paths[i]));
+    }
+    REQUIRE(!rmdir(content) && !rmdir(root));
+    return true;
+}
+
 static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
 {
     int *calls = user;
@@ -9840,6 +10040,15 @@ void test_language_query_program()
     pu_clear_setup();
 }
 
+void test_language_migration32()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_version_32_numbers_take_odin_names);
+    RUN_TEST_CASE(program_version_32_metadata_preserves_payload_fields);
+    RUN_TEST_CASE(program_version_32_invalid_asset_preserves_project_for_retry);
+    pu_clear_setup();
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -9955,6 +10164,8 @@ void test_language_program()
     RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
     RUN_TEST_CASE(program_version_32_numbers_take_odin_names);
+    RUN_TEST_CASE(program_version_32_metadata_preserves_payload_fields);
+    RUN_TEST_CASE(program_version_32_invalid_asset_preserves_project_for_retry);
     RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

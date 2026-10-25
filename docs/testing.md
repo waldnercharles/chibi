@@ -3184,3 +3184,65 @@ exact cross-repository candidate.
 The two hidden frames cover starter project startup. Web compilation does not
 establish browser execution, Studio UI interaction or visual acceptance. These
 checks do not publish packages or clear renderer, deployment or PR holds.
+
+## Project 32 numeric migration checkpoint
+
+`python3 tools/test_policy.py tool language-migration32` selects three C cases
+for the format 32→33 step. They run the production source, content and project
+migration entrypoints on disposable files. Literal KDL documents assert both
+metadata renames and preservation of node registry names, qualified type names,
+component payloads and nested record defaults. Both keyed and positional pins,
+raw graphs, behavior graphs and event fields are covered. The old numeric test's
+graph fixture now uses the `(array)` annotations required by the actual reader.
+
+The malformed-asset case requires `Broken.kdl: line 2, column 1: Unexpected '}'`,
+unchanged sibling source/assets and manifest, no staged files, a successful retry
+after repair, and an unchanged second run. The migration propagates the existing
+KDL parser diagnostic into the existing all-inputs-before-staging transaction;
+it does not introduce a new transaction mechanism.
+
+On frozen PR693 head `ece2b9a5d2e31a3ffc9503c1738a1d4fd153af49`, the payload and
+malformed-asset cases failed: arbitrary nested strings were renamed and the
+invalid project returned success with version 33. The repaired selector passes
+three cases and 64 assertions. On the same macOS ARM64 Debug build,
+`project-document` passes 3 cases/4 assertions, `graph-document` passes
+14/252, and `language-program` passes 165/12059.
+
+`project-declarations` fails its first `OutlinerRows.chibi` current-parse check;
+`language-query-program` passes 63 cases and fails two existing generic cases
+(`generic_constant_parameters_and_authored_compile_time_calls` and
+`compile_time_calls_preserve_numeric_names_and_owned_strings`). These surrounding
+failures also occur when rebuilt from the frozen head. They are not repaired in
+this checkpoint. The normal `make build` route builds `test_language`,
+`test_tools` and `chibi_ctl` with two jobs, normal generation, owned outputs and
+unchanged compiler/bootstrap inputs. `make check-format` uses clang-format 22.
+Full native/material/project/language/tool aggregates, release, sanitizer, GPU
+and other-platform checks are not claimed by this bounded checkpoint.
+
+### Remaining migration work
+
+`python3 tools/test_policy.py tool language-migration32-generic-repro` is an
+explicitly failing reproduction, excluded from normal groups. It migrates the
+historical `Quantity(double, 1, -1)` generic example, compares against the literal
+canonical source, and attempts to compile and execute the result on VM and the
+compiled backend with a literal `amount == 12` oracle. The frozen migration leaves
+`double` unchanged; compilation reports, starting at 1:362, `Compile-time
+evaluation: only constant values and types are available` and `Invalid
+compile-time type argument`. The canonical `f64` example passes in the existing
+generic suite, including the execution oracle. This checkpoint does not rewrite
+expression identifiers: type applications contain ordinary expression arguments,
+and safe handling must resolve bindings, including loop keys, pattern bindings,
+qualified names and imported names. A global identifier replacement is unsafe.
+
+Collection storage metadata also needs separate handling. `types/value_document.c`
+writes nested-array `{element_type, items}` and map `{key_type, value_type,
+entries}` documents, with `storage`, `container` and optional `name` descriptors;
+`types/value_document_read.c` validates and reads those descriptors. Nested
+collections inside explicitly typed graph array defaults are supported. Standalone
+map graph defaults must not be invented as migration fixtures: the graph reader's
+`serialize_read_array` path treats graph collection defaults as arrays. Neither
+the frozen step nor this repair renames descriptor `storage`/`name` fields.
+A follow-up must carry declared collection context through defaults and stop at
+scalar/record payloads; searching recursively for those key names would repeat
+the payload corruption fixed here. Implied pin containers require the owning
+node schema, not guesses from payload shape.

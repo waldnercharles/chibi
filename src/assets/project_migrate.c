@@ -6055,45 +6055,87 @@ int chibi_migrate_number_names(const char *source, char **migrated, char *error,
              ? accept_migrated(source, result, "Number name", 33, migrated, error, size)
              : 0;
 }
-/* Renames the scalar types graph pins and event fields store as `type` or
- * `type_name`; returns whether any changed. */
-static bool number_types(av_value *value)
+/* Only metadata owned by the graph/event schema names scalar types. Node
+ * registry names and payloads inside defaults must stay intact, even when
+ * their keys are also called type or type_name. */
+static bool number_type_field(av_value *value, const char *key)
+{
+    av_value *field = av_obj_get(value, key);
+    const char *name = av_is_str(field)
+                         ? chibi_migrate32_number_name(av_get_str(field))
+                         : NULL;
+    if (!name) {
+        return false;
+    }
+    av_set_str(field, name);
+    return true;
+}
+static bool number_metadata(av_value *value)
+{
+    bool changed = number_type_field(value, "type");
+    changed |= number_type_field(value, "type_name");
+    return changed;
+}
+static bool number_pins(av_value *pins)
 {
     bool changed = false;
-    for (size_t i = 0; av_is_arr(value) && i < av_arr_size(value); i++) {
-        changed |= number_types(av_arr_get(value, i));
+    for (size_t i = 0; av_is_arr(pins) && i < av_arr_size(pins); i++) {
+        changed |= number_metadata(av_arr_get(pins, i));
     }
-    for (size_t i = 0; av_is_obj(value) && i < av_obj_size(value); i++) {
-        const char *key = av_get_str(av_obj_key_at(value, i));
-        av_value *member = av_obj_value_at(value, i);
-        const char *name = av_is_str(member) && (!strcmp(key, "type") ||
-                                                 !strcmp(key, "type_name"))
-                             ? chibi_migrate32_number_name(av_get_str(member))
-                             : NULL;
-        if (name) {
-            av_set_str(member, name);
-            changed = true;
-        }
-        changed |= number_types(member);
+    for (size_t i = 0; av_is_obj(pins) && i < av_obj_size(pins); i++) {
+        changed |= number_metadata(av_obj_value_at(pins, i));
     }
     return changed;
 }
-char *chibi_migrate_number_types(const char *asset)
+static bool number_graph(av_value *graph)
 {
-    char message[128];
-    av_doc *document = asset_text_read(asset, message, sizeof message);
-    av_value *root = document ? av_doc_root(document) : NULL;
-    char *migrated = root && number_types(root) ? asset_text_write(root) : NULL;
+    av_value *nodes = av_obj_get(graph, "nodes");
+    bool changed = false;
+    for (size_t i = 0; av_is_arr(nodes) && i < av_arr_size(nodes); i++) {
+        av_value *node = av_arr_get(nodes, i);
+        changed |= number_pins(av_obj_get(node, "inputs"));
+        changed |= number_pins(av_obj_get(node, "outputs"));
+    }
+    return changed;
+}
+static bool number_types(av_value *root)
+{
+    bool changed = number_graph(root);
+    av_value *graphs = av_obj_get(root, "graphs");
+    for (size_t i = 0; av_is_arr(graphs) && i < av_arr_size(graphs); i++) {
+        changed |= number_graph(av_arr_get(graphs, i));
+    }
+    const char *domain = av_get_str(av_obj_get(root, "domain"));
+    if (av_is_arr(graphs) || (domain && !strcmp(domain, "event"))) {
+        av_value *variables = av_obj_get(root, "variables");
+        for (size_t i = 0; av_is_arr(variables) && i < av_arr_size(variables); i++) {
+            changed |= number_metadata(av_arr_get(variables, i));
+        }
+    }
+    return changed;
+}
+int chibi_migrate_number_types(const char *asset, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    av_doc *document = asset_text_read(asset, error, size);
+    if (!document) {
+        return -1;
+    }
+    av_value *root = av_doc_root(document);
+    if (number_types(root)) {
+        *migrated = asset_text_write(root);
+    }
     av_doc_free(document);
-    return migrated;
+    return 0;
 }
 static char **migrate_number_names(char **sources, char **paths, int count, char *error, size_t size)
 {
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
     for (int i = 0; i < count && !error[0]; i++) {
-        if (!has_suffix(paths[i], ".chibi")) {
-            migrated[i] = chibi_migrate_number_types(sources[i]);
-        } else if (chibi_migrate_number_names(sources[i], &migrated[i], error, size)) {
+        int status = has_suffix(paths[i], ".chibi")
+                       ? chibi_migrate_number_names(sources[i], &migrated[i], error, size)
+                       : chibi_migrate_number_types(sources[i], &migrated[i], error, size);
+        if (status) {
             char *message = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], message);
             free(message);

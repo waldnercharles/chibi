@@ -307,21 +307,22 @@ TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref)
     }
     return true;
 }
-TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions)
+static const char
+    *quantity_source = "Units :: library { "
+                       "Quantity :: struct($DataType: Type, $Length: int, "
+                       "$Time: int) { amount: DataType } "
+                       "ProductType :: (A: Type, B: Type) -> Type { "
+                       "return Quantity(A.DataType, A.Length + B.Length, "
+                       "A.Time + B.Time) } "
+                       "Multiply :: (a: $A, b: $B) -> ProductType(A, B) { "
+                       "result: ProductType(A, B) = {amount: a.amount * "
+                       "b.amount}; return result } "
+                       "Run :: () -> Quantity(f64, 1, 0) { "
+                       "speed: Quantity(f64, 1, -1) = {amount: 6}; "
+                       "time: Quantity(f64, 0, 1) = {amount: 2}; return "
+                       "Multiply(speed, time) } }";
+static bool constructed_units(const char *source)
 {
-    const char *source = "Units :: library { "
-                         "Quantity :: struct($DataType: Type, $Length: int, "
-                         "$Time: int) { amount: DataType } "
-                         "ProductType :: (A: Type, B: Type) -> Type { "
-                         "return Quantity(A.DataType, A.Length + B.Length, "
-                         "A.Time + B.Time) } "
-                         "Multiply :: (a: $A, b: $B) -> ProductType(A, B) { "
-                         "result: ProductType(A, B) = {amount: a.amount * "
-                         "b.amount}; return result } "
-                         "Run :: () -> Quantity(f64, 1, 0) { "
-                         "speed: Quantity(f64, 1, -1) = {amount: 6}; "
-                         "time: Quantity(f64, 0, 1) = {amount: 2}; return "
-                         "Multiply(speed, time) } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(compile(source, backends[backend]));
@@ -399,6 +400,47 @@ TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensio
         REQUIRE(amount.type == PIN_F64 && amount.d == 12);
     }
     return true;
+}
+TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions)
+{
+    return constructed_units(quantity_source);
+}
+/* Opt-in regression oracle: the version 32 migration currently leaves builtin
+ * type expressions unchanged. Keep the real generic program and literal 12
+ * execution oracle until scope-aware migration can safely resolve them. */
+TEST_CASE(generic_version_32_quantity_type_arguments_migrate)
+{
+    const char
+        *historical = "Units :: library { "
+                      "Quantity :: struct($DataType: Type, $Length: int, "
+                      "$Time: int) { amount: DataType } "
+                      "ProductType :: (A: Type, B: Type) -> Type { return "
+                      "Quantity(A.DataType, "
+                      "A.Length + B.Length, A.Time + B.Time) } "
+                      "Multiply :: (a: $A, b: $B) -> ProductType(A, B) { "
+                      "result: ProductType(A, B) = {amount: a.amount * "
+                      "b.amount}; return result } "
+                      "Run :: () -> Quantity(double, 1, 0) { "
+                      "speed: Quantity(double, 1, -1) = {amount: 6}; "
+                      "time: Quantity(double, 0, 1) = {amount: 2}; return "
+                      "Multiply(speed, time) } }";
+    char error[256] = { 0 }, *migrated = NULL;
+    REQUIRE(!chibi_migrate_number_names(historical, &migrated, error, sizeof error));
+    const char *actual = migrated ? migrated : historical;
+    bool matches = !strcmp(actual, quantity_source);
+    if (!matches) {
+        fprintf(stderr, "version 32 Quantity result: %s\n", actual);
+    }
+    bool executed = constructed_units(actual);
+    free(migrated);
+    REQUIRE(matches && executed);
+    return true;
+}
+void test_language_migration32_generic_repro()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(generic_version_32_quantity_type_arguments_migrate);
+    pu_clear_setup();
 }
 static bool reported(const char *message)
 {

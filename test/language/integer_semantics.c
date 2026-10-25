@@ -68,12 +68,12 @@ typedef struct
     "NotANumber :: () -> " T " { z: double = 0.0; return " T "(z / z); }\n"    \
     "Count :: (n: ref int, v: " T ") -> " T " { n += 1; return v; }\n"         \
     "CountWide :: (n: ref int, v: int64) -> int64 { n += 1; return v; }\n"     \
-    "UnusedDiv :: (a: " T ", b: " T ") -> int { n := 0; q := a / Count(n, "    \
-    "b); return n; }\n"                                                        \
-    "UnusedShl :: (a: " T ", s: byte) -> int { n := 0; q := Count(n, a) << "   \
-    "s; return n; }\n"                                                         \
-    "UnusedConverted :: (v: int64) -> int { n := 0; x := " T "(CountWide(n, "  \
-    "v)); return n; }\n"
+    "UnusedDiv :: (a: " T ", b: " T ") -> int { n := 0; "                      \
+    "q := a / Count(ref n, b); return n; }\n"                                  \
+    "UnusedShl :: (a: " T ", s: byte) -> int { n := 0; "                       \
+    "q := Count(ref n, a) << s; return n; }\n"                                 \
+    "UnusedConverted :: (v: int64) -> int { n := 0; "                          \
+    "x := " T "(CountWide(ref n, v)); return n; }\n"
 #define SIGNED_SOURCE(T)                                                       \
     WIDTH_SOURCE(T) "Neg :: (a: " T ") -> " T " { return -a; }\n"
 
@@ -693,16 +693,16 @@ static const integer_sample samples[] = {
       .source = "package facts\n"
                 "Tag :: (t: ref int, d: int, v: int) -> int { t = t * 10 + d; "
                 "return v; }\n"
-                "Sum :: () -> int { t := 0; x := Tag(t, 1, 3) + Tag(t, 2, 4); "
-                "return t; }\n"
-                "Swapped :: () -> int { t := 0; x := Tag(t, 2, 4) + Tag(t, 1, "
-                "3); return t; }\n"
-                "Quotient :: () -> int { t := 0; x := Tag(t, 1, 7) / Tag(t, 2, "
-                "0); return t; }\n"
-                "Shifted :: () -> int { t := 0; x := Tag(t, 1, 1) << uint(Tag(t, "
-                "2, 40)); return t; }\n"
-                "Ordered :: () -> int { t := 0; b := Tag(t, 2, 5) < Tag(t, 1, 3); "
-                "return t; }\n",
+                "Sum :: () -> int { t := 0; "
+                "x := Tag(ref t, 1, 3) + Tag(ref t, 2, 4); return t; }\n"
+                "Swapped :: () -> int { t := 0; "
+                "x := Tag(ref t, 2, 4) + Tag(ref t, 1, 3); return t; }\n"
+                "Quotient :: () -> int { t := 0; "
+                "x := Tag(ref t, 1, 7) / Tag(ref t, 2, 0); return t; }\n"
+                "Shifted :: () -> int { t := 0; "
+                "x := Tag(ref t, 1, 1) << uint(Tag(ref t, 2, 40)); return t; }\n"
+                "Ordered :: () -> int { t := 0; "
+                "b := Tag(ref t, 2, 5) < Tag(ref t, 1, 3); return t; }\n",
       .calls = { { .function = "Sum", .arguments = "[]", .expected = "[12]" },
                  { .function = "Swapped", .arguments = "[]", .expected = "[21]" },
                  { .function = "Quotient", .arguments = "[]", .expected = "[12]" },

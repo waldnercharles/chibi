@@ -1745,7 +1745,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         // Stage zero reads `-1` as one literal.
         negated := kind == "number" && Is(forest, node.parent, "unary_expression") &&
                    Text(forest, text, Field(forest, node.parent, "operator")) == "-";
-        if (ops.debug && item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
+        if (ops.debug && item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node) &&
+            !ElidedTarget(forest, text, names, item.node)) {
             points.append(PointIn(document_hash, solid, ExpressionRecord, node));
             code.append(PointCode(ops, length(points) - 1, node));
             // A name's symbol, or a package constant's, which is a symbol of

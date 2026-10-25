@@ -1112,6 +1112,35 @@ static const sample samples[] = {
                 "lib.Bump(&value); return value; }",
       .library = "package lib\npub Bump :: (value: ^int) { value^ += 3; }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[10]" } } },
+    /* A pointer to a pointer passed on dereferenced lends the target it
+     * holds, and an address of a parenthesized dereference escapes. */
+    { .name = "scoped pointer relays",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Bump :: (v: ^int) { v^ += 1; }\n"
+                "Relay :: (p: ^^int) { Bump(p^); }\n"
+                "Keep :: (p: ^int) -> ^int { return &(p^); }\n"
+                "Relayed :: () -> int { x: int = 1; q := &x; Relay(&q); "
+                "return x; }\n"
+                "Kept :: () -> int { x: int = 1; k := Keep(&x); k^ = 5; "
+                "return x; }\n"
+                "Through :: (p: ^^int) -> int { p^^ = 5; return (p^)^ + 1; }\n"
+                "Thrown :: () -> int { x: int = 1; q := &x; return Through(&q) "
+                "* 10 + x; }\n"
+                "Copy :: (p: ^^int) -> int { q := p^; q^ += 1; return q^; }\n"
+                "Copied :: () -> int { x: int = 1; q := &x; return Copy(&q) * "
+                "10 + x; }\n",
+      .calls = { { .function = "Relayed", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Kept", .arguments = "[]", .expected = "[5]" },
+                 { .function = "Thrown", .arguments = "[]", .expected = "[65]" },
+                 { .function = "Copied", .arguments = "[]", .expected = "[22]" } } },
+    /* A scoped `n^` keeps its own source span. */
+    { .name = "scoped pointer spans",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Read :: (n: ^int) -> int { return n^; }\n"
+                "Reading :: () -> int { x: int = 4; return Read(&x); }\n",
+      .calls = { { .function = "Reading", .arguments = "[]", .expected = "[4]" } } },
     { .name = "pointer argument missing",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ^int) { v^ += 1; }\nRun :: () "

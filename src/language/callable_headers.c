@@ -294,15 +294,20 @@ static bool callable_declaration(TSNode node)
 {
     return is(node, "function_declaration") || is(node, "macro_declaration");
 }
-/* The declaration a plain call names among its caller's siblings. */
-static TSNode sibling_callable(const char *source, TSNode caller, TSNode callee)
+/* The declaration a plain call names: the nearest callable declared in a
+ * block around the call, nested in its caller or beside it. */
+static TSNode visible_callable(const char *source, TSNode call)
 {
-    TSNode container = ts_node_parent(caller);
-    for (uint32_t i = 0; is(callee, "identifier") && i < named_count(container); i++) {
-        TSNode sibling = ts_node_named_child(container, i);
-        if (callable_declaration(sibling) &&
-            same_text(source, callee, field(sibling, "name"))) {
-            return sibling;
+    TSNode callee = field(call, "function");
+    for (TSNode scope = ts_node_parent(call);
+         is(callee, "identifier") && !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        for (uint32_t i = 0; i < named_count(scope); i++) {
+            TSNode each = ts_node_named_child(scope, i);
+            if (callable_declaration(each) &&
+                same_text(source, callee, field(each, "name"))) {
+                return each;
+            }
         }
     }
     return (TSNode){ 0 };
@@ -315,14 +320,8 @@ static bool scoped_pointer(
     int depth
 );
 /* Whether `argument`, a use of the parameter, is passed to a scoped pointer
- * parameter of a sibling callable. */
-static bool scoped_forward(
-    const char *source,
-    TSNode caller,
-    TSNode argument,
-    scoped_pointer_visit *stack,
-    int depth
-)
+ * parameter of a callable the call can see. */
+static bool scoped_forward(const char *source, TSNode argument, scoped_pointer_visit *stack, int depth)
 {
     TSNode list = ts_node_parent(argument), label = { 0 };
     if (is(list, "named_argument")) {
@@ -334,7 +333,7 @@ static bool scoped_forward(
     if (!is(list, "argument_list") || !is(call, "call_expression")) {
         return false;
     }
-    TSNode callee = sibling_callable(source, caller, field(call, "function"));
+    TSNode callee = visible_callable(source, call);
     TSNode parameters = field(callee, "parameters");
     for (uint32_t i = 0, position = 0; i < named_count(list); i++) {
         TSNode current = ts_node_named_child(list, i);
@@ -373,21 +372,14 @@ static bool binding_form(TSNode node)
            is(node, "query_generator");
 }
 /* Whether every use of `name` in `node` keeps its address inside the call. */
-static bool scoped_uses(
-    const char *source,
-    TSNode caller,
-    TSNode node,
-    TSNode name,
-    scoped_pointer_visit *stack,
-    int depth
-)
+static bool scoped_uses(const char *source, TSNode node, TSNode name, scoped_pointer_visit *stack, int depth)
 {
     if (callable_declaration(node)) {
         return true; /* Nested callables cannot see enclosing locals. */
     }
     if (!is(node, "identifier") || !same_text(source, node, name)) {
         for (uint32_t i = 0; i < named_count(node); i++) {
-            if (!scoped_uses(source, caller, ts_node_named_child(node, i), name, stack, depth)) {
+            if (!scoped_uses(source, ts_node_named_child(node, i), name, stack, depth)) {
                 return false;
             }
         }
@@ -398,17 +390,18 @@ static bool scoped_uses(
         return !binding_form(parent); /* Shadowing keeps the analysis simple. */
     }
     if (!is(parent, "dereference_expression") && !is(parent, "member_expression")) {
-        return scoped_forward(source, caller, node, stack, depth);
+        return scoped_forward(source, node, stack, depth);
     }
     TSNode place = parent;
     while (is(ts_node_parent(place), "dereference_expression") ||
+           is(ts_node_parent(place), "parenthesized_expression") ||
            (is(ts_node_parent(place), "member_expression") &&
             ts_node_eq(field(ts_node_parent(place), "object"), place))) {
         place = ts_node_parent(place);
     }
     TSNode outer = ts_node_parent(place);
     return !is(outer, "address_expression") ||
-           scoped_forward(source, caller, outer, stack, depth);
+           scoped_forward(source, outer, stack, depth);
 }
 static bool scoped_pointer(
     const char *source,
@@ -430,7 +423,7 @@ static bool scoped_pointer(
     stack[depth] = (scoped_pointer_visit){ start, index };
     TSNode parameter = ts_node_named_child(field(declaration, "parameters"), index);
     TSNode name = field(parameter, "name");
-    return scoped_uses(source, declaration, field(declaration, "body"), name, stack, depth + 1);
+    return scoped_uses(source, field(declaration, "body"), name, stack, depth + 1);
 }
 TSNode script_scoped_pointer_target(const char *source, TSNode declaration, uint32_t index)
 {

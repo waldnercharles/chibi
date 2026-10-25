@@ -1,5 +1,6 @@
 #include "project_migrate33.h"
 
+#include "assets/project.h"
 #include "project_migrate26.h"
 #include "support/array.h"
 #include "support/text_edit.h"
@@ -124,6 +125,24 @@ static void uses(pointer_rewrite *s, TSNode node, TSNode name)
     }
     edit(s, ts_node_end_byte(node), ts_node_end_byte(node), "^");
 }
+/* A typed argument that passes a reference annotates its pointer:
+ * `v: int = ref x` becomes `v: ^int = &x`. */
+static void point_annotation(pointer_rewrite *s, TSNode argument)
+{
+    TSNode parent = ts_node_parent(argument), type = field(parent, "type");
+    if (!is(parent, "typed_argument") || !ts_node_eq(field(parent, "value"), argument) ||
+        !ts_node_is_null(ref_token(type))) {
+        return;
+    }
+    bool compound = false;
+    for (uint32_t i = 0; is(type, "type") && i < ts_node_child_count(type); i++) {
+        compound |= is(ts_node_child(type, i), "[") || is(ts_node_child(type, i), "?");
+    }
+    edit(s, ts_node_start_byte(type), ts_node_start_byte(type), compound ? "^(" : "^");
+    if (compound) {
+        edit(s, ts_node_end_byte(type), ts_node_end_byte(type), ")");
+    }
+}
 static bool forwarded(const pointer_rewrite *s, TSNode argument)
 {
     for (int i = 0; i < acount(s->forwarded); i++) {
@@ -143,6 +162,9 @@ static void rewrite(pointer_rewrite *s, TSNode node)
         TSNode name = field(node, "name");
         edit(s, ts_node_start_byte(name), ts_node_start_byte(name), "&");
         edit(s, ts_node_end_byte(name), ts_node_end_byte(field(node, "reference")), "");
+    }
+    if (is(node, "reference_argument")) {
+        point_annotation(s, node);
     }
     if (is(node, "reference_argument") && !forwarded(s, node)) {
         edit(s, ts_node_start_byte(node), ts_node_start_byte(field(node, "value")), "&");
@@ -166,6 +188,14 @@ int chibi_migrate33_pointers(const char *source, char **migrated, char *error, s
     script_syntax *syntax = chibi_migrate_parse(source, 33);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
+        /* A retry after an interrupted upgrade reads this step's own output,
+         * whose `for &item` only the current version spells. */
+        syntax = chibi_migrate_parse(source, CHIBI_PROJECT_VERSION);
+        bool current = !syntax->diagnostic_count;
+        script_syntax_free(syntax);
+        if (current) {
+            return 0;
+        }
         snprintf(error, size, "Cannot migrate invalid version 33 source");
         return -1;
     }

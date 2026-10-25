@@ -97,7 +97,9 @@ ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 }
 // A scoped parameter names its target, so each `p^` of one reads and writes
 // `p`, as stage zero lowers it: in a copy of `forest`, each such dereference
-// of a function of `package` becomes its operand.
+// of a function of `package` becomes its operand. A returned `p^` stays, so
+// its result keeps the dereference's source span, and a pointer to a pointer
+// keeps a `p^` that KeptTarget names, which reads the pointer `p` holds.
 ScopedTargets :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
                   params: Param[], package: int) -> snapshot.SnapshotNode[] {
     scoped := forest;
@@ -112,7 +114,9 @@ ScopedTargets :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
                     pending = slice(pending, 0, length(pending) - 1);
                     operand := Field(forest, node, "operand");
                     if (Is(forest, node, "dereference_expression") && Is(forest, operand, "identifier") &&
-                        Text(forest, text, operand) == params[callable.first + at].name) {
+                        Text(forest, text, operand) == params[callable.first + at].name &&
+                        !Returned(forest, node) &&
+                        !(params[callable.first + at].storage == PointerStorage && KeptTarget(forest, node))) {
                         named := forest[operand];
                         named.parent = forest[node].parent;
                         named.next_sibling = forest[node].next_sibling;
@@ -127,6 +131,23 @@ ScopedTargets :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
         }
     }
     return scoped;
+}
+// Whether the dereference `node` of a scoped pointer to a pointer stays: a
+// call argument passes the pointer its target holds rather than forwarding
+// the parameter, and a dereference of it reads through that pointer.
+KeptTarget :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    parent := forest[node].parent;
+    while (Is(forest, parent, "parenthesized_expression")) {
+        parent = forest[parent].parent;
+    }
+    return Is(forest, parent, "dereference_expression") || CallArgument(forest, node);
+}
+// Whether `node` is an argument a call passes.
+CallArgument :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    parent := forest[node].parent;
+    return Is(forest, parent, "argument_list") ||
+           ((Is(forest, parent, "named_argument") || Is(forest, parent, "typed_argument")) &&
+            Field(forest, parent, "value") == node);
 }
 // A `^T` parameter whose callers' addresses never outlive the call, as stage
 // zero decides it: not nullable, and its body only dereferences it, reads its
@@ -254,6 +275,7 @@ ScopedUses :: (forest: snapshot.SnapshotNode[], text: string, caller: int, body:
         }
         place := parent;
         while (Is(forest, forest[place].parent, "dereference_expression") ||
+               Is(forest, forest[place].parent, "parenthesized_expression") ||
                (Is(forest, forest[place].parent, "member_expression") &&
                 Field(forest, forest[place].parent, "object") == place)) {
             place = forest[place].parent;
@@ -345,8 +367,13 @@ PlaceReadStep :: (binding: Name, ops: Ops, target: Target, at: Bases, node: snap
     if (binding.place == BoxPlace) {
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         slots: Slot[] = [address, ValueLocal(binding.storage)];
+        if (Pointer(binding.storage, 0)) {
+            root: Root = {slot: at.slot + 1, storage: binding.storage, container: 0, record: binding.record};
+            roots.append(root);
+        }
         return Step.Emitted(CellRead(binding.storage, binding.index, ops, target, at.slot, node), slots, [], [], [],
-                            roots, [], [], [], 0, Typed(at.slot + 1, binding.storage, 0, -1), NoValue(), []);
+                            roots, [], [], [], 0, Typed(at.slot + 1, binding.storage, 0, binding.record), NoValue(),
+                            []);
     }
     slots: Slot[] = [DescriptorSlot(target)];
     code: Code[] = [DescriptorCode(ops, target, binding.index, at.slot, node)];
@@ -362,8 +389,8 @@ PlaceReadStep :: (binding: Name, ops: Ops, target: Target, at: Bases, node: snap
     return Step.Emitted(code, slots, [], cells, [ReadThroughHost(at.cell)], roots, [], [], [], 0,
                         Typed(value, binding.storage, binding.container, binding.record), NoValue(), []);
 }
-// `x: T = v` for a number, bool or string local that a scoped argument lends:
-// its cell holds the value.
+// `x: T = v` for a number, bool, string or pointer local that a scoped
+// argument lends: its cell holds the value.
 BoxStep :: (forest: snapshot.SnapshotNode[], text: string, local: Value, value: Value, item: Work, ops: Ops,
             target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     name := Field(forest, item.node, "name");
@@ -372,11 +399,12 @@ BoxStep :: (forest: snapshot.SnapshotNode[], text: string, local: Value, value: 
     code.append(SymbolCode(ops, name, node));
     binding: Name = {name: Text(forest, text, name), place: BoxPlace, index: at.cell, storage: local.storage,
                      container: 0, record: local.record, writable: true, node: name};
-    return Step.Emitted(code, [address], [], [TypedCell(local.storage, 0, -1)], [], [], [], [binding], [], 1,
-                        NoValue(), NoValue(), []);
+    return Step.Emitted(code, [address], [], [TypedCell(local.storage, 0, local.record)], [], [], [], [binding], [],
+                        1, NoValue(), NoValue(), []);
 }
-// A number, bool or string parameter that a scoped argument lends moves into
-// a cell of its own before the body runs, as stage zero isolates it.
+// A number, bool, string or pointer parameter that a scoped argument lends
+// moves into a cell of its own before the body runs, as stage zero isolates
+// it.
 BoxParameterStep :: (param: Param, index: int, ops: Ops, target: Target, at: Bases,
                      node: snapshot.SnapshotNode) -> Step {
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
@@ -386,8 +414,8 @@ BoxParameterStep :: (param: Param, index: int, ops: Ops, target: Target, at: Bas
     code.extend(CellWrite(param.storage, at.slot, at.cell, ops, target, at.slot + 1, node));
     binding: Name = {name: param.name, place: BoxPlace, index: at.cell, storage: param.storage, container: 0,
                      record: param.record, writable: true, node: param.node};
-    return Step.Emitted(code, [ValueLocal(param.storage), address], [], [TypedCell(param.storage, 0, -1)], [], [], [],
-                        [binding], [], 0, NoValue(), NoValue(), []);
+    return Step.Emitted(code, [ValueLocal(param.storage), address], [], [TypedCell(param.storage, 0, param.record)],
+                        [], [], [], [binding], [], 0, NoValue(), NoValue(), []);
 }
 // `x = v` and `x op= v` on a scoped parameter or a boxed local, as stage zero
 // assigns them: a narrower integer widens first; a compound reads the target
@@ -513,7 +541,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
         found := Lookup(names, Text(forest, text, item.node));
         forwarded = found >= 0 && names[found].place == ReferencePlace;
     }
-    if (item.phase == ScopedPhase && !forwarded) {
+    if (item.phase == ScopedPhase && !forwarded && !Is(forest, item.node, "dereference_expression")) {
         // A managed pointer lends its target, as its dereference would.
         resumed := item;
         resumed.phase = PointerBridgePhase;

@@ -8385,6 +8385,20 @@ TEST_CASE(program_version_33_ref_becomes_pointers)
           "row: ^Row, d: ^float u, p: ^^int, o: ^(int?)) { xs^ = "
           "append(xs^, row.x); row.x += xs^[0]; Bump(&row.x); Keep(xs: "
           "xs); d^ += 1; p^^ = 2; } }" },
+        { "L :: library { Bump :: (value: ref int) { value += 1 } Grow :: "
+          "(xs: ref int[]) {} Forward :: (value: ref int) { Bump(value: int "
+          "= ref value) } Run :: () { x := 1; ys: int[] = []; Bump(value: "
+          "int = ref x); Grow(xs: int[] = ref ys) } }",
+          "L :: library { Bump :: (value: ^int) { value^ += 1 } Grow :: "
+          "(xs: ^(int[])) {} Forward :: (value: ^int) { Bump(value: ^int "
+          "= value) } Run :: () { x := 1; ys: int[] = []; Bump(value: "
+          "^int = &x); Grow(xs: ^(int[]) = &ys) } }" },
+        /* Only the current version spells `for &item`, so a retry reads it
+         * with that grammar and leaves it. */
+        { "L :: library { F :: (items: int[]) { for item : ref in items { item "
+          "+= 1 } } }",
+          "L :: library { F :: (items: int[]) { for &item in items { item += 1 "
+          "} } }" },
     };
     char error[256] = { 0 };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
@@ -8398,17 +8412,6 @@ TEST_CASE(program_version_33_ref_becomes_pointers)
         REQUIRE(!chibi_migrate_pointers(migrated, &again, error, sizeof error) && !again);
         free(migrated);
     }
-    /* Version 33 cannot spell `for &item`, so this rewrite never runs twice. */
-    char *loop = NULL;
-    REQUIRE(!chibi_migrate_pointers(
-        "L :: library { F :: (items: int[]) { for item : ref in items { item "
-        "+= 1 } } }",
-        &loop,
-        error,
-        sizeof error
-    ));
-    REQUIRE(!strcmp(loop, "L :: library { F :: (items: int[]) { for &item in items { item += 1 } } }"));
-    free(loop);
     static const struct
     {
         const char *source, *message;
@@ -8918,6 +8921,28 @@ TEST_CASE(program_library_task_writes_the_callers_state)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "n", 6) && execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* A parameter that only forwards to a scoped parameter of a callable nested
+ * in its body is scoped too, so it can lend a state field. */
+TEST_CASE(program_nested_forwarding_keeps_pointer_scoped)
+{
+    const char
+        *source = "R :: behavior { seen: double = 0; Relay :: (p: ^double) { "
+                  "Local :: (q: ^double) { q^ = 5 } Local(p) } on Impulse :: "
+                  "(amount: double, enabled: bool) { Relay(&seen) } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 5));
     }
     return true;
 }
@@ -10266,6 +10291,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_library_task_writes_the_callers_state);
+    RUN_TEST_CASE(program_nested_forwarding_keeps_pointer_scoped);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp);
     RUN_TEST_CASE(program_returns_convert_to_their_result_type);

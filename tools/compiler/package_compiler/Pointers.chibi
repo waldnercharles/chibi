@@ -424,6 +424,15 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     node := forest[item.node];
     operand := Unparenthesized(forest, Field(forest, item.node, "operand"));
     if (node.kind == "dereference_expression") {
+        // A `p^` of a scoped `p` that ScopedTargets keeps reads p's target,
+        // as the name alone does.
+        scoped: int = -1;
+        if (Is(forest, operand, "identifier")) {
+            scoped = Lookup(names, Text(forest, text, operand));
+        }
+        if (item.phase == 0 && scoped >= 0 && names[scoped].place == ReferencePlace) {
+            return Step.Emitted([], [], [], [], [], [], [], [], [Visit(operand)], 0, NoValue(), NoValue(), []);
+        }
         if (item.phase == 0) {
             return Step.Emitted([], [], [], [], [], [], [], [],
                                 [Visit(operand), Resume(item.node, PointerReadPhase, 0, 0)], 0,
@@ -814,6 +823,20 @@ PointerParameterStep :: (types: TypeDecl[], members: TypeMember[], param: Param,
     return Step.Emitted([read], [slot], [], [], [], [], [], [],
                         [Resume(item.node, PointerParameterPhase, item.a, 1)], 0,
                         Typed(at.slot, param.storage, param.container, param.record), NoValue(), []);
+}
+// Whether `node` is a kept `p^` of a scoped `p` that a dereference reads
+// through or a return returns, which stage zero evaluates as `p` alone,
+// without a point of its own.
+ElidedTarget :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    if (!Is(forest, node, "dereference_expression") || CallArgument(forest, node)) {
+        return false;
+    }
+    operand := Unparenthesized(forest, Field(forest, node, "operand"));
+    if (!Is(forest, operand, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, operand));
+    return found >= 0 && names[found].place == ReferencePlace;
 }
 PointerStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                 members: TypeMember[], names: Name[], params: Param[], first: int, values: Value[], top: int,

@@ -1,5 +1,5 @@
 set(CHIBI_EXECUTION_SOURCES
-    artifact.c backend.c borrow.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c map_intrinsics.c
+    artifact.c backend.c borrow.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c integer_report.c intrinsics.c map_intrinsics.c
     jit.c jit_component.c jit_host_call.c jit_integer.c jit_memory.c jit_registers.c
     jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
     preparation_budget.c prepared.c prepared_function.c prepared_record.c program.c program_inspection.c program_activation.c
@@ -29,7 +29,7 @@ add_library(Chibi::execution ALIAS chibi_execution)
 set_target_properties(chibi_execution PROPERTIES EXPORT_NAME execution)
 chibi_sdk_headers(chibi_execution PUBLIC execution/function_builder.h execution/update.h
     execution/module.h execution/module_builder.h execution/intrinsics.h execution/map_intrinsics.h
-    execution/delay.h execution/task.h execution/inspection.h execution/prepared.h execution/ecs_reader.h
+    execution/delay.h execution/task.h execution/inspection.h execution/integer_report.h execution/prepared.h execution/ecs_reader.h
     execution/component_write.h)
 target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/execution"
     "${CMAKE_CURRENT_BINARY_DIR}/private/types")

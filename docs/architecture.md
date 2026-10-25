@@ -136,8 +136,10 @@ a display host. `chibi-player` owns its loop and consumes prepared artifacts wit
 an explicit native linker and resource host. Resource staging validates the scene
 and complete dependency closure before publication or Begin. Portable readers
 validate schemas and format versions, preserve prior outputs on failure, and
-charge retained decoded storage against a shared budget. Mutable execution state,
-backend code and separately bounded parsing scratch have distinct accounting.
+charge retained decoded storage against a shared budget, including definition-owned
+integer-report occurrence and delivered banks. Collected report vectors belong to
+the caller. Mutable execution state, backend code and separately bounded parsing
+scratch have distinct accounting.
 
 The compiler-enabled SDK, compiler-disabled runtime SDK, deployed player and
 Studio distribution are separate packages. SDKs contain scoped headers, libraries

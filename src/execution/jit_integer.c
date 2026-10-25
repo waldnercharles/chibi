@@ -1,3 +1,4 @@
+#include "execution/integer_report.h"
 #include "execution/jit_internal.h"
 #if CHIBI_HAVE_SJLIT
 #include "support/array.h"
@@ -33,6 +34,28 @@ static void bind(struct sljit_compiler *c, struct sljit_jump *jump)
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
         sljit_set_label(jump, label);
     }
+}
+/* A development build marks the event's source site; values are unchanged. */
+static bool reports(const behavior_machine *m, const behavior_function_instruction *i)
+{
+    return behavior_integer_site(m->function, i, 0) &&
+           behavior_integer_reportable(m->function, i);
+}
+static void mark(const behavior_machine *m, const behavior_function_instruction *i, int kind)
+{
+    atomic_uchar *site = behavior_integer_site(m->function, i, kind);
+    sljit_emit_op1(m->compiler, SLJIT_MOV_U8, SLJIT_MEM0(), (sljit_sw)site, SLJIT_IMM, 1);
+}
+/* Marks kind unless the jump that skips it was taken. */
+static void mark_unless(
+    const behavior_machine *m,
+    const behavior_function_instruction *i,
+    int kind,
+    struct sljit_jump *fits
+)
+{
+    mark(m, i, kind);
+    bind(m->compiler, fits);
 }
 static void load(const behavior_machine *m, int slot, int reg)
 {
@@ -181,14 +204,21 @@ static void integer_cast(const behavior_machine *m, const behavior_function_inst
         return;
     }
     struct sljit_jump *fits = sljit_emit_jump(c, SLJIT_JUMP), *clamped = NULL;
+    bool check = reports(m, i);
     if (below) {
         bind(c, below);
         sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)low);
+        if (check) {
+            mark(m, i, EXECUTION_INTEGER_CLAMP);
+        }
         clamped = above ? sljit_emit_jump(c, SLJIT_JUMP) : NULL;
     }
     if (above) {
         bind(c, above);
         sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)high);
+        if (check) {
+            mark(m, i, EXECUTION_INTEGER_CLAMP);
+        }
     }
     if (clamped) {
         bind(c, clamped);
@@ -216,6 +246,21 @@ static void float_cast(const behavior_machine *m, const behavior_function_instru
         source ? source : SLJIT_MEM1(SLJIT_SP),
         source ? 0 : i->left * sizeof(double)
     );
+    if (reports(m, i)) {
+        const double *fit = behavior_integer_cast_bounds(i->type);
+        struct sljit_jump *unordered = sljit_emit_fcmp(c, SLJIT_UNORDERED, SLJIT_FR0, 0, SLJIT_FR0, 0);
+        sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&fit[0]);
+        struct sljit_jump
+            *under = sljit_emit_fcmp(c, SLJIT_ORDERED_LESS_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
+        sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&fit[1]);
+        struct sljit_jump *
+            over = sljit_emit_fcmp(c, SLJIT_ORDERED_GREATER_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
+        struct sljit_jump *fits = sljit_emit_jump(c, SLJIT_JUMP);
+        bind(c, unordered);
+        bind(c, under);
+        bind(c, over);
+        mark_unless(m, i, EXECUTION_INTEGER_CLAMP, fits);
+    }
     sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, 0);
     struct sljit_jump *nan = sljit_emit_fcmp(c, SLJIT_UNORDERED, SLJIT_FR0, 0, SLJIT_FR0, 0);
     sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&bounds[i->type][0]);
@@ -285,6 +330,63 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
     }
     sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_R0, 0);
 }
+/* Negating the signed minimum in R0 wraps to itself. */
+static void minimum_overflows(const behavior_machine *m, const behavior_function_instruction *i, pin_type type)
+{
+    int flags = behavior_scalar_size(type) == 8 ? 0 : SLJIT_32;
+    sljit_sw low = (sljit_sw)behavior_scalar_integer_low(type);
+    mark_unless(
+        m,
+        i,
+        EXECUTION_INTEGER_OVERFLOW,
+        sljit_emit_cmp(m->compiler, SLJIT_NOT_EQUAL | flags, SLJIT_R0, 0, SLJIT_IMM, low)
+    );
+}
+static int operation(behavior_function_op op)
+{
+    return op == BF_ADD ? SLJIT_ADD : op == BF_SUB ? SLJIT_SUB : SLJIT_MUL;
+}
+/* Computes R0 op R1 into R0 and marks a result that wrapped. Narrow operands
+ * are extended, so their 32-bit result is exact; it wraps when truncating
+ * changes it. Wide operations test the hardware flags, and an unsigned
+ * multiply its high bits. */
+static void checked_arithmetic(
+    const behavior_machine *m,
+    const behavior_function_instruction *i,
+    pin_type type
+)
+{
+    struct sljit_compiler *c = m->compiler;
+    size_t size = behavior_scalar_size(type);
+    bool sign = behavior_scalar_signed(type);
+    int flags = size == 8 ? 0 : SLJIT_32;
+    struct sljit_jump *fits;
+    if (size < 4) {
+        sljit_emit_op2(c, operation(i->op) | SLJIT_32, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R1, 0);
+        sljit_emit_op1(c, behavior_jit_integer_move(type), SLJIT_R1, 0, SLJIT_R0, 0);
+        fits = sljit_emit_cmp(c, SLJIT_EQUAL | SLJIT_32, SLJIT_R0, 0, SLJIT_R1, 0);
+    } else if (i->op == BF_MUL && !sign && size == 4) {
+        /* Both operands are zero-extended words. */
+        sljit_emit_op2(c, SLJIT_MUL, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R1, 0);
+        fits = sljit_emit_cmp(c, SLJIT_LESS_EQUAL, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)UINT32_MAX);
+    } else if (i->op == BF_MUL && !sign) {
+        sljit_emit_op0(c, SLJIT_LMUL_UW);
+        fits = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
+    } else {
+        sljit_emit_op2(
+            c,
+            operation(i->op) | flags | (sign ? SLJIT_SET_OVERFLOW : SLJIT_SET_CARRY),
+            SLJIT_R0,
+            0,
+            SLJIT_R0,
+            0,
+            SLJIT_R1,
+            0
+        );
+        fits = sljit_emit_jump(c, sign ? SLJIT_NOT_OVERFLOW : SLJIT_NOT_CARRY);
+    }
+    mark_unless(m, i, EXECUTION_INTEGER_OVERFLOW, fits);
+}
 static void arithmetic(
     const behavior_machine *m,
     const behavior_function_instruction *i,
@@ -296,22 +398,15 @@ static void arithmetic(
     pin_type type = m->function->slots[i->left];
     int flags = behavior_scalar_size(type) == 8 ? 0 : SLJIT_32;
     bool signed_type = behavior_scalar_signed(type);
+    bool check = reports(m, i);
     if (i->op == BF_ADD || i->op == BF_SUB || i->op == BF_MUL) {
         load(m, i->left, SLJIT_R0);
         load(m, i->right, SLJIT_R1);
-        sljit_emit_op2(
-            c,
-            (i->op == BF_ADD   ? SLJIT_ADD
-             : i->op == BF_SUB ? SLJIT_SUB
-                               : SLJIT_MUL) |
-                flags,
-            SLJIT_R0,
-            0,
-            SLJIT_R0,
-            0,
-            SLJIT_R1,
-            0
-        );
+        if (check) {
+            checked_arithmetic(m, i, type);
+        } else {
+            sljit_emit_op2(c, operation(i->op) | flags, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R1, 0);
+        }
         sljit_emit_op1(c, behavior_jit_integer_move(type), dest, offset, SLJIT_R0, 0);
         return;
     }
@@ -336,11 +431,17 @@ static void arithmetic(
         );
         struct sljit_jump *divided = sljit_emit_jump(c, SLJIT_JUMP), *negated = NULL;
         bind(c, zero);
+        if (check) {
+            mark(m, i, EXECUTION_INTEGER_ZERO_DIVISOR);
+        }
         sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_R0, 0);
         sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, 0);
         if (minus) {
             negated = sljit_emit_jump(c, SLJIT_JUMP);
             bind(c, minus);
+            if (check && (i->op == BF_DIV || i->target >= 0)) {
+                minimum_overflows(m, i, type);
+            }
             sljit_emit_op2(c, SLJIT_SUB | flags, SLJIT_R0, 0, SLJIT_IMM, 0, SLJIT_R0, 0);
             sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_IMM, 0);
             bind(c, negated);
@@ -390,6 +491,17 @@ static void arithmetic(
                                               0
                                           )
                                         : NULL;
+        if (check && signed_type) {
+            minimum_overflows(m, i, type);
+        } else if (check && i->op == BF_NEG) {
+            /* Negating any unsigned value but zero wraps. */
+            mark_unless(
+                m,
+                i,
+                EXECUTION_INTEGER_OVERFLOW,
+                sljit_emit_cmp(c, SLJIT_EQUAL | flags, SLJIT_R0, 0, SLJIT_IMM, 0)
+            );
+        }
         sljit_emit_op2(c, SLJIT_SUB | flags, SLJIT_R0, 0, SLJIT_IMM, 0, SLJIT_R0, 0);
         if (positive) {
             bind(c, positive);

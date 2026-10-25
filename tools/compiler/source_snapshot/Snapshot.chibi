@@ -145,25 +145,25 @@ ValidUTF8 :: (text: string) -> bool {
     size := length(bytes);
     index: int = 0;
     while (index < size) {
-        byte := bytes[index];
+        lead := bytes[index];
         index += 1;
-        if (byte < 128) {
+        if (lead < 128) {
             continue;
         }
         count: int = -1;
-        if (byte >= 194 && byte <= 223) {
+        if (lead >= 194 && lead <= 223) {
             count = 1;
         }
-        if (byte >= 224 && byte <= 239) {
+        if (lead >= 224 && lead <= 239) {
             count = 2;
         }
-        if (byte >= 240 && byte <= 244) {
+        if (lead >= 240 && lead <= 244) {
             count = 3;
         }
         if (count < 0 || count > size - index) {
             return false;
         }
-        value := byte & (127 >> (count + 1));
+        value := lead & (127 >> byte(count + 1));
         minimum: int = 128;
         if (count == 2) {
             minimum = 2048;

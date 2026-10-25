@@ -14,7 +14,7 @@ endif()
 
 add_library(chibi_language STATIC semantic.c semantic_context.c identity.c component.c
     semantic_expression.c semantic_calls.c semantic_statement.c semantic_declaration.c semantic_effects.c semantic_units.c
-    semantic_recovery.c semantic_union.c semantic_record.c semantic_constant.c constant_proof.c scalar_constant.c lexical_binding.c nominal_binding.c named_binding.c type_constructors.c unit_algebra.c signature_reader.c callable_headers.c unit_analysis.c union_members.c effect_analysis.c record_members.c semantic_package.c
+    semantic_recovery.c semantic_union.c semantic_record.c semantic_constant.c constant_proof.c scalar_constant.c numeric.c lexical_binding.c nominal_binding.c named_binding.c type_constructors.c unit_algebra.c signature_reader.c callable_headers.c unit_analysis.c union_members.c effect_analysis.c record_members.c semantic_package.c
     semantic_generic.c semantic_comptime.c)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/semantic_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/semantic_internal.h" COPYONLY)
@@ -22,6 +22,8 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/constant_proof.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/constant_proof.h" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scalar_constant.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/scalar_constant.h" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/numeric.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/language/numeric.h" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/lexical_binding.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/lexical_binding.h" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/nominal_binding.h"

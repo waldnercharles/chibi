@@ -309,20 +309,6 @@ static void assign(lower *, const script_statement *);
 static void assign_value(lower *, const script_statement *, int);
 static void store_symbol(lower *, int, int, script_range);
 static int union_wrap(lower *, int, script_type, script_type, uint64_t, script_range);
-static const char *fit_message(pin_type type)
-{
-    static const char *const messages[] = {
-        [PIN_I8] = "Value does not fit in int8",
-        [PIN_U8] = "Value does not fit in byte",
-        [PIN_I16] = "Value does not fit in int16",
-        [PIN_U16] = "Value does not fit in uint16",
-        [PIN_I32] = "Value does not fit in int",
-        [PIN_U32] = "Value does not fit in uint",
-        [PIN_I64] = "Value does not fit in int64",
-        [PIN_U64] = "Value does not fit in uint64",
-    };
-    return type >= PIN_I8 && type <= PIN_U64 ? messages[type] : NULL;
-}
 static int convert_mode(
     lower *l,
     int slot,
@@ -516,11 +502,9 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
     }
     return value_op(
         l,
-        (behavior_function_instruction){ .op = BF_CAST,
-                                         .type = target,
-                                         .left = slot,
-                                         .target = mode,
-                                         .message = fit_message(target) },
+        (
+            behavior_function_instruction
+        ){ .op = BF_CAST, .type = target, .left = slot, .target = mode },
         range
     );
 }
@@ -529,8 +513,8 @@ static const char *range_text(const lower *l, script_range range)
 {
     return l->a->document_count ? l->a->documents[range.document].text : l->a->text;
 }
-/* assert fails the call, as a checked conversion does, with its message or,
- * as Odin's #caller_expression, its condition's source text. */
+/* assert fails the call with its message or, as Odin's #caller_expression,
+ * its condition's source text. */
 static int assertion(lower *l, const script_expression *e)
 {
     int condition = -1;

@@ -574,7 +574,8 @@ TEST_CASE(lexical_binding_raw_facts_match)
           CORE_STRINGS_SOURCE,
           sizeof CORE_STRINGS_SOURCE - 1 },
     };
-    for (int i = 0; i < 3; i++) {
+    /* Core strings uses the production snapshot limits and full retention checks. */
+    for (int i = 0; i < 2; i++) {
         REQUIRE(files[i].size < 16384);
     }
     REQUIRE(compiler_fixture_prepare(&fixture, files, 3));

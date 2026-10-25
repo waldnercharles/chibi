@@ -40,25 +40,12 @@ static int constant(optimizer *o, pin_value v)
 static int arithmetic(optimizer *o, behavior_function_instruction i)
 {
     bool integer = i.type >= PIN_I8 && i.type <= PIN_U64;
-    if (integer && (i.op == BF_DIV || i.op == BF_MOD) &&
-        (!o->constant[i.left] || !o->constant[i.right])) {
-        /* A failing division cannot skip stores delayed until fast-path exit. */
-        return -1;
-    }
-    if (integer && (i.op == BF_SHL || i.op == BF_SHR) &&
-        (!o->constant[i.right] ||
-         !behavior_scalar_shift_count_valid(i.type, behavior_scalar_bits(o->values[i.right])))) {
-        /* Only a proven count makes a shift safe to prune or delay stores past. */
-        return -1;
-    }
     if (((i.op >= BF_ADD && i.op <= BF_DIV) || (integer && i.op == BF_MOD)) &&
         o->constant[i.left] && o->constant[i.right]) {
         pin_value a = o->values[i.left], b = o->values[i.right],
                   v = { .type = i.type };
         if (i.type >= PIN_I8 && i.type <= PIN_U64) {
-            if (!behavior_scalar_integer_op(i.op, a, b, &v, NULL)) {
-                return -1;
-            }
+            behavior_scalar_integer_op(i.op, a, b, &v, NULL);
         } else if (i.type == PIN_F32) {
             v.f = i.op == BF_ADD ? a.f + b.f
                 : i.op == BF_SUB ? a.f - b.f
@@ -354,13 +341,10 @@ done:
 
 /* Scalarized snapshots often expose only one field. Drop unused loads and
  * copies after local compaction, while retaining checks and all effects. */
-static bool discardable(const behavior_function *f, const behavior_function_instruction *i)
+static bool discardable(const behavior_function_instruction *i)
 {
-    if (i->op == BF_CAST) {
-        return !behavior_scalar_cast_checked(f->slots[i->left], i->type, i->target);
-    }
     return i->op <= BF_ARRAY || i->op == BF_LOAD || i->op == BF_READ ||
-           i->op == BF_SELECT || i->op == BF_CONVERT;
+           i->op == BF_SELECT || i->op == BF_CONVERT || i->op == BF_CAST;
 }
 void behavior_function_runtime_code(behavior_function *f)
 {
@@ -397,7 +381,7 @@ void behavior_function_runtime_code(behavior_function *f)
             const behavior_function_instruction *i = &code[pc];
             if ((pass && !keep[pc]) || behavior_function_observer(i->op) ||
                 i->op == BF_POINT || i->op == BF_SOURCE_POINT ||
-                i->op == BF_SOURCE_WATCH || (discardable(f, i) && !live[i->output])) {
+                i->op == BF_SOURCE_WATCH || (discardable(i) && !live[i->output])) {
                 keep[pc] = false;
                 continue;
             }
@@ -437,7 +421,7 @@ void behavior_function_prune_values(behavior_function *f)
     bool *keep = xcalloc((size_t)acount(f->instructions), sizeof *keep);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        if (discardable(f, i) && !live[i->output]) {
+        if (discardable(i) && !live[i->output]) {
             continue;
         }
         keep[pc] = true;

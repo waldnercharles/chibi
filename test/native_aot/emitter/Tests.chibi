@@ -38,7 +38,7 @@ pub Tests :: () -> int {
     if (!DefinitionMustDominateUse()) {
         return 3;
     }
-    if (!CheckedArithmeticKeepsFailureEdges()) {
+    if (!ArithmeticIsTotal()) {
         return 4;
     }
     if (!BudgetIsExplicit()) {
@@ -93,33 +93,25 @@ DefinitionMustDominateUse :: () -> bool {
     }
     return true;
 }
-CheckedArithmeticKeepsFailureEdges :: () -> bool {
+// Division, remainder and shifts have a result for every operand, MIN / -1
+// and a zero divisor included, and never branch to the trap.
+ArithmeticIsTotal :: () -> bool {
     operations := [native.Div, native.Mod, native.Shl, native.Shr];
+    guards := ["select i1 %zero2, i32 0, i32 %w2", "select i1 %zero2, i32 %a2, i32 %w2",
+               "select i1 %wide2, i32 0, i32 %q2", "select i1 %wide2, i32 31, i32 %b2"];
     empty: int[] = [];
-    for (op in operations) {
+    for (index in 0..<length(operations)) {
         code := [Code(native.Constant, 6, 0, 0, 0, 0, -2147483648), Code(native.Constant, 6, 1, 0, 0, 0, -1),
-                 Code(op, 6, 2, 0, 1, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
-        // The arithmetic result is deliberately unused. Failure is an effect.
+                 Code(operations[index], 6, 2, 0, 1, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
         switch Single(empty, 6, [6, 6, 6], empty, code, true, 64) {
             case .Rejected(instruction, message):
                 return false;
             case .Emitted(text):
-                if (!strings.Contains(text, "label %trap")) {
-                    return false;
-                }
-                if (!strings.Contains(text, "call void @llvm.trap()")) {
+                if (strings.Contains(text, "label %trap") || !strings.Contains(text, guards[index])) {
                     return false;
                 }
                 if (strings.Contains(text, "nsw") || strings.Contains(text, "nuw")) {
                     return false;
-                }
-                if (op == native.Div || op == native.Mod) {
-                    if (!strings.Contains(text, "br i1 %bad2, label %trap, label %safe2")) {
-                        return false;
-                    }
-                    if (!strings.Contains(text, "safe2:\n")) {
-                        return false;
-                    }
                 }
         }
     }

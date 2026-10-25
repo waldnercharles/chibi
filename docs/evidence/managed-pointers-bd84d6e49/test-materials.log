@@ -1,0 +1,165 @@
+configure-native: running (log: .chibi/logs/1792923703313923053-24693-configure-native.log)
+configure-native: ok (0.1s; log: .chibi/logs/1792923703313923053-24693-configure-native.log)
+build: running (log: .chibi/logs/1792923703465688206-24707-build.log)
+build: ok (0.2s; log: .chibi/logs/1792923703465688206-24707-build.log)
+Cave parity: max distance error 0, occupancy errors 0
+Running: material_mask_workspace (OK) (0.002612 secs)
+Running: destruction (OK) (0.003011 secs)
+Running: contours (OK) (0.008802 secs)
+Running: material_damage_boundary_rounding (OK) (0.000109 secs)
+Running: material_callback_queues (OK) (0.000738 secs)
+Running: material_capacity_fallback (OK) (0.002659 secs)
+Running: rotated_material_damage_rounding (OK) (0.019455 secs)
+Running: fragment_glow_rounding (OK) (0.003008 secs)
+Running: small_hull_release (OK) (0.007166 secs)
+Running: cave_generation (OK) (0.500999 secs)
+Running: shipping_cave_parity Shipping cave parity: max distance error 0, occupancy errors 0
+(OK) (1.174253 secs)
+Running: terrain_boundary_cut (OK) (0.732206 secs)
+Running: terrain_volume_fragments_are_chunks (OK) (0.465124 secs)
+Running: terrain_volume_restore_and_settings (OK) (1.221634 secs)
+Running: terrain_stream_restore (OK) (0.701651 secs)
+Running: terrain_host_views (OK) (0.561867 secs)
+Running: terrain_preparation_scratch (OK) (1.261193 secs)
+Running: physical_destruction (OK) (0.006841 secs)
+Running: finite_drive (OK) (0.003417 secs)
+Running: reactions (OK) (0.002597 secs)
+Running: resistance_and_chips (OK) (0.009409 secs)
+Running: blast_impacts_reach_bodies (OK) (0.002232 secs)
+Running: fragment_material_frame (OK) (0.009997 secs)
+Running: rotated_occlusion (OK) (0.000007 secs)
+Running: fragment_penetration (OK) (0.004556 secs)
+Running: swept_ignition (OK) (0.005067 secs)
+Running: debris_preparation_scratch (OK) (0.000410 secs)
+Running: debris (OK) (0.000135 secs)
+===============================================================
+Summary: Passed: 28 Failed: 0 Total: 28 Suites: 0 Asserts: 2953
+Running: sleeping (OK) (0.001540 secs)
+Running: cohesion (OK) (7.581576 secs)
+Running: liquid_split_merge (OK) (1.980097 secs)
+Running: body_response (OK) (0.000618 secs)
+Running: gas_flow gas probe wake: transverse speed 10.615
+gas wake after two seconds: summed speed 384.769
+(OK) (0.538363 secs)
+Running: gas_buoyancy (OK) (0.007783 secs)
+Running: gas_mixing_barrier (OK) (0.129600 secs)
+Running: gas_deposit_equivalence (OK) (0.009598 secs)
+Running: parallel_flow (OK) (2.305712 secs)
+Running: fluid_profile_index_builds (OK) (0.000485 secs)
+Running: parallel_parity_liquid (OK) (2.940366 secs)
+Running: parallel_parity_burning (OK) (0.781504 secs)
+===============================================================
+Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 34828
+Running: rest_and_translation (OK) (0.004127 secs)
+Running: rotation_and_negative_coordinates (OK) (0.000996 secs)
+Running: elastic_recovery_and_liquid_shear (OK) (0.052985 secs)
+Running: transactional_failure_and_timestep (OK) (0.000357 secs)
+Running: ordered_worker_parity (OK) (0.663027 secs)
+Running: dense_worker_parity (OK) (0.137363 secs)
+Running: collider_momentum_and_transaction (OK) (0.000187 secs)
+Running: hydrostatic_pool_at_rest (OK) (1.654875 secs)
+Running: hydrostatic_pool_after_impact (OK) (1.899222 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 13464
+Running: pair_exchange (OK) (0.001175 secs)
+Running: uniform_bulk_interface (OK) (0.001076 secs)
+Running: dense_exchange (OK) (0.015041 secs)
+Running: coincident_exchange (OK) (0.001103 secs)
+Running: wall_and_opening (OK) (0.000512 secs)
+Running: grazing_wall_conservation (OK) (0.000521 secs)
+Running: dormant_isolation (OK) (0.000265 secs)
+Running: quench_and_reignite (OK) (0.000413 secs)
+Running: parallel_exchange (OK) (10.197116 secs)
+Running: authored_volumes (OK) (0.004885 secs)
+Running: authored_emitter (OK) (0.003576 secs)
+Running: thermal_state_hash (OK) (0.012366 secs)
+===============================================================
+Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 9469
+Running: contained_liquid (OK) (0.097431 secs)
+Running: sleeping_deformation (OK) (0.011963 secs)
+Running: expiry_and_chunk_queries (OK) (0.000345 secs)
+Running: bounded_stiff_work (OK) (0.000831 secs)
+Running: separated_liquid_pressure (OK) (0.027421 secs)
+Running: future_wall_overlap (OK) (0.000324 secs)
+Running: unrelated_gas_preserves_contacts_by_substeps (OK) (0.001456 secs)
+Running: mixed_momentum (OK) (0.000220 secs)
+Running: no_active_liquid (OK) (0.000168 secs)
+Running: collider_order_closure_by_solver (OK) (0.001652 secs)
+Running: rotated_static_corner (OK) (0.000245 secs)
+Running: known_geometry (OK) (0.000033 secs)
+Running: compare_queries (OK) (0.044795 secs)
+Running: distant_population (OK) (0.000955 secs)
+Running: thin_walls (OK) (0.006507 secs)
+Running: boundaries_and_removal (OK) (0.000087 secs)
+Running: sparse_regions_and_rebuild (OK) (0.062123 secs)
+Running: moving_population (OK) (0.005853 secs)
+Running: quiet_rest (OK) (0.000361 secs)
+Running: contact_responses (OK) (0.000584 secs)
+Running: fast_particle_sweeps_stationary_wall (OK) (0.000105 secs)
+Running: huge_diagonal_particle_sweep (OK) (0.000129 secs)
+Running: swept_and_rotating_bodies (OK) (0.000485 secs)
+Running: huge_sweep (OK) (0.000205 secs)
+Running: ecs_contact_sprays_are_transient (OK) (0.006558 secs)
+Running: repeat_step_resets_contacts (OK) (0.000149 secs)
+Running: bounded_contacts (OK) (0.003183 secs)
+===============================================================
+Summary: Passed: 27 Failed: 0 Total: 27 Suites: 0 Asserts: 179416
+Running: ignition_crater_removes_cells (OK) (0.016032 secs)
+Running: ignition_crater_retains_chips (OK) (0.012303 secs)
+Running: propagated_models (OK) (0.005239 secs)
+Running: rejected_models (OK) (0.060324 secs)
+Running: optional_models (OK) (0.009240 secs)
+Running: appearance_preserves_physics (OK) (0.598683 secs)
+Running: authored_detail (OK) (0.003222 secs)
+Running: burnout_becomes_smoke (OK) (0.000119 secs)
+Running: fluid_impulse_leaves_fixed_body_unturned (OK) (0.003667 secs)
+Running: fluid_impulse_turns_rotating_body (OK) (0.003192 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 4749
+Running: material_coefficients_linear_and_hdr (OK) (0.000048 secs)
+Running: material_coefficients_zeroed_terms (OK) (0.000005 secs)
+Running: material_coefficients_refuse_invalid_scalars (OK) (0.000003 secs)
+Running: material_lod_level_selection (OK) (0.000099 secs)
+Running: material_lod_merged_bounds (OK) (0.004803 secs)
+Running: material_lod_cached_levels (OK) (0.011931 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 2723
+Running: material_benchmark_ddr_patch material benchmark solver=ddr preset=patch side=32 frames=30 workers=4
+  phase=tick            mean_ms=66.762878 p50_ms=58.996837 p95_ms=102.095819
+  phase=reactions       mean_ms=0.001090 p50_ms=0.000763 p95_ms=0.003826
+  phase=gas_flow        mean_ms=0.000000 p50_ms=0.000000 p95_ms=0.000000
+  phase=index           mean_ms=0.247691 p50_ms=0.210191 p95_ms=0.411188
+  phase=density         mean_ms=26.051526 p50_ms=22.746324 p95_ms=42.568659
+  phase=relaxation      mean_ms=39.320311 p50_ms=35.130479 p95_ms=60.177581
+  phase=collisions      mean_ms=0.325848 p50_ms=0.281202 p95_ms=0.498279
+  phase=collision_index mean_ms=0.174085 p50_ms=0.146425 p95_ms=0.274729
+  phase=mpm             mean_ms=0.000000 p50_ms=0.000000 p95_ms=0.000000
+  state_hash=066f7d1d70c335b2 serial_hash=066f7d1d70c335b2
+(OK) (3.926979 secs)
+Running: material_benchmark_mpm_collision material benchmark solver=mpm preset=collision side=32 frames=30 workers=4
+  phase=tick            mean_ms=11.209672 p50_ms=11.057159 p95_ms=19.119924
+  phase=reactions       mean_ms=0.000376 p50_ms=0.000316 p95_ms=0.000700
+  phase=gas_flow        mean_ms=0.000000 p50_ms=0.000000 p95_ms=0.000000
+  phase=index           mean_ms=0.084400 p50_ms=0.073369 p95_ms=0.131655
+  phase=density         mean_ms=0.000000 p50_ms=0.000000 p95_ms=0.000000
+  phase=relaxation      mean_ms=0.000000 p50_ms=0.000000 p95_ms=0.000000
+  phase=collisions      mean_ms=0.864414 p50_ms=0.956355 p95_ms=1.347213
+  phase=collision_index mean_ms=0.247217 p50_ms=0.249071 p95_ms=0.397615
+  phase=mpm             mean_ms=9.239598 p50_ms=9.060296 p95_ms=16.258028
+  state_hash=5cf00711ce604ef0 serial_hash=5cf00711ce604ef0
+(OK) (0.606456 secs)
+Running: material_benchmark_thermal_exchange material benchmark thermal side=48 frames=30 workers=4 reaction_ms=21.701342 tick_ms=57.124338 energy=2304.000003
+(OK) (5.976261 secs)
+Running: material_benchmark_gas_flow material benchmark gas side=64 frames=30 workers=4 flow_ms=21.285909 tick_ms=30.453963 hash=24c5e78ddcb66310
+(OK) (1.610073 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 22796
+Running: contact_benchmark_apart contact benchmark colliders=1000 spacing=40 first_ms=13.740 steady_ms=4.140 passes=20
+contact benchmark colliders=4000 spacing=40 first_ms=29.915 steady_ms=10.074 passes=20
+(OK) (0.533651 secs)
+Running: contact_benchmark_overlapping contact benchmark colliders=1000 spacing=12 first_ms=29.493 steady_ms=4.853 passes=20
+contact benchmark colliders=4000 spacing=12 first_ms=108.685 steady_ms=22.787 passes=20
+(OK) (1.270868 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 96
+Test command wall time: 41.681s; includes in-test fixture setup; external configuration/build excluded.

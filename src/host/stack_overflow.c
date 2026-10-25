@@ -54,25 +54,23 @@ static uintptr_t stack_low()
 #endif
 }
 
-static void fault(int number, siginfo_t *info, void *context)
+static void fault(int number, siginfo_t *info, void *)
 {
+    /* kill, raise and sigqueue send a fault signal with no faulting address. */
+    bool sent = info->si_code <= 0;
     uintptr_t address = (uintptr_t)info->si_addr;
-    if (address >= guard_low && address < guard_high) {
+    if (!sent && address >= guard_low && address < guard_high) {
         ssize_t written = write(STDERR_FILENO, message, sizeof message - 1);
         (void)written;
         abort();
     }
-    const struct sigaction *before = &previous[number == SIGBUS];
-    if (before->sa_flags & SA_SIGINFO) {
-        before->sa_sigaction(number, info, context);
-        return;
+    /* Hand the signal back to the action installed before, with its own
+     * mask and flags: a fault repeats when this returns, and a sent signal,
+     * blocked while this runs, is sent again. That action stays installed. */
+    sigaction(number, &previous[number == SIGBUS], NULL);
+    if (sent) {
+        raise(number);
     }
-    if (before->sa_handler != SIG_DFL && before->sa_handler != SIG_IGN) {
-        before->sa_handler(number);
-        return;
-    }
-    /* Returning faults again, now under the default action. */
-    signal(number, SIG_DFL);
 }
 
 void stack_overflow_init()

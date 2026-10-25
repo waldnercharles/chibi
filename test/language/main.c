@@ -123,6 +123,9 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--package-compiler-chibi-native-call")) {
         return test_language_package_compiler_chibi_native_call(argc - 2, argv + 2);
     }
+    if (argc == 3 && !strcmp(argv[1], "--stack-overflow-child")) {
+        return test_language_stack_overflow_child(argv[2]);
+    }
     bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
     bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");

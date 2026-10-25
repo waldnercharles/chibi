@@ -10503,6 +10503,58 @@ static bool lookup_tables_link(const char *directory)
     REQUIRE(call.values[2] == 47);
     return true;
 }
+/* The SIGSEGV handler a stack_overflow child installs before the report,
+ * with SIGUSR1 in its mask: it exits 7 when that mask is in force. */
+static void handled_fault(int)
+{
+    sigset_t blocked;
+    sigprocmask(SIG_SETMASK, NULL, &blocked);
+    _exit(sigismember(&blocked, SIGUSR1) ? 7 : 8);
+}
+/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
+ * "default", the action SIGSEGV has before the report is installed, then
+ * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
+int test_language_stack_overflow_child(const char *mode)
+{
+    struct sigaction before = { .sa_handler = SIG_DFL };
+    sigemptyset(&before.sa_mask);
+    if (!strncmp(mode, "handled", strlen("handled"))) {
+        before.sa_handler = handled_fault;
+        sigaddset(&before.sa_mask, SIGUSR1);
+    }
+    sigaction(SIGSEGV, &before, NULL);
+    stack_overflow_init();
+    if (strstr(mode, "-fault")) {
+        *(volatile int *)(uintptr_t)16 = 0;
+    } else {
+        raise(SIGSEGV);
+    }
+    return 1;
+}
+/* A SIGSEGV that is not a stack overflow, a fault or a sent signal, goes to
+ * the action installed before the report, with that action's mask. */
+TEST_CASE(stack_overflow_leaves_other_faults)
+{
+    static const struct
+    {
+        const char *mode;
+        int status;
+    } cases[] = { { "handled-fault", 7 },
+                  { "handled-sent", 7 },
+                  { "default-fault", -SIGSEGV },
+                  { "default-sent", -SIGSEGV } };
+    char self[PATH_MAX], out[NATIVE_OUTPUT];
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    REQUIRE(length > 0);
+    self[length] = 0;
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        const char *const argv[] = { self, "--stack-overflow-child", cases[i].mode, NULL };
+        chibi_process_capture_result ended = run_native(argv, "/", CALLS_SECONDS, out);
+        REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == cases[i].status);
+        REQUIRE(!strstr(native_errors, "stack overflow"));
+    }
+    return true;
+}
 TEST_CASE(package_compiler_native_runs_are_bounded)
 {
     char out[NATIVE_OUTPUT];
@@ -10857,6 +10909,10 @@ int test_language_package_compiler_chibi_native_call(int, char **)
 {
     abort();
 }
+int test_language_stack_overflow_child(const char *)
+{
+    abort();
+}
 #endif
 void test_language_package_compiler_chibi_native()
 {
@@ -10868,6 +10924,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &cancel, &interrupt);
     sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(stack_overflow_leaves_other_faults);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
     RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);

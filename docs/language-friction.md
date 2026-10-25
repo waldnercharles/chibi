@@ -539,8 +539,9 @@ stage one writes 0, no limit, in each prepared function's header
 (`Compile.chibi` and `bounded_compiler/Prepare.chibi`). On the VMs a function
 of stage one's output that only calls itself grows memory until the process
 is killed; the instruction budget does not stop it. Native code has no limit
-either (decision D4), but it probes its stack, so the host reports the
-overflow by name and aborts.
+either (decision D4), but it probes its stack, so an overflow always faults
+in the guard page; a host that installs `stack_overflow_init` reports it by
+name and aborts.
 
 - Odin and C have no limit and overflow the stack; Rust probes its stack and
   aborts with "has overflowed its stack"; Python stops at 1,000 frames with an

@@ -15,7 +15,8 @@ Code/Slot IDs are not an API.
 
 The compiler still runs in the existing bootstrap runtime. Emitted scalar
 objects have no first-party C runtime, pin-value header, context offset or helper
-calls. No C source is produced. This is not a C-free compiler, a foreign-call
+calls, and they install no fault handler: reporting a stack overflow by name is
+the host's job (see `Call` below). No C source is produced. This is not a C-free compiler, a foreign-call
 interface, or the complete allocation/memory/output/free native island.
 
 ## Emitter contract
@@ -34,8 +35,14 @@ interface, or the complete allocation/memory/output/free native island.
   counter, as Rust's and Odin's do. Every function carries
   `"probe-stack"="inline-asm"`, so a frame larger than a page touches each
   page in turn and running out of stack always faults in the guard page below
-  it rather than past it. The host reports that fault as a stack overflow and
-  aborts (`src/host/stack_overflow.c`).
+  it rather than past it. That makes an overflow a fault, never a silent write
+  past the stack. What the fault prints is up to the process. A host that has
+  called `stack_overflow_init` (`src/host/stack_overflow.c`) on the thread
+  running native code writes `stack overflow` and aborts. So far only the
+  native test host does that, on Linux. A program that `tools/native_aot`
+  links on its own installs no handler, so an overflow there ends with the
+  system's default fault (SIGSEGV). Installing the report in production hosts
+  is open (D4).
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,

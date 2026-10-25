@@ -79,7 +79,8 @@ would, at the variable's type.
 Calls may repeat, nest and recurse, directly or mutually. Natively recursion
 is unchecked, as Rust's and Odin's is: it runs as deep as the stack allows,
 every function probes its stack, and an endless recursion faults in the guard
-page, which the host reports as a stack overflow before it aborts. Stage zero's
+page. The native test host reports that as a stack overflow and aborts; a
+standalone program installs no report. Stage zero's
 VM limits a script to 64 nested calls (`SCRIPT_CALL_DEPTH_LIMIT`); the VMs
 here run stage one's output, which has no limit, and are only asked to agree
 with native code on recursion that ends. Arguments evaluate left to right, each

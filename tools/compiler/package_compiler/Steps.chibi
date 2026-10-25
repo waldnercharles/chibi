@@ -2040,7 +2040,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         conversion: int = 0;
         if (qualifier < 0 && found < 0) {
             conversion = ScalarStorage(callee_name);
-            if (NumericConversionName(callee_name) && !Integer(conversion)) {
+            if (NumericConversionName(callee_name) && !Integer(conversion) && !Floating(conversion)) {
                 return Fail(forest, callee, document,
                             format_text("numeric conversion '{}' is not supported yet", callee_name));
             }

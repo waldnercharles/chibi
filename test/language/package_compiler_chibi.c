@@ -4967,7 +4967,8 @@ static bool stage_two_samples()
  * sample as stage one does, and reads the listed floating literals as stage
  * one does. */
 /* The functions of the package compiler's module `p` that copy their
- * arguments, other than those that run once per compile, each reported. */
+ * arguments, other than those that run once per compile or per source, each
+ * reported. */
 static int copying_functions(const execution_module_plan *p)
 {
     const char *const once[] = { "Compile",
@@ -4975,6 +4976,14 @@ static int copying_functions(const execution_module_plan *p)
                                  "CompileWithEffects",
                                  "CompileClosureWithEffects",
                                  "CompileBehavior",
+                                 "CompileBehaviorResolved",
+                                 "CompileSources",
+                                 "PromoteRecords",
+                                 "DeclareSource",
+                                 "CompileBehaviorsResolved",
+                                 "BehaviorRejectionResolved",
+                                 "CompileBehaviorsWithCatalog",
+                                 "BehaviorRejectionWithCatalog",
                                  "CollectScalar",
                                  "Declare",
                                  "DeclarePackage" };
@@ -7904,11 +7913,7 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
     const char *behaviors[] = { "Unsupported :: behavior { Read :: () -> bool "
                                 "{ return char(65) == char(65); } }",
                                 "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return number(7) == number(7); } }",
-                                "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return float(7) == float(7); } }",
-                                "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return double(7) == double(7); } }" };
+                                "{ return number(7) == number(7); } }" };
     const char
         *library = "Leaf :: library { char :: (value: int) -> int { return "
                    "value + 5; } "
@@ -7958,6 +7963,14 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
     }
     afree(capabilities);
     native_definition_catalog_free(definitions);
+    /* A floating conversion converts, ahead of a library's function. */
+    const char *converted[] = {
+        "Unsupported :: behavior { observed: int = 0; "
+        "on Tick :: () { observed = int(double(7)) + int(float(1)); } }",
+        library
+    };
+    const library_result result = { identities[0], 8, 0, 0 };
+    REQUIRE(libraries_with_results(identities, converted, 2, false, false, &result, 1));
     return true;
 }
 TEST_CASE(package_compiler_rejects_invalid_library_closures)

@@ -661,6 +661,10 @@ void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
         *capacity += block->cap;
     }
 }
+size_t arena_cleanup_bytes(const arena *a)
+{
+    return a->cleanup_count * sizeof(arena_cleanup);
+}
 size_t arena_storage_bytes(const arena *a)
 {
     size_t bytes = 0;

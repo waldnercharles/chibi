@@ -1,6 +1,7 @@
 #include "execution/borrow.h"
 #include "execution/intrinsics.h"
 #include "runtime/arrays.h"
+#include "runtime/text_format.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -1805,6 +1806,139 @@ TEST_CASE(ownership_record_cache_alternation)
     }
     return true;
 }
+static bool ownership_text_value(pin_value value)
+{
+    static const char expected[] = { 'b', 0, 'c', 'd' };
+    REQUIRE(value.type == PIN_STR && value.container == PIN_CONTAINER_SINGLE);
+    pin_string text = pin_text(value);
+    REQUIRE(text.owner && text.length == sizeof expected);
+    REQUIRE(!memcmp(text.bytes, expected, sizeof expected));
+    return true;
+}
+static void ownership_text_observe(const char *route, const char *phase, int count, bool retain, size_t payload)
+{
+    size_t used, capacity;
+    arena_usage(&cow_heap, &used, &capacity);
+    /* This isolated fixture stores only text descriptors. Each resource has
+     * the same known backing length, including its trailing NUL. */
+    printf(
+        "TEXT route=%s arena=%s count=%d keep=%s phase=%s "
+        "copied_text=%" PRIu64 " headers=%" PRIu64
+        " resources=%zu payload_unique=%zu external_unique=%zu "
+        "descriptor_used=%zu cleanup_nodes=%zu cleanup_bytes=%zu "
+        "arena_used=%zu arena_capacity=%zu storage_bytes=%zu\n",
+        route,
+        cow_heap.collectable ? "collectable" : "ordinary",
+        count,
+        retain ? "all" : "last",
+        phase,
+        ownership_scope.counts.text_bytes,
+        ownership_scope.counts.value_header_moves,
+        cow_heap.resource_count,
+        cow_heap.resource_count * payload,
+        cow_heap.retained_bytes,
+        used - cow_heap.retained_bytes,
+        cow_heap.cleanup_count,
+        arena_cleanup_bytes(&cow_heap),
+        used,
+        capacity,
+        arena_storage_bytes(&cow_heap)
+    );
+}
+static bool ownership_text_paths(bool collectable)
+{
+    static const char original[] = { 'a', 'b', 0,   'c', 'd',
+                                     'e', 'f', 'g', 'h', 'i' };
+    static const char *routes[] = { "slice-view", "value-copy", "native-core-slice" };
+    for (int route = 0; route < 3; route++) {
+        for (int count = 4; count <= 8; count *= 2) {
+            for (int retain = 0; retain < 2; retain++) {
+                if (collectable) {
+                    arena_init_collectable(&cow_heap);
+                }
+                pin_value producer, window, roots[8] = { 0 };
+                REQUIRE(!pin_value_text(&cow_producer, &producer, original, sizeof original));
+                REQUIRE(!pin_value_text_slice(&cow_producer, &window, producer, 1, 4));
+                REQUIRE(ownership_text_value(window));
+                ownership_begin();
+                for (int i = 0; i < count; i++) {
+                    pin_value result;
+                    if (route == 0) {
+                        REQUIRE(!pin_value_text_slice(&cow_heap, &result, producer, 1, 4));
+                    } else if (route == 1) {
+                        REQUIRE(
+                            !EXECUTION_value_copy_call.value(&cow_heap, &window, 1, &result)
+                        );
+                    } else {
+                        pin_value arguments[] = { producer,
+                                                  { .type = PIN_I32, .i = 1 },
+                                                  { .type = PIN_I32, .i = 4 } };
+                        REQUIRE(!NATIVE_TEXT_SLICE_CALL.value(&cow_heap, arguments, 3, &result));
+                    }
+                    REQUIRE(ownership_text_value(result));
+                    if (retain || i == count - 1) {
+                        roots[retain ? i : 0] = result;
+                    } else {
+                        /* This is the collection ownership API, not VM frame
+                         * dispatch. Scalar text release stays arena-owned. */
+                        pin_value_collection_release(&result);
+                    }
+                }
+                pin_copy_scope_end(&ownership_scope);
+                size_t payload = route == 2 ? 5 : sizeof original + 1;
+                ownership_text_observe(routes[route], "returned", count, retain, payload);
+                /* The only surviving values are roots. This retires both the
+                 * producer descriptor and its window, after every call returns. */
+                arena_free(&cow_producer);
+                int root_count = retain ? count : 1;
+                for (int i = 0; i < root_count; i++) {
+                    REQUIRE(ownership_text_value(roots[i]));
+                }
+                ownership_text_observe(routes[route], "producer-freed", count, retain, payload);
+                if (collectable) {
+                    cow_collect(roots, root_count);
+                    ownership_text_observe(routes[route], "rooted-collection", count, retain, payload);
+                    for (int i = 0; i < root_count; i++) {
+                        REQUIRE(ownership_text_value(roots[i]));
+                    }
+                    cow_collect(NULL, 0);
+                } else {
+                    arena_reset(&cow_heap);
+                }
+                ownership_text_observe(routes[route], "retired", count, retain, payload);
+                size_t used, capacity;
+                arena_usage(&cow_heap, &used, &capacity);
+                REQUIRE(!used && !cow_heap.retained_bytes && !cow_heap.resource_count);
+                REQUIRE(!cow_heap.cleanup_count && !arena_cleanup_bytes(&cow_heap));
+                arena_free(&cow_heap);
+            }
+        }
+    }
+    return true;
+}
+TEST_CASE(ownership_text_ordinary_cleanup_growth)
+{
+    return ownership_text_paths(false);
+}
+TEST_CASE(ownership_text_collectable_rooted_lifetimes)
+{
+    return ownership_text_paths(true);
+}
+void test_tool_text_ownership_probes()
+{
+    printf(
+        "TEXT descriptor_bytes=%zu; payload_unique is fixture backing length "
+        "including NUL, "
+        "external_unique includes backing metadata; cleanup_bytes excludes "
+        "collectable headers\n",
+        sizeof(pin_string)
+    );
+    pu_setup(NULL, release_values);
+    RUN_TEST_CASE(ownership_text_ordinary_cleanup_growth);
+    RUN_TEST_CASE(ownership_text_collectable_rooted_lifetimes);
+    pu_clear_setup();
+}
+
 void test_tool_ownership_probes()
 {
     printf(

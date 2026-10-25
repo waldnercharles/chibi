@@ -87,6 +87,7 @@ void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
 void test_tool_types();
 void test_tool_ownership_probes();
+void test_tool_text_ownership_probes();
 void test_tool_ecs();
 void test_tool_ecs_strings();
 void test_tool_ecs_relationships();
@@ -1021,6 +1022,7 @@ int main(int argc, char **argv)
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
+    bool text_ownership = argc == 2 && !strcmp(argv[1], "--text-ownership-probes");
     bool ownership = argc == 2 && !strcmp(argv[1], "--ownership-probes");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
@@ -1209,10 +1211,10 @@ int main(int argc, char **argv)
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
         !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
         !scene3d && !material_ramps && !texture_transform && !arena && !types &&
-        !ownership && !render_geometry && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
-        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials &&
+        !ownership && !text_ownership && !render_geometry && !radiance_surface &&
+        !radiance_horizons && !material_pixels && !box3d && !sky_files && !mesh_files &&
+        !model_import && !model_graphs && !model_catalog && !shader_graphs &&
+        !shader_parity && !shader_programs && !material_cameras && !mesh_materials &&
         !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
@@ -1243,6 +1245,7 @@ int main(int argc, char **argv)
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | --types | --ownership-probes | "
+            "--text-ownership-probes | "
             "--validate-project chibi_ctl | "
             "--fixture-format chibi_ctl | "
             "--controller chibi_ctl | "
@@ -1626,6 +1629,8 @@ int main(int argc, char **argv)
         test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
+    } else if (text_ownership) {
+        test_tool_text_ownership_probes();
     } else if (ownership) {
         test_tool_ownership_probes();
     } else if (types) {

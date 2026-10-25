@@ -106,6 +106,9 @@ void arena_copy_remember(arena *a, const void *source, const void *copy);
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity);
 /* Backing allocations, including block and tracked-allocation headers. */
 size_t arena_storage_bytes(const arena *);
+/* Diagnostic bytes in separate ordinary-arena cleanup nodes. Collectable
+ * allocations embed their cleanup fields, so this reports zero for them. */
+size_t arena_cleanup_bytes(const arena *);
 /* Ordinary arena allocation rejects before growing beyond retained budget. */
 void *arena_alloc_bounded(arena *, size_t bytes, size_t budget);
 

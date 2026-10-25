@@ -2586,21 +2586,41 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
                             Typed(at.slot, storage, 0, -1), NoValue(), marks);
     }
     value_bits: u64 = 0;
-    switch ReadIntegerLiteral(forest, text, document, spelled, storage) {
+    switch SignedConstant(forest, text, document, literal.record, storage) {
         case .Rejected(diagnostic):
             return Step.Failed(diagnostic);
         case .Checked(checked):
             value_bits = checked;
     }
-    // The literal is watched once its use gives it a type, and so is each
-    // sign around it, as stage zero lowers a grouped one.
     slots.append(ValueLocal(storage));
     code = extend([ConstantCode(ops, storage, value_bits, at.slot, node)],
-                  LiteralWatch(forest, ops, at.slot, storage, spelled));
-    code.extend(SignCode(forest, text, ops, literal.record, storage, at.slot, node));
-    slots.extend(SignSlots(forest, text, ops, literal.record, storage));
+                  LiteralWatch(forest, ops, at.slot, storage, Unparenthesized(forest, literal.record)));
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
-                        Typed(at.slot + length(slots) - 1, storage, 0, -1), NoValue(), marks);
+                        Typed(at.slot, storage, 0, -1), NoValue(), marks);
+}
+// The grouped or signed literal `node` as a constant of the integer type
+// `storage`. Stage zero folds the literal and its signs to one constant.
+SignedConstant :: (forest: snapshot.SnapshotNode[], text: string, document: int, node: int,
+                   storage: int) -> IntegerLiteralResult {
+    exact: u64[] = [];
+    switch ReadIntegerLiteral(forest, text, document, SignedLiteral(forest, text, node), storage) {
+        case .Rejected(diagnostic):
+            return IntegerLiteralResult.Rejected(diagnostic);
+        case .Checked(checked):
+            exact = ExactStored(checked, storage);
+    }
+    for (sign in Signs(forest, text, node)) {
+        if (Text(forest, text, Field(forest, sign, "operator")) == "-") {
+            if (!Signed(storage)) {
+                return IntegerLiteralResult.Rejected(Diagnose(forest, sign, document, "Cannot negate an unsigned constant"));
+            }
+            exact = ExactNegate(exact);
+        }
+    }
+    if (!ExactFits(exact, storage)) {
+        return IntegerLiteralResult.Rejected(OutsideRange(forest, document, Unparenthesized(forest, node), storage));
+    }
+    return IntegerLiteralResult.Checked(ExactWrapped(exact, storage));
 }
 // The untyped literal `literal` typed as the number type `storage`.
 NumberLiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[],
@@ -2697,6 +2717,9 @@ NegationCode :: (ops: Ops, storage: int, input: int, output: int, node: snapshot
 Folds :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
           node: int, storage: int) -> bool {
     value := Unparenthesized(forest, node);
+    if (!Floating(storage) && GroupedDecimal(forest, text, node)) {
+        return true;
+    }
     operator := Text(forest, text, Field(forest, value, "operator"));
     signed := (operator == "-" || operator == "+") && Is(forest, Field(forest, value, "operand"), "number");
     composite := Is(forest, value, "binary_expression") || Is(forest, value, "call_expression") ||
@@ -2705,6 +2728,13 @@ Folds :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[],
         return false;
     }
     return ConstantType(forest, text, constants, names, package, node) != 0 || !Floating(storage);
+}
+// Whether `node` is a decimal literal with signs around it, which folds
+// where an integer is expected and waits unvisited for its type where none is.
+GroupedDecimal :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    spelled := SignedLiteral(forest, text, node);
+    return spelled >= 0 && spelled != Unparenthesized(forest, node) &&
+           InferredNumberStorage(forest, text, spelled) == FloatStorage;
 }
 // Whether `node` divides by a constant expression equal to zero, which is an
 // error for integers whether or not the dividend is constant. A divisor that
@@ -2770,6 +2800,17 @@ FoldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, const
     }
     if (storage == 0) {
         storage = item.storage;
+    }
+    if (GroupedDecimal(forest, text, item.node)) {
+        switch SignedConstant(forest, text, document, item.node, storage) {
+            case .Rejected(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Checked(bits):
+                slots.append(ValueLocal(storage));
+                code.append(ConstantCode(ops, storage, bits, at.slot, forest[item.node]));
+        }
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                            Typed(at.slot, storage, 0, -1), NoValue(), marks);
     }
     switch FoldConstant(forest, text, document, constants, names, package, item.node, storage) {
         case .Failed(diagnostic):
@@ -3482,13 +3523,29 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                 bits = float_bits;
             }
     }
-    code := extend([ConstantCode(ops, storage, bits, at.slot, node)],
-                   LiteralWatch(forest, ops, at.slot, storage, spelled));
+    code := extend(FoldedPoints(forest, text, ops, literal.record, spelled),
+                   [ConstantCode(ops, storage, bits, at.slot, node)]);
+    code.extend(LiteralWatch(forest, ops, at.slot, storage, spelled));
     slots: Slot[] = [ValueLocal(storage)];
     code.extend(SignCode(forest, text, ops, literal.record, storage, at.slot, node));
     slots.extend(SignSlots(forest, text, ops, literal.record, storage));
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                         Typed(at.slot + length(slots) - 1, storage, 0, -1), NoValue(), marks);
+}
+// The points inside a grouped literal, which FoldStep leaves unvisited where
+// no type is expected. Stage zero lowers one at a floating type, so each inner
+// sign and the literal has its point; the outer sign has Body's.
+FoldedPoints :: (forest: snapshot.SnapshotNode[], text: string, ops: Ops, node: int, spelled: int) -> Code[] {
+    points: Code[] = [];
+    signs := Signs(forest, text, node);
+    if (!ops.debug || length(signs) == 0) {
+        return points;
+    }
+    for (index in 1..<length(signs)) {
+        points.append(ExpressionCode(ops, forest[signs[index]]));
+    }
+    points.append(ExpressionCode(ops, forest[spelled]));
+    return points;
 }
 // Floating widening is lossless. Narrowing requires an explicit conversion.
 FloatWidens :: (from: int, to: int) -> bool {

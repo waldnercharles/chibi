@@ -1205,7 +1205,8 @@ Evaluate :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants
     } else if (unary && operator == "~") {
         // An unsigned type's complement is its largest value less this one.
         value = ExactSubtract(ExactMax(storage), value);
-    } else if (operator == "+") {
+    } else if (!unary && operator == "+") {
+        // A unary plus keeps its operand.
         value = ExactAdd(value, right);
     } else if (operator == "-") {
         value = ExactSubtract(value, right);

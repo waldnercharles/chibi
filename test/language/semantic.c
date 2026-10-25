@@ -1004,9 +1004,11 @@ TEST_CASE(language_integer_constants_are_exact_and_must_fit)
     REQUIRE(
         rejects("L :: library { F :: () -> int { return 1 << 32; } }", "Constant value is outside the range of int", 40)
     );
-    REQUIRE(
-        rejects("L :: library { F :: () -> u8 { return u8(i8(100) + i8(100)); } }", "Constant value is outside the range of i8", 46)
-    );
+    REQUIRE(rejects(
+        "L :: library { F :: () -> u8 { return u8(i8(100) + i8(100)); } }",
+        "Constant value is outside the range of i8",
+        42
+    ));
     REQUIRE(
         rejects("L :: library { F :: () -> int { return 1 << 5000; } }", "Constant shift count is too large", 45)
     );
@@ -1021,34 +1023,34 @@ TEST_CASE(language_integer_constants_are_exact_and_must_fit)
         rejects("L :: library { F :: (b: int) -> int { b /= 0; return b; } }", "Constant division by zero", 39)
     );
     REQUIRE(
-        rejects("L :: library { F :: () -> u8 { return -byte(1); } }", "Cannot negate an unsigned constant", 41)
+        rejects("L :: library { F :: () -> u8 { return -u8(1); } }", "Cannot negate an unsigned constant", 39)
     );
     REQUIRE(
-        rejects("L :: library { U: u32 : 3; F :: () -> u32 { return -U; } }", "Cannot negate an unsigned constant", 54)
+        rejects("L :: library { U: u32 : 3; F :: () -> u32 { return -U; } }", "Cannot negate an unsigned constant", 52)
     );
     REQUIRE(rejects(
         "L :: library { F :: () -> u8 { return u8(300); } }",
         "Constant does not fit in u8; use u8(wrap: value)",
-        41
+        39
     ));
     REQUIRE(rejects(
         "L :: library { F :: () -> u8 { return u8(200 + 100); } }",
         "Constant does not fit in u8; use u8(wrap: value)",
-        41
+        39
     ));
     REQUIRE(rejects(
         "L :: library { F :: (a: u8) -> bool { return a < -1; } }",
         "Numeric literal is outside the range of u8",
-        52
+        50
     ));
     REQUIRE(
         rejects("L :: library { F :: (x: int) -> int { return x << (2 - 3); } }", "Shift count must not be negative", 52)
     );
     REQUIRE(
-        rejects("L :: library { F :: () -> i8 { return i8(1) << 5000; } }", "Constant shift count is too large", 52)
+        rejects("L :: library { F :: () -> i8 { return i8(1) << 5000; } }", "Constant shift count is too large", 48)
     );
     REQUIRE(
-        rejects("L :: library { Grow :: (b: u8) -> int { a: int = 1; a += b; return a; } }", "Mismatched integer types int and u8; convert one operand", 55)
+        rejects("L :: library { Grow :: (b: u8) -> int { a: int = 1; a += b; return a; } }", "Mismatched integer types int and u8; convert one operand", 53)
     );
     return true;
 }

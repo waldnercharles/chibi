@@ -261,9 +261,11 @@ static decimal_integral decimal_integer(const char *text, uint64_t *magnitude)
         count--;
     }
     *magnitude = 0;
-    decimal_integral read = count == 0 ? DECIMAL_WHOLE
-                          : point > 20 ? DECIMAL_LARGE
-                                       : DECIMAL_WHOLE;
+    if (count == 0) {
+        free(digits);
+        return DECIMAL_WHOLE;
+    }
+    decimal_integral read = point > 20 ? DECIMAL_LARGE : DECIMAL_WHOLE;
     for (long i = 0; read == DECIMAL_WHOLE && i < point; i++) {
         uint64_t digit = i < count ? (uint64_t)(digits[i] - '0') : 0;
         if (*magnitude > (UINT64_MAX - digit) / 10) {
@@ -412,7 +414,10 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         fraction = read == DECIMAL_FRACTION;
         fits = read == DECIMAL_WHOLE &&
                (negative ? !unsigned_integer && exact - 1 <= maximum : exact <= maximum);
-        exact_signed = negative ? -(int64_t)(exact - 1) - 1 : (int64_t)exact;
+        /* Only a signed value in range is built as one. */
+        if (fits && !unsigned_integer) {
+            exact_signed = negative ? -(int64_t)(exact - 1) - 1 : (int64_t)exact;
+        }
         value = negative ? -(long double)exact : (long double)exact;
     } else if (exact_integer && !unsigned_integer) {
         errno = 0;
@@ -503,8 +508,8 @@ static int character_constant(analyzer *a, TSNode node, script_type expected)
     return script_analyzer_expr_add(a, result);
 }
 
-/* Drops the range error a literal got when it was read without a type, so
- * the type its context gives decides alone. */
+/* Drops the range error a literal, with its minus sign, got when it was read
+ * without a type, so the type its context gives decides alone. */
 static void retract_range_error(analyzer *a, TSNode literal)
 {
     script_range range = script_analyzer_range(a, literal);
@@ -537,12 +542,13 @@ void script_analyzer_contextual_numeric(analyzer *a, int index, script_type type
         /* The sign comes from the source: a value the untyped reading
          * rejected holds zero. Only a minus folds into a literal. */
         bool negative = script_analyzer_is(node, "unary_expression");
+        TSNode literal = node;
         if (negative) {
             node = script_analyzer_field(node, "operand");
         }
         bool character = script_analyzer_is(node, "character");
         if (!character) {
-            retract_range_error(a, node);
+            retract_range_error(a, literal);
         }
         int converted = character ? character_constant(a, node, type)
                                   : number_constant(a, node, type, negative);

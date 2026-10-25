@@ -935,7 +935,7 @@ TEST_CASE(program_integer_reports_keep_sites_apart_under_inspection)
                    { false, true, true, 0 },   { true, true, true, 3 },
                    { false, true, false, 0 },  { true, true, false, 3 } };
     /* Each site is its five-character operation, in source order. */
-    const int columns[] = { 13, 13, 24 }, starts[] = { 160, 179, 209 };
+    const int columns[] = { 13, 13, 22 }, starts[] = { 155, 174, 202 };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1117,8 +1117,8 @@ TEST_CASE(program_prepared_integer_reports_include_imported_functions)
                 );
                 REQUIRE(clamp->module_id == execution_module_id(module) && clamp->line == 7);
                 /* The compound assignment spans its statement, the conversion its call. */
-                REQUIRE(overflow->column == 9 && overflow->start == 117 && overflow->end == 127);
-                REQUIRE(clamp->column == 17 && clamp->start == 220 && clamp->end == 232);
+                REQUIRE(overflow->column == 9 && overflow->start == 111 && overflow->end == 121);
+                REQUIRE(clamp->column == 17 && clamp->start == 212 && clamp->end == 222);
             }
             /* Marked and delivered sites leave the written bytes unchanged. */
             char error[256];

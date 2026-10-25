@@ -245,12 +245,11 @@ TEST_CASE(asset_source_native_scene_values_own_their_storage)
 }
 TEST_CASE(asset_source_native_prototype_owns_name_and_identity)
 {
-    static const char
-        SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                   "pub Build :: () -> u8[] { return data.Encode("
-                   "data.Prototype(\"Seed\", [], [], [], "
-                   "[data.Field.Named(\"identity\", "
-                   "data.Value.Text(\"owned-identity\"))])); }\n";
+    static const char SOURCE[] = "package probe\nimport data \"game:assets\"\n"
+                                 "pub Build :: () -> u8[] { return data.Encode("
+                                 "data.Prototype(\"Seed\", [], [], [], "
+                                 "[data.Field.Named(\"identity\", "
+                                 "data.Value.Text(\"owned-identity\"))])); }\n";
     document = read_document(SOURCE);
     REQUIRE(document);
     char error[256] = { 0 };

@@ -365,7 +365,10 @@ function's values with. A watch is a `SOURCE_WATCH` of the slot that holds a
 value, with its expression as origin and its type's header as initial value:
 - an output watch on each value an expression produces, `self` included, and on
   each number literal once its use gives it a type, except an array of
-  literals;
+  literals. An integer constant expression, a grouped and signed literal such
+  as `-(2)` or `-(2.0)` included, folds to one constant at its outermost
+  expression, which has the one point and watch; a grouped floating literal
+  keeps a point and watch at each sign;
 - a call's inputs, one per argument with the argument's own type, defaults
   included (a default also has an output watch); a struct literal's, numbered
   by each field's place in the record; and a call with several results has

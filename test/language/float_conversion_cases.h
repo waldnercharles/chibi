@@ -26,8 +26,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected number, got f64; convert "
                       "with number(value)",
                       2,
-                      40 },
-      .stage_one = { "local value differs from its type", 2, 40 } },
+                      38 },
+      .stage_one = { "local value differs from its type", 2, 38 } },
     { "implicit-narrow-assignment",
       "package facts\npub Fold :: (value: f64) -> number { result: number = "
       "0.0; result = value; return result; }\n",
@@ -37,8 +37,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected number, got f64; convert "
                       "with number(value)",
                       2,
-                      61 },
-      .stage_one = { "assigned value differs from its local", 2, 61 } },
+                      60 },
+      .stage_one = { "assigned value differs from its local", 2, 60 } },
     { "implicit-narrow-return",
       "package facts\npub Fold :: (value: f64) -> number { return value; }\n",
       false,
@@ -47,8 +47,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected number, got f64; convert "
                       "with number(value)",
                       2,
-                      47 },
-      .stage_one = { "returned value differs from the result type", 2, 40 } },
+                      45 },
+      .stage_one = { "returned value differs from the result type", 2, 38 } },
     { "implicit-narrow-argument",
       "package facts\nTake :: (value: number) -> number { return value; }\npub "
       "Fold :: (value: f64) -> number { return Take(value); }\n",
@@ -58,8 +58,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected number, got f64; convert "
                       "with number(value)",
                       3,
-                      52 },
-      .stage_one = { "argument differs from its parameter type", 3, 47 } },
+                      50 },
+      .stage_one = { "argument differs from its parameter type", 3, 45 } },
     { "implicit-narrow-typed-constant",
       "package facts\nWide: f64 : 16777217.0;\nNarrow: number : Wide;\npub "
       "Fold :: (value: f64) -> number { return Narrow; }\n",
@@ -70,8 +70,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected number, got f64; convert "
                       "with number(value)",
                       3,
-                      17 },
-      .stage_one = { "a constant of another type needs a conversion", 3, 17 } },
+                      18 },
+      .stage_one = { "a constant of another type needs a conversion", 3, 18 } },
     { "implicit-narrow-typed-constant-return",
       "package facts\nWide: f64 : 16777217.0;\npub Fold :: (value: f64) "
       "-> number { return Wide; }\n",
@@ -82,8 +82,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       .stage_zero = { "Incompatible types: expected number, got f64; convert "
                       "with number(value)",
                       3,
-                      47 },
-      .stage_one = { "returned value differs from the result type", 3, 40 } },
+                      45 },
+      .stage_one = { "returned value differs from the result type", 3, 38 } },
     { "explicit-narrow-declaration",
       "package facts\npub Fold :: (value: f64) -> number { result: number = "
       "number(value); return result; }\n",
@@ -281,7 +281,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "package facts\nValue: number : "
       "number(f64(7."
       "006492321624085354618647916449580656401309709382578858785341419448955413"
-      "42930300743319094181060791015625e-46));\npub Fold :: (unused: number) -> "
+      "42930300743319094181060791015625e-46));\npub Fold :: (unused: number) "
+      "-> "
       "bool { return Value == 0.0 && 1.0 / Value > 0.0; }\n",
       true,
       "[1.5]",
@@ -319,7 +320,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
     { "constant-round-to-infinity",
       "package facts\nWide: f64 : "
       "340282356779733661637539395458142568448.0;\nValue: number : "
-      "number(Wide);\npub Fold :: (unused: number) -> bool { return Value > 0.0 "
+      "number(Wide);\npub Fold :: (unused: number) -> bool { return Value > "
+      "0.0 "
       "&& Value == Value + Value; }\n",
       true,
       "[1.5]",
@@ -332,8 +334,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "[1.5]",
       "[true]",
       .constant = true,
-      .stage_zero = { "Numeric literal is outside the range of number", 2, 22 },
-      .stage_one = { "Numeric literal is outside the range of number", 2, 22 } },
+      .stage_zero = { "Numeric literal is outside the range of number", 2, 24 },
+      .stage_one = { "Numeric literal is outside the range of number", 2, 24 } },
     { "constant-contextual-parenthesized-overflow",
       "package facts\nValue: number : number((1e300));\npub Fold :: (unused: "
       "number) -> number { return Value; }\n",
@@ -341,8 +343,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "[1.5]",
       "[true]",
       .constant = true,
-      .stage_zero = { "Numeric literal is outside the range of number", 2, 23 },
-      .stage_one = { "Numeric literal is outside the range of number", 2, 23 } },
+      .stage_zero = { "Numeric literal is outside the range of number", 2, 25 },
+      .stage_one = { "Numeric literal is outside the range of number", 2, 25 } },
     { "constant-contextual-signed-overflow",
       "package facts\nValue: number : number(-(1e300));\npub Fold :: (unused: "
       "number) -> number { return Value; }\n",
@@ -350,8 +352,8 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "[1.5]",
       "[true]",
       .constant = true,
-      .stage_zero = { "Numeric literal is outside the range of number", 2, 24 },
-      .stage_one = { "Numeric literal is outside the range of number", 2, 24 } },
+      .stage_zero = { "Numeric literal is outside the range of number", 2, 26 },
+      .stage_one = { "Numeric literal is outside the range of number", 2, 26 } },
     { "body-contextual-conversion-overflow",
       "package facts\npub Fold :: (unused: number) -> number { return "
       "number(1e300); }\n",
@@ -359,11 +361,12 @@ static const float_conversion_case FLOAT_CONVERSION_CASES[] = {
       "[1.5]",
       "[true]",
       .constant = false,
-      .stage_zero = { "Numeric literal is outside the range of number", 2, 53 },
-      .stage_one = { "Numeric literal is outside the range of number", 2, 53 } },
+      .stage_zero = { "Numeric literal is outside the range of number", 2, 56 },
+      .stage_one = { "Numeric literal is outside the range of number", 2, 56 } },
     { "constant-represented-double-overflow",
       "package facts\nValue: number : number(f64(1e300));\npub Fold :: "
-      "(unused: number) -> bool { return Value > 0.0 && Value == Value + Value; "
+      "(unused: number) -> bool { return Value > 0.0 && Value == Value + "
+      "Value; "
       "}\n",
       true,
       "[1.5]",

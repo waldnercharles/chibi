@@ -873,7 +873,7 @@ TEST_CASE(wide_literals_need_an_f64_context)
           48 },
         { "Packed :: library { Math :: () -> f64 { return sqrt((-1e300)); } }",
           "Numeric literal is outside the range of number",
-          55 },
+          54 },
         { "Packed :: library { Math :: () -> f64 { y := 1e300 * 2; return y; } "
           "}",
           "Numeric literal is outside the range of number",
@@ -881,7 +881,7 @@ TEST_CASE(wide_literals_need_an_f64_context)
         { "Packed :: library { Math :: () -> f64 { y := -18446744073709551616; "
           "return y; } }",
           "Numeric literal is outside the range of u64",
-          47 },
+          46 },
         { "Packed :: library { Math :: (x: f64) -> number { return sqrt(x); } "
           "}",
           "Incompatible types: expected number, got f64; convert with "

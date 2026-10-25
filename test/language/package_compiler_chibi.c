@@ -890,7 +890,7 @@ static const sample samples[] = {
                 "Grow :: (a: ref int, b: u8) { a += b; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 33 },
+      .column = 31 },
     { .name = "mixed compound reference field assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -898,7 +898,7 @@ static const sample samples[] = {
                 "Grow :: (n: ref Note, b: u8) { n.count += b; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 34 },
+      .column = 32 },
     { .name = "mixed compound boxed local assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -907,7 +907,7 @@ static const sample samples[] = {
                 "return a; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 50 },
+      .column = 48 },
     { .name = "mixed compound boxed parameter assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -916,7 +916,7 @@ static const sample samples[] = {
                 "a; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 46 },
+      .column = 44 },
     { .name = "compound reference and boxed operands preserve effects",
       .debug_metadata = true,
       .group = COLLECTION_SAMPLES,
@@ -949,7 +949,7 @@ static const sample samples[] = {
                 "return a; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 40 },
+      .column = 38 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -2402,7 +2402,8 @@ static const sample samples[] = {
                 "}\n",
       .calls = { { .function = "Scale", .arguments = "[2]", .expected = "[2.0]" },
                  { .function = "Half", .arguments = "[4]", .expected = "[-2.0]" } } },
-    /* A signed literal's outer signs are each watched once. */
+    /* A floating literal's outer signs are each watched once; stage zero
+     * folds an integer one, a whole decimal too, to one constant. */
     { .name = "grouped signed literal results",
       .traced = true,
       .source = "package facts\n"
@@ -2410,15 +2411,20 @@ static const sample samples[] = {
                 "Back :: () -> f64 { return -(-(1.5)); }\n"
                 "Two :: () -> int { return -(2); }\n"
                 "Three :: () -> int { return -(+(-(3))); }\n"
-                "Plus :: () -> int { return +(-(4)); }\n",
+                "Plus :: () -> int { return +(-(4)); }\n"
+                "Whole :: () -> int { return -(+(2.0)); }\n"
+                "Unsigned :: () -> u8 { return +(2e0); }\n",
       .calls = { { .function = "Half", .arguments = "[]", .expected = "[-1.5]" },
                  { .function = "Back", .arguments = "[]", .expected = "[1.5]" },
                  { .function = "Two", .arguments = "[]", .expected = "[-2]" },
                  { .function = "Three", .arguments = "[]", .expected = "[3]" },
-                 { .function = "Plus", .arguments = "[]", .expected = "[-4]" } } },
+                 { .function = "Plus", .arguments = "[]", .expected = "[-4]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Unsigned", .arguments = "[]", .expected = "[2]" } } },
     /* An overloaded native's untyped literal argument takes the overload
      * stage zero picks (native_overload_reference_contract) and that
-     * overload's type, grouped, signed or a whole decimal. */
+     * overload's type, grouped, signed or a whole decimal. Stage zero folds a
+     * grouped one and its signs to one constant. */
     { .name = "untyped literal overload argument",
       .c_string_probe = true,
       .traced = true,
@@ -2426,11 +2432,19 @@ static const sample samples[] = {
                 "Run :: () -> int { return native.overload(2); }\n"
                 "Grouped :: () -> int { return native.overload((-(2))); }\n"
                 "Whole :: () -> int { return native.overload(2.0); }\n"
-                "Exponent :: () -> int { return native.overload(1e0); }\n",
+                "Exponent :: () -> int { return native.overload(1e0); }\n"
+                "Zero :: () -> int { return native.overload(0.0); }\n"
+                "Signed :: () -> int { return native.overload(-0.0); }\n"
+                "Signs :: () -> int { return native.overload(+(-(-(2)))); }\n"
+                "Decimal :: () -> int { return native.overload(-(2.0)); }\n",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" },
                  { .function = "Grouped", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Signs", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[-2]" },
                  { .function = "Whole", .arguments = "[]", .expected = "[2]" },
-                 { .function = "Exponent", .arguments = "[]", .expected = "[1]" } } },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Zero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Signed", .arguments = "[]", .expected = "[0]" } } },
     /* Typed arguments choose the kernel their width prefers, i64 the f64
      * one and the rest number, and literals take the number one. */
     { .name = "typed overload kernels",
@@ -2462,6 +2476,8 @@ static const sample samples[] = {
                 "Before :: () -> int { return native.pair(2, Later()); }\n"
                 "After :: () -> int { return native.pair(Later(), 2); }\n"
                 "Stops :: () -> int { return native.pair(-(2), Fails()); }\n"
+                "Floating :: () -> int { return native.pair(+(-(2.5)), "
+                "Later()); }\n"
                 "Local :: () -> int { v: f64 = 2.5; return native.pair(v, "
                 "Later()); }\n"
                 "Widened :: () -> int { v: number = 1.5; return native.pair(v, "
@@ -2469,6 +2485,7 @@ static const sample samples[] = {
       .calls = { { .function = "Before", .arguments = "[]", .expected = "[2]" },
                  { .function = "After", .arguments = "[]", .expected = "[1]" },
                  { .function = "Stops", .arguments = "[]" },
+                 { .function = "Floating", .arguments = "[]", .expected = "[2]" },
                  { .function = "Local", .arguments = "[]", .expected = "[2]" },
                  { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
     /* Parentheses produce no value: a grouped argument is typed, converted
@@ -2513,6 +2530,23 @@ static const sample samples[] = {
                  { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" },
                  { .function = "Least", .arguments = "[]", .expected = "[-9223372036854775808]" } } },
+    /* Zero is whole however it is spelled. */
+    { .name = "zero decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Zero :: () -> int { return 0.0; }\n"
+                "Negative :: () -> int { return -0.0; }\n"
+                "Scaled :: () -> int { return 0e-1; }\n"
+                "Places :: () -> i64 { return 0.000; }\n",
+      .calls = { { .function = "Zero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Places", .arguments = "[]", .expected = "[0]" } } },
+    { .name = "decimal past the least integer",
+      .source = "package facts\nRun :: () -> i64 { return "
+                "-9223372036854775809.0; }",
+      .message = "Numeric literal is outside the range of i64",
+      .same_rejection = true },
     { .name = "decimal past the largest integer",
       .source = "package facts\nRun :: () -> u64 { return "
                 "18446744073709551616.0; }",
@@ -2563,7 +2597,7 @@ static const sample samples[] = {
                 "u64(Wide);\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 3,
-      .column = 22 },
+      .column = 16 },
     { .name = "floating constant cannot wrap into integer bits",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nWide: f64 : 1.5;\nBad: int : int(wrap: "
@@ -2576,7 +2610,7 @@ static const sample samples[] = {
       .source = "package facts\nBad: u64 : u64(f64(1.5));\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 2,
-      .column = 22 },
+      .column = 16 },
     { .name = "floating shift count cannot become integer bits",
       .group = IMPORT_SAMPLES,
       .source = "package facts\nWide: f64 : 1.5;\nBad: int : 1 << Wide;\n",
@@ -2588,7 +2622,7 @@ static const sample samples[] = {
       .source = "package facts\nBad: f64 : 1.0 + 2.0;\n",
       .message = "floating constant initializer is not supported yet",
       .line = 2,
-      .column = 15 },
+      .column = 12 },
 };
 enum
 {

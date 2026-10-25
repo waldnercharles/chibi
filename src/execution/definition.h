@@ -285,6 +285,12 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
 void behavior_function_prepare_borrows(behavior_function *function);
+/* The borrow proof walks callees while their callers' facts stay live. The
+ * root's facts are part of its preparation scratch; its callees' live facts
+ * together stay within this many bytes, or the proof refuses to borrow. */
+#define BEHAVIOR_BORROW_NESTED_BYTES ((size_t)1 << 20)
+/* The bytes of one function's borrow facts. */
+size_t behavior_function_borrow_bytes(const behavior_function *function);
 /* Sets what a frozen function's body implies: builds_results and binds_world. */
 void behavior_function_note_derived(behavior_function *function);
 /* The instructions control may reach next from `pc`; returns their count. */

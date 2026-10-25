@@ -4,6 +4,7 @@
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
 #include "execution/module_effects.h"
+#include "execution/preparation_budget.h"
 #include "execution/prepared.h"
 #include "execution/program_internal.h"
 #include "execution/status.h"
@@ -37,6 +38,12 @@ static int result_bank, opaque_calls, alias_slot;
 static bool pause;
 static pin_value *callback_item;
 static int entered_calls;
+enum
+{
+    NESTED_LINKS = 4,
+    NESTED_LINK_SLOTS = 40000
+};
+static behavior_function *links[NESTED_LINKS + 1];
 static const pin_value array_shape = { .type = PIN_F64,
                                        .container = PIN_CONTAINER_ARRAY };
 
@@ -64,6 +71,10 @@ static void cleanup()
         behavior_function_free(function);
     }
     behavior_function_free(helper_function);
+    for (int i = 0; i <= NESTED_LINKS; i++) {
+        behavior_function_free(links[i]);
+        links[i] = NULL;
+    }
     if (builder) {
         behavior_function_builder_free(builder);
     }
@@ -2346,6 +2357,71 @@ TEST_CASE(borrow_aliased_results_stay_independent)
     REQUIRE(!output.b);
     return true;
 }
+/* A finished function of `slots` scalar slots that returns 1 after calling
+ * `callee`, when there is one. */
+static behavior_function *nested_link(const behavior_function *callee, int slots)
+{
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, &number, 1, NULL, 0);
+    while (acount(behavior_function_builder_definition(builder)->slots) < slots - 1) {
+        behavior_function_builder_slot(builder, PIN_I32);
+    }
+    if (callee) {
+        int call = behavior_function_builder_call(builder, callee, NULL, 0, &number, 1);
+        emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    }
+    int one = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_I32,
+                                         .value = { .type = PIN_I32, .i = 1 } },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = one });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    behavior_function *f = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!f) {
+        fprintf(stderr, "nested link: %s\n", error);
+    }
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    return f;
+}
+TEST_CASE(borrow_proof_bounds_nested_callee_facts)
+{
+    /* links[i] calls links[i - 1]. Each proof keeps a kind and bank per slot
+     * and a marker per local live in every frame it has entered, so a walk
+     * from links[i] holds the facts of links[0] to links[i - 1] besides its
+     * own, which its preparation scratch already counts. */
+    size_t nested[NESTED_LINKS + 1] = { 0 };
+    for (int i = 0; i <= NESTED_LINKS; i++) {
+        links[i] = nested_link(i ? links[i - 1] : NULL, NESTED_LINK_SLOTS);
+        REQUIRE(links[i] && behavior_function_compile(links[i]));
+        behavior_function_prepare_borrows(links[i]);
+        size_t frame = ((size_t)acount(links[i]->slots) + 1) * 2 * sizeof(int) +
+                       ((size_t)acount(links[i]->locals) + 1) * sizeof(bool);
+        REQUIRE(behavior_function_borrow_bytes(links[i]) == frame);
+        if (i < NESTED_LINKS) {
+            nested[i + 1] = nested[i] + frame;
+        }
+    }
+    /* Three callees' facts fit the nested bound and four exceed it. */
+    REQUIRE(nested[NESTED_LINKS - 1] <= BEHAVIOR_BORROW_NESTED_BYTES);
+    REQUIRE(nested[NESTED_LINKS] > BEHAVIOR_BORROW_NESTED_BYTES);
+    for (int i = 0; i < NESTED_LINKS; i++) {
+        REQUIRE(links[i]->readonly_collections);
+    }
+    REQUIRE(!links[NESTED_LINKS]->readonly_collections);
+    /* Whatever an accepted walk keeps live fits the scratch it reserves. */
+    size_t scratch;
+    REQUIRE(behavior_function_preparation_bytes(links[NESTED_LINKS - 1], &scratch) != SIZE_MAX);
+    REQUIRE(
+        scratch >= behavior_function_borrow_bytes(links[NESTED_LINKS - 1]) + BEHAVIOR_BORROW_NESTED_BYTES
+    );
+    return true;
+}
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -2375,5 +2451,6 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);
     RUN_TEST_CASE(borrow_aliased_results_stay_independent);
     RUN_TEST_CASE(borrow_update_after_union_keep_builds_nothing);
+    RUN_TEST_CASE(borrow_proof_bounds_nested_callee_facts);
     pu_clear_setup();
 }

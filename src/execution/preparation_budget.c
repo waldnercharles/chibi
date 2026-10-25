@@ -32,11 +32,13 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
     size_t count = acount(f->instructions), slots = acount(f->slots);
     size_t locals = acount(f->locals), data = acount(f->data_values);
     size_t values = sum(slots, locals), pauses = 0;
+    bool calls = false;
     size_t reads = acount(f->parallel_reads), writes = acount(f->component_writes);
     for (int i = 0; i < acount(f->instructions); i++) {
         const behavior_function_instruction *op = &f->instructions[i];
         pauses += op->op == BF_SUSPEND || op->op == BF_DELAY || op->op == BF_POINT ||
                   op->op == BF_SOURCE_POINT || op->op == BF_INVOKE;
+        calls |= op->op == BF_INVOKE;
         if (!f->batchable) {
             continue;
         }
@@ -99,9 +101,12 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
     scratch = sum(scratch, product(slots + 1, 3 * sizeof(max_align_t) + sizeof(int)));
     scratch = sum(scratch, product(count + 1, sizeof(bool)));
     /* Read-only array borrowing keeps one kind/bank fact per scalar slot and
-     * a logical-array marker per local. */
-    scratch = sum(scratch, product(slots + 1, 2 * sizeof(int)));
-    scratch = sum(scratch, product(locals + 1, sizeof(bool)));
+     * a logical-array marker per local, and its callees' facts while it
+     * walks them. */
+    scratch = sum(scratch, behavior_function_borrow_bytes(f));
+    if (calls) {
+        scratch = sum(scratch, BEHAVIOR_BORROW_NESTED_BYTES);
+    }
     /* Union scalar replacement keeps facts for slots, banks, locals and PCs,
      * plus one candidate per constructor and its immutable scalar payloads. */
     if (acount(f->host_calls)) {

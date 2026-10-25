@@ -49,10 +49,11 @@ interface, or the complete allocation/memory/output/free native island.
   every value of every integer type, so a clamp never becomes a plain
   truncation.
 - `float` and `double` follow IEEE at their width, with no fast-math flags:
-  `+`, `-`, `*` and `/` round to nearest, and there is no floating negation
-  or remainder, which the runtime does not compute either. `<`, `<=`, `>`,
-  `>=` and `==` are ordered, so NaN makes them false, and `!=` is unordered,
-  so NaN makes it true. A constant's `literal` is its encoding's bits, a
+  `+`, `-`, `*` and `/` round to nearest. There is no floating negation or
+  remainder: stage one rejects both before they reach this lowering, although
+  the runtime computes them (`BF_NEG`, `BF_MOD_F32` and `BF_MOD_F64`).
+  `<`, `<=`, `>`, `>=` and `==` are ordered, so NaN makes them false, and
+  `!=` is unordered, so NaN makes it true. A constant's `literal` is its encoding's bits, a
   `float`'s zero-extended, emitted through `bitcast` so NaN payloads and
   signed zeros stay exact.
 - A `float` or `double` converts to an integer type through

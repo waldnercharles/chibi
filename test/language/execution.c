@@ -2105,10 +2105,14 @@ static bool wide_module(int count, int slots, size_t *scratch, size_t *length)
     prepared_module = NULL;
     return true;
 }
+enum
+{
+    LEAST_BUDGET_CEILING = 256 * 1024 * 1024
+};
 /* The least budget, to within `step` bytes, that decodes prepared_bytes. */
 static size_t least_budget(size_t length, size_t step)
 {
-    size_t refused = 0, decoded = 256u * 1024u * 1024u;
+    size_t refused = 0, decoded = LEAST_BUDGET_CEILING;
     char error[192];
     while (decoded - refused > step) {
         size_t budget = refused + (decoded - refused) / 2, remaining = budget;
@@ -2130,6 +2134,38 @@ static size_t least_budget(size_t length, size_t step)
     }
     return decoded;
 }
+/* `budget` decodes prepared_bytes into `count` chains of `slots` slots that
+ * each return `slots` times their argument, and keeps only the module's
+ * storage debited. */
+static bool decodes_chains(size_t length, size_t budget, int count, int slots)
+{
+    char error[192];
+    size_t remaining = budget;
+    prepared_module = execution_prepared_read_budget(
+        prepared_bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    REQUIRE(prepared_module);
+    REQUIRE(budget - remaining == execution_module_storage_bytes(prepared_module));
+    for (int i = 0; i < count; i++) {
+        /* run() borrows the module's definition; cleanup must never free it. */
+        function = (behavior_function *)execution_module_function_at(prepared_module, i)
+                       .body;
+        pin_value argument = { .type = PIN_I32, .i = 3 }, result = { .type = PIN_I32 };
+        REQUIRE(run(&argument, 1, NULL, &result, false, 1u << 20) == FLOW_OK);
+        REQUIRE(result.i == 3 * slots);
+        release_invocation();
+        function = NULL;
+    }
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    return true;
+}
 TEST_CASE(execution_decoded_definitions_share_preparation_scratch)
 {
     /* Definitions prepare one at a time, so each one past the first adds its
@@ -2144,10 +2180,12 @@ TEST_CASE(execution_decoded_definitions_share_preparation_scratch)
     size_t scratch, length;
     REQUIRE(wide_module(1, CHAIN, &scratch, &length));
     size_t one = least_budget(length, STEP);
+    REQUIRE(one < LEAST_BUDGET_CEILING && decodes_chains(length, one, 1, CHAIN));
     free(prepared_bytes);
     prepared_bytes = NULL;
     REQUIRE(wide_module(CHAINS, CHAIN, &scratch, &length));
     size_t many = least_budget(length, STEP);
+    REQUIRE(many < LEAST_BUDGET_CEILING && decodes_chains(length, many, CHAINS, CHAIN));
     REQUIRE(many > one && many - one < (CHAINS - 1) * scratch);
     return true;
 }

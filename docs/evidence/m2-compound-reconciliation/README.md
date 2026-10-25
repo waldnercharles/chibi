@@ -40,9 +40,9 @@ an ahead exemption or fabricated host effects.
   References. Both collections selectors fail: watch505..506 appears twice
   instead of once. All C fixture bytes/assertions and Steps bytes match the
   passing run. Control compile/link succeed. The production source is unchanged.
-- Independent reviewer `/root/review_array_order` reviewed the final exact
-  three-file implementation and verified receipt/log hashes, both control
-  failures, and unchanged assertions.
+- [Independent review](final-three-file-review.md) covered the final exact
+  three-file implementation at `1ea4cd098533aa9f84df3cbf3f0c80097a85037b`
+  and verified receipt/log hashes, both control failures, and unchanged assertions.
 
 Final selector list:
 
@@ -124,9 +124,10 @@ Independent composition review accepted staged tree
 match the tested source, all57 conflict hunk hashes agree, frozen cf24 is the
 merge parent, and seed/pin identities are intact. Subsequent changes only add
 this review receipt, the precise two stale manifest records and attribution.
-The Linux9711 totals in the ledger are root's sealed independent report in
-thread01a158a1-f352-744a-b76e-28572da02025, not a Linux run by this Mac lane or
-by this composition reviewer. Mac and Linux history remains separate from
+The Linux totals in the [ledger](../../native-llvm-ledger.md) were independently
+reported for verified candidate `9711a2f36686e52765b7dd6d28c659b100867971`, tree
+`3faa7706f4d78123c3ed99982b9ba654c863124f`; they are not a Linux run by this
+Mac lane or by this composition reviewer. Mac and Linux history remains separate from
 current-source acceptance. The archived scripts preserve the executed scratch
 procedures and expect their recorded baseline/source views and fresh output
 directories; they are not a new public build interface.

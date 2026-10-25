@@ -1,7 +1,7 @@
 {
   "source_commit": "641424f550c8f78327e3e8ef232b904364688514",
   "base_commit": "0f629f8bcaefe9689ed0060e533835082897baa4",
-  "reviewer": "independent /root/review Codex agent",
+  "reviewer": "independent Codex source review of source_commit against base_commit",
   "source_blockers": [],
   "report_blockers": [],
   "github_approved_review": false,

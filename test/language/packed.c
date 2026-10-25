@@ -807,29 +807,34 @@ static bool float_conversion_call(
 }
 
 /* A literal past number's range needs an f64 context: a typed f64 argument
- * that selects a native's f64 overload, signed or named in any order, or an
- * f64 declaration or conversion. Without one it is a number and fails where
- * it is written, so a number context and an inferred local reject it. */
+ * that selects a native's f64 overload, a typed f64 operand, or an f64
+ * declaration or conversion, through parentheses and signs and with
+ * arguments in any order. Without one it is a number and fails where it is
+ * written, so a number context and an inferred local reject it. */
 TEST_CASE(wide_literals_need_an_f64_context)
 {
+#define WIDE(BODY)                                                             \
+    "Packed :: library { Math :: () -> f64 { x: f64 = 1; " BODY " } }"
     static const struct
     {
         const char *source;
         double expected;
+        int kernels;
     } chosen[] = {
-        { "Packed :: library { Math :: () -> f64 { x: f64 = 1; return "
-          "pow(Base: -1e300, Exponent: x); } }",
-          -1e300 },
-        { "Packed :: library { Math :: () -> f64 { x: f64 = 1; return "
-          "pow(Exponent: x, Base: -1e300); } }",
-          -1e300 },
-        { "Packed :: library { Math :: () -> f64 { x: f64 = 1e300; return "
-          "sqrt(x); } }",
-          1e150 },
-        { "Packed :: library { Math :: () -> f64 { return sqrt(f64(1e300)); } "
-          "}",
-          1e150 },
+        { WIDE("return pow(Base: -1e300, Exponent: x);"), -1e300, 1 },
+        { WIDE("return pow(Exponent: x, Base: -1e300);"), -1e300, 1 },
+        { WIDE("return pow(Base: (-1e300), Exponent: x);"), -1e300, 1 },
+        { WIDE("return pow(Exponent: x, Base: -(1e300));"), -1e300, 1 },
+        { WIDE("return pow(Base: -(-1e300), Exponent: x);"), 1e300, 1 },
+        { WIDE("return pow(Exponent: x, Base: +((1e300)));"), 1e300, 1 },
+        { WIDE("return x * 1e300;"), 1e300, 0 },
+        { WIDE("return (-1e300) * x;"), -1e300, 0 },
+        { WIDE("return x * -(1e300 * 2);"), -2e300, 0 },
+        { WIDE("y: f64 = -(1e300) * 2; return y;"), -2e300, 0 },
+        { WIDE("x = 1e300; return sqrt(x);"), 1e150, 1 },
+        { WIDE("return sqrt(f64(1e300));"), 1e150, 1 },
     };
+#undef WIDE
     static const struct
     {
         const char *source, *message;
@@ -845,6 +850,17 @@ TEST_CASE(wide_literals_need_an_f64_context)
         { "Packed :: library { Math :: () -> f64 { return sqrt(1e300); } }",
           "Numeric literal is outside the range of number",
           53 },
+        { "Packed :: library { Math :: () -> f64 { x := -(1e300); return x; } "
+          "}",
+          "Numeric literal is outside the range of number",
+          48 },
+        { "Packed :: library { Math :: () -> f64 { return sqrt((-1e300)); } }",
+          "Numeric literal is outside the range of number",
+          55 },
+        { "Packed :: library { Math :: () -> f64 { y := 1e300 * 2; return y; } "
+          "}",
+          "Numeric literal is outside the range of number",
+          46 },
         { "Packed :: library { Math :: (x: f64) -> number { return sqrt(x); } "
           "}",
           "Incompatible types: expected number, got f64; convert with "
@@ -874,7 +890,7 @@ TEST_CASE(wide_literals_need_an_f64_context)
                 );
             }
             REQUIRE(function && analysis->diagnostic_count == 0);
-            REQUIRE(kernel_calls(PIN_F64) == 1);
+            REQUIRE(kernel_calls(PIN_F64) == chosen[i].kernels);
             pin_value result = { .type = PIN_F64 };
             context = (behavior_function_context){ .results = &result,
                                                    .activation = &activation,

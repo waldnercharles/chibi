@@ -955,24 +955,20 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
             } else if (candidate->parameters[parameter].reference_kind != SCRIPT_REFERENCE_NONE) {
                 continue;
             } else {
-                TSNode value = ts_node_is_null(key)
-                                 ? argument
-                                 : script_analyzer_field(argument, "value");
-                if (ts_node_is_null(value)) {
-                    value = script_analyzer_field(argument, "source");
-                }
-                /* A literal waits for the chosen parameter's type, so only
-                 * that type can reject its range. */
-                if (!script_analyzer_untyped_literal(a, value, &actual)) {
-                    if ((*values)[i] < 0) {
-                        (*values)[i] = script_analyzer_expression(
-                            a,
-                            value,
-                            (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
-                        );
+                if ((*values)[i] < 0) {
+                    TSNode value = ts_node_is_null(key)
+                                     ? argument
+                                     : script_analyzer_field(argument, "value");
+                    if (ts_node_is_null(value)) {
+                        value = script_analyzer_field(argument, "source");
                     }
-                    actual = script_analyzer_expr_type(a, (*values)[i]);
+                    (*values)[i] = script_analyzer_expression(
+                        a,
+                        value,
+                        (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+                    );
                 }
+                actual = script_analyzer_expr_type(a, (*values)[i]);
             }
             matches = wanted.container == actual.container &&
                       script_catalog_type_assignable(a->catalog, wanted, actual);

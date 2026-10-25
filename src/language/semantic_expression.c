@@ -222,22 +222,6 @@ static script_type untyped_number(const char *text, long double value)
                                                         : PIN_U64;
     return type;
 }
-bool script_analyzer_untyped_literal(analyzer *a, TSNode node, script_type *type)
-{
-    bool negate = script_analyzer_is(node, "unary_expression") &&
-                  script_analyzer_text_is(a, script_analyzer_field(node, "operator"), "-");
-    if (negate) {
-        node = script_analyzer_field(node, "operand");
-    }
-    if (!script_analyzer_is(node, "number")) {
-        return false;
-    }
-    char *text = script_analyzer_text_copy(a, node);
-    long double value = strtold(text, NULL);
-    *type = untyped_number(text, negate ? -value : value);
-    free(text);
-    return true;
-}
 /* A union such as `number | Cancelled` gives a literal its one numeric
  * alternative's type. */
 static script_type numeric_alternative(const analyzer *a, script_type expected)
@@ -392,7 +376,8 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
                 : "Numeric literal is outside the range of %s",
             script_numeric_name(result.type)
         );
-        value = 0;
+        /* Keep the sign so a context that retypes the literal reads it. */
+        value = copysignl(0, value);
     }
     switch (result.type.storage) {
         case PIN_I8: result.constant.i8 = (int8_t)value; break;
@@ -459,6 +444,24 @@ static int character_constant(analyzer *a, TSNode node, script_type expected)
     return script_analyzer_expr_add(a, result);
 }
 
+/* Drops the range error a literal got when it was read without a type, so
+ * the type its context gives decides alone. */
+static void retract_range_error(analyzer *a, TSNode literal)
+{
+    script_range range = script_analyzer_range(a, literal);
+    static const char prefix[] = "Numeric literal is outside the range of ";
+    for (int i = acount(a->out->diagnostics) - 1; i >= 0; i--) {
+        const script_diagnostic *d = &a->out->diagnostics[i];
+        if (d->range.start == range.start && d->range.end == range.end &&
+            d->range.document == range.document &&
+            !strncmp(d->message, prefix, sizeof prefix - 1)) {
+            script_diagnostic *all = a->out->diagnostics;
+            memmove(all + i, all + i + 1, (size_t)(acount(all) - i - 1) * sizeof *all);
+            asetlen(a->out->diagnostics, acount(all) - 1);
+            return;
+        }
+    }
+}
 void script_analyzer_contextual_numeric(analyzer *a, int index, script_type type)
 {
     script_expression *expression = &a->out->expressions[index];
@@ -481,9 +484,14 @@ void script_analyzer_contextual_numeric(analyzer *a, int index, script_type type
         if (script_analyzer_is(node, "unary_expression")) {
             node = script_analyzer_field(node, "operand");
         }
-        int converted = script_analyzer_is(node, "character")
-                          ? character_constant(a, node, type)
-                          : number_constant(a, node, type, negative);
+        if (script_analyzer_is(node, "character")) {
+            int converted = character_constant(a, node, type);
+            a->out->expressions[index] = a->out->expressions[converted];
+            a->out->expressions[index].range = range;
+            return;
+        }
+        retract_range_error(a, node);
+        int converted = number_constant(a, node, type, negative);
         a->out->expressions[index] = a->out->expressions[converted];
         a->out->expressions[index].range = range;
         return;

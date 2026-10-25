@@ -9219,8 +9219,8 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
         }
     }
     passed = passed && takes_project_identities(1);
-    passed = passed && native_catalog_alike();
     publish_project(NULL);
+    passed = passed && native_catalog_alike();
     REQUIRE(passed);
     return true;
 }

@@ -2,12 +2,12 @@
   "format": 1,
   "version": 6,
   "minimum": 2,
-  "revision": "2cf038b350c6120bacc974395748d55ad925a436-dirty",
+  "revision": "27f8aeaabeeefe19abe03c6e16c15ef93d199ed3-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 15525315,
-    "sha256": "09408055e8a5a8edcbe3dcdd22438450d2bc9cd823168dd65c9873abfa97f532"
+    "bytes": 15533481,
+    "sha256": "8fc30ea74e3ec8db6c18a538f07e6ba0ac5454a4de54db0e5dc9e27241625137"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -34,8 +34,8 @@
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 38450,
-      "sha256": "76881cb5aed38fcd79041ea92049fb6d8c1c64fb092520a18e9de44eb45154db"
+      "bytes": 38814,
+      "sha256": "709d3afd519a14ba24edef12b6247c065c9be6ea94ae89876e4a537484b31e18"
     },
     {
       "path": "package_compiler/Pointers.chibi",

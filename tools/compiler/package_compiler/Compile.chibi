@@ -587,7 +587,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         }
     }
     // Candidate map declarations belong to the returned table until accepted.
-    known := slice(types, 0, length(types));
+    known := types;
     at := length(found) - 1;
     while (at >= 0) {
         map := found[at];
@@ -678,12 +678,6 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                        package: int, package_name: string, links: graph.Binding[], target: Target,
                        callables: Callable[], params: Param[], types: TypeDecl[],
                        members: TypeMember[], constants: ConstDecl[]) -> Declarations {
-    // Publish these additions together only after all declarations succeed.
-    callables = slice(callables, 0, length(callables));
-    params = slice(params, 0, length(params));
-    types = slice(types, 0, length(types));
-    members = slice(members, 0, length(members));
-    constants = slice(constants, 0, length(constants));
     for (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);

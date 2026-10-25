@@ -648,7 +648,7 @@ RootOf :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // deleted from, and each name a ref argument reaches. Shadowing is ignored,
 // so another local of the same spelling counts too.
 MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, referenced: string[]) -> string[] {
-    found := slice(referenced, 0, length(referenced));
+    found := referenced;
     pending: int[] = [node];
     top: int = 1;
     while (top > 0) {
@@ -1574,7 +1574,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
              ops: Ops, target: Target) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
-    names := slice(aliases, 0, length(aliases));
+    names := aliases;
     slots: Slot[] = [];
     locals: Slot[] = [];
     cells: Cell[] = [];

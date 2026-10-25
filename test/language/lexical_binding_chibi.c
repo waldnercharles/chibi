@@ -258,7 +258,7 @@ static bool diagnostics(const arena *storage, const pin_value *value, const scri
             pin_text(message).bytes
         );
         REQUIRE(
-            arena_contains(storage, pin_text(message).bytes) &&
+            arena_contains(storage, message.text) &&
             !strcmp(pin_text(message).bytes, error->message)
         );
     }

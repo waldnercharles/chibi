@@ -448,6 +448,8 @@ void behavior_function_collection_transfer(
     behavior_function_context *to,
     const pin_value *
 );
+/* Whether the context owns a collection the value holds. */
+bool behavior_function_collection_holds(const behavior_function_context *, const pin_value *);
 void behavior_function_collection_clear(behavior_function_context *);
 void behavior_function_collection_trace(const behavior_function_context *, arena_marker, void *);
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);

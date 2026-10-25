@@ -124,7 +124,7 @@ static bool check_row(const pin_value *value, int number, const arena *owner)
             char text[32];
             snprintf(text, sizeof text, "row-%d-field-%d", number, i);
             REQUIRE(pin_text(field).bytes && !strcmp(pin_text(field).bytes, text));
-            REQUIRE(arena_contains(owner, pin_text(field).bytes));
+            REQUIRE(arena_contains(owner, field.text));
         } else if (i < 7) {
             REQUIRE(field.i == number + i);
         } else {
@@ -458,7 +458,7 @@ TEST_CASE(record_globals_native_compatibility)
         REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
         REQUIRE(out.type == values[i].type && !out.record);
         if (i == 2) {
-            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
+            REQUIRE(arena_contains(&invocation, out.text));
             text[0] = 'X';
             arena_free(&producer);
             values[i].text = &expected_text;
@@ -471,8 +471,8 @@ TEST_CASE(record_globals_native_compatibility)
         REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
         REQUIRE(pin_value_equal(&out, &values[i]) && !out.record);
         if (i == 2) {
-            REQUIRE(arena_contains(&reads, pin_text(saved).bytes));
-            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
+            REQUIRE(arena_contains(&reads, saved.text));
+            REQUIRE(arena_contains(&invocation, out.text));
         }
     }
 

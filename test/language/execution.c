@@ -1732,7 +1732,9 @@ TEST_CASE(execution_intrinsics_build_in_result_storage)
                                                   .output = held,
                                                   .left = pointer,
                                                   .offset = offsetof(pin_value, u64) });
-            emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_U64, .left = held });
+            emit((behavior_function_instruction){ .op = BF_RESULT,
+                                                  .type = PIN_U64,
+                                                  .left = held });
             emit((behavior_function_instruction){ .op = BF_END });
             REQUIRE(finish());
             execution_cost_summary costs = behavior_function_costs(function);
@@ -3752,7 +3754,9 @@ TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe)
         free(module.effect_ids);
         if (i) {
             execution_prepare_argument_sharing(function);
-            REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_COPY);
+            /* The write copies a scalar into the pointee, which a lent
+             * argument never holds. */
+            REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_SAFE);
             REQUIRE(!execution_builds_safely(function));
         }
     }
@@ -4093,24 +4097,26 @@ TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied)
 }
 TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions)
 {
-    const char *source =
-        "package sequences\n"
-        "Pass :: (v: view int[]) -> view int[] { return v; }\n"
-        "pub Rebound :: () -> int { a: int[] = [1, 2, 3, 4]; p := &a; "
-        "held := p.view(1..<3); if held { v := Pass(held); b := a; v[0] = 20; "
-        "p^ = [5, 6, 7, 8]; v[1] = 70; "
-        "return a[1] * 100 + a[2] * 10 + b[1]; } return -1; }\n"
-        "pub Regrown :: () -> int { a: int[] = [1, 2, 3]; p := &a; "
-        "held := p.view(1..<3); if held { p^ = [9]; expired := "
-        "held.slice(0..<0); "
-        "if expired { return -2; } p.append(8); p.append(7); "
-        "if held { return held[0] * 10 + held[1]; } } return -1; }\n"
-        "pub EmptyWindow :: () -> int { a: int[] = [1, 2]; p := &a; "
-        "held := p.view(2..<2); if held { p^ = [9]; expired := "
-        "held.slice(0..<0); "
-        "if expired { return -2; } p.append(8); if held { "
-        "restored := held.slice(0..<0); "
-        "if restored { return length(held) + length(restored); } } } return -1; }\n";
+    const char *
+        source = "package sequences\n"
+                 "Pass :: (v: view int[]) -> view int[] { return v; }\n"
+                 "pub Rebound :: () -> int { a: int[] = [1, 2, 3, 4]; p := &a; "
+                 "held := p.view(1..<3); if held { v := Pass(held); b := a; "
+                 "v[0] = 20; "
+                 "p^ = [5, 6, 7, 8]; v[1] = 70; "
+                 "return a[1] * 100 + a[2] * 10 + b[1]; } return -1; }\n"
+                 "pub Regrown :: () -> int { a: int[] = [1, 2, 3]; p := &a; "
+                 "held := p.view(1..<3); if held { p^ = [9]; expired := "
+                 "held.slice(0..<0); "
+                 "if expired { return -2; } p.append(8); p.append(7); "
+                 "if held { return held[0] * 10 + held[1]; } } return -1; }\n"
+                 "pub EmptyWindow :: () -> int { a: int[] = [1, 2]; p := &a; "
+                 "held := p.view(2..<2); if held { p^ = [9]; expired := "
+                 "held.slice(0..<0); "
+                 "if expired { return -2; } p.append(8); if held { "
+                 "restored := held.slice(0..<0); "
+                 "if restored { return length(held) + length(restored); } } } "
+                 "return -1; }\n";
     const sequence_case cases[] = {
         { "Rebound", 1302 },
         { "Regrown", 87 },
@@ -4323,7 +4329,8 @@ TEST_CASE(execution_lent_records_copy_nothing)
             uint64_t records[2];
             const int counts[] = { 1, 50 };
             for (int i = 0; i < 2; i++) {
-                pin_value argument = { .type = PIN_I32, .i = counts[i] }, result = { 0 };
+                pin_value argument = { .type = PIN_I32, .i = counts[i] },
+                          result = { 0 };
                 pin_copy_scope copies = { 0 };
                 pin_copy_scope_begin(&copies);
                 bool called = compiler_fixture_call(

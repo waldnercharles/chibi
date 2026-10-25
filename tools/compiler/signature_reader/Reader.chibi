@@ -104,8 +104,8 @@ pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
 }
 pub AddType :: (source_types: named.Type[], source_ids: uint64[], value: named.Value) -> Indexed {
     // Type publication returns a new table without mutating its input catalog.
-    types := slice(source_types, 0, length(source_types));
-    ids := slice(source_ids, 0, length(source_ids));
+    types := source_types;
+    ids := source_ids;
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             slot := length(ids);
@@ -160,8 +160,8 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                     switch constructor_tables {
                         case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
                             new_types := types;
-                            new_ids := slice(ids, 0, length(ids));
-                            new_variants := slice(raw_variants, 0, length(raw_variants));
+                            new_ids := ids;
+                            new_variants := raw_variants;
                             variant_start := length(new_variants);
                             count := length(variants);
                             index: int = 0;
@@ -252,7 +252,7 @@ Resolve :: (environment: Environment, result: named.Resolution) -> Reading {
 Prefix :: (reading: Reading, prefix: syntax.Diagnostic[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-            combined := slice(prefix, 0, length(prefix));
+            combined := prefix;
             for (item in diagnostics) {
                 combined.append(item);
             }
@@ -264,9 +264,9 @@ Merge :: (earlier: Reading, later: Reading) -> Reading {
         case .Read(old_value, old_has_unit, old_unit, old_environment, old_diagnostics, old_uses, old_publications, old_collection):
             switch later {
                 case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-                    all_diagnostics := slice(old_diagnostics, 0, length(old_diagnostics));
-                    all_uses := slice(old_uses, 0, length(old_uses));
-                    all_publications := slice(old_publications, 0, length(old_publications));
+                    all_diagnostics := old_diagnostics;
+                    all_uses := old_uses;
+                    all_publications := old_publications;
                     for (item in diagnostics) {
                         all_diagnostics.append(item);
                     }
@@ -291,8 +291,8 @@ Construct :: (reading: Reading, plan: constructors.Plan) -> Reading {
         case .Read(old_value, has_unit, unit, environment, old_diagnostics, uses, old_publications, collection):
             switch plan {
                 case .Constructed(value, publish, id, name, definition, size, internal, variants, fields, ids, diagnostics, element_type, element_collection, collection_container, key_type, key_collection):
-                    all_diagnostics := slice(old_diagnostics, 0, length(old_diagnostics));
-                    publications := slice(old_publications, 0, length(old_publications));
+                    all_diagnostics := old_diagnostics;
+                    publications := old_publications;
                     for (item in diagnostics) {
                         all_diagnostics.append(item);
                     }
@@ -408,7 +408,7 @@ WorkValue :: (node: int, kind: int, child: int, member_start: int, name: string)
 AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-            combined := slice(diagnostics, 0, length(diagnostics));
+            combined := diagnostics;
             for (item in added) {
                 combined.append(item);
             }
@@ -789,7 +789,7 @@ WithUnit :: (reading: Reading, tree: Tree, node: int, scope: int, document: int)
         case .Read(value, old_has_unit, old_unit, environment, diagnostics, uses, publications, collection):
             switch ReadUnit(environment, tree, node, scope, document) {
                 case .Unit(unit, errors):
-                    all_diagnostics := slice(diagnostics, 0, length(diagnostics));
+                    all_diagnostics := diagnostics;
                     for (item in errors) {
                         all_diagnostics.append(item);
                     }
@@ -806,7 +806,7 @@ pub Signature :: (environment: Environment, tree: Tree, node: int, scope: int, d
         reading = WithUnit(reading, tree, Field(tree, node, "unit"), scope, document);
         switch reading {
             case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
-                all_diagnostics := slice(diagnostics, 0, length(diagnostics));
+                all_diagnostics := diagnostics;
                 if (!Numeric(value)) {
                     all_diagnostics.append(Diagnostic(tree, node, document, "A measured signature requires a numeric storage type"));
                 }

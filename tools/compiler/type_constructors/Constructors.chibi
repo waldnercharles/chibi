@@ -148,8 +148,8 @@ Select :: (selection: Selections, value: named.Value, catalog_type: int, variant
            member: int, tag: uint64, collection: uint64) -> Selections {
     switch selection {
         case .Selected(payload_rows, payload_ids):
-            rows := slice(payload_rows, 0, length(payload_rows));
-            ids := slice(payload_ids, 0, length(payload_ids));
+            rows := payload_rows;
+            ids := payload_ids;
             index: int = 0;
             while (index < length(rows)) {
                 if (ids[rows[index].tag_slot] == tag) {
@@ -216,7 +216,7 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
     fields: Field[] = [];
     switch selection {
         case .Selected(payload_rows, payload_ids):
-            rows := slice(payload_rows, 0, length(payload_rows));
+            rows := payload_rows;
             ids := payload_ids;
             index: int = 1;
             while (index < length(rows)) {

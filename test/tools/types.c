@@ -931,7 +931,7 @@ TEST_CASE(types_document_rejects_invalid_values_without_publication)
     REQUIRE(pin_text(text).bytes[sizeof embedded] == 0);
     REQUIRE(pin_text(text).bytes != av_get_str(encoded_text));
     REQUIRE(arena_contains(&snapshots, text.text));
-    REQUIRE(arena_contains(&snapshots, pin_text(text).bytes));
+    REQUIRE(arena_contains(&snapshots, text.text));
     REQUIRE(
         pin_value_read_document(&snapshots, (pin_value){ .type = PIN_NAME }, encoded_text, &value, error, sizeof error) ==
         -1
@@ -1035,7 +1035,7 @@ TEST_CASE(types_document_array_collection_retains_split_payloads)
         pin_value item = pin_array_get(array, 0);
         if (strings) {
             REQUIRE(arena_contains(&snapshots, item.text));
-            REQUIRE(arena_contains(&snapshots, pin_text(item).bytes));
+            REQUIRE(arena_contains(&snapshots, item.text));
             REQUIRE(!strcmp(pin_text(item).bytes, "owned"));
         } else {
             REQUIRE(item.i == 17);

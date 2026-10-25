@@ -50,6 +50,9 @@ const type_desc *type_resolve(type_resolver, const char *name);
 /* Carried layouts take precedence over a potentially newer catalog. */
 const type_desc *type_field_type(const type_field *, type_resolver);
 const type_desc *type_alias_type(const type_desc *, type_resolver);
+/* An alias without fields of its own lays values out as its target does. A
+ * native alias declares its target's fields itself. */
+bool type_alias_layout(const type_desc *);
 
 typedef struct
 {

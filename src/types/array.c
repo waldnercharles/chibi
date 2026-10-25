@@ -161,7 +161,7 @@ static bool packed_layout(const type_desc *type, int depth)
         (type->field_count && !type->fields) || depth > 16) {
         return false;
     }
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
         return target && target->size == type->size &&
                packed_layout(target, depth + 1);
@@ -662,7 +662,7 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
     if (!type || !type->size || !data || depth == 16) {
         return -1;
     }
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         const type_desc *target = type_alias_type(type, resolver);
         return target && target->size == type->size
                  ? snapshot_fields(a, target, data, depth + 1, resolver)
@@ -1401,7 +1401,7 @@ static int manage_owned_graph(arena *storage, pin_array *array)
             error = -1;
             break;
         }
-        while (type->alias_of || type->alias) {
+        while (type_alias_layout(type)) {
             type = type_alias_type(type, (type_resolver){ 0 });
             assert(type);
         }
@@ -1706,6 +1706,16 @@ int pin_value_capture_to_arena(arena *storage, pin_value *out, const pin_value *
 {
     return graph_copy_value(storage, out, source, true);
 }
+/* An item a unique payload shares as it is: one with no storage of its own,
+ * or text whose immutable descriptor the storage already holds. */
+static bool movable_item(arena *storage, const pin_value *item)
+{
+    if (!pin_value_holds_storage(item)) {
+        return true;
+    }
+    return item->container == PIN_CONTAINER_SINGLE && item->type == PIN_STR &&
+           (!item->text || arena_contains(storage, item->text));
+}
 int pin_array_make_unique(arena *storage, pin_array *array)
 {
     if (!storage || !storage->collectable || !array || array->pointer ||
@@ -1759,11 +1769,15 @@ int pin_array_make_unique(arena *storage, pin_array *array)
     }
     if (!previous.stride) {
         for (int i = 0; i < previous.count; i++) {
-            if (pin_value_collection_copy(
+            if (movable_item(storage, &previous.items[i])) {
+                backing->payload.items[i] = previous.items[i];
+            } else if (
+                pin_value_collection_copy(
                     storage,
                     &backing->payload.items[i],
                     &previous.items[i]
-                )) {
+                )
+            ) {
                 for (int j = 0; j < i; j++) {
                     pin_value_collection_release(&backing->payload.items[j]);
                 }
@@ -1886,7 +1900,7 @@ int pin_array_box_owned(arena *storage, pin_array *array)
 }
 static void collection_visit_layout(const type_desc *type, const void *data, pin_value **pending)
 {
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         collection_visit_layout(type_alias_type(type, (type_resolver){ 0 }), data, pending);
         return;
     }
@@ -1913,8 +1927,8 @@ void pin_value_collection_visit_owners(
     }
     /* Most values are scalars or one collection, which need no work list. */
     pin_value root = *value;
-    if (root.container == PIN_CONTAINER_ARRAY || root.container == PIN_CONTAINER_MAP ||
-        root.container == PIN_CONTAINER_SET) {
+    if (root.container == PIN_CONTAINER_ARRAY ||
+        root.container == PIN_CONTAINER_MAP || root.container == PIN_CONTAINER_SET) {
         visit(&root, user);
         return;
     }
@@ -1988,7 +2002,7 @@ void pin_value_collection_release(const pin_value *value)
 }
 static int collection_copy_layout(arena *storage, const type_desc *type, void *data)
 {
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         return collection_copy_layout(storage, type_alias_type(type, (type_resolver){ 0 }), data);
     }
     for (int i = 0; i < type->field_count; i++) {
@@ -2117,8 +2131,9 @@ static int collection_copy_value(arena *storage, pin_value *out, const pin_value
 }
 bool pin_value_holds_storage(const pin_value *value)
 {
-    return value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT ||
-           value->type == PIN_UNION || value->type == PIN_STR || value->type == PIN_NAME;
+    return value->container != PIN_CONTAINER_SINGLE ||
+           value->type == PIN_STRUCT || value->type == PIN_UNION ||
+           value->type == PIN_STR || value->type == PIN_NAME;
 }
 int pin_value_collection_copy(arena *storage, pin_value *out, const pin_value *source)
 {
@@ -2367,7 +2382,7 @@ static int value_equal(const pin_value *a, const pin_value *b)
             return 0;
         }
         const type_desc *type = pin_value_type(a);
-        for (int depth = 0; type && (type->alias_of || type->alias); depth++) {
+        for (int depth = 0; type && type_alias_layout(type); depth++) {
             if (depth >= TYPE_MAX_NESTING) {
                 return 0;
             }

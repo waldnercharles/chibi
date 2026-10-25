@@ -660,7 +660,9 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
         fail(w, "Array views cannot be persisted");
         return;
     }
-    if (!w->reading && v->record && v->record->native &&
+    /* A header without a payload persists only its type, which the reader
+     * links by name and layout; a payload needs its native layout current. */
+    if (!w->reading && v->ptr && v->record && v->record->native &&
         !pin_record_native_current(v->record)) {
         fail(w, "Native record type is retired or its layout is incompatible");
         return;

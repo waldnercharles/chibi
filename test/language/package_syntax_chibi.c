@@ -93,7 +93,7 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
         value.type == PIN_STR && pin_text(value).bytes &&
         !strcmp(pin_text(value).bytes, expected)
     );
-    REQUIRE(arena_contains(&detached, pin_text(value).bytes));
+    REQUIRE(arena_contains(&detached, value.text));
     return true;
 }
 static bool same_range(const pin_value *row, const char *prefix, script_range range)

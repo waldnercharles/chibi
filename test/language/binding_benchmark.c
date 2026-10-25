@@ -772,7 +772,7 @@ static bool managed_values(const pin_value *values, const arena *storage, int it
         REQUIRE(
             !pin_read_field(&managed_input, row->ptr, &row->record->type.fields[1], &count)
         );
-        REQUIRE(label.type == PIN_STR && arena_contains(storage, pin_text(label).bytes));
+        REQUIRE(label.type == PIN_STR && arena_contains(storage, label.text));
         REQUIRE(!strcmp(pin_text(label).bytes, text) && count.type == PIN_I32 && count.i == 1);
     }
     return true;
@@ -925,18 +925,12 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
             REQUIRE(cache->output.type == PIN_BOOL && cache->output.b);
             REQUIRE(text_cache->valid && text_cache->inputs[0].type == PIN_STR);
             REQUIRE(
-                arena_contains(
-                    &text_cache->storage,
-                    pin_text(text_cache->inputs[0]).bytes
-                ) &&
+                arena_contains(&text_cache->storage, text_cache->inputs[0].text) &&
                 !strcmp(pin_text(text_cache->inputs[0]).bytes, expected_text)
             );
             REQUIRE(
                 text_cache->output.type == PIN_STR &&
-                arena_contains(
-                    &text_cache->storage,
-                    pin_text(text_cache->output).bytes
-                )
+                arena_contains(&text_cache->storage, text_cache->output.text)
             );
             REQUIRE(!strcmp(pin_text(text_cache->output).bytes, expected_text));
             const binding_label *label = ecs_component_data_const(world, owners[0], MANAGED_COMPONENT);
@@ -969,7 +963,7 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
         world = NULL;
         REQUIRE(managed_values(saved, &managed_saved, 1, "first"));
         REQUIRE(
-            arena_contains(&managed_saved, pin_text(saved[4]).bytes) &&
+            arena_contains(&managed_saved, saved[4].text) &&
             !strcmp(pin_text(saved[4]).bytes, "first")
         );
     }

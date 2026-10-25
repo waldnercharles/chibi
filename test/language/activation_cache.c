@@ -338,16 +338,11 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
         REQUIRE(run(0, 1, 0) == FLOW_OK && total(0, 5) && cached());
-        xalloc_stats before, after;
-        xalloc_stats_get(&before);
-        int first = run(1, 2, 1);
-        int second = run(0, 3, 2);
-        xalloc_stats_get(&after);
-        REQUIRE(first == FLOW_OK && second == FLOW_OK);
-        REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
+        REQUIRE(run(1, 2, 1) == FLOW_OK && run(0, 3, 2) == FLOW_OK);
         REQUIRE(total(0, 14) && total(1, 7) && cached());
 
-        /* The input snapshot alone exceeds the complete idle cache budget. */
+        /* An input larger than the complete idle cache budget is shared by
+         * reference, so the idle activation keeps none of it. */
         large_payload = xmalloc(CACHE_LIMIT + 1);
         memset(large_payload, 'x', CACHE_LIMIT);
         large_payload[CACHE_LIMIT] = '\0';
@@ -361,10 +356,7 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
                 3
             ) == FLOW_OK
         );
-        REQUIRE(
-            total(0, 15) &&
-            execution_program_memory_usage(program).activation_cache_bytes == 0
-        );
+        REQUIRE(total(0, 15) && cached());
         free(large_payload);
         large_payload = NULL;
 
@@ -380,7 +372,6 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
             ) == FLOW_OK &&
             total(1, 8) && cached()
         );
-        xalloc_stats_get(&before);
         int small = dispatch(
             0,
             TEXT_EVENT,
@@ -389,9 +380,18 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
                                                       .length = sizeof("tiny") - 1 } },
             5
         );
-        xalloc_stats_get(&after);
         REQUIRE(small == FLOW_OK && total(0, 16) && cached());
-        REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
+
+        /* Each run's array lives on the program's managed heap until a later
+         * event boundary collects it, so later runs keep no more of the heap
+         * than earlier ones. */
+        size_t peaks[2] = { 0 };
+        for (int i = 0; i < 256; i++) {
+            REQUIRE(run(i % 2, 1, 6 + i) == FLOW_OK && cached());
+            size_t managed = execution_program_memory_usage(program).managed_bytes;
+            peaks[i / 128] = managed > peaks[i / 128] ? managed : peaks[i / 128];
+        }
+        REQUIRE(peaks[0] > 0 && peaks[1] <= peaks[0]);
         cleanup();
     }
     return true;

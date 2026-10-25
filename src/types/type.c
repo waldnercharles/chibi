@@ -36,6 +36,10 @@ const type_desc *type_alias_type(const type_desc *type, type_resolver resolver)
          : type->alias              ? type->alias
                                     : type_resolve(resolver, type->alias_of);
 }
+bool type_alias_layout(const type_desc *type)
+{
+    return !type->field_count && (type->alias_of || type->alias);
+}
 
 enum
 {

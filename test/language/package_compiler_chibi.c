@@ -3064,9 +3064,7 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
 {
     int count = 0;
     const char *probe = getenv("PROBE_SOURCE") ? getenv("PROBE_SOURCE") : s->source;
-    inputs[count++] = (source_package_input){ "facts/Main.chibi",
-                                              probe,
-                                              strlen(probe) };
+    inputs[count++] = (source_package_input){ "facts/Main.chibi", probe, strlen(probe) };
     if (s->more) {
         inputs[count++] = (source_package_input){ "facts/More.chibi",
                                                   s->more,
@@ -4370,7 +4368,9 @@ static bool run_samples(sample_group group, int b)
     }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
-        if (s->group != group || (getenv("PROBE_SKIP") && strstr(getenv("PROBE_SKIP"), s->name)) || (getenv("PROBE_ONLY") && strcmp(getenv("PROBE_ONLY"), s->name))) {
+        if (s->group != group ||
+            (getenv("PROBE_SKIP") && strstr(getenv("PROBE_SKIP"), s->name)) ||
+            (getenv("PROBE_ONLY") && strcmp(getenv("PROBE_ONLY"), s->name))) {
             continue;
         }
         fprintf(stderr, "PROBE sample %s backend %d\n", s->name, b);
@@ -6050,8 +6050,9 @@ static bool same_declarations(const execution_module *expected, const execution_
                 got->type_name ? got->type_name : "",
                 wanted->type_name ? wanted->type_name : ""
             ));
-            REQUIRE(!got->record == !wanted->record);
-            REQUIRE(!got->record || pin_record_same(got->record, wanted->record));
+            /* A native record frozen into one side matches the catalog
+             * layout the other names. */
+            REQUIRE(pin_value_layout_same(got, wanted));
         }
         REQUIRE(y->body->variable_count == x->body->variable_count);
         REQUIRE(y->body->component_access == x->body->component_access);
@@ -6344,7 +6345,7 @@ static pin_value scalar_field(const pin_value *row, const char *name)
 static bool retained_text(const pin_value *row, const char *name, const char *expected)
 {
     pin_value value = scalar_field(row, name);
-    REQUIRE(value.type == PIN_STR && arena_contains(&detached, pin_text(value).bytes));
+    REQUIRE(value.type == PIN_STR && arena_contains(&detached, value.text));
     REQUIRE(pin_text_equal(pin_text(value), (pin_string){ expected, strlen(expected) }));
     return true;
 }

@@ -170,6 +170,10 @@ const char *pin_value_text_clone(arena *storage, pin_value *out, pin_value sourc
     pin_string text = pin_text(source);
     return pin_value_text(storage, out, text.bytes, text.length);
 }
+size_t pin_text_footprint(size_t length)
+{
+    return sizeof(pin_string) + sizeof(pin_text_owner) + length + 1;
+}
 void pin_text_destroy(const pin_string *text)
 {
     if (!text) {

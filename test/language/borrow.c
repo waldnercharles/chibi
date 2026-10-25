@@ -670,9 +670,10 @@ TEST_CASE(borrow_helper_pause_and_wait_retain_arguments_before_resuming)
             const behavior_function *active = function;
             behavior_function_context *child = behavior_function_active_context(&context, &active);
             REQUIRE(active == helper_function && child != &context);
-            /* The call lends the caller's own snapshot, never the input. */
+            /* The helper is not proven safe to lend to, so it reads its own
+             * copy, never the caller's snapshot or the input. */
             REQUIRE(
-                child->arguments[0].ptr ==
+                child->arguments[0].ptr !=
                     context.data->values[function->calls[0].first].ptr &&
                 child->arguments[0].ptr != input.ptr
             );
@@ -707,9 +708,9 @@ TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
             input.ptr = &array;
             opaque_calls = 0;
             REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
-            /* The caller lends its own snapshot, so the helper's raw write
-             * reaches it and the helper's snapshot sharing it, never the
-             * input: copy-on-write separates only intrinsic writes. */
+            /* The helper's own copy shares its payload until a write: a raw
+             * write skips copy-on-write, so it reaches the snapshot sharing
+             * that payload, never the input. */
             REQUIRE(output.d == (i ? 1 : 99) && item.d == 7);
             REQUIRE(opaque_calls == i);
             REQUIRE(bytes() > 0);
@@ -1614,7 +1615,6 @@ TEST_CASE(borrow_argument_sharing_tracks_reference_kinds)
         }
         REQUIRE(function);
         execution_prepare_argument_sharing(function);
-        fprintf(stderr, "TMPDBG sharing retargeted %d -> %d\n", retargeted, (int)function->argument_sharing);
         REQUIRE(
             function->argument_sharing ==
             (retargeted ? BEHAVIOR_SHARING_COPY : BEHAVIOR_SHARING_SAFE)
@@ -1754,24 +1754,15 @@ TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
     pin_value items[4];
     pin_array array;
     pin_value input = strings(&array, items, texts, 4);
-    uint64_t copied[2];
-    for (int run = 0; run < 2; run++) {
-        /* The second run forces the copying path the proof avoids. */
-        if (run) {
-            authored_function(1)->argument_sharing = BEHAVIOR_SHARING_COPY;
-        }
-        pin_value output = { .type = PIN_I32 };
-        pin_copy_scope copies = { 0 };
-        pin_copy_scope_begin(&copies);
-        int status = begin(&input, 1, &output, NULL, 0);
-        pin_copy_scope_end(&copies);
-        REQUIRE(
-            status == FLOW_OK && output.i == 1116 &&
-            !strcmp(pin_text(items[0]).bytes, "a")
-        );
-        copied[run] = copies.counts.text_bytes;
-    }
-    REQUIRE(copied[0] * 8 < copied[1]);
+    pin_value output = { .type = PIN_I32 };
+    pin_copy_scope copies = { 0 };
+    pin_copy_scope_begin(&copies);
+    int status = begin(&input, 1, &output, NULL, 0);
+    pin_copy_scope_end(&copies);
+    REQUIRE(status == FLOW_OK && output.i == 1116 && !strcmp(pin_text(items[0]).bytes, "a"));
+    /* Calls lend the table: copying it for each of the 64 matches would move
+     * its five headers every time. Text is shared, so it never copies. */
+    REQUIRE(copies.counts.value_header_moves < 64 * 5 && copies.counts.text_bytes < 64);
     release_run();
     char error[256];
     size_t length;
@@ -1841,6 +1832,33 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     return true;
 }
 
+/* A write through a managed pointer copies its value into the pointee, which
+ * no lent argument holds, so the writer and its callers keep lending. */
+TEST_CASE(borrow_argument_sharing_lends_around_pointer_writes)
+{
+    REQUIRE(authored(
+        "Share :: library {"
+        "Root :: (input: string[]) -> int { kept := input; p := &kept; "
+        "n := Replace(input, p); "
+        "if kept[0] == \"z\" { return n; } return 0; }"
+        "Replace :: (values: string[], table: ^(string[])) -> int { "
+        "table^ = Grow(values); if values[0] == \"a\" { return 1; } return 0; }"
+        "Grow :: (values: string[]) -> string[] { grown := values; "
+        "grown[0] = \"z\"; return grown; } }"
+    ));
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    const char *texts[] = { "a" };
+    pin_value items[1], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 1);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 1 && !strcmp(pin_text(items[0]).bytes, "a"));
+    }
+    return true;
+}
 /* Pushes 2.0 onto the local array `local`, in the caller's storage when
  * `built`. */
 static void push_item(int local, bool built)
@@ -2488,6 +2506,7 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
+    RUN_TEST_CASE(borrow_argument_sharing_lends_around_pointer_writes);
     RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
     RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
     RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);

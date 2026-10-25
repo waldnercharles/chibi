@@ -1857,46 +1857,6 @@ static bool pointer_slot(const behavior_function *f, int slot)
 {
     return pointer_value((pin_value){ .type = f->slots[slot] }, f->slot_kinds[slot]);
 }
-/* A retained value can carry arrays or managed pointers through a union or
- * struct. Pointer identity survives; this analysis never follows targets. */
-static bool mutable_payload(pin_value value, int depth)
-{
-    if (value.container != PIN_CONTAINER_SINGLE || value.type == PIN_UNION ||
-        value.type == PIN_POINTER) {
-        return true;
-    }
-    if (value.container != PIN_CONTAINER_SINGLE || value.type != PIN_STRUCT) {
-        return false;
-    }
-    const type_desc *type = pin_value_type(&value);
-    if (!type || depth >= TYPE_MAX_NESTING) {
-        return true;
-    }
-    if (type->alias_of || type->alias) {
-        const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
-        return !target || mutable_payload(
-                              (pin_value){ .type = PIN_STRUCT,
-                                           .type_name = target->name,
-                                           .record = target->carrier },
-                              depth + 1
-                          );
-    }
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        const type_desc *child = field->type == PIN_STRUCT
-                                   ? type_field_type(field, (type_resolver){ 0 })
-                                   : NULL;
-        if (mutable_payload(
-                (pin_value){ .type = field->type,
-                             .type_name = child ? child->name : field->type_name,
-                             .record = child ? child->carrier : NULL },
-                depth + 1
-            )) {
-            return true;
-        }
-    }
-    return false;
-}
 /* VALUE copies separate collection owners. Explicit pointers and views still
  * reach shared targets; opaque union payloads may contain either. */
 static bool shared_targets(pin_value value, int depth)
@@ -1913,7 +1873,7 @@ static bool shared_targets(pin_value value, int depth)
     if (!type || depth >= TYPE_MAX_NESTING) {
         return true;
     }
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
         return !target || shared_targets(
                               (pin_value){ .type = PIN_STRUCT,
@@ -2104,6 +2064,13 @@ static void share_host(share_flow *s, int pc)
         s->unsafe |= !access || access->write_count ||
                      !(access->flags & (NODE_EFFECT_PURE | NODE_EFFECT_WORLD_READ)) ||
                      (access->flags & ~allowed) || host->call->action;
+        /* A native's results own fresh collections: it publishes them, or the
+         * call copies them. Only pointers and views inside still reach. */
+        output = s->retyped && inputs;
+        for (int k = 0; k < host->result_count; k++) {
+            output |= inputs &&
+                      shared_targets(f->data_values[host->result_first + k].initial, 0);
+        }
     } else {
         switch (execution_intrinsic_kind(id)) {
             case EXECUTION_INTRINSIC_VALUE_COPY:
@@ -2118,7 +2085,7 @@ static void share_host(share_flow *s, int pc)
                 output = s->retyped && inputs;
                 for (int k = 0; k < host->result_count; k++) {
                     output |= inputs &&
-                              mutable_payload(
+                              shared_targets(
                                   f->data_values[host->result_first + k].initial,
                                   0
                               );
@@ -2134,20 +2101,32 @@ static void share_host(share_flow *s, int pc)
                 output = s->retyped && inputs;
                 for (int cell = first; cell < host->result_first; cell++) {
                     output |= share_cell(s, cell) &&
-                              mutable_payload(f->data_values[cell].initial, 0);
+                              shared_targets(f->data_values[cell].initial, 0);
                 }
                 break;
             }
             case EXECUTION_INTRINSIC_POINTER_MAKE:
             case EXECUTION_INTRINSIC_POINTER_READ:
             case EXECUTION_INTRINSIC_POINTER_FIELD:
-            case EXECUTION_INTRINSIC_POINTER_REFERENCE:
                 /* A pointer is an alias, including when nested in a copied
                  * record. Its pointee never becomes private call storage. */
                 output = true;
                 break;
+            case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+                /* A reference through a pointer reaches only its pointee in
+                 * the managed heap, never a lent argument; see the write. */
+                output = s->built;
+                break;
             case EXECUTION_INTRINSIC_POINTER_WRITE:
-                s->unsafe = true;
+                /* A pointee lives in the managed heap, never in a lent
+                 * argument, and the write copies its value there: it is safe
+                 * when what it writes shares nothing. A result built in place
+                 * may still update a payload the pointee shares. */
+                s->unsafe |= s->built;
+                for (int cell = host->first + 1; cell < host->result_first; cell++) {
+                    s->unsafe |= share_cell(s, cell) &&
+                                 shared_targets(f->data_values[cell].initial, 0);
+                }
                 output = false;
                 break;
             case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
@@ -2210,7 +2189,9 @@ static void share_host(share_flow *s, int pc)
                 if (kind == EXECUTION_INTRINSIC_MAP_DELETE_PLACE) {
                     value = false;
                 }
-                s->unsafe |= share_cell(s, host->first) || written < 0;
+                /* A write through a reference that reaches no tracked cell
+                 * is safe when what it writes shares nothing. */
+                s->unsafe |= share_cell(s, host->first) || (written < 0 && value);
                 if (written >= 0) {
                     share_taint(s, &s->cells[written], value);
                 }
@@ -2229,7 +2210,7 @@ static void share_host(share_flow *s, int pc)
                 }
                 for (int cell = host->first + 1; cell < host->result_first; cell++) {
                     if (share_cell(s, cell) &&
-                        mutable_payload(f->data_values[cell].initial, 0)) {
+                        shared_targets(f->data_values[cell].initial, 0)) {
                         share_scatter(s, true);
                     }
                 }
@@ -2411,15 +2392,16 @@ static void share_instruction(share_flow *s, int pc)
                               argument->initial.type == BF_POINTER_TYPE) &&
                              callee->argument_sharing != BEHAVIOR_SHARING_SAFE;
             }
-            /* A callee's retained mutable result may alias its arguments or
-             * state unless its result-building proof establishes independence. */
+            /* A callee's result that reaches shared targets may alias its
+             * arguments or state unless its result-building proof establishes
+             * independence. */
             for (int k = 0; k < call->result_count; k++) {
                 int cell = call->result_first + k;
                 bool raw = k >= callee->result_count ||
                            callee->result_kinds[k] != BEHAVIOR_VALUE ||
                            callee->result_defaults[k].type == BF_POINTER_TYPE;
                 bool retained = k < callee->result_count && !callee->builds_results &&
-                                mutable_payload(callee->result_defaults[k], 0);
+                                shared_targets(callee->result_defaults[k], 0);
                 share_taint(s, &s->cells[cell], raw || retained);
                 share_set(s, &s->contents[cell], SHARE_UNKNOWN);
                 share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);

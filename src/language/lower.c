@@ -929,7 +929,8 @@ static int linked_host(
     }
     return index;
 }
-static int primitive(
+/* A host call that reports `failure` when it fails. */
+static int failing_primitive(
     lower *l,
     const node_host_call *call,
     const node_access *access,
@@ -937,6 +938,7 @@ static int primitive(
     const int *slots,
     int count,
     script_type result,
+    behavior_function_failure failure,
     script_range range
 )
 {
@@ -950,13 +952,7 @@ static int primitive(
             host_argument(l, first + i, slots[i], type, range);
         }
     }
-    emit(
-        l,
-        (behavior_function_instruction){ .op = BF_HOST_CALL,
-                                         .left = BEHAVIOR_FUNCTION_HOST_DATA,
-                                         .target = host },
-        range
-    );
+    emit(l, (behavior_function_instruction){ .op = BF_HOST_CALL, .left = failure, .target = host }, range);
     int value = take_result(l, behavior_function_builder_host_results(l->builder, host), result, range);
     for (int i = 0; i < count; i++) {
         if (slots[i] >= 0) {
@@ -970,6 +966,19 @@ static int primitive(
         }
     }
     return value;
+}
+static int primitive(
+    lower *l,
+    const node_host_call *call,
+    const node_access *access,
+    const pin_value *headers,
+    const int *slots,
+    int count,
+    script_type result,
+    script_range range
+)
+{
+    return failing_primitive(l, call, access, headers, slots, count, result, BEHAVIOR_FUNCTION_HOST_DATA, range);
 }
 static int union_wrap(lower *l, int value, script_type from, script_type to, uint64_t tag, script_range range)
 {
@@ -2014,8 +2023,8 @@ static bool lends_argument(const lower *l, const script_expression *call, int at
         const script_symbol *s = &l->a->symbols[e->symbol];
         if ((s->kind != SCRIPT_LOCAL && s->kind != SCRIPT_PARAMETER &&
              s->kind != SCRIPT_RESULT) ||
-            (s->type.flags & SCRIPT_TYPE_REFERENCE) || s->addressed || s->boxed ||
-            l->variables[e->symbol] >= 0 ||
+            (s->type.flags & SCRIPT_TYPE_REFERENCE) || s->addressed ||
+            s->boxed || l->variables[e->symbol] >= 0 ||
             (l->captured && l->captured[e->symbol] >= 0)) {
             return false;
         }
@@ -4391,15 +4400,16 @@ static int sequence_count(lower *l, int array, script_type sequence, script_rang
  * outlives the load. */
 static bool scalar_value(script_type type)
 {
-    return !copied_value(type) && type.storage != PIN_STR && type.storage != PIN_NAME &&
-           !(type.flags & SCRIPT_TYPE_RESULTS);
+    return !copied_value(type) && type.storage != PIN_STR &&
+           type.storage != PIN_NAME && !(type.flags & SCRIPT_TYPE_RESULTS);
 }
 /* Evaluates `index`, a place a reader is done with before its array can
  * change when `borrow` is set, so its element reads need not copy. */
 static int borrowed_place(lower *l, int index, bool borrow)
 {
     const script_expression *e = &l->a->expressions[index];
-    l->borrowing = borrow && (e->kind == SCRIPT_EXPR_INDEX || e->kind == SCRIPT_EXPR_MEMBER);
+    l->borrowing = borrow &&
+                   (e->kind == SCRIPT_EXPR_INDEX || e->kind == SCRIPT_EXPR_MEMBER);
     l->borrowed_expression = index;
     int value = expression(l, index);
     l->borrowing = false;
@@ -4418,8 +4428,9 @@ static int sequence_item(
     pin_value headers[] = { initial(l, sequence), { .type = PIN_I32 } };
     int slots[] = { array, index };
     /* The runtime validates both boxed element headers and packed layouts
-     * before exposing a payload as the statically expected element type. */
-    return primitive(
+     * before exposing a payload as the statically expected element type. An
+     * index outside the sequence is an argument failure. */
+    return failing_primitive(
         l,
         borrowed ? &EXECUTION_sequence_borrow_call : &EXECUTION_sequence_get_call,
         &EXECUTION_sequence_read_access,
@@ -4427,6 +4438,7 @@ static int sequence_item(
         slots,
         2,
         item,
+        BEHAVIOR_FUNCTION_ARGUMENT,
         range
     );
 }
@@ -5660,7 +5672,8 @@ static bool lends_declaration(lower *l, const script_statement *s)
         }
         e = &l->a->expressions[e->left];
     }
-    return e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 && symbol_fixed(l, e->symbol);
+    return e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+           symbol_fixed(l, e->symbol);
 }
 static store_mode declaration_mode(lower *l, const script_statement *s, bool same)
 {
@@ -6066,15 +6079,7 @@ static bool in_place_array(lower *l, const script_statement *s)
     int index = int_slot(l, target->right, s->range);
     /* Reading the element checks the index before the value is evaluated. */
     int receiver = reference_read(l, destination, sequence, s->range);
-    int before = sequence_item(
-        l,
-        receiver,
-        index,
-        sequence,
-        target->type,
-        s->op == SCRIPT_OP_NONE,
-        s->range
-    );
+    int before = sequence_item(l, receiver, index, sequence, target->type, s->op == SCRIPT_OP_NONE, s->range);
     int value = convert(
         l,
         expression(l, s->second),
@@ -6713,8 +6718,9 @@ static void statement_inner(lower *l, int index)
             int original = array;
             /* A relationship streams its targets from the entity; it has no
              * collection to copy. */
-            bool sequence = !streaming && (collection.container == PIN_CONTAINER_ARRAY ||
-                                           collection.container == PIN_CONTAINER_VIEW);
+            bool sequence = !streaming &&
+                            (collection.container == PIN_CONTAINER_ARRAY ||
+                             collection.container == PIN_CONTAINER_VIEW);
             int fixed_count = -1;
             if (sequence && borrowed) {
                 fixed_count = save_slot(
@@ -6971,8 +6977,9 @@ static void statement_inner(lower *l, int index)
                     streaming ? item
                     : text
                         ? string_cursor(l, &EXECUTION_string_item_call, array, index, element, s->range)
-                    : map ? map_item(l, array, index, false, collection, element, s->range)
-                          : sequence_item(l, array, index, collection, element, lent, s->range),
+                    : map
+                        ? map_item(l, array, index, false, collection, element, s->range)
+                        : sequence_item(l, array, index, collection, element, lent, s->range),
                     lent ? STORE_LEND : STORE_COPY,
                     s->range
                 );
@@ -7571,17 +7578,21 @@ static bool reference_argument(const lower *l, const script_expression *call, in
     if (call->kind != SCRIPT_EXPR_CALL || call->arguments[at].parameter < 0) {
         return false;
     }
-    int index = call->right >= 0 ? (call->entry >= 0 ? call->entry : call->right) : -1;
+    int index = call->right >= 0 ? (call->entry >= 0 ? call->entry : call->right)
+                                 : -1;
     const script_function *function = index >= 0
                                         ? input_signature(l->a, &l->a->functions[index])
                                         : NULL;
     const script_catalog_capability
-        *cap = function ? NULL : script_catalog_capability_by_id(l->catalog, call->capability);
+        *cap = function
+                 ? NULL
+                 : script_catalog_capability_by_id(l->catalog, call->capability);
     int parameter = call->arguments[at].parameter;
     script_type type = function && parameter < function->parameter_count
                          ? l->a->symbols[function->parameters[parameter]].type
-                     : cap && parameter < cap->parameter_count ? cap->parameters[parameter].type
-                                                               : (script_type){ 0 };
+                     : cap && parameter < cap->parameter_count
+                         ? cap->parameters[parameter].type
+                         : (script_type){ 0 };
     return (type.flags & SCRIPT_TYPE_REFERENCE) != 0;
 }
 static void mark_root(const lower *l, int index)
@@ -7603,8 +7614,8 @@ static bool symbol_written(lower *l, int symbol)
             if (s->kind == SCRIPT_STMT_ASSIGN || s->kind == SCRIPT_STMT_REDUCE) {
                 mark_root(l, s->expression);
             }
-            if ((s->kind == SCRIPT_STMT_ASSIGN || s->kind == SCRIPT_STMT_REDUCE ||
-                 s->kind == SCRIPT_STMT_FOR) &&
+            if ((s->kind == SCRIPT_STMT_ASSIGN ||
+                 s->kind == SCRIPT_STMT_REDUCE || s->kind == SCRIPT_STMT_FOR) &&
                 s->symbol >= 0) {
                 l->written[s->symbol] = true;
             }
@@ -7838,8 +7849,10 @@ static void lower_function(lower *l, int index)
                 f->range
             );
             store_symbol(l, symbol, value, f->range);
-        } else if ((type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE) &&
-                   type.container != PIN_CONTAINER_VIEW && !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        } else if (
+            (type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE) &&
+            type.container != PIN_CONTAINER_VIEW && !(type.flags & SCRIPT_TYPE_OPTIONAL)
+        ) {
             /* A view has no zero: the function's return gives it its window. */
             script_expression zero = { .kind = type.container == PIN_CONTAINER_MAP
                                                  ? SCRIPT_EXPR_MAP

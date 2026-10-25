@@ -780,6 +780,24 @@ void behavior_function_collection_transfer(
     collection_transfer transfer = { .from = from, .to = to };
     pin_value_collection_visit_owners(value, collection_remove, &transfer);
 }
+typedef struct
+{
+    const behavior_function_context *context;
+    bool held;
+} collection_held;
+static void collection_find(const pin_value *value, void *user)
+{
+    collection_held *find = user;
+    for (int i = 0; i < acount(find->context->collection_owners); i++) {
+        find->held |= collection_owner_same(find->context->collection_owners[i], *value);
+    }
+}
+bool behavior_function_collection_holds(const behavior_function_context *context, const pin_value *value)
+{
+    collection_held find = { .context = context };
+    pin_value_collection_visit_owners(value, collection_find, &find);
+    return find.held;
+}
 void behavior_function_collection_clear(behavior_function_context *context)
 {
     for (int i = 0; i < acount(context->collection_owners); i++) {
@@ -1589,7 +1607,8 @@ void behavior_managed_heap_safepoint(
         return;
     }
     size_t allocated = 0, kept = 0;
-    for (behavior_managed_heap *scope = managed_owner(heap); scope; scope = scope->previous) {
+    for (behavior_managed_heap *scope = managed_owner(heap); scope;
+         scope = scope->previous) {
         allocated += scope->storage.allocated;
         kept += scope->storage.kept;
     }

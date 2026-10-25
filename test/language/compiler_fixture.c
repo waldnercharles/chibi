@@ -406,7 +406,9 @@ static bool run(
 }
 int compiler_fixture_snapshot(arena *storage, pin_value *out, const pin_value *value)
 {
-    if (pin_value_snapshot_to_arena(storage, out, value)) {
+    /* A snapshot keeps managed collections' identity, so results that outlive
+     * the fixture's heap are captured. */
+    if (pin_value_capture_to_arena(storage, out, value)) {
         return -1;
     }
     box(storage, out, 0);

@@ -498,9 +498,7 @@ static bool owned(const arena *storage, const pin_value *value)
             REQUIRE(owned(storage, &data->values[i]));
         }
     } else if (behavior_scalar_string(value->type)) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && arena_contains(storage, value->text));
     }
     return true;
 }

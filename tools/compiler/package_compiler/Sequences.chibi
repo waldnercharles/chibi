@@ -76,7 +76,11 @@ SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: uin
     cells.append(MovedCell(result));
     hosts: Host[] = [{owned_arguments: false, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
                      result_count: 1, written: false}];
-    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    // An index outside the sequence is an argument failure, as stage zero
+    // reports it.
+    failure := target.data_failure;
+    if (intrinsic == SequenceGetIntrinsic) { failure = target.argument_failure; }
+    code.append(Instruction(ops.host_call, 0, 0, failure, 0, at.host, node));
     slots.append(AddressSlot(target));
     address := at.slot + length(slots) - 1;
     code.append(Instruction(ops.host_slot, target.pointer_storage, address, output, 0, 0, node));
@@ -504,8 +508,10 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                          result_first: at.cell + 4, result_count: 1, written: false}];
         result := Typed(at.slot + 2, part.storage, part.container, part.record);
         result.place = true;
-        return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [],
-                            cells, hosts, [], [], [], [], 1, result, NoValue(), []);
+        // A component-typed record's field reads it, as stage zero records.
+        return EffectsStep(Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [],
+                                        cells, hosts, [], [], [], [], 1, result, NoValue(), []),
+                           MemberEffects(types, base.record));
     }
     if (item.phase == PlaceIndexPhase) {
         base := values[top - 1];

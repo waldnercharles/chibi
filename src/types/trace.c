@@ -12,7 +12,7 @@
 static void struct_fields(const type_desc *type, const void *data, arena_marker mark, void *user, int depth)
 {
     assert(type && data && depth < 16);
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
         assert(target && target->size == type->size);
         struct_fields(target, data, mark, user, depth + 1);
@@ -137,7 +137,7 @@ static bool boundary_layout_valid(const type_desc *type, int depth)
         (type->field_count && !type->fields) || depth >= 64) {
         return false;
     }
-    if (type->alias_of || type->alias) {
+    if (type_alias_layout(type)) {
         const type_desc *nested = type_alias_type(type, (type_resolver){ 0 });
         return nested && nested->size == type->size &&
                boundary_layout_valid(nested, depth + 1);
@@ -170,11 +170,6 @@ static bool boundary_layout_pointer_free(const type_desc *type, int depth)
 {
     if (!type || !type->size || type->field_count <= 0 || !type->fields || depth >= 64) {
         return false;
-    }
-    if (type->alias_of || type->alias) {
-        const type_desc *nested = type_alias_type(type, (type_resolver){ 0 });
-        return nested && nested->size == type->size &&
-               boundary_layout_pointer_free(nested, depth + 1);
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
@@ -287,7 +282,7 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
             return "Cannot retain language value";
         }
         /* Validation already proves this alias chain finite and size-matched. */
-        while (type->alias_of || type->alias) {
+        while (type_alias_layout(type)) {
             type = type_alias_type(type, (type_resolver){ 0 });
         }
         for (int i = 0; i < type->field_count; i++) {

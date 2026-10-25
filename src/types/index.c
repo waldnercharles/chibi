@@ -187,9 +187,11 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         return 0;
     }
 
-    /* Stage a VALUE before detachment: item may borrow an existing packed row. */
-    pin_value retained;
-    if (pin_value_collection_copy(storage, &retained, item)) {
+    /* Stage a VALUE before detachment: item may borrow an existing packed row.
+     * Scalars are their own copies. */
+    pin_value retained = *item;
+    if (pin_value_holds_storage(item) &&
+        pin_value_collection_copy(storage, &retained, item)) {
         return -1;
     }
     if ((array->storage && array->storage != storage) ||
@@ -232,6 +234,12 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         pin_array_mutation_end(array);
         pin_value_collection_release(&retained);
         return -1;
+    }
+    if (array->stride) {
+        pin_copy_record(
+            retained.type == PIN_STRUCT ? PIN_COPY_RECORD : PIN_COPY_VALUE_BUFFER,
+            array->stride
+        );
     }
     if (!rebuild) {
         array->buckets = index;

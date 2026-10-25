@@ -257,9 +257,7 @@ static bool own(arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && arena_contains(storage, value->text));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
@@ -973,7 +971,7 @@ static bool retained_results()
             const pin_value *check = &saved_check[b][kind];
             REQUIRE(
                 check->type == PIN_STR && pin_text(*check).bytes &&
-                arena_contains(&retained[b][kind], pin_text(*check).bytes) &&
+                arena_contains(&retained[b][kind], check->text) &&
                 !strcmp(pin_text(*check).bytes, saved_expected[kind])
             );
         }

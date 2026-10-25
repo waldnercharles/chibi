@@ -30,6 +30,9 @@ const char *pin_value_text_clone(arena *, pin_value *out, pin_value source);
  * retains the original backing directly. Empty slices retain no backing.
  * An invalid window leaves out unchanged. */
 const char *pin_value_text_slice(arena *, pin_value *out, pin_value source, size_t start, size_t length);
+/* What an arena holding nonempty text of this length accounts for it: its
+ * descriptor and the shared backing it retains. */
+size_t pin_text_footprint(size_t length);
 /* Releases a heap descriptor and its retained backing. */
 void pin_text_destroy(const pin_string *);
 /* Reject embedded NUL before exposing C text. Reuse a terminating buffer or

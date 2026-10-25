@@ -253,6 +253,13 @@ static const behavior_function_invocation *invocation(
     assert(i->op == BF_INVOKE && i->left >= 0 && i->left < acount(function->calls));
     return &function->calls[i->left];
 }
+/* Where a copy shares its source's payload until either side writes it: the
+ * managed heap that holds collections. */
+static arena *sharing_storage(behavior_function_context *context)
+{
+    return context->managed_heap ? &context->managed_heap->storage
+                                 : context->value_storage;
+}
 static invocation_frame *frame_new(
     struct behavior_function_calls *calls,
     const behavior_function *function,
@@ -324,12 +331,28 @@ static invocation_frame *frame_new(
     };
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     /* A call lends its caller's values: the callee copies a parameter it
-     * writes. Owned arguments are copies the frame takes over. */
+     * writes. Owned arguments are copies the frame takes over. A callee that
+     * may write through a reference to a lent value gets its own copy, which
+     * keeps the value it was passed. */
+    bool lend = call.function->argument_sharing == BEHAVIOR_SHARING_SAFE;
+    arena *payload = parent->value_storage;
+    arena *values = payload->collectable ? payload : &frame->storage;
     for (int p = 0; p < call.count; p++) {
-        arguments[p] = parent->data->values[call.first + p];
+        const pin_value *argument = &parent->data->values[call.first + p];
+        arguments[p] = *argument;
         if (call.owned_arguments) {
             behavior_function_collection_transfer(parent, &frame->context, &arguments[p]);
+            continue;
         }
+        if (lend || !pin_value_holds_storage(argument)) {
+            continue;
+        }
+        if (pin_value_collection_copy(sharing_storage(parent), &arguments[p], argument)) {
+            frame_free(frame, FLOW_ERR_ARGUMENT);
+            call_error(function, parent, BEHAVIOR_FUNCTION_ARGUMENT, "function argument cannot be retained");
+            return NULL;
+        }
+        behavior_function_collection_retain(&frame->context, &arguments[p]);
     }
     frame->context.arguments_stabilized = true;
     frame->context.arguments = arguments;
@@ -344,11 +367,7 @@ static invocation_frame *frame_new(
     if (behavior_function_resumable(call.function) && !frame->activation.values) {
         behavior_function_activation_init(call.function, &frame->activation);
     }
-    arena *payload = parent->value_storage;
-    behavior_function_bind_storage(
-        &frame->context,
-        payload->collectable ? payload : &frame->storage
-    );
+    behavior_function_bind_storage(&frame->context, values);
     frame->context.result_storage = payload;
     behavior_function_prepare_results(
         call.function,
@@ -455,6 +474,14 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
                 &retained,
                 &context->results[p]
             )) {
+            return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
+        }
+        /* A result that shares a collection the caller holds, such as an
+         * argument it lent or an earlier result, gets its own copy, so that
+         * writing one leaves the other. */
+        pin_value shared = retained;
+        if (behavior_function_collection_holds(parent, &shared) &&
+            pin_value_collection_copy(sharing_storage(parent), &retained, &shared)) {
             return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result cannot be retained");
         }
         if (out->ptr != retained.ptr) {

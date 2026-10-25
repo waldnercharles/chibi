@@ -57,7 +57,7 @@ FindSequenceCollection :: (types: TypeDecl[], element: ValueType) -> int {
 AddSequenceCollection :: (types: TypeDecl[], element: ValueType, package: int) -> TypeDecl[] {
     if (element.storage == 0 || FindSequenceCollection(types, element) >= 0) { return types; }
     zero := binding.ID("union-type", "0:0:0:0:0");
-    id := binding.ID("collection-type", format_text("{}:{}:{}", 1, zero, OptionalTag(types, element)));
+    id := binding.ID("collection-type", format_text("1:{}:{}", zero, OptionalTag(types, element)));
     declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
                           node: -1, kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1,
                           storage: element.storage, id: id, layout: 0, component: 0, key: 0,

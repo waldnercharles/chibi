@@ -1,6 +1,7 @@
 #include "runtime/native_capabilities.h"
 
 #include "capabilities/catalog_index.h"
+#include "execution/operation.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -261,6 +262,14 @@ static bool add_capability(
     if (catalog_index_add(index, source->id, acount(n->capabilities)) >= 0) {
         return reject(error, size, "Duplicate native capability", source->id);
     }
+    if (!script_catalog_operation_valid(source)) {
+        return reject(
+            error,
+            size,
+            "Invalid engine operation declaration",
+            source->id
+        );
+    }
     script_catalog_capability copy = *source;
     copy.name = own(n, source->name);
     copy.qualified_name = own(n, source->qualified_name);
@@ -329,9 +338,11 @@ static bool add_binding(
          copy.command->intrinsic > NODE_COMMAND_DELAY)) {
         return reject(error, size, "Invalid native command descriptor", copy.id);
     }
-    if (copy.intrinsic && copy.intrinsic != BF_DELAY &&
-        copy.intrinsic != BF_OWNER && copy.intrinsic != BF_ASSERT) {
-        return reject(error, size, "Unsupported native instruction intrinsic", copy.id);
+    if (declaration->operation != SCRIPT_OPERATION_UNKNOWN
+            ? copy.intrinsic != behavior_operation_instruction(declaration->operation) ||
+                  copy.access || copy.instance_state || copy.query_service
+            : copy.intrinsic && copy.intrinsic != BF_ASSERT) {
+        return reject(error, size, "Native binding differs from engine operation contract", copy.id);
     }
     for (int i = 0; i < acount(n->bindings); ++i) {
         if (n->bindings[i].id == copy.id) {
@@ -544,6 +555,19 @@ native_capabilities *native_capabilities_new(
             }
             copy.instruction.message = own(n, copy.instruction.message);
             apush(n->globals, copy);
+        }
+    }
+    for (int i = 0; i < n->catalog.capability_count; i++) {
+        const script_catalog_capability *declaration = &n->capabilities[i];
+        if (declaration->operation != SCRIPT_OPERATION_UNKNOWN &&
+            !native_capabilities_find(n, declaration->id, 0)) {
+            reject(
+                error,
+                size,
+                "Engine operation has no execution binding",
+                declaration->id
+            );
+            goto fail;
         }
     }
     for (int i = 0; i < acount(layouts); i++) {

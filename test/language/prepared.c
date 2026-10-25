@@ -1,7 +1,9 @@
 #include "execution/prepared.h"
 
+#include "authoring/native_bindings.h"
 #include "execution/log.h"
 #include "language/lower.h"
+#include "runtime/core_definition.h"
 #include "runtime/state_definition.h"
 #include "support/array.h"
 #include "test/prepared_fixture.h"
@@ -193,6 +195,118 @@ static bool save(const char *name)
 {
     return save_checked(name, false);
 }
+TEST_CASE(prepared_operations_write_after_catalog_retirement)
+{
+    native_capability_definition alias = { 0 };
+    for (int i = 0; i < CORE_DEFINITION_PACK.definition_count; i++) {
+        if (CORE_DEFINITION_PACK.definitions[i].operation == SCRIPT_OPERATION_OWNER) {
+            alias = CORE_DEFINITION_PACK.definitions[i];
+        }
+    }
+    REQUIRE(alias.operation == SCRIPT_OPERATION_OWNER);
+    alias.canonical_name = "OwnerAlias";
+    alias.source_name = "owner_alias";
+    const native_definition_pack definitions[] = {
+        CORE_DEFINITION_PACK,
+        { .definitions = &alias, .definition_count = 1 },
+    };
+    const uint64_t entity = script_catalog_id("type", "ecs.entity");
+    const script_catalog base_catalog = { .capabilities = capabilities,
+                                          .capability_count = 1,
+                                          .entity_type = entity };
+    const native_capability_pack base = { .catalog = &base_catalog };
+    char error[256];
+    state_native = native_capabilities_from_definition_packs(
+        &base,
+        1,
+        definitions,
+        NATIVE_COUNT(definitions),
+        error,
+        sizeof error
+    );
+    if (!state_native) {
+        fprintf(stderr, "prepared operation catalog: %s\n", error);
+    }
+    REQUIRE(state_native);
+    const script_catalog *native = native_capabilities_catalog(state_native);
+    syntax = script_parse(
+        "Operations :: behavior { before: entity = 0; resumed: entity = 0; "
+        "same: bool = false; text: string = \"old\"; count: int = 0; "
+        "action pending = delay(Duration: 0.25); on Begin :: () { "
+        "before = owner_alias(); saved := before; saved_text := text; "
+        "text = \"new\"; await delay(0.25); resumed = owner_alias(); "
+        "same = resumed == self && resumed == saved; text = saved_text; "
+        "pending(); } after pending.Completed { count += 1; } }"
+    );
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze(syntax, native);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "prepared operation semantic: %s\n",
+            analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(analysis->valid);
+    const char *const names[] = { "before", "resumed", "same", "text", "count" };
+    uint64_t states[NATIVE_COUNT(names)] = { 0 };
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *symbol = &analysis->symbols[i];
+        if (symbol->kind != SCRIPT_STATE) {
+            continue;
+        }
+        for (int j = 0; j < NATIVE_COUNT(names); j++) {
+            if (!strcmp(symbol->name, names[j])) {
+                states[j] = symbol->id;
+            }
+        }
+    }
+    for (int i = 0; i < NATIVE_COUNT(states); i++) {
+        REQUIRE(states[i]);
+    }
+    const script_lower_bindings bindings = authoring_native_bindings(state_native);
+    plan = script_lower(analysis, native, &bindings);
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "prepared operation lowering: %s\n",
+            plan->diagnostics[i].message
+        );
+    }
+    REQUIRE(plan->valid && !plan->import_count);
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "prepared operation finish: %s\n", error);
+    }
+    REQUIRE(module && !execution_module_import_count(module));
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    native_capabilities_free(state_native);
+    analysis = NULL;
+    syntax = NULL;
+    state_native = NULL;
+    REQUIRE(!plan);
+    REQUIRE(save("operations.prepared"));
+    char path[PREPARED_TEST_MAX_PATH];
+    int n = snprintf(path, sizeof path, "%s/operations-state.txt", directory);
+    REQUIRE(n > 0 && n < (int)sizeof path);
+    FILE *file = fopen(path, "w");
+    REQUIRE(file);
+    int written = fprintf(
+        file,
+        "%llu %llu %llu %llu %llu %llu\n",
+        (unsigned long long)entity,
+        (unsigned long long)states[0],
+        (unsigned long long)states[1],
+        (unsigned long long)states[2],
+        (unsigned long long)states[3],
+        (unsigned long long)states[4]
+    );
+    bool closed = fclose(file) == 0;
+    REQUIRE(written > 0 && closed);
+    return true;
+}
+
 TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
 {
     type = (script_catalog_type){ .id = 101,
@@ -581,6 +695,7 @@ void test_language_prepared_write(const char *path)
     directory = path;
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prepared_rejects_hidden_empty_collection_task_schema);
+    RUN_TEST_CASE(prepared_operations_write_after_catalog_retirement);
     RUN_TEST_CASE(prepared_source_generations_write_after_analysis_retirement);
     RUN_TEST_CASE(prepared_external_closure_generations);
     RUN_TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement);

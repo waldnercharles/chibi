@@ -174,6 +174,7 @@ static const script_catalog_parameter delay_parameter = {
     .type = { .storage = PIN_F64 },
 };
 static const char *const completed[] = { "Completed" };
+static const char *const delay_entries[] = { "In" };
 static const script_catalog_parameter library_results[] = {
     { .name = "local_count", .type = { .storage = PIN_F64 } },
     { .name = "position_x", .type = { .storage = PIN_F64 } },
@@ -200,6 +201,9 @@ static const script_catalog_capability capabilities[] = {
     { .id = 20,
       .name = "Delay",
       .kind = SCRIPT_CAPABILITY_ACTION,
+      .operation = SCRIPT_OPERATION_DELAY,
+      .entries = delay_entries,
+      .entry_count = 1,
       .parameters = &delay_parameter,
       .parameter_count = 1,
       .outcomes = completed,
@@ -261,6 +265,8 @@ static const script_catalog_capability capabilities[] = {
       .result_count = 1,
       .effects = SCRIPT_EFFECT_HOST },
 };
+static const native_capability_binding operation_binding = { .id = 20,
+                                                             .intrinsic = BF_DELAY };
 static const script_catalog_global globals[] = {
     { .id = 30, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = 700 } },
     { .id = 31, .name = "dt", .type = { .storage = PIN_F64 } },
@@ -535,6 +541,8 @@ static bool compile_pack(const char *source, behavior_backend backend, const nat
 {
     const native_capability_pack base = {
         .catalog = &catalog,
+        .bindings = &operation_binding,
+        .binding_count = 1,
         .layouts = reflected_types,
         .layout_count = 2,
     };
@@ -556,6 +564,8 @@ static bool lowering_reports(const char *source, const native_definition_pack *p
 {
     const native_capability_pack base = {
         .catalog = &catalog,
+        .bindings = &operation_binding,
+        .binding_count = 1,
         .layouts = reflected_types,
         .layout_count = 2,
     };
@@ -1306,6 +1316,8 @@ TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors)
     for (int backend = 0; backend < 2; backend++) {
         prepare();
         const native_capability_pack pack = { .catalog = &active,
+                                              .bindings = &operation_binding,
+                                              .binding_count = 1,
                                               .layouts = reflected_types,
                                               .layout_count = 2 };
         char error[256];

@@ -4,6 +4,7 @@
 #include "execution/delay.h"
 #include "execution/intrinsics.h"
 #include "execution/map_intrinsics.h"
+#include "execution/operation.h"
 #include "execution/scalar.h"
 #include "execution/state.h"
 #include "execution/task.h"
@@ -3207,6 +3208,13 @@ static int call(lower *l, const script_expression *e)
                     !host.query && host.intrinsic != BF_DELAY &&
                     host.intrinsic != BF_OWNER && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
+        return -1;
+    }
+    if (cap->operation != SCRIPT_OPERATION_UNKNOWN
+            ? host.intrinsic != behavior_operation_instruction(cap->operation) ||
+                  host.call || host.function || host.command || host.query || host.access
+            : host.intrinsic && host.intrinsic != BF_ASSERT) {
+        error(l, e->range, "Linked native binding differs from engine operation contract");
         return -1;
     }
     if (host.function) {
@@ -7345,6 +7353,24 @@ static execution_module_plan *lower_analysis(
             apush(m->diagnostics, diagnostic);
         }
         m->diagnostic_count = acount(m->diagnostics);
+        return m;
+    }
+    /* Analysis can rewrite specialized calls into non-call expressions. Check
+     * the entire operation catalog before lowering any of those expressions. */
+    for (int i = 0; i < catalog->capability_count; i++) {
+        if (!script_catalog_operation_valid(&catalog->capabilities[i])) {
+            execution_module_diagnostic diagnostic = { 0 };
+            snprintf(
+                diagnostic.message,
+                sizeof diagnostic.message,
+                "Invalid engine operation declaration: %s",
+                catalog->capabilities[i].name
+            );
+            apush(m->diagnostics, diagnostic);
+        }
+    }
+    m->diagnostic_count = acount(m->diagnostics);
+    if (m->diagnostic_count) {
         return m;
     }
     assert(a->identity);

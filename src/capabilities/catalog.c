@@ -607,6 +607,22 @@ uint64_t script_catalog_capability_abi(const script_catalog *catalog, const scri
     hash = abi_word(hash, capability->completion_outcome);
     hash = abi_word(hash, capability->state_kind);
     hash = abi_word(hash, capability->effects);
+    if (capability->operation != SCRIPT_OPERATION_UNKNOWN) {
+        /* Preserve opaque-call identities; a checked operation is a different
+         * semantic ABI even when its source signature is identical. */
+        hash = abi_text(hash, "engine-operation");
+        hash = abi_word(hash, capability->operation);
+        const script_operation_contract *contract = script_operation_describe(
+            capability->operation
+        );
+        if (contract) {
+            hash = abi_text(hash, contract->name);
+            hash = abi_text(hash, contract->instruction);
+            hash = abi_word(hash, contract->version);
+            hash = abi_word(hash, contract->effects);
+            hash = abi_word(hash, contract->guarantees);
+        }
+    }
     hash = abi_word(hash, capability->state_access);
     hash = abi_word(hash, capability->component_access);
     if (capability->component_access != SCRIPT_COMPONENT_ACCESS_NONE) {

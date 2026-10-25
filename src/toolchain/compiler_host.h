@@ -7,7 +7,8 @@
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
- * compiler's module decodes to about 200 MB and needs about 394 M units of
+ * compiler's module keeps about 200 MB, peaks at about 372 MiB while the
+ * verifier checks its largest function, and needs about 394 M units of
  * record-layout work: each record and union value it copies or drops carries
  * its record header. Loading allows each module, and the closure together,
  * this much storage, each module this many records and this much layout work.
@@ -16,7 +17,7 @@
  * bootstrap compiles and reads it, --output-artifact writes it validated, and
  * --output-bytes writes any byte[] result unvalidated, such as the asset
  * compiler's closure. JSON invocations keep COMPILER_HOST_MAX_BYTES. */
-#define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_CLOSURE_BYTES (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (512u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)

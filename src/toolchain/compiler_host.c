@@ -450,11 +450,12 @@ bool compiler_host_accepts_byte_entry(
     }
     return true;
 }
-/* A byte result's storage: its header, its items as values with growth's spare
- * capacity, and the copy of its octets. */
-#define OUTPUT_STORAGE                                                         \
-    (sizeof(pin_array) +                                                       \
-     (size_t)COMPILER_HOST_MAX_OUTPUT_BYTES * (2 * sizeof(pin_value) + 1))
+/* A byte result's storage for `limit` octets: its header, its items as values
+ * with growth's spare capacity, and the copy of its octets. */
+static size_t output_storage(size_t limit)
+{
+    return sizeof(pin_array) + limit * (2 * sizeof(pin_value) + 1);
+}
 /* Bytes may be packed octets or boxed values. Copy while the runtime arena is
  * alive, and expose nothing until every item has been checked. */
 static bool extract_bytes(const pin_value *value, size_t limit, invocation_result *out)
@@ -468,12 +469,12 @@ static bool extract_bytes(const pin_value *value, size_t limit, invocation_resul
     }
     if (array->element_type != PIN_U8 || array->record || array->type_name ||
         !pin_array_valid(array) || (size_t)array->count > limit ||
-        pin_array_storage_bytes(array) > OUTPUT_STORAGE - sizeof *array) {
+        pin_array_storage_bytes(array) > output_storage(limit) - sizeof *array) {
         return false;
     }
     size_t length = (size_t)array->count;
     size_t represented = sizeof *array + pin_array_storage_bytes(array);
-    if (length > OUTPUT_STORAGE - represented) {
+    if (length > output_storage(limit) - represented) {
         return false;
     }
     unsigned char *bytes = length ? xmalloc(length) : NULL;
@@ -751,7 +752,7 @@ bool compiler_host_invoke_bytes(
         return false;
     }
     *out = (compiler_host_bytes){ 0 };
-    if (!max_bytes || max_bytes > COMPILER_HOST_MAX_OUTPUT_BYTES) {
+    if (!max_bytes || max_bytes > COMPILER_HOST_MAX_ARTIFACT_BYTES) {
         message(out->diagnostic, sizeof out->diagnostic, "invalid compiler byte output limit");
         return false;
     }

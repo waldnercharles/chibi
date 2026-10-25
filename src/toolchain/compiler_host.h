@@ -8,16 +8,19 @@
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module decodes to about 200 MB and needs about 394 M units of
- * record-layout work: every copied or dropped collection value carries its
- * record header. Loading allows each module, and the closure together, this
- * much storage, each module this many records and this much layout work. Its
- * closure, about 30 MB, is returned as a byte[] of that length; a byte result
- * may be COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON invocations keep
- * COMPILER_HOST_MAX_BYTES. */
+ * record-layout work: each record and union value it copies or drops carries
+ * its record header. Loading allows each module, and the closure together,
+ * this much storage, each module this many records and this much layout work.
+ * A byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. A compiler's own
+ * closure, about 30 MB, may be COMPILER_HOST_MAX_ARTIFACT_BYTES long: the
+ * bootstrap compiles and reads it, --output-artifact writes it validated, and
+ * --output-bytes writes any byte[] result unvalidated, such as the asset
+ * compiler's closure. JSON invocations keep COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (512u * 1024u * 1024u)
-#define COMPILER_HOST_MAX_OUTPUT_BYTES (32u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_ARTIFACT_BYTES (32u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000
 #define COMPILER_HOST_MAX_DEPTH 64
 #define COMPILER_HOST_MAX_BATCH 64
@@ -99,9 +102,10 @@ bool compiler_host_invoke(
 
 /* Exactly one owned primitive byte[] result, copied before runtime teardown.
  * Input and instruction-budget rules match invoke. max_bytes must be in
- * [1, COMPILER_HOST_MAX_OUTPUT_BYTES]. Empty success is {NULL, 0}; every failure also
- * has null/zero output, with a diagnostic and actual execution counts/status.
- * This bounds represented output storage, not all runtime arena allocations. */
+ * [1, COMPILER_HOST_MAX_ARTIFACT_BYTES]. Empty success is {NULL, 0}; every
+ * failure also has null/zero output, with a diagnostic and actual execution
+ * counts/status. max_bytes also bounds represented output storage, not all
+ * runtime arena allocations. */
 bool compiler_host_invoke_bytes(
     compiler_host *,
     uint64_t entry,

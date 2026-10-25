@@ -641,8 +641,13 @@ selection, cache and installed-format contracts do not change.
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
 requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
-an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (32 MiB) octets;
-the CLI uses the upper bound.
+an output limit from 1 through `COMPILER_HOST_MAX_ARTIFACT_BYTES` (32 MiB)
+octets, and the limit also bounds the result's represented storage. Every
+in-process caller passes `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB). The CLI's
+two file outputs pass the artifact bound: `--output-artifact`, which loads the
+result as a compiler before publishing it, and `--output-bytes`, which writes
+whatever bytes the entry returns, in any format. The asset compiler's facade,
+about 18 MB, is written through `--output-bytes`, as are stage one's outputs.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
 before releasing runtime storage. Empty success is a null pointer and zero

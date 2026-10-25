@@ -11,7 +11,7 @@
 typedef struct
 {
     TSNode declaration, value, after;
-    bool inlining;
+    bool inlining, qualified;
 } state_action;
 
 typedef struct
@@ -221,6 +221,46 @@ static void render_send(rewrite *r, TSNode node, char **out)
     }
     append_string(out, ")");
 }
+/* Whether a declaration inside `node` binds the name `state` spells. */
+static bool binds(const rewrite *r, TSNode node, TSNode state)
+{
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        const char *name = ts_node_field_name_for_child(node, i);
+        bool declares = is(node, "pattern_bindings") ||
+                        (name && !strcmp(name, "name") &&
+                         (is(node, "local_declaration") ||
+                          is(node, "constant_declaration") ||
+                          is(node, "parameter") || is(node, "for_statement"))) ||
+                        (name && !strcmp(name, "key") && is(node, "for_statement")) ||
+                        (name && !strcmp(name, "binding") &&
+                         (is(node, "is_expression") || is(node, "as_expression")));
+        if ((declares && same_text(r->text, child, state)) || binds(r, child, state)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether a declaration in the callable around `at` could shadow the state
+ * `types` names. */
+static bool shadowed(const rewrite *r, TSNode at, TSNode types)
+{
+    TSNode type = named_count(types) == 1 ? named_child(types, 0) : (TSNode){ 0 };
+    TSNode name = is(type, "type") && named_count(type) == 1 ? field(type, "name")
+                                                             : type;
+    TSNode callable = at;
+    while (!ts_node_is_null(callable) &&
+           ts_node_is_null(field(callable, "parameters"))) {
+        callable = ts_node_parent(callable);
+    }
+    return !ts_node_is_null(callable) && binds(r, callable, name);
+}
+/* Appends the state `types` names, as `state.X` when it may be shadowed. */
+static void state_name(rewrite *r, TSNode types, bool qualified, char **out)
+{
+    append_string(out, qualified ? "state." : "");
+    argument_name(r, types, out);
+}
 static void render_call(rewrite *r, TSNode node, char **out)
 {
     TSNode function = field(node, "function"),
@@ -231,7 +271,7 @@ static void render_call(rewrite *r, TSNode node, char **out)
         argument_name(r, types, out);
         render(r, arguments, out);
     } else if (named(r->text, function, "getvariable") && !named_count(arguments)) {
-        argument_name(r, types, out);
+        state_name(r, types, shadowed(r, node, types), out);
     } else if (named(r->text, function, "sendevent")) {
         render_send(r, node, out);
     } else if (same_name(r->text, function, types)) {
@@ -242,14 +282,14 @@ static void render_call(rewrite *r, TSNode node, char **out)
     }
 }
 /* `set_variable<X>(v)` as `X = v`. */
-static void render_store(rewrite *r, TSNode call, char **out)
+static void render_store(rewrite *r, TSNode call, bool qualified, char **out)
 {
     TSNode value = sole_value(field(call, "arguments"));
     if (ts_node_is_null(value)) {
         refuse(r, call, "state write without one value");
         return;
     }
-    argument_name(r, field(call, "type_arguments"), out);
+    state_name(r, field(call, "type_arguments"), qualified, out);
     append_string(out, " = ");
     render(r, value, out);
     r->changed = true;
@@ -288,18 +328,97 @@ static int line_start(const rewrite *r, TSNode node)
     }
     return line;
 }
+/* Whether `node` is `N.Value` for the action N. */
+static bool value_read(const rewrite *r, TSNode node, const state_action *action)
+{
+    return is(node, "member_expression") &&
+           named(r->text, field(node, "member"), "value") &&
+           same_text(r->text, field(node, "object"), field(action->declaration, "name"));
+}
+/* Whether `node` reads `N.Value` for the action N. */
+static bool reads_value(const rewrite *r, TSNode node, const state_action *action)
+{
+    if (value_read(r, node, action)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < named_count(node); i++) {
+        if (reads_value(r, named_child(node, i), action)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether `node` itself may change the state N sets, or let other code run,
+ * once its operands are evaluated: an assignment to the state, a state write,
+ * an action, an await or a yield. */
+static bool changes(const rewrite *r, TSNode node, const state_action *action)
+{
+    TSNode types = field(action->value, "type_arguments");
+    TSNode state = field(named_child(types, 0), "name");
+    TSNode target = field(node, "target");
+    if (is(target, "member_expression") &&
+        is(field(target, "object"), "builtin_reference")) {
+        target = field(target, "member");
+    }
+    return (is(node, "assignment") && same_text(r->text, target, state)) ||
+           is(node, "await_expression") || is(node, "yield_statement") ||
+           store_call(r, node) ||
+           (is(node, "call_expression") && action_named(r, field(node, "function")));
+}
+static bool may_change(const rewrite *r, TSNode node, const state_action *action)
+{
+    if (changes(r, node, action)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < named_count(node); i++) {
+        if (may_change(r, named_child(node, i), action)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether `node` may read `N.Value` after the state could have changed, in
+ * evaluation order. A loop that changes anything repeats its earlier reads. */
+static bool stale_read(const rewrite *r, TSNode node, const state_action *action, bool *changed)
+{
+    if (value_read(r, node, action)) {
+        return *changed;
+    }
+    if ((is(node, "while_statement") || is(node, "for_statement")) &&
+        reads_value(r, node, action) && may_change(r, node, action)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < named_count(node); i++) {
+        if (stale_read(r, named_child(node, i), action, changed)) {
+            return true;
+        }
+    }
+    *changed = *changed || changes(r, node, action);
+    return false;
+}
 /* `N()` for an inlined action N: its assignment, then the body of `after N`
- * reindented to the statement's indentation. */
+ * reindented to the statement's indentation, reading the state for
+ * `N.Value`. That holds only while nothing in the body can change the state
+ * before a read. */
 static void render_invocation(rewrite *r, TSNode statement, state_action *action, char **out)
 {
     if (action->inlining) {
         refuse(r, statement, "action invoked from its own after body");
         return;
     }
-    action->inlining = true;
-    render_store(r, action->value, out);
     TSNode body = ts_node_is_null(action->after) ? (TSNode){ 0 }
                                                  : field(action->after, "body");
+    TSNode types = field(action->value, "type_arguments");
+    bool changed = false;
+    if (!ts_node_is_null(body) && stale_read(r, body, action, &changed)) {
+        refuse(r, action->after, "action result read after the state may change");
+        return;
+    }
+    action->inlining = true;
+    action->qualified = shadowed(r, statement, types) ||
+                        (!ts_node_is_null(body) &&
+                         binds(r, body, field(named_child(types, 0), "name")));
+    render_store(r, action->value, action->qualified, out);
     const char *to = r->text + line_start(r, statement);
     int to_size = start(statement) - line_start(r, statement);
     for (uint32_t i = 0; i < named_count(body); i++) {
@@ -341,7 +460,7 @@ static bool render_statement(rewrite *r, TSNode node, char **out)
     if (action) {
         render_invocation(r, node, action, out);
     } else {
-        render_store(r, call, out);
+        render_store(r, call, shadowed(r, call, field(call, "type_arguments")), out);
     }
     append(out, r->text + end(expression), end(node) - end(expression));
     return true;
@@ -364,8 +483,12 @@ static void render(rewrite *r, TSNode node, char **out)
                                          named(r->text, field(node, "member"), "value")
                                    ? action_named(r, field(node, "object"))
                                    : NULL;
+    if (action && !action->inlining) {
+        refuse(r, node, "action result read outside its after body");
+        return;
+    }
     if (action) {
-        argument_name(r, field(action->value, "type_arguments"), out);
+        state_name(r, field(action->value, "type_arguments"), action->qualified, out);
         return;
     }
     if (is(node, "identifier") && action_named(r, node)) {
@@ -400,10 +523,29 @@ static void render(rewrite *r, TSNode node, char **out)
     }
     append(out, r->text + at, end(node) - at);
 }
+/* How many actions, functions and macros inside `node` declare `name`. */
+static int declarations(const rewrite *r, TSNode node, TSNode name)
+{
+    int count = (is(node, "action_declaration") || is(node, "function_declaration") ||
+                 is(node, "macro_declaration")) &&
+                same_text(r->text, field(node, "name"), name);
+    for (uint32_t i = 0; i < named_count(node); i++) {
+        count += declarations(r, named_child(node, i), name);
+    }
+    return count;
+}
 static void collect_actions(rewrite *r, TSNode node)
 {
     TSNode value = field(node, "value");
     if (is(node, "action_declaration") && store_call(r, value)) {
+        /* Inlining resolves `N()` by name across the file. */
+        TSNode root = node;
+        while (!ts_node_is_null(ts_node_parent(root))) {
+            root = ts_node_parent(root);
+        }
+        if (declarations(r, root, field(node, "name")) > 1) {
+            refuse(r, node, "action name declared more than once");
+        }
         apush(r->actions, ((state_action){ .declaration = node, .value = value }));
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
@@ -420,6 +562,9 @@ static void collect_after(rewrite *r, TSNode node)
             }
             if (!ts_node_is_null(field(node, "parameters"))) {
                 refuse(r, node, "after handler with parameters");
+            }
+            if (!ts_node_is_null(r->actions[i].after)) {
+                refuse(r, node, "second after handler for one action");
             }
             r->actions[i].after = node;
         }

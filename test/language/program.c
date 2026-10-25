@@ -8655,6 +8655,17 @@ TEST_CASE(program_version_32_angle_forms_take_version_33_spellings)
           "    }\n"
           "}" },
         { "L :: library { F :: (a: CF_V2) -> int { return 1 } }", NULL },
+        /* A read before an await keeps the value the action set. */
+        { "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+          "on Tick :: (dt: float s) { set_n() } after set_n { await "
+          "log(set_n.Value) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n = 1\n"
+          " await log(n) } }" },
+        /* A local that shadows the state keeps the state qualified. */
+        { "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
+          "set_variable<n>(get_variable<n>() + n) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
+          "state.n = state.n + n } }" },
         /* A rerun finds the version 33 spelling and leaves it. */
         { "B :: behavior { on Tick :: (dt: float s) { emit self.Damage(3) } }", NULL },
     };
@@ -8689,6 +8700,15 @@ TEST_CASE(program_version_32_angle_forms_take_version_33_spellings)
         "send_event<game.Damage>(self, 1) } }",
         "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
         "on Tick :: (dt: float s) { set_n() } after set_n { set_n() } }",
+        "B :: behavior { a: int = 0; b: int = 0; action update = "
+        "set_variable<a>(1); "
+        "action update = set_variable<b>(2); on Tick :: (dt: float s) { "
+        "update() } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n() } after set_n { n = 2; "
+        "log(set_n.Value) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n(); log(set_n.Value) } }",
     };
     for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
         REQUIRE(chibi_migrate_angle_forms(refused[i], &migrated, error, sizeof error) < 0);

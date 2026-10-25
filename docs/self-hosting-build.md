@@ -644,9 +644,10 @@ argument or result provenance rejects before JSON decoding. The caller chooses
 an output limit from 1 through `COMPILER_HOST_MAX_ARTIFACT_BYTES` (32 MiB)
 octets, and the limit also bounds the result's represented storage. Every
 in-process caller passes `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB). The CLI's
-`--output-artifact` and `--output-bytes` pass the artifact bound, because they
-write the authored compiler's compiled closures to files, and the asset
-compiler's is about 18 MB.
+two file outputs pass the artifact bound: `--output-artifact`, which loads the
+result as a compiler before publishing it, and `--output-bytes`, which writes
+whatever bytes the entry returns, in any format. The asset compiler's facade,
+about 18 MB, is written through `--output-bytes`, as are stage one's outputs.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
 before releasing runtime storage. Empty success is a null pointer and zero

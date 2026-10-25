@@ -3,6 +3,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <glob.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,7 +68,16 @@ static const char driver_setup
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
 static const char driver_routes
-    [] = "if sys.argv[2] == 'cpu-route':\n"
+    [] = "if sys.argv[2] == 'asset-host-platforms':\n"
+         "    print(' '.join(policy.ASSET_COMPILER_HOST_PLATFORMS))\n"
+         "    sys.exit(0)\n"
+         "if sys.argv[2] == 'bootstrap-route':\n"
+         "    command = policy.tool_command('compiler-bootstrap')\n"
+         "    print(len(command), Path(command[0]).name, command[1],\n"
+         "          Path(command[2]).name, Path(command[3]).name,\n"
+         "          policy.GROUPS['language'].count('compiler-bootstrap'))\n"
+         "    sys.exit(0)\n"
+         "if sys.argv[2] == 'cpu-route':\n"
          "    import agent\n"
          "    selector = sys.argv[5]\n"
          "    if selector not in agent.runnable_selectors(agent.CPU, "
@@ -477,6 +487,57 @@ static int run_group(const char *group)
     return status;
 }
 
+TEST_CASE(asset_language_cases_are_in_the_actual_ci_group)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "asset-language-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    /* The production group/supervisor launches only these disposable recorders;
+     * no engine build, asset evaluation or inspection-policy override occurs. */
+    REQUIRE(run_group("language") == 0);
+    char *output = tool_read(commands);
+    REQUIRE(output);
+    const char *selectors[] = { "--execution-scope\n",
+                                "--asset-packaging-chibi\n",
+                                "--asset-compiler-host\n",
+                                "--compiler-bootstrap\n" };
+    int counts[4] = { 0 };
+    for (int i = 0; i < 4; i++) {
+        const char *at = output;
+        while ((at = strstr(at, selectors[i]))) {
+            counts[i]++;
+            at += strlen(selectors[i]);
+        }
+    }
+    free(output);
+    REQUIRE(counts[0] == 1 && counts[1] == 1);
+#if defined(__linux__) || defined(__APPLE__)
+    REQUIRE(counts[2] == 1);
+#else
+    REQUIRE(counts[2] == 0);
+#endif
+    REQUIRE(counts[3] == 1);
+    REQUIRE(run("bootstrap-route", "-") == 0);
+    output = tool_read(logpath);
+    bool bootstrap = output &&
+                     !strcmp(output, "4 test_tools --compiler-bootstrap test_language chibi-compiler-host 1\n");
+    free(output);
+    REQUIRE(bootstrap);
+    REQUIRE(run("asset-host-platforms", "-") == 0);
+    output = tool_read(logpath);
+    bool platforms = output && !strcmp(output, "linux darwin\n");
+    free(output);
+    REQUIRE(platforms);
+    return true;
+}
+
 TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
 {
     char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
@@ -617,6 +678,75 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
         free(output);
         REQUIRE(exact);
     }
+    return true;
+}
+
+TEST_CASE(ci_preserves_failed_macos_graph_stage_log)
+{
+    char workflow[PATH_MAX];
+    snprintf(workflow, sizeof workflow, "%s/.github/workflows/ci.yml", tool_root());
+    char *text = tool_read(workflow);
+    REQUIRE(text);
+    const char *job = strstr(text, "\n  native-macos:\n");
+    const char *limit = job ? strstr(job, "\n  windows:\n") : NULL;
+    const char *step = job ? strstr(job, "      - name: Preserve failed macOS Graph stage log\n")
+                           : NULL;
+    const char *end = step ? strstr(step + 1, "\n      - ") : NULL;
+    bool scoped = step && limit && end && step < limit && end < limit;
+    const char *fields[] = { "        if: failure()\n",
+                             "        uses: actions/upload-artifact@v4\n",
+                             ("          name: macos-graph-failure-${{ "
+                              "github.run_id }}-${{ github.run_attempt }}\n"),
+                             "          path: .chibi/logs/*-graph.log\n",
+                             "          include-hidden-files: true\n",
+                             "          if-no-files-found: warn\n",
+                             "          retention-days: 7\n" };
+    for (int i = 0; scoped && i < (int)(sizeof fields / sizeof *fields); i++) {
+        const char *field = strstr(step, fields[i]);
+        scoped = field && field < end;
+    }
+    free(text);
+    REQUIRE(scoped);
+
+    char capture[PATH_MAX], hidden[PATH_MAX], logs[PATH_MAX], noise[PATH_MAX],
+        quiet[PATH_MAX];
+    path(capture, "graph-log-capture");
+    path(hidden, "graph-log-capture/.chibi");
+    path(logs, "graph-log-capture/.chibi/logs");
+    path(noise, "graph-log-capture/.chibi/logs/unrelated-configure.log");
+    assert(!mkdir(capture, 0700) && !mkdir(hidden, 0700) && !mkdir(logs, 0700));
+    tool_write(noise, "not selected\n");
+    snprintf(quiet, sizeof quiet, "%s/tools/quiet.py", tool_root());
+    const char *argv[] = { "python3",
+                           quiet,
+                           "--log-dir",
+                           ".chibi/logs",
+                           "graph",
+                           "--",
+                           "python3",
+                           "-c",
+                           "import sys; print('full-log-first-line'); "
+                           "print('ordinary output\\n' * 64, end=''); "
+                           "print('full-log-last-line'); sys.exit(7)",
+                           NULL };
+    REQUIRE(tool_run(argv, capture, logpath) == 7);
+    char *console = tool_read(logpath);
+    bool bounded = console && strstr(console, "graph: FAILED") &&
+                   !strstr(console, "full-log-first-line");
+    free(console);
+    REQUIRE(bounded);
+    char pattern[PATH_MAX];
+    path(pattern, "graph-log-capture/.chibi/logs/*-graph.log");
+    glob_t selected = { 0 };
+    int status = glob(pattern, 0, NULL, &selected);
+    bool one = !status && selected.gl_pathc == 1;
+    char *full = one ? tool_read(selected.gl_pathv[0]) : NULL;
+    bool kept = full && strstr(full, "full-log-first-line\n") &&
+                strstr(full, "full-log-last-line\n");
+    free(full);
+    globfree(&selected);
+    REQUIRE(one && kept);
+    REQUIRE(!access(noise, F_OK));
     return true;
 }
 
@@ -1062,11 +1192,13 @@ void test_tool_test_policy()
     assert(fputs(driver_ci_build, script) >= 0);
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
+    RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
+    RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
     RUN_TEST_CASE(studio_gizmo_requires_forty_two_clean_frames);

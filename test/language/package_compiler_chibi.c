@@ -9,6 +9,7 @@
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
+#include "float_conversion_cases.h"
 #include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
@@ -111,6 +112,8 @@ typedef struct
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
         same_rejection, c_string_probe, host_effects, update_order;
+    /* The source range stage one watches exactly once, when watch_end is set. */
+    int watch_start, watch_end;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -142,6 +145,19 @@ static const native_parameter_definition CSTRING_INPUT[] = {
       .type_name = "const char *",
       .c_string = true },
 };
+/* The second parameter deliberately carries the C-string boundary. */
+static const native_parameter_definition CSTRING_PAIR_INPUT[] = {
+    { .name = "prefix", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "value",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_STR,
+      .type_name = "const char *",
+      .c_string = true },
+};
+static const char *cstring_pair(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    return cstring_probe(storage, arguments + 1, count - 1, result);
+}
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -157,6 +173,15 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .pure = PURE }
 static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("CString Probe", "cstring_probe", CSTRING_INPUT, true),
+    { .canonical_name = "CString Pair",
+      .source_name = "cstring_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = CSTRING_PAIR_INPUT,
+      .input_count = 2,
+      .outputs = CSTRING_OUTPUT,
+      .output_count = 1,
+      .completion_output = -1,
+      .pure = true },
     PROBE_DEFINITION("Qualified Probe", "native.probe", CSTRING_INPUT, false),
     PROBE_DEFINITION("Qualified Length", "native.length", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Text Overload", "native.overload", CSTRING_INPUT, true),
@@ -166,6 +191,7 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
@@ -178,6 +204,7 @@ static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
     }
 static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("CString Probe", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("CString Pair", CSTRING_PAIR_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Probe", CSTRING_CALL, HOST_ACCESS),
     PROBE_BINDING("Qualified Length", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Text Overload", CSTRING_CALL, CSTRING_ACCESS),
@@ -784,6 +811,21 @@ static const sample samples[] = {
       .message = "Mismatched integer types int8 and byte; convert one operand",
       .line = 2,
       .column = 45 },
+    /* A compound assignment combines its operands as their operator does. */
+    { .name = "mixed compound assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
+    { .name = "mixed compound field assignment",
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "b; "
+                "return n.count; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -841,8 +883,33 @@ static const sample samples[] = {
                  { .function = "Divide", .arguments = "[7,0]", .expected = "[7]" } } },
     /* An untyped constant expression that names a constant takes its type
      * from its use, and only integer division by zero is an error. */
+    /* Floating constants fold at their type: a conversion rounds half to
+     * even and overflows to infinity, and a float, subnormal ones too,
+     * widens to double exactly. */
+    { .name = "floating constants",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Big: double : 1e300;\n"
+                "Huge: float : float(Big);\n"
+                "Even: float : float(double(16777219.0));\n"
+                "Tenth: float : float(0.1);\n"
+                "Wide: double : Tenth;\n"
+                "Tiny: float : float(1e-40);\n"
+                "TinyWide: double : (Tiny);\n"
+                "Rounded :: () -> float { return Even; }\n"
+                "Infinite :: () -> bool { return Huge > 3e38; }\n"
+                "Widened :: (unused: int) -> bool { return Wide == "
+                "double(float(0.1)) && Wide != 0.1; }\n"
+                "Subnormal :: () -> bool { return TinyWide == double(Tiny) && "
+                "TinyWide > 0.0; }\n",
+      .calls = { { .function = "Rounded", .arguments = "[]", .expected = "[16777220.0]" },
+                 { .function = "Infinite", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Widened", .arguments = "[0]", .expected = "[true]" },
+                 { .function = "Subnormal", .arguments = "[]", .expected = "[true]" } } },
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
+      .watch_start = 74,
+      .watch_end = 84,
       .source = "package facts\n"
                 "Count: uint : 3;\n"
                 "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
@@ -2072,6 +2139,8 @@ static const sample samples[] = {
     /* An untyped operand of a conversion is int64, or uint64 beyond it,
      * in parentheses too. */
     { .name = "wrapped literal in parentheses",
+      .watch_start = 40,
+      .watch_end = 71,
       .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
       .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" } } },
@@ -3674,6 +3743,32 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
     native_capabilities_free(native);
     return alike;
 }
+/* A folded constant's value is watched once, at the expression inside any
+ * parentheses, as stage zero watches it. */
+static bool watched_once(const unsigned char *bytes, size_t length, const sample *s)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int count = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < module->plan.function_count; i++) {
+            const behavior_function *f = module->plan.functions[i].body;
+            for (int k = 0; k < acount(f->source_watches); k++) {
+                const behavior_source_watch *w = &f->source_watches[k];
+                count += w->origin.start == s->watch_start &&
+                         w->origin.end == s->watch_end;
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    if (count != 1) {
+        fprintf(stderr, "%s: %d watches at %d..%d\n", s->name, count, s->watch_start, s->watch_end);
+    }
+    return count == 1;
+}
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
 static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
@@ -3842,6 +3937,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
+                   (!s->watch_end || watched_once(bytes, length, s)) &&
                    ((b && !s->host_effects) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
@@ -4011,6 +4107,59 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
     }
     return true;
 }
+static bool float_conversions_run(int compiler, bool constants)
+{
+    bool agreed = true;
+    for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
+         i++) {
+        const float_conversion_case *item = &FLOAT_CONVERSION_CASES[i];
+        if (item->constant != constants) {
+            continue;
+        }
+        source_package_input source = { "facts/Main.chibi",
+                                        item->source,
+                                        strlen(item->source) };
+        pin_value out;
+        REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
+        bool accepted = value->tag == tag(compiler, "Compiled");
+        if (accepted != item->accepted) {
+            fprintf(
+                stderr,
+                "stage-one floating admission %s: expected %s, got %s\n",
+                item->name,
+                item->accepted ? "accepted" : "rejected",
+                accepted ? "accepted" : "rejected"
+            );
+            if (!accepted) {
+                pin_value message;
+                REQUIRE(get(&value->values[0], "message", &message));
+                fprintf(stderr, "  %s\n", pin_text(message).bytes);
+            }
+            agreed = false;
+        }
+        if (accepted && item->accepted) {
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
+            arena_free(&detached);
+            sample_call call = { .function = "Fold",
+                                 .arguments = item->arguments,
+                                 .expected = item->expected };
+            bool ran = true;
+            for (int backend = 0; backend < 2; backend++) {
+                ran = run(bytes, length, &call, backend) && ran;
+            }
+            free(bytes);
+            agreed = ran && agreed;
+        }
+        arena_free(&detached);
+    }
+    REQUIRE(agreed);
+    return true;
+}
+
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -4037,11 +4186,23 @@ TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
-    return run_samples(IMPORT_SAMPLES, 0);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 0));
+    return float_conversions_run(0, false);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 {
-    return run_samples(IMPORT_SAMPLES, 1);
+    REQUIRE(run_samples(IMPORT_SAMPLES, 1));
+    return float_conversions_run(1, false);
+}
+TEST_CASE(package_compiler_folds_floating_constants)
+{
+    REQUIRE(prepare());
+    return float_conversions_run(0, true);
+}
+TEST_CASE(package_compiler_folds_floating_constants_compiled)
+{
+    REQUIRE(prepare());
+    return float_conversions_run(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -6243,6 +6404,49 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     }
     return true;
 }
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+/* A shared wrong result is not an oracle. Each executed value must match
+ * the fixture's literal, including Main's value. */
+static bool scalar_results_match(const int32_t values[4], int32_t expected)
+{
+    return values[0] == expected && values[1] == expected &&
+           values[2] == expected && values[3] == expected;
+}
+TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
+{
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    static const int32_t expected[] = { 42, 0, INT32_MAX };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            pin_value ordinal = { .type = PIN_I32, .i = i }, literal;
+            REQUIRE(compiler_fixture_call(
+                &corpus,
+                b,
+                CASES_PACKAGE,
+                "ExpectedValue",
+                &ordinal,
+                1,
+                COMPILE_BUDGET,
+                &detached,
+                &literal
+            ));
+            REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
+            int32_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+            REQUIRE(scalar_results_match(values, literal.i));
+            int32_t wrong = expected[i] == 42 ? 41 : 1;
+            const int32_t consensus[4] = { wrong, wrong, wrong, wrong };
+            REQUIRE(!scalar_results_match(consensus, literal.i));
+            for (int column = 0; column < 4; column++) {
+                values[column] = wrong;
+                REQUIRE(!scalar_results_match(values, literal.i));
+                values[column] = expected[i];
+            }
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
 #if defined(__linux__) && defined(__x86_64__)
 /* Native execution of the authored scalar corpus. Each case's source goes
  * through CollectScalar on one producer VM, alternating by case, and must be
@@ -6250,15 +6454,14 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
  * objects through the native driver's fixed opt and llc argument vectors
  * (test/native_aot/driver/README.md), with no undefined symbol. Each object,
  * linked as a validation-only shared library, runs in a child process, so a
- * trap is a status rather than the end of this test. Its entry's value must
- * be the one the authored compiler's closure of the same source gives on
- * both VMs, and so must each probe's. A probe reaches an internal function
+ * trap is a status rather than the end of this test. Its entry's value on
+ * both VMs and both native levels must match the fixture's literal expected
+ * value, and so must each probe's. A probe reaches an internal function
  * through a validation-only IR adapter that passes it int32 arguments, which
  * is how negative values and bool parameters reach it; the adapter is not a
  * foreign ABI. Linux x86-64 is the one target the emitter admits.
  * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
  * nothing is found through PATH. */
-static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* The corpus's accepted cases. */
 enum
 {
@@ -6536,13 +6739,16 @@ static void native_file(const char *path)
     apush(native_files, copy);
 }
 /* `ir` and then `adapter`, built at `level` as the driver builds an object,
- * then linked as `directory`/`name`.so, which `library` names. */
+ * then linked as `directory`/`name`.so, which `library` names. Only observed
+ * modules request PIC for their added counter globals; ordinary modules keep
+ * the driver's exact object arguments. */
 static bool native_library(
     const char *directory,
     const char *name,
     const char *ir,
     const char *adapter,
     int level,
+    bool pic,
     char library[PATH_MAX]
 )
 {
@@ -6566,10 +6772,21 @@ static bool native_library(
         llc, "-filetype=obj", level ? "-O=2" : "-O=0", module, "-o", object,
         NULL
     };
+    const char *const observed_emit[] = { llc,
+                                          "-filetype=obj",
+                                          level ? "-O=2" : "-O=0",
+                                          "-relocation-model=pic",
+                                          module,
+                                          "-o",
+                                          object,
+                                          NULL };
     const char *const symbols[] = { nm, "--undefined-only", object, NULL };
     const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
     char out[NATIVE_OUTPUT];
-    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
+    REQUIRE(
+        run_tool(optimize, directory, out) &&
+        run_tool(pic ? observed_emit : emit, directory, out)
+    );
     REQUIRE(run_tool(symbols, directory, out));
     if (*out) {
         fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
@@ -6822,11 +7039,11 @@ enum
     MAX_CASE_CALLS = MAX_CASE_PROBES + 1
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
-static int case_calls(const char *name, const pin_value *rows, scalar_call calls[MAX_CASE_CALLS])
+static int case_calls(const char *name, const pin_value *rows, int32_t expected, scalar_call calls[MAX_CASE_CALLS])
 {
     scalar_probe probes[MAX_CASE_PROBES];
     int count = case_probes(name, probes);
-    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, 0 },
+    calls[0] = (scalar_call){ .probe = { name, "Main", 0, { 0 }, expected },
                               .json = "[]",
                               .symbol = "chibi_scalar" };
     for (int i = 0; i < count; i++) {
@@ -6956,7 +7173,7 @@ static bool native_values(
     }
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
-        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, false, library));
         REQUIRE(native_passed(
             library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
         ));
@@ -6964,15 +7181,146 @@ static bool native_values(
     free(adapter);
     return true;
 }
-/* Whether each call gave one value everywhere: its expected value for a
- * probe, and for the entry the same one on both VMs and natively. */
+/* Rename only one generated callee definition. Its call sites keep the old
+ * symbol, which an observed wrapper supplies. No branch body is rewritten. */
+static bool observed_body(char **ir, int ordinal, const char *name)
+{
+    char before[128], after[128];
+    snprintf(before, sizeof before, "define internal i32 @chibi_scalar.%d()", ordinal);
+    snprintf(after, sizeof after, "define internal i32 @chibi_test_%s_body()", name);
+    const char *at = strstr(*ir, before);
+    REQUIRE(at && !strstr(at + 1, before));
+    size_t prefix = (size_t)(at - *ir), old = strlen(before),
+           replacement = strlen(after);
+    char *renamed = xmalloc(strlen(*ir) - old + replacement + 1);
+    memcpy(renamed, *ir, prefix);
+    memcpy(renamed + prefix, after, replacement);
+    strcpy(renamed + prefix + replacement, at + old);
+    free(*ir);
+    *ir = renamed;
+    return true;
+}
+/* Reset, Choose's return, Taken's entry count and Skipped's entry count. */
+static bool lazy_trace_matches(const scalar_call calls[4], int column, int condition)
+{
+    return calls[0].values[column] == 0 &&
+           calls[1].values[column] == (condition ? 1 : 2) &&
+           calls[2].values[column] == condition &&
+           calls[3].values[column] == !condition;
+}
+/* An additional validation-only module observes generated callee entries.
+ * Normal optimization/result checks above still use the unmodified IR.
+ * The extra-call variant keeps Choose's value but must fail the same trace
+ * oracle on the true path, even after O2 inlines the pure original bodies. */
+static bool observes_lazy_arm(const char *directory, const pin_value *rows, const char *ir)
+{
+    int taken, skipped;
+    int taken_row = function_row(rows, "Taken", &taken);
+    int skipped_row = function_row(rows, "Skipped", &skipped);
+    REQUIRE(taken_row > 0 && skipped_row > 0);
+    REQUIRE(row_int(rows, taken_row, "count") == 0 && row_int(rows, skipped_row, "count") == 0);
+    REQUIRE(
+        row_int(rows, taken_row, "type") == SCALAR_INT &&
+        row_int(rows, skipped_row, "type") == SCALAR_INT
+    );
+    char *observed = xmalloc(strlen(ir) + 1), *probe = xmalloc(1);
+    strcpy(observed, ir);
+    *probe = 0;
+    bool valid = observed_body(&observed, taken, "taken") &&
+                 observed_body(&observed, skipped, "skipped") &&
+                 append_adapter(rows, "Choose", &probe);
+    for (int extra = 0; valid && extra < 2; extra++) {
+        char discarded[128] = "", wrappers[2048];
+        if (extra) {
+            snprintf(discarded, sizeof discarded, "  %%discarded = call i32 @chibi_scalar.%d()\n", skipped);
+        }
+        int length = snprintf(
+            wrappers,
+            sizeof wrappers,
+            "\n@chibi_test_taken = internal global i32 0\n"
+            "@chibi_test_skipped = internal global i32 0\n"
+            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
+            "  %%n = atomicrmw add ptr @chibi_test_taken, i32 1 monotonic\n"
+            "%s"
+            "  %%r = call i32 @chibi_test_taken_body()\n  ret i32 %%r\n}\n"
+            "define internal i32 @chibi_scalar.%d() {\nentry:\n"
+            "  %%n = atomicrmw add ptr @chibi_test_skipped, i32 1 monotonic\n"
+            "  %%r = call i32 @chibi_test_skipped_body()\n  ret i32 %%r\n}\n"
+            "define i32 @chibi_trace_reset() {\nentry:\n"
+            "  store volatile i32 0, ptr @chibi_test_taken\n"
+            "  store volatile i32 0, ptr @chibi_test_skipped\n  ret i32 0\n}\n"
+            "define i32 @chibi_trace_taken() {\nentry:\n"
+            "  %%n = load volatile i32, ptr @chibi_test_taken\n  ret i32 "
+            "%%n\n}\n"
+            "define i32 @chibi_trace_skipped() {\nentry:\n"
+            "  %%n = load volatile i32, ptr @chibi_test_skipped\n  ret i32 "
+            "%%n\n}\n",
+            taken,
+            discarded,
+            skipped
+        );
+        assert(length > 0 && length < (int)sizeof wrappers);
+        size_t probe_length = strlen(probe);
+        char *adapter = xmalloc(probe_length + (size_t)length + 1);
+        memcpy(adapter, probe, probe_length);
+        memcpy(adapter + probe_length, wrappers, (size_t)length + 1);
+        for (int level = 0; valid && level < 2; level++) {
+            char library[PATH_MAX];
+            valid = native_library(
+                directory,
+                extra ? "lazy_trace_extra" : "lazy_trace",
+                observed,
+                adapter,
+                level * 2,
+                true,
+                library
+            );
+            for (int condition = 0; valid && condition < 2; condition++) {
+                scalar_call calls[4] = {
+                    { .symbol = "chibi_trace_reset" },
+                    { .symbol = "probe_Choose",
+                      .probe = { .count = 1, .arguments = { condition } } },
+                    { .symbol = "chibi_trace_taken" },
+                    { .symbol = "chibi_trace_skipped" }
+                };
+                int column = 2 + level;
+                valid = native_passed(
+                    library_calls(directory, library, calls, 4, column, CALLS_SECONDS)
+                );
+                bool matches = lazy_trace_matches(calls, column, condition);
+                valid = valid && matches == (!extra || !condition) &&
+                        calls[0].values[column] == 0 &&
+                        calls[1].values[column] == (condition ? 1 : 2) &&
+                        calls[2].values[column] == condition &&
+                        calls[3].values[column] == (!condition || extra);
+                fprintf(
+                    stderr,
+                    "lazy trace O%d extra %d condition %d: return %d, "
+                    "Taken %d, Skipped %d, oracle %s\n",
+                    level * 2,
+                    extra,
+                    condition,
+                    calls[1].values[column],
+                    calls[2].values[column],
+                    calls[3].values[column],
+                    matches ? "accept" : "reject"
+                );
+            }
+        }
+        free(adapter);
+    }
+    free(observed);
+    free(probe);
+    REQUIRE(valid);
+    return true;
+}
+/* Every executed result matches its literal fixture or probe oracle. */
 static bool calls_agree(const char *name, const scalar_call *calls, int count)
 {
     for (int i = 0; i < count; i++) {
         const int32_t *values = calls[i].values;
-        int32_t expected = i ? calls[i].probe.expected : values[0];
-        bool agree = values[0] == expected && values[1] == expected &&
-                     values[2] == expected && values[3] == expected;
+        int32_t expected = calls[i].probe.expected;
+        bool agree = scalar_results_match(values, expected);
         if (!agree) {
             fprintf(
                 stderr,
@@ -7038,8 +7386,9 @@ static bool collected_rows(int b, const char *case_name, pin_value source, pin_v
     REQUIRE(collected);
     return true;
 }
-/* An accepted module, `ir` its IR, which this frees: each of its calls must
- * give one value on both VMs and natively at O0 and O2. */
+/* An accepted module, `ir` its IR, which this frees: its Main must give the
+ * literal `expected`, and each probe its oracle, on both VMs and natively at
+ * O0 and O2. */
 static bool module_agrees(
     const char *directory,
     int b,
@@ -7047,6 +7396,7 @@ static bool module_agrees(
     pin_string source,
     const pin_value *rows,
     char *ir,
+    int32_t expected,
     scalar_call calls[MAX_CASE_CALLS]
 )
 {
@@ -7054,12 +7404,16 @@ static bool module_agrees(
     unsigned char *closure;
     size_t length;
     REQUIRE(vm_closure(b, source, &closure, &length));
-    int count = case_calls(case_name, rows, calls);
+    int count = case_calls(case_name, rows, expected, calls);
     bool ran = vm_values(closure, length, calls, count) &&
                native_values(directory, case_name, rows, ir, calls, count);
+    bool agree = ran && calls_agree(case_name, calls, count);
+    if (agree && !strcmp(case_name, "lazy_arm")) {
+        agree = observes_lazy_arm(directory, rows, ir);
+    }
     free(closure);
     free(ir);
-    REQUIRE(ran && calls_agree(case_name, calls, count));
+    REQUIRE(agree);
     return true;
 }
 /* Case `index` of the corpus: its producer rows on VM b must be what the case
@@ -7094,9 +7448,23 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     if (rejected) {
         return true;
     }
+    pin_value expected;
+    REQUIRE(
+        compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
+    );
+    REQUIRE(expected.type == PIN_I32);
     ++*accepted;
     scalar_call calls[MAX_CASE_CALLS];
-    return module_agrees(directory, b, case_name, pin_text(source), &rows, ir, calls);
+    return module_agrees(
+        directory,
+        b,
+        case_name,
+        pin_text(source),
+        &rows,
+        ir,
+        expected.i,
+        calls
+    );
 }
 /* A scalar module with a constant expression the ordinary compiler folds
  * exactly, and the value its Main gives. They stay out of the 96-source
@@ -7154,17 +7522,16 @@ static bool folded_sources_agree(const char *directory)
         scalar_call calls[MAX_CASE_CALLS];
         pin_string source = { FOLDED_SOURCES[i].source,
                               strlen(FOLDED_SOURCES[i].source) };
-        REQUIRE(module_agrees(directory, b, name, source, &rows, ir, calls));
-        if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
-            fprintf(
-                stderr,
-                "scalar case %s: Main gave %d, not %d\n",
-                name,
-                calls[0].values[0],
-                FOLDED_SOURCES[i].entry
-            );
-        }
-        REQUIRE(calls[0].values[0] == FOLDED_SOURCES[i].entry);
+        REQUIRE(module_agrees(
+            directory,
+            b,
+            name,
+            source,
+            &rows,
+            ir,
+            FOLDED_SOURCES[i].entry,
+            calls
+        ));
         arena_free(&detached);
     }
     return true;
@@ -7273,7 +7640,7 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
                        "  ret i32 0\n"
                        "}\n";
     scalar_call call = { .symbol = "hang" };
-    bool built = native_library(directory, "hang", loop, "", 0, library);
+    bool built = native_library(directory, "hang", loop, "", 0, false, library);
     started = chibi_process_now();
     result = built ? library_calls(directory, library, &call, 1, 2, 1)
                    : (chibi_process_capture_result){ 0 };
@@ -7410,7 +7777,7 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
     bool agreed = true;
     for (int level = 0; agreed && level < 2; level++) {
         char library[PATH_MAX];
-        agreed = native_library(directory, "total", ir, adapters, level * 2, library);
+        agreed = native_library(directory, "total", ir, adapters, level * 2, false, library);
         for (int k = 0; agreed && k < TOTAL_OPERATION_COUNT; k++) {
             scalar_call calls[MAX_CASE_CALLS];
             int count = total_calls(k, calls);
@@ -7488,6 +7855,7 @@ void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
+    RUN_TEST_CASE(package_compiler_folds_floating_constants);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_compiled()
@@ -7518,6 +7886,7 @@ void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
+    RUN_TEST_CASE(package_compiler_folds_floating_constants_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()
@@ -7562,6 +7931,7 @@ void test_language_package_compiler_chibi_scalar()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
+    RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)
@@ -7595,4 +7965,200 @@ void test_language_package_compiler_chibi_native()
     fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
     abort();
 #endif
+}
+
+/* Fixed primitive-native argument association, checked against literal results
+ * and the independent stage-zero reference. */
+static const sample native_argument_samples[] = {
+    { .name = "native positional control",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native names in declaration order",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Count: 2); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native reordered names",
+      .source = "package facts\nRun :: () -> string { return text_slice(Count: "
+                "2, Value: \"abcd\", Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native mixed arguments",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Count: 2, Start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native unary name",
+      .source = "package facts\nRun :: () -> int { return "
+                "text_byte_length(Value: \"abcd\"); }",
+      .calls = { { "Run", "[]", "[4]", NULL } } },
+    { .name = "native loose label match",
+      .source = "package facts\nRun :: () -> string { return text_slice(count: "
+                "2, value: \"abcd\", start: 1); }",
+      .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
+    { .name = "native arguments evaluate in source order",
+      .source = "package facts\n"
+                "Number :: (order: ref int, digit: int, value: int) -> int { "
+                "order = order * 10 + digit; return value; }\n"
+                "Text :: (order: ref int) -> string { order = order * 10 + 2; "
+                "return \"abcd\"; }\n"
+                "Run :: () -> int {\n"
+                "  order: int = 0;\n"
+                "  sliced := text_slice(Count: Number(order, 3, 2), Value: "
+                "Text(order), Start: Number(order, 1, 1));\n"
+                "  if (!text_equal(sliced, \"bc\")) { return -1; }\n"
+                "  return order;\n}",
+      .calls = { { "Run", "[]", "[321]", NULL } } },
+    { .name = "native unknown name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Missing: 2); }",
+      .message = "Unknown argument 'Missing'",
+      .line = 2,
+      .column = 66 },
+    { .name = "native duplicate name",
+      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+                "\"abcd\", Start: 1, Start: 2, Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 66 },
+    { .name = "native positional named duplicate",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", Value: \"efgh\", Count: 2); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 49 },
+    { .name = "native named CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_probe(value: "
+                "(\"a\\u0000b\")); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 48 },
+    { .name = "native named positional duplicate",
+      .source = "package facts\nRun :: () -> string { return text_slice(Start: "
+                "1, 2, Value: \"abcd\"); }",
+      .message = "Argument supplied more than once",
+      .line = 2,
+      .column = 51 },
+    { .name = "native reordered CString expression location",
+      .source = "package facts\nRun :: () -> int { return cstring_pair(value: "
+                "(\"a\\u0000b\"), prefix: 1); }",
+      .c_string_probe = true,
+      .message = "C-string boundary 'value' cannot accept NUL at byte 1",
+      .line = 2,
+      .column = 47 },
+    { .name = "native extra argument",
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(\"abcd\", 1, 2, 3); }",
+      .message = "Too many arguments",
+      .line = 2,
+      .column = 55 },
+};
+
+TEST_CASE(native_arguments_reference_contract)
+{
+    /* Every valid call supplies all parameters of the existing text natives. */
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(&native_argument_samples[0], inputs);
+    native_definition_pack packs[] = { CSTRING_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
+    for (int i = 0;
+         i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+         i++) {
+        const sample *s = &native_argument_samples[i];
+        fprintf(stderr, "native arguments reference: %s\n", s->name);
+        if (s->message) {
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            continue;
+        }
+        unsigned char *bytes = NULL;
+        size_t length = 0;
+        REQUIRE(oracle_closure(s, &bytes, &length));
+        bool passed = run(bytes, length, &s->calls[0], 0) &&
+                      run(bytes, length, &s->calls[0], 1);
+        free(bytes);
+        REQUIRE(passed);
+    }
+    return true;
+}
+
+TEST_CASE(native_arguments_authored_contract)
+{
+    REQUIRE(prepare());
+    bool all = true;
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0;
+             i < (int)(sizeof native_argument_samples / sizeof *native_argument_samples);
+             i++) {
+            const sample *s = &native_argument_samples[i];
+            source_package_input inputs[SAMPLE_INPUTS];
+            int count = sample_inputs(s, inputs);
+            pin_value out;
+            REQUIRE(
+                compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
+            );
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            bool passed = false;
+            if (value->tag == tag(b, "Rejected")) {
+                pin_value message, line, column;
+                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(&value->values[0], "line", &line));
+                REQUIRE(get(&value->values[0], "column", &column));
+                passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
+                         line.i == s->line && column.i == s->column;
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: %s at %d:%d (%s)\n",
+                    b,
+                    s->name,
+                    pin_text(message).bytes,
+                    line.i,
+                    column.i,
+                    passed ? "expected" : "MISMATCH"
+                );
+            } else {
+                REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+                size_t length = 0;
+                unsigned char *bytes = closure_bytes(value, &length);
+                unsigned char *expected = NULL;
+                size_t expected_length = 0;
+                passed = !s->message &&
+                         (b || (oracle_closure(s, &expected, &expected_length) &&
+                                points_like_oracle(bytes, length, false))) &&
+                         run(bytes, length, &s->calls[0], 0) &&
+                         run(bytes, length, &s->calls[0], 1);
+                free(expected);
+                free(bytes);
+                /* run() leaves a failed invocation for cleanup; continue the
+                 * remaining fixtures without overwriting that ownership. */
+                compiler_host_free(host);
+                host = NULL;
+                free(result.json);
+                result = (compiler_host_result){ 0 };
+                fprintf(
+                    stderr,
+                    "native arguments authored %d: %s: compiled (%s)\n",
+                    b,
+                    s->name,
+                    passed ? "expected" : "MISMATCH"
+                );
+            }
+            arena_free(&detached);
+            all = passed && all;
+        }
+    }
+    REQUIRE(all);
+    return true;
+}
+
+void test_language_package_compiler_chibi_native_arguments_oracle()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_reference_contract);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_native_arguments()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_arguments_authored_contract);
+    pu_clear_setup();
 }

@@ -198,6 +198,11 @@ pub CaseName :: (index: int) -> string {
     cases := Cases();
     return cases[index].name;
 }
+// The fixture's literal oracle, independent of producer rows and execution.
+pub ExpectedValue :: (index: int) -> int {
+    cases := Cases();
+    return cases[index].value;
+}
 Excerpt :: (text: string, row: facts.Row) -> string {
     return strings.Slice(text, row.start, row.end - row.start);
 }

@@ -376,8 +376,11 @@ pub Step :: (command: string[], inputs: string[], output: string) -> int {
         return 0;
     }
     build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
-    if (build.run(command) != 0 ||
-        !build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+    if (build.run(command) != 0) {
+        build.report(Join(["graph: step failed: ", output]));
+        return -1;
+    }
+    if (!build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
         return -1;
     }
     return 1;

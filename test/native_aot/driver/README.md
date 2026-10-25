@@ -200,8 +200,9 @@ object/executable. The official SDK formatter (`chibi-compile`, SHA256
 `9b9e7d1108e68cec34b75cd490f49131eda2fadd86fc7c05517e24564fc67817`)
 formatted all candidate Chibi files, then `--format --check` passed. The earlier
 352aa34c WIP had unrun formatting, subsequently found noncanonical; this candidate
-corrects it and regenerates fixture provenance. Standard repository test
-dispatcher and platform CI remain unrun. The first driver checkpoint had an
+corrects it and regenerates fixture provenance. At that object checkpoint, the
+standard repository dispatcher and platform CI were not run. Later C regression
+evidence is recorded below. The first driver checkpoint had an
 independent source/process review, reproduced suite, 15 extra controls and a real
 publication-race check. Independent exact review of this object addition passed:
 formatter and both authored suites were independently reproduced; 15 prior
@@ -231,7 +232,8 @@ the host's process capability. The C runner appends those adapters to unchanged
 driver text in memory. It does not change production source, compiler,
 capabilities or platform admission.
 
-Three portable cases passed on macOS arm64 with 30 assertions:
+At the PR679 checkpoint, three portable cases passed on macOS arm64 with
+30 assertions:
 
 - Resolved executable aliases with spaces; missing, non-executable, directory,
   dangling, relative and control-character tool paths.
@@ -253,7 +255,7 @@ Six additional Linux-only cases cover:
 - Existing final files and stale partial object/receipt bytes for both entries,
   with no optimizer execution before rejection.
 - Physical relocation of tools and IR, paths with spaces, a resolved tool alias,
-  exact object argv at O0/O2, and `Object` succeeding with empty PATH and no
+  exact optimizer and object argv at O0/O2, and `Object` succeeding with empty PATH and no
   linker file or linker/program receipt fields.
 - Missing opt, llc and, for `Build`, linker capabilities before reservation.
 - An object written before exit71 or SIGTERM, and a zero-exit tool producing no
@@ -283,9 +285,70 @@ jobs. The prebuilt third-party store matched the SHA256 pinned by this
 checkout's unchanged `third_party/archives.tsv`; first-party code was built from
 this checkout.
 
-The focused C build, portable cases, canonical source formatting and shell syntax
-passed. Linux C branches passed a syntax-only compile on macOS with `__linux__`
-defined; this does not count as a Linux build or execution. Linux driver
-publication/interruption execution, real LLVM reruns and broader
-native/material/project/language/tool suites remain unexecuted. Separate Linux
-verification and independent review remain required before landing this draft.
+[PR679](https://github.com/waldnercharles/chibi/pull/679) merged normally as
+`69306365ad66b6ee01fffaa95c40aa5ead1fa616`, with the same tree
+`fc448fbab7858a615a1d3a78fea0b382bcc0aa6d` as reviewed head
+`d95b6bfd1ca2fa387b86c3b6046a1fcc74fc69a5`. Independent Linux validation at
+that exact head passed the normal policy selector, nine cases and 100 assertions,
+in 13.906 seconds with clean source. The dispatcher and production host remained
+byte-identical to the positive/control/restored proof: disabling the cancellation
+pointer produced exactly two intended timeout-versus-cancellation assertion
+failures, while the original and restored binaries passed all nine cases.
+
+Postmerge [CI40104938260](https://github.com/waldnercharles/chibi/actions/runs/40104938260)
+and [self-build40104938238](https://github.com/waldnercharles/chibi/actions/runs/40104938238)
+succeeded on that merge. This includes the enabled Linux/Mac native suites and
+cross-platform compiler self-build; disabled jobs are not coverage. These results
+do not turn controlled marker objects into real LLVM evidence, establish
+sanitizer coverage of the explicit driver selector, or validate a standalone SDK
+profile. The earlier real LLVM fixture results remain a separate historical proof.
+
+## Optimizer argv contract follow-up
+
+The Linux relocation case also compares the recorded optimizer argv against
+independent C contract literals: O0 requires `-passes=verify`; O2 requires
+`-passes=verify,default<O2>,verify`. Both require `-S`, the reserved partial's
+`source.ll` snapshot, `-o`, and its `module.ll` output, in that order. Expected
+arguments are not read from `Driver.chibi`, a receipt, or marker module bytes.
+
+The optimizer stand-in deliberately accepts arbitrary pass-list arguments. A
+portable C fixture case confirms it records them faithfully and that the argv
+oracle rejects missing verification, missing either O2 verification boundary,
+missing optimization, and wrong snapshot/output paths despite successful marker
+emission. This makes a successful mock process insufficient to pass the contract.
+Portable mutation controls remove verification or O2 from the positive recorded
+argv while leaving the oracle fixed; they must fail its assertion. These are
+fixture/oracle checks, not execution of the Linux-only driver on macOS.
+
+On macOS arm64, the normal policy run and restored replay each passed four
+portable cases and 49 assertions using unchanged production `Driver.chibi`.
+The scratch positive-trace controls without verification and without O2 each
+failed exactly the new argv assertion, with three cases passing and one failing,
+exit 1. These mutations changed only the fixture invocation in a temporary C
+copy; actual production-driver pass-list mutations remain a Linux follow-up.
+
+This follow-up needs an exact-head Linux replay of the normal selector and
+scratch driver mutations. In a Linux checkout with its current compiler-enabled
+`test_tools` and production build host, run:
+
+```sh
+CHIBI_TOOLS_BUILD_DIR=build/test/tools python3 tools/test_policy.py tool native-aot-driver
+```
+
+Then use the same dispatcher with absolute scratch driver paths, preserving
+production source. Change only one pass-list assignment per control:
+
+- `DriverNoVerify0.chibi`: O0 `passes := "verify"` to `passes := ""`.
+- `DriverNoVerify2.chibi`: O2 verification `passes = "verify,default<O2>,verify"` to `passes = "default<O2>"`.
+- `DriverNoO2.chibi`: O2 optimization, that same assignment to `passes = "verify,verify"`.
+
+```sh
+python3 tools/test_policy.py native -- "$PWD/build/test/tools/test_tools" \
+  --native-aot-driver "$PWD/scratch/DriverNoVerify0.chibi"
+```
+
+Each control should still emit marker artifacts but fail the new optimizer argv
+assertion in the relocation case. Replay the unchanged production driver afterward.
+These Linux runs and actual Driver pass-list mutation outcomes must be reported
+separately from the available macOS fixture/oracle checks. Real LLVM semantics,
+new sanitizer runs, and broader suite reruns remain outside this follow-up proof.

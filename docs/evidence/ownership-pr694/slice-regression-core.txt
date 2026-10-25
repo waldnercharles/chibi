@@ -1,0 +1,44 @@
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (306): status == FLOW_OK && context.returned && output.type == type)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (406): core_call("Bytes", args, 1, PIN_I32, backends[b]))
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (306): status == FLOW_OK && context.returned && output.type == type)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (378): invoke(item->module, exported(item, call->name), args, size, call->type, backend))
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (745): run_cases("project:app", CASES(split_cases), backends[b]))
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (769): signature && signature->pure && !signature->effects)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (306): status == FLOW_OK && context.returned && output.type == type)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (804): invoke(retained, id, NULL, 0, PIN_I32, backends[b]))
+dense backend=0 variant=0 matches=16 Count slices=0 bytes=0 reads=160
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (306): status == FLOW_OK && context.returned && output.type == type)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (840): core_call(names[k], args, k < 2 ? 2 : 3, PIN_STR, backends[b]))
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (306): status == FLOW_OK && context.returned && output.type == type)
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (924): core_call(names[k], args, k < 2 ? 2 : 3, PIN_STR, backend))
+(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-7/chibi-profile/test/language/package_core.c (946): split_bytes(binary, sizeof binary, binary + 1, 3, backends[b]))
+Running: package_core_strings_bytes_bounds_and_owned_slices 
+Running: package_core_strings_comparison_identifiers_and_basename (OK) (0.051307 secs)
+Running: package_core_strings_search_matches_odin (OK) (0.053058 secs)
+Running: package_core_strings_case_trim_cut_and_repeat_match_odin (OK) (0.052345 secs)
+Running: package_core_strings_split_join_and_replace_match_odin 
+Running: package_core_pure_exports_and_generic_native_arrays 
+Running: package_core_inputs_modules_and_binding_generations 
+Running: package_core_strings_dense_copy_budget 
+Running: package_core_strings_binary_overlap_collision_and_limits 
+===============================================================
+Summary: Passed: 3 Failed: 6 Total: 9 Suites: 0 Asserts: 3226
+        0.33 real         0.32 user         0.00 sys
+            33947648  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                2465  page reclaims
+                  12  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                  38  involuntary context switches
+          5319329315  instructions retired
+          1307102583  cycles elapsed
+            29999464  peak memory footprint
+Test command wall time: 0.415s; includes in-test fixture setup; external configuration/build excluded.

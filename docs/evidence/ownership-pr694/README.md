@@ -6,6 +6,8 @@ Reporting correction (2026-10-25): the published first-checkpoint receipt is
 mentioned in the initial handoff. Original raw receipts remain unchanged.
 [The text follow-up](text-followup.md) also records corrected author telemetry;
 it supersedes the earlier informal >11 GB/14 GB OOM characterization below.
+[The authored Slice attribution](slice-attribution.md) traces one compiler-used
+string operation and records a held, ABI-affecting follow-up proposal.
 
 Measured 2026-10-25 on exact source `f4458b21f67badda787970218e3f8058d44cccf9`
 plus this checkpoint's instrumentation/tests. No behavioral optimization.

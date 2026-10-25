@@ -1,0 +1,30 @@
+Running: package_core_slice_attribution SLICE backend=bytecode form=0 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=0 outside_headers=5 postcall_used=265 postcall_external=49 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=bytecode form=1 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=12 outside_headers=5 postcall_used=265 postcall_external=49 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=bytecode form=2 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=0 outside_headers=5 postcall_used=265 postcall_external=49 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=bytecode form=3 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=0 outside_headers=5 postcall_used=267 postcall_external=51 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=compiled form=0 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=0 outside_headers=5 postcall_used=265 postcall_external=49 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=compiled form=1 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=12 outside_headers=5 postcall_used=265 postcall_external=49 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=compiled form=2 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=0 outside_headers=5 postcall_used=265 postcall_external=49 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+SLICE backend=compiled form=3 native_payload=5 native_descriptor=24 native_cleanup=32 native_external=21 native_prior_cleanups=1 copy_text_calls=0 copy_text_cleanup=0 outside_text=0 outside_headers=5 postcall_used=267 postcall_external=51 postcall_resources=2 postcall_cleanup_nodes=4 postcall_cleanup=128
+(OK) (0.056677 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 180
+        0.61 real         0.05 user         0.00 sys
+            21528576  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                1478  page reclaims
+                  11  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                  27  involuntary context switches
+           858134136  instructions retired
+           230524976  cycles elapsed
+            17678720  peak memory footprint
+Test command wall time: 0.697s; includes in-test fixture setup; external configuration/build excluded.

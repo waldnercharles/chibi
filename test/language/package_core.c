@@ -10,6 +10,7 @@
 #include "runtime/text_format.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
+#include "types/copy.h"
 #include "types/text.h"
 
 #include <assert.h>
@@ -32,11 +33,45 @@ static behavior_function_activation activation;
 static arena storage, inputs_storage;
 static pin_value output;
 static size_t slice_calls, slice_bytes, byte_reads;
+/* Opt-in attribution at the existing native binding seam. Outer copy scopes
+ * exclude this nested scope; no preparation or input construction is counted. */
+static bool trace_slice;
+static pin_copy_counts slice_copies;
+static size_t slice_descriptor_bytes, slice_cleanup_bytes, slice_retained_bytes;
+static size_t copy_text_calls, copy_text_cleanup_bytes, slice_cleanup_before;
+static const pin_string *(*original_copy_text)(void *, const pin_string *);
+static const pin_string *measured_copy_text(void *memory, const pin_string *source)
+{
+    size_t before = arena_cleanup_bytes(memory);
+    const pin_string *result = original_copy_text(memory, source);
+    copy_text_calls++;
+    copy_text_cleanup_bytes += arena_cleanup_bytes(memory) - before;
+    return result;
+}
 /* Count actual owned slice payloads through the existing native binding seam.
  * Delegate unchanged to the runtime; no allocator or runtime instrumentation. */
 static const char *measured_slice(arena *memory, const pin_value *args, int count, pin_value *result)
 {
+    size_t before = 0, capacity = 0, cleanup = 0, retained = 0;
+    pin_copy_scope copies = { 0 };
+    if (trace_slice) {
+        arena_usage(memory, &before, &capacity);
+        before -= memory->retained_bytes;
+        cleanup = arena_cleanup_bytes(memory);
+        slice_cleanup_before = memory->cleanup_count;
+        retained = memory->retained_bytes;
+        pin_copy_scope_begin(&copies);
+    }
     const char *error = NATIVE_TEXT_SLICE_CALL.value(memory, args, count, result);
+    if (trace_slice) {
+        pin_copy_scope_end(&copies);
+        slice_copies = copies.counts;
+        size_t after;
+        arena_usage(memory, &after, &capacity);
+        slice_descriptor_bytes = after - memory->retained_bytes - before;
+        slice_cleanup_bytes = arena_cleanup_bytes(memory) - cleanup;
+        slice_retained_bytes = memory->retained_bytes - retained;
+    }
     if (!error) {
         slice_calls++;
         slice_bytes += pin_text(*result).length;
@@ -48,7 +83,7 @@ static const char *measured_byte_at(arena *memory, const pin_value *args, int co
     byte_reads++;
     return NATIVE_TEXT_BYTE_AT_CALL.value(memory, args, count, result);
 }
-static const node_host_call MEASURED_SLICE = { .value = measured_slice };
+static node_host_call MEASURED_SLICE;
 static const node_host_call MEASURED_BYTE_AT = { .value = measured_byte_at };
 static const char APP[] =
     "package app\nimport strings \"core:strings\"\n"
@@ -121,6 +156,9 @@ static bool table(int index)
     for (int i = 0; i < packs[0].binding_count; i++) {
         bindings[i] = packs[0].bindings[i];
         if (!strcmp(bindings[i].canonical_name, NATIVE_TEXT_SLICE_NAME)) {
+            /* Preserve the production binding's ownership/effect contract. */
+            MEASURED_SLICE = NATIVE_TEXT_SLICE_CALL;
+            MEASURED_SLICE.value = measured_slice;
             bindings[i].implementation.call = &MEASURED_SLICE;
         }
         if (!strcmp(bindings[i].canonical_name, NATIVE_TEXT_BYTE_AT_NAME)) {
@@ -254,6 +292,11 @@ static bool invoke(
         .budget = 10000,
     };
     behavior_function_bind_storage(&context, &storage);
+    if (trace_slice) {
+        copy_text_calls = copy_text_cleanup_bytes = 0;
+        original_copy_text = context.copy_text;
+        context.copy_text = measured_copy_text;
+    }
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
     behavior_run_scope runs = { 0 };
     slice_calls = slice_bytes = byte_reads = 0;
@@ -930,6 +973,102 @@ TEST_CASE(package_core_strings_binary_overlap_collision_and_limits)
     }
     return true;
 }
+/* This is the shipped Slice used for collection-name extraction at
+ * package_routes/Routes.chibi ImportRoute, not an authored lookalike. Four
+ * producer forms exercise the ownership constraints on any proposed reuse.
+ * One call per form/backend, 11 selected-source bytes, 10000 VM instructions. */
+TEST_CASE(package_core_slice_attribution)
+{
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
+        for (int form = 0; form < 4; form++) {
+            arena producer = { 0 }, window = { 0 }, detached = { 0 };
+            pin_value source;
+            char borrowed[] = "core:scalar";
+            pin_string descriptor = { .bytes = borrowed, .length = 11 };
+            if (form == 0) {
+                source = text("core:scalar");
+            } else if (form == 1) {
+                source = (pin_value){ .type = PIN_STR, .text = &descriptor };
+            } else if (form == 2) {
+                pin_value whole;
+                REQUIRE(!pin_value_text(&producer, &whole, "core:scalar", 11));
+                REQUIRE(!pin_value_text_share(&inputs_storage, &source, whole));
+                arena_free(&producer);
+            } else {
+                pin_value whole, middle;
+                REQUIRE(!pin_value_text(&producer, &whole, "[core:scalar]", 13));
+                REQUIRE(!pin_value_text_slice(&window, &middle, whole, 1, 12));
+                REQUIRE(!pin_value_text_slice(&inputs_storage, &source, middle, 0, 11));
+                arena_free(&producer);
+                arena_free(&window);
+            }
+            pin_value args[] = { source, integer(0), integer(4) };
+            pin_copy_scope outside = { 0 };
+            trace_slice = true;
+            pin_copy_scope_begin(&outside);
+            bool valid = core_call("Slice", args, 3, PIN_STR, backends[b]);
+            pin_copy_scope_end(&outside);
+            trace_slice = false;
+            REQUIRE(valid && slice_calls == 1 && slice_bytes == 4);
+            REQUIRE(!outside.counts.overflow && !slice_copies.overflow);
+            arena_free(&inputs_storage);
+            memset(borrowed, '?', 11);
+            REQUIRE(pin_text(output).length == 4);
+            REQUIRE(!memcmp(pin_text(output).bytes, "core", 4));
+            REQUIRE(pin_text(output).bytes[4] == 0);
+            size_t used, capacity;
+            arena_usage(&storage, &used, &capacity);
+            printf(
+                "SLICE backend=%s form=%d native_payload=%llu "
+                "native_descriptor=%zu "
+                "native_cleanup=%zu native_external=%zu "
+                "native_prior_cleanups=%zu "
+                "copy_text_calls=%zu copy_text_cleanup=%zu outside_text=%llu "
+                "outside_headers=%llu postcall_used=%zu postcall_external=%zu "
+                "postcall_resources=%zu postcall_cleanup_nodes=%zu "
+                "postcall_cleanup=%zu\n",
+                b ? "compiled" : "bytecode",
+                form,
+                (unsigned long long)slice_copies.text_bytes,
+                slice_descriptor_bytes,
+                slice_cleanup_bytes,
+                slice_retained_bytes,
+                slice_cleanup_before,
+                copy_text_calls,
+                copy_text_cleanup_bytes,
+                (unsigned long long)outside.counts.text_bytes,
+                (unsigned long long)outside.counts.value_header_moves,
+                used,
+                storage.retained_bytes,
+                storage.resource_count,
+                storage.cleanup_count,
+                arena_cleanup_bytes(&storage)
+            );
+            /* Retain independently before destroying the execution producer.
+             * No collection is attempted while synchronous slots may be live. */
+            pin_value kept;
+            REQUIRE(!pin_value_text_share(&detached, &kept, output));
+            finish_call();
+            REQUIRE(pin_text(kept).length == 4);
+            REQUIRE(!memcmp(pin_text(kept).bytes, "core", 4));
+            const char *cstring = NULL;
+            REQUIRE(!pin_text_cstring(&detached, kept, &cstring, NULL));
+            REQUIRE(!strcmp(cstring, "core"));
+            arena_free(&detached);
+        }
+        cleanup();
+    }
+    return true;
+}
+void test_language_slice_attribution()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_core_slice_attribution);
+    pu_clear_setup();
+    cleanup();
+}
+
 void test_language_package_core()
 {
     pu_setup(NULL, cleanup);

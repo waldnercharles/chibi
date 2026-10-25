@@ -77,6 +77,7 @@ void test_language_package_resolution();
 void test_language_package_imports();
 void test_language_package_files();
 void test_language_package_core();
+void test_language_slice_attribution();
 void test_language_package_tests();
 void test_language_docs_markdown();
 void test_language_scalarize();
@@ -242,6 +243,7 @@ int main(int argc, char **argv)
     bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+    bool slice_attribution = argc == 2 && !strcmp(argv[1], "--slice-attribution");
     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
@@ -287,17 +289,18 @@ int main(int argc, char **argv)
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
          !package_compiler_chibi_collections_compiled &&
-         !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
-         !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
-         !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
-         !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
-         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
-         !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
-         !package_execution && !package_resolution && !package_imports &&
-         !package_files && !package_core && !package_tests && !docs_markdown &&
+         !package_compiler_chibi_imports_compiled &&
+         !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
+         !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_sharing &&
+         !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_native && !lexical_binding_chibi &&
+         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
+         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
+         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
+         !package_resolution && !package_imports && !package_files &&
+         !package_core && !slice_attribution && !package_tests && !docs_markdown &&
          !component_write && !component_write_layout && !scalarize && !borrow &&
          !reductions && !binding_schedule && !activation_cache && !headless &&
          !build_workflow && !navigation && !publication && !field_runtime &&
@@ -574,6 +577,8 @@ int main(int argc, char **argv)
         test_language_package_resolution();
     } else if (package_imports) {
         test_language_package_imports();
+    } else if (slice_attribution) {
+        test_language_slice_attribution();
     } else if (package_core) {
         test_language_package_core();
     } else if (package_tests) {

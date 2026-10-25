@@ -11,6 +11,7 @@
 #include "execution/service.h"
 #include "execution/status.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/arrays.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -2797,6 +2798,122 @@ TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage)
     }
     return true;
 }
+static const char *rebound_kernel(arena *, const pin_value *, int, pin_value *results)
+{
+    host_calls++;
+    results[0] = (pin_value){ .type = PIN_I32, .i = -1 };
+    return NULL;
+}
+/* One pointer array, its own and a rebound callback, two backends each. A
+ * borrowing kernel skips the argument walk only through its own callback; any
+ * other callback is checked like a native call and fails before it runs. */
+TEST_CASE(execution_rebound_borrowing_call_checks_its_arguments)
+{
+    cleanup();
+    pin_value payload = { .type = PIN_POINTER };
+    pin_array array = { .element_type = PIN_POINTER,
+                        .count = 1,
+                        .capacity = 1,
+                        .items = &payload };
+    pin_value argument = { .type = PIN_POINTER,
+                           .container = PIN_CONTAINER_ARRAY,
+                           .ptr = &array };
+    pin_value output = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    int host = behavior_function_builder_host(
+        builder,
+        &NATIVE_ARRAY_length_CALL,
+        &NATIVE_ARRAY_ACCESS,
+        &argument,
+        1,
+        &output,
+        1
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    int result = function->host_calls[host].result_first;
+    for (int rebound = 0; rebound < 2; rebound++) {
+        for (int backend = 0; backend < 2; backend++) {
+            release_invocation();
+            host_calls = 0;
+            context = (behavior_function_context){ .budget = 100 };
+            behavior_function_bind_storage(&context, &storage);
+            REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+            behavior_function_prepare_data(function, NULL, &context.data);
+            context.owned_data = true;
+            if (rebound) {
+                context.data->calls[host].value = rebound_kernel;
+            }
+            int status = behavior_function_run(function, &context, backend != 0);
+            if (!rebound) {
+                REQUIRE(status == FLOW_OK && context.data->values[result].i == 1);
+                continue;
+            }
+            REQUIRE(
+                status != FLOW_OK && host_calls == 0 &&
+                context.data->values[result].i == 0
+            );
+            REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA);
+            REQUIRE(
+                context.error_message &&
+                !strcmp(context.error_message, "Native calls cannot retain managed pointer arguments")
+            );
+        }
+    }
+    return true;
+}
+/* Two malformed arguments to one borrowing kernel: a top-level array and one
+ * nested in a boxed array's union. Bank values enter at definition freeze,
+ * which validates their whole storage, so the call never runs on them. */
+TEST_CASE(execution_borrowing_call_arguments_validate_at_definition)
+{
+    for (int variant = 0; variant < 2; variant++) {
+        cleanup();
+        int32_t rows[] = { 1, 2 };
+        pin_array malformed = { .element_type = PIN_I32,
+                                .count = 1,
+                                .capacity = 1,
+                                .stride = 2 * sizeof(int32_t),
+                                .data = rows };
+        pin_value array = { .type = PIN_I32,
+                            .container = PIN_CONTAINER_ARRAY,
+                            .ptr = &malformed };
+        pin_value inner = { .type = PIN_I32 }, item;
+        REQUIRE(!pin_union_value(&managed, 1, &inner, 1, &item));
+        ((pin_union *)item.ptr)->values[0] = array;
+        pin_array boxed = { .element_type = PIN_UNION,
+                            .count = 1,
+                            .capacity = 1,
+                            .items = &item };
+        pin_value argument = variant ? (pin_value){ .type = PIN_UNION,
+                                                    .container = PIN_CONTAINER_ARRAY,
+                                                    .ptr = &boxed }
+                                     : array;
+        pin_value output = { .type = PIN_I32 };
+        builder = behavior_function_builder_new();
+        behavior_function_builder_host(
+            builder,
+            &NATIVE_ARRAY_length_CALL,
+            &NATIVE_ARRAY_ACCESS,
+            &argument,
+            1,
+            &output,
+            1
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = 0,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        REQUIRE(!function && !strcmp(error, "function value ownership is invalid"));
+    }
+    return true;
+}
 /* Two fixed canonical intrinsic bodies; inspect metadata without executing. */
 TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe)
 {
@@ -3069,6 +3186,8 @@ void test_language_execution()
     RUN_TEST_CASE(execution_pointer_comparisons_use_location_identity);
     RUN_TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers);
     RUN_TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage);
+    RUN_TEST_CASE(execution_rebound_borrowing_call_checks_its_arguments);
+    RUN_TEST_CASE(execution_borrowing_call_arguments_validate_at_definition);
     RUN_TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe);
     RUN_TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);

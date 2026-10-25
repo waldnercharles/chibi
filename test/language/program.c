@@ -9987,6 +9987,42 @@ TEST_CASE(program_captured_addressed_local_preserves_pointer_alias)
     }
     return true;
 }
+/* One entity on two backends: a helper returns a pointer array built by the
+ * borrowing append kernel, a delayed continuation holds it across one forced
+ * safe-point collection, then reads and writes both cells. */
+TEST_CASE(program_borrowed_pointer_array_results_survive_collection)
+{
+    const char
+        *source = "P :: behavior { seen: double = 0; "
+                  "Make :: () -> (r: ^double[]) { x := 3.0; y := 4.0; "
+                  "ps: ^double[] = [&x]; ps.append(&y); return ps } "
+                  "Parent :: () { ps := Make(); action later = Delay(1); "
+                  "later(); after later { ps[1]^ += 1; "
+                  "if length(ps) == 2 { seen = ps[0]^ * 10 + ps[1]^ } } } "
+                  "on Impulse :: () { Parent(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 35));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
 /* Two independent program owners, one cell and one single-element array.
  * Every foreign ingress must reject before queueing or changing state. */
 TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers)
@@ -10037,6 +10073,7 @@ void test_language_program()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(program_captured_addressed_local_preserves_pointer_alias);
+    RUN_TEST_CASE(program_borrowed_pointer_array_results_survive_collection);
     RUN_TEST_CASE(program_detached_event_batches_keep_managed_arguments);
     RUN_TEST_CASE(program_staged_replacement_pins_preserved_pointers);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);

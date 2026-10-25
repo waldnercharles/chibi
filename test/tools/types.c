@@ -1,9 +1,12 @@
 #include "execution/borrow.h"
+#include "execution/intrinsics.h"
+#include "runtime/arrays.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy.h"
 #include "types/map.h"
 #include "types/pointer.h"
 #include "types/record.h"
@@ -14,6 +17,7 @@
 #include "types/value_wire.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -237,8 +241,13 @@ static pin_array *source;
 static av_doc *source_document;
 static bool pointer_project_catalog;
 
+static pin_copy_scope ownership_scope;
+
 static void release_values()
 {
+    if (ownership_scope.active) {
+        pin_copy_scope_end(&ownership_scope);
+    }
     if (pointer_project_catalog) {
         type_catalog_set_project(NULL);
         pointer_project_catalog = false;
@@ -1540,6 +1549,277 @@ TEST_CASE(types_copy_drop_append_keeps_allocation_work_linear)
     pin_value_collection_release(&value);
     REQUIRE(cow_heap.retained_bytes == 0);
     return true;
+}
+
+static size_t ownership_start;
+
+static void ownership_begin()
+{
+    pin_copy_scope_reset(&ownership_scope);
+    ownership_start = cow_heap.allocated;
+    pin_copy_scope_begin(&ownership_scope);
+}
+static void ownership_end(const char *stage, const pin_array *outer, const pin_array *child)
+{
+    pin_copy_scope_end(&ownership_scope);
+    const pin_copy_counts *c = &ownership_scope.counts;
+    size_t used, capacity;
+    arena_usage(&cow_heap, &used, &capacity);
+    printf(
+        "OWNERSHIP %s adopt=%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64
+        " detach=%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64
+        " shells=%" PRIu64 " headers=%" PRIu64 " buffer=%" PRIu64
+        " record_bytes=%" PRIu64 " hits=%" PRIu64 " frozen_bypass=%" PRIu64
+        " arena_allocated=%zu external_unique=%zu arena_used=%zu "
+        "arena_capacity=%zu outer_refs=%zu "
+        "child_refs=%zu overflow=%d\n",
+        stage,
+        c->array_adoption.allocations,
+        c->array_adoption.allocated_bytes,
+        c->array_adoption.packed_bytes,
+        c->array_adoption.boxed_values,
+        c->array_detach.allocations,
+        c->array_detach.allocated_bytes,
+        c->array_detach.packed_bytes,
+        c->array_detach.boxed_values,
+        c->array_owner_shells,
+        c->value_header_moves,
+        c->value_buffer_bytes,
+        c->record_descriptor_bytes,
+        c->record_cache_hits,
+        c->record_frozen_cache_bypasses,
+        cow_heap.allocated - ownership_start,
+        cow_heap.retained_bytes,
+        used,
+        capacity,
+        outer ? pin_array_backing_references(outer) : 0,
+        child ? pin_array_backing_references(child) : 0,
+        c->overflow
+    );
+}
+static bool ownership_integers(pin_value value, const int *expected, int count)
+{
+    const pin_array *array = value.ptr;
+    REQUIRE(value.container == PIN_CONTAINER_ARRAY && value.type == PIN_I32);
+    REQUIRE(array && array->count == count);
+    for (int i = 0; i < count; i++) {
+        pin_value item = pin_array_get(array, i);
+        REQUIRE(item.type == PIN_I32 && item.container == PIN_CONTAINER_SINGLE);
+        REQUIRE(item.i == expected[i]);
+    }
+    return true;
+}
+TEST_CASE(ownership_raw_boxed_adoption_and_nested_detach)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value raw_child = cow_integers(2, 10);
+    REQUIRE(raw_child.ptr);
+    pin_array *rows = pin_array_snapshot_allocate(&cow_heap, PIN_STRUCT, "__collection_probe", 4);
+    REQUIRE(rows);
+    rows->count = 1;
+    rows->items[0] = raw_child;
+    REQUIRE(!pin_array_manage(&cow_heap, rows));
+    pin_value original = { .type = PIN_STRUCT,
+                           .container = PIN_CONTAINER_ARRAY,
+                           .type_name = rows->type_name,
+                           .ptr = rows },
+              copy;
+    REQUIRE(!rows->backing && !((pin_array *)raw_child.ptr)->backing);
+    ownership_begin();
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    pin_value child = pin_array_get(copy.ptr, 0);
+    ownership_end("boxed-first-copy", copy.ptr, child.ptr);
+    const int old[] = { 10, 11 }, changed[] = { 99, 11 };
+    REQUIRE(ownership_integers(raw_child, old, 2));
+    REQUIRE(ownership_integers(child, old, 2));
+    ownership_begin();
+    REQUIRE(!pin_array_make_unique(&cow_heap, copy.ptr));
+    child = pin_array_get(copy.ptr, 0);
+    ownership_end("boxed-outer-detach", copy.ptr, child.ptr);
+    ownership_begin();
+    pin_value replacement = { .type = PIN_I32, .i = 99 };
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, child.ptr, 0, &replacement));
+    ownership_end("boxed-child-detach", copy.ptr, child.ptr);
+    REQUIRE(ownership_integers(child, changed, 2));
+    REQUIRE(ownership_integers(pin_array_get(original.ptr, 0), old, 2));
+    REQUIRE(ownership_integers(raw_child, old, 2));
+    /* All calls have returned. These are the complete live roots. raw_child
+     * borrows the retired constructor graph; never explicitly release it. */
+    ownership_begin();
+    ownership_end(
+        "boxed-before-rooted-collection",
+        original.ptr,
+        pin_array_get(original.ptr, 0).ptr
+    );
+    pin_value roots[] = { original, copy };
+    cow_collect(roots, 2);
+    ownership_begin();
+    ownership_end(
+        "boxed-after-rooted-collection",
+        original.ptr,
+        pin_array_get(original.ptr, 0).ptr
+    );
+    REQUIRE(ownership_integers(pin_array_get(original.ptr, 0), old, 2));
+    REQUIRE(ownership_integers(pin_array_get(copy.ptr, 0), changed, 2));
+    return true;
+}
+TEST_CASE(ownership_readonly_drop_and_retained_append)
+{
+    const char *labels[] = { "native-length-append",
+                             "copy-drop-append",
+                             "retained-copy-append" };
+    const int old[] = { 10, 11 }, appended[] = { 10, 11, 12 };
+    for (int mode = 0; mode < 3; mode++) {
+        arena_init_collectable(&cow_heap);
+        pin_value original = cow_integers(2, 10), retained = { 0 };
+        REQUIRE(original.ptr);
+        ownership_begin();
+        REQUIRE(!pin_array_make_unique(&cow_heap, original.ptr));
+        ownership_end("packed-first-adoption", original.ptr, NULL);
+        pin_value reference = execution_reference_value(&cow_heap, NULL, &original, original);
+        ownership_begin();
+        if (mode == 0) {
+            pin_value length = native_array_length(&original, 1, &cow_heap);
+            REQUIRE(length.type == PIN_I32 && length.i == 2);
+        } else {
+            REQUIRE(!pin_value_collection_copy(&cow_heap, &retained, &original));
+            REQUIRE(ownership_integers(retained, old, 2));
+            if (mode == 1) {
+                pin_value_collection_release(&retained);
+            }
+        }
+        pin_value arguments[] = { reference,
+                                  { .type = PIN_I32, .i = EXECUTION_ARRAY_APPEND },
+                                  { .type = PIN_I32, .i = 12 } },
+                  result;
+        REQUIRE(!EXECUTION_array_mutate_place_call.value(&cow_heap, arguments, 3, &result));
+        REQUIRE(result.type == PIN_BOOL && result.b);
+        ownership_end(labels[mode], original.ptr, NULL);
+        REQUIRE(ownership_integers(original, appended, 3));
+        if (mode == 2) {
+            REQUIRE(ownership_integers(retained, old, 2));
+        }
+        pin_value roots[] = { original, mode == 2 ? retained : (pin_value){ 0 } };
+        cow_collect(roots, 2);
+        REQUIRE(ownership_integers(original, appended, 3));
+        if (mode == 2) {
+            REQUIRE(ownership_integers(retained, old, 2));
+        }
+        arena_free(&cow_heap);
+    }
+    return true;
+}
+TEST_CASE(ownership_repeated_native_slice_and_concat)
+{
+    const int expected[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+    for (int count = 4; count <= 8; count *= 2) {
+        arena_init_collectable(&cow_heap);
+        pin_value source = cow_integers(count, 1), remaining = source,
+                  result = cow_integers(0, 0);
+        REQUIRE(source.ptr && result.ptr);
+        ownership_begin();
+        for (int i = 0; i < count; i++) {
+            pin_value args[] = { remaining,
+                                 { .type = PIN_I32, .i = 0 },
+                                 { .type = PIN_I32, .i = 1 } };
+            pin_value first = native_array_slice(args, 3, &cow_heap);
+            REQUIRE(first.ptr && ownership_integers(first, expected + i, 1));
+            pin_value concat[] = { result, first };
+            result = native_array_extend(concat, 2, &cow_heap);
+            REQUIRE(result.ptr && ownership_integers(result, expected, i + 1));
+            args[1].i = 1;
+            args[2].i = count - i - 1;
+            remaining = native_array_slice(args, 3, &cow_heap);
+            REQUIRE(
+                remaining.ptr &&
+                ownership_integers(remaining, expected + i + 1, count - i - 1)
+            );
+        }
+        ownership_end(count == 4 ? "slice-concat-4" : "slice-concat-8", result.ptr, NULL);
+        pin_value roots[] = { source, result };
+        cow_collect(roots, 2);
+        REQUIRE(ownership_integers(source, expected, count));
+        REQUIRE(ownership_integers(result, expected, count));
+        arena_free(&cow_heap);
+    }
+    return true;
+}
+TEST_CASE(ownership_record_cache_alternation)
+{
+    static const char *names[] = { "probe.A", "probe.B", "probe.C",
+                                   "probe.D", "probe.E", "probe.F",
+                                   "probe.G", "probe.H", "probe.I" };
+    const type_field field = { .name = "value", .type = PIN_I32, .size = sizeof(int32_t) };
+    for (int frozen = 0; frozen < 2; frozen++) {
+        for (int layouts = 2; layouts <= 9; layouts += 7) {
+            const pin_record *records[9], *copies[36];
+            pin_value rows[36];
+            arena_init_collectable(&cow_heap);
+            for (int i = 0; i < layouts; i++) {
+                type_desc type = { .name = names[i],
+                                   .size = sizeof(int32_t),
+                                   .fields = &field,
+                                   .field_count = 1 };
+                records[i] = frozen
+                               ? pin_record_from_type(&cow_producer, &type)
+                               : pin_record_create(&cow_producer, names[i], (uint64_t)i + 1, &field, 1);
+                REQUIRE(records[i] && pin_record_valid(records[i]));
+            }
+            ownership_begin();
+            for (int i = 0; i < 36; i++) {
+                copies[i] = pin_record_snapshot(&cow_heap, records[i % layouts]);
+                REQUIRE(copies[i] && pin_record_valid(copies[i]));
+            }
+            ownership_end(
+                frozen ? (layouts == 2 ? "frozen-records-2" : "frozen-records-9")
+                       : (layouts == 2 ? "flat-records-2" : "flat-records-9"),
+                NULL,
+                NULL
+            );
+            for (int i = 0; i < 36; i++) {
+                void *data = arena_alloc(&cow_heap, copies[i]->type.size);
+                pin_value value = { .type = PIN_I32, .i = 41 };
+                REQUIRE(!pin_write_field(&cow_heap, data, &copies[i]->type.fields[0], value));
+                rows[i] = (pin_value){ .type = PIN_STRUCT,
+                                       .record = copies[i],
+                                       .type_name = copies[i]->type.name,
+                                       .ptr = data };
+            }
+            arena_free(&cow_producer);
+            cow_collect(rows, 36);
+            for (int i = 0; i < 36; i++) {
+                REQUIRE(pin_record_valid(rows[i].record));
+                REQUIRE(!strcmp(rows[i].type_name, names[i % layouts]));
+                REQUIRE(!strcmp(rows[i].record->type.fields[0].name, "value"));
+                pin_value value;
+                REQUIRE(!pin_read_field(
+                    &cow_heap,
+                    rows[i].ptr,
+                    &rows[i].record->type.fields[0],
+                    &value
+                ));
+                REQUIRE(value.type == PIN_I32 && value.i == 41);
+            }
+            arena_free(&cow_heap);
+        }
+    }
+    return true;
+}
+void test_tool_ownership_probes()
+{
+    printf(
+        "OWNERSHIP units: "
+        "adopt/detach=allocations/payload_capacity_bytes/packed_copy_bytes/"
+        "boxed_child_values; pin_value_bytes=%zu pin_array_bytes=%zu\n",
+        sizeof(pin_value),
+        sizeof(pin_array)
+    );
+    pu_setup(NULL, release_values);
+    RUN_TEST_CASE(ownership_raw_boxed_adoption_and_nested_detach);
+    RUN_TEST_CASE(ownership_readonly_drop_and_retained_append);
+    RUN_TEST_CASE(ownership_repeated_native_slice_and_concat);
+    RUN_TEST_CASE(ownership_record_cache_alternation);
+    pu_clear_setup();
 }
 
 void test_tool_types()

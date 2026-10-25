@@ -1,0 +1,43 @@
+OWNERSHIP units: adopt/detach=allocations/payload_capacity_bytes/packed_copy_bytes/boxed_child_values; pin_value_bytes=40 pin_array_bytes=104
+Running: ownership_raw_boxed_adoption_and_nested_detach OWNERSHIP boxed-first-copy adopt=2/168/8/1 detach=0/0/0/0 shells=2 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=632 external_unique=408 arena_used=1027 arena_capacity=1027 outer_refs=2 child_refs=2 overflow=0
+OWNERSHIP boxed-outer-detach adopt=0/0/0/0 detach=1/160/0/1 shells=1 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=392 external_unique=688 arena_used=1419 arena_capacity=1419 outer_refs=1 child_refs=3 overflow=0
+OWNERSHIP boxed-child-detach adopt=0/0/0/0 detach=1/8/8/0 shells=0 headers=1 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=136 external_unique=816 arena_used=1555 arena_capacity=1555 outer_refs=1 child_refs=1 overflow=0
+OWNERSHIP boxed-before-rooted-collection adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=0 external_unique=816 arena_used=1555 arena_capacity=1555 outer_refs=1 child_refs=2 overflow=0
+OWNERSHIP boxed-after-rooted-collection adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=0 external_unique=816 arena_used=1283 arena_capacity=1555 outer_refs=1 child_refs=1 overflow=0
+(OK) (0.000109 secs)
+Running: ownership_readonly_drop_and_retained_append OWNERSHIP packed-first-adoption adopt=1/8/8/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=136 external_unique=128 arena_used=248 arena_capacity=248 outer_refs=1 child_refs=0 overflow=0
+OWNERSHIP native-length-append adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=1 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=8 external_unique=136 arena_used=424 arena_capacity=424 outer_refs=1 child_refs=0 overflow=0
+OWNERSHIP packed-first-adoption adopt=1/8/8/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=136 external_unique=128 arena_used=248 arena_capacity=248 outer_refs=1 child_refs=0 overflow=0
+OWNERSHIP copy-drop-append adopt=0/0/0/0 detach=0/0/0/0 shells=1 headers=1 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=112 external_unique=136 arena_used=528 arena_capacity=528 outer_refs=1 child_refs=0 overflow=0
+OWNERSHIP packed-first-adoption adopt=1/8/8/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=136 external_unique=128 arena_used=248 arena_capacity=248 outer_refs=1 child_refs=0 overflow=0
+OWNERSHIP retained-copy-append adopt=0/0/0/0 detach=1/8/8/0 shells=1 headers=1 buffer=0 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=248 external_unique=264 arena_used=664 arena_capacity=664 outer_refs=1 child_refs=0 overflow=0
+(OK) (0.000061 secs)
+Running: ownership_repeated_native_slice_and_concat OWNERSHIP slice-concat-4 adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=10 buffer=80 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=1328 external_unique=0 arena_used=1552 arena_capacity=1552 outer_refs=0 child_refs=0 overflow=0
+OWNERSHIP slice-concat-8 adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=36 buffer=288 record_bytes=0 hits=0 frozen_bypass=0 arena_allocated=2784 external_unique=0 arena_used=3024 arena_capacity=3024 outer_refs=0 child_refs=0 overflow=0
+(OK) (0.000035 secs)
+Running: ownership_record_cache_alternation OWNERSHIP flat-records-2 adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=412 hits=34 frozen_bypass=0 arena_allocated=412 external_unique=0 arena_used=412 arena_capacity=412 outer_refs=0 child_refs=0 overflow=0
+OWNERSHIP flat-records-9 adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=7416 hits=0 frozen_bypass=0 arena_allocated=7416 external_unique=0 arena_used=7416 arena_capacity=7416 outer_refs=0 child_refs=0 overflow=0
+OWNERSHIP frozen-records-2 adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=7416 hits=0 frozen_bypass=34 arena_allocated=7416 external_unique=0 arena_used=7416 arena_capacity=7416 outer_refs=0 child_refs=0 overflow=0
+OWNERSHIP frozen-records-9 adopt=0/0/0/0 detach=0/0/0/0 shells=0 headers=0 buffer=0 record_bytes=7416 hits=0 frozen_bypass=0 arena_allocated=7416 external_unique=0 arena_used=7416 arena_capacity=7416 outer_refs=0 child_refs=0 overflow=0
+(OK) (0.000192 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 1537
+        0.27 real         0.00 user         0.00 sys
+             2080768  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                 301  page reclaims
+                   2  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                   6  involuntary context switches
+            22863607  instructions retired
+            11223561  cycles elapsed
+             1245496  peak memory footprint
+Test command wall time: 0.371s; includes in-test fixture setup; external configuration/build excluded.

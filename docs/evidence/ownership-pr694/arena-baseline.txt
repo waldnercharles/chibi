@@ -1,0 +1,26 @@
+(FAILED: $BASELINE/test/support/arena.c (155): !arena_copy_find(&storage, &sources[0]))
+Running: arena_growth_keeps_allocations_and_reset_reuses_blocks (OK) (0.000326 secs)
+Running: zero_arena_allocates_on_first_use (OK) (0.000001 secs)
+Running: collectable_arena_finds_values_by_address (OK) (0.001961 secs)
+Running: arena_remembers_last_copy_until_reset_or_collection
+===============================================================
+Summary: Passed: 3 Failed: 1 Total: 4 Suites: 0 Asserts: 367
+        0.23 real         0.00 user         0.00 sys
+             3391488  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                 381  page reclaims
+                   2  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                   9  involuntary context switches
+            61538272  instructions retired
+            18051470  cycles elapsed
+             2867536  peak memory footprint
+Test command wall time: 0.329s; includes in-test fixture setup; external configuration/build excluded.

@@ -17,8 +17,30 @@
  * ECS row publication, serializers, allocator movement and arbitrary host
  * copies are excluded. These are C operation spans, not hardware bandwidth.
  * See docs/evidence/runtime-attribution/design.md for the exact inventory. */
+/* Successful packed memcpy bytes and completed boxed child VALUE copies are
+ * separate. Allocation counts include attempted backing construction (including
+ * empty payloads), with capacity bytes for the payload only. They exclude shell,
+ * anchor, allocator overhead, growth/realloc and child allocations; child backing
+ * construction records its own event. These are work counters, not live bytes. */
 typedef struct
 {
+    uint64_t allocations;
+    uint64_t allocated_bytes;
+    uint64_t packed_bytes;
+    uint64_t boxed_values;
+} pin_array_copy_counts;
+
+typedef struct
+{
+    pin_array_copy_counts array_adoption, array_detach;
+    /* VALUE-copy shared shells only; constructor/window/view shells excluded.
+     * Descriptor bytes cover copy_record, not native closure construction.
+     * Frozen bypass counts a found cache entry rejected by the frozen guard,
+     * including cases subsequently reused because already owned by storage. */
+    uint64_t array_owner_shells;
+    uint64_t record_cache_hits;
+    uint64_t record_frozen_cache_bypasses;
+    uint64_t record_descriptor_bytes;
     uint64_t text_bytes;
     uint64_t nominal_bytes;
     uint64_t record_bytes;

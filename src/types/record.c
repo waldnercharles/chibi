@@ -2,6 +2,7 @@
 
 #include "support/arena.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
 #include "types/scalar.h"
 
 #include <string.h>
@@ -525,6 +526,7 @@ static const pin_record *copy_record(arena *storage, const pin_record *record)
 {
     pin_record *copy = arena_alloc(storage, record->bytes);
     memcpy(copy, record, record->bytes);
+    pin_copy_record(PIN_COPY_RECORD_DESCRIPTOR, record->bytes);
     if (record->frozen) {
         native_move(record, copy, (const char *)record, (char *)copy);
         return copy;
@@ -580,7 +582,11 @@ const pin_record *pin_record_snapshot(arena *storage, const pin_record *record)
     const pin_record *copy = arena_copy_find(storage, record);
     if (copy && !record->frozen && pin_record_same(copy, record) &&
         same_text(copy, record)) {
+        pin_copy_record(PIN_COPY_RECORD_CACHE_HIT, 1);
         return copy;
+    }
+    if (copy && record->frozen) {
+        pin_copy_record(PIN_COPY_RECORD_FROZEN_CACHE_BYPASS, 1);
     }
     bool nested = false;
     for (int i = 0; !record->frozen && i < record->type.field_count; i++) {

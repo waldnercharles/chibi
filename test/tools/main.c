@@ -86,6 +86,7 @@ void test_tool_shader_webgpu();
 void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
 void test_tool_types();
+void test_tool_ownership_probes();
 void test_tool_ecs();
 void test_tool_ecs_strings();
 void test_tool_ecs_relationships();
@@ -1020,6 +1021,7 @@ int main(int argc, char **argv)
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
+    bool ownership = argc == 2 && !strcmp(argv[1], "--ownership-probes");
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
@@ -1207,7 +1209,7 @@ int main(int argc, char **argv)
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
         !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
         !scene3d && !material_ramps && !texture_transform && !arena && !types &&
-        !render_geometry && !radiance_surface && !radiance_horizons &&
+        !ownership && !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
         !shader_programs && !material_cameras && !mesh_materials &&
@@ -1240,7 +1242,7 @@ int main(int argc, char **argv)
             "--unit-validation <chibi_ctl> | "
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
-            "--ecs-query-benchmark | --arena | --types | "
+            "--ecs-query-benchmark | --arena | --types | --ownership-probes | "
             "--validate-project chibi_ctl | "
             "--fixture-format chibi_ctl | "
             "--controller chibi_ctl | "
@@ -1624,6 +1626,8 @@ int main(int argc, char **argv)
         test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
+    } else if (ownership) {
+        test_tool_ownership_probes();
     } else if (types) {
         test_tool_types();
     } else if (arena) {

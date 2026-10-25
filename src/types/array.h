@@ -41,6 +41,9 @@ int pin_value_collection_copy(arena *, pin_value *out, const pin_value *source);
 pin_array *pin_array_value_copy(arena *, const pin_array *);
 /* Call on the actual destination shell before exposing mutable payload. */
 int pin_array_make_unique(arena *, pin_array *);
+/* Diagnostic snapshot; zero for raw storage. The caller must keep the shell
+ * alive and exclude concurrent mutation/release. No references are retained. */
+size_t pin_array_backing_references(const pin_array *);
 /* Release one shell's logical ownership. Arena cleanup remains idempotent. */
 void pin_array_release(pin_array *);
 /* Refresh external accounting after a successful payload mutation. */

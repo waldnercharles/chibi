@@ -55,7 +55,7 @@ endif()
 
 option(CHIBI_INSTALLED_SDK "Link tooling contract checks against an installed SDK" OFF)
 if(CHIBI_INSTALLED_SDK)
-    find_package(Chibi REQUIRED CONFIG COMPONENTS behavior_runtime scene_runtime ecs execution_contract value_document)
+    find_package(Chibi REQUIRED CONFIG COMPONENTS behavior_runtime scene_runtime ecs execution_contract value_document array_capabilities execution)
 elseif(NOT TARGET Chibi::types)
     set(CHIBI_SDK_BUILD_COMPILER OFF CACHE BOOL "Build language, compiler and source authoring packages")
     add_subdirectory("${CHIBI_TOOL_ROOT}/sdk" sdk)
@@ -72,7 +72,7 @@ configure_file("${CHIBI_TOOL_ROOT}/third_party/pico_headers/pico_unit.h"
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/third_party/pico_headers/pico_unit.h" COPYONLY)
 add_library(chibi_sdk_contracts OBJECT types.c ecs.c ecs_relationship.c ecs_hierarchy.c ecs_world.c ecs_query.c ecs_query_benchmark.c)
 target_include_directories(chibi_sdk_contracts PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::execution_contract Chibi::ecs Chibi::value_document)
+target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::execution_contract Chibi::execution Chibi::ecs Chibi::value_document Chibi::array_capabilities)
 target_compile_options(chibi_sdk_contracts PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 configure_file("${CHIBI_TOOL_ROOT}/test/prepared_fixture.h"
@@ -105,7 +105,7 @@ target_compile_definitions(test_tools PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_S
 add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document Chibi::array_capabilities)
 if(TARGET chibi_build_host)
     target_sources(test_tools PRIVATE native_aot_driver.c)
     target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c)

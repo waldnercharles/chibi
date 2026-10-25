@@ -56,6 +56,12 @@ struct pin_array_backing
     array_anchor *anchor;
     pin_array payload;
 };
+size_t pin_array_backing_references(const pin_array *array)
+{
+    return array->backing
+             ? atomic_load_explicit(&array->backing->refs, memory_order_relaxed)
+             : 0;
+}
 static size_t backing_bytes(const pin_array_backing *backing)
 {
     const pin_array *array = &backing->payload;
@@ -1724,10 +1730,12 @@ int pin_array_make_unique(arena *storage, pin_array *array)
     }
     size_t width = array->stride ? array->stride : sizeof(pin_value);
     void *data = array->capacity ? xcalloc((size_t)array->capacity, width) : NULL;
+    pin_copy_array_allocation(adopting, (size_t)array->capacity * width);
     if (array->stride) {
         backing->payload.data = data;
         if (array->count) {
             memcpy(data, array->data, (size_t)array->count * width);
+            pin_copy_array_payload(adopting, true, (size_t)array->count * width);
         }
     } else {
         backing->payload.items = data;
@@ -1770,6 +1778,7 @@ int pin_array_make_unique(arena *storage, pin_array *array)
                 }
                 return -1;
             }
+            pin_copy_array_payload(adopting, false, 1);
             backing->payload.count = i + 1;
         }
     }
@@ -1823,6 +1832,7 @@ pin_array *pin_array_value_copy(arena *storage, const pin_array *source)
     }
     pin_array *copy = arena_alloc(storage, sizeof *copy);
     *copy = *original;
+    pin_copy_record(PIN_COPY_ARRAY_OWNER_SHELL, 1);
     atomic_fetch_add_explicit(&original->backing->refs, 1, memory_order_relaxed);
     backing_attach(copy, original->backing);
     pin_arena_trace_array(storage, copy);

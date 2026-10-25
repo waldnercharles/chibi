@@ -831,6 +831,13 @@ TEST_CASE(wide_literals_need_an_f64_context)
         { WIDE("return (-1e300) * x;"), -1e300, 0 },
         { WIDE("return x * -(1e300 * 2);"), -2e300, 0 },
         { WIDE("y: f64 = -(1e300) * 2; return y;"), -2e300, 0 },
+        { WIDE("return x * -18446744073709551616;"), -0x1p64, 0 },
+        { WIDE("return x * 18446744073709551616;"), 0x1p64, 0 },
+        { WIDE("y: f64 = -18446744073709551616; return y;"), -0x1p64, 0 },
+        { WIDE("y: f64 = 18446744073709551616; return y;"), 0x1p64, 0 },
+        { WIDE("return (-18446744073709551616) * x;"), -0x1p64, 0 },
+        { WIDE("return x * -(-18446744073709551616);"), 0x1p64, 0 },
+        { WIDE("return pow(Exponent: x, Base: -18446744073709551616);"), -0x1p64, 1 },
         { WIDE("x = 1e300; return sqrt(x);"), 1e150, 1 },
         { WIDE("return sqrt(f64(1e300));"), 1e150, 1 },
     };
@@ -861,6 +868,10 @@ TEST_CASE(wide_literals_need_an_f64_context)
           "}",
           "Numeric literal is outside the range of number",
           46 },
+        { "Packed :: library { Math :: () -> f64 { y := -18446744073709551616; "
+          "return y; } }",
+          "Numeric literal is outside the range of u64",
+          47 },
         { "Packed :: library { Math :: (x: f64) -> number { return sqrt(x); } "
           "}",
           "Incompatible types: expected number, got f64; convert with "

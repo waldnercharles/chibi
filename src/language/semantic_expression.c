@@ -376,8 +376,7 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
                 : "Numeric literal is outside the range of %s",
             script_numeric_name(result.type)
         );
-        /* Keep the sign so a context that retypes the literal reads it. */
-        value = copysignl(0, value);
+        value = 0;
     }
     switch (result.type.storage) {
         case PIN_I8: result.constant.i8 = (int8_t)value; break;
@@ -470,28 +469,23 @@ void script_analyzer_contextual_numeric(analyzer *a, int index, script_type type
     }
     if (expression->kind == SCRIPT_EXPR_CONSTANT) {
         script_range range = expression->range;
-        pin_value constant = expression->constant;
-        bool negative = constant.type == PIN_F32 ? signbit(constant.f)
-                      : constant.type == PIN_F64
-                          ? signbit(constant.d)
-                          : behavior_scalar_signed(constant.type) &&
-                                (int64_t)behavior_scalar_bits(constant) < 0;
         TSNode node = ts_node_descendant_for_byte_range(
             ts_tree_root_node(script_analyzer_document_syntax(a, range.document)->tree),
             (uint32_t)range.start,
             (uint32_t)range.end
         );
-        if (script_analyzer_is(node, "unary_expression")) {
+        /* The sign comes from the source: a value the untyped reading
+         * rejected holds zero. Only a minus folds into a literal. */
+        bool negative = script_analyzer_is(node, "unary_expression");
+        if (negative) {
             node = script_analyzer_field(node, "operand");
         }
-        if (script_analyzer_is(node, "character")) {
-            int converted = character_constant(a, node, type);
-            a->out->expressions[index] = a->out->expressions[converted];
-            a->out->expressions[index].range = range;
-            return;
+        bool character = script_analyzer_is(node, "character");
+        if (!character) {
+            retract_range_error(a, node);
         }
-        retract_range_error(a, node);
-        int converted = number_constant(a, node, type, negative);
+        int converted = character ? character_constant(a, node, type)
+                                  : number_constant(a, node, type, negative);
         a->out->expressions[index] = a->out->expressions[converted];
         a->out->expressions[index].range = range;
         return;

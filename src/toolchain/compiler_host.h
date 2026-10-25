@@ -12,9 +12,11 @@
  * together, this much storage, each module this many records and this much
  * layout work. Its closure, about 15 MB, is returned as a byte[] of that
  * length; a byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. Only the
- * command-line host's file outputs, which write the authored compiler's
- * compiled closures, allow COMPILER_HOST_MAX_ARTIFACT_BYTES: the asset
- * compiler's is about 18 MB. JSON invocations keep COMPILER_HOST_MAX_BYTES. */
+ * command-line host's two file outputs allow COMPILER_HOST_MAX_ARTIFACT_BYTES:
+ * --output-artifact, which it loads as a compiler before publishing, and
+ * --output-bytes, which it writes as returned whatever the format. The asset
+ * compiler's facade, about 18 MB, goes through --output-bytes. JSON
+ * invocations keep COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (256u * 1024u * 1024u)

@@ -1,0 +1,7 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-collections
+revision ec64c1e7033bd06541745ca5f4d2727840f46d84 0 modified
+Running: package_compiler_builds_runnable_collection_packages (OK) (156.821044 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 5463
+Test command wall time: 158.821s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

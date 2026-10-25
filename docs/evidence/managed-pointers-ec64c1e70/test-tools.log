@@ -1,6 +1,6 @@
 Re-run cmake no build system arguments
 -- Configuring done (0.1s)
--- Generating done (0.1s)
+-- Generating done (0.2s)
 -- Build files have been written to: /home/claude/chibi/build-tools
 Change Dir: '/home/claude/chibi/build-tools'
 
@@ -18,32 +18,32 @@ cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cma
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/DependInfo.cmake "--color=" benchmark_trials
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fmt.dir/DependInfo.cmake "--color=" chibi_fmt
 Dependencies file "CMakeFiles/policy_worker.dir/policy_worker.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/policy_worker.dir/compiler_depend.internal".
-Dependencies file "CMakeFiles/policy_worker.dir/link.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/policy_worker.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target policy_worker
+Dependencies file "sdk/CMakeFiles/chibi_fmt.dir/home/claude/chibi/third_party/fmt/fmt.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fmt.dir/compiler_depend.internal".
+Dependencies file "CMakeFiles/benchmark_trials.dir/home/claude/chibi/src/host/process.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_support.dir/home/claude/chibi/src/support/arena.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_support.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_fmt
+Dependencies file "CMakeFiles/policy_worker.dir/link.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/policy_worker.dir/compiler_depend.internal".
+Dependencies file "CMakeFiles/benchmark_trials.dir/home/claude/chibi/tools/benchmark.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target policy_worker
 Dependencies file "sdk/CMakeFiles/chibi_support.dir/home/claude/chibi/src/support/file_io.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_support.dir/compiler_depend.internal".
+Dependencies file "CMakeFiles/benchmark_trials.dir/link.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_support.dir/home/claude/chibi/src/support/rcss_map.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_support.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target benchmark_trials
 Dependencies file "sdk/CMakeFiles/chibi_support.dir/home/claude/chibi/src/support/text_edit.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_support.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_support.dir/home/claude/chibi/src/support/xalloc.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_support.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_support
-Dependencies file "CMakeFiles/benchmark_trials.dir/home/claude/chibi/src/host/process.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/compiler_depend.internal".
-Dependencies file "CMakeFiles/benchmark_trials.dir/home/claude/chibi/tools/benchmark.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/compiler_depend.internal".
-Dependencies file "CMakeFiles/benchmark_trials.dir/link.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/benchmark_trials.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target benchmark_trials
-/usr/bin/gmake  -f CMakeFiles/policy_worker.dir/build.make CMakeFiles/policy_worker.dir/build
 /usr/bin/gmake  -f CMakeFiles/benchmark_trials.dir/build.make CMakeFiles/benchmark_trials.dir/build
-gmake[3]: Nothing to be done for 'CMakeFiles/policy_worker.dir/build'.
-Dependencies file "sdk/CMakeFiles/chibi_fmt.dir/home/claude/chibi/third_party/fmt/fmt.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fmt.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_fmt
-gmake[3]: Nothing to be done for 'CMakeFiles/benchmark_trials.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_support.dir/build.make sdk/CMakeFiles/chibi_support.dir/build
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_fmt.dir/build.make sdk/CMakeFiles/chibi_fmt.dir/build
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_support.dir/build'.
+/usr/bin/gmake  -f CMakeFiles/policy_worker.dir/build.make CMakeFiles/policy_worker.dir/build
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_support.dir/build.make sdk/CMakeFiles/chibi_support.dir/build
+gmake[3]: Nothing to be done for 'CMakeFiles/benchmark_trials.dir/build'.
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_fmt.dir/build'.
-[  1%] Built target policy_worker
-[  2%] Built target benchmark_trials
+gmake[3]: Nothing to be done for 'CMakeFiles/policy_worker.dir/build'.
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_support.dir/build'.
+[  1%] Built target benchmark_trials
+[  1%] Built target chibi_fmt
+[  2%] Built target policy_worker
 [  5%] Built target chibi_support
-[  5%] Built target chibi_fmt
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_types.dir/build.make sdk/CMakeFiles/chibi_types.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_asset_values.dir/build.make sdk/CMakeFiles/chibi_asset_values.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_ui_document_values.dir/build.make sdk/CMakeFiles/chibi_ui_document_values.dir/depend
@@ -52,127 +52,109 @@ cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cma
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/DependInfo.cmake "--color=" chibi_types
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_document_values.dir/DependInfo.cmake "--color=" chibi_ui_document_values
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_search.dir/DependInfo.cmake "--color=" chibi_text_search
-Dependencies file "sdk/CMakeFiles/chibi_asset_values.dir/home/claude/chibi/src/support/asset_value.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_asset_values.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_asset_values
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/array.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_ui_document_values.dir/home/claude/chibi/src/ui/document.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_document_values.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_asset_values.dir/home/claude/chibi/src/support/asset_value.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_asset_values.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/copy.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_text_search.dir/home/claude/chibi/src/support/text_rank.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_search.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_ui_document_values.dir/home/claude/chibi/src/ui/document.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_document_values.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_asset_values
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/index.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_text_search.dir/home/claude/chibi/src/support/text_search.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_search.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_ui_document_values
+Consolidate compiler generated dependencies of target chibi_text_search
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/map.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/record.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/text.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/trace.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/type.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/union.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_ui_document_values.dir/build.make sdk/CMakeFiles/chibi_ui_document_values.dir/build
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/value_format.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_types.dir/home/claude/chibi/src/types/value_wire.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_types.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_types
-Dependencies file "sdk/CMakeFiles/chibi_text_search.dir/home/claude/chibi/src/support/text_rank.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_search.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_text_search.dir/home/claude/chibi/src/support/text_search.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_search.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_text_search
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_asset_values.dir/build.make sdk/CMakeFiles/chibi_asset_values.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_types.dir/build.make sdk/CMakeFiles/chibi_types.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_ui_document_values.dir/build.make sdk/CMakeFiles/chibi_ui_document_values.dir/build
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_asset_values.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_ui_document_values.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_types.dir/build'.
+Consolidate compiler generated dependencies of target chibi_types
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_text_search.dir/build.make sdk/CMakeFiles/chibi_text_search.dir/build
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_ui_document_values.dir/build'.
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_asset_values.dir/build'.
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_text_search.dir/build'.
-[  6%] Built target chibi_asset_values
-[ 11%] Built target chibi_types
-[ 12%] Built target chibi_ui_document_values
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_types.dir/build.make sdk/CMakeFiles/chibi_types.dir/build
+[  7%] Built target chibi_ui_document_values
+[  7%] Built target chibi_asset_values
+[  9%] Built target chibi_text_search
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_types.dir/build'.
+[ 14%] Built target chibi_types
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_ecs.dir/build.make sdk/CMakeFiles/chibi_ecs.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_value_document.dir/build.make sdk/CMakeFiles/chibi_value_document.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_events.dir/build.make sdk/CMakeFiles/chibi_events.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_shader_runtime.dir/build.make sdk/CMakeFiles/chibi_shader_runtime.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_capabilities.dir/build.make sdk/CMakeFiles/chibi_capabilities.dir/depend
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_fields.dir/build.make sdk/CMakeFiles/chibi_fields.dir/depend
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/DependInfo.cmake "--color=" chibi_ecs
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_value_document.dir/DependInfo.cmake "--color=" chibi_value_document
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_events.dir/DependInfo.cmake "--color=" chibi_events
-[ 14%] Built target chibi_text_search
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_capabilities.dir/DependInfo.cmake "--color=" chibi_capabilities
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/DependInfo.cmake "--color=" chibi_ecs
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_fields.dir/build.make sdk/CMakeFiles/chibi_fields.dir/depend
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/DependInfo.cmake "--color=" chibi_shader_runtime
+Dependencies file "sdk/CMakeFiles/chibi_events.dir/home/claude/chibi/src/runtime/events.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_events.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_events
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fields.dir/DependInfo.cmake "--color=" chibi_fields
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_ui_documents.dir/build.make sdk/CMakeFiles/chibi_ui_documents.dir/depend
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/DependInfo.cmake "--color=" chibi_shader_runtime
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_documents.dir/DependInfo.cmake "--color=" chibi_ui_documents
 Dependencies file "sdk/CMakeFiles/chibi_ecs.dir/home/claude/chibi/src/ecs/component_catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_value_document.dir/home/claude/chibi/src/types/value_document.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_value_document.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_ecs.dir/home/claude/chibi/src/ecs/ecs.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_value_document.dir/home/claude/chibi/src/types/value_document_read.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_value_document.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_value_document
 Dependencies file "sdk/CMakeFiles/chibi_ecs.dir/home/claude/chibi/src/ecs/hierarchy.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_ecs.dir/home/claude/chibi/src/ecs/query.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_ecs.dir/home/claude/chibi/src/ecs/relationship.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ecs.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_ecs
-Dependencies file "sdk/CMakeFiles/chibi_events.dir/home/claude/chibi/src/runtime/events.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_events.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_events
-Dependencies file "sdk/CMakeFiles/chibi_fields.dir/home/claude/chibi/src/runtime/fields/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fields.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_fields.dir/home/claude/chibi/src/runtime/fields/program.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fields.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_fields
-Dependencies file "sdk/CMakeFiles/chibi_value_document.dir/home/claude/chibi/src/types/value_document.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_value_document.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_value_document.dir/home/claude/chibi/src/types/value_document_read.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_value_document.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_value_document
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/bake.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/detail.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_value_document.dir/build.make sdk/CMakeFiles/chibi_value_document.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/effects.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_ecs.dir/build.make sdk/CMakeFiles/chibi_ecs.dir/build
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_value_document.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi/src/capabilities/catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_capabilities.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/image.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/inspection.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_events.dir/build.make sdk/CMakeFiles/chibi_events.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/program.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/source_debug.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_documents.dir/DependInfo.cmake "--color=" chibi_ui_documents
+Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/volume.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_shader_runtime
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_events.dir/build'.
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_ecs.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi/src/capabilities/catalog_snapshot.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_capabilities.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi/src/capabilities/catalog_values.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_capabilities.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_capabilities.dir/home/claude/chibi/src/capabilities/definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_capabilities.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_capabilities
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_ecs.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_capabilities.dir/build.make sdk/CMakeFiles/chibi_capabilities.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_events.dir/build.make sdk/CMakeFiles/chibi_events.dir/build
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/bake.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/detail.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/effects.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/image.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/inspection.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/program.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/source_debug.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_shader_runtime.dir/home/claude/chibi/src/runtime/shaders/volume.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_shader_runtime.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_shader_runtime
-Dependencies file "sdk/CMakeFiles/chibi_ui_documents.dir/home/claude/chibi/src/runtime/ui/documents.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_documents.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_ui_documents.dir/home/claude/chibi/src/runtime/ui/font.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_documents.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_ui_documents
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_capabilities.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_value_document.dir/build.make sdk/CMakeFiles/chibi_value_document.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_fields.dir/build.make sdk/CMakeFiles/chibi_fields.dir/build
-[ 16%] Built target chibi_ecs
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_events.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_value_document.dir/build'.
+[ 15%] Built target chibi_value_document
+Dependencies file "sdk/CMakeFiles/chibi_fields.dir/home/claude/chibi/src/runtime/fields/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fields.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_fields.dir/home/claude/chibi/src/runtime/fields/program.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_fields.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_fields
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_shader_runtime.dir/build.make sdk/CMakeFiles/chibi_shader_runtime.dir/build
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_fields.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_ui_documents.dir/build.make sdk/CMakeFiles/chibi_ui_documents.dir/build
-[ 18%] Built target chibi_capabilities
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_ui_documents.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_execution.dir/build.make sdk/CMakeFiles/chibi_execution.dir/depend
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_capabilities.dir/build.make sdk/CMakeFiles/chibi_capabilities.dir/build
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_fields.dir/build.make sdk/CMakeFiles/chibi_fields.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_ui_documents.dir/home/claude/chibi/src/runtime/ui/documents.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_documents.dir/compiler_depend.internal".
+[ 16%] Built target chibi_events
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_capabilities.dir/build'.
+[ 18%] Built target chibi_ecs
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_shader_runtime.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_capabilities.dir/build.make sdk/CMakeFiles/chibi_native_capabilities.dir/depend
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_scheduling.dir/build.make sdk/CMakeFiles/chibi_scheduling.dir/depend
-[ 19%] Built target chibi_value_document
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/DependInfo.cmake "--color=" chibi_native_capabilities
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scheduling.dir/DependInfo.cmake "--color=" chibi_scheduling
-[ 21%] Built target chibi_ui_documents
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/DependInfo.cmake "--color=" chibi_execution
+Dependencies file "sdk/CMakeFiles/chibi_ui_documents.dir/home/claude/chibi/src/runtime/ui/font.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_ui_documents.dir/compiler_depend.internal".
 /usr/bin/gmake  -f CMakeFiles/chibi_sdk_contracts.dir/build.make CMakeFiles/chibi_sdk_contracts.dir/depend
-[ 26%] Built target chibi_shader_runtime
-[ 27%] Built target chibi_events
-/usr/bin/gmake  -f CMakeFiles/chibi_shader_bake_consumer.dir/build.make CMakeFiles/chibi_shader_bake_consumer.dir/depend
-[ 29%] Built target chibi_fields
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_fields.dir/build'.
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/DependInfo.cmake "--color=" chibi_sdk_contracts
-Dependencies file "sdk/CMakeFiles/chibi_scheduling.dir/home/claude/chibi/src/runtime/systems/scheduler.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scheduling.dir/compiler_depend.internal".
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_model_runtime.dir/build.make sdk/CMakeFiles/chibi_model_runtime.dir/depend
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/DependInfo.cmake "--color=" chibi_model_runtime
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_image_catalog.dir/build.make sdk/CMakeFiles/chibi_image_catalog.dir/depend
-Consolidate compiler generated dependencies of target chibi_scheduling
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/chibi_shader_bake_consumer.dir/DependInfo.cmake "--color=" chibi_shader_bake_consumer
-Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/artifact.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/backend.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/borrow.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_native_capabilities.dir/home/claude/chibi/src/runtime/native_capabilities.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_native_capabilities.dir/home/claude/chibi/src/runtime/native_definitions.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_native_capabilities.dir/home/claude/chibi/src/runtime/type_definitions.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_native_capabilities
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_execution.dir/build.make sdk/CMakeFiles/chibi_execution.dir/depend
+Consolidate compiler generated dependencies of target chibi_ui_documents
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_scheduling.dir/build.make sdk/CMakeFiles/chibi_scheduling.dir/depend
+[ 20%] Built target chibi_capabilities
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_ui_documents.dir/build.make sdk/CMakeFiles/chibi_ui_documents.dir/build
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_capabilities.dir/build.make sdk/CMakeFiles/chibi_native_capabilities.dir/depend
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scheduling.dir/DependInfo.cmake "--color=" chibi_scheduling
+[ 25%] Built target chibi_shader_runtime
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_ui_documents.dir/build'.
 Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/ecs.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/compiler_depend.internal".
 Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/ecs_hierarchy.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/compiler_depend.internal".
 Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/ecs_query.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/compiler_depend.internal".
@@ -180,25 +162,52 @@ Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/ecs_query_benchmark.c.o.d"
 Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/ecs_relationship.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/compiler_depend.internal".
 Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/ecs_world.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/compiler_depend.internal".
 Dependencies file "CMakeFiles/chibi_sdk_contracts.dir/types.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_sdk_contracts.dir/compiler_depend.internal".
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_capabilities.dir/build.make sdk/CMakeFiles/chibi_native_capabilities.dir/build
 Consolidate compiler generated dependencies of target chibi_sdk_contracts
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/DependInfo.cmake "--color=" chibi_native_capabilities
+Dependencies file "sdk/CMakeFiles/chibi_scheduling.dir/home/claude/chibi/src/runtime/systems/scheduler.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scheduling.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_scheduling
+/usr/bin/gmake  -f CMakeFiles/chibi_shader_bake_consumer.dir/build.make CMakeFiles/chibi_shader_bake_consumer.dir/depend
+[ 27%] Built target chibi_fields
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/DependInfo.cmake "--color=" chibi_execution
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_model_runtime.dir/build.make sdk/CMakeFiles/chibi_model_runtime.dir/depend
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_scheduling.dir/build.make sdk/CMakeFiles/chibi_scheduling.dir/build
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/chibi_shader_bake_consumer.dir/DependInfo.cmake "--color=" chibi_shader_bake_consumer
+[ 29%] Built target chibi_ui_documents
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/DependInfo.cmake "--color=" chibi_model_runtime
+/usr/bin/gmake  -f CMakeFiles/chibi_sdk_contracts.dir/build.make CMakeFiles/chibi_sdk_contracts.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_native_capabilities.dir/home/claude/chibi/src/runtime/native_capabilities.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_native_capabilities.dir/home/claude/chibi/src/runtime/native_definitions.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_native_capabilities.dir/home/claude/chibi/src/runtime/type_definitions.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_capabilities.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_native_capabilities
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_scheduling.dir/build'.
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_image_catalog.dir/build.make sdk/CMakeFiles/chibi_image_catalog.dir/depend
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_capabilities.dir/build.make sdk/CMakeFiles/chibi_native_capabilities.dir/build
+Dependencies file "CMakeFiles/chibi_shader_bake_consumer.dir/shader_bake.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_shader_bake_consumer.dir/compiler_depend.internal".
+Dependencies file "CMakeFiles/chibi_shader_bake_consumer.dir/shader_source_debug.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_shader_bake_consumer.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_image_catalog.dir/DependInfo.cmake "--color=" chibi_image_catalog
+gmake[3]: Nothing to be done for 'CMakeFiles/chibi_sdk_contracts.dir/build'.
+Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/artifact.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/backend.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/borrow.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/c.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_shader_bake_consumer
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/call.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_native_capabilities.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/component.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/ecs_reader.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_image_catalog.dir/DependInfo.cmake "--color=" chibi_image_catalog
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/function.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+/usr/bin/gmake  -f CMakeFiles/chibi_shader_bake_consumer.dir/build.make CMakeFiles/chibi_shader_bake_consumer.dir/build
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/function_builder.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_bounds.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_native_capabilities.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/fusion.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/host.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/inputs.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+[ 30%] Built target chibi_scheduling
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/integer_report.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "CMakeFiles/chibi_shader_bake_consumer.dir/shader_bake.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_shader_bake_consumer.dir/compiler_depend.internal".
-Dependencies file "CMakeFiles/chibi_shader_bake_consumer.dir/shader_source_debug.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_shader_bake_consumer.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_shader_bake_consumer
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/intrinsics.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_finite.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_catalog.dir/build.make sdk/CMakeFiles/chibi_field_catalog.dir/depend
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_component.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_host_call.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_integer.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
@@ -206,204 +215,195 @@ Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/exec
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_registers.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_suspend.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_system.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_catalog.dir/DependInfo.cmake "--color=" chibi_field_catalog
+gmake[3]: Nothing to be done for 'CMakeFiles/chibi_shader_bake_consumer.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/jit_watch.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/log.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_bounds.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_scheduling.dir/build.make sdk/CMakeFiles/chibi_scheduling.dir/build
-Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_finite.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-/usr/bin/gmake  -f CMakeFiles/chibi_sdk_contracts.dir/build.make CMakeFiles/chibi_sdk_contracts.dir/build
 Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_frames.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-/usr/bin/gmake  -f CMakeFiles/chibi_shader_bake_consumer.dir/build.make CMakeFiles/chibi_shader_bake_consumer.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/log.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_hit.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_inspection.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_lifecycle.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_parameters.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_model_runtime
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_scheduling.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/machine.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_image_catalog.dir/home/claude/chibi/src/runtime/images/catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_image_catalog.dir/compiler_depend.internal".
+[ 33%] Built target chibi_sdk_contracts
+Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_inspection.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/map_intrinsics.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/module.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_image_catalog.dir/home/claude/chibi/src/runtime/images/sky.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_image_catalog.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_lifecycle.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/model_parameters.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/module_effects.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_image_catalog
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/opt.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-gmake[3]: Nothing to be done for 'CMakeFiles/chibi_sdk_contracts.dir/build'.
+Dependencies file "sdk/CMakeFiles/chibi_model_runtime.dir/home/claude/chibi/src/runtime/models/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_model_runtime.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_model_runtime
+Dependencies file "sdk/CMakeFiles/chibi_image_catalog.dir/home/claude/chibi/src/runtime/images/catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_image_catalog.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_image_catalog.dir/home/claude/chibi/src/runtime/images/sky.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_image_catalog.dir/compiler_depend.internal".
+[ 34%] Built target chibi_native_capabilities
+Consolidate compiler generated dependencies of target chibi_image_catalog
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/parallel.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/preparation_budget.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_image_catalog.dir/build.make sdk/CMakeFiles/chibi_image_catalog.dir/build
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_array_capabilities.dir/build.make sdk/CMakeFiles/chibi_array_capabilities.dir/depend
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/prepared_function.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_capabilities.dir/build.make sdk/CMakeFiles/chibi_field_capabilities.dir/depend
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/prepared_record.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_activation.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_bindings.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_commands.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_array_capabilities.dir/DependInfo.cmake "--color=" chibi_array_capabilities
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_image_catalog.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_inspection.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_field_catalog.dir/home/claude/chibi/src/runtime/material_field.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_catalog.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_locals.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-gmake[3]: Nothing to be done for 'CMakeFiles/chibi_shader_bake_consumer.dir/build'.
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_model_runtime.dir/build.make sdk/CMakeFiles/chibi_model_runtime.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_field_catalog.dir/home/claude/chibi/src/runtime/material_field_prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_catalog.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_observers.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_image_catalog.dir/build.make sdk/CMakeFiles/chibi_image_catalog.dir/build
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_state_capabilities.dir/build.make sdk/CMakeFiles/chibi_state_capabilities.dir/depend
+Consolidate compiler generated dependencies of target chibi_field_catalog
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_preflight.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+[ 35%] Built target chibi_shader_bake_consumer
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_storage.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_capabilities.dir/DependInfo.cmake "--color=" chibi_field_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/program_tasks.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_array_capabilities.dir/home/claude/chibi/src/runtime/arrays.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_array_capabilities.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_array_capabilities.dir/home/claude/chibi/src/runtime/arrays_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_array_capabilities.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_selection_capabilities.dir/build.make sdk/CMakeFiles/chibi_selection_capabilities.dir/depend
+Consolidate compiler generated dependencies of target chibi_array_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/range_opt.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/reads.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_state_capabilities.dir/DependInfo.cmake "--color=" chibi_state_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/request.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/runner.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/scalar_lowering_plan.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_model_runtime.dir/build'.
+[ 37%] Built target chibi_image_catalog
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/scalarize.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/source_debug.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_set_capabilities.dir/build.make sdk/CMakeFiles/chibi_set_capabilities.dir/depend
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/state.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/storage.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/suspend.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_image_catalog.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/time.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/update_jit.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/vm.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/wasm_emit.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_selection_capabilities.dir/DependInfo.cmake "--color=" chibi_selection_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_execution.dir/home/claude/chibi/src/execution/wasm_jit.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_execution.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_execution
-[ 30%] Built target chibi_scheduling
-[ 31%] Built target chibi_native_capabilities
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_array_capabilities.dir/build.make sdk/CMakeFiles/chibi_array_capabilities.dir/depend
-[ 34%] Built target chibi_sdk_contracts
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_array_capabilities.dir/DependInfo.cmake "--color=" chibi_array_capabilities
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_model_runtime.dir/build.make sdk/CMakeFiles/chibi_model_runtime.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_capabilities.dir/build.make sdk/CMakeFiles/chibi_field_capabilities.dir/depend
-[ 35%] Built target chibi_shader_bake_consumer
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_model_runtime.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_state_capabilities.dir/build.make sdk/CMakeFiles/chibi_state_capabilities.dir/depend
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_selection_capabilities.dir/build.make sdk/CMakeFiles/chibi_selection_capabilities.dir/depend
-[ 37%] Built target chibi_image_catalog
-Dependencies file "sdk/CMakeFiles/chibi_array_capabilities.dir/home/claude/chibi/src/runtime/arrays.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_array_capabilities.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_array_capabilities.dir/home/claude/chibi/src/runtime/arrays_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_array_capabilities.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_array_capabilities
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_state_capabilities.dir/DependInfo.cmake "--color=" chibi_state_capabilities
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_capabilities.dir/DependInfo.cmake "--color=" chibi_field_capabilities
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_selection_capabilities.dir/DependInfo.cmake "--color=" chibi_selection_capabilities
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_set_capabilities.dir/build.make sdk/CMakeFiles/chibi_set_capabilities.dir/depend
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_array_capabilities.dir/build.make sdk/CMakeFiles/chibi_array_capabilities.dir/build
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_set_capabilities.dir/DependInfo.cmake "--color=" chibi_set_capabilities
+Dependencies file "sdk/CMakeFiles/chibi_field_capabilities.dir/home/claude/chibi/src/runtime/fields/definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_capabilities.dir/compiler_depend.internal".
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_array_capabilities.dir/build'.
+[ 41%] Built target chibi_model_runtime
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_catalog.dir/build.make sdk/CMakeFiles/chibi_field_catalog.dir/build
 Dependencies file "sdk/CMakeFiles/chibi_state_capabilities.dir/home/claude/chibi/src/runtime/state_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_state_capabilities.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_state_capabilities
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_field_catalog.dir/build'.
+Dependencies file "sdk/CMakeFiles/chibi_field_capabilities.dir/home/claude/chibi/src/runtime/fields/native.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_capabilities.dir/compiler_depend.internal".
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_state_capabilities.dir/build.make sdk/CMakeFiles/chibi_state_capabilities.dir/build
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_comparison_capabilities.dir/build.make sdk/CMakeFiles/chibi_comparison_capabilities.dir/depend
-[ 41%] Built target chibi_model_runtime
+[ 42%] Built target chibi_array_capabilities
+Consolidate compiler generated dependencies of target chibi_field_capabilities
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_state_capabilities.dir/build'.
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_comparison_capabilities.dir/DependInfo.cmake "--color=" chibi_comparison_capabilities
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_conversion_capabilities.dir/build.make sdk/CMakeFiles/chibi_conversion_capabilities.dir/depend
 Dependencies file "sdk/CMakeFiles/chibi_selection_capabilities.dir/home/claude/chibi/src/runtime/selection.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_selection_capabilities.dir/compiler_depend.internal".
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_set_capabilities.dir/DependInfo.cmake "--color=" chibi_set_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_selection_capabilities.dir/home/claude/chibi/src/runtime/selection_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_selection_capabilities.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_selection_capabilities
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_array_capabilities.dir/build.make sdk/CMakeFiles/chibi_array_capabilities.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_conversion_capabilities.dir/build.make sdk/CMakeFiles/chibi_conversion_capabilities.dir/depend
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_comparison_capabilities.dir/DependInfo.cmake "--color=" chibi_comparison_capabilities
+Dependencies file "sdk/CMakeFiles/chibi_set_capabilities.dir/home/claude/chibi/src/runtime/sets.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_set_capabilities.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_set_capabilities.dir/home/claude/chibi/src/runtime/sets_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_set_capabilities.dir/compiler_depend.internal".
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_conversion_capabilities.dir/DependInfo.cmake "--color=" chibi_conversion_capabilities
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_array_capabilities.dir/build'.
-Dependencies file "sdk/CMakeFiles/chibi_field_capabilities.dir/home/claude/chibi/src/runtime/fields/definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_capabilities.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_field_capabilities.dir/home/claude/chibi/src/runtime/fields/native.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_capabilities.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_field_capabilities
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_capabilities.dir/build.make sdk/CMakeFiles/chibi_field_capabilities.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_state_capabilities.dir/build.make sdk/CMakeFiles/chibi_state_capabilities.dir/build
+Dependencies file "sdk/CMakeFiles/chibi_comparison_capabilities.dir/home/claude/chibi/src/runtime/comparison_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_comparison_capabilities.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_comparison_capabilities.dir/home/claude/chibi/src/runtime/comparisons.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_comparison_capabilities.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_set_capabilities
+Consolidate compiler generated dependencies of target chibi_comparison_capabilities
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_selection_capabilities.dir/build.make sdk/CMakeFiles/chibi_selection_capabilities.dir/build
+[ 43%] Built target chibi_field_catalog
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_comparison_capabilities.dir/build.make sdk/CMakeFiles/chibi_comparison_capabilities.dir/build
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_field_capabilities.dir/build'.
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_selection_capabilities.dir/build'.
+[ 43%] Built target chibi_state_capabilities
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_comparison_capabilities.dir/build'.
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_set_capabilities.dir/build.make sdk/CMakeFiles/chibi_set_capabilities.dir/build
 Dependencies file "sdk/CMakeFiles/chibi_conversion_capabilities.dir/home/claude/chibi/src/runtime/conversion_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_conversion_capabilities.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_conversion_capabilities.dir/home/claude/chibi/src/runtime/conversions.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_conversion_capabilities.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_conversion_capabilities
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_field_capabilities.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_execution.dir/build.make sdk/CMakeFiles/chibi_execution.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_selection_capabilities.dir/build.make sdk/CMakeFiles/chibi_selection_capabilities.dir/build
-Dependencies file "sdk/CMakeFiles/chibi_set_capabilities.dir/home/claude/chibi/src/runtime/sets.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_set_capabilities.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_set_capabilities.dir/home/claude/chibi/src/runtime/sets_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_set_capabilities.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_set_capabilities
-Dependencies file "sdk/CMakeFiles/chibi_comparison_capabilities.dir/home/claude/chibi/src/runtime/comparison_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_comparison_capabilities.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_comparison_capabilities.dir/home/claude/chibi/src/runtime/comparisons.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_comparison_capabilities.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_comparison_capabilities
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_conversion_capabilities.dir/build.make sdk/CMakeFiles/chibi_conversion_capabilities.dir/build
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_state_capabilities.dir/build'.
-[ 42%] Built target chibi_array_capabilities
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_selection_capabilities.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_set_capabilities.dir/build.make sdk/CMakeFiles/chibi_set_capabilities.dir/build
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_comparison_capabilities.dir/build.make sdk/CMakeFiles/chibi_comparison_capabilities.dir/build
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_set_capabilities.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_comparison_capabilities.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_execution.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_conversion_capabilities.dir/build'.
-[ 43%] Built target chibi_field_capabilities
-[ 43%] Built target chibi_state_capabilities
-[ 54%] Built target chibi_selection_capabilities
-[ 71%] Built target chibi_execution
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_execution.dir/build.make sdk/CMakeFiles/chibi_execution.dir/build
+[ 44%] Built target chibi_field_capabilities
+[ 46%] Built target chibi_comparison_capabilities
+[ 47%] Built target chibi_selection_capabilities
+[ 48%] Built target chibi_set_capabilities
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_conversion_capabilities.dir/build.make sdk/CMakeFiles/chibi_conversion_capabilities.dir/build
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_text_capabilities.dir/build.make sdk/CMakeFiles/chibi_text_capabilities.dir/depend
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_host_native_catalog.dir/build.make sdk/CMakeFiles/chibi_host_native_catalog.dir/depend
-[ 72%] Built target chibi_conversion_capabilities
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_capabilities.dir/DependInfo.cmake "--color=" chibi_text_capabilities
-[ 74%] Built target chibi_comparison_capabilities
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_host_native_catalog.dir/DependInfo.cmake "--color=" chibi_host_native_catalog
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_catalog.dir/build.make sdk/CMakeFiles/chibi_field_catalog.dir/depend
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_behavior_runtime.dir/build.make sdk/CMakeFiles/chibi_behavior_runtime.dir/depend
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_core_capabilities.dir/build.make sdk/CMakeFiles/chibi_core_capabilities.dir/depend
-[ 75%] Built target chibi_set_capabilities
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/DependInfo.cmake "--color=" chibi_behavior_runtime
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_core_capabilities.dir/DependInfo.cmake "--color=" chibi_core_capabilities
-Dependencies file "sdk/CMakeFiles/chibi_host_native_catalog.dir/home/claude/chibi/src/host/native_catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_host_native_catalog.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_host_native_catalog
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_catalog.dir/DependInfo.cmake "--color=" chibi_field_catalog
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_host_native_catalog.dir/build.make sdk/CMakeFiles/chibi_host_native_catalog.dir/build
-Dependencies file "sdk/CMakeFiles/chibi_core_capabilities.dir/home/claude/chibi/src/runtime/core_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_core_capabilities.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_core_capabilities
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_conversion_capabilities.dir/build'.
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_execution.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_text_capabilities.dir/home/claude/chibi/src/runtime/text_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_capabilities.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_text_capabilities.dir/home/claude/chibi/src/runtime/text_format.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_text_capabilities.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_text_capabilities
+Dependencies file "sdk/CMakeFiles/chibi_host_native_catalog.dir/home/claude/chibi/src/host/native_catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_host_native_catalog.dir/compiler_depend.internal".
+[ 49%] Built target chibi_conversion_capabilities
+Consolidate compiler generated dependencies of target chibi_host_native_catalog
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_text_capabilities.dir/build.make sdk/CMakeFiles/chibi_text_capabilities.dir/build
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_host_native_catalog.dir/build.make sdk/CMakeFiles/chibi_host_native_catalog.dir/build
+[ 76%] Built target chibi_execution
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_behavior_runtime.dir/build.make sdk/CMakeFiles/chibi_behavior_runtime.dir/depend
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_core_capabilities.dir/build.make sdk/CMakeFiles/chibi_core_capabilities.dir/depend
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_text_capabilities.dir/build'.
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/DependInfo.cmake "--color=" chibi_behavior_runtime
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_host_native_catalog.dir/build'.
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_core_capabilities.dir/DependInfo.cmake "--color=" chibi_core_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_behavior_runtime.dir/home/claude/chibi/src/runtime/behaviors/module_set.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_behavior_runtime.dir/home/claude/chibi/src/runtime/behaviors/package.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/compiler_depend.internal".
+Dependencies file "sdk/CMakeFiles/chibi_core_capabilities.dir/home/claude/chibi/src/runtime/core_definition.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_core_capabilities.dir/compiler_depend.internal".
+[ 77%] Built target chibi_text_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_behavior_runtime.dir/home/claude/chibi/src/runtime/behaviors/source.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_behavior_runtime.dir/home/claude/chibi/src/runtime/behaviors/source_profile.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/compiler_depend.internal".
+Consolidate compiler generated dependencies of target chibi_core_capabilities
 Dependencies file "sdk/CMakeFiles/chibi_behavior_runtime.dir/home/claude/chibi/src/runtime/behaviors/source_publication.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/compiler_depend.internal".
+[ 78%] Built target chibi_host_native_catalog
 Dependencies file "sdk/CMakeFiles/chibi_behavior_runtime.dir/home/claude/chibi/src/runtime/event_catalog.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_behavior_runtime.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_behavior_runtime
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_text_capabilities.dir/build.make sdk/CMakeFiles/chibi_text_capabilities.dir/build
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_core_capabilities.dir/build.make sdk/CMakeFiles/chibi_core_capabilities.dir/build
-Dependencies file "sdk/CMakeFiles/chibi_field_catalog.dir/home/claude/chibi/src/runtime/material_field.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_catalog.dir/compiler_depend.internal".
-Dependencies file "sdk/CMakeFiles/chibi_field_catalog.dir/home/claude/chibi/src/runtime/material_field_prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_field_catalog.dir/compiler_depend.internal".
-Consolidate compiler generated dependencies of target chibi_field_catalog
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_text_capabilities.dir/build'.
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_core_capabilities.dir/build'.
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_behavior_runtime.dir/build.make sdk/CMakeFiles/chibi_behavior_runtime.dir/build
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_behavior_runtime.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_core_capabilities.dir/build'.
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_field_catalog.dir/build.make sdk/CMakeFiles/chibi_field_catalog.dir/build
-[ 76%] Built target chibi_host_native_catalog
-[ 77%] Built target chibi_text_capabilities
-[ 80%] Built target chibi_behavior_runtime
+[ 79%] Built target chibi_core_capabilities
+[ 82%] Built target chibi_behavior_runtime
 /usr/bin/gmake  -f CMakeFiles/chibi_prepared_consumer.dir/build.make CMakeFiles/chibi_prepared_consumer.dir/depend
 /usr/bin/gmake  -f CMakeFiles/chibi_record_consumer.dir/build.make CMakeFiles/chibi_record_consumer.dir/depend
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_field_catalog.dir/build'.
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_scene_runtime.dir/build.make sdk/CMakeFiles/chibi_scene_runtime.dir/depend
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_prepared.dir/build.make sdk/CMakeFiles/chibi_native_prepared.dir/depend
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/chibi_prepared_consumer.dir/DependInfo.cmake "--color=" chibi_prepared_consumer
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/chibi_record_consumer.dir/DependInfo.cmake "--color=" chibi_record_consumer
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scene_runtime.dir/DependInfo.cmake "--color=" chibi_scene_runtime
-[ 81%] Built target chibi_core_capabilities
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_prepared.dir/build.make sdk/CMakeFiles/chibi_native_prepared.dir/depend
+cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_prepared.dir/DependInfo.cmake "--color=" chibi_native_prepared
 Dependencies file "CMakeFiles/chibi_prepared_consumer.dir/prepared_runtime.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_prepared_consumer.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_prepared_consumer
 Dependencies file "CMakeFiles/chibi_record_consumer.dir/record_runtime.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_record_consumer.dir/compiler_depend.internal".
+/usr/bin/gmake  -f CMakeFiles/chibi_prepared_consumer.dir/build.make CMakeFiles/chibi_prepared_consumer.dir/build
 Consolidate compiler generated dependencies of target chibi_record_consumer
 Dependencies file "sdk/CMakeFiles/chibi_scene_runtime.dir/home/claude/chibi/src/runtime/scenes/prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scene_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_scene_runtime.dir/home/claude/chibi/src/runtime/scenes/prototypes.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scene_runtime.dir/compiler_depend.internal".
 Dependencies file "sdk/CMakeFiles/chibi_scene_runtime.dir/home/claude/chibi/src/runtime/scenes/scene.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_scene_runtime.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_scene_runtime
-[ 82%] Built target chibi_field_catalog
-/usr/bin/gmake  -f CMakeFiles/chibi_prepared_consumer.dir/build.make CMakeFiles/chibi_prepared_consumer.dir/build
-cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/sdk /home/claude/chibi/build-tools /home/claude/chibi/build-tools/sdk /home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_prepared.dir/DependInfo.cmake "--color=" chibi_native_prepared
-/usr/bin/gmake  -f sdk/CMakeFiles/chibi_scene_runtime.dir/build.make sdk/CMakeFiles/chibi_scene_runtime.dir/build
-/usr/bin/gmake  -f CMakeFiles/chibi_record_consumer.dir/build.make CMakeFiles/chibi_record_consumer.dir/build
-gmake[3]: Nothing to be done for 'CMakeFiles/chibi_prepared_consumer.dir/build'.
-gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_scene_runtime.dir/build'.
-gmake[3]: Nothing to be done for 'CMakeFiles/chibi_record_consumer.dir/build'.
 Dependencies file "sdk/CMakeFiles/chibi_native_prepared.dir/home/claude/chibi/src/runtime/native_prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/sdk/CMakeFiles/chibi_native_prepared.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_native_prepared
-[ 83%] Built target chibi_prepared_consumer
+/usr/bin/gmake  -f CMakeFiles/chibi_record_consumer.dir/build.make CMakeFiles/chibi_record_consumer.dir/build
+gmake[3]: Nothing to be done for 'CMakeFiles/chibi_prepared_consumer.dir/build'.
 /usr/bin/gmake  -f sdk/CMakeFiles/chibi_native_prepared.dir/build.make sdk/CMakeFiles/chibi_native_prepared.dir/build
-[ 85%] Built target chibi_scene_runtime
-/usr/bin/gmake  -f CMakeFiles/chibi_scene_consumer.dir/build.make CMakeFiles/chibi_scene_consumer.dir/depend
+gmake[3]: Nothing to be done for 'CMakeFiles/chibi_record_consumer.dir/build'.
 gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_native_prepared.dir/build'.
-[ 85%] Built target chibi_record_consumer
+/usr/bin/gmake  -f sdk/CMakeFiles/chibi_scene_runtime.dir/build.make sdk/CMakeFiles/chibi_scene_runtime.dir/build
+[ 83%] Built target chibi_prepared_consumer
+gmake[3]: Nothing to be done for 'sdk/CMakeFiles/chibi_scene_runtime.dir/build'.
+[ 84%] Built target chibi_native_prepared
+[ 84%] Built target chibi_record_consumer
+[ 86%] Built target chibi_scene_runtime
+/usr/bin/gmake  -f CMakeFiles/chibi_scene_consumer.dir/build.make CMakeFiles/chibi_scene_consumer.dir/depend
 cd /home/claude/chibi/build-tools && /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/claude/chibi/test/tools /home/claude/chibi/test/tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools /home/claude/chibi/build-tools/CMakeFiles/chibi_scene_consumer.dir/DependInfo.cmake "--color=" chibi_scene_consumer
-[ 86%] Built target chibi_native_prepared
 Dependencies file "CMakeFiles/chibi_scene_consumer.dir/scene.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_scene_consumer.dir/compiler_depend.internal".
 Dependencies file "CMakeFiles/chibi_scene_consumer.dir/scene_prepared.c.o.d" is newer than depends file "/home/claude/chibi/build-tools/CMakeFiles/chibi_scene_consumer.dir/compiler_depend.internal".
 Consolidate compiler generated dependencies of target chibi_scene_consumer
@@ -447,61 +447,61 @@ gmake[3]: Nothing to be done for 'CMakeFiles/test_tools.dir/build'.
 [100%] Built target test_tools
 /usr/local/lib/python3.13/dist-packages/cmake/data/bin/cmake -E cmake_progress_start /home/claude/chibi/build-tools/CMakeFiles 0
 
-Running: preview_budgets (OK) (0.000155 secs)
-Running: malformed_numeric_fields (OK) (0.000032 secs)
-Running: capture_requires_explicit_profile_and_path (OK) (0.000050 secs)
-Running: profiling_and_hardware_opt_in (OK) (0.000098 secs)
-Running: preview_window_mode (OK) (0.000019 secs)
-Running: preview_video_driver (OK) (0.000051 secs)
-Running: types_nested_pointer_records_require_owned_layout_support (OK) (0.000036 secs)
-Running: types_document_array_collection_retains_split_payloads (OK) (0.000035 secs)
-Running: types_authored_record_document_uses_nested_native_layout (OK) (0.000047 secs)
-Running: types_catalog_composes_ordered_packs (OK) (0.000003 secs)
-Running: types_nested_reflection_reads_writes_and_checks_layout (OK) (0.000007 secs)
-Running: types_array_snapshot_owns_strings_and_names (OK) (0.000007 secs)
-Running: types_collection_follows_values_across_arenas (OK) (0.000004 secs)
-Running: types_union_snapshots_and_heap_copies_own_nested_values (OK) (0.000009 secs)
-Running: types_union_wire_roundtrip_traces_nested_arrays (OK) (0.000020 secs)
-Running: types_plain_struct_array_codecs_preserve_inline_values_and_nulls (OK) (0.000141 secs)
-Running: types_union_wire_rejects_invalid_tags_counts_and_depth (OK) (0.000058 secs)
-Running: types_struct_array_snapshot_retains_nested_payload (OK) (0.000005 secs)
-Running: types_document_snapshot_survives_source_release (OK) (0.000013 secs)
-Running: types_map_documents_own_nested_maps_arrays_and_native_structs (OK) (0.000084 secs)
-Running: types_map_documents_require_authored_declarations_and_reject_malformed_input (OK) (0.000800 secs)
-Running: types_document_rejects_invalid_values_without_publication (OK) (0.000096 secs)
-Running: ecs_handles_reject_destroyed_and_canceled_generations (OK) (0.000012 secs)
-Running: ecs_commands_wait_for_the_iteration_sync_point (OK) (0.000011 secs)
-Running: ecs_or_chains_and_negation_match_in_slot_order (OK) (0.000019 secs)
-Running: ecs_execution_view_refreshes_after_growth_and_registration (OK) (0.000046 secs)
-Running: ecs_reflected_field_writes_retain_strings (OK) (0.000011 secs)
-Running: ecs_native_text_rejects_nul_without_publishing (OK) (0.000030 secs)
-Running: ecs_descriptor_fields_retain_every_byte (OK) (0.000005 secs)
-Running: ecs_strings_deduplicate_collisions_and_survive_growth (OK) (0.000975 secs)
-Running: ecs_managed_rows_outlive_sources_and_reclaim_replacements (OK) (0.000071 secs)
-Running: ecs_managed_storage_retires_on_remove_destroy_and_world_free (OK) (0.000032 secs)
-Running: ecs_observers_see_add_set_and_remove_at_the_sync_point (OK) (0.000009 secs)
-Running: ecs_destroy_notifies_the_entity_and_each_component_before_removal (OK) (0.000007 secs)
-Running: ecs_rows_destroyed_later_in_the_batch_still_report_their_set (OK) (0.000005 secs)
-Running: ecs_explicit_adds_replace_implied_rows_and_their_storage (OK) (0.000008 secs)
-Running: ecs_observer_commands_apply_in_the_same_sync_point (OK) (0.000012 secs)
-Running: ecs_observer_queries_skip_rows_removed_earlier_in_the_batch (OK) (0.000009 secs)
-Running: ecs_set_marks_coalesce_in_slot_order_until_unobserved (OK) (0.000009 secs)
-Running: ecs_observers_rewrite_rows_without_firing_again (OK) (0.000012 secs)
-Running: ecs_pairs_index_targets_and_sources (OK) (0.000011 secs)
-Running: ecs_registration_shares_one_id_space (OK) (0.000002 secs)
-Running: ecs_exclusive_pairs_replace_their_target (OK) (0.000006 secs)
-Running: ecs_acyclic_pairs_reject_cycles_when_recorded_and_applied (OK) (0.000007 secs)
-Running: ecs_delete_cleanup_destroys_sources_in_postorder (OK) (0.000011 secs)
-Running: ecs_delete_cleanup_destroys_shared_sources_before_their_targets (OK) (0.000007 secs)
-Running: ecs_panic_cleanup_fails_the_sync_point (OK) (0.000008 secs)
-Running: ecs_pairs_target_entities_created_in_the_same_sync_point (OK) (0.000024 secs)
-Running: ecs_pairs_survive_entity_growth_and_feed_the_world_hash (OK) (0.000442 secs)
-Running: ecs_with_adds_implied_components_once (OK) (0.000010 secs)
-Running: ecs_derived_components_follow_their_source_and_reject_writes (OK) (0.000024 secs)
+Running: preview_budgets (OK) (0.000431 secs)
+Running: malformed_numeric_fields (OK) (0.000038 secs)
+Running: capture_requires_explicit_profile_and_path (OK) (0.000052 secs)
+Running: profiling_and_hardware_opt_in (OK) (0.000073 secs)
+Running: preview_window_mode (OK) (0.000014 secs)
+Running: preview_video_driver (OK) (0.000036 secs)
+Running: types_nested_pointer_records_require_owned_layout_support (OK) (0.000054 secs)
+Running: types_document_array_collection_retains_split_payloads (OK) (0.000095 secs)
+Running: types_authored_record_document_uses_nested_native_layout (OK) (0.000055 secs)
+Running: types_catalog_composes_ordered_packs (OK) (0.000002 secs)
+Running: types_nested_reflection_reads_writes_and_checks_layout (OK) (0.000006 secs)
+Running: types_array_snapshot_owns_strings_and_names (OK) (0.000006 secs)
+Running: types_collection_follows_values_across_arenas (OK) (0.000003 secs)
+Running: types_union_snapshots_and_heap_copies_own_nested_values (OK) (0.000007 secs)
+Running: types_union_wire_roundtrip_traces_nested_arrays (OK) (0.000016 secs)
+Running: types_plain_struct_array_codecs_preserve_inline_values_and_nulls (OK) (0.000146 secs)
+Running: types_union_wire_rejects_invalid_tags_counts_and_depth (OK) (0.000024 secs)
+Running: types_struct_array_snapshot_retains_nested_payload (OK) (0.000004 secs)
+Running: types_document_snapshot_survives_source_release (OK) (0.000008 secs)
+Running: types_map_documents_own_nested_maps_arrays_and_native_structs (OK) (0.000054 secs)
+Running: types_map_documents_require_authored_declarations_and_reject_malformed_input (OK) (0.000510 secs)
+Running: types_document_rejects_invalid_values_without_publication (OK) (0.000071 secs)
+Running: ecs_handles_reject_destroyed_and_canceled_generations (OK) (0.000007 secs)
+Running: ecs_commands_wait_for_the_iteration_sync_point (OK) (0.000007 secs)
+Running: ecs_or_chains_and_negation_match_in_slot_order (OK) (0.000012 secs)
+Running: ecs_execution_view_refreshes_after_growth_and_registration (OK) (0.000033 secs)
+Running: ecs_reflected_field_writes_retain_strings (OK) (0.000007 secs)
+Running: ecs_native_text_rejects_nul_without_publishing (OK) (0.000023 secs)
+Running: ecs_descriptor_fields_retain_every_byte (OK) (0.000003 secs)
+Running: ecs_strings_deduplicate_collisions_and_survive_growth (OK) (0.000719 secs)
+Running: ecs_managed_rows_outlive_sources_and_reclaim_replacements (OK) (0.000059 secs)
+Running: ecs_managed_storage_retires_on_remove_destroy_and_world_free (OK) (0.000022 secs)
+Running: ecs_observers_see_add_set_and_remove_at_the_sync_point (OK) (0.000007 secs)
+Running: ecs_destroy_notifies_the_entity_and_each_component_before_removal (OK) (0.000005 secs)
+Running: ecs_rows_destroyed_later_in_the_batch_still_report_their_set (OK) (0.000004 secs)
+Running: ecs_explicit_adds_replace_implied_rows_and_their_storage (OK) (0.000005 secs)
+Running: ecs_observer_commands_apply_in_the_same_sync_point (OK) (0.000010 secs)
+Running: ecs_observer_queries_skip_rows_removed_earlier_in_the_batch (OK) (0.000006 secs)
+Running: ecs_set_marks_coalesce_in_slot_order_until_unobserved (OK) (0.000006 secs)
+Running: ecs_observers_rewrite_rows_without_firing_again (OK) (0.000008 secs)
+Running: ecs_pairs_index_targets_and_sources (OK) (0.000008 secs)
+Running: ecs_registration_shares_one_id_space (OK) (0.000001 secs)
+Running: ecs_exclusive_pairs_replace_their_target (OK) (0.000004 secs)
+Running: ecs_acyclic_pairs_reject_cycles_when_recorded_and_applied (OK) (0.000004 secs)
+Running: ecs_delete_cleanup_destroys_sources_in_postorder (OK) (0.000008 secs)
+Running: ecs_delete_cleanup_destroys_shared_sources_before_their_targets (OK) (0.000005 secs)
+Running: ecs_panic_cleanup_fails_the_sync_point (OK) (0.000005 secs)
+Running: ecs_pairs_target_entities_created_in_the_same_sync_point (OK) (0.000002 secs)
+Running: ecs_pairs_survive_entity_growth_and_feed_the_world_hash (OK) (0.000282 secs)
+Running: ecs_with_adds_implied_components_once (OK) (0.000007 secs)
+Running: ecs_derived_components_follow_their_source_and_reject_writes (OK) (0.000017 secs)
 Running: ecs_child_of_keeps_order_and_deptRange contract: NaN in value; using validated default
 Range contract: NaN in positive; using validated default
 Range contract: NaN in fraction; using validated default
-package-player: [Errno 2] No such file or directory: '/tmp/chibi-package-zpQoIf/native release/share/chibi/package.json'
+package-player: [Errno 2] No such file or directory: '/tmp/chibi-package-UqHXjN/native release/share/chibi/package.json'
 package-player: Expected an installed runtime package
 package-player: Package must own exactly the standalone player product
 ::error file=third_party/archives.tsv::Expected one valid linux-x64 release pin.
@@ -524,64 +524,64 @@ Run the Third-party workflow and merge its archive-pin PR before retrying SDK pu
 Run the Third-party workflow and merge its archive-pin PR before retrying SDK publication.
 ::error file=third_party/archives.tsv::Expected one valid linux-x64 release pin.
 Run the Third-party workflow and merge its archive-pin PR before retrying SDK publication.
-awk: cannot open "/tmp/chibi-desktop-dependencies-vbCiY0/archives.tsv" (No such file or directory)
+awk: cannot open "/tmp/chibi-desktop-dependencies-WOIkQo/archives.tsv" (No such file or directory)
 ::error file=third_party/archives.tsv::Expected one valid linux-x64 release pin.
-awk: cannot open "/tmp/chibi-desktop-dependencies-vbCiY0/archives.tsv" (No such file or directory)
+awk: cannot open "/tmp/chibi-desktop-dependencies-WOIkQo/archives.tsv" (No such file or directory)
 ::error file=third_party/archives.tsv::Expected one valid web release pin.
-awk: cannot open "/tmp/chibi-desktop-dependencies-vbCiY0/archives.tsv" (No such file or directory)
+awk: cannot open "/tmp/chibi-desktop-dependencies-WOIkQo/archives.tsv" (No such file or directory)
 ::error file=third_party/archives.tsv::Expected one valid web-player release pin.
 Run the Third-party workflow and merge its archive-pin PR before retrying SDK publication.
-h_across_reparenting (OK) (0.000015 secs)
-Running: ecs_renames_may_take_names_freed_earlier_in_the_batch (OK) (0.000010 secs)
-Running: ecs_names_resolve_paths_and_stay_unique_among_siblings (OK) (0.000021 secs)
-Running: ecs_destroying_a_parent_destroys_its_named_subtree (OK) (0.000013 secs)
-Running: ecs_disabled_entities_leave_queries_that_do_not_name_them (OK) (0.000017 secs)
-Running: ecs_names_apply_with_creates_and_hash_by_content (OK) (0.000056 secs)
-Running: ecs_registration_reports_columns_layouts_and_counts (OK) (0.000007 secs)
-Running: ecs_sparse_component_ids_survive_registry_growth (OK) (0.000253 secs)
-Running: ecs_rows_share_one_flat_column_per_component (OK) (0.000006 secs)
-Running: ecs_sort_keys_make_results_independent_of_recording_order (OK) (0.000039 secs)
-Running: ecs_world_hash_reads_strings_by_text (OK) (0.000043 secs)
-Running: ecs_structural_errors_leave_counts_and_generations_coherent (OK) (0.000005 secs)
-Running: ecs_growth_keeps_low_rows_and_mixed_index_queries_ordered (OK) (0.010869 secs)
-Running: ecs_iteration_rejects_growth_and_registration (OK) (0.000010 secs)
-Running: ecs_canceled_destroys_and_slot_reuse_keep_rows_coherent (OK) (0.000014 secs)
-Running: ecs_range_contracts_cover_native_publication_and_pointer_commits (OK) (0.000062 secs)
-Running: range_metadata_rejects_unsafe_integer_endpoints (OK) (0.000000 secs)
-Running: ecs_registration_rejects_nested_invalid_ranges_and_unowned_values (OK) (0.000008 secs)
-Running: ecs_registration_bounds_nested_range_traversal (OK) (0.000037 secs)
-Running: ecs_pair_terms_match_targets_wildcards_and_negation (OK) (0.000025 secs)
-Running: ecs_variables_backtrack_over_each_target (OK) (0.000014 secs)
-Running: ecs_up_terms_find_the_nearest_ancestor (OK) (0.000014 secs)
-Running: ecs_cascade_visits_parents_before_children (OK) (0.000011 secs)
-Running: ecs_scopes_nest_any_boolean_expression (OK) (0.000019 secs)
-Running: ecs_fixed_sources_gate_every_result (OK) (0.000008 secs)
-Running: ecs_invalid_terms_are_rejected (OK) (0.000005 secs)
-Running: ecs_reusable_plans_refresh_sources_membership_and_storage (OK) (0.000160 secs)
-Running: ecs_scalar_sources_are_optional_and_exclusive (OK) (0.000014 secs)
-Running: ecs_reusable_boolean_plan_avoids_iteration_allocations (OK) (0.000017 secs)
-Running: ecs_reusable_fixed_source_does_not_follow_recycled_entities (OK) (0.000010 secs)
-Running: ecs_reusable_pair_candidates_recheck_target_generations (OK) (0.000009 secs)
-Running: ecs_query_cache_reuses_membership_but_reads_current_values (OK) (0.000014 secs)
-Running: ecs_query_cache_partial_iterations_never_publish (OK) (0.000009 secs)
-Running: ecs_query_cache_preserves_sources_and_optional_absence (OK) (0.000076 secs)
-Running: ecs_query_cache_preserves_multi_target_bindings_and_source_order (OK) (0.000016 secs)
-Running: ecs_query_cache_bounds_cartesian_result_storage (OK) (0.004166 secs)
-Running: ecs_query_cache_reserves_multi_target_rows_outside_iteration (OK) (0.000014 secs)
-Running: ecs_query_cache_all_entity_plans_track_lifetimes (OK) (0.000005 secs)
-Running: ecs_query_candidates_use_actual_sparse_and_dense_costs (OK) (0.000172 secs)
-Running: ecs_query_filters_prune_before_later_variable_generators (OK) (0.000023 secs)
-Running: ecs_component_versions_track_publications_without_invalidating_membership (OK) (0.000036 secs)
-Running: native_exports_have_package_owners (OK) (0.000068 secs)
-Running: package_preserves_unrelated_output_and_rejects_nonruntime_packages (OK) (0.012730 secs)
-Running: warm_configuration_preserves_input_invalidation (OK) (0.017752 secs)
-Running: web_sdk_recipe_passes_only_configuration_definitions (OK) (0.000720 secs)
-Running: publish_tracks_packaged_sources_and_licenses (OK) (0.000027 secs)
-Running: public_studio_checkout_requires_no_extra_credentials (OK) (0.000018 secs)
-Running: publish_checks_pins_before_installing_toolchains (OK) (0.000005 secs)
-Running: publish_requires_valid_unique_release_pins (OK) (0.003152 secs)
-Running: discovered_crypto_has_relocatable_owners (OK) (0.007526 secs)
-Running: supplied_crypto_keeps_its_provider_contract (OK) (0.008636 Re-run cmake no build system arguments
+h_across_reparenting (OK) (0.000009 secs)
+Running: ecs_renames_may_take_names_freed_earlier_in_the_batch (OK) (0.000006 secs)
+Running: ecs_names_resolve_paths_and_stay_unique_among_siblings (OK) (0.000019 secs)
+Running: ecs_destroying_a_parent_destroys_its_named_subtree (OK) (0.000009 secs)
+Running: ecs_disabled_entities_leave_queries_that_do_not_name_them (OK) (0.000011 secs)
+Running: ecs_names_apply_with_creates_and_hash_by_content (OK) (0.000037 secs)
+Running: ecs_registration_reports_columns_layouts_and_counts (OK) (0.000005 secs)
+Running: ecs_sparse_component_ids_survive_registry_growth (OK) (0.000184 secs)
+Running: ecs_rows_share_one_flat_column_per_component (OK) (0.000005 secs)
+Running: ecs_sort_keys_make_results_independent_of_recording_order (OK) (0.000017 secs)
+Running: ecs_world_hash_reads_strings_by_text (OK) (0.000026 secs)
+Running: ecs_structural_errors_leave_counts_and_generations_coherent (OK) (0.000003 secs)
+Running: ecs_growth_keeps_low_rows_and_mixed_index_queries_ordered (OK) (0.008023 secs)
+Running: ecs_iteration_rejects_growth_and_registration (OK) (0.000009 secs)
+Running: ecs_canceled_destroys_and_slot_reuse_keep_rows_coherent (OK) (0.000013 secs)
+Running: ecs_range_contracts_cover_native_publication_and_pointer_commits (OK) (0.000046 secs)
+Running: range_metadata_rejects_unsafe_integer_endpoints (OK) (0.000001 secs)
+Running: ecs_registration_rejects_nested_invalid_ranges_and_unowned_values (OK) (0.000005 secs)
+Running: ecs_registration_bounds_nested_range_traversal (OK) (0.000033 secs)
+Running: ecs_pair_terms_match_targets_wildcards_and_negation (OK) (0.000083 secs)
+Running: ecs_variables_backtrack_over_each_target (OK) (0.000012 secs)
+Running: ecs_up_terms_find_the_nearest_ancestor (OK) (0.000012 secs)
+Running: ecs_cascade_visits_parents_before_children (OK) (0.000010 secs)
+Running: ecs_scopes_nest_any_boolean_expression (OK) (0.000011 secs)
+Running: ecs_fixed_sources_gate_every_result (OK) (0.000006 secs)
+Running: ecs_invalid_terms_are_rejected (OK) (0.000004 secs)
+Running: ecs_reusable_plans_refresh_sources_membership_and_storage (OK) (0.000186 secs)
+Running: ecs_scalar_sources_are_optional_and_exclusive (OK) (0.000010 secs)
+Running: ecs_reusable_boolean_plan_avoids_iteration_allocations (OK) (0.000013 secs)
+Running: ecs_reusable_fixed_source_does_not_follow_recycled_entities (OK) (0.000007 secs)
+Running: ecs_reusable_pair_candidates_recheck_target_generations (OK) (0.000007 secs)
+Running: ecs_query_cache_reuses_membership_but_reads_current_values (OK) (0.000011 secs)
+Running: ecs_query_cache_partial_iterations_never_publish (OK) (0.000006 secs)
+Running: ecs_query_cache_preserves_sources_and_optional_absence (OK) (0.000060 secs)
+Running: ecs_query_cache_preserves_multi_target_bindings_and_source_order (OK) (0.000032 secs)
+Running: ecs_query_cache_bounds_cartesian_result_storage (OK) (0.002395 secs)
+Running: ecs_query_cache_reserves_multi_target_rows_outside_iteration (OK) (0.000008 secs)
+Running: ecs_query_cache_all_entity_plans_track_lifetimes (OK) (0.000004 secs)
+Running: ecs_query_candidates_use_actual_sparse_and_dense_costs (OK) (0.000086 secs)
+Running: ecs_query_filters_prune_before_later_variable_generators (OK) (0.000016 secs)
+Running: ecs_component_versions_track_publications_without_invalidating_membership (OK) (0.000025 secs)
+Running: native_exports_have_package_owners (OK) (0.000123 secs)
+Running: package_preserves_unrelated_output_and_rejects_nonruntime_packages (OK) (0.014727 secs)
+Running: warm_configuration_preserves_input_invalidation (OK) (0.024273 secs)
+Running: web_sdk_recipe_passes_only_configuration_definitions (OK) (0.001241 secs)
+Running: publish_tracks_packaged_sources_and_licenses (OK) (0.000059 secs)
+Running: public_studio_checkout_requires_no_extra_credentials (OK) (0.000071 secs)
+Running: publish_checks_pins_before_installing_toolchains (OK) (0.000007 secs)
+Running: publish_requires_valid_unique_release_pins (OK) (0.004201 secs)
+Running: discovered_crypto_has_relocatable_owners (OK) (0.009880 secs)
+Running: supplied_crypto_keeps_its_provider_contract (OK) (0.010507 Re-run cmake no build system arguments
 CMake Error at /home/claude/chibi/cmake/Findcrypto.cmake:58 (message):
   OpenSSL metadata does not match s2n's selected crypto library/headers.
   Supply a crypto target with its link dependencies, or align OpenSSL
@@ -605,7 +605,7 @@ Call Stack (most recent call first):
 Re-run cmake no build system arguments
 CMake Error at /home/claude/chibi/sdk/vendor_dependencies.cmake:202 (message):
   Vendor dependency fixture_sdk has an unowned absolute link:
-  /tmp/chibi-desktop-dependencies-vbCiY0/opengl-nonlinux/provider/opengl/libGL.so
+  /tmp/chibi-desktop-dependencies-WOIkQo/opengl-nonlinux/provider/opengl/libGL.so
 Call Stack (most recent call first):
   CMakeLists.txt:91 (chibi_vendor_dependency)
 
@@ -614,7 +614,7 @@ Call Stack (most recent call first):
 Re-run cmake no build system arguments
 CMake Error at /home/claude/chibi/sdk/vendor_dependencies.cmake:202 (message):
   Vendor dependency fixture_sdk has an unowned absolute link:
-  /tmp/chibi-desktop-dependencies-vbCiY0/unowned/provider/unowned/libGL.so
+  /tmp/chibi-desktop-dependencies-WOIkQo/unowned/provider/unowned/libGL.so
 Call Stack (most recent call first):
   CMakeLists.txt:91 (chibi_vendor_dependency)
 
@@ -667,10 +667,10 @@ pin branch or PR appeared before creation; refusing to push
 pin branch or PR appeared before creation; refusing to push
 prepared source binding required for incomplete release recovery
 collab: server exited with status 1 before readiness
-server log retained at /tmp/chibi-collab-xcfPPC/server.log:
+server log retained at /tmp/chibi-collab-9xjcE9/server.log:
 COLLAB_HOST_GRACE_MS must be a positive integer
-graph: running (log: .chibi/logs/1792924753598848988-481-graph.log)
-graph: FAILED (0.0s; log: .chibi/logs/1792924753598848988-481-graph.log)
+graph: running (log: .chibi/logs/1792930122329546754-21997-graph.log)
+graph: FAILED (0.0s; log: .chibi/logs/1792930122329546754-21997-graph.log)
 ordinary output
 ordinary output
 ordinary output
@@ -797,7 +797,7 @@ studio_acceptance_source_changed
 studio_acceptance_source_size_changed
 studio_acceptance_source_size_changed
 benchmark trial 1/3
-benchmark trial 1 wall=0.001474 s exit=7
+benchmark trial 1 wall=0.001493 s exit=7
 benchmark stopped with status 7
 Usage: /home/claude/chibi/build-tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
 The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
@@ -810,69 +810,69 @@ The optional timeout must be at least 3 seconds, including 2 seconds for cleanup
 Usage: /home/claude/chibi/build-tools/benchmark_trials [--trials 3|5] [--timeout SECONDS] -- binary [arguments...]
 The optional timeout must be at least 3 seconds, including 2 seconds for cleanup.
 benchmark trial 1/3
-benchmark trial 1 wall=1.001908 s exit=143
+benchmark trial 1 wall=1.002006 s exit=143
 benchmark stopped with status 124
-Test command wall time: 0.058s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 0.057s; includes in-test fixture setup; external configuration/build excluded.
 Test command wall time: 2.010s; includes in-test fixture setup; external configuration/build excluded.
 Test command wall time: 2.010s; includes in-test fixture setup; external configuration/build excluded.
-Test command wall time: 2.025s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.027s; includes in-test fixture setup; external configuration/build excluded.
 test cleanup unavailable: no usable proc children reader or ps (fixture: discovery unavailable); no test started
-test cleanup unavailable: no usable proc children reader or ps (Command '['/home/claude/chibi/build-tools/policy_worker', 'policy-ps', '/tmp/chibi-policy-LRGdi1', '30']' timed out after 5 seconds); no test started
-Test command wall time: 2.014s; includes in-test fixture setup; external configuration/build excluded.
-Test command wall time: 2.043s; includes in-test fixture setup; external configuration/build excluded.
-Test command wall time: 2.017s; includes in-test fixture setup; external configuration/build excluded.
+test cleanup unavailable: no usable proc children reader or ps (Command '['/home/claude/chibi/build-tools/policy_worker', 'policy-ps', '/tmp/chibi-policy-v2puOg', '30']' timed out after 5 seconds); no test started
+Test command wall time: 2.012s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.041s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 2.010s; includes in-test fixture setup; external configuration/build excluded.
 secs)
-Running: mismatched_crypto_metadata_is_rejected (OK) (0.002953 secs)
-Running: discovered_opengl_roles_relocate_but_unowned_paths_fail (OK) (0.023975 secs)
-Running: archive_libraries_keep_languages_and_licences (OK) (0.008189 secs)
-Running: tooling_languages_follow_native_packages (OK) (0.044160 secs)
-Running: third_party_invalid_inputs_have_no_side_effects (OK) (0.011153 secs)
-Running: third_party_new_release_and_original_artifact_retry (OK) (0.015094 secs)
-Running: third_party_partial_release_only_adds_missing_archives (OK) (0.010323 secs)
-Running: third_party_complete_release_and_main_pins_are_unchanged (OK) (0.014435 secs)
-Running: third_party_mismatches_and_closed_prs_are_preserved (OK) (0.023001 secs)
-Running: third_party_retargeted_and_fork_owned_prs_are_preserved (OK) (0.009986 secs)
-Running: third_party_different_pin_contents_and_source_parents_are_preserved (OK) (0.020596 secs)
-Running: third_party_unverified_and_ambiguous_assets_are_preserved (OK) (0.012481 secs)
-Running: third_party_source_and_read_failures_do_not_pin (OK) (0.028361 secs)
-Running: third_party_prepared_source_requires_paired_manual_branch_inputs (OK) (0.019751 secs)
-Running: third_party_prepared_source_creates_and_reuses_only_bound_draft_prs (OK) (0.029022 secs)
-Running: third_party_prepared_source_encodes_permitted_branch_names (OK) (0.022288 secs)
-Running: third_party_prepared_source_rejects_changed_or_ambiguous_source_prs (OK) (0.034026 secs)
-Running: third_party_prepared_source_rejects_remote_main_and_source_drift (OK) (0.021866 secs)
-Running: third_party_prepared_source_drift_during_upload_never_pins (OK) (0.036414 secs)
-Running: third_party_prepared_source_preserves_pin_races_before_push (OK) (0.044576 secs)
-Running: third_party_prepared_merged_pins_allow_only_a_complete_release_noop (OK) (0.029939 secs)
-Running: room_creation_and_invites_require_the_correct_authority (OK) (0.001604 secs)
-Running: server_exit_fails_readiness_and_keeps_its_log (OK) (0.000512 secs)
-Running: occupied_port_fails_readiness (OK) (0.000536 secs)
-Running: live_process_without_health_fails_readiness (OK) (0.000630 secs)
-Running: request_reports_real_receive_and_connection_failures (OK) (0.000891 secs)
-Running: asset_language_cases_are_in_the_actual_ci_group (OK) (0.008755 secs)
-Running: material_cpu_routes_reach_exact_dispatcher (OK) (0.012819 secs)
-Running: project_group_keeps_all_project_commands_out_of_native (OK) (0.013384 secs)
-Running: group_selectors_are_unique_and_controller_users_are_projects (OK) (0.001093 secs)
-Running: ci_groups_share_one_build_and_stop_on_failure (OK) (0.010338 secs)
-Running: ci_initial_build_keeps_targets_profiles_and_failures (OK) (0.031132 secs)
-Running: ci_preserves_failed_macos_graph_stage_log (OK) (0.001507 secs)
-Running: studio_acceptance_requires_exact_completion (OK) (0.032204 secs)
-Running: studio_camera_requires_thirty_clean_frames (OK) (0.016128 secs)
-Running: studio_gizmo_requires_forty_two_clean_frames (OK) (0.009145 secs)
-Running: studio_collider_requires_twenty_six_clean_frames (OK) (0.011608 secs)
-Running: studio_resources_require_recorded_generation (OK) (0.008050 secs)
-Running: studio_acceptance_source_records_match_files (OK) (0.011553 secs)
-Running: benchmark_runner_timeout_is_optional (OK) (0.001399 secs)
-Running: benchmark_runner_explicit_timeout_cleans_descendants (OK) (0.020702 secs)
-Running: exit_sequence_and_optional_timeout (OK) (0.053846 secs)
-Running: descendant_cleanup (OK) (0.040500 secs)
-Running: portable_nested_cleanup_preserves_sibling (OK) (0.037600 secs)
-Running: unavailable_discovery_refuses_before_launch (OK) (0.001198 secs)
-Running: slow_process_inspection_still_launches_work (OK) (0.026624 secs)
-Running: stuck_process_inspection_refuses_work_and_reaps_probe (OK) (0.099291 secs)
-Running: nested_cancellation_cleans_detached_descendants (OK) (0.037563 secs)
-Running: orphan_setsid_cleanup (OK) (0.002902 secs)
-Running: missing_proc_uses_portable_discovery (OK) (0.041762 secs)
-Running: pending_termination_still_cleans_up (OK) (0.039667 secs)
+Running: mismatched_crypto_metadata_is_rejected (OK) (0.003062 secs)
+Running: discovered_opengl_roles_relocate_but_unowned_paths_fail (OK) (0.032706 secs)
+Running: archive_libraries_keep_languages_and_licences (OK) (0.011475 secs)
+Running: tooling_languages_follow_native_packages (OK) (0.056538 secs)
+Running: third_party_invalid_inputs_have_no_side_effects (OK) (0.014065 secs)
+Running: third_party_new_release_and_original_artifact_retry (OK) (0.019680 secs)
+Running: third_party_partial_release_only_adds_missing_archives (OK) (0.012457 secs)
+Running: third_party_complete_release_and_main_pins_are_unchanged (OK) (0.017590 secs)
+Running: third_party_mismatches_and_closed_prs_are_preserved (OK) (0.025284 secs)
+Running: third_party_retargeted_and_fork_owned_prs_are_preserved (OK) (0.011234 secs)
+Running: third_party_different_pin_contents_and_source_parents_are_preserved (OK) (0.021901 secs)
+Running: third_party_unverified_and_ambiguous_assets_are_preserved (OK) (0.013023 secs)
+Running: third_party_source_and_read_failures_do_not_pin (OK) (0.031050 secs)
+Running: third_party_prepared_source_requires_paired_manual_branch_inputs (OK) (0.021792 secs)
+Running: third_party_prepared_source_creates_and_reuses_only_bound_draft_prs (OK) (0.032034 secs)
+Running: third_party_prepared_source_encodes_permitted_branch_names (OK) (0.026184 secs)
+Running: third_party_prepared_source_rejects_changed_or_ambiguous_source_prs (OK) (0.036725 secs)
+Running: third_party_prepared_source_rejects_remote_main_and_source_drift (OK) (0.024232 secs)
+Running: third_party_prepared_source_drift_during_upload_never_pins (OK) (0.035430 secs)
+Running: third_party_prepared_source_preserves_pin_races_before_push (OK) (0.040158 secs)
+Running: third_party_prepared_merged_pins_allow_only_a_complete_release_noop (OK) (0.028396 secs)
+Running: room_creation_and_invites_require_the_correct_authority (OK) (0.001243 secs)
+Running: server_exit_fails_readiness_and_keeps_its_log (OK) (0.000417 secs)
+Running: occupied_port_fails_readiness (OK) (0.000391 secs)
+Running: live_process_without_health_fails_readiness (OK) (0.000684 secs)
+Running: request_reports_real_receive_and_connection_failures (OK) (0.001215 secs)
+Running: asset_language_cases_are_in_the_actual_ci_group (OK) (0.010020 secs)
+Running: material_cpu_routes_reach_exact_dispatcher (OK) (0.017449 secs)
+Running: project_group_keeps_all_project_commands_out_of_native (OK) (0.013650 secs)
+Running: group_selectors_are_unique_and_controller_users_are_projects (OK) (0.001419 secs)
+Running: ci_groups_share_one_build_and_stop_on_failure (OK) (0.014105 secs)
+Running: ci_initial_build_keeps_targets_profiles_and_failures (OK) (0.034123 secs)
+Running: ci_preserves_failed_macos_graph_stage_log (OK) (0.001823 secs)
+Running: studio_acceptance_requires_exact_completion (OK) (0.036299 secs)
+Running: studio_camera_requires_thirty_clean_frames (OK) (0.015672 secs)
+Running: studio_gizmo_requires_forty_two_clean_frames (OK) (0.010694 secs)
+Running: studio_collider_requires_twenty_six_clean_frames (OK) (0.014087 secs)
+Running: studio_resources_require_recorded_generation (OK) (0.010939 secs)
+Running: studio_acceptance_source_records_match_files (OK) (0.013013 secs)
+Running: benchmark_runner_timeout_is_optional (OK) (0.001637 secs)
+Running: benchmark_runner_explicit_timeout_cleans_descendants (OK) (0.021924 secs)
+Running: exit_sequence_and_optional_timeout (OK) (0.054278 secs)
+Running: descendant_cleanup (OK) (0.043409 secs)
+Running: portable_nested_cleanup_preserves_sibling (OK) (0.046343 secs)
+Running: unavailable_discovery_refuses_before_launch (OK) (0.001399 secs)
+Running: slow_process_inspection_still_launches_work (OK) (0.027214 secs)
+Running: stuck_process_inspection_refuses_work_and_reaps_probe (OK) (0.107857 secs)
+Running: nested_cancellation_cleans_detached_descendants (OK) (0.041377 secs)
+Running: orphan_setsid_cleanup (OK) (0.003212 secs)
+Running: missing_proc_uses_portable_discovery (OK) (0.043790 secs)
+Running: pending_termination_still_cleans_up (OK) (0.042504 secs)
 Running: validation_identity_is_frozen_and_requires_cValidation plan blocked: stale or changed plan; review and regenerate before using evidence
 Validation plan blocked: check out the planned head with a clean worktree; save plans/logs outside the worktree
 usage: plan.py validation-plan [-h] --base BASE [--head HEAD]
@@ -888,65 +888,65 @@ Validation plan blocked: reviewed scope requires a review note and selectors or 
 Validation plan blocked: unclassified selector: --not-a-test
 usage: agent.py [-h] [--build-dir BUILD_DIR]
                 {plan,doctor,list,hardware-check,validation-plan,test,gpu-test,preview,mp4} ...
-agent.py: error: unrecognized arguments: touch /tmp/chibi-validation-plan-mJ2Tsr/injected
-Test command wall time: 0.134s; includes in-test fixture setup; external configuration/build excluded.
+agent.py: error: unrecognized arguments: touch /tmp/chibi-validation-plan-eiRkZa/injected
+Test command wall time: 0.128s; includes in-test fixture setup; external configuration/build excluded.
 make[1]: *** [/home/claude/chibi/Makefile:306: agent-test] Error 2
 usage: agent.py [-h] [--build-dir BUILD_DIR]
                 {plan,doctor,list,hardware-check,validation-plan,test,gpu-test,preview,mp4} ...
-agent.py: error: unrecognized arguments: && touch /tmp/chibi-validation-plan-mJ2Tsr/injected
-Test command wall time: 0.119s; includes in-test fixture setup; external configuration/build excluded.
+agent.py: error: unrecognized arguments: && touch /tmp/chibi-validation-plan-eiRkZa/injected
+Test command wall time: 0.136s; includes in-test fixture setup; external configuration/build excluded.
 make[1]: *** [/home/claude/chibi/Makefile:306: agent-test] Error 2
 usage: agent.py [-h] [--build-dir BUILD_DIR]
                 {plan,doctor,list,hardware-check,validation-plan,test,gpu-test,preview,mp4} ...
-agent.py: error: unrecognized arguments: `touch /tmp/chibi-validation-plan-mJ2Tsr/injected`
-Test command wall time: 0.119s; includes in-test fixture setup; external configuration/build excluded.
-make[1]: *** [/home/claude/chibi/Makefile:306: agent-test] Error 2
-usage: agent.py [-h] [--build-dir BUILD_DIR]
-                {plan,doctor,list,hardware-check,validation-plan,test,gpu-test,preview,mp4} ...
-agent.py: error: unrecognized arguments: $(touch /tmp/chibi-validation-plan-mJ2Tsr/injected)
+agent.py: error: unrecognized arguments: `touch /tmp/chibi-validation-plan-eiRkZa/injected`
 Test command wall time: 0.129s; includes in-test fixture setup; external configuration/build excluded.
 make[1]: *** [/home/claude/chibi/Makefile:306: agent-test] Error 2
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:1:1: error: unknown type name 'this'
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:1:8: error: expected ';' after top level declarator
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:3:32: handle fields require uint64_t storage and a nominal type (entity)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:3:35: handle fields require uint64_t storage and a nominal type (entity)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:125: unit and range require a numeric field (name)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: unit must not be empty (empty)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: range requires a minimum below its maximum (inverted)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: range requires a minimum below its maximum (suffixed)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: range requires a minimum below its maximum (single)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: range requires a minimum below its maximum (endless)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:117: range endpoints must fit the field's numeric storage (fractional)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:117: range endpoints must fit the field's numeric storage (overflow)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: range hint and contract are exclusive; default requires a contract (both)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:2:119: range hint and contract are exclusive; default requires a contract (fallback)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:26: unsupported parameter type or missing explicit output annotation (value)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:14: identity requires one struct argument with the same underlying return type (convert)
-reflect: /tmp/chibi-reflect-test-jhZXBU/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
+usage: agent.py [-h] [--build-dir BUILD_DIR]
+                {plan,doctor,list,hardware-check,validation-plan,test,gpu-test,preview,mp4} ...
+agent.py: error: unrecognized arguments: $(touch /tmp/chibi-validation-plan-eiRkZa/injected)
+Test command wall time: 0.118s; includes in-test fixture setup; external configuration/build excluded.
+make[1]: *** [/home/claude/chibi/Makefile:306: agent-test] Error 2
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:1:1: error: unknown type name 'this'
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:1:8: error: expected ';' after top level declarator
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:3:32: handle fields require uint64_t storage and a nominal type (entity)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:3:35: handle fields require uint64_t storage and a nominal type (entity)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:125: unit and range require a numeric field (name)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: unit must not be empty (empty)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: range requires a minimum below its maximum (inverted)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: range requires a minimum below its maximum (suffixed)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: range requires a minimum below its maximum (single)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: range requires a minimum below its maximum (endless)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:117: range endpoints must fit the field's numeric storage (fractional)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:117: range endpoints must fit the field's numeric storage (overflow)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: range hint and contract are exclusive; default requires a contract (both)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:2:119: range hint and contract are exclusive; default requires a contract (fallback)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:26: unsupported parameter type or missing explicit output annotation (value)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:14: identity requires one struct argument with the same underlying return type (convert)
+reflect: /tmp/chibi-reflect-test-6YHaC0/components.c:6:10: identity requires one struct argument with the same underlying return type (convert)
 reflect: Total derives from Missing, which is not a component
-lean_checkout (OK) (0.008615 secs)
-Running: validation_plans_native_tools_without_certifying_full_gate (OK) (0.007730 secs)
-Running: validation_requires_review_and_checks_for_mixed_scope (OK) (0.005756 secs)
-Running: validation_routes_gpu_checks_and_refuses_unknown_selectors (OK) (0.003248 secs)
-Running: make_selector_data_never_reaches_the_shell (OK) (0.024836 secs)
-Running: component_insertion_keeps_existing_identities (OK) (0.002931 secs)
-Running: component_rename_keeps_its_identity (OK) (0.001188 secs)
-Running: restored_component_name_reclaims_its_alias (OK) (0.001415 secs)
-Running: removed_component_drops_its_row (OK) (0.001312 secs)
-Running: new_component_does_not_inherit_a_removed_identity (OK) (0.001136 secs)
-Running: readded_component_regains_its_key_identity (OK) (0.001283 secs)
-Running: unchanged_reflection_keeps_linked_outputs (OK) (0.004043 secs)
-Running: failed_reflection_keeps_linked_outputs (OK) (0.001253 secs)
-Running: handle_pins_keep_their_nominal_type (OK) (0.003993 secs)
-Running: numeric_fields_reflect_their_unit_and_range (OK) (0.014645 secs)
-Running: numeric_range_hints_and_defaults_are_distinct (OK) (0.001644 secs)
-Running: jit_identity_requires_one_matching_struct_argument (OK) (0.009439 secs)
-Running: derived_component_names_its_source (OK) (0.003514 secs)
-Running: empty_prefix_generates_canonical_component_names (OK) (0.001077 secs)
+lean_checkout (OK) (0.008559 secs)
+Running: validation_plans_native_tools_without_certifying_full_gate (OK) (0.007747 secs)
+Running: validation_requires_review_and_checks_for_mixed_scope (OK) (0.004697 secs)
+Running: validation_routes_gpu_checks_and_refuses_unknown_selectors (OK) (0.004242 secs)
+Running: make_selector_data_never_reaches_the_shell (OK) (0.023614 secs)
+Running: component_insertion_keeps_existing_identities (OK) (0.002907 secs)
+Running: component_rename_keeps_its_identity (OK) (0.001322 secs)
+Running: restored_component_name_reclaims_its_alias (OK) (0.001165 secs)
+Running: removed_component_drops_its_row (OK) (0.001125 secs)
+Running: new_component_does_not_inherit_a_removed_identity (OK) (0.000909 secs)
+Running: readded_component_regains_its_key_identity (OK) (0.000899 secs)
+Running: unchanged_reflection_keeps_linked_outputs (OK) (0.004259 secs)
+Running: failed_reflection_keeps_linked_outputs (OK) (0.001156 secs)
+Running: handle_pins_keep_their_nominal_type (OK) (0.003648 secs)
+Running: numeric_fields_reflect_their_unit_and_range (OK) (0.012779 secs)
+Running: numeric_range_hints_and_defaults_are_distinct (OK) (0.001186 secs)
+Running: jit_identity_requires_one_matching_struct_argument (OK) (0.008839 secs)
+Running: derived_component_names_its_source (OK) (0.003343 secs)
+Running: empty_prefix_generates_canonical_component_names (OK) (0.001220 secs)
 ===============================================================
 Summary: Passed: 172 Failed: 0 Total: 172 Suites: 0 Asserts: 28990
-Test command wall time: 60.470s; includes in-test fixture setup; external configuration/build excluded.
+Test command wall time: 63.535s; includes in-test fixture setup; external configuration/build excluded.

@@ -2,12 +2,12 @@
   "format": 1,
   "version": 6,
   "minimum": 2,
-  "revision": "971a045c6a2d58b4375823ceb5e648a416d2b869-dirty",
+  "revision": "c28e31bf3bbc35e19fbf1ef4565b94c445871d9d-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 15503399,
-    "sha256": "b22af64c4d966e67d588c6f92ea2ea7a59c97c9dbb295dde697ee2b71b5e8ad9"
+    "bytes": 15516993,
+    "sha256": "f22ee6047f5ec7fe5b6e089b3eed0ace2ca6c3b29814c7ce8d58b6d26d18c3b0"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -39,8 +39,8 @@
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 46845,
-      "sha256": "71fa1b3173ab86c0c210bd049e3431d905b197343d254787c5e9551de76496ce"
+      "bytes": 47480,
+      "sha256": "c71424c16d4bfb90933c09cf0179e65a1f85bedd8e051863f0895158a9c1d489"
     },
     {
       "path": "package_compiler/Tree.chibi",

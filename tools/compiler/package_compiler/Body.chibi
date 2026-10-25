@@ -396,6 +396,139 @@ NumberLiteral :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     return Is(forest, node, "number") ||
            (Is(forest, node, "unary_expression") && Is(forest, Field(forest, node, "operand"), "number"));
 }
+// Whether `node` is an argument of a call that `work[0, top)` will resume as
+// an overloaded native.
+OverloadArgument :: (forest: snapshot.SnapshotNode[], work: Work[], top: int, node: int) -> bool {
+    at := forest[node].parent;
+    if (Is(forest, at, "named_argument")) {
+        at = forest[at].parent;
+    }
+    if (!Is(forest, at, "argument_list")) {
+        return false;
+    }
+    call := forest[at].parent;
+    index: int = 0;
+    while (index < top) {
+        if (work[index].node == call && work[index].phase == 1 && work[index].c == 4) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}
+// What taking an overloaded native's arguments emits: the code that follows
+// the body's, the slots it adds, the values with the arguments as the overload
+// takes them and, for each, the jump it reserved and where its block starts.
+TypedArguments :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Typed(code: Code[], slots: Slot[], values: Value[], jumps: int[], starts: int[])
+}
+// The overloaded native call `item` takes each argument of
+// `values[first, first + item.b)` as its chosen overload's parameter, typed
+// when an untyped literal and converted when a number of another type. Stage
+// zero converts and watches each argument as the call's input where it is
+// written, so the jump the argument last reserved there, `jumps` by its node
+// in `nodes`, runs that in a block the body skips, from `at`.
+OverloadArguments :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[],
+                      names: Name[], package: int, natives: Native[], ports: Port[], ops: Ops, item: Work,
+                      values: Value[], first: int, nodes: int[], jumps: int[], at: Bases,
+                      node: snapshot.SnapshotNode, target: Target) -> TypedArguments {
+    chosen := Overload(forest, text, natives, ports, natives[item.a].name, values, first, item.b);
+    code: Code[] = [];
+    slots: Slot[] = [];
+    arguments: Value[] = [];
+    reserved: int[] = [];
+    starts: int[] = [];
+    if (chosen < 0 || item.b == 0) {
+        return TypedArguments.Typed(code, slots, values, reserved, starts);
+    }
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    member := FirstMember(forest, Field(forest, item.node, "arguments"));
+    while (length(arguments) < item.b) {
+        index := length(arguments);
+        written := member;
+        if (Is(forest, member, "named_argument")) {
+            written = Field(forest, member, "value");
+        }
+        jump := jumps[LastIndexOf(nodes, written)];
+        reserved.append(jump);
+        starts.append(at.pc + length(code));
+        argument := values[first + index];
+        port := ports[NativePort(natives[chosen], index)];
+        if (argument.storage == NumberStorage && port.container == 0 && Numeric(port.storage)) {
+            block: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local, cell: at.cell,
+                            host: at.host, call: at.call};
+            switch NumberLiteralStep(forest, text, document, constants, names, package, argument, port.storage, ops,
+                                     block, node) {
+                case .Failed(diagnostic):
+                    return TypedArguments.Failed(diagnostic);
+                case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
+                              typed_calls, typed_bound, typed_next, typed_popped, typed_value, typed_retain,
+                              typed_marks):
+                    code.extend(typed_code);
+                    slots.extend(typed_slots);
+                    argument = typed_value;
+            }
+        } else if (Converted(argument, port)) {
+            output := at.slot + length(slots);
+            slots.extend(NumberSlots(argument.storage, port.storage));
+            code.extend(NumberCode(ops, argument.storage, port.storage, argument.slot, output, node));
+            argument = Typed(at.slot + length(slots) - 1, port.storage, 0, -1);
+        }
+        if (argument.storage != NumberStorage) {
+            code.append(WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record, index,
+                                  false, node, target));
+        }
+        code.append(Instruction(ops.jump, 0, 0, 0, 0, jump + 1, node));
+        arguments.append(argument);
+        member = NextMember(forest, member);
+    }
+    skip := code[0];
+    skip.target = at.pc + length(code);
+    code[0] = skip;
+    typed: Value[] = [];
+    for (value in values) {
+        kept := value;
+        if (length(typed) >= first && length(typed) < first + item.b) {
+            kept = arguments[length(typed) - first];
+        }
+        typed.append(kept);
+    }
+    return TypedArguments.Typed(code, slots, typed, reserved, starts);
+}
+// `code` with the jump at each `jumps[k]` going to `targets[k]`.
+Retargeted :: (code: Code[], jumps: int[], targets: int[]) -> Code[] {
+    if (length(jumps) == 0) {
+        return code;
+    }
+    patched: Code[] = [];
+    for (item in code) {
+        moved := item;
+        at := LastIndexOf(jumps, length(patched));
+        if (at >= 0) {
+            moved.target = targets[at];
+        }
+        patched.append(moved);
+    }
+    return patched;
+}
+// Whether the work `next` schedules visits `node` again.
+Resumed :: (next: Work[], node: int) -> bool {
+    for (scheduled in next) {
+        if (scheduled.node == node) {
+            return true;
+        }
+    }
+    return false;
+}
+// The index of the last `value` in `values`, -1 for none.
+LastIndexOf :: (values: int[], value: int) -> int {
+    index := length(values) - 1;
+    while (index >= 0 && values[index] != value) {
+        index -= 1;
+    }
+    return index;
+}
 // Whether `node` is an element of an array literal of literals, which stage
 // zero makes as one constant.
 ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
@@ -1472,6 +1605,78 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     return -1;
 }
 
+// A statement's points, and the code that places them, numbered from `base`.
+Placed :: union {
+    Placed(points: SourcePoint[], code: Code[])
+}
+// A statement's point, and one for each value it returns: stage zero assigns
+// each to a result, a statement of its own.
+StatementPoints :: (forest: snapshot.SnapshotNode[], key: string, solid: int[], ops: Ops, statement: int,
+                    base: int) -> Placed {
+    node := forest[statement];
+    points: SourcePoint[] = [PointAt(key, solid, StatementRecord, 0, false, node, node)];
+    code: Code[] = [PointCode(ops, base, node)];
+    value := Field(forest, statement, "value");
+    returned: int[] = [];
+    if (node.kind == "return_statement" && Is(forest, value, "argument_list")) {
+        returned = Members(forest, value);
+    } else if (node.kind == "return_statement" && value >= 0) {
+        returned = [value];
+    }
+    for (each in returned) {
+        points.append(PointAt(key, solid, StatementRecord, 0, false, forest[each], forest[each]));
+        code.append(PointCode(ops, base + length(points) - 1, forest[each]));
+    }
+    return Placed.Placed(points, code);
+}
+// The watches of each of a call's several results, numbered, and the slots
+// and roots that read them.
+Watched :: union {
+    Watched(code: Code[], slots: Slot[], roots: Root[])
+}
+// The watches of the several results `produced` holds, reading them through
+// slots from `base`.
+ResultWatches :: (ops: Ops, target: Target, callables: Callable[], params: Param[], natives: Native[],
+                  ports: Port[], produced: Value, base: int, node: snapshot.SnapshotNode) -> Watched {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    roots: Root[] = [];
+    count: int = 0;
+    if (produced.storage == FunctionResultsStorage) {
+        count = callables[produced.record].results;
+    } else {
+        count = natives[produced.record].results;
+    }
+    at_result: int = 0;
+    while (at_result < count) {
+        storage: int = 0;
+        container: int = 0;
+        record: int = -1;
+        if (produced.storage == FunctionResultsStorage) {
+            called := callables[produced.record];
+            result := params[called.first + called.count + at_result];
+            storage = result.storage;
+            container = result.container;
+            record = result.record;
+        } else {
+            linked := natives[produced.record];
+            storage = ports[linked.first + linked.parameters + at_result].storage;
+            container = ports[linked.first + linked.parameters + at_result].container;
+        }
+        address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+        loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
+        slots.extend([address, loaded]);
+        loaded_slot := base + length(slots) - 1;
+        code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target, loaded_slot - 1, node));
+        if (Pointer(storage, container)) {
+            root: Root = {slot: loaded_slot, storage: storage, container: container, record: record};
+            roots.append(root);
+        }
+        code.append(WatchCode(ops, loaded_slot, storage, container, record, at_result, true, node, target));
+        at_result += 1;
+    }
+    return Watched.Watched(code, slots, roots);
+}
 // The array function a method call on an array runs, with the array first.
 // -1 for none.
 ArrayMethod :: (natives: Native[], ports: Port[], name: string) -> int {
@@ -1696,6 +1901,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     value_top: int = 0;
     watches: SourceWatch[] = [];
     semantic_effects: int = 0;
+    // The arguments of overloaded natives, by node, and the jump each
+    // reserves where it is written.
+    reserved_nodes: int[] = [];
+    reserved_jumps: int[] = [];
+    // The reserved jumps a call took, retargeted once the body is done.
+    retargets: int[] = [];
+    retarget_starts: int[] = [];
     work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
@@ -1716,20 +1928,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
         if (ops.debug && item.phase == 0 && Statement(kind)) {
-            points.append(PointAt(key, solid, StatementRecord, 0, false, node, node));
-            code.append(PointCode(ops, length(points) - 1, node));
-            // Stage zero assigns each returned value to a result, a statement
-            // of its own.
-            value := Field(forest, item.node, "value");
-            returned: int[] = [];
-            if (kind == "return_statement" && Is(forest, value, "argument_list")) {
-                returned = Members(forest, value);
-            } else if (kind == "return_statement" && value >= 0) {
-                returned = [value];
-            }
-            for (each in returned) {
-                points.append(PointAt(key, solid, StatementRecord, 0, false, forest[each], forest[each]));
-                code.append(PointCode(ops, length(points) - 1, forest[each]));
+            switch StatementPoints(forest, key, solid, ops, item.node, length(points)) {
+                case .Placed(placed_points, placed_code):
+                    points.extend(placed_points);
+                    code.extend(placed_code);
             }
         }
         // Stage zero reads `-1` as one literal.
@@ -1759,6 +1961,22 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
             if (constant >= 0) {
                 code.append(OccurrenceCode(ops, SymbolRecord, constants[constant].occurrence, node));
+            }
+        }
+        if (ops.debug && kind == "call_expression" && item.phase == 1 && item.c == 4) {
+            typed_at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
+                               host: length(hosts), call: length(calls)};
+            switch OverloadArguments(forest, text, document, constants, names, callable.package, natives, ports, ops,
+                                     item, values, value_top - item.b, reserved_nodes, reserved_jumps, typed_at, node,
+                                     target) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Typed(typed_code, typed_slots, typed_values, typed_jumps, typed_starts):
+                    code.extend(typed_code);
+                    slots.extend(typed_slots);
+                    values = typed_values;
+                    retargets.extend(typed_jumps);
+                    retarget_starts.extend(typed_starts);
             }
         }
         // The step a node other than control flow takes.
@@ -2440,43 +2658,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
                                   0, true, node, target));
         }
+        // An argument of an overloaded native, on its last visit, reserves a
+        // jump, a no-op until the call chooses its overload.
+        if (ops.debug && !Resumed(next, item.node) && OverloadArgument(forest, work, work_top, item.node)) {
+            reserved_nodes.append(item.node);
+            reserved_jumps.append(length(code));
+            code.append(Instruction(ops.jump, 0, 0, 0, 0, length(code) + 1, node));
+        }
         // A call's several results are each watched, numbered.
         if (ops.debug && kind == "call_expression" &&
             (produced.storage == FunctionResultsStorage || produced.storage == ResultsStorage)) {
-            count: int = 0;
-            if (produced.storage == FunctionResultsStorage) {
-                count = callables[produced.record].results;
-            } else {
-                count = natives[produced.record].results;
-            }
-            at_result: int = 0;
-            while (at_result < count) {
-                storage: int = 0;
-                container: int = 0;
-                record: int = -1;
-                if (produced.storage == FunctionResultsStorage) {
-                    called := callables[produced.record];
-                    result := params[called.first + called.count + at_result];
-                    storage = result.storage;
-                    container = result.container;
-                    record = result.record;
-                } else {
-                    linked := natives[produced.record];
-                    storage = ports[linked.first + linked.parameters + at_result].storage;
-                    container = ports[linked.first + linked.parameters + at_result].container;
-                }
-                address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-                loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
-                slots.extend([address, loaded]);
-                code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target, length(slots) - 2,
-                                     node));
-                if (Pointer(storage, container)) {
-                    root: Root = {slot: length(slots) - 1, storage: storage, container: container, record: record};
-                    roots.append(root);
-                }
-                code.append(WatchCode(ops, length(slots) - 1, storage, container, record, at_result, true, node,
-                                      target));
-                at_result += 1;
+            switch ResultWatches(ops, target, callables, params, natives, ports, produced, length(slots), node) {
+                case .Watched(watched_code, watched_slots, watched_roots):
+                    code.extend(watched_code);
+                    slots.extend(watched_slots);
+                    roots.extend(watched_roots);
             }
         }
         // A compound assignment watches the value it stores at its target.
@@ -2523,6 +2719,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
     }
     code.append(Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
+    code = Retargeted(code, retargets, retarget_starts);
     if (!ops.debug) {
         code = WithoutDebug(ops, code);
         points = [];

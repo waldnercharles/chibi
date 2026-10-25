@@ -1970,6 +1970,31 @@ static const sample samples[] = {
       .message = "Mismatched integer types int64 and int; convert one operand",
       .line = 6,
       .column = 5 },
+    /* A member of a dereferenced pointer is the pointee's field, as in stage
+     * zero, even when the native call that returned the pointer names its
+     * output the same, directly or through a local. */
+    { .name = "managed pointer named result member",
+      .group = COLLECTION_SAMPLES,
+      .debug_metadata = true,
+      .source = "package facts\n"
+                "Node :: struct { item: int; }\n"
+                "Direct :: () -> int { node: Node = {item: 7}; "
+                "nodes: ^Node[] = [&node]; return get(nodes, 0).item; }\n"
+                "Inferred :: () -> int { node: Node = {item: 7}; "
+                "nodes: ^Node[] = [&node]; p := get(nodes, 0); "
+                "return p.item; }\n",
+      .calls = { { .function = "Direct", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Inferred", .arguments = "[]", .expected = "[7]" } } },
+    /* A callable's named result cannot be a pointer in stage one, so its name
+     * never meets a pointee's field there. */
+    { .name = "managed pointer named result",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Point :: struct { x: int; }\n"
+                "Id :: (v: ^Point) -> (x: ^Point) { return v; }\n",
+      .message = "named result type is not supported yet",
+      .line = 3,
+      .column = 23 },
     { .name = "imported references",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"

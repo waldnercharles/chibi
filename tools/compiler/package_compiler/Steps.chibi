@@ -1229,9 +1229,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             code.append(WatchCode(ops, object.slot, object.storage, object.container, object.record, 0, true,
                                   forest[Field(forest, item.node, "object")], target));
         }
+        // A dereferenced pointer's member is its pointee's field, never the
+        // name of the output that returned the pointer, as in stage zero.
+        dereferenced := item.phase == PointerMemberReadPhase;
         source := ResultSourceCall(forest, text, names, Field(forest, item.node, "object"));
         called := ResultSourceCallable(forest, text, callables, natives, names, package, source);
-        if (called >= 0 && NamedResult(params, callables[called], member) == 0) {
+        if (!dereferenced && called >= 0 && NamedResult(params, callables[called], member) == 0) {
             // A single named result is also an ordinary value. Its output
             // name projects that value before looking for a record field.
             named := params[callables[called].first + callables[called].count];
@@ -1245,7 +1248,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                 NoValue(), marks);
         }
         origin := FindNativeCall(native_calls, source.node);
-        if (origin >= 0 && FindResult(ports, natives[native_calls[origin].native], member) == 0) {
+        if (!dereferenced && origin >= 0 && FindResult(ports, natives[native_calls[origin].native], member) == 0) {
             // Naming the sole output projects the call's ordinary value.
             // A local can have widened it since the initializer was emitted.
             fact := native_calls[origin];

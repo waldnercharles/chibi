@@ -2017,6 +2017,30 @@ static size_t least_decoded_limit(const unsigned char *bytes, size_t length)
     }
     return high;
 }
+/* The bytes of runtime code that preparation leaves the loaded module's
+ * definition `index`, as the vectors it holds report them: an observation of
+ * the result, not the preparation estimate. */
+static size_t observed_retained(const unsigned char *bytes, size_t length, int index)
+{
+    size_t remaining = 2 * (size_t)EXECUTION_WIRE_MAX_BYTES;
+    execution_prepared_linker loose = { .decoded_bytes = EXECUTION_WIRE_MAX_BYTES };
+    char error[192];
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        &loose,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    assert(m);
+    const behavior_function *f = execution_module_function_at(m, index).body;
+    size_t held = (size_t)acap(f->runtime_instructions) * sizeof *f->runtime_instructions +
+                  (size_t)acap(f->runtime_body) * sizeof *f->runtime_body;
+    execution_module_free(m);
+    return held;
+}
 static execution_module *resolve_imported(void *, uint64_t id, uint64_t)
 {
     if (!imported_module || execution_module_id(imported_module) != id) {
@@ -2117,7 +2141,9 @@ TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
 TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
 {
     /* Definitions are verified one at a time, so three more of them need
-     * their retained storage and decoded payload, never their scratch. */
+     * their retained storage and decoded payload, never their scratch. Each
+     * definition's reservation covers the runtime code it is observed to keep
+     * once loaded, so undercharging that code fails here. */
     char error[192] = { 0 };
     behavior_function *sparse = sparse_definition(SPARSE_SLOTS, SPARSE_ADDITIONS, error, sizeof error);
     REQUIRE(sparse);
@@ -2129,8 +2155,10 @@ TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
     REQUIRE(sparse_module(4, &several, &several_length));
     size_t first = least_decoded_limit(single, single_length);
     size_t all = least_decoded_limit(several, several_length);
+    size_t kept = observed_retained(several, several_length, 3);
     free(single);
     free(several);
+    REQUIRE(kept > 0 && one.retained >= kept);
     REQUIRE(all > first && all - first < one.scratch);
     return true;
 }

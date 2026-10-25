@@ -3,19 +3,21 @@
 
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/module.h"
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module holds about a million records and needs about 113 M units
  * of record-layout work. Loading allows each module, and the closure
  * together, this much storage, each module this many records and this much
- * layout work. Its closure, about 13 MB, is returned as a byte[] of that
- * length; a byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON
- * invocations keep COMPILER_HOST_MAX_BYTES. */
+ * layout work. Its closure, about 15 MB, and the asset compiler's, about
+ * 17 MB, are returned as a byte[] of that length; a byte result may be
+ * COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON invocations keep
+ * COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (256u * 1024u * 1024u)
-#define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_OUTPUT_BYTES (32u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000
 #define COMPILER_HOST_MAX_DEPTH 64
 #define COMPILER_HOST_MAX_BATCH 64
@@ -74,6 +76,8 @@ bool compiler_host_accepts_byte_entry(compiler_host *, uint64_t entry, int argum
 char *compiler_host_target_json(const compiler_host *, size_t *length);
 char *compiler_host_values_target_json(size_t *length, char *, size_t);
 char *compiler_host_compiler_target_json(size_t *length, char *, size_t);
+/* The artifact's root module, which the host owns, for inspection. */
+const execution_module *compiler_host_root(const compiler_host *);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);

@@ -452,6 +452,7 @@ void behavior_function_free(behavior_function *f)
     afree(f->runtime_instructions);
     afree(f->runtime_body);
     free(f->runtime_map);
+    free(f->integer_reports);
     afree(f->slots);
     afree(f->slot_kinds);
     afree(f->argument_kinds);

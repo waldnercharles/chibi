@@ -855,6 +855,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             return FLOW_ERR_COMPILE;
         }
     }
+    execution_module_plan_report_integers(m);
     for (int i = 0; i < m->query_count; i++) {
         behavior_function *predicate = m->queries[i].predicate;
         behavior_function_prepare_borrows(predicate);

@@ -867,6 +867,14 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             }
         }
         result.op = script_analyzer_operator_node(a, script_analyzer_field(node, "operator"));
+        script_type value = script_analyzer_expr_type(a, result.second);
+        if (result.op != SCRIPT_OP_NONE && script_type_numeric(address.type) &&
+            script_type_numeric(value) && !(value.flags & SCRIPT_TYPE_UNTYPED) &&
+            address.type.storage >= PIN_I8 && address.type.storage <= PIN_U64 &&
+            value.storage >= PIN_I8 && value.storage <= PIN_U64 &&
+            !script_analyzer_integers_match(address.type, value)) {
+            script_analyzer_mismatched_integers(a, node, address.type, value);
+        }
         if (result.op != SCRIPT_OP_NONE && !script_type_numeric(address.type)) {
             script_expression operation = {
                 .kind = SCRIPT_EXPR_BINARY,

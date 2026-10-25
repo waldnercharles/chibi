@@ -15,6 +15,8 @@
 #include "types/trace.h"
 
 #include <assert.h>
+#include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -392,8 +394,7 @@ static bool integer_case(
     uint64_t left,
     uint64_t right,
     uint64_t expected,
-    bool comparison,
-    bool fails
+    bool comparison
 )
 {
     char source[384];
@@ -425,13 +426,11 @@ static bool integer_case(
         return false;
     }
     int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
-    bool valid = fails ? status == FLOW_ERR_INVALID_GRAPH
-                       : status == FLOW_OK &&
-                             (comparison ? result.b == (expected != 0)
-                                         : behavior_scalar_bits(result) ==
-                                               behavior_scalar_bits(
-                                                   behavior_scalar_from_bits(type, expected)
-                                               ));
+    bool valid = status == FLOW_OK &&
+                 (comparison
+                      ? result.b == (expected != 0)
+                      : behavior_scalar_bits(result) ==
+                            behavior_scalar_bits(behavior_scalar_from_bits(type, expected)));
     if (!valid) {
         fprintf(
             stderr,
@@ -457,19 +456,21 @@ TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends)
             uint64_t mask = UINT64_MAX >> (64 - bits);
             uint64_t high = UINT64_C(1) << (bits - 1);
             bool sign = behavior_scalar_signed(type);
-            REQUIRE(integer_case(type, backends[b], "+", mask, 1, 0, false, false));
-            REQUIRE(integer_case(type, backends[b], "-", 0, 1, mask, false, false));
-            REQUIRE(integer_case(type, backends[b], "*", high + 1, 3, high + 3, false, false));
-            REQUIRE(integer_case(type, backends[b], "<", high, 1, sign, true, false));
+            REQUIRE(integer_case(type, backends[b], "+", mask, 1, 0, false));
+            REQUIRE(integer_case(type, backends[b], "-", 0, 1, mask, false));
+            REQUIRE(integer_case(type, backends[b], "*", high + 1, 3, high + 3, false));
+            REQUIRE(integer_case(type, backends[b], "<", high, 1, sign, true));
             REQUIRE(
-                integer_case(type, backends[b], "/", mask - 1, 2, sign ? mask : (mask - 1) / 2, false, false)
+                integer_case(type, backends[b], "/", mask - 1, 2, sign ? mask : (mask - 1) / 2, false)
             );
-            REQUIRE(integer_case(type, backends[b], "%", mask, 2, sign ? mask : 1, false, false));
-            REQUIRE(integer_case(type, backends[b], "/", high, 0, 0, false, true));
-            REQUIRE(integer_case(type, backends[b], "%", high, 0, 0, false, true));
+            REQUIRE(integer_case(type, backends[b], "%", mask, 2, sign ? mask : 1, false));
+            /* x / 0 is 0 and x % 0 is x. */
+            REQUIRE(integer_case(type, backends[b], "/", high, 0, 0, false));
+            REQUIRE(integer_case(type, backends[b], "%", high, 0, high, false));
             if (sign) {
-                REQUIRE(integer_case(type, backends[b], "/", high, mask, 0, false, true));
-                REQUIRE(integer_case(type, backends[b], "%", high, mask, 0, false, true));
+                /* The minimum / -1 wraps to the minimum, with remainder 0. */
+                REQUIRE(integer_case(type, backends[b], "/", high, mask, high, false));
+                REQUIRE(integer_case(type, backends[b], "%", high, mask, 0, false));
             }
         }
     }
@@ -541,8 +542,8 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
                 snprintf(
                     source,
                     sizeof source,
-                    "Packed :: library { Wrap :: () -> %s { return "
-                    "%s(%s) + %s(1); } Value :: Wrap(); "
+                    "Packed :: library { Wrap :: () -> %s { x: %s = %s; "
+                    "return x + %s(1); } Value :: Wrap(); "
                     "Fold :: () -> %s { return Value; } }",
                     name,
                     name,
@@ -742,6 +743,136 @@ TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths)
     }
     return true;
 }
+static bool float_conversion_call(
+    const behavior_function *function,
+    pin_value input,
+    pin_value expected,
+    behavior_backend backend
+)
+{
+    pin_value result = { .type = expected.type };
+    context = (behavior_function_context){ .arguments = &input,
+                                           .argument_count = 1,
+                                           .results = &result,
+                                           .activation = &activation,
+                                           .budget = 10000 };
+    behavior_function_bind_storage(&context, &storage);
+    REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
+    behavior_run_scope_end(&runs);
+    REQUIRE(status == FLOW_OK && context.returned && result.type == expected.type);
+    REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+    REQUIRE(backend != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
+    REQUIRE(backend != BEHAVIOR_BYTECODE || runs.counts.bytecode_entries > 0);
+    double actual = result.type == PIN_F32 ? result.f : result.d;
+    double wanted = expected.type == PIN_F32 ? expected.f : expected.d;
+    if (isnan(wanted)) {
+        REQUIRE(isnan(actual));
+    } else {
+        REQUIRE(actual == wanted);
+        REQUIRE(!!signbit(actual) == !!signbit(wanted));
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    context = (behavior_function_context){ 0 };
+    activation = (behavior_function_activation){ 0 };
+    return true;
+}
+
+TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles)
+{
+    /* Answers are exact literals, never a production cast helper or host cast
+     * of the input. Cases include both halfway parities and their neighbours. */
+    static const struct
+    {
+        double input;
+        float expected;
+    } cases[] = {
+        { 16777217.0, 16777216.0f },
+        { 16777219.0, 16777220.0f },
+        { -16777217.0, -16777216.0f },
+        { -16777219.0, -16777220.0f },
+        { 0x1.000000fffffffp24, 16777216.0f },
+        { 0x1.0000010000001p24, 16777218.0f },
+        { 0x1.fffffep127, FLT_MAX },
+        { 0x1.fffffefffffffp127, FLT_MAX },
+        { 0x1.ffffffp127, INFINITY },
+        { -0x1.ffffffp127, -INFINITY },
+        { 0x1p-149, 0x1p-149f },
+        { 0x1p-150, 0.0f },
+        { 0x1.0000000000001p-150, 0x1p-149f },
+        { -0x1p-150, -0.0f },
+        { 0.0, 0.0f },
+        { -0.0, -0.0f },
+        { INFINITY, INFINITY },
+        { -INFINITY, -INFINITY },
+        { NAN, NAN },
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        const behavior_function *function = compile_source(
+            "Packed :: library { Fold :: (value: double) -> float { return "
+            "float(value); } }",
+            backends[b]
+        );
+        REQUIRE(function);
+        for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+            REQUIRE(float_conversion_call(
+                function,
+                (pin_value){ .type = PIN_F64, .d = cases[i].input },
+                (pin_value){ .type = PIN_F32, .f = cases[i].expected },
+                backends[b]
+            ));
+        }
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(float_implicit_widening_preserves_literal_values)
+{
+    static const struct
+    {
+        float input;
+        double expected;
+    } cases[] = {
+        { 0.0f, 0.0 },
+        { -0.0f, -0.0 },
+        { 1.5f, 1.5 },
+        { 16777216.0f, 16777216.0 },
+        { FLT_MAX, 0x1.fffffep127 },
+        { -FLT_MAX, -0x1.fffffep127 },
+        { FLT_MIN, 0x1p-126 },
+        { 0x1p-149f, 0x1p-149 },
+        { -0x1p-149f, -0x1p-149 },
+        { INFINITY, INFINITY },
+        { -INFINITY, -INFINITY },
+        { NAN, NAN },
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        const behavior_function *function = compile_source(
+            "Packed :: library { Fold :: (value: float) -> double { return "
+            "value; } }",
+            backends[b]
+        );
+        REQUIRE(function);
+        for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+            REQUIRE(float_conversion_call(
+                function,
+                (pin_value){ .type = PIN_F32, .f = cases[i].input },
+                (pin_value){ .type = PIN_F64, .d = cases[i].expected },
+                backends[b]
+            ));
+        }
+        cleanup();
+    }
+    return true;
+}
+
 void test_language_packed()
 {
     pu_setup(NULL, cleanup);
@@ -754,5 +885,7 @@ void test_language_packed()
     RUN_TEST_CASE(typed_integer_large_constant_folding_is_exact);
     RUN_TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder);
     RUN_TEST_CASE(float_math_stays_float_and_default_math_stays_double);
+    RUN_TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles);
+    RUN_TEST_CASE(float_implicit_widening_preserves_literal_values);
     pu_clear_setup();
 }

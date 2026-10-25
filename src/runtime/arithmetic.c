@@ -6,7 +6,6 @@
 #include "types/catalog.h"
 
 #include <float.h>
-#include <limits.h>
 #include <math.h>
 #include <string.h>
 enum
@@ -33,9 +32,8 @@ static pin_value numeric_op(pin_value a, pin_value b, int operation)
         const behavior_function_op ops[] = { BF_ADD, BF_SUB, BF_MUL, BF_DIV,
                                              BF_MIN, BF_MAX, BF_MOD };
         pin_value out = a;
-        return behavior_scalar_integer_op(ops[operation], a, b, &out, NULL)
-                 ? out
-                 : (pin_value){ .type = PIN_FLOW };
+        behavior_scalar_integer_op(ops[operation], a, b, &out, NULL);
+        return out;
     }
     if (a.type == PIN_F32 && b.type == PIN_F64) {
         bool subnormal = (a.f != 0.0f && fabsf(a.f) < FLT_MIN) ||
@@ -70,38 +68,6 @@ static pin_value numeric_op(pin_value a, pin_value b, int operation)
                      : operation == GENERIC_MAX ? (a.d > b.d ? a.d : b.d)
                      : operation == GENERIC_MOD ? fmod(a.d, b.d)
                                                 : a.d + b.d;
-            break;
-        case PIN_I32:
-            if ((operation == GENERIC_DIV || operation == GENERIC_MOD) &&
-                (b.i == 0 || (a.i == INT_MIN && b.i == -1))) {
-                return (pin_value){ .type = PIN_FLOW };
-            }
-            result.i = operation == GENERIC_MUL
-                         ? (int32_t)((uint32_t)a.i * (uint32_t)b.i)
-                     : operation == GENERIC_SUB
-                         ? (int32_t)((uint32_t)a.i - (uint32_t)b.i)
-                     : operation == GENERIC_DIV ? a.i / b.i
-                     : operation == GENERIC_MIN ? (a.i < b.i ? a.i : b.i)
-                     : operation == GENERIC_MAX ? (a.i > b.i ? a.i : b.i)
-                     : operation == GENERIC_MOD
-                         ? a.i % b.i
-                         : (int32_t)((uint32_t)a.i + (uint32_t)b.i);
-            break;
-        case PIN_I64:
-            if ((operation == GENERIC_DIV || operation == GENERIC_MOD) &&
-                (b.i64 == 0 || (a.i64 == INT64_MIN && b.i64 == -1))) {
-                return (pin_value){ .type = PIN_FLOW };
-            }
-            result.i64 = operation == GENERIC_MUL
-                           ? (int64_t)((uint64_t)a.i64 * (uint64_t)b.i64)
-                       : operation == GENERIC_SUB
-                           ? (int64_t)((uint64_t)a.i64 - (uint64_t)b.i64)
-                       : operation == GENERIC_DIV ? a.i64 / b.i64
-                       : operation == GENERIC_MIN ? (a.i64 < b.i64 ? a.i64 : b.i64)
-                       : operation == GENERIC_MAX ? (a.i64 > b.i64 ? a.i64 : b.i64)
-                       : operation == GENERIC_MOD
-                           ? a.i64 % b.i64
-                           : (int64_t)((uint64_t)a.i64 + (uint64_t)b.i64);
             break;
         default: result.type = PIN_FLOW; break;
     }

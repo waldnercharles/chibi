@@ -173,6 +173,10 @@ struct behavior_function
     behavior_function_result *results;
     execution_artifact *artifact;
     struct behavior_function *fast;
+    /* Development builds only: an occurrence byte per source and report kind,
+     * then the matching delivered bytes. Such a body has no fast body. */
+    atomic_uchar *integer_reports;
+    int integer_report_sites;
     behavior_function_instruction *runtime_instructions;
     behavior_function_instruction *runtime_body; /* Optimized values at canonical PCs. */
     int *runtime_map; /* Canonical PC to compact, uninspected instruction index. */
@@ -272,6 +276,29 @@ bool behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
+/* Gives this definition and its owned definitions report sites, dropping
+ * their fast bodies, before any backend compiles them (integer_report.c). */
+void behavior_function_report_integers(behavior_function *);
+/* Occurrence and delivered arrays for these source sites; SIZE_MAX on overflow. */
+size_t behavior_integer_report_bytes(int sites);
+bool behavior_integer_reportable(const behavior_function *, const behavior_function_instruction *);
+/* The report kind these operands cause, or -1 when the operation is exact. */
+int behavior_integer_event(const behavior_function_instruction *, pin_value left, pin_value right);
+/* The instruction's occurrence byte for kind, or NULL without report sites. */
+atomic_uchar *behavior_integer_site(
+    const behavior_function *,
+    const behavior_function_instruction *,
+    int kind
+);
+/* A float at or below the first bound, or at or above the second, does not
+ * fit the integer type once truncated. */
+const double *behavior_integer_cast_bounds(pin_type);
+void behavior_integer_report(
+    const behavior_function *,
+    const behavior_function_instruction *,
+    pin_value left,
+    pin_value right
+);
 bool behavior_function_compile_inspection(const behavior_function *function);
 bool behavior_function_compile_scoped(const behavior_function *function);
 void *behavior_function_jit_scoped(const behavior_function *function);

@@ -9,6 +9,7 @@
 #include "execution/delay.h"
 #include "execution/function_builder.h"
 #include "execution/inspection.h"
+#include "execution/integer_report.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
 #include "execution/program_internal.h"
@@ -19,6 +20,7 @@
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
+#include "runtime/arrays.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
@@ -843,6 +845,313 @@ TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
     return true;
 }
 
+static int take_reports(execution_integer_report *found)
+{
+    execution_integer_report *reports = NULL;
+    execution_module_take_integer_reports(module, &reports);
+    int count = acount(reports);
+    for (int i = 0; i < count && i < EXECUTION_INTEGER_REPORT_KINDS; i++) {
+        found[reports[i].kind] = reports[i];
+    }
+    afree(reports);
+    return count;
+}
+/* A development build reports each overflow, zero divisor and clamping
+ * conversion once per source line until the sites reset, and keeps the
+ * values a shipped build computes; a module published without reports has
+ * none. Checks the compiler adds, like char's scalar test, never report. */
+TEST_CASE(program_integer_reports_are_taken_once_per_site_until_reset)
+{
+    const char *source = "Counter :: behavior {\n"
+                         "    total: int = 2147483647;\n"
+                         "    small: byte = 0;\n"
+                         "    quotient: int = 5;\n"
+                         "    zero: int = 0;\n"
+                         "    letter: char = 'a';\n"
+                         "\n"
+                         "    on Impulse :: (amount: double, enabled: bool) {\n"
+                         "        total *= 3;\n"
+                         "        small = byte(amount);\n"
+                         "        quotient = 7 / zero;\n"
+                         "        letter = char(zero + 98);\n"
+                         "    }\n"
+                         "}\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int development = 0; development < 2; development++) {
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            execution_integer_reports_enable(development);
+            bool compiled = compile(source, backends[b]);
+            execution_integer_reports_enable(false);
+            REQUIRE(compiled);
+            ecs_entity owner = ecs_world_create_entity(world);
+            uint64_t handle = ecs_entity_to_u64(owner);
+            execution_instance *instance = execution_program_attach(program, handle);
+            REQUIRE(instance);
+            pin_value payload[] = { { .type = PIN_F64, .d = 300 },
+                                    { .type = PIN_BOOL, .b = true } };
+            execution_integer_report found[EXECUTION_INTEGER_REPORT_KINDS] = { 0 };
+            for (int round = 0; round < 3; round++) {
+                if (round == 2) {
+                    execution_module_reset_integer_reports(module);
+                }
+                REQUIRE(execution_program_emit(program, 11, handle, payload, 2) == FLOW_OK);
+                REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+                int count = take_reports(found);
+                REQUIRE(count == (development && round != 1 ? EXECUTION_INTEGER_REPORT_KINDS : 0));
+                REQUIRE(execution_instance_state(instance, state_id("small"))->u8 == 255);
+                REQUIRE(execution_instance_state(instance, state_id("quotient"))->i == 0);
+                REQUIRE(execution_instance_state(instance, state_id("letter"))->i == 'b');
+            }
+            /* Each round triples the total and wraps: 3 * (2^31 - 1) - 2^32, twice more. */
+            REQUIRE(execution_instance_state(instance, state_id("total"))->i == 2147483621);
+            if (!development) {
+                continue;
+            }
+            REQUIRE(found[EXECUTION_INTEGER_OVERFLOW].line == 9);
+            REQUIRE(found[EXECUTION_INTEGER_CLAMP].line == 10);
+            REQUIRE(found[EXECUTION_INTEGER_ZERO_DIVISOR].line == 11);
+            for (int k = 0; k < EXECUTION_INTEGER_REPORT_KINDS; k++) {
+                REQUIRE(found[k].kind == (execution_integer_report_kind)k);
+                REQUIRE(found[k].module_id == execution_module_id(module));
+                REQUIRE(found[k].start < found[k].end);
+            }
+        }
+    }
+    cleanup();
+    return true;
+}
+
+/* Each used site reports on its own, once per take until a reset, whether or
+ * not the run is inspected, through each backend's own entry. T(wrap:) keeps
+ * its conversion silent but not the overflow inside it. */
+TEST_CASE(program_integer_reports_keep_sites_apart_under_inspection)
+{
+    const char *source = "Counter :: behavior {\n"
+                         "    x: int = 2147483647;\n"
+                         "    y: int = 0;\n"
+                         "    z: int = 0;\n"
+                         "    w: byte = 0;\n"
+                         "    on Impulse :: (amount: double, enabled: bool) {\n"
+                         "        y = x + 1;\n"
+                         "        z = x * 2;\n"
+                         "        w = byte(wrap: x * 4);\n"
+                         "    }\n"
+                         "}\n";
+    /* Once a program has an inspector it inspects every run, recording or not. */
+    static const struct
+    {
+        bool reset, inspect, record;
+        int taken;
+    } rounds[] = { { false, false, false, 3 }, { false, false, false, 0 },
+                   { false, true, true, 0 },   { true, true, true, 3 },
+                   { false, true, false, 0 },  { true, true, false, 3 } };
+    /* Each site is its five-character operation, in source order. */
+    const int columns[] = { 13, 13, 24 }, starts[] = { 160, 179, 209 };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        execution_integer_reports_enable(true);
+        bool compiled = compile(source, backends[b]);
+        execution_integer_reports_enable(false);
+        REQUIRE(compiled);
+        uint64_t handle = ecs_entity_to_u64(ecs_world_create_entity(world));
+        execution_instance *instance = execution_program_attach(program, handle);
+        REQUIRE(instance);
+        const pin_value payload[] = { { .type = PIN_F64, .d = 0 },
+                                      { .type = PIN_BOOL, .b = true } };
+        for (int r = 0; r < 6; r++) {
+            if (rounds[r].reset) {
+                execution_module_reset_integer_reports(module);
+            }
+            if (rounds[r].inspect && !debugger) {
+                debugger = execution_program_inspector(program);
+            }
+            if (debugger) {
+                execution_inspector_recording(debugger, rounds[r].record, handle);
+            }
+            behavior_run_scope runs = { 0 };
+            behavior_run_scope_begin(&runs);
+            int flow = execution_instance_dispatch(instance, 11, payload, 2, r, 0, 1000);
+            behavior_run_scope_end(&runs);
+            REQUIRE(flow == FLOW_OK);
+            REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+            if (backends[b] == BEHAVIOR_BYTECODE) {
+                REQUIRE(runs.counts.bytecode_entries > 0 && !runs.counts.sljit_entries);
+            }
+            if (backends[b] == BEHAVIOR_SLJIT) {
+                REQUIRE(runs.counts.sljit_entries > 0 && !runs.counts.bytecode_entries);
+                REQUIRE(
+                    runs.counts.inspected_sljit_entries ==
+                    (rounds[r].inspect ? runs.counts.sljit_entries : 0)
+                );
+            }
+            execution_integer_report *reports = NULL;
+            execution_module_take_integer_reports(module, &reports);
+            REQUIRE(acount(reports) == rounds[r].taken);
+            for (int i = 0; i < acount(reports); i++) {
+                REQUIRE(reports[i].kind == EXECUTION_INTEGER_OVERFLOW);
+                REQUIRE(reports[i].module_id == execution_module_id(module));
+                REQUIRE(reports[i].line == 7 + i && reports[i].column == columns[i]);
+                REQUIRE(reports[i].start == starts[i] && reports[i].end == starts[i] + 5);
+            }
+            afree(reports);
+            REQUIRE(execution_instance_state(instance, state_id("y"))->i == INT32_MIN);
+            REQUIRE(execution_instance_state(instance, state_id("z"))->i == -2);
+            REQUIRE(execution_instance_state(instance, state_id("w"))->u8 == 252);
+        }
+    }
+    cleanup();
+    return true;
+}
+static execution_module *prepared_import(void *user, uint64_t id, uint64_t)
+{
+    execution_module *library = user;
+    if (execution_module_id(library) != id) {
+        return NULL;
+    }
+    execution_module_retain(library);
+    return library;
+}
+/* Reads the module back, reporting when development is set. */
+static execution_module *reread(
+    const execution_module *source,
+    execution_module *library,
+    behavior_backend backend,
+    bool development,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    char error[256];
+    if (!execution_prepared_write(source, bytes, length, error, sizeof error)) {
+        fprintf(stderr, "prepared reports: %s\n", error);
+        return NULL;
+    }
+    const execution_prepared_linker linker = { .user = library,
+                                               .type = program_prepared_type,
+                                               .import = prepared_import };
+    execution_integer_reports_enable(development);
+    execution_module *loaded = execution_prepared_read(*bytes, *length, &linker, backend, error, sizeof error);
+    execution_integer_reports_enable(false);
+    if (!loaded) {
+        fprintf(stderr, "prepared reports: %s\n", error);
+    }
+    return loaded;
+}
+/* Prepared files carry no report state: a development build that reads a
+ * module and its imported library reports from their decoded sources, writes
+ * the same bytes back, and reading them otherwise reports nothing. */
+TEST_CASE(program_prepared_integer_reports_include_imported_functions)
+{
+    const char *library_source = "Store :: library {\n"
+                                 "    hits: int = 2147483647;\n"
+                                 "    Work :: () -> (local_count: double, "
+                                 "position_x: double) {\n"
+                                 "        hits *= 3;\n"
+                                 "        return(double(hits), 0);\n"
+                                 "    }\n"
+                                 "}\n";
+    const char
+        *owner_source = "Owner :: behavior {\n"
+                        "    local_count: double = 0;\n"
+                        "    small: byte = 0;\n"
+                        "    on Impulse :: (amount: double, enabled: bool) {\n"
+                        "        values := await library_work();\n"
+                        "        local_count = values.local_count;\n"
+                        "        small = byte(amount);\n"
+                        "    }\n"
+                        "}\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int development = 0; development < 2; development++) {
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            REQUIRE(compile_module(library_source, backends[b]));
+            imported = module;
+            module = NULL;
+            script_analysis_free(analysis);
+            script_syntax_free(syntax);
+            analysis = NULL;
+            syntax = NULL;
+            REQUIRE(compile_module(owner_source, backends[b]));
+            uint64_t count_id = state_id("local_count"), small_id = state_id("small");
+            unsigned char *bytes[4] = { 0 };
+            size_t lengths[4] = { 0 };
+            execution_module *library = reread(
+                imported,
+                NULL,
+                backends[b],
+                development,
+                &bytes[0],
+                &lengths[0]
+            );
+            REQUIRE(library);
+            execution_module *
+                owner = reread(module, library, backends[b], development, &bytes[1], &lengths[1]);
+            execution_module_free(module);
+            execution_module_free(imported);
+            module = owner;
+            imported = library;
+            REQUIRE(module && execution_module_import_count(module) == 1);
+            program = execution_program_new(module, world, NULL);
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance);
+            const pin_value payload[] = { { .type = PIN_F64, .d = 300 },
+                                          { .type = PIN_BOOL, .b = true } };
+            /* hits triples and wraps: 3 * (2^31 - 1) - 2^32, then twice more. */
+            const double counts[] = { 2147483645, 2147483639, 2147483621 };
+            for (int round = 0; round < 3; round++) {
+                if (round == 2) {
+                    execution_module_reset_integer_reports(module);
+                }
+                REQUIRE(
+                    execution_instance_dispatch(instance, 11, payload, 2, round, 0, 1000) == FLOW_OK
+                );
+                REQUIRE(execution_program_update(program, round, 0, 1000) == FLOW_OK);
+                REQUIRE(execution_instance_state(instance, count_id)->d == counts[round]);
+                REQUIRE(execution_instance_state(instance, small_id)->u8 == 255);
+                execution_integer_report found[EXECUTION_INTEGER_REPORT_KINDS] = { 0 };
+                REQUIRE(take_reports(found) == (development && round != 1 ? 2 : 0));
+                if (!development || round == 1) {
+                    continue;
+                }
+                const execution_integer_report *overflow = &found[EXECUTION_INTEGER_OVERFLOW],
+                                               *clamp = &found[EXECUTION_INTEGER_CLAMP];
+                REQUIRE(
+                    overflow->kind == EXECUTION_INTEGER_OVERFLOW && clamp->kind == EXECUTION_INTEGER_CLAMP
+                );
+                REQUIRE(
+                    overflow->module_id == execution_module_id(imported) &&
+                    overflow->line == 4
+                );
+                REQUIRE(clamp->module_id == execution_module_id(module) && clamp->line == 7);
+                /* The compound assignment spans its statement, the conversion its call. */
+                REQUIRE(overflow->column == 9 && overflow->start == 117 && overflow->end == 127);
+                REQUIRE(clamp->column == 17 && clamp->start == 220 && clamp->end == 232);
+            }
+            /* Marked and delivered sites leave the written bytes unchanged. */
+            char error[256];
+            REQUIRE(
+                execution_prepared_write(imported, &bytes[2], &lengths[2], error, sizeof error)
+            );
+            REQUIRE(execution_prepared_write(module, &bytes[3], &lengths[3], error, sizeof error));
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(
+                    lengths[i] == lengths[i + 2] &&
+                    !memcmp(bytes[i], bytes[i + 2], lengths[i])
+                );
+            }
+            for (int i = 0; i < 4; i++) {
+                free(bytes[i]);
+            }
+        }
+    }
+    cleanup();
+    return true;
+}
 /* A system names the fields of its step's payload in its header, as a
  * handler does; only its body reads them, and it has no `event`. */
 TEST_CASE(program_systems_name_their_step)
@@ -2890,20 +3199,20 @@ static bool int_state(execution_instance *instance, const char *name, pin_type t
     return value && value->type == type &&
            (int64_t)behavior_scalar_bits(*value) == expected;
 }
-/* T(value) fails when an integer does not fit; wrap and clamp choose the bits. */
-TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
+/* T(value) clamps an integer that does not fit; T(wrap: value) keeps its low bits. */
+TEST_CASE(program_integer_conversions_clamp_or_wrap)
 {
     const char
         *source = "Convert :: behavior {\n"
                   "  wide: int = -300; wrapped: int = 0; clamped: int = 0;\n"
-                  "  mixed: int64 = 0; narrow: byte = 0;\n"
+                  "  mixed: int64 = 0; narrow: byte = 7;\n"
                   "  same: bool = true; below: bool = false; small: int = 0;\n"
                   "  on Impulse :: (enabled: bool) {\n"
-                  "    wrapped = byte(wrap: wide); clamped = byte(clamp: "
-                  "-wide);\n"
-                  "    mixed = wide + uint(7);\n"
-                  "    same = wide == uint(0); below = wide < uint(7);\n"
-                  "    small = byte(200) + int8(-100);\n"
+                  "    wrapped = byte(wrap: wide); clamped = byte(-wide);\n"
+                  "    mixed = wide + int(uint(7));\n"
+                  "    same = wide == int(uint(0)); below = wide < "
+                  "int(uint(7));\n"
+                  "    small = int(byte(200)) + int(int8(-100));\n"
                   "    if (enabled) { narrow = byte(wide); }\n"
                   "  }\n"
                   "}";
@@ -2926,13 +3235,9 @@ TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
             int_state(instance, "below", PIN_BOOL, 1)
         );
         REQUIRE(int_state(instance, "small", PIN_I32, 100));
+        REQUIRE(int_state(instance, "narrow", PIN_U8, 7));
         args[1].b = true;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
-        const execution_program_failure *failure = execution_program_error(program);
-        int start = (int)(strstr(source, "byte(wide)") - source);
-        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
-        REQUIRE(!strcmp(failure->message, "Value does not fit in byte"));
-        REQUIRE(failure->start == start && failure->end == start + (int)strlen("byte(wide)"));
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) >= 0);
         REQUIRE(int_state(instance, "narrow", PIN_U8, 0));
         execution_program_free(program);
         program = NULL;
@@ -2979,8 +3284,8 @@ TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars)
     }
     return true;
 }
-/* A char beside an int compares as an int, and ASCII steps pass the scalar
- * check, whose surrogate test wraps below 0xD800; -c is no scalar. */
+/* A char beside an int compares as an int, and ASCII steps below the
+ * surrogates pass the scalar check; -c is no scalar. */
 TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
 {
     const char
@@ -10003,6 +10308,102 @@ TEST_CASE(program_captured_addressed_local_preserves_pointer_alias)
     }
     return true;
 }
+/* One entity on two backends: a helper returns a pointer array built by the
+ * borrowing append kernel, a delayed continuation holds it across one forced
+ * safe-point collection, then reads and writes both cells. */
+TEST_CASE(program_borrowed_pointer_array_results_survive_collection)
+{
+    const char
+        *source = "P :: behavior { seen: double = 0; "
+                  "Make :: () -> (r: ^double[]) { x := 3.0; y := 4.0; "
+                  "ps: ^double[] = [&x]; ps.append(&y); return ps } "
+                  "Parent :: () { ps := Make(); action later = Delay(1); "
+                  "later(); after later { ps[1]^ += 1; "
+                  "if length(ps) == 2 { seen = ps[0]^ * 10 + ps[1]^ } } } "
+                  "on Impulse :: () { Parent(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 35));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* Emitted host calls whose descriptor carries kernel's production callback
+ * and the borrowing flag. Publication copies descriptors, so this pins the
+ * callback rather than the descriptor address. */
+static int borrowing_calls(const node_host_call *kernel)
+{
+    int count = 0;
+    for (int f = 0; f < execution_module_function_count(module); f++) {
+        const behavior_function *function = execution_module_function_at(module, f)
+                                                .body;
+        for (int pc = 0; pc < acount(function->instructions); pc++) {
+            const behavior_function_instruction *i = &function->instructions[pc];
+            if (i->op != BF_HOST_CALL) {
+                continue;
+            }
+            const node_host_call *call = function->host_calls[i->target].call;
+            count += call->value == kernel->value && call->borrows;
+        }
+    }
+    return count;
+}
+/* The escaped array is the fresh snapshot returned by the borrowing slice and
+ * reverse kernels, not one built by the intrinsic append. A delayed
+ * continuation holds it across one forced safe-point collection, then writes
+ * through one cell and reads both. */
+TEST_CASE(program_borrowing_kernel_results_survive_collection)
+{
+    const char *
+        source = "P :: behavior { seen: double = 0; "
+                 "Make :: () -> (r: ^double[]) { w := 1.0; x := 3.0; y := 4.0; "
+                 "ps: ^double[] = [&w, &x, &y]; return reverse(ps.slice(1, 2)) "
+                 "} "
+                 "Parent :: () { ps := Make(); action later = Delay(1); "
+                 "later(); after later { ps[1]^ += 1; "
+                 "if length(ps) == 2 { seen = ps[0]^ * 10 + ps[1]^ } } } "
+                 "on Impulse :: () { Parent(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        REQUIRE(borrowing_calls(&NATIVE_ARRAY_slice_CALL) == 1);
+        REQUIRE(borrowing_calls(&NATIVE_ARRAY_reverse_CALL) == 1);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 44));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
 /* Two independent program owners, one cell and one single-element array.
  * Every foreign ingress must reject before queueing or changing state. */
 TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers)
@@ -10053,6 +10454,8 @@ void test_language_program()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(program_captured_addressed_local_preserves_pointer_alias);
+    RUN_TEST_CASE(program_borrowed_pointer_array_results_survive_collection);
+    RUN_TEST_CASE(program_borrowing_kernel_results_survive_collection);
     RUN_TEST_CASE(program_detached_event_batches_keep_managed_arguments);
     RUN_TEST_CASE(program_staged_replacement_pins_preserved_pointers);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
@@ -10066,6 +10469,9 @@ void test_language_program()
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_integer_reports_are_taken_once_per_site_until_reset);
+    RUN_TEST_CASE(program_integer_reports_keep_sites_apart_under_inspection);
+    RUN_TEST_CASE(program_prepared_integer_reports_include_imported_functions);
     RUN_TEST_CASE(program_handlers_name_payload_fields);
     RUN_TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source);
     RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);
@@ -10097,7 +10503,7 @@ void test_language_program()
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_assert_fails_with_its_message_or_condition);
     RUN_TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure);
-    RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_integer_conversions_clamp_or_wrap);
     RUN_TEST_CASE(program_loops_count_half_open_and_in_reverse);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);

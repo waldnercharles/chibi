@@ -245,7 +245,7 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 8
+Elsewhere `make build` uses this program when its private host reports protocol version 9
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
@@ -255,6 +255,8 @@ natives under `build.`, version 5 runs programs as packages that may import
 needs: `build.replace`, `build.byte_list` and steps of up to 1,023
 arguments. Version 8 uses the validated Chibi compiler generation to compile
 build programs and adds the separate compiler source/core options above.
+Version 9 runs prepared format 21, which that compiler now writes, so an older
+host that cannot load the code it compiled is rebuilt.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
@@ -639,7 +641,7 @@ selection, cache and installed-format contracts do not change.
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
 requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
-an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB) octets;
+an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (32 MiB) octets;
 the CLI uses the upper bound.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes

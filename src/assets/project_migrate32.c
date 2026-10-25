@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <yyjson.h>
 
 /* Version 32 spellings and their version 33 names. Keep the historical
  * names here: later catalog changes must not change what this step reads. */
@@ -25,6 +26,7 @@ typedef struct
     const char *text;
     text_edit *edits;
     TSNode refused;
+    const char *reason;
 } number_rewrite;
 
 static bool is(TSNode node, const char *type)
@@ -55,14 +57,47 @@ static const char *renamed(const char *text, TSNode node)
     }
     return NULL;
 }
-static bool added(const char *text, TSNode node)
+static bool reserved(const char *text, TSNode node)
 {
+    if (renamed(text, node)) {
+        return true;
+    }
+    for (size_t i = 0; i < sizeof RENAMES / sizeof *RENAMES; i++) {
+        if (spells(text, node, RENAMES[i][1])) {
+            return true;
+        }
+    }
     for (size_t i = 0; i < sizeof ADDED / sizeof *ADDED; i++) {
         if (spells(text, node, ADDED[i])) {
             return true;
         }
     }
     return false;
+}
+static bool reserved_name(const char *name)
+{
+    for (size_t i = 0; i < sizeof RENAMES / sizeof *RENAMES; i++) {
+        if (!strcmp(name, RENAMES[i][0]) || !strcmp(name, RENAMES[i][1])) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < sizeof ADDED / sizeof *ADDED; i++) {
+        if (!strcmp(name, ADDED[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+static TSNode field(TSNode node, const char *name)
+{
+    return ts_node_child_by_field_name(node, name, (uint32_t)strlen(name));
+}
+static void refuse(number_rewrite *s, TSNode node, const char *reason)
+{
+    if (!s->reason) {
+        s->refused = node;
+        s->reason = reason;
+    }
 }
 /* Whether the node's `name` field declares something a type name would
  * hide: members, arguments, variants, labels and handlers stay apart, and
@@ -77,6 +112,7 @@ static bool declares(TSNode node)
         "label_statement",     "handler",
         "attribute",           "package_header",
         "prototype_component", "type",
+        "union_type",
     };
     for (size_t i = 0; i < sizeof apart / sizeof *apart; i++) {
         if (is(node, apart[i])) {
@@ -92,62 +128,199 @@ static void rename_at(number_rewrite *s, TSNode name)
         apush(s->edits, ((text_edit){ (int)ts_node_start_byte(name), (int)ts_node_end_byte(name), to }));
     }
 }
-static void rewrite(number_rewrite *s, TSNode node)
+/* Inventory every binding before considering edits. This deliberately rejects
+ * conflicting declarations even outside the use's local scope: the production
+ * caller inventories every source before any file is rewritten. */
+static void inventory(number_rewrite *s, TSNode node)
 {
-    if (!ts_node_is_null(s->refused)) {
-        return;
+    TSNode name = field(node, "name");
+    bool variant_field = is(node, "parameter") &&
+                         is(ts_node_parent(ts_node_parent(node)), "union_variant");
+    if (!ts_node_is_null(name) && declares(node) && !variant_field &&
+        reserved(s->text, name)) {
+        refuse(s, name, "declaration is named like a number type; rename it first");
     }
-    /* A declaration named like an old type would have its calls renamed
-     * too, and one named like a new type would hide that type. */
-    TSNode name = ts_node_child_by_field_name(node, "name", 4);
-    if (!ts_node_is_null(name) && declares(node) &&
-        (renamed(s->text, name) || added(s->text, name))) {
-        s->refused = node;
-        return;
-    }
-    /* A type spells its name with one identifier; a dotted name belongs to
-     * a package. A conversion calls the type by name. */
-    if (is(node, "type_name") && ts_node_named_child_count(node) == 1) {
-        rename_at(s, node);
-    }
-    TSNode callee = is(node, "call_expression")
-                      ? ts_node_child_by_field_name(node, "function", 8)
-                      : (TSNode){ 0 };
-    if (is(callee, "identifier")) {
-        rename_at(s, callee);
+    TSNode binding = is(node, "for_statement") ? field(node, "key")
+                   : is(node, "is_expression") ? field(node, "binding")
+                                               : (TSNode){ 0 };
+    if (!ts_node_is_null(binding) && reserved(s->text, binding)) {
+        refuse(s, binding, "binding is named like a number type; rename it first");
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        rewrite(s, ts_node_named_child(node, i));
+        TSNode child = ts_node_named_child(node, i);
+        if (is(node, "pattern_bindings") && reserved(s->text, child)) {
+            refuse(s, child, "binding is named like a number type; rename it first");
+        }
+        inventory(s, child);
     }
 }
-
-int chibi_migrate32_number_names(const char *source, char **migrated, char *error, size_t size)
+/* These fields select a separate namespace or spell a binding, not a value.
+ * Type fields are visited separately, including their application arguments. */
+static bool naming_role(TSNode parent, const char *role)
 {
-    *migrated = NULL;
+    if (!role) {
+        return false;
+    }
+    static const char *const names[] = {
+        "name",       "alias",   "binding", "bindings", "event",
+        "outcome",    "unit",    "package", "path",     "attribute",
+        "visibility", "storage", "kind",    "comptime", "trait",
+    };
+    for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
+        if (!strcmp(role, names[i])) {
+            return true;
+        }
+    }
+    return !strcmp(role, "key") && is(parent, "for_statement");
+}
+static void rewrite(number_rewrite *s, TSNode node, bool argument)
+{
+    if (s->reason || is(node, "unit") || is(node, "argument_name") ||
+        is(node, "type_binder") || is(node, "variant_pattern") ||
+        is(node, "string") || is(node, "comment")) {
+        return;
+    }
+    if (is(node, "type_name")) {
+        if (ts_node_named_child_count(node) == 1) {
+            rename_at(s, node);
+        }
+        return;
+    }
+    if (is(node, "identifier")) {
+        if (renamed(s->text, node)) {
+            if (argument) {
+                rename_at(s, node);
+            } else {
+                refuse(s, node, "unsupported number-type expression; use an explicit type argument before migration");
+            }
+        }
+        return;
+    }
+    if (is(node, "member_expression")) {
+        TSNode object = field(node, "object");
+        /* Preserve qualifier tokens, but do visit calls/indices within an
+         * object such as pkg.Make(double).field. */
+        if (!is(object, "identifier")) {
+            rewrite(s, object, argument);
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        const char *role = ts_node_field_name_for_child(node, i);
+        /* Aliased union members inherit fields from _single_type. Their
+         * type nodes are references even when the parser reports name. */
+        if (is(child, "type") || is(child, "type_name") || is(child, "union_type")) {
+            rewrite(s, child, false);
+            continue;
+        }
+        if (!ts_node_is_named(child) || naming_role(node, role)) {
+            continue;
+        }
+        bool value = argument || is(node, "argument_list");
+        if (role && !strcmp(role, "function") && is(node, "call_expression") &&
+            is(child, "identifier")) {
+            value = true;
+        }
+        rewrite(s, child, value);
+    }
+}
+static bool identifier(const char *name)
+{
+    for (size_t i = 0; name[i]; i++) {
+        char c = name[i];
+        if (c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') &&
+            !(i && c >= '0' && c <= '9')) {
+            return false;
+        }
+    }
+    return *name != 0;
+}
+static void check_imports(number_rewrite *s, TSNode node)
+{
+    if (s->reason || !acount(s->edits)) {
+        return;
+    }
+    if (is(node, "import_declaration")) {
+        TSNode alias = field(node, "alias");
+        if (!ts_node_is_null(alias)) {
+            if (reserved(s->text, alias)) {
+                refuse(s, alias, "import alias is named like a number type; use a different alias before migration");
+            }
+            return;
+        }
+        TSNode path = field(node, "path");
+        size_t start = ts_node_start_byte(path),
+               length = ts_node_end_byte(path) - start;
+        yyjson_doc *doc = yyjson_read(s->text + start, length, 0);
+        yyjson_val *value = doc ? yyjson_doc_get_root(doc) : NULL;
+        const char *decoded = yyjson_get_str(value);
+        if (!decoded || yyjson_get_len(value) != strlen(decoded) ||
+            strlen(decoded) >= 4096 || strchr(decoded, '\\') || *decoded == '/') {
+            refuse(s, path, "invalid import path for number-type migration");
+            yyjson_doc_free(doc);
+            return;
+        }
+        /* Routes.ImportRoute normalizes earlier components before appending
+         * this terminal identifier. Its alias is independent of the root if
+         * routing succeeds. Other tails need directory/collection context. */
+        const char *tail = strrchr(decoded, '/');
+        if (!tail) {
+            tail = strchr(decoded, ':');
+        }
+        tail = tail ? tail + 1 : decoded;
+        if (!identifier(tail)) {
+            refuse(s, path, "unresolved import alias may capture a number-type rewrite; supply an explicit alias");
+        } else if (reserved_name(tail)) {
+            refuse(s, path, "import alias is named like a number type; use a different alias before migration");
+        }
+        yyjson_doc_free(doc);
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        check_imports(s, ts_node_named_child(node, i));
+    }
+}
+static int migrate(const char *source, char **migrated, char *error, size_t size)
+{
+    if (migrated) {
+        *migrated = NULL;
+    }
     script_syntax *syntax = chibi_migrate_parse(source, 32);
     if (syntax->diagnostic_count) {
-        script_syntax_free(syntax);
-        snprintf(error, size, "Cannot migrate invalid version 32 source");
-        return -1;
-    }
-    number_rewrite s = { .text = source };
-    rewrite(&s, ts_tree_root_node(syntax->tree));
-    int status = 0;
-    if (!ts_node_is_null(s.refused)) {
-        script_range range = script_node_range(s.refused);
+        script_range range = syntax->diagnostics[0].range;
         snprintf(
             error,
             size,
-            "declaration at %d:%d is named like a number type; version 33 "
-            "names sized numbers i8 to u64, f32 and f64, so rename it first",
+            "invalid version 32 source at %d:%d",
             range.line,
             range.column
         );
+        script_syntax_free(syntax);
+        return -1;
+    }
+    number_rewrite s = { .text = source };
+    TSNode root = ts_tree_root_node(syntax->tree);
+    inventory(&s, root);
+    rewrite(&s, root, false);
+    check_imports(&s, root);
+    int status = 0;
+    if (s.reason) {
+        script_range range = script_node_range(s.refused);
+        snprintf(error, size, "%s at %d:%d", s.reason, range.line, range.column);
         status = -1;
-    } else if (acount(s.edits)) {
+    } else if (migrated && acount(s.edits)) {
         *migrated = text_edits_apply(source, s.edits, acount(s.edits));
     }
     afree(s.edits);
     script_syntax_free(syntax);
     return status;
+}
+int chibi_migrate32_preflight(const char *source, char *error, size_t size)
+{
+    return migrate(source, NULL, error, size);
+}
+int chibi_migrate32_number_names(const char *source, char **migrated, char *error, size_t size)
+{
+    return migrate(source, migrated, error, size);
 }

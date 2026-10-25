@@ -1020,6 +1020,7 @@ int main(int argc, char **argv)
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
+    bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool controller = argc == 3 && !strcmp(argv[1], "--controller");
@@ -1205,7 +1206,7 @@ int main(int argc, char **argv)
         !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
         !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
-        !scene3d && !material_ramps && !texture_transform && !arena &&
+        !scene3d && !material_ramps && !texture_transform && !arena && !types &&
         !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
@@ -1239,7 +1240,7 @@ int main(int argc, char **argv)
             "--unit-validation <chibi_ctl> | "
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
-            "--ecs-query-benchmark | --arena | "
+            "--ecs-query-benchmark | --arena | --types | "
             "--validate-project chibi_ctl | "
             "--fixture-format chibi_ctl | "
             "--controller chibi_ctl | "
@@ -1625,6 +1626,8 @@ int main(int argc, char **argv)
         test_tool_ecs_query_benchmark();
     } else if (arena) {
         test_arena();
+    } else if (types) {
+        test_tool_types();
     } else {
         test_tool_execution_policy();
         test_tool_types();

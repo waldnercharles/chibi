@@ -612,6 +612,7 @@ int main(int argc, char **argv)
         test_language_scalarize();
     } else if (migration32) {
         test_language_migration32();
+        test_language_migration32_generic_repro();
     } else if (migration32_generic_repro) {
         test_language_migration32_generic_repro();
     } else if (program) {

@@ -3187,8 +3187,9 @@ checks do not publish packages or clear renderer, deployment or PR holds.
 
 ## Project 32 numeric migration checkpoint
 
-`python3 tools/test_policy.py tool language-migration32` selects three C cases
-for the format 32→33 step. They run the production source, content and project
+The first checkpoint (`fdae32fe`) added three C cases to
+`python3 tools/test_policy.py tool language-migration32` for the format 32→33
+step. They run the production source, content and project
 migration entrypoints on disposable files. Literal KDL documents assert both
 metadata renames and preservation of node registry names, qualified type names,
 component payloads and nested record defaults. Both keyed and positional pins,
@@ -3203,7 +3204,7 @@ it does not introduce a new transaction mechanism.
 
 On frozen PR693 head `ece2b9a5d2e31a3ffc9503c1738a1d4fd153af49`, the payload and
 malformed-asset cases failed: arbitrary nested strings were renamed and the
-invalid project returned success with version 33. The repaired selector passes
+invalid project returned success with version 33. That checkpoint passed
 three cases and 64 assertions. On the same macOS ARM64 Debug build,
 `project-document` passes 3 cases/4 assertions, `graph-document` passes
 14/252, and `language-program` passes 165/12059.
@@ -3219,30 +3220,59 @@ unchanged compiler/bootstrap inputs. `make check-format` uses clang-format 22.
 Full native/material/project/language/tool aggregates, release, sanitizer, GPU
 and other-platform checks are not claimed by this bounded checkpoint.
 
-### Remaining migration work
+### Bounded argument and collection repair
 
-`python3 tools/test_policy.py tool language-migration32-generic-repro` is an
-explicitly failing reproduction, excluded from normal groups. It migrates the
-historical `Quantity(double, 1, -1)` generic example, compares against the literal
-canonical source, and attempts to compile and execute the result on VM and the
-compiled backend with a literal `amount == 12` oracle. The frozen migration leaves
-`double` unchanged; compilation reports, starting at 1:362, `Compile-time
-evaluation: only constant values and types are available` and `Invalid
-compile-time type argument`. The canonical `f64` example passes in the existing
-generic suite, including the execution oracle. This checkpoint does not rewrite
-expression identifiers: type applications contain ordinary expression arguments,
-and safe handling must resolve bindings, including loop keys, pattern bindings,
-qualified names and imported names. A global identifier replacement is unsafe.
+The normal `language-migration32` selector now includes the historical
+`Quantity(double, 1, -1)` program. It compares the migrated source with a literal
+canonical program, compiles it, and executes both VM and compiled backends with
+`amount == 12`. The old `language-migration32-generic-repro` selector remains a
+focused alias for the four source cases, not an expected failure.
 
-Collection storage metadata also needs separate handling. `types/value_document.c`
-writes nested-array `{element_type, items}` and map `{key_type, value_type,
-entries}` documents, with `storage`, `container` and optional `name` descriptors;
-`types/value_document_read.c` validates and reads those descriptors. Nested
-collections inside explicitly typed graph array defaults are supported. Standalone
-map graph defaults must not be invented as migration fixtures: the graph reader's
-`serialize_read_array` path treats graph collection defaults as arrays. Neither
-the frozen step nor this repair renames descriptor `storage`/`name` fields.
-A follow-up must carry declared collection context through defaults and stop at
-scalar/record payloads; searching recursively for those key names would repeat
-the payload corruption fixed here. Implied pin containers require the owning
-node schema, not guesses from payload shape.
+Every source is checked before filtering inputs or staging files. The inventory
+includes old spellings, every rename destination (including `number`), newly
+reserved scalar names, loop keys/values, pattern and `is` bindings, generic type
+binders, and import aliases. Unqualified argument values and conversion callees
+are rewritten only after these checks. Literal controls preserve qualified
+names, member tokens, argument labels, fields, variants, units, strings and
+comments, while visiting arguments inside `pkg.Make(double).field`.
+
+Implicit imports with a provable terminal alias, including `../math`,
+`core:strings` and JSON-escaped names, remain accepted. An unresolved alias such
+as `core:` is refused only in a file needing a numeric rewrite; it cannot capture
+another file's names. Unsupported bare type expressions outside the accepted
+argument/callee/type roles are refused with a source location. Cross-file
+collision fixtures require unchanged original files and manifest, successful
+retry after repairing the collision, and idempotence.
+
+Graph/event defaults with explicit collection ownership now migrate nested
+array/set descriptor strings through source-span edits. Literal documents prove
+numeric bytes and comments remain unchanged, including `1.0000000000000002`,
+`16777217`, `1e300` and `-0.0`. Actual graph writer/load round trips cover 2D/3D
+arrays, empty children, optional primitive descriptor names, F32 `float` to
+`number`, F64 precision/range and signed zero. Nominal names and record identities
+remain untouched. Scalar/record defaults, ordinary omitted-container vectors and
+plain arrays, and unrelated descriptor-looking objects remain opaque.
+
+An omitted pin container inherits its registry template. A valid possible codec
+envelope needing an old descriptor-name rewrite therefore receives a located
+refusal instead of a shape-based rewrite. An omitted storage type with an old
+`type_name` is likewise ambiguous and requires explicit storage. These refusals
+happen before any write. Malformed lookalikes that cannot be codec envelopes are
+left unchanged. Existing migration staging and retry machinery is reused.
+
+Map collection codecs are covered by the existing type codec tests (`tools/test_policy.py tool types`), but the
+graph default reader cannot establish the union-valued map ownership needed by
+those codecs. This migration explicitly refuses map collection defaults,
+including empty nested map descriptors; it does not invent a graph-map format.
+The migration preserves the approved `number` spelling policy and does not
+convert `number` identities to `f64` or rewrite numeric payloads.
+
+The bounded follow-up passes `language-migration32` (12 cases/267 assertions),
+`types` (15/227, including both recursive map codec cases), `project-document`
+(3/4), `graph-document` (14/252), and `language-program` (170/12138).
+Before the production changes, its added fixtures reproduced the failures:
+`language-migration32` passed 3 and failed 3, and the generic reproduction failed
+all 4 cases. The final surrounding baseline failures remain unchanged:
+`project-declarations` 0 passed/1 failed and `language-query-program` 63 passed/2
+failed. The supported normal two-job build and clang-format 22 check pass. No
+additional platform, sanitizer, GPU or full aggregate coverage is claimed.

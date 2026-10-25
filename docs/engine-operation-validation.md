@@ -210,6 +210,23 @@ requires its optional `studio_sha` input. The separate compiler self-build
 workflow covers macOS, Linux, and Windows plus cross-platform comparison. Task-local caches, builds, diagnostic commands, and logs remain
 outside the published source tree for independent review.
 
+## Restored task-write diagnostic protection
+
+The history-handoff audit found ten assertions from the original PR that the
+first selective recovery had omitted. They are restored verbatim in
+`program_task_state_awaits_its_function_results`: successful native catalog and
+parsing, semantic rejection, and the specific expected-double diagnostic are
+required in addition to generic compile failure. No diagnostic spelling,
+fixture value, production behavior, or numeric rule needed adaptation.
+
+The case passed through its existing `language-program` selector (165 cases /
+12,391 assertions, 0.78 seconds). The small `language-operations` regression
+also passed (11 / 266, 0.16 seconds). Both retained 60-second cleanup deadlines.
+The two-job cached build compiled one object and relinked the dispatcher in
+2.58 seconds under a 90-second deadline, with maximum child RSS 135,266,304
+bytes. Test peak RSS was 23,904,256 bytes. The complete original-scope and
+per-path merge disposition is recorded in [handoff](engine-operation-handoff.md).
+
 ## Resources and remaining coverage
 
 Builds used two jobs each (at most two independent builds overlapped). Initial

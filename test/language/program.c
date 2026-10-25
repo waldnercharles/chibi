@@ -9298,6 +9298,16 @@ TEST_CASE(program_task_state_awaits_its_function_results)
         REQUIRE(
             !compile_pack(writes[i / 2], i % 2 ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE, &NATIVE_STATE_DEFINITION_PACK)
         );
+        REQUIRE(
+            state_native && syntax && !syntax->diagnostic_count && analysis &&
+            !analysis->valid
+        );
+        bool incompatible = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            incompatible |= strstr(analysis->diagnostics[d].message, "Incompatible types: expected double") !=
+                            NULL;
+        }
+        REQUIRE(incompatible);
     }
     return true;
 }

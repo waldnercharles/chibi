@@ -1861,10 +1861,13 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
                               sizeof(uint64_t);
                 /* Keep all other conservative terms, including phases this
                  * host-free fixture does not need, separate from the matrices. */
-                size_t fixed = 2 * (sizeof(dyna_hdr) +
-                                    16 * sizeof(behavior_function_instruction)) +
-                               (count + 1) * sizeof(int) +
-                               count * (2 * sizeof(bool) + 3 * sizeof(int)) +
+                size_t kept = 2 * (sizeof(dyna_hdr) +
+                                   16 * sizeof(behavior_function_instruction)) +
+                              (count + 1) * sizeof(int);
+                if (pause) {
+                    kept += sizeof(dyna_hdr) + 16 * sizeof(behavior_function_suspension);
+                }
+                size_t fixed = count * (2 * sizeof(bool) + 3 * sizeof(int)) +
                                slots * sizeof(int) +
                                count * (sizeof(int) + 2 * sizeof(bool)) +
                                (slots + 1) * (2 * sizeof(int) + 3 * sizeof(bool)) +
@@ -1876,12 +1879,9 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
                                (slots + 1) *
                                    (2 * sizeof(int) + 2 * sizeof(max_align_t)) +
                                sizeof(bool);
-                if (pause) {
-                    fixed += sizeof(dyna_hdr) +
-                             16 * sizeof(behavior_function_suspension);
-                }
-                size_t expected = fixed + (defined > live ? defined : live);
-                REQUIRE(behavior_function_preparation_bytes(draft) == expected);
+                size_t expected = fixed + (defined > live ? defined : live), scratch;
+                REQUIRE(behavior_function_preparation_bytes(draft, &scratch) == kept);
+                REQUIRE(scratch == expected);
                 REQUIRE(expected < fixed + defined + live);
             }
         }
@@ -1897,7 +1897,9 @@ TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase)
     emit((behavior_function_instruction){ .op = BF_END });
     /* Malformed descriptors still propagate SIZE_MAX. This does not claim
      * machine-size arithmetic overflow coverage from tiny real banks. */
-    REQUIRE(behavior_function_preparation_bytes(draft) == SIZE_MAX);
+    size_t scratch;
+    REQUIRE(behavior_function_preparation_bytes(draft, &scratch) == SIZE_MAX);
+    REQUIRE(scratch == SIZE_MAX);
     return true;
 }
 
@@ -2045,6 +2047,108 @@ TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
         execution_module_free(prepared_module);
         prepared_module = NULL;
     }
+    return true;
+}
+
+/* A finished chain of `slots` slots, each the sum of the last and the
+ * argument, so its verification matrices grow with the square of its length.
+ * Its preparation estimate's scratch is `*scratch`. */
+static bool wide_chain(int slots, size_t *scratch)
+{
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &number, 1, &number, 1, NULL, 0);
+    int input = slot(PIN_I32), sum = input;
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_I32, .output = input, .value = number });
+    for (int i = 1; i < slots; i++) {
+        int next = slot(PIN_I32);
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_ADD, .type = PIN_I32, .output = next, .left = sum, .right = input });
+        sum = next;
+    }
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = sum });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    REQUIRE(behavior_function_preparation_bytes(function, scratch) != SIZE_MAX);
+    return true;
+}
+/* The prepared bytes of a module of `count` chains of `slots` slots. */
+static bool wide_module(int count, int slots, size_t *scratch, size_t *length)
+{
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 1;
+    prepared_plan->valid = true;
+    for (int i = 0; i < count; i++) {
+        REQUIRE(wide_chain(slots, scratch));
+        apush(
+            prepared_plan->functions,
+            ((execution_module_function){ .id = (uint64_t)i + 1,
+                                          .kind = EXECUTION_FUNCTION_AUTHORED,
+                                          .body = function })
+        );
+        function = NULL;
+    }
+    prepared_plan->function_count = count;
+    char error[192] = { 0 };
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(prepared_module);
+    REQUIRE(
+        execution_prepared_write(prepared_module, &prepared_bytes, length, error, sizeof error)
+    );
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    return true;
+}
+/* The least budget, to within `step` bytes, that decodes prepared_bytes. */
+static size_t least_budget(size_t length, size_t step)
+{
+    size_t refused = 0, decoded = 256u * 1024u * 1024u;
+    char error[192];
+    while (decoded - refused > step) {
+        size_t budget = refused + (decoded - refused) / 2, remaining = budget;
+        execution_module *m = execution_prepared_read_budget(
+            prepared_bytes,
+            length,
+            NULL,
+            BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        if (m) {
+            decoded = budget;
+            execution_module_free(m);
+        } else {
+            refused = budget;
+        }
+    }
+    return decoded;
+}
+TEST_CASE(execution_decoded_definitions_share_preparation_scratch)
+{
+    /* Definitions prepare one at a time, so each one past the first adds its
+     * kept bytes and storage to the budget a module needs, but not its
+     * verification scratch, which the previous definition has freed. */
+    enum
+    {
+        CHAIN = 8192,
+        CHAINS = 4,
+        STEP = 4096
+    };
+    size_t scratch, length;
+    REQUIRE(wide_module(1, CHAIN, &scratch, &length));
+    size_t one = least_budget(length, STEP);
+    free(prepared_bytes);
+    prepared_bytes = NULL;
+    REQUIRE(wide_module(CHAINS, CHAIN, &scratch, &length));
+    size_t many = least_budget(length, STEP);
+    REQUIRE(many > one && many - one < (CHAINS - 1) * scratch);
     return true;
 }
 
@@ -2297,6 +2401,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
     RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
+    RUN_TEST_CASE(execution_decoded_definitions_share_preparation_scratch);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
     RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
     pu_clear_setup();

@@ -849,14 +849,24 @@ static bool preparation_budget(prepared_context *c)
         w->error = "prepared module closure exceeds preparation limit";
         return false;
     }
+    /* The definitions prepare one at a time, each freeing its scratch before
+     * the next begins, so only the largest scratch is live at once. */
+    size_t scratch = 0;
     for (int i = 0; i < acount(c->functions); i++) {
-        size_t next = behavior_function_preparation_bytes(c->functions[i]);
-        if (next > SIZE_MAX - bytes) {
+        size_t own;
+        size_t next = behavior_function_preparation_bytes(c->functions[i], &own);
+        if (next > SIZE_MAX - bytes || own == SIZE_MAX) {
             w->error = "prepared finalization count exceeds budget";
             return false;
         }
         bytes += next;
+        scratch = own > scratch ? own : scratch;
     }
+    if (scratch > SIZE_MAX - bytes) {
+        w->error = "prepared finalization count exceeds budget";
+        return false;
+    }
+    bytes += scratch;
     size_t services = 1;
     for (int i = 0; i < acount(c->functions); i++) {
         const behavior_function *f = c->functions[i];

@@ -205,7 +205,7 @@ process launches.
 The independently reviewed compiler integration has 137 fixed samples: 90 base,
 13 types, 20 imports and 14 collections, with imports using Release. The Release
 bootstrap also compares all 137 samples between stages and 59 fixed floating
-literals with both signs. Seed verification runs one fixed-point compile with a 32 MiB output
+literals with both signs. Seed verification runs one fixed-point compile with a 16 MiB output
 limit and writes only its closure and manifest; a failed compile may make one
 diagnostic call.
 
@@ -2108,7 +2108,7 @@ Nine added tooling cases cover these finite binary operations:
   are compared. Exact selected-backend entry counts are checked without fallback.
 - Two direct calls return 256 bytes against a 255-byte limit and fail atomically;
   the 256-byte successes above cover the exact boundary. Two invalid API limits
-  (zero and `COMPILER_HOST_MAX_OUTPUT_BYTES + 1`) reject before execution.
+  (zero and `COMPILER_HOST_MAX_ARTIFACT_BYTES + 1`) reject before execution.
 - Two wrong return signatures reject before malformed JSON parsing; malformed
   JSON and wrong argument count add two more pre-execution rejections.
 - The reference-argument fixture adds one bytes-API rejection. The new result

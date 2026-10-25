@@ -348,7 +348,7 @@ static bool document_json_quota(yyjson_val *root, asset_compiler_diagnostic *dia
 static av_doc *read_document_transport(const char *json, size_t length, asset_compiler_diagnostic *diagnostic)
 {
     if (length > COMPILER_HOST_MAX_OUTPUT_BYTES) {
-        failure(diagnostic, "Asset document transport exceeds 32 MiB");
+        failure(diagnostic, "Asset document transport exceeds 16 MiB");
         return NULL;
     }
     yyjson_doc *decoded = yyjson_read(json, length, 0);
@@ -448,7 +448,7 @@ static av_doc *read_asset_transport(const char *bytes, size_t length, asset_comp
         return read_document_transport(bytes, length, diagnostic);
     }
     if (length > COMPILER_HOST_MAX_OUTPUT_BYTES) {
-        failure(diagnostic, "Asset document transport exceeds 32 MiB");
+        failure(diagnostic, "Asset document transport exceeds 16 MiB");
         return NULL;
     }
     yyjson_doc *decoded = yyjson_read(bytes + header, length - header, 0);
@@ -804,7 +804,7 @@ av_doc *asset_source_read(
     *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
     if (!source || strnlen(source, COMPILER_HOST_MAX_OUTPUT_BYTES + 1) >
                        COMPILER_HOST_MAX_OUTPUT_BYTES) {
-        failure(diagnostic, "Asset source must be non-null and at most 32 MiB");
+        failure(diagnostic, "Asset source must be non-null and at most 16 MiB");
         return NULL;
     }
     if (path && strnlen(path, 4097) > 4096) {

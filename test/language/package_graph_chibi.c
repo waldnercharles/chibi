@@ -218,7 +218,7 @@ static bool write(pin_value *row, const char *name, pin_value value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == value.type);
-    REQUIRE(!pin_write_field(&storage, row->ptr, field, value));
+    REQUIRE(!pin_write_field(&inputs, row->ptr, field, value));
     return true;
 }
 static pin_value text(const char *value)

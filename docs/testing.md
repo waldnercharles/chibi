@@ -1376,8 +1376,9 @@ and partition), generic native arrays, binding-generation invalidation and
 retained modules on bytecode and SLJIT. Eighteen preparations supply 36 files
 and 18 imports, with at most 36 package visits before reuse and 386 direct
 calls, each with a 10,000-instruction budget. At most three owners and
-three-element arrays are live; core source is below 16 KiB and the app below
-4 KiB. There is no filesystem, process, service or GPU work. Installed consumers
+three-element arrays are live; the app is below 4 KiB. The shipped core source
+uses the production snapshot limits, with full retained bytes checked after
+the caller buffers are poisoned and freed. There is no filesystem, process, service or GPU work. Installed consumers
 embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately.
 This focused route is outside the language aggregate.
 
@@ -1418,6 +1419,15 @@ The fixture compares complete memberships, order, dependency cells, bindings,
 error fields and cycle indices against C, plus public queries. It performs no
 filesystem, process, service or GPU work. Build separately. This focused route
 is outside the language aggregate.
+
+The shared compiler fixture checks every prepared snapshot's document count,
+owned source storage, full source length and every source byte on both backends.
+The shipped `core:strings` source currently exceeds 16 KiB; it uses the existing
+production snapshot limits (512 KiB per file and 8 MiB aggregate), without an
+additional stale fixture limit. This applies to syntax, paths, routes, snapshot,
+lexical/nominal binding, snapshot-reader and compiler-artifact fixtures. Their
+non-core source bounds, aggregate bounds, invocation budgets and process limits
+remain unchanged. These checks add no preparations or authored invocations.
 
 `python3 tools/test_policy.py tool language-syntax-chibi` compares authored
 diagnostic traversal with the C parser using fourteen shared source texts and
@@ -1505,8 +1515,8 @@ route remains outside the language aggregate.
 `python3 tools/test_policy.py tool language-package-snapshot-chibi` reuses the
 eight resolver cases and adds eight validation cases: 46 snapshots and
 92 authored calls across bytecode and SLJIT, capped at three million instructions
-per call. Two retained owners prepare eight actual sources each, each source
-smaller than 16 KiB (sixteen source parses). The cases offer 72 files total,
+per call. Two retained owners prepare eight actual sources each (sixteen source parses);
+the seven non-core sources are each smaller than 16 KiB. The cases offer 72 files total,
 bounding C parses at 72 and private raw parser calls at 144. Requests have at
 most five files and four imports; actual
 source buffers are smaller than 1 KiB and raw trees have at most 1,024 nodes.
@@ -1673,7 +1683,8 @@ separately; this route is outside the language aggregate.
 record and union header admission and nominal metadata publication. Three pico
 cases run twelve raw requests and four requests from real analyzed headers:
 32 authored calls across bytecode and SLJIT, each capped at 100,000 instructions.
-Two owners prepare the four compiler sources once each (all below 16 KiB), and
+Two owners prepare the four sources once each (the three non-core sources are
+below 16 KiB), and
 four analyzed sources below 256 bytes add four parses, for twelve total.
 
 Inputs contain at most one symbol, one function, two scopes and two documents;
@@ -3114,8 +3125,8 @@ Reader fixture tables keep the existing 64-type/128-ID envelope,
 two scopes/two symbols/one function, two definitions/two variants and zero
 semantic import entries. A reading has at most four publications/new types,
 uses and diagnostics. Eight retained-result projections stay below 128 KiB each.
-Source bounds: reader sources below 48 KiB, snapshot/shared sources below
-16 KiB; the State source is below 8 KiB and the combined closure is below
+Source bounds: reader sources below 48 KiB, non-core snapshot/shared sources
+below 16 KiB; the State source is below 8 KiB and the combined closure is below
 160 KiB. The exact source manifest records measured source bytes.
 
 Each adapted full tree is compared with the current Tree-sitter-derived reader
@@ -3220,3 +3231,15 @@ exact cross-repository candidate.
 The two hidden frames cover starter project startup. Web compilation does not
 establish browser execution, Studio UI interaction or visual acceptance. These
 checks do not publish packages or clear renderer, deployment or PR holds.
+
+### Authored exact shift-count parity
+
+The normal language group runs `language-integer-shift-counts-authored` once,
+alongside the existing stage-zero shift-count selector. `make test-language-all`
+and the existing Linux/macOS CI invocations therefore retain the nine literal
+shift oracles as a required authored-compiler parity gate. The selector checks
+actual bytecode and SLJIT entries; no optional environment switch exempts it.
+With matching compiler input it took 2.6 seconds on the Mac validation host. With a
+changed compiler source and retained older input it took 71 seconds including supported
+in-process recovery. It retains the existing process budget. No second workflow
+invocation or broader suite is added.

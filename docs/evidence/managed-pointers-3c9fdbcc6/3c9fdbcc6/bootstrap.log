@@ -1,0 +1,101 @@
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+bootstrap: /tmp/chibi-bootstrap-0BFqDm/compiler/bootstrap.kdl: it cannot be read
+bootstrap: /tmp/chibi-bootstrap-0BFqDm/compiler/bootstrap.kdl: needs a version and a minimum from 1 to it
+bootstrap: bootstrap.json has format 2; this host reads format 1
+bootstrap: the artifact has bootstrap version 1, older than 2, the oldest these compiler sources support; produce a newer one from stage zero
+bootstrap: /tmp/chibi-bootstrap-0BFqDm/empty holds no readable bootstrap.json
+bootstrap: bootstrap.json does not record Compile's arguments
+bootstrap: bootstrap.json does not record Compile's arguments
+bootstrap: bootstrap.json does not record Compile's arguments
+bootstrap: bootstrap.json does not record Compile's arguments
+bootstrap: compiler.chibip, 3 bytes with SHA-256 a52d159f262b2c6ddb724a61840befc36eb30c88877a4030b65cbe86298449c9, is not the closure bootstrap.json records
+bootstrap: cannot read the compiler source lib/Missing.chibi
+bootstrap: lib/B.chibi is not among the artifact's sources: its package changed, so produce a new artifact from stage zero
+bootstrap: compiler.chibip, 3295146 bytes with SHA-256 0c27eb5801f7a4714b6c60c697cc3f5cb4f343414d21818a259770732038d39c, is not the closure bootstrap.json records
+bootstrap: the artifact was compiled for other value layout than this host's
+bootstrap: /tmp/chibi-bootstrap-0BFqDm/seed needs compiler.chibip and compile.json, Compile's arguments
+bootstrap: the seed compiled two/A.chibi other than it is on disk
+bootstrap reuse: compiler.chibip, 14224585 bytes with SHA-256 073d59297c0dd2de5b98f0b1a754a813fa7da462698b14a2226a0981aa74f932, is not the closure bootstrap.json records
+bootstrap reuse: bootstrap.json has format 2; this host reads format 1
+bootstrap reuse: the artifact records another compiler entry
+bootstrap reuse: package_compiler/Extra.chibi is not among the artifact's sources: its package changed, so produce a new artifact from stage zero
+bootstrap reuse: /tmp/chibi-bootstrap-0BFqDm/reuse-missing-parent/output.chibip cannot be written
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N --timeout-ms N [--batch | --output-artifact FILE | --output-bytes FILE]
+       chibi-compiler-host --target-json [OUTPUT]
+       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR [--seed DIR [--revision TEXT] | --recover FILE]
+       chibi-compiler-host --reuse-bootstrap DIR --compiler DIR --core DIR --input FILE --output-artifact FILE
+Running: bootstrap_usage_rejects_mixed_and_missing_options (OK) (0.002430 secs)
+Running: bootstrap_needs_the_sources_contract (OK) (0.001203 secs)
+Running: bootstrap_rejects_unknown_formats_and_old_versions (OK) (0.001701 secs)
+Running: bootstrap_checks_the_recorded_closure (OK) (0.002804 secs)
+Running: bootstrap_reads_every_recorded_source (OK) (0.001782 secs)
+Running: bootstrap_rejects_another_target (OK) (0.072103 secs)
+Running: bootstrap_write_checks_the_seed (OK) (0.001764 secs)
+Running: bootstrap_load_uses_matching_sources_without_recompilation (OK) (2.449620 secs)
+Running: bootstrap_load_rejects_damaged_artifacts_and_old_versions (OK) (1.058628 secs)
+Running: bootstrap_load_rejects_another_prepared_abi (OK) (1.172718 secs)
+Running: bootstrap_load_checks_compiler_and_core_source_completeness (OK) (1.066148 secs)
+Running: bootstrap_load_does_not_cache_source_hashes (OK) (4.838117 secs)
+Running: bootstrap_reuses_only_the_exact_captured_request_without_compilation (OK) (10.567312 secs)
+Running: bootstrap_reuse_preserves_output_for_changed_captured_requests (OK) (1.027926 secs)
+Running: bootstrap_reuse_invalidates_changed_disk_sources_without_recovery (OK) (0.218578 secs)
+Running: bootstrap_reuse_hard_validation_and_write_errors_preserve_output (OK) (0.360627 secs)
+Running: bootstrap_reuse_usage_is_separate_from_legacy_modes (OK) (0.003671 secs)
+===============================================================
+Summary: Passed: 17 Failed: 0 Total: 17 Suites: 0 Asserts: 175
+Test command wall time: 111.805s; includes in-test fixture setup; external configuration/build excluded.

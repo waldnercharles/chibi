@@ -369,8 +369,9 @@ value, with its expression as origin and its type's header as initial value:
   a name or an element also the value it reads there;
 - a `switch` arm watches the subject it reads again and its pattern's test;
 - `xs = append(xs, x)` watches the array as its argument and as the call's
-  first input, the item as its second, and the array it leaves as the call's
-  output.
+  first input before evaluating the item, then the item as its second input,
+  and the array it leaves as the call's output. Extend and method statements
+  preserve the same receiver-before-item order, including an authored item call.
 
 A behavior's handles are its entities, so their watches name the entity type.
 

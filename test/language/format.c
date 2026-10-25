@@ -1341,8 +1341,9 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
                  "        e := self\n"
                  "        set_velocity_x(get_velocity().Value.x, e)\n"
                  "        lifted := has_velocity()\n"
-                 "        narrowed := less_float(get_velocity().Value.x, "
-                 "get_velocity().Value.x)\n"
+                 "        narrowed := less_float("
+                 "float(get_velocity().Value.x), "
+                 "float(get_velocity().Value.x))\n"
                  "    }\n"
                  "}\n";
     /* Native setters evaluate a non-self entity first, unlike authored calls. */

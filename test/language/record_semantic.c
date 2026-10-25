@@ -85,12 +85,27 @@ TEST_CASE(record_semantic_row)
             if (!constructors) {
                 REQUIRE(e->arguments[0].parameter == 1 && e->arguments[1].parameter == 0);
             }
+            for (int j = 0; j < e->argument_count; j++) {
+                const script_argument *argument = &e->arguments[j];
+                REQUIRE(argument->parameter >= 0 && argument->parameter < row->field_count);
+                REQUIRE(argument->value >= 0 && argument->value < analysis->expression_count);
+                if (argument->parameter > 4) {
+                    continue;
+                }
+                const script_expression *field = &analysis->expressions[argument->value];
+                REQUIRE(
+                    field->kind == SCRIPT_EXPR_CONSTANT &&
+                    field->constant_snapshot && field->constant.type == PIN_STR
+                );
+                const char *expected = argument->parameter == 0
+                                         ? (constructors ? "b" : "a")
+                                     : argument->parameter == 1
+                                         ? (constructors ? "two" : "one")
+                                         : "";
+                REQUIRE(!strcmp(pin_text(field->constant).bytes, expected));
+                owned_strings += argument->parameter >= 2;
+            }
             constructors++;
-        }
-        if (e->kind == SCRIPT_EXPR_CONSTANT && e->constant_snapshot &&
-            e->constant.type == PIN_STR) {
-            REQUIRE(!strcmp(pin_text(e->constant).bytes, ""));
-            owned_strings++;
         }
     }
     REQUIRE(constructors == 2 && owned_strings == 6);
@@ -100,8 +115,9 @@ TEST_CASE(record_semantic_operators)
 {
     parse(
         "Defaults :: library { Row :: struct { depth: int = Later + 1; wrap: "
-        "int = 2147483647 + 1; shift: int = -1 >> 33; flag: bool = true or "
-        "(int(1) / int(0) > 0); same: bool = \"x\" == \"x\"; "
+        "int = int(wrap: 2147483648); shift: int = -1 >> 33; flag: bool = true "
+        "or "
+        "(int(1) / int(1) > 1); same: bool = \"x\" == \"x\"; "
         "label: string = Text; } Later :: 3; Text :: \"saved\"; Make :: () -> "
         "Row { return {}; } }",
         &empty
@@ -155,7 +171,7 @@ TEST_CASE(record_semantic_default_rejections)
         "Row :: struct { value: int = mutable; } mutable: int = 1;",
         "Row :: struct { value: int = 1 / 0; }",
         "Row :: struct { value: int = -2147483648 / -1; }",
-        "Row :: struct { value: int = -2147483648 % -1; }",
+        "Row :: struct { value: int = 1 % 0; }",
         "Row :: struct { value: bool = true or Call(); } Call :: () -> "
         "bool { return true; }",
         "Row :: struct { value: int = Later; } Later :: Earlier; Earlier :: "
@@ -163,15 +179,17 @@ TEST_CASE(record_semantic_default_rejections)
         "Row :: struct { value: string[]; }",
         "Row :: struct { value: bool = true or [false][0]; }"
     };
-    static const char *const messages[] = { "Record default",
-                                            "Record default",
-                                            "invalid integer division",
-                                            "invalid integer division",
-                                            "invalid integer division",
-                                            "Record default",
-                                            "Cyclic value dependency",
-                                            "Record fields require",
-                                            "Record default" };
+    static const char *const messages[] = {
+        "Record default",
+        "Record default",
+        "integer constant divides by zero",
+        "integer constant does not fit its type",
+        "integer constant divides by zero",
+        "Record default",
+        "Cyclic value dependency",
+        "Record fields require",
+        "Record default"
+    };
     _Static_assert(sizeof bodies / sizeof *bodies == 9, "fixed rejection inputs");
     _Static_assert(sizeof messages / sizeof *messages == 9, "matching diagnostics");
     char source[256];

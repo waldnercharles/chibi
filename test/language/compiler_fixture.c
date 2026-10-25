@@ -211,6 +211,17 @@ bool compiler_fixture_prepare_packs(
             }
         }
         REQUIRE(authoring_packages_valid(fixture->owners[b]));
+        int document_count = 0;
+        const script_package_document *documents = source_package_snapshot_documents(
+            authoring_packages_snapshot(fixture->owners[b]),
+            &document_count
+        );
+        REQUIRE(document_count == count);
+        for (int i = 0; i < count; i++) {
+            REQUIRE(documents[i].syntax && documents[i].syntax->text != files[i].text);
+            REQUIRE(strlen(documents[i].syntax->text) == files[i].size);
+            REQUIRE(!memcmp(documents[i].syntax->text, files[i].text, files[i].size));
+        }
     }
     return true;
 }

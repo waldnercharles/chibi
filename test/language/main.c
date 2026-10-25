@@ -51,6 +51,8 @@ void test_language_modules();
 void test_numeric_ranges();
 void test_numeric_exact_core();
 void test_language_integer_semantics();
+void test_language_integer_shift_counts(const char *name);
+void test_language_integer_shift_counts_authored();
 void test_language_package_graph();
 void test_language_package_graph_chibi();
 void test_language_shader_source_chibi();
@@ -163,7 +165,11 @@ int main(int argc, char **argv)
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
+    bool integer_shift_counts = (argc == 2 || argc == 3) &&
+                                !strcmp(argv[1], "--integer-shift-counts");
     bool integer_semantics = argc == 2 && !strcmp(argv[1], "--integer-semantics");
+    bool integer_shift_counts_authored = argc == 2 &&
+                                         !strcmp(argv[1], "--integer-shift-counts-authored");
     bool package_graph_chibi = argc == 2 && !strcmp(argv[1], "--package-graph-chibi");
     bool asset_compiler_host = argc == 2 && !strcmp(argv[1], "--asset-compiler-host");
     bool asset_packaging_chibi = argc == 2 &&
@@ -199,6 +205,10 @@ int main(int argc, char **argv)
                                              !strcmp(argv[1], "--package-compiler-chibi-debug-free");
     bool package_compiler_chibi_scalar = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-scalar");
+    bool package_compiler_chibi_native_arguments = argc == 2 &&
+                                                   !strcmp(argv[1], "--package-compiler-chibi-native-arguments");
+    bool package_compiler_chibi_native_arguments_oracle = argc == 2 &&
+                                                          !strcmp(argv[1], "--package-compiler-chibi-native-arguments-oracle");
     bool package_compiler_chibi_native = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-native");
     bool package_compiler_chibi_behaviors_rest = argc == 2 &&
@@ -286,24 +296,26 @@ int main(int argc, char **argv)
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
          !row_array && !record_runtime && !runtime_attribution && !wasm &&
          !program && !query_program && !incremental && !modules && !ranges &&
-         !numeric_exact_core && !integer_semantics && !package_graph &&
-         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
-         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
-         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
-         !constant_scalar_chibi && !scalar_lowering_chibi && !bounded_compiler_chibi &&
-         !prepared_writer_chibi && !package_compiler_chibi &&
-         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
-         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
-         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
-         !package_compiler_chibi_collections_compiled &&
-         !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
-         !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
-         !package_compiler_chibi_sharing && !package_compiler_chibi_debug_free &&
-         !package_compiler_chibi_scalar && !package_compiler_chibi_native &&
-         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
-         !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
+         !numeric_exact_core && !integer_semantics && !integer_shift_counts &&
+         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
+         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
+         !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
+         !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
+         !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
+         !scalar_lowering_chibi && !bounded_compiler_chibi && !prepared_writer_chibi &&
+         !package_compiler_chibi && !package_compiler_chibi_types &&
+         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
+         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
+         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
+         !package_compiler_chibi_imports_compiled &&
+         !package_compiler_chibi_literals && !package_compiler_chibi_behaviors &&
+         !package_compiler_chibi_behaviors_rest && !package_compiler_chibi_sharing &&
+         !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
+         !package_compiler_chibi_native && !package_compiler_chibi_native_arguments &&
+         !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
+         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+         !snapshot_reader_chibi && !callable_headers_chibi &&
          !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
          !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
          !package_execution && !package_resolution && !package_imports &&
@@ -321,8 +333,9 @@ int main(int argc, char **argv)
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
-            "--ranges | --numeric-exact-core | --package-graph | "
-            "--package-graph-chibi | --shader-source-chibi | "
+            "--ranges | --numeric-exact-core | --integer-semantics | "
+            "--integer-shift-counts [case] | --integer-shift-counts-authored | "
+            "--package-graph | --package-graph-chibi | --shader-source-chibi | "
             "--asset-packaging-chibi | --syntax-chibi | "
             "--source-tokenizer-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
@@ -344,6 +357,8 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-debug-free | "
             "--package-compiler-chibi-scalar | "
             "--package-compiler-chibi-native | "
+            "--package-compiler-chibi-native-arguments | "
+            "--package-compiler-chibi-native-arguments-oracle | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -496,6 +511,10 @@ int main(int argc, char **argv)
         test_language_incremental();
     } else if (numeric_exact_core) {
         test_numeric_exact_core();
+    } else if (integer_shift_counts) {
+        test_language_integer_shift_counts(argc == 3 ? argv[2] : NULL);
+    } else if (integer_shift_counts_authored) {
+        test_language_integer_shift_counts_authored();
     } else if (integer_semantics) {
         test_language_integer_semantics();
     } else if (package_syntax) {
@@ -546,6 +565,10 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_debug_free();
     } else if (package_compiler_chibi_scalar) {
         test_language_package_compiler_chibi_scalar();
+    } else if (package_compiler_chibi_native_arguments) {
+        test_language_package_compiler_chibi_native_arguments();
+    } else if (package_compiler_chibi_native_arguments_oracle) {
+        test_language_package_compiler_chibi_native_arguments_oracle();
     } else if (package_compiler_chibi_native) {
         test_language_package_compiler_chibi_native();
     } else if (scalar_lowering_chibi) {

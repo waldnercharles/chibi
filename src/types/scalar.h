@@ -199,14 +199,9 @@ static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
     }
     return to >= PIN_I8 && to <= PIN_U64 && behavior_scalar_number(from);
 }
-/* Whether a cast can fail: EXACT into an integer that cannot hold every value. */
-static inline bool behavior_scalar_cast_checked(pin_type from, pin_type to, behavior_cast_mode mode)
-{
-    return mode == BEHAVIOR_CAST_EXACT && from >= PIN_I8 && from <= PIN_U64 &&
-           to >= PIN_I8 && to <= PIN_U64 &&
-           !behavior_scalar_integer_widens(from, to);
-}
-/* False only when EXACT receives an integer outside the destination range. */
+/* Whether the value fits: false only when EXACT receives an integer outside
+ * the destination range. That value clamps, as CLAMP does, so a cast never
+ * fails at run time; compile time rejects a constant that does not fit. */
 static inline bool behavior_scalar_cast(pin_value a, pin_type type, behavior_cast_mode mode, pin_value *out)
 {
     assert(behavior_scalar_cast_supported(a.type, type));
@@ -235,13 +230,10 @@ static inline bool behavior_scalar_cast(pin_value a, pin_type type, behavior_cas
     uint64_t bits = behavior_scalar_bits(a);
     bool negative = behavior_scalar_signed(a.type) && (int64_t)bits < 0;
     bool below = negative && (int64_t)bits < low, above = !negative && bits > high;
-    if ((below || above) && mode == BEHAVIOR_CAST_EXACT) {
-        return false;
-    }
-    if (mode == BEHAVIOR_CAST_CLAMP) {
+    if (mode != BEHAVIOR_CAST_WRAP) {
         bits = below ? (uint64_t)low : above ? high : bits;
     }
     *out = behavior_scalar_from_bits(type, bits);
-    return true;
+    return mode != BEHAVIOR_CAST_EXACT || (!below && !above);
 }
 #endif

@@ -335,10 +335,11 @@ PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: in
     code: Code[] = [];
     slots: Slot[] = [];
     stored := value;
-    // A narrower integer widens to its target, as ordinary assignment widens
-    // it.
-    if (element.container == 0 && value.container == 0 && Widens(value.storage, element.storage)) {
-        code.append(CastCode(ops, element.storage, at.slot, value.slot, 0, node));
+    // A narrower integer or a float widens to its target, as ordinary
+    // assignment widens it.
+    if (element.container == 0 && value.container == 0 &&
+        (Widens(value.storage, element.storage) || FloatWidens(value.storage, element.storage))) {
+        code.extend(NumberCode(ops, value.storage, element.storage, value.slot, at.slot, node));
         slots.append(ValueLocal(element.storage));
         stored = Typed(at.slot, element.storage, 0, -1);
     }
@@ -539,7 +540,13 @@ PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document:
                         pointer: Value, current: Value, right: Value, popped: int, item: Work, ops: Ops,
                         target: Target, at: Bases) -> Step {
     node := forest[item.node];
-    op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    if (current.container == 0 && MixedCompoundIntegers(operator, current.storage, right)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(current.storage), TypeName(right.storage)));
+    }
+    op := BinaryOp(ops, operator);
     if (op < 0 || Comparison(ops, op) || !Numeric(current.storage) || current.container != 0 ||
         !SameType(current.storage, 0, current.record, right)) {
         return Fail(forest, item.node, document, "compound assignment needs number operands of its type");

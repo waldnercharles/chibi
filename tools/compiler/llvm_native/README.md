@@ -34,18 +34,20 @@ interface, or the complete allocation/memory/output/free native island.
   arithmetic. Limits per function are eight parameters, 128 slots, 64 locals,
   256 body instructions and 256 call arguments. These are plan bounds, not a
   source-language acceptance claim.
-- Integer add/subtract/multiply/negate wrap: no `nsw`/`nuw` promises. Division
-  and remainder check zero and signed minimum divided by minus one. Shifts
-  check counts against 32, including negative counts.
+- Integer operations never fail, as the language's integer contract says.
+  Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.
+  `x / 0` is 0 and `x % 0` is `x`; `MIN / -1` is `MIN` and `MIN % -1` is 0.
+  A shift count read unsigned at or past 32 gives 0, or the sign fill for
+  `>>`. The divisor and count are made safe with `select` before LLVM sees
+  them, so no result is poison.
 - An explicit positive CHECK budget is required. Each invocation of each
   function initializes a private counter; every CHECK tests remaining budget before decrementing.
   Budget N admits exactly N CHECKs, not N LLVM/machine instructions. The future
   producer/consumer boundary must agree which checked operations are present;
   this backend does not infer them from source text or facts tables.
-- Arithmetic failure and exhausted budgets branch to `llvm.trap`, even for
-  unused results. This provisional fail-stop contract does not supply VM
-  diagnostics, recovery or asynchronous cancellation. The caller still
-  supervises process timeout.
+- An exhausted budget branches to `llvm.trap`. This provisional fail-stop
+  contract does not supply VM diagnostics, recovery or asynchronous
+  cancellation. The caller still supervises process timeout.
 
 The emitter rejects unsupported instructions/types and validates table bounds,
 operand types, canonical bool constants, unique scalar definitions and control
@@ -58,7 +60,7 @@ wrapping and clamping conversions must not silently become LLVM casts.
 
 - `test/native_aot/emitter/Tests.chibi`: pure `Tests() -> int`, zero on success
   and 1-5 for a failed group. It checks scalar emission, malformed types/control
-  flow, definition dominance, failure labels and explicit budgets.
+  flow, definition dominance, total arithmetic and explicit budgets.
 - `tool language-package-compiler-chibi-scalar` (`test/language`): call
   definitions and argument order, malformed calls and cyclic or misplaced call
   graphs, each with its exact rejection, on both VMs.

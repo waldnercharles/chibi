@@ -394,7 +394,8 @@ TEST_CASE(compiler_actual_closure_produces_deterministic_artifact)
     };
     const native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };
-    for (int i = 0; i < 8; i++) {
+    /* Core strings uses the production snapshot limits and full retention checks. */
+    for (int i = 0; i < 7; i++) {
         REQUIRE(sources[i].size < 16384);
     }
     REQUIRE(compiler_fixture_prepare_packs(&fixture, sources, 8, packs, 2));

@@ -132,9 +132,9 @@ Segments :: (rows: facts.Row[], head: int) -> int[] {
     return segments;
 }
 // The operands after the segment row at `at`, as a typed evaluation stack:
-// each operand pushes one value; a comparison pops two ints and a call its
-// arguments in order. They must leave one value of type `result`, and each
-// lies within `scope`.
+// each operand pushes one value; a comparison or binary arithmetic pops two
+// ints, unary arithmetic one, and a call its arguments in order. They must
+// leave one value of type `result`, and each lies within `scope`.
 ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: int, scope: facts.Row, starts: int[],
                   size: int) -> string {
     declaration := rows[head];
@@ -162,6 +162,22 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
                 operand.value < facts.Less || operand.value > facts.NotEqual || base < 0 ||
                 stack[base] != facts.IntType || stack[base + 1] != facts.IntType) {
                 return "scalar comparison differs from its int operands";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ArithmeticRow) {
+            base := length(stack) - 2;
+            if (operand.name != "" || operand.count != 2 || operand.type != facts.IntType ||
+                operand.value < facts.Add || operand.value > facts.Xor || base < 0 ||
+                stack[base] != facts.IntType || stack[base + 1] != facts.IntType) {
+                return "scalar arithmetic differs from its int operands";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.UnaryRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || operand.type != facts.IntType ||
+                operand.value < facts.Negate || operand.value > facts.Complement || base < 0 ||
+                stack[base] != facts.IntType) {
+                return "scalar arithmetic differs from its int operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {
@@ -295,6 +311,18 @@ pub Validate :: (rows: facts.Row[]) -> string {
 Comparison :: (operator: int) -> int {
     return native.Lt + operator - facts.Less;
 }
+// The native operation of a facts arithmetic operator.
+Arithmetic :: (operator: int) -> int {
+    operations := [native.Add, native.Sub, native.Mul, native.Div, native.Mod, native.BitAnd, native.BitOr,
+                   native.BitXor];
+    return operations[operator - facts.Add];
+}
+Unary :: (operator: int) -> int {
+    if (operator == facts.Negate) {
+        return native.Neg;
+    }
+    return native.BitNot;
+}
 // Explicit backend-fixture policy: the entry is chibi_scalar() -> i32 and the
 // other functions are internal. Every function starts with one CHECK under
 // budget 1. Neither the export name nor the budget is inferred from source
@@ -354,6 +382,16 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                     base := length(stack) - 2;
                     item = {op: Comparison(operand.value), type: NativeType(facts.IntType), output: slot,
                             left: stack[base], right: stack[base + 1], target: 0, literal: 0};
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ArithmeticRow) {
+                    base := length(stack) - 2;
+                    item = {op: Arithmetic(operand.value), type: type, output: slot, left: stack[base],
+                            right: stack[base + 1], target: 0, literal: 0};
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.UnaryRow) {
+                    base := length(stack) - 1;
+                    item = {op: Unary(operand.value), type: type, output: slot, left: stack[base], right: 0,
+                            target: 0, literal: 0};
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
                     item = {op: native.Call, type: type, output: slot, left: operand.value, right: shape.arguments,

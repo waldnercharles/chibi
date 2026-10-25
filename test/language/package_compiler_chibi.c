@@ -2295,12 +2295,20 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
-    /* Red until stage one resolves an overloaded native's untyped literal
-     * argument: its call step rejects NumberStorage ("a number needs an
-     * integer type here" at 2:43) before Overload runs. Stage zero picks the
-     * integer overload (native_overload_reference_contract); the host has no
-     * native.overload, so these compare closures with stage zero's instead of
-     * running. Last, so the samples before them still run. */
+    /* A grouped or signed literal takes a floating type as a literal does,
+     * and each sign around it is watched. */
+    { .name = "grouped signed floating literals",
+      .source = "package facts\n"
+                "Scale :: (x: f64) -> f64 { return x * -(1.5) + x * (-(-2.5)); "
+                "}\n"
+                "Half :: (x: number) -> number { return x * -(+(-(-(0.5)))); "
+                "}\n",
+      .calls = { { .function = "Scale", .arguments = "[2]", .expected = "[2.0]" },
+                 { .function = "Half", .arguments = "[4]", .expected = "[-2.0]" } } },
+    /* An overloaded native's untyped literal argument takes the overload
+     * stage zero picks (native_overload_reference_contract) and that
+     * overload's type, grouped or signed. The host has no native.overload, so
+     * these compare closures with stage zero's instead of running. */
     { .name = "untyped literal overload argument", .c_string_probe = true, .source = "package facts\nRun :: () -> int { return native.overload(2); }" },
     { .name = "grouped negative overload argument", .c_string_probe = true, .source = "package facts\nRun :: () -> int { return native.overload((-(2))); }" },
     { .name = "decimal overload argument",

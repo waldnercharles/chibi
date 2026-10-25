@@ -1898,10 +1898,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     count := item.b;
     first := top - count;
+    // An overload takes an untyped literal at the type of the one it chooses.
     at_argument := first;
     while (at_argument < top) {
-        if (values[at_argument].storage == NumberStorage) {
-            return Fail(forest, values[at_argument].record, document, "a number needs an integer type here");
+        value := values[at_argument];
+        if (value.storage == NumberStorage && (item.c != 4 || SignedLiteral(forest, text, value.record) < 0)) {
+            return Fail(forest, value.record, document, "a number needs an integer type here");
         }
         at_argument += 1;
     }
@@ -1992,7 +1994,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (item.c == 4) {
         // An overloaded native: the one whose parameters take the arguments.
         callee := Field(forest, item.node, "function");
-        chosen = Overload(natives, ports, natives[item.a].name, values, first, count);
+        chosen = Overload(forest, text, natives, ports, natives[item.a].name, values, first, count);
         if (chosen < 0) {
             return Fail(forest, callee, document, "no overload of this native takes these arguments, or several do");
         }
@@ -2073,6 +2075,31 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 message := CStringMessage(forest, text, argument_node, port.name);
                 if (message != "") {
                     return Fail(forest, argument_node, document, message);
+                }
+            }
+            if (argument.storage == NumberStorage) {
+                if (port.container != 0 || (!Integer(port.storage) && !Floating(port.storage))) {
+                    return Fail(forest, argument.record, document, "a number needs an integer type here");
+                }
+                shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local,
+                                  cell: at.cell, host: at.host, call: at.call};
+                typed := Fail(forest, item.node, document, "");
+                if (Floating(port.storage)) {
+                    typed = FloatConstantStep(forest, text, document, argument, port.storage, ops, shifted, node);
+                } else {
+                    typed = ConstantStep(forest, text, document, constants, names, package, argument, port.storage,
+                                         ops, shifted, node);
+                }
+                switch typed {
+                    case .Failed(diagnostic):
+                        return Step.Failed(diagnostic);
+                    case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
+                                  typed_calls, typed_bound, typed_next, typed_popped, typed_value, typed_retain,
+                                  typed_marks):
+                        code.extend(typed_code);
+                        slots.extend(typed_slots);
+                        argument = typed_value;
+                        arguments[index] = argument;
                 }
             }
             expected = Typed(-1, port.storage, port.container, -1);
@@ -2526,9 +2553,10 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    bits: u64 = 0;
-    if (!ParsedLiteral(forest, text, literal.record)) {
+    spelled := SignedLiteral(forest, text, literal.record);
+    if (spelled < 0) {
         // An untyped constant expression folds at the type its use gives it.
+        bits: u64 = 0;
         switch FoldConstant(forest, text, document, constants, names, package, literal.record, storage) {
             case .Failed(diagnostic):
                 return Step.Failed(diagnostic);
@@ -2537,25 +2565,50 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, c
             case .Folded(folded):
                 bits = folded;
         }
-    } else {
-        switch ParseNumber(forest, text, literal.record) {
-            case .Invalid:
-                return Fail(forest, literal.record, document, "only integer literals of 64 bits are supported");
-            case .Number(negative, magnitude):
-                if (!Fits(negative, magnitude, storage)) {
-                    return Fail(forest, literal.record, document,
-                                format_text("Numeric literal is outside the range of {}", TypeName(storage)));
-                }
-                bits = Bits(negative, magnitude);
-        }
+        slots.append(ValueLocal(storage));
+        code = extend([ConstantCode(ops, storage, bits, at.slot, node)],
+                      LiteralWatch(forest, ops, at.slot, storage, literal.record));
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                            Typed(at.slot, storage, 0, -1), NoValue(), marks);
     }
-    slot: Slot = {storage: storage, kind: ValueKind};
-    slots.append(slot);
-    // The literal is watched once its use gives it a type.
-    code = extend([ConstantCode(ops, storage, bits, at.slot, node)],
-                  LiteralWatch(forest, ops, at.slot, storage, literal.record));
-    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
-                        NoValue(), marks);
+    negative := false;
+    magnitude: u64 = 0;
+    switch ParseNumber(forest, text, spelled) {
+        case .Invalid:
+            if (Fractional(forest, text, spelled)) {
+                return Fail(forest, spelled, document,
+                            format_text("Numeric literal has a fraction, which {} cannot hold", TypeName(storage)));
+            }
+            return Fail(forest, spelled, document, "only integer literals of 64 bits are supported");
+        case .Number(parsed_negative, parsed_magnitude):
+            negative = parsed_negative;
+            magnitude = parsed_magnitude;
+    }
+    if (!Fits(negative, magnitude, storage)) {
+        return Fail(forest, spelled, document, format_text("Numeric literal is outside the range of {}", TypeName(storage)));
+    }
+    // The literal is watched once its use gives it a type, and so is each
+    // sign around it, as stage zero lowers a grouped one.
+    slots.append(ValueLocal(storage));
+    code = extend([ConstantCode(ops, storage, Bits(negative, magnitude), at.slot, node)],
+                  LiteralWatch(forest, ops, at.slot, storage, spelled));
+    signs := Signs(forest, text, literal.record);
+    level := length(signs) - 1;
+    while (level >= 0) {
+        if (Text(forest, text, Field(forest, signs[level], "operator")) == "-") {
+            negative = !negative && magnitude != 0;
+            if (!Fits(negative, magnitude, storage)) {
+                return Fail(forest, signs[level], document,
+                            format_text("Constant value is outside the range of {}", TypeName(storage)));
+            }
+            slots.append(ValueLocal(storage));
+            code.append(ConstantCode(ops, storage, Bits(negative, magnitude), at.slot + length(slots) - 1, node));
+        }
+        code.extend(LiteralWatch(forest, ops, at.slot + length(slots) - 1, storage, signs[level]));
+        level -= 1;
+    }
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                        Typed(at.slot + length(slots) - 1, storage, 0, -1), NoValue(), marks);
 }
 
 // Whether `node` is a literal ParseNumber reads: a number, or `-` on one.
@@ -2564,6 +2617,49 @@ ParsedLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> b
         return Is(forest, Field(forest, node, "operand"), "number");
     }
     return Is(forest, node, "number");
+}
+// The ParsedLiteral inside the parentheses and signs around `node`, as stage
+// zero types a grouped or signed literal; -1 for any other expression.
+SignedLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    at := Unparenthesized(forest, node);
+    while (!ParsedLiteral(forest, text, at)) {
+        if (!Is(forest, at, "unary_expression")) {
+            return -1;
+        }
+        operator := Text(forest, text, Field(forest, at, "operator"));
+        if (operator != "-" && operator != "+") {
+            return -1;
+        }
+        at = Unparenthesized(forest, Field(forest, at, "operand"));
+    }
+    return at;
+}
+// The signs around the SignedLiteral of `node`, outermost first.
+Signs :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int[] {
+    signs: int[] = [];
+    at := Unparenthesized(forest, node);
+    while (!ParsedLiteral(forest, text, at)) {
+        signs.append(at);
+        at = Unparenthesized(forest, Field(forest, at, "operand"));
+    }
+    return signs;
+}
+// Whether the decimal literal `node` has a fraction as a double, which no
+// integer type holds.
+Fractional :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    if (InferredNumberStorage(forest, text, node) != FloatStorage) {
+        return false;
+    }
+    switch NumberBits(forest, text, node) {
+        case .OutOfRange:
+            return false;
+        case .Finite(bits, float_fits, float_bits):
+            exponent := int((bits >> 52) & 0x7FF) - 1023;
+            if ((bits & 0x7FFFFFFFFFFFFFFF) == 0 || exponent >= 52) {
+                return false;
+            }
+            return exponent < 0 || (bits & ((u64(1) << u32(52 - exponent)) - 1)) != 0;
+    }
 }
 // Whether `node` is a constant integer expression that folds to one
 // constant: an operator or conversion over constants, but not a literal, a
@@ -3324,16 +3420,17 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    if (!ParsedLiteral(forest, text, literal.record)) {
+    spelled := SignedLiteral(forest, text, literal.record);
+    if (spelled < 0) {
         return Fail(forest, literal.record, document, "an untyped constant expression needs an integer type here");
     }
     bits: u64 = 0;
-    switch NumberBits(forest, text, literal.record) {
+    switch NumberBits(forest, text, spelled) {
         case .OutOfRange:
-            return Fail(forest, literal.record, document, "Numeric literal is outside the range of its type");
+            return Fail(forest, spelled, document, "Numeric literal is outside the range of its type");
         case .Finite(double_bits, float_fits, float_bits):
             if (storage == FloatStorage && !float_fits) {
-                return Fail(forest, literal.record, document, "Numeric literal is outside the range of number");
+                return Fail(forest, spelled, document, "Numeric literal is outside the range of number");
             }
             bits = double_bits;
             if (storage == FloatStorage) {
@@ -3341,10 +3438,26 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
             }
     }
     code := extend([ConstantCode(ops, storage, bits, at.slot, node)],
-                   LiteralWatch(forest, ops, at.slot, storage, literal.record));
+                   LiteralWatch(forest, ops, at.slot, storage, spelled));
     slots: Slot[] = [ValueLocal(storage)];
-    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, Typed(at.slot, storage, 0, -1),
-                        NoValue(), marks);
+    // Each sign around a grouped literal is an operation stage zero watches.
+    sign: u64 = 0x8000000000000000;
+    if (storage == FloatStorage) {
+        sign = 0x80000000;
+    }
+    signs := Signs(forest, text, literal.record);
+    level := length(signs) - 1;
+    while (level >= 0) {
+        if (Text(forest, text, Field(forest, signs[level], "operator")) == "-") {
+            bits = bits ^ sign;
+            slots.append(ValueLocal(storage));
+            code.append(ConstantCode(ops, storage, bits, at.slot + length(slots) - 1, node));
+        }
+        code.extend(LiteralWatch(forest, ops, at.slot + length(slots) - 1, storage, signs[level]));
+        level -= 1;
+    }
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                        Typed(at.slot + length(slots) - 1, storage, 0, -1), NoValue(), marks);
 }
 // Whether a floating value of type `from` widens to `to` without loss.
 FloatWidens :: (from: int, to: int) -> bool {
@@ -3797,30 +3910,51 @@ Overloaded :: (natives: Native[], name: string) -> bool {
     return count > 1;
 }
 // The one native named `name` whose parameters each take the argument of
-// `values[first, first + count)` in its position; -1 for none or several.
-Overload :: (natives: Native[], ports: Port[], name: string, values: Value[], first: int, count: int) -> int {
+// `values[first, first + count)` in its position, ranked as stage zero ranks
+// them; -1 for none or several of the least cost. An untyped literal takes
+// any parameter but text.
+Overload :: (forest: snapshot.SnapshotNode[], text: string, natives: Native[], ports: Port[], name: string,
+             values: Value[], first: int, count: int) -> int {
     found: int = -1;
+    least: int = -1;
     index: int = 0;
     while (index < length(natives)) {
         candidate := natives[index];
         takes := candidate.name == name && candidate.parameters == count;
+        cost: int = 0;
         at: int = 0;
         while (takes && at < count) {
             port := ports[candidate.first + at];
             value := values[first + at];
-            takes = port.storage != UnsupportedPort &&
-                    (port.storage <= 0 || (port.storage == value.storage && port.container == value.container));
+            if (value.storage == NumberStorage) {
+                takes = port.container == 0 && port.storage != TextStorage;
+                cost += LiteralCost(forest, text, value.record, port.storage);
+            } else {
+                takes = port.storage != UnsupportedPort &&
+                        (port.storage <= 0 || (port.storage == value.storage && port.container == value.container));
+            }
             at += 1;
         }
-        if (takes && found >= 0) {
-            return -1;
+        if (takes && cost == least) {
+            found = -1;
         }
-        if (takes) {
+        if (takes && (least < 0 || cost < least)) {
             found = index;
+            least = cost;
         }
         index += 1;
     }
     return found;
+}
+// What the untyped literal `node` costs an overload whose parameter has type
+// `storage`, as stage zero ranks them: nothing at its spelled type, at number
+// or at a type that is no number, and one at another number.
+LiteralCost :: (forest: snapshot.SnapshotNode[], text: string, node: int, storage: int) -> int {
+    if ((!Integer(storage) && !Floating(storage)) || storage == FloatStorage ||
+        storage == InferredNumberStorage(forest, text, SignedLiteral(forest, text, node))) {
+        return 0;
+    }
+    return 1;
 }
 // The record make of natives[native], -1 for none.
 FindMake :: (makes: NativeMake[], native: int) -> int {

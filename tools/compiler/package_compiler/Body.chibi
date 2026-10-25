@@ -2295,9 +2295,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    ZeroCompoundDivisor(forest, text, document, constants, names, callable.package, item.node)) {
             return Body.Failed(Diagnose(forest, forest[item.node].parent, document, "Constant division by zero"));
         } else if (item.phase == 0 && kind != "parenthesized_expression" &&
+                   SignedLiteral(forest, text, item.node) < 0 &&
                    Folds(forest, text, constants, names, callable.package, item.node, item.storage)) {
             // A parenthesized fold folds inside its parentheses, where its
-            // point and watch are.
+            // point and watch are. Stage zero lowers each sign of a grouped
+            // literal, with its point and watch.
             step = FoldStep(forest, text, document, constants, names, callable.package, item, ops, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {

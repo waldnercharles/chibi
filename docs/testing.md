@@ -2128,7 +2128,7 @@ Nine added tooling cases cover these finite binary operations:
   are compared. Exact selected-backend entry counts are checked without fallback.
 - Two direct calls return 256 bytes against a 255-byte limit and fail atomically;
   the 256-byte successes above cover the exact boundary. Two invalid API limits
-  (zero and `COMPILER_HOST_MAX_OUTPUT_BYTES + 1`) reject before execution.
+  (zero and `COMPILER_HOST_MAX_ARTIFACT_BYTES + 1`) reject before execution.
 - Two wrong return signatures reject before malformed JSON parsing; malformed
   JSON and wrong argument count add two more pre-execution rejections.
 - The reference-argument fixture adds one bytes-API rejection. The new result

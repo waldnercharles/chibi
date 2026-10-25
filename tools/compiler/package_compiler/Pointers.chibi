@@ -524,7 +524,8 @@ ManagedCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document:
                                                           right, 2, item, ops, target, SlotsPast(at, 2)));
 }
 // `target op= right` writes `current op right` through the pointer. Stage zero
-// reads `current` before it evaluates `right`. Both operands have one type.
+// reads `current` before it evaluates `right`. Mixed integers reject; a
+// narrower operand widens to the target's type, and narrowing rejects.
 PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                         pointer: Value, current: Value, right: Value, popped: int, item: Work, ops: Ops,
                         target: Target, at: Bases) -> Step {
@@ -535,20 +536,31 @@ PointerCompoundStep :: (forest: snapshot.SnapshotNode[], text: string, document:
                     format_text("Mismatched integer types {} and {}; convert one operand",
                                 TypeName(current.storage), TypeName(right.storage)));
     }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    operand := right;
+    // A float or narrower operand widens as it does for an ordinary local.
+    if (current.container == 0 && right.container == 0 &&
+        (Widens(right.storage, current.storage) || FloatWidens(right.storage, current.storage))) {
+        code.extend(NumberCode(ops, right.storage, current.storage, right.slot, at.slot, node));
+        slots.append(ValueLocal(current.storage));
+        operand = Typed(at.slot, current.storage, 0, -1);
+    }
     op := BinaryOp(ops, operator);
     if (op < 0 || Comparison(ops, op) || !Numeric(current.storage) || current.container != 0 ||
-        !SameType(current.storage, 0, current.record, right)) {
+        !SameType(current.storage, 0, current.record, operand)) {
         return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
     }
-    code: Code[] = [];
     if (ops.debug) {
         code.append(WatchCode(ops, current.slot, current.storage, current.container, current.record, 0, true,
                               forest[StatementTarget(forest, item.node)], target));
     }
-    code.append(Instruction(op, current.storage, at.slot, current.slot, right.slot, -1, node));
-    return PointerPrefix(code, [ValueLocal(current.storage)],
-                         PointerWriteStep(types, pointer, Typed(at.slot, current.storage, 0, current.record),
-                                          popped, ops, target, SlotsPast(at, 1), node));
+    result := at.slot + length(slots);
+    code.append(Instruction(op, current.storage, result, current.slot, operand.slot, -1, node));
+    slots.append(ValueLocal(current.storage));
+    return PointerPrefix(code, slots,
+                         PointerWriteStep(types, pointer, Typed(result, current.storage, 0, current.record),
+                                          popped, ops, target, SlotsPast(at, length(slots)), node));
 }
 PointerLvaluePhase: int : 36;
 PointerAssignPhase: int : 37;

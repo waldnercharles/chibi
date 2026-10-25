@@ -31,6 +31,10 @@ enum
     ERROR_CAP = 4096,
     BINARY_CAP = 32 * 1024
 };
+/* Asset transports, caches, seeds, bootstrap closures and build-host compiles
+ * keep the 16 MiB default; only the CLI's file outputs pass the artifact bound. */
+_Static_assert(COMPILER_HOST_MAX_OUTPUT_BYTES == 16u * 1024u * 1024u, "default byte result bound");
+_Static_assert(COMPILER_HOST_MAX_ARTIFACT_BYTES == 32u * 1024u * 1024u, "compiled closure bound");
 static const char *producer_path, *host_path;
 static char directory[128], entry[32];
 static bool directory_created;
@@ -441,7 +445,7 @@ TEST_CASE(binary_result_limit_is_atomic)
         ));
         REQUIRE(byte_result.flow_status == FLOW_OK && byte_failure(b, true));
         if (!b) {
-            const size_t limits[] = { 0, COMPILER_HOST_MAX_OUTPUT_BYTES + 1u };
+            const size_t limits[] = { 0, COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
             for (int i = 0; i < 2; i++) {
                 REQUIRE(
                     !compiler_host_invoke_bytes(loaded, binary_ids[0], "[", 1, 10000, limits[i], &byte_result)

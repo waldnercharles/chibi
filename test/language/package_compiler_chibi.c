@@ -8309,7 +8309,8 @@ TEST_CASE(package_compiler_preserves_receiver_before_writing_item)
         .name = "ordered Append receiver before WRITE item",
         .source = "package facts\n"
                   "Receiver :: () -> int[] { xs: int[] = [1]; "
-                  "xs = append(Array: xs, Item: WriteReceiver(xs)); return xs; "
+                  "xs = append(Array: xs, Item: WriteReceiver(ref xs)); return "
+                  "xs; "
                   "}\n"
                   "WriteReceiver :: (values: ref int[]) -> int { "
                   "values = append(values, int(9)); return 7; }",

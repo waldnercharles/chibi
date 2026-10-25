@@ -44,6 +44,7 @@ static const script_catalog_parameter step = { .name = "dt",
 static const script_catalog_parameter duration = { .name = "Duration",
                                                    .type = { .storage = PIN_F64 } };
 static const char *const completed[] = { "Completed" };
+static const char *const delay_entries[] = { "In" };
 static const script_catalog_parameter assertion_parameters[] = {
     { .name = "condition", .type = { .storage = PIN_BOOL } },
     { .name = "message", .type = { .storage = PIN_STR } },
@@ -59,6 +60,9 @@ static const script_catalog_capability capabilities[] = {
     { .id = 33,
       .name = "Delay",
       .kind = SCRIPT_CAPABILITY_ACTION,
+      .operation = SCRIPT_OPERATION_DELAY,
+      .entries = delay_entries,
+      .entry_count = 1,
       .parameters = &duration,
       .parameter_count = 1,
       .outcomes = completed,

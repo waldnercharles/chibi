@@ -529,6 +529,26 @@ over an explicit stack.
 
 Suggestion: a deeper budget, counted in frame bytes rather than calls, or
 guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
+Native code has no limit (decision D4): it recurses as deep as the stack
+allows, as Rust and Odin do.
+
+## Stage one writes no call depth limit
+
+Compiler. Stage zero gives every function the 64-call depth limit above, but
+stage one writes 0, no limit, in each prepared function's header
+(`Compile.chibi` and `bounded_compiler/Prepare.chibi`). On the VMs a function
+of stage one's output that only calls itself grows memory until the process
+is killed; the instruction budget does not stop it. Native code has no limit
+either (decision D4), but it probes its stack, so the host reports the
+overflow by name and aborts.
+
+- Odin and C have no limit and overflow the stack; Rust probes its stack and
+  aborts with "has overflowed its stack"; Python stops at 1,000 frames with an
+  exception.
+
+Suggestion: write the same limit from stage one. The compiler package itself
+runs on stage one's output, so check first that it stays within the limit,
+or raise the limit as the entry above suggests.
 
 ## format_text drops arguments past twelve
 

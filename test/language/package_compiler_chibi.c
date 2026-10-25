@@ -11,6 +11,7 @@
 #include "execution/status.h"
 #include "float_conversion_cases.h"
 #include "language/lower.h"
+#include "language/semantic.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
@@ -46,6 +47,7 @@
 #include <string.h>
 #if defined(__linux__) && defined(__x86_64__)
 #include "host/process.h"
+#include "host/stack_overflow.h"
 
 #include <dlfcn.h>
 #include <limits.h>
@@ -6225,11 +6227,11 @@ static const malformed_guard MALFORMED_GUARDS[] = {
         EDIT(GUARD_FINAL, "type", SCALAR_INT),
         EDIT(GUARD_FINAL, "value", 1) },
       "scalar function can end without returning" },
-    /* Id calls Main, so the arm's call closes a cycle. */
+    /* Id calls Main, so the arm's call recurses, under another name. */
     { { EDIT(GUARD_ID_READ, "kind", SCALAR_CALL_ROW),
         EDIT(GUARD_ID_READ, "value", 0),
-        { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
-      "scalar module calls are recursive" },
+        { .row = GUARD_ID_READ, .field = "name", .text = "Other", .from = -1 } },
+      "scalar call differs from its callee's signature" },
 };
 static const char LOGIC[] = "scalar logic differs from its bool operands",
                   READ[] = "scalar read differs from its variable";
@@ -6901,8 +6903,8 @@ static bool native_calls_emit_definitions(int b)
     REQUIRE(native_emit(b, &m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     pin_string text = pin_text(value->values[0]);
-    REQUIRE(contains(text, "define i32 @chibi_scalar() {"));
-    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) {"));
+    REQUIRE(contains(text, "define i32 @chibi_scalar() #0 {"));
+    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) #0 {"));
     REQUIRE(contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2)"));
     REQUIRE(
         contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2")
@@ -6970,9 +6972,31 @@ static bool native_rejects_malformed_calls(int b)
     REQUIRE(native_rejects(b, &m, "native call argument is not defined on every path"));
     return true;
 }
-/* Direct and mutual recursion are rejected, as is a function range that
- * leaves a code row unowned. */
-static bool native_rejects_cycles(int b)
+static int occurrences(pin_string haystack, const char *needle)
+{
+    char *text = xmalloc(haystack.length + 1);
+    memcpy(text, haystack.bytes, haystack.length);
+    text[haystack.length] = 0;
+    int count = 0;
+    for (const char *at = strstr(text, needle); at; at = strstr(at + 1, needle)) {
+        count++;
+    }
+    free(text);
+    return count;
+}
+/* The IR native_emit gives for m. */
+static bool native_text(int b, const native_module *m, pin_string *ir)
+{
+    const pin_union *value;
+    REQUIRE(native_emit(b, m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    *ir = pin_text(value->values[0]);
+    return true;
+}
+/* Direct and mutual recursion call their callees' symbols, with no depth
+ * counter, and every function probes its stack. A function range that leaves
+ * a code row unowned is rejected. */
+static bool native_recursion_probes_the_stack(int b)
 {
     static const native_code recursive[] = {
         { .op = NATIVE_CHECK },
@@ -6988,13 +7012,24 @@ static bool native_rejects_cycles(int b)
     static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
                                            { NATIVE_INT, 0, 0, 1, 1, 4, 4, 0, 0 } };
     static const int slots[] = { NATIVE_INT, NATIVE_INT };
+    static const char
+        probes[] = "\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n";
     native_module m = { one, 1, NULL, 0, slots, 1, recursive, 4, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(occurrences(ir, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
+    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
+    REQUIRE(occurrences(ir, probes) == 1 && !occurrences(ir, "depth"));
+    /* Function 0 calls 1, which calls 0. */
     native_code mutual[8];
     memcpy(mutual, recursive, sizeof mutual);
     mutual[1].left = 1;
     m = (native_module){ two, 2, NULL, 0, slots, 2, mutual, 8, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(occurrences(ir, "define internal i32 @chibi_scalar.1() #0 {") == 1);
+    REQUIRE(occurrences(ir, "call i32 @chibi_scalar.1()") == 1);
+    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
+    REQUIRE(occurrences(ir, " #0 {") == 2 && occurrences(ir, probes) == 1);
     static const native_function gap[] = { { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
                                            { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
     m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
@@ -7057,18 +7092,6 @@ static native_module float_module(const native_code *code)
     return (native_module){
         FLOAT_FUNCTIONS, 1, NULL, 0, FLOAT_SLOTS, 8, code, FLOAT_CODE, NULL, 0
     };
-}
-static int occurrences(pin_string haystack, const char *needle)
-{
-    char *text = xmalloc(haystack.length + 1);
-    memcpy(text, haystack.bytes, haystack.length);
-    text[haystack.length] = 0;
-    int count = 0;
-    for (const char *at = strstr(text, needle); at; at = strstr(at + 1, needle)) {
-        count++;
-    }
-    free(text);
-    return count;
 }
 /* Constants are their exact encodings, != is unordered, a float widens and a
  * double narrows, and each saturating intrinsic is declared once. */
@@ -7159,7 +7182,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_rejects_malformed_calls(b));
-        REQUIRE(native_rejects_cycles(b));
+        REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_cycles_run_unchecked(b));
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));
@@ -7227,7 +7250,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 43
+    SCALAR_ACCEPTED_CASES = 46
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -7258,6 +7281,12 @@ typedef struct scalar_probe
     int64_t expected;
 } scalar_probe;
 static const scalar_probe SCALAR_PROBES[] = {
+    { "recursion", "Sum", 1, { 0 }, 0 },
+    { "recursion", "Sum", 1, { 10 }, 55 },
+    { "mutual_recursion", "A", 1, { 4 }, 1 },
+    { "mutual_recursion", "B", 1, { 4 }, 2 },
+    { "recursive_guard", "Down", 1, { -1 }, -1 },
+    { "recursive_guard", "Down", 1, { 7 }, 0 },
     { "min", "Min", 2, { INT32_MIN, INT32_MAX }, INT32_MIN },
     { "min", "Min", 2, { INT32_MAX, INT32_MIN }, INT32_MIN },
     { "min", "Min", 2, { -1, -1 }, -1 },
@@ -7437,6 +7466,8 @@ enum
 {
     NATIVE_OUTPUT = 1 << 16
 };
+/* The standard error of the last native run. */
+static char native_errors[NATIVE_OUTPUT];
 static const char *native_outcome(chibi_process_capture_result result)
 {
     switch (result.error) {
@@ -7458,9 +7489,8 @@ static chibi_process_capture_result run_native(
     char out[NATIVE_OUTPUT]
 )
 {
-    char error[NATIVE_OUTPUT];
     chibi_process_output output = { out, NATIVE_OUTPUT, 0, false },
-                         errors = { error, sizeof error, 0, false };
+                         errors = { native_errors, sizeof native_errors, 0, false };
     chibi_process_capture_result result = chibi_process_capture(
         argv[0],
         argv,
@@ -7479,7 +7509,7 @@ static chibi_process_capture_result run_native(
             native_outcome(result),
             result.status,
             out,
-            error
+            native_errors
         );
     }
     return result;
@@ -8100,6 +8130,7 @@ static chibi_process_capture_result library_calls(
  * no arguments, and prints each value on its own line as it returns. */
 static int library_child(const char *library, int count, char **specs)
 {
+    stack_overflow_init();
     void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
     if (!opened) {
         fprintf(stderr, "native scalar load: %s\n", dlerror());
@@ -10085,6 +10116,94 @@ static bool widest_loops_agree(const char *directory)
     REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));
     return true;
 }
+/* `function`(`argument`) of `source` fails on both VMs with `status`. */
+static bool vms_fail(const char *source, const char *function, int64_t argument, int status)
+{
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(0, (pin_string){ source, strlen(source) }, &closure, &length));
+    char id[128], arguments[32];
+    snprintf(id, sizeof id, "project:scalar:1:%s:callable", function);
+    int n = snprintf(arguments, sizeof arguments, "[%" PRId64 "]", argument);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(vm_load(closure, length, backend));
+        compiler_host_invoke(
+            host,
+            script_catalog_id("package-symbol", id),
+            arguments,
+            (size_t)n,
+            TARGET_BUDGET,
+            &result
+        );
+        int given = result.flow_status;
+        free(result.json);
+        result = (compiler_host_result){ 0 };
+        compiler_host_free(host);
+        host = NULL;
+        REQUIRE(given == status);
+    }
+    free(closure);
+    arena_free(&detached);
+    return true;
+}
+/* How a native call of a function taking one int ends, at O0 and O2, within
+ * `seconds`: with `value`, when `error` is CHIBI_PROCESS_OK and `signal` 0;
+ * otherwise with `error`, and for CHIBI_PROCESS_OK with `signal`'s status
+ * and `report` in its standard error. */
+typedef struct
+{
+    const char *function;
+    int64_t argument, value;
+    chibi_process_error error;
+    int signal;
+    const char *report;
+    double seconds;
+} native_ending;
+/* Each of `calls`, of functions of `source`, ends natively as it says. */
+static bool natively_end(
+    const char *directory,
+    const char *name,
+    const char *source,
+    const native_ending *calls,
+    int count
+)
+{
+    pin_value rows;
+    REQUIRE(collected_rows(0, name, text(source), &rows));
+    char *ir, *adapter = xmalloc(1);
+    *adapter = 0;
+    REQUIRE(emitted_ir(0, &rows, &ir));
+    REQUIRE(ir);
+    for (int i = 0; i < count; i++) {
+        char probe[128];
+        snprintf(probe, sizeof probe, "@probe_%s(", calls[i].function);
+        REQUIRE(strstr(adapter, probe) || append_adapter(&rows, calls[i].function, &adapter));
+    }
+    for (int level = 0; level < 2; level++) {
+        char library[PATH_MAX];
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        for (int i = 0; i < count; i++) {
+            const native_ending *expected = &calls[i];
+            scalar_call call = {
+                .probe = { name, expected->function, 1, { expected->argument }, 0 }
+            };
+            snprintf(call.symbol, sizeof call.symbol, "probe_%s", expected->function);
+            chibi_process_capture_result
+                ended = library_calls(directory, library, &call, 1, 2, expected->seconds);
+            REQUIRE(ended.error == expected->error);
+            if (expected->error != CHIBI_PROCESS_OK) {
+                continue;
+            }
+            REQUIRE(ended.status == -expected->signal);
+            REQUIRE(expected->signal || call.values[2] == expected->value);
+            REQUIRE(!expected->report || strstr(native_errors, expected->report));
+        }
+    }
+    free(adapter);
+    free(ir);
+    arena_free(&detached);
+    return true;
+}
 /* Spin never returns. Both VMs fail its call at their instruction budget.
  * Natively its loop runs unchecked, as Odin's does, and LLVM keeps it at O0
  * and O2, so the call runs until its deadline stops it. */
@@ -10095,44 +10214,154 @@ static const char SPIN_SOURCE[] = "package scalar\n"
                                   "}\n";
 static bool endless_loops_hang(const char *directory)
 {
-    pin_value rows;
-    REQUIRE(collected_rows(0, "spin", text(SPIN_SOURCE), &rows));
-    char *ir, *adapter = xmalloc(1);
-    *adapter = 0;
-    REQUIRE(emitted_ir(0, &rows, &ir));
-    REQUIRE(ir && append_adapter(&rows, "Spin", &adapter));
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(vm_closure(0, (pin_string){ SPIN_SOURCE, strlen(SPIN_SOURCE) }, &closure, &length));
-    for (int backend = 0; backend < 2; backend++) {
-        REQUIRE(vm_load(closure, length, backend));
-        compiler_host_invoke(
-            host,
-            script_catalog_id("package-symbol", "project:scalar:1:Spin:callable"),
-            "[0]",
-            3,
-            TARGET_BUDGET,
-            &result
-        );
-        int status = result.flow_status;
-        free(result.json);
-        result = (compiler_host_result){ 0 };
-        compiler_host_free(host);
-        host = NULL;
-        REQUIRE(status == FLOW_ERR_STEP_BUDGET);
+    static const native_ending spin = { .function = "Spin",
+                                        .error = CHIBI_PROCESS_TIMEOUT,
+                                        .seconds = SPIN_SECONDS };
+    REQUIRE(vms_fail(SPIN_SOURCE, "Spin", 0, FLOW_ERR_STEP_BUDGET));
+    REQUIRE(natively_end(directory, "spin", SPIN_SOURCE, &spin, 1));
+    return true;
+}
+/* Direct, mutual and two-way recursion, recursion through a loop, and a
+ * function that only ever calls itself. Forever's subtraction keeps its call
+ * from being a tail call, which O2 would turn into an endless loop. */
+static const char RECURSION_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Sum(10) + Even(7); }\n"
+         "Sum :: (n: int) -> int {\n"
+         "    if (n > 0) { return n + Sum(n - 1); }\n"
+         "    return 0;\n"
+         "}\n"
+         "Fib :: (n: int) -> int {\n"
+         "    if (n < 2) { return n; }\n"
+         "    return Fib(n - 1) + Fib(n - 2);\n"
+         "}\n"
+         "Even :: (n: int) -> int {\n"
+         "    if (n == 0) { return 1; }\n"
+         "    return Odd(n - 1);\n"
+         "}\n"
+         "Odd :: (n: int) -> int {\n"
+         "    if (n == 0) { return 0; }\n"
+         "    return Even(n - 1);\n"
+         "}\n"
+         "Gcd :: (a: int, b: int) -> int {\n"
+         "    if (b == 0) { return a; }\n"
+         "    return Gcd(b, a % b);\n"
+         "}\n"
+         "Nodes :: (n: int) -> int {\n"
+         "    c := 1;\n"
+         "    for i in 0..<n { c += Nodes(i); }\n"
+         "    return c;\n"
+         "}\n"
+         "Forever :: (n: int) -> int { return Forever(n + 1) - n; }\n";
+/* What RECURSION_SOURCE's functions give, as C computes them with the
+ * integer contract. */
+static int64_t recursion_int(const char *function, int64_t a, int64_t b)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b;
+    if (!strcmp(function, "Sum")) {
+        return x > 0 ? total(7, x, (int32_t)recursion_int("Sum", x - 1, 0)) : 0;
     }
-    free(closure);
-    for (int level = 0; level < 2; level++) {
-        char library[PATH_MAX];
-        REQUIRE(native_library(directory, "spin", ir, adapter, level * 2, library));
-        scalar_call call = { .probe = { "spin", "Spin", 1, { 0 }, 0 },
-                             .symbol = "probe_Spin" };
-        chibi_process_capture_result spun = library_calls(directory, library, &call, 1, 2, SPIN_SECONDS);
-        REQUIRE(spun.error == CHIBI_PROCESS_TIMEOUT);
+    if (!strcmp(function, "Fib")) {
+        return x < 2 ? x
+                     : total(
+                           7,
+                           (int32_t)recursion_int("Fib", x - 1, 0),
+                           (int32_t)recursion_int("Fib", x - 2, 0)
+                       );
     }
-    free(adapter);
-    free(ir);
-    arena_free(&detached);
+    if (!strcmp(function, "Even") || !strcmp(function, "Odd")) {
+        bool even = !strcmp(function, "Even");
+        return x == 0 ? even : recursion_int(even ? "Odd" : "Even", x - 1, 0);
+    }
+    if (!strcmp(function, "Nodes")) {
+        return x > 0 ? INT64_C(1) << x : 1;
+    }
+    assert(!strcmp(function, "Gcd"));
+    return y == 0 ? x : recursion_int("Gcd", y, total(11, x, y));
+}
+/* The entry, then each function at the depths every backend runs: Sum, Even
+ * and Odd at each depth below stage zero's call depth limit, Fib and Nodes on
+ * their first 12, within the VMs' instruction budget, and Gcd on pairs of
+ * zero, signs, the ends of int and consecutive Fibonacci numbers, its
+ * deepest. */
+static int recursion_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const int64_t PAIRS[][2] = { { 0, 0 },
+                                        { 12, 0 },
+                                        { 0, 12 },
+                                        { 12, 18 },
+                                        { -12, 18 },
+                                        { 12, -18 },
+                                        { INT32_MIN, -1 },
+                                        { INT32_MAX, INT32_MIN },
+                                        { 1836311903, 1134903170 } };
+    int count = 0;
+    calls[count++] = (scalar_call){ .probe = { "recursion",
+                                               "Main",
+                                               0,
+                                               { 0 },
+                                               recursion_int("Sum", 10, 0) +
+                                                   recursion_int("Even", 7, 0) } };
+    static const char *const DEEP[] = { "Sum", "Even", "Odd" };
+    for (int f = 0; f < 3; f++) {
+        /* Even and Odd recurse without end below 0, so only Sum takes -1. */
+        for (int n = f ? 0 : -1; n < SCRIPT_CALL_DEPTH_LIMIT; n++) {
+            calls[count++] = (scalar_call){
+                .probe = { "recursion", DEEP[f], 1, { n }, recursion_int(DEEP[f], n, 0) }
+            };
+        }
+    }
+    static const char *const WIDE[] = { "Fib", "Nodes" };
+    for (int f = 0; f < 2; f++) {
+        for (int n = 0; n < 12; n++) {
+            calls[count++] = (scalar_call){
+                .probe = { "recursion", WIDE[f], 1, { n }, recursion_int(WIDE[f], n, 0) }
+            };
+        }
+    }
+    for (int i = 0; i < (int)(sizeof PAIRS / sizeof *PAIRS); i++) {
+        calls[count++] = (scalar_call){
+            .probe = { "recursion",
+                       "Gcd",
+                       2,
+                       { PAIRS[i][0], PAIRS[i][1] },
+                       recursion_int("Gcd", PAIRS[i][0], PAIRS[i][1]) }
+        };
+    }
+    assert(count <= MAX_WIDTH_CALLS);
+    return count;
+}
+/* Recursion runs natively as C and both VMs give it. */
+static bool recursion_agrees(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = recursion_calls(calls);
+    bool agreed = width_module_agrees(directory, 1, "recursion", RECURSION_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+/* Natively recursion is unchecked, as Rust's is: Sum, Even and Odd run 10,000
+ * calls deep, far past any VM's limit, and Forever's endless recursion
+ * faults in the stack's guard page, which the host reports as a stack
+ * overflow before it aborts, at O0 and O2, well before the deadline. */
+static bool recursion_overflows_by_name(const char *directory)
+{
+    enum
+    {
+        DEEP = 10000
+    };
+    /* Sum(DEEP) wraps as the sum of its terms does. */
+    int32_t sum = (int32_t)(uint32_t)((uint64_t)DEEP * (DEEP + 1) / 2);
+    const native_ending calls[] = {
+        { "Sum", DEEP, sum, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
+        { "Even", DEEP, 1, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
+        { "Odd", DEEP, 0, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
+        { "Forever", 0, 0, CHIBI_PROCESS_OK, SIGABRT, "stack overflow", CALLS_SECONDS },
+    };
+    REQUIRE(
+        natively_end(directory, "recursion", RECURSION_SOURCE, calls, (int)(sizeof calls / sizeof *calls))
+    );
     return true;
 }
 
@@ -10510,7 +10739,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
              floats_agree(directory) && control_agrees(directory) &&
              statement_bounds_agree() && loops_agree(directory) &&
              widest_loops_agree(directory) && switches_agree(directory) &&
-             endless_loops_hang(directory);
+             endless_loops_hang(directory) && recursion_agrees(directory) &&
+             recursion_overflows_by_name(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

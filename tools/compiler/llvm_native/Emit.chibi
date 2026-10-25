@@ -360,37 +360,6 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     }
     return Result.Emitted("");
 }
-// Whether some function reaches itself through calls: the transitive closure
-// of the call relation, which the module bounds to MaxFunctions squared.
-Cyclic :: (functions: Function[], code: Instruction[]) -> bool {
-    count := length(functions);
-    reach := resize([false], count * count);
-    for (caller in 0..<count) {
-        for (pc in 0..<functions[caller].code) {
-            item := code[functions[caller].first_code + pc];
-            if (item.op == Call) {
-                reach[caller * count + item.left] = true;
-            }
-        }
-    }
-    for (via in 0..<count) {
-        for (from in 0..<count) {
-            if (reach[from * count + via]) {
-                for (to in 0..<count) {
-                    if (reach[via * count + to]) {
-                        reach[from * count + to] = true;
-                    }
-                }
-            }
-        }
-    }
-    for (index in 0..<count) {
-        if (reach[index * count + index]) {
-            return true;
-        }
-    }
-    return false;
-}
 Operation :: (op: int, type: int) -> string {
     if (abi.Floating(type)) {
         // Ordered comparisons are false for NaN; != is unordered, so true.
@@ -701,7 +670,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         }
         out = format_text("{}{} %arg{}", out, abi.ScalarType(parameters[shape.first_parameter + index]), index);
     }
-    out = format_text("{}) {\nentry:\n", out);
+    out = format_text("{}) #0 {\nentry:\n", out);
     out = format_text("{}  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", out, step_budget);
     for (index in 0..<shape.slots) {
         out = format_text("{}  %s{} = alloca {}\n", out, index, abi.ScalarType(slots[shape.first_slot + index]));
@@ -760,9 +729,6 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
                 continue;
         }
     }
-    if (Cyclic(functions, code)) {
-        return Result.Rejected(-1, "native call graph is cyclic");
-    }
     // No host-derived data layout: the explicit LLVM target selects it. No
     // aggregate, raw pointer or foreign ABI is admitted yet.
     out := format_text("target triple = \"{}\"\n\ndeclare void @llvm.trap()\n{}", target.triple,
@@ -771,5 +737,8 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
         out = format_text("{}\n{}", out, EmitFunction(functions, function, parameters, slots, locals, code,
                                                       arguments, main, step_budget));
     }
-    return Result.Emitted(out);
+    // Recursion is unchecked, as Rust's is: each function probes every page
+    // of its frame, so running out of stack faults in the guard page below
+    // it, which the host reports as a stack overflow.
+    return Result.Emitted(format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out));
 }

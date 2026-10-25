@@ -30,7 +30,12 @@ interface, or the complete allocation/memory/output/free native island.
 - `Call` defines a slot from another function's result. Its arguments are
   slots of the caller's own argument range, each of the callee's parameter
   type and defined on every path; they load in order, so evaluation order stays
-  visible at O0. The call graph must be acyclic: recursion is rejected.
+  visible at O0. Calls may recurse, directly or mutually, with no depth
+  counter, as Rust's and Odin's do. Every function carries
+  `"probe-stack"="inline-asm"`, so a frame larger than a page touches each
+  page in turn and running out of stack always faults in the guard page below
+  it rather than past it. The host reports that fault as a stack overflow and
+  aborts (`src/host/stack_overflow.c`).
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,
@@ -84,12 +89,13 @@ scalar ordinals.
 ## Consumers and checks
 
 - `test/native_aot/emitter/Tests.chibi`: pure `Tests() -> int`, zero on success
-  and 1-5 for a failed group. It checks scalar emission, malformed types/control
-  flow, definition dominance, total arithmetic and explicit budgets.
+  and 1-6 for a failed group. It checks scalar emission, malformed types/control
+  flow, definition dominance, total arithmetic, explicit budgets and
+  recursion with stack probes.
 - `tool language-package-compiler-chibi-scalar` (`test/language`): call
-  definitions and argument order, malformed calls and cyclic or misplaced call
+  definitions and argument order, malformed calls and misplaced call
   graphs, floating encodings, comparisons, conversions and intrinsic
-  declarations, and floating operations and conversions the runtime lacks,
+  declarations, and floating operations and conversions outside the native subset,
   each with its exact rejection, on both VMs.
 - `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see
   `test/native_aot/scalar/README.md`.

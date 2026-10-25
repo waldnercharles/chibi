@@ -76,9 +76,14 @@ declaration to the end of its block, so one may hide an outer name, and a
 compound assignment combines its variable with its value as `x = x op v`
 would, at the variable's type.
 
-Calls form a bounded acyclic set, so recursion (direct or mutual) is rejected.
-Calls may repeat and nest. Arguments evaluate left to right, each operand
-after the operands it consumes, and the emitted IR keeps that order.
+Calls may repeat, nest and recurse, directly or mutually. Natively recursion
+is unchecked, as Rust's and Odin's is: it runs as deep as the stack allows,
+every function probes its stack, and an endless recursion faults in the guard
+page, which the host reports as a stack overflow before it aborts. Stage zero's
+VM limits a script to 64 nested calls (`SCRIPT_CALL_DEPTH_LIMIT`); the VMs
+here run stage one's output, which has no limit, and are only asked to agree
+with native code on recursion that ends. Arguments evaluate left to right, each
+operand after the operands it consumes, and the emitted IR keeps that order.
 
 ```chibi
 package scalar
@@ -157,7 +162,7 @@ rows own their strings and, once snapshotted, their record shape.
   It also validates a guarded module's rows and 19 malformed variants of them:
   if statement layout, comparison operator, arity, result and operand types,
   the condition's stack, statement and end ranges, a read past the variables,
-  a body that can end without returning, and an arm call that closes a cycle.
+  a body that can end without returning, and a recursive call misnamed.
   An arithmetic module's rows get 9 more: binary and unary operators, arity,
   result type and bool operands. A module with locals, an else and a logical
   gets 18: logical counts, operators and right sides, a `!` of an int, reads
@@ -173,15 +178,14 @@ rows own their strings and, once snapshotted, their record shape.
   default arm's local in the next arm, and an arm that does not return.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
-layout, canonical fields, positions, typed operand stacks, callee signatures
-and acyclicity, through the same `scalar_facts.Cycle` the producer diagnoses
-with. A rejection keeps its whole source; an accepted source must be within
+layout, canonical fields, positions, typed operand stacks and callee
+signatures. A rejection keeps its whole source; an accepted source must be within
 the bound. It does not prove that fabricated rows match their source;
 the caller binds the trusted producer artifact, source bytes and envelope.
 `Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
 `EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
 under budget 1; neither the export name nor the budget comes from source.
-Loops run unchecked, as Odin's do (decision D4). Each
+Loops and recursion run unchecked, as Odin's and Rust's do (decision D4). Each
 variable is a native local, the parameters moved into theirs first. An if
 statement branches into its consequence or jumps past it, and a logical saves
 its left operand in a local that its right operand replaces only on the path

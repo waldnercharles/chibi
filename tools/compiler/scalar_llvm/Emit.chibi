@@ -613,9 +613,6 @@ pub Validate :: (rows: facts.Row[]) -> string {
             return error;
         }
     }
-    if (facts.Cycle(rows) >= 0) {
-        return "scalar module calls are recursive";
-    }
     return "";
 }
 
@@ -681,10 +678,11 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 }
 // Explicit backend-fixture policy: the entry is chibi_scalar() -> i32 and the
 // other functions are internal. Every function starts with one CHECK under
-// budget 1, and loops run unchecked, as Odin's do. Neither the export name nor the budget is inferred from source
-// identity, and no general runtime/default budget is introduced. Each operand
-// row is one slot, defined in row order, so evaluation order is the rows'.
-// Each variable is a native local, parameters moved into theirs first, so
+// budget 1, and loops and recursion run unchecked, as Odin's and Rust's do.
+// Neither the export name nor the budget is inferred from source identity,
+// and no general runtime/default budget is introduced. Each operand row is
+// one slot, defined in row order, so evaluation order is the rows'. Each
+// variable is a native local, parameters moved into theirs first, so
 // assigning one needs no other form. An if statement's condition branches
 // into its consequence, and otherwise jumps past it, to its alternative or
 // past its End; a consequence that does not end jumps past the alternative.

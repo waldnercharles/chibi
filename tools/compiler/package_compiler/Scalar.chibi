@@ -21,8 +21,8 @@ import strings "core:strings"
 // converts it: an integer beside a floating value becomes one, a float beside
 // a double, passed for a double or returned as one becomes a double, and an
 // integer returned, assigned or declared as a wider one widens, and so does
-// a range bound. Loops over arrays, switches, other statements, attributes,
-// imports, defaults and recursion are excluded.
+// a range bound. Loops over arrays, other statements, attributes, imports
+// and defaults are excluded; functions may recurse.
 //
 // Each body must also pass EmitBody with no effects, host calls or roots,
 // and no cells but its calls' argument and result cells. Its calls go only to
@@ -1099,13 +1099,6 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             case .Built(function_rows):
                 rows.extend(function_rows);
         }
-    }
-    cycle := facts.Cycle(rows);
-    if (cycle >= 0) {
-        call := rows[cycle];
-        diagnostic: syntax.Diagnostic = {start: call.start, end: call.end, line: call.line, column: call.column,
-                                         document: 0, message: "scalar proof does not support recursive calls"};
-        return ScalarOperands.Failed(diagnostic);
     }
     return ScalarOperands.Built(rows);
 }

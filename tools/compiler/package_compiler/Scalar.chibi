@@ -598,8 +598,9 @@ ScalarSides :: (forest: snapshot.SnapshotNode[], text: string, callables: Callab
     }
     return ScalarAppend(forest, node, row, output);
 }
-// A statement of a body to visit, or the alternative or end of the if
-// statement `node`, and how many names were in scope before it.
+// A statement of a body to visit, the alternative or end of the if
+// statement `node`, the end of the switch or loop `node`, or the switch arm
+// `node`, and how many names were in scope before it.
 ScalarWork :: struct {
     node: int;
     phase: int;
@@ -608,6 +609,17 @@ ScalarWork :: struct {
 ScalarVisit: int : 0;
 ScalarAlternative: int : 1;
 ScalarClose: int : 2;
+ScalarArm: int : 3;
+// The arms of the switch statement `node`, in source order.
+ScalarArms :: (forest: snapshot.SnapshotNode[], node: int) -> int[] {
+    arms: int[] = [];
+    for (member in Members(forest, node)) {
+        if (Is(forest, member, "switch_arm")) {
+            arms.append(member);
+        }
+    }
+    return arms;
+}
 // Work that visits each statement of `block`, the first one last, since work
 // is taken from its end.
 ScalarBlock :: (forest: snapshot.SnapshotNode[], block: int, mark: int) -> ScalarWork[] {
@@ -635,6 +647,14 @@ ScalarBreaks :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
         return ScalarBreaks(forest, Field(forest, node, "consequence")) ||
                (alternative >= 0 && ScalarBreaks(forest, alternative));
     }
+    if (Is(forest, node, "switch_statement")) {
+        for (arm in ScalarArms(forest, node)) {
+            if (ScalarBreaks(forest, Field(forest, arm, "body"))) {
+                return true;
+            }
+        }
+        return false;
+    }
     if (!Is(forest, node, "block")) {
         return false;
     }
@@ -647,8 +667,9 @@ ScalarBreaks :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 }
 // Whether `node` is a terminating statement, as stage zero requires at the
 // end of a function with a result: a return, a block that ends in one, an if
-// statement with an else whose branches both end in one, or a while loop on
-// the literal true that nothing breaks out of. Stage zero also counts a
+// statement with an else whose branches both end in one, a switch with a
+// default arm whose arms all end in one, or a while loop on the literal true
+// that nothing breaks out of. Stage zero also counts a
 // condition it folds to true; the scalar proof takes only the literal.
 ScalarEnds :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
     if (Is(forest, node, "return_statement")) {
@@ -663,6 +684,16 @@ ScalarEnds :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool
         alternative := Field(forest, node, "alternative");
         return alternative >= 0 && ScalarEnds(forest, text, Field(forest, node, "consequence")) &&
                ScalarEnds(forest, text, alternative);
+    }
+    if (Is(forest, node, "switch_statement")) {
+        defaulted := false;
+        for (arm in ScalarArms(forest, node)) {
+            if (!ScalarEnds(forest, text, Field(forest, arm, "body"))) {
+                return false;
+            }
+            defaulted = defaulted || Field(forest, arm, "value") < 0;
+        }
+        return defaulted;
     }
     if (!Is(forest, node, "block") && !Is(forest, node, "callable_body")) {
         return false;
@@ -723,8 +754,8 @@ ScalarPlan :: union {
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
 // as the return step widens it; a local's initial value; an assignment's
-// value; an if statement's or a while loop's condition; a range loop's
-// bounds; or none for a break or a continue. EmitBody has rejected any other
+// value; an if statement's or a while loop's condition; a switch's integer
+// value; a range loop's bounds; or none for a break or a continue. EmitBody has rejected any other
 // mismatch. ScalarFunction converts the value itself, so a statement adds no
 // frame under the nesting its operands may take.
 ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -750,6 +781,14 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (Is(forest, statement, "break_statement") || Is(forest, statement, "continue_statement")) {
         return ScalarPlan.Bare;
     }
+    if (Is(forest, statement, "switch_statement")) {
+        storage := ScalarOperandStorage(forest, text, callables, params, callable, names, value,
+                                        InferredNumberStorage(forest, text, value));
+        if (facts.Bits(ScalarTypeOf(storage)) == 0) {
+            return ScalarPlan.Failed(Diagnose(forest, value, 0, "scalar proof switches only on integers"));
+        }
+        return ScalarPlan.Converted(value, storage, storage);
+    }
     if (Is(forest, statement, "assignment")) {
         destination := Field(forest, statement, "target");
         if (!Is(forest, destination, "identifier")) {
@@ -763,7 +802,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     }
     if (!Is(forest, statement, "local_declaration")) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
-                                          "scalar proof supports only locals, assignments, if statements, loops and returns"));
+                                          "scalar proof supports only locals, assignments, if statements, switches, loops and returns"));
     }
     storage := ScalarDeclared(forest, text, callables, params, types, callable, names, statement);
     if (ScalarTypeOf(storage) == 0) {
@@ -810,12 +849,17 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
     work := ScalarBlock(forest, body, length(names));
     operands: facts.Row[] = [];
     statements: int = 0;
+    // The value storage of each open switch.
+    storages: int[] = [];
     while (length(work) > 0) {
         item := work[length(work) - 1];
         work = slice(work, 0, length(work) - 1);
         statement := item.node;
         if (item.phase == ScalarClose) {
             names = slice(names, 0, item.mark);
+            if (Is(forest, statement, "switch_statement")) {
+                storages = slice(storages, 0, length(storages) - 1);
+            }
             rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
             continue;
         }
@@ -835,15 +879,44 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             message := format_text("scalar proof admits at most {} statements per function", facts.MaxStatements);
             return ScalarOperands.Failed(Diagnose(forest, statement, 0, message));
         }
+        if (item.phase == ScalarArm) {
+            // As the switch step tests an arm: its value converted to the
+            // switch value's storage, with the arm's names its own. An arm
+            // counts as a statement, since its block may be empty.
+            statements += 1;
+            names = slice(names, 0, item.mark);
+            storage := storages[length(storages) - 1];
+            pattern := Field(forest, statement, "value");
+            first := length(operands);
+            if (pattern >= 0) {
+                switch ScalarConvert(forest, text, callables, params, callable, names, pattern, pattern, storage,
+                                     storage, facts.Clamp, operands) {
+                    case .Failed(diagnostic):
+                        return ScalarOperands.Failed(diagnostic);
+                    case .Built(built):
+                        operands = built;
+                }
+            }
+            rows.append(ScalarAt(forest, statement, facts.CaseRow, ScalarTypeOf(storage), 0,
+                                 length(operands) - first, ""));
+            for (at in first..<length(operands)) {
+                rows.append(operands[at]);
+            }
+            work.extend(ScalarBlock(forest, Field(forest, statement, "body"), item.mark));
+            continue;
+        }
         statements += 1;
         first := length(operands);
         built := ScalarOperands.Built(operands);
+        // The storage a converted value takes, which types a switch's arms.
+        planned: int = 0;
         switch ScalarPlanned(forest, text, callables, params, types, callable, names, statement) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Compound(storage):
                 built = ScalarAssigned(forest, text, callables, params, callable, names, statement, storage, operands);
             case .Converted(value, context, storage):
+                planned = storage;
                 built = ScalarConvert(forest, text, callables, params, callable, names, value, value, context, storage,
                                       facts.Clamp, operands);
             case .Range(first_bound, last_bound):
@@ -896,6 +969,19 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 variables += 1;
             }
             work.extend(ScalarBlock(forest, Field(forest, statement, "body"), mark));
+        } else if (Is(forest, statement, "switch_statement")) {
+            row = ScalarAt(forest, statement, facts.SwitchRow, ScalarTypeOf(planned), 0, count, "");
+            mark := length(names);
+            close: ScalarWork = {node: statement, phase: ScalarClose, mark: mark};
+            work.append(close);
+            storages.append(planned);
+            arms := ScalarArms(forest, statement);
+            index := length(arms) - 1;
+            while (index >= 0) {
+                arm: ScalarWork = {node: arms[index], phase: ScalarArm, mark: mark};
+                work.append(arm);
+                index -= 1;
+            }
         } else if (Is(forest, statement, "break_statement")) {
             row.kind = facts.BreakRow;
         } else if (Is(forest, statement, "continue_statement")) {

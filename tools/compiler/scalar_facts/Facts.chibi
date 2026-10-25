@@ -2,8 +2,8 @@ package scalar_facts
 
 // Internal opt-in owned result for one source document holding a bounded,
 // acyclic set of ordinary pure functions over numbers and bool. A function's
-// body is locals, assignments, if statements, while loops, loops over int
-// ranges, breaks, continues and returns. Values and
+// body is locals, assignments, if statements, switches over integers, while
+// loops, loops over int ranges, breaks, continues and returns. Values and
 // conditions are literals, variables, arithmetic, shifts, conversions,
 // comparisons, logic and direct calls of functions of the set, whose
 // operands are such expressions. This is not a general IR, and no
@@ -24,8 +24,9 @@ package scalar_facts
 // - its body's statement rows in source order, each with its statement's
 //   range. The body ends in a terminating statement: a return, an if
 //   statement with an else whose two branches end in terminating statements,
-//   or a while loop whose condition is the literal true and whose own body
-//   has no break. Statements after a terminating one are still recorded,
+//   a switch with a default arm whose arms all end in terminating
+//   statements, or a while loop whose condition is the literal true and whose
+//   own body has no break. Statements after a terminating one are still recorded,
 //   though they never run.
 // The statements:
 // - a Local row declares variable `value` of `type`, its `name`, and its
@@ -50,12 +51,21 @@ package scalar_facts
 //   takes each value from the first bound up to the last, the last itself
 //   only for `..`, or the same values from the last down, and the body cannot
 //   assign it. A bound evaluated once cannot change, so neither end wraps;
+// - a Switch row is followed by its `count` operands, its value, of its
+//   integer `type`, run once. Then each arm in source order: a Case row with
+//   the arm's range and the Switch row's `type`, its `count` operands, the
+//   arm's value of that type, or none for the default arm, then the arm's
+//   statements. An End row with the Switch row's range follows the last arm.
+//   The value arms are tried in order, each value evaluated only when the
+//   arms before it missed, and the first arm whose value equals the switch's
+//   runs; the default arm, wherever it is, runs when none does. An arm does
+//   not fall through into the next;
 // - a Break or Continue row leaves, or ends the pass of, the innermost loop
-//   it is in. It has no operands;
+//   it is in, through any switch around it. It has no operands;
 // - a Return row is followed by its `count` operands, the returned value.
 // A variable is visible from the end of its declaration to the end of the
-// statements it is declared among; locals of a consequence, an alternative
-// or a loop body are not visible after it, and a For row's variable is
+// statements it is declared among; locals of a consequence, an alternative,
+// an arm or a loop body are not visible after it, and a For row's variable is
 // visible only in its body.
 //
 // Operand rows are in evaluation order, each after the operands it consumes:
@@ -123,6 +133,8 @@ pub WhileRow: int : 19;
 pub ForRow: int : 20;
 pub BreakRow: int : 21;
 pub ContinueRow: int : 22;
+pub SwitchRow: int : 23;
+pub CaseRow: int : 24;
 
 // The scalar types: int and bool, then the other integer types, then the
 // floating ones. The facts carry no compiler storage ordinal.
@@ -232,8 +244,9 @@ pub Fits :: (literal: int64, type: int) -> bool {
 }
 
 // Bounds both sides check before reading counts: source bytes, functions per
-// module, parameters, locals and statement rows per function, and operands
-// per function, counted over all its statements together.
+// module, parameters, locals and statement rows per function, a switch arm's
+// Case row counting as a statement, and operands per function, counted over
+// all its statements together.
 pub MaxSource: int : 16384;
 pub MaxFunctions: int : 32;
 pub MaxParameters: int : 8;

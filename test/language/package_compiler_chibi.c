@@ -5959,6 +5959,8 @@ enum
     SCALAR_FOR_ROW = 20,
     SCALAR_BREAK_ROW = 21,
     SCALAR_CONTINUE_ROW = 22,
+    SCALAR_SWITCH_ROW = 23,
+    SCALAR_CASE_ROW = 24,
     SCALAR_RANGE_EXCLUSIVE = 1,
     SCALAR_MAX_LOCALS = 16,
     SCALAR_MAX_STATEMENTS = 32,
@@ -6095,6 +6097,44 @@ enum
     LOOP_CONTINUE = 41,
     LOOP_WHILE_END = 43,
     LOOP_ROWS = (int)(sizeof LOOP_KINDS / sizeof *LOOP_KINDS)
+};
+/* Pick switches on x: its default arm, in the middle, declares y. Every arm
+ * returns, so the switch ends Pick. Pick(2) is 20. */
+static const char
+    SWITCH_ROWS_SOURCE[] = "package scalar\n"
+                           "Main :: () -> int { return Pick(2); }\n"
+                           "Pick :: (x: int) -> int {\n"
+                           "    switch x {\n"
+                           "        case 1: return 10;\n"
+                           "        case: y := x; return y;\n"
+                           "        case 2: return 20;\n"
+                           "    }\n"
+                           "}\n";
+/* The kind of each of SWITCH_ROWS_SOURCE's rows, and the rows edited. */
+static const int SWITCH_KINDS[] = {
+    SCALAR_SOURCE_ROW,   SCALAR_DOCUMENT_ROW,  SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CALL_ROW,
+    SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW, SCALAR_SWITCH_ROW,
+    SCALAR_READ_ROW,     SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CASE_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,     SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_END_ROW,
+};
+enum
+{
+    SWITCH_FUNCTION = 6,
+    SWITCH_ROW = 8,
+    SWITCH_VALUE = 9,
+    SWITCH_FIRST = 10,
+    SWITCH_FIRST_VALUE = 11,
+    SWITCH_FIRST_RETURN = 12,
+    SWITCH_DEFAULT = 14,
+    SWITCH_LAST = 19,
+    SWITCH_LAST_RETURN = 21,
+    SWITCH_LAST_VALUE = 22,
+    SWITCH_END = 23,
+    SWITCH_ROWS = (int)(sizeof SWITCH_KINDS / sizeof *SWITCH_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -6267,6 +6307,46 @@ static const malformed_guard MALFORMED_LOOPS[] = {
         COPY(LOOP_GUARD, "line", LOOP_LAST),
         COPY(LOOP_GUARD, "column", LOOP_LAST) },
       SEGMENT },
+};
+static const char
+    SWITCH_VALUE_TYPE[] = "scalar switch value is not one integer";
+static const malformed_guard MALFORMED_SWITCHES[] = {
+    /* A statement before the first arm, an arm outside a switch, and a
+     * second default arm. */
+    { { EDIT(SWITCH_FIRST, "kind", SCALAR_RETURN_ROW) }, LAYOUT },
+    { { EDIT(SWITCH_ROW, "kind", SCALAR_IF_ROW) }, LAYOUT },
+    { { EDIT(SWITCH_FIRST, "count", 0),
+        EDIT(SWITCH_FIRST_VALUE, "kind", SCALAR_CASE_ROW),
+        EDIT(SWITCH_FIRST_VALUE, "literal", 0) },
+      SEGMENT },
+    /* A switch on a bool, on a float, and of a type its value is not. */
+    { { EDIT(SWITCH_ROW, "type", SCALAR_BOOL) }, SWITCH_VALUE_TYPE },
+    { { EDIT(SWITCH_ROW, "type", SCALAR_FLOAT) }, SWITCH_VALUE_TYPE },
+    { { EDIT(SWITCH_ROW, "type", SCALAR_INT64) }, SWITCH_VALUE_TYPE },
+    /* An arm of another type than its switch, and an arm whose value is. */
+    { { EDIT(SWITCH_FIRST, "type", SCALAR_BYTE) }, SEGMENT },
+    { { EDIT(SWITCH_FIRST_VALUE, "type", SCALAR_BOOL) },
+      "scalar case value differs from its switch value" },
+    /* An arm with a value or a name, one that ends past its switch, an arm
+     * statement inside its arm's value, and an end of another range. */
+    { { EDIT(SWITCH_LAST, "value", 1) }, SEGMENT },
+    { { { .row = SWITCH_LAST, .field = "name", .text = "x", .from = -1 } }, SEGMENT },
+    { { COPY(SWITCH_LAST, "end", SWITCH_FUNCTION) }, SEGMENT },
+    { { COPY(SWITCH_FIRST_RETURN, "start", SWITCH_FIRST_VALUE),
+        COPY(SWITCH_FIRST_RETURN, "line", SWITCH_FIRST_VALUE),
+        COPY(SWITCH_FIRST_RETURN, "column", SWITCH_FIRST_VALUE) },
+      SEGMENT },
+    { { COPY(SWITCH_END, "end", SWITCH_FUNCTION) }, SEGMENT },
+    /* The default arm's y read in the arm after it. */
+    { { EDIT(SWITCH_LAST_VALUE, "kind", SCALAR_READ_ROW),
+        EDIT(SWITCH_LAST_VALUE, "value", 1),
+        EDIT(SWITCH_LAST_VALUE, "literal", 0) },
+      READ },
+    /* An arm that does not return: its return becomes an assignment. */
+    { { EDIT(SWITCH_LAST_RETURN, "kind", SCALAR_ASSIGN_ROW),
+        EDIT(SWITCH_LAST_RETURN, "type", SCALAR_INT),
+        EDIT(SWITCH_LAST_RETURN, "value", 0) },
+      NO_RETURN },
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
@@ -6451,6 +6531,25 @@ static bool looped_rows(const pin_value *rows)
     REQUIRE(scalar_field(guard_row(rows, LOOP_TRUE), "literal").i64 == 1);
     return true;
 }
+/* SWITCH_ROWS_SOURCE's switch and arms: each of x's type, a value arm with
+ * its one literal and the default arm with none. */
+static bool switched_rows(const pin_value *rows)
+{
+    static const struct
+    {
+        int row, count;
+    } EXPECTED[] = { { SWITCH_ROW, 1 },
+                     { SWITCH_FIRST, 1 },
+                     { SWITCH_DEFAULT, 0 },
+                     { SWITCH_LAST, 1 } };
+    for (int i = 0; i < (int)(sizeof EXPECTED / sizeof *EXPECTED); i++) {
+        pin_value *row = guard_row(rows, EXPECTED[i].row);
+        REQUIRE(scalar_field(row, "type").i == SCALAR_INT);
+        REQUIRE(scalar_field(row, "count").i == EXPECTED[i].count);
+    }
+    REQUIRE(scalar_field(guard_row(rows, SWITCH_LAST_VALUE), "literal").i64 == 20);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -6459,7 +6558,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
-        looped[2];
+        looped[2], switched[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -6497,6 +6596,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(LOOP_ROWS_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &looped[b])
+        );
+        args[2] = text(SWITCH_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &switched[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -6579,6 +6682,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             LOOP_ROWS,
             MALFORMED_LOOPS,
             (int)(sizeof MALFORMED_LOOPS / sizeof *MALFORMED_LOOPS)
+        ));
+        REQUIRE(switched_rows(&switched[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &switched[b],
+            SWITCH_KINDS,
+            SWITCH_ROWS,
+            MALFORMED_SWITCHES,
+            (int)(sizeof MALFORMED_SWITCHES / sizeof *MALFORMED_SWITCHES)
         ));
     }
     return true;
@@ -9768,6 +9880,194 @@ static bool loops_agree(const char *directory)
     REQUIRE(agreed);
     return true;
 }
+/* Switches: arms that all return, a default arm written first that runs
+ * last, a byte and an int64 value, arm values that are calls and
+ * expressions, one repeated so only its first arm can run, break and continue
+ * through a switch to its loop, and a switch nested in an arm. */
+static const char
+    SWITCH_SOURCE[] = "package scalar\n"
+                      "Main :: () -> int { return Grade(85) + Late(2); }\n"
+                      "Grade :: (x: int) -> int {\n"
+                      "    switch x / 10 {\n"
+                      "        case 10: return 5;\n"
+                      "        case 9: return 4;\n"
+                      "        case 8: return 3;\n"
+                      "        case: return 0;\n"
+                      "    }\n"
+                      "}\n"
+                      "Late :: (x: int) -> int {\n"
+                      "    r := 0;\n"
+                      "    switch x {\n"
+                      "        case: r = 100;\n"
+                      "        case 1: r = 1;\n"
+                      "        case 2:\n"
+                      "            y := x * 3;\n"
+                      "            r = y;\n"
+                      "    }\n"
+                      "    return r;\n"
+                      "}\n"
+                      "Narrow :: (b: byte) -> int {\n"
+                      "    switch b {\n"
+                      "        case 0: return 1;\n"
+                      "        case 255: return 2;\n"
+                      "    }\n"
+                      "    return 3;\n"
+                      "}\n"
+                      "Long :: (v: int64) -> int {\n"
+                      "    switch v {\n"
+                      "        case -1: return 1;\n"
+                      "        case 4294967296: return 2;\n"
+                      "    }\n"
+                      "    return 3;\n"
+                      "}\n"
+                      "Twice :: (v: int) -> int { return v * 2; }\n"
+                      "Order :: (x: int) -> int {\n"
+                      "    switch x {\n"
+                      "        case Twice(1): return 10;\n"
+                      "        case 2: return 20;\n"
+                      "        case -x: return 30;\n"
+                      "    }\n"
+                      "    return 40;\n"
+                      "}\n"
+                      "Steps :: (n: int) -> int {\n"
+                      "    h := 0;\n"
+                      "    for i in 0..<n {\n"
+                      "        switch i % 4 {\n"
+                      "            case 0: continue;\n"
+                      "            case 3:\n"
+                      "                if (i > 9) { break; }\n"
+                      "                h += 100;\n"
+                      "            case: h = h * 3 + i;\n"
+                      "        }\n"
+                      "        h += 1;\n"
+                      "    }\n"
+                      "    return h;\n"
+                      "}\n"
+                      "Pair :: (a: int, b: int) -> int {\n"
+                      "    switch a {\n"
+                      "        case 0:\n"
+                      "            switch b {\n"
+                      "                case 0: return 1;\n"
+                      "                case: return 2;\n"
+                      "            }\n"
+                      "        case 1:\n"
+                      "            x := b * 2;\n"
+                      "            return x;\n"
+                      "    }\n"
+                      "    return -1;\n"
+                      "}\n";
+/* What SWITCH_SOURCE's functions give, as C computes them with the integer
+ * contract. */
+static int64_t switch_int(const char *function, int64_t a, int64_t b)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b;
+    if (!strcmp(function, "Grade")) {
+        int32_t tens = total(10, x, 10);
+        return tens == 10 ? 5 : tens == 9 ? 4 : tens == 8 ? 3 : 0;
+    }
+    if (!strcmp(function, "Late")) {
+        return x == 1 ? 1 : x == 2 ? 6 : 100;
+    }
+    if (!strcmp(function, "Narrow")) {
+        return a == 0 ? 1 : a == 255 ? 2 : 3;
+    }
+    if (!strcmp(function, "Long")) {
+        return a == -1 ? 1 : a == INT64_C(4294967296) ? 2 : 3;
+    }
+    if (!strcmp(function, "Order")) {
+        return x == 2 ? 10 : x == total(12, x, 0) ? 30 : 40;
+    }
+    if (!strcmp(function, "Steps")) {
+        uint32_t h = 0;
+        for (int64_t i = 0; i < x; i++) {
+            if (i % 4 == 0) {
+                continue;
+            }
+            if (i % 4 == 3) {
+                if (i > 9) {
+                    break;
+                }
+                h += 100;
+            } else {
+                h = h * 3u + (uint32_t)i;
+            }
+            h += 1;
+        }
+        return (int32_t)h;
+    }
+    assert(!strcmp(function, "Pair"));
+    return x == 0 ? (y == 0 ? 1 : 2) : x == 1 ? total(9, y, 2) : -1;
+}
+/* The entry, then each function on its samples: the int ones at and around
+ * their arms' values and at the ends of int, Narrow on every byte, Long at
+ * its arms and the ends of int64, and Pair on every pair of its samples. */
+static int switch_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const char *const INTS[] = { "Grade", "Late", "Order", "Steps" };
+    static const int64_t SAMPLES[] = { INT32_MIN, -1, 0,   1,   2,
+                                       3,         12, 20,  79,  80,
+                                       89,        99, 100, 109, INT32_MAX };
+    static const int64_t LONGS[] = {
+        INT64_MIN,           -2,       -1, 0, INT64_C(4294967295),
+        INT64_C(4294967296), INT64_MAX
+    };
+    static const int64_t PAIRS[] = { INT32_MIN, -1, 0, 1, 2, INT32_MAX };
+    int count = 0;
+    calls[count++] = (scalar_call){ .probe = { "switch",
+                                               "Main",
+                                               0,
+                                               { 0 },
+                                               switch_int("Grade", 85, 0) +
+                                                   switch_int("Late", 2, 0) } };
+    for (int f = 0; f < 4; f++) {
+        for (int i = 0; i < (int)(sizeof SAMPLES / sizeof *SAMPLES); i++) {
+            /* Steps loops its argument's times, so it takes none past 20. */
+            if (f == 3 && SAMPLES[i] > 20) {
+                continue;
+            }
+            calls[count++] = (scalar_call){
+                .probe = { "switch",
+                           INTS[f],
+                           1,
+                           { SAMPLES[i] },
+                           switch_int(INTS[f], SAMPLES[i], 0) }
+            };
+        }
+    }
+    for (int value = 0; value < 256; value++) {
+        calls[count++] = (scalar_call){
+            .probe = { "switch", "Narrow", 1, { value }, switch_int("Narrow", value, 0) }
+        };
+    }
+    for (int i = 0; i < (int)(sizeof LONGS / sizeof *LONGS); i++) {
+        calls[count++] = (scalar_call){
+            .probe = { "switch", "Long", 1, { LONGS[i] }, switch_int("Long", LONGS[i], 0) }
+        };
+    }
+    for (int i = 0; i < (int)(sizeof PAIRS / sizeof *PAIRS); i++) {
+        for (int j = 0; j < (int)(sizeof PAIRS / sizeof *PAIRS); j++) {
+            calls[count++] = (scalar_call){
+                .probe = { "switch",
+                           "Pair",
+                           2,
+                           { PAIRS[i], PAIRS[j] },
+                           switch_int("Pair", PAIRS[i], PAIRS[j]) }
+            };
+        }
+    }
+    assert(count <= MAX_WIDTH_CALLS);
+    return count;
+}
+/* Switches run natively as C and both VMs give them. */
+static bool switches_agree(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = switch_calls(calls);
+    bool agreed = width_module_agrees(directory, 0, "switch", SWITCH_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
 /* A function at the facts bounds whose loops take the most native slots:
  * eight parameters, SCALAR_MAX_LOCALS reversed exclusive ranges of 13 slots
  * each, then an assignment of a logical chain that fills the remaining
@@ -10200,7 +10500,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
              folded_overflow_rejected() && widths_agree(directory) &&
              floats_agree(directory) && control_agrees(directory) &&
              statement_bounds_agree() && loops_agree(directory) &&
-             widest_loops_agree(directory) && endless_loops_trap(directory);
+             widest_loops_agree(directory) && switches_agree(directory) &&
+             endless_loops_trap(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

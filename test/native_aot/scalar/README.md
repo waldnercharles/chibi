@@ -21,12 +21,13 @@ function is the module's entry and must be `() -> int`. Every function:
 - has a body of locals (`x := EXPR;` or `x: T = EXPR;`), assignments to its
   parameters and locals (`x = EXPR;`, or compound, `x += EXPR;` and the other
   arithmetic and shift operators), if statements with any `else` or
-  `else if`, `while` loops, `for` loops over an `int` range (`a..b`, `a..<b`,
+  `else if`, switches on an integer value, `while` loops, `for` loops over an `int` range (`a..b`, `a..<b`,
   either counted down with `for <`; bounds of a narrower integer type widen),
   `break`, `continue` and returns, at most 32 statements and 16 locals,
   counting each loop's index. It ends in a terminating statement, as stage
   zero requires: a return, an if statement with an `else` whose branches both
-  end in one, or a `while (true)` that no `break` leaves; otherwise it is
+  end in one, a switch with a default arm whose arms all end in one, or a
+  `while (true)` that no `break` leaves; otherwise it is
   rejected with stage zero's "Missing return". Statements after a return are
   kept, though they never run; any other statement is rejected, reachable or
   not;
@@ -144,8 +145,8 @@ The compiler host passes arrays of flat records, so a module is one array of
 rows: its source, then either one rejection or its document key and each
 function's signature, parameters and statements in source order, each
 followed by its operands in evaluation order; an if statement's rows bracket
-its consequence and any alternative with Else and End rows, and a loop's
-body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
+its consequence and any alternative with Else and End rows, a switch's arms
+with a Case row each and an End row, and a loop's body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
 rows own their strings and, once snapshotted, their record shape.
 
 - Across processes, `Run.ps1` passes the producer's exact stdout file as the
@@ -166,7 +167,10 @@ rows own their strings and, once snapshotted, their record shape.
   continues gets 17: break and continue outside a loop or with fields, an
   endless loop that breaks or tests false, condition and bound types, index
   rows, an assignment to the index, reads of it in its bound and after its
-  loop, and loop end and body ranges.
+  loop, and loop end and body ranges. A switch whose default arm declares a
+  local gets 15: statements before the first arm, arms outside a switch, a
+  second default, switch and arm types, arm fields and ranges, a read of the
+  default arm's local in the next arm, and an arm that does not return.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks, callee signatures
@@ -187,7 +191,10 @@ them: a range's bounds are evaluated once into locals, a reversed exclusive
 range starts at `last - 1` only after `first < last` shows that cannot wrap,
 and an inclusive or reversed range leaves when its index reaches the bound,
 before stepping, so no index wraps. `continue` jumps to a `while` loop's head
-or a `for` loop's step.
+or a `for` loop's step. A switch saves its value in a local; each value arm
+compares it with the arm's value, evaluated only when the arms before it
+missed, and the default arm, jumped over where it stands, runs when the last
+test fails, as stage zero and stage one lower it.
 
 ## Native objects
 
@@ -263,6 +270,12 @@ width, `&&`,
 `||`, `!` and `bool` equality on every combination of their operands, and a
 condition mixing them. Each call must give the value C gives on both VMs and
 natively at O0 and O2.
+
+A generated switch module runs every arm of switches on `int`, `byte` (every
+value) and `int64` values, a default arm written first, arm values that are
+calls and expressions, a repeated value whose second arm cannot run, `break`
+and `continue` through a switch to its loop, and a switch nested in an arm.
+Each call must give the value C gives on both VMs and natively at O0 and O2.
 
 A generated loop module runs each range form on every pair of ends near zero
 and both ends of `int` at most 16 apart, every empty range among them, folding

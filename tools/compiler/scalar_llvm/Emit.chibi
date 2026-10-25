@@ -13,7 +13,8 @@ pub Result :: union {
 
 // The most rows a module of the facts bounds holds: its source and document,
 // then per function its signature, parameters, statements with an if
-// statement's else and end, and operands.
+// statement's else and end, and operands. A switch arm's Case row counts as a
+// statement.
 MaxRows: int : 2 + facts.MaxFunctions * (1 + facts.MaxParameters + 3 * facts.MaxStatements + facts.MaxOperands);
 
 // The offset each source line starts at, for one-based line/column checks.
@@ -108,7 +109,12 @@ Span :: (rows: facts.Row[], at: int, kind: int, used: int) -> int {
 // Whether `kind` is a statement row with operands of its own.
 Statement :: (kind: int) -> bool {
     return kind == facts.LocalRow || kind == facts.AssignRow || kind == facts.IfRow || kind == facts.ReturnRow ||
-           kind == facts.WhileRow || kind == facts.ForRow;
+           kind == facts.WhileRow || kind == facts.ForRow || kind == facts.SwitchRow;
+}
+// Whether `kind` is an if statement's, a switch's or a loop's row, which an
+// End row closes.
+Opens :: (kind: int) -> bool {
+    return kind == facts.IfRow || kind == facts.SwitchRow || Loop(kind);
 }
 // Whether `kind` is a loop's row.
 Loop :: (kind: int) -> bool {
@@ -117,8 +123,9 @@ Loop :: (kind: int) -> bool {
 // The row index of each function, after checking the module's row layout and
 // every count against the facts bounds before it is used: each function's
 // statements, with their operands, until the next function, each Else in an
-// open if statement before its End, each Break and Continue in an open loop,
-// and every if statement and loop closed. Empty when invalid.
+// open if statement before its End, each Case in an open switch before any
+// statement of the switch, each Break and Continue in an open loop, and every
+// if statement, switch and loop closed. Empty when invalid.
 Heads :: (rows: facts.Row[]) -> int[] {
     heads: int[] = [];
     empty: int[] = [];
@@ -133,14 +140,38 @@ Heads :: (rows: facts.Row[]) -> int[] {
         at += function.count + 1;
         used: int = 0;
         statements: int = 0;
-        // Each open if statement's or loop's row kind, an if statement's
-        // Else kind once its else has begun, and how many are loops.
+        // Each open if statement's, switch's or loop's row kind, an if
+        // statement's Else kind once its else has begun or a switch's Case
+        // kind once its first arm has, and how many are loops.
         open: int[] = [];
         loops: int = 0;
         while (at < length(rows) && rows[at].kind != facts.FunctionRow) {
             kind := rows[at].kind;
+            top := length(open) - 1;
+            if (kind == facts.CaseRow) {
+                if (top < 0 || (open[top] != facts.SwitchRow && open[top] != facts.CaseRow)) {
+                    return empty;
+                }
+                if (statements >= facts.MaxStatements) {
+                    return empty;
+                }
+                statements += 1;
+                open[top] = kind;
+                next := at + 1;
+                if (rows[at].count != 0) {
+                    next = Span(rows, at, kind, used);
+                }
+                if (next < 0) {
+                    return empty;
+                }
+                used += rows[at].count;
+                at = next;
+                continue;
+            }
+            if (kind != facts.EndRow && top >= 0 && open[top] == facts.SwitchRow) {
+                return empty;
+            }
             if (kind == facts.ElseRow || kind == facts.EndRow) {
-                top := length(open) - 1;
                 if (rows[at].count != 0 || top < 0 || (kind == facts.ElseRow && open[top] != facts.IfRow)) {
                     return empty;
                 }
@@ -172,7 +203,7 @@ Heads :: (rows: facts.Row[]) -> int[] {
             }
             used += rows[at].count;
             statements += 1;
-            if (kind == facts.IfRow || Loop(kind)) {
+            if (Opens(kind)) {
                 open.append(kind);
             }
             if (Loop(kind)) {
@@ -327,6 +358,12 @@ ValidOperands :: (rows: facts.Row[], heads: int[], at: int, result: int, scope: 
         if (rows[at].kind == facts.IfRow || rows[at].kind == facts.WhileRow) {
             return "scalar condition is not one bool";
         }
+        if (rows[at].kind == facts.SwitchRow) {
+            return "scalar switch value is not one integer";
+        }
+        if (rows[at].kind == facts.CaseRow) {
+            return "scalar case value differs from its switch value";
+        }
         if (rows[at].kind == facts.ReturnRow) {
             return "scalar return differs from its function's result";
         }
@@ -334,11 +371,23 @@ ValidOperands :: (rows: facts.Row[], heads: int[], at: int, result: int, scope: 
     }
     return "";
 }
+// The least start of what follows the row at `at`: a consequence, an arm's
+// or a loop's body follows the row's start and every one of its operands.
+Operated :: (rows: facts.Row[], at: int) -> int {
+    earliest := rows[at].start;
+    for (operand in at + 1..<at + rows[at].count + 1) {
+        if (rows[operand].end > earliest) {
+            earliest = rows[operand].end;
+        }
+    }
+    return earliest;
+}
 // One function's signature and statements. Each statement lies within the
 // statements it is among, after the one before it; an if statement's
 // consequence or a loop's body follows its condition or bounds, an else
-// follows its consequence, and an End has its if statement's or loop's
-// range. A variable is visible from its declaration to the end of the
+// follows its consequence, a switch's arms follow its value and one another,
+// each its value's type and at most one the default, and an End has its if
+// statement's, switch's or loop's range. A variable is visible from its declaration to the end of the
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
 ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[], size: int) -> string {
@@ -360,13 +409,16 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
         variables.append(param.type);
         visible.append(index);
     }
-    // Each open if statement's or loop's row, an if statement's Else row or
-    // -1, whether its consequence ends, whether a Break leaves a loop, and how
-    // many variables were visible before it. A For row's variable is never
-    // assigned.
+    // Each open if statement's, switch's or loop's row; an if statement's
+    // Else row or a switch's current Case row, or -1; whether an if
+    // statement's consequence ends, or whether each arm of a switch before its
+    // current one does; whether a switch has a default arm; whether a Break
+    // leaves a loop; and how many variables were visible before it. A For
+    // row's variable is never assigned.
     opens: int[] = [];
     alternatives: int[] = [];
     consequences: bool[] = [];
+    defaults: bool[] = [];
     broken: bool[] = [];
     marks: int[] = [];
     fixed: int[] = [];
@@ -388,9 +440,10 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
         }
         ranged := row.kind == facts.ForRow;
         declares := row.kind == facts.LocalRow || ranged;
+        typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
         if (row.text != "" || (row.literal != 0 && !ranged) || !Located(row, starts, size) ||
             (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
-            (!declares && row.kind != facts.AssignRow && (row.type != 0 || row.value != 0))) {
+            (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
             return "invalid scalar statement row";
         }
         if (row.kind == facts.EndRow) {
@@ -401,6 +454,8 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
             }
             if (opened.kind == facts.IfRow) {
                 ends = alternatives[top] >= 0 && consequences[top] && ends;
+            } else if (opened.kind == facts.SwitchRow) {
+                ends = defaults[top] && consequences[top] && ends;
             } else {
                 // Only a while loop on the literal true that nothing breaks
                 // out of ends.
@@ -412,10 +467,33 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
             opens = slice(opens, 0, top);
             alternatives = slice(alternatives, 0, top);
             consequences = slice(consequences, 0, top);
+            defaults = slice(defaults, 0, top);
             broken = slice(broken, 0, top);
             marks = slice(marks, 0, top);
             earliest = row.end;
             at += 1;
+            continue;
+        }
+        if (row.kind == facts.CaseRow) {
+            // An arm lies within its switch, after the arm before it, and
+            // its value is of the switch's type.
+            opened := rows[opens[top]];
+            if (!Within(row, opened) || row.type != opened.type || (row.count == 0 && defaults[top])) {
+                return "invalid scalar statement row";
+            }
+            consequences[top] = consequences[top] && (alternatives[top] < 0 || ends);
+            defaults[top] = defaults[top] || row.count == 0;
+            alternatives[top] = at;
+            visible = slice(visible, 0, marks[top]);
+            if (row.count != 0) {
+                error := ValidOperands(rows, heads, at, row.type, row, variables, visible, starts, size);
+                if (error != "") {
+                    return error;
+                }
+            }
+            ends = false;
+            earliest = Operated(rows, at);
+            at += row.count + 1;
             continue;
         }
         if (!Within(row, container)) {
@@ -446,6 +524,11 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
         result := declaration.type;
         if (row.kind == facts.IfRow || row.kind == facts.WhileRow) {
             result = facts.BoolType;
+        } else if (row.kind == facts.SwitchRow) {
+            if (facts.Bits(row.type) == 0) {
+                return "scalar switch value is not one integer";
+            }
+            result = row.type;
         } else if (declares) {
             if (row.name == "" || !Scalar(row.type) || row.value != length(variables) ||
                 length(variables) - declaration.count >= facts.MaxLocals ||
@@ -469,10 +552,11 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
         if (row.kind == facts.LocalRow) {
             variables.append(row.type);
             visible.append(row.value);
-        } else if (row.kind == facts.IfRow || Loop(row.kind)) {
+        } else if (Opens(row.kind)) {
             opens.append(at);
             alternatives.append(-1);
-            consequences.append(false);
+            consequences.append(row.kind == facts.SwitchRow);
+            defaults.append(false);
             broken.append(false);
             marks.append(length(visible));
             if (ranged) {
@@ -480,14 +564,7 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
                 visible.append(row.value);
                 fixed.append(row.value);
             }
-            // Its consequence or body follows every operand of its condition
-            // or bounds.
-            earliest = row.start;
-            for (operand in at + 1..<at + row.count + 1) {
-                if (rows[operand].end > earliest) {
-                    earliest = rows[operand].end;
-                }
-            }
+            earliest = Operated(rows, at);
         }
         at += row.count + 1;
     }
@@ -559,13 +636,16 @@ Unary :: (operator: int) -> int {
     }
     return native.BitNot;
 }
-// An open if statement or loop while emitting: its row kind; an if
-// statement's jump past its consequence, or -1 once its else has begun, or a
-// loop's jump out; its consequence's jump past its alternative, or a For
-// row's jump out at its bound, or -1; whether its consequence ends; a loop's
-// first instruction; a For row's index and bound locals, whether it stops at
-// its bound, whether it counts down, and its jump out when its range is
-// empty, or -1; and its first pending break or continue.
+// An open if statement, switch or loop while emitting: its row kind; an if
+// statement's jump past its consequence, or -1 once its else has begun, a
+// loop's jump out, or a switch's jump to the test after its current arm's,
+// or -1; its consequence's jump past its alternative, or a For row's jump out
+// at its bound, or -1; whether its consequence ends, or whether each of a
+// switch's arms so far does; a loop's first instruction; a For row's index
+// and bound locals, or a switch's value local; whether a For row stops at its
+// bound, whether it counts down, and its jump out when its range is empty, or
+// -1; its first pending break or continue; and a switch's first arm exit,
+// whether an arm has begun, and its default arm's first instruction, or -1.
 Frame :: struct {
     kind: int;
     skip: int;
@@ -578,6 +658,9 @@ Frame :: struct {
     reverse: bool;
     escape: int;
     empty: int;
+    exits: int;
+    armed: bool;
+    fallback: int;
 }
 // The CHECKs each invocation may pass: enough for any loop the fixtures run,
 // and few enough that an endless one traps at once.
@@ -586,14 +669,18 @@ CheckBudget: int : 1048576;
 Op :: (op: int, type: int, output: int, left: int, right: int, target: int) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: 0};
 }
+// `code` with the branch or jump at `at` sent to `target`.
+Aimed :: (code: native.Instruction[], at: int, target: int) -> native.Instruction[] {
+    output := code;
+    jump := output[at];
+    jump.target = target;
+    output[at] = jump;
+    return output;
+}
 // `code` with the branch or jump at `at` sent to the instruction after its
 // last.
 Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
-    output := code;
-    jump := output[at];
-    jump.target = length(code);
-    output[at] = jump;
-    return output;
+    return Aimed(code, at, length(code));
 }
 // Explicit backend-fixture policy: the entry is chibi_scalar() -> i32 and the
 // other functions are internal. Every function starts with one CHECK, and
@@ -611,6 +698,11 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // at its head, and a For row keeps its index and its other bound in locals of
 // their own, tests the index at its head and steps it at the end of each
 // pass, where a continue goes; a break and the failed test leave the loop.
+// A switch, as the switch step lowers it, saves its value in a local, and
+// each value arm tests it in turn, entering its arm on equality and otherwise
+// jumping to the next test; a default arm is jumped over where it stands and
+// entered when the last test fails. Each arm that does not end leaves the
+// switch.
 pub Emit :: (rows: facts.Row[]) -> Result {
     error := Validate(rows);
     if (error != "") {
@@ -649,12 +741,14 @@ pub Emit :: (rows: facts.Row[]) -> Result {
             slot += 1;
             local += 1;
         }
-        // Each open if statement or loop, and each pending break or
-        // continue: its jump and whether it continues. A logical's own
-        // pending jumps are its operand's, not these.
+        // Each open if statement, switch or loop; each pending break or
+        // continue: its jump and whether it continues; and each switch arm's
+        // pending exit. A logical's own pending jumps are its operand's, not
+        // these.
         frames: Frame[] = [];
         jumps: int[] = [];
         continuing: bool[] = [];
+        arms: int[] = [];
         // Whether control cannot reach the next instruction.
         ends := false;
         integer := NativeType(facts.IntType);
@@ -676,6 +770,49 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 ends = false;
                 at += 1;
                 continue;
+            }
+            if (row.kind == facts.CaseRow || (row.kind == facts.EndRow && frames[top].kind == facts.SwitchRow)) {
+                // The arm before ends here: it leaves the switch unless it
+                // ends, and its failed test reaches the next.
+                frame := frames[top];
+                if (frame.armed && !ends) {
+                    arms.append(length(body));
+                    body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                }
+                frame.ends = frame.ends && (!frame.armed || ends);
+                frame.armed = true;
+                ends = false;
+                if (row.kind == facts.EndRow) {
+                    // When every test fails, the default arm runs, if any.
+                    if (frame.skip >= 0) {
+                        target := length(body);
+                        if (frame.fallback >= 0) {
+                            target = frame.fallback;
+                        }
+                        body = Aimed(body, frame.skip, target);
+                    }
+                    for (exit_at in frame.exits..<length(arms)) {
+                        body = Patched(body, arms[exit_at]);
+                    }
+                    arms = slice(arms, 0, frame.exits);
+                    frames = slice(frames, 0, top);
+                    ends = frame.fallback >= 0 && frame.ends;
+                    at += 1;
+                    continue;
+                }
+                if (frame.skip >= 0) {
+                    body = Patched(body, frame.skip);
+                }
+                frame.skip = -1;
+                if (row.count == 0) {
+                    frame.skip = length(body);
+                    body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                    frame.fallback = length(body);
+                    frames[top] = frame;
+                    at += 1;
+                    continue;
+                }
+                frames[top] = frame;
             }
             if (row.kind == facts.EndRow) {
                 frame := frames[top];
@@ -744,7 +881,7 @@ pub Emit :: (rows: facts.Row[]) -> Result {
             }
             if (row.kind == facts.BreakRow || row.kind == facts.ContinueRow) {
                 loop := top;
-                while (frames[loop].kind == facts.IfRow) {
+                while (!Loop(frames[loop].kind)) {
                     loop -= 1;
                 }
                 if (row.kind == facts.ContinueRow && frames[loop].kind == facts.WhileRow) {
@@ -854,7 +991,8 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 reverse := row.literal >= int64(facts.RangeReverse);
                 frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local,
                                 bound: local + 1, counted: reverse || !exclusive, reverse: reverse,
-                                escape: length(jumps), empty: -1};
+                                escape: length(jumps), empty: -1, exits: 0, armed: false,
+                                fallback: -1};
                 begin := stack[0];
                 stop := stack[1];
                 if (reverse) {
@@ -907,9 +1045,31 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 local += 1;
             } else if (row.kind == facts.AssignRow) {
                 body.append(Op(native.Save, NativeType(row.type), 0, value, 0, places[row.value]));
+            } else if (row.kind == facts.SwitchRow) {
+                type := NativeType(row.type);
+                locals.append(type);
+                body.append(Op(native.Save, type, 0, value, 0, local));
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: true, head: 0, index: local, bound: 0,
+                                counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                exits: length(arms), armed: false, fallback: -1};
+                frames.append(frame);
+                local += 1;
+            } else if (row.kind == facts.CaseRow) {
+                // Equal to the switch's value, the arm runs; otherwise the
+                // test after it does.
+                frame := frames[top];
+                type := NativeType(row.type);
+                slots.extend([type, abi.BoolStorage]);
+                body.extend([Op(native.Local, type, slot, frame.index, 0, 0), Op(native.Eq, type, slot + 1, slot, value, 0),
+                             Op(native.Branch, 0, 0, slot + 1, 0, length(body) + 4)]);
+                frame.skip = length(body);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                frames[top] = frame;
+                slot += 2;
             } else {
                 frame: Frame = {kind: row.kind, skip: length(body) + 1, leave: -1, ends: false, head: start, index: 0,
-                                bound: 0, counted: false, reverse: false, escape: length(jumps), empty: -1};
+                                bound: 0, counted: false, reverse: false, escape: length(jumps), empty: -1, exits: 0,
+                                armed: false, fallback: -1};
                 body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), Op(native.Jump, 0, 0, 0, 0, 0)]);
                 frames.append(frame);
             }

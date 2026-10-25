@@ -1,12 +1,13 @@
-# Managed pointers: raw receipts at bfbb66116
+# Managed pointers: raw receipts at bd84d6e49
 
-These are the unedited logs of the CI check chain on bfbb66116, run once on that
-clean tree. bfbb66116 holds #688's head 468ac12d7 and main at e18299d12 (after
+These are the unedited logs of the CI check chain on bd84d6e49, run once on that
+clean tree. bd84d6e49 holds #688's head 468ac12d7 and main at e18299d12 (after
 M2 #687, integer reports #696 and their storage budget #699), with prepared
-ABI 22, a bootstrap regenerated from stage zero and the compiler host's 32 MiB
-byte result limit. The commit that adds this directory changes nothing else.
-They replace the receipts for 8eb31f228, the same branch before #696 and #699,
-which are in that commit's history.
+ABI 22 and a bootstrap regenerated from stage zero. On top of bfbb66116 it
+widens float operands in pointer compounds and keeps the 16 MiB byte result
+default, with a 32 MiB artifact bound for the command-line host's file outputs
+only. The commit that adds this directory changes nothing else. They replace
+the receipts for bfbb66116 and 8eb31f228, which are in this branch's history.
 
 Host: Linux x64, 4 CPUs, clang 18, ASan/UBSan for `build`, Release for
 `build-release`. Every command ran with `CC=clang CXX=clang++
@@ -15,7 +16,7 @@ BUILD_HOST=/nonexistent/chibi-build-host`, so no external build host was used.
 
 | Log | Command | Result |
 | --- | --- | --- |
-| `test-build.log` | `make test-build JOBS=4` (233 s, asset compiler rebuilt) | ok |
+| `test-build.log` | `make test-build JOBS=4` (10 s, incremental) | ok |
 | `release.log` | `make build-release JOBS=4 BUILD_TARGET='chibi_ctl chibi chibi-compiler-host'` | ok |
 | `test-native.log` | `make test-native` | ok |
 | `test-materials.log` | `make test-materials` | ok |
@@ -36,10 +37,10 @@ included, has its own log. The same cases also appear in
 `.chibi/logs/<id>-<step>.log`. `tools/quiet.py` keeps only the 20 most recent,
 so these four were gone when the chain finished:
 
-- `test-build.log`: `1792916314867845063-30960-configure-native.log` and
-  `1792916317500125833-30989-build.log`.
-- `release.log`: `1792916550734152544-31284-configure-native.log`.
-- `test-tools.log`: `1792917658342329958-7785-graph.log`, which is the
+- `test-build.log`: `1792923637431288016-24150-configure-native.log` and
+  `1792923639841153928-24180-build.log`.
+- `release.log`: `1792923650043285814-24226-configure-native.log`.
+- `test-tools.log`: `1792924753598848988-481-graph.log`, which is the
   quiet-wrapper fixture in `test/tools/test_policy.c` failing on purpose in a
   temporary directory.
 
@@ -58,14 +59,15 @@ every log here.
 
 ## Artifacts
 
-`tools/compiler/bootstrap/compiler.chibip` at bfbb66116 is the downloadable
-compiler: 15,286,759 bytes, SHA-256
-`91dd993ed9c3196a48619ea15158886bddd6e982808ab05e152c34746c770fe8`. The other
-binaries were built from the same tree and are not checked in:
+`tools/compiler/bootstrap/compiler.chibip` at bd84d6e49 is the downloadable
+compiler: 15,300,353 bytes, SHA-256
+`aee0a7611b4bd9f9e9c8c098b928bc91d2b8e733649bbb12ed5a70852f7a59ac`. The other
+binaries were built from the same tree and are not checked in. The sanitized
+build that compiled this asset compiler took 246 s, just before the chain:
 
 | File | SHA-256 |
 | --- | --- |
-| Sanitizer `build/sdk/generated/assets/asset_compiler.chibip` (17,656,923 bytes) | `5d65a56582689275b0de173b91fdc4bf57dd391e11bcf5092c9e31cbbad69b12` |
-| `build-release/sdk/chibi-compiler-host` | `9380998643d52b6b1c47dcbde1f697014c7385cc849a8025f0fcfd57c588bab3` |
+| Sanitizer `build/sdk/generated/assets/asset_compiler.chibip` (17,670,518 bytes) | `a8f509128233eb8d54fe9c1a2f63822d9f1872e16c1263dd5c449d32cc699220` |
+| `build-release/sdk/chibi-compiler-host` | `55321a064a3ec58dbfa378a393359cd5c18ac95b2e8afe4a93c8de75e31cf8f9` |
 | `build-release/bin/chibi_ctl` | `f031f0f506ab7c9159455070abf76b53f6f621de3152ba4a20e0b39dba395e31` |
-| Sanitizer `build/test/language/test_language` | `da0466ecce37e88432eb0ae3c0cf1f442381d6b7fb13a6d0912cd16479a2547f` |
+| Sanitizer `build/test/language/test_language` | `45774d8dd90ce2cc315f8b6f13e22f04b52ccbd341ae96dd114ea5ca18f3d1c2` |

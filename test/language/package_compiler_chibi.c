@@ -1380,8 +1380,34 @@ static const sample samples[] = {
                 "p^ = f; return x; }\n",
       .calls = { { .function = "Widened", .arguments = "[]", .expected = "[2]" },
                  { .function = "Floated", .arguments = "[]", .expected = "[1.5]" } } },
-    /* A compound assignment does not widen through a pointer: its operands
-     * share one type. */
+    /* A float operand widens in a compound through a pointer, an addressed
+     * local and a pointer's field, as it does for an ordinary local. */
+    { .name = "managed pointer compound float widening",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "R :: struct { v: double; }\n"
+                "Local :: () -> double { x: double = 1.0; y: float = 2.0; "
+                "x += y; return x; }\n"
+                "Through :: () -> double { x: double = 1.0; y: float = 2.0; "
+                "p := &x; p^ += y; return x; }\n"
+                "Addressed :: () -> double { x: double = 1.0; y: float = 2.0; "
+                "p := &x; x += y; return p^; }\n"
+                "Member :: () -> double { r: R = {v: 1.0}; y: float = 2.0; "
+                "p := &r; p.v += y; return r.v; }\n",
+      .calls = { { .function = "Local", .arguments = "[]", .expected = "[3.0]" },
+                 { .function = "Through", .arguments = "[]", .expected = "[3.0]" },
+                 { .function = "Addressed", .arguments = "[]", .expected = "[3.0]" },
+                 { .function = "Member", .arguments = "[]", .expected = "[3.0]" } } },
+    { .name = "managed pointer compound narrowing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> float {\n    x: float = 1.0;\n"
+                "    d: double = 2.0;\n    p := &x;\n    p^ += d;\n    return "
+                "x;\n}",
+      .message = "compound assignment needs number operands of its type",
+      .line = 6,
+      .column = 5 },
+    /* Mixed integer compounds reject through a pointer, as they do for an
+     * ordinary local. */
     { .name = "managed pointer compound mixed integers",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nRun :: () -> int64 {\n    x: int64 = 0;\n"

@@ -2109,6 +2109,33 @@ static size_t least_record_limit(const unsigned char *bytes, size_t length)
     }
     return high;
 }
+/* Reads the module within `limit` records, resolving imported_module. A
+ * refusal must name the record bound and leave the budget as it was. */
+static execution_module *record_bounded_read(
+    const unsigned char *bytes,
+    size_t length,
+    size_t limit,
+    bool *refused
+)
+{
+    execution_prepared_linker bounded = { .import = resolve_imported,
+                                          .decoded_bytes = 4 * (size_t)EXECUTION_WIRE_MAX_BYTES,
+                                          .decoded_records = limit };
+    size_t remaining = 4 * (size_t)EXECUTION_WIRE_MAX_BYTES, before = remaining;
+    char error[192] = { 0 };
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        &bounded,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    *refused = !m && remaining == before && strstr(error, "record") &&
+               strstr(error, "limit");
+    return m;
+}
 /* An import's fingerprint re-encodes the dependency under the importer's
  * linker bound, so a bound raised past the default admits a dependency
  * above it. A small importer of a larger dependency needs the dependency's
@@ -2135,8 +2162,18 @@ TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit)
            linked = least_record_limit(importer, importer_length);
     free(dependency);
     free(alone);
-    free(importer);
     REQUIRE(small < own && linked >= own);
+    /* The search's bound loads the importer, and one record fewer refuses
+     * it with the record diagnostic and no charge. */
+    bool refused = false;
+    execution_module *m = record_bounded_read(importer, importer_length, linked, &refused);
+    bool loaded = m != NULL;
+    execution_module_free(m);
+    m = record_bounded_read(importer, importer_length, linked - 1, &refused);
+    bool refused_below = !m && refused;
+    execution_module_free(m);
+    free(importer);
+    REQUIRE(loaded && refused_below);
     return true;
 }
 TEST_CASE(execution_preparation_reserves_one_definitions_scratch)

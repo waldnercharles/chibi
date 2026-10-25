@@ -43,6 +43,9 @@ static int end(TSNode node)
 }
 static void append(char **out, const char *text, int length)
 {
+    if (!length) {
+        return;
+    }
     int at = acount(*out);
     asetlen(*out, at + length);
     memcpy(*out + at, text, (size_t)length);

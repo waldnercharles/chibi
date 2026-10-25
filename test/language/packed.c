@@ -529,8 +529,8 @@ TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
                 snprintf(
                     source,
                     sizeof source,
-                    "Packed :: library { Wrap :: () -> %s { return "
-                    "%s(%s) + %s(1); } Value :: Wrap(); "
+                    "Packed :: library { Wrap :: () -> %s { x: %s = %s; "
+                    "return x + %s(1); } Value :: Wrap(); "
                     "Fold :: () -> %s { return Value; } }",
                     name,
                     name,

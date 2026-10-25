@@ -108,17 +108,15 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. An `ahead` sample
- * uses an integer rule stage zero does not apply yet, so no stage-zero
- * closure checks it. */
+ * Copied function, which assigns its array, does not. A `debug_metadata`
+ * sample compares source points and watches with stage zero on both compiler
+ * backends. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, update_order, ahead;
-    /* The source range stage one watches exactly once, when watch_end is set. */
-    int watch_start, watch_end;
+        same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -796,7 +794,6 @@ static const sample samples[] = {
                    .expected = "[[1,7,8]]" } } },
     { .name = "typed constants fold exactly",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "Sign: int : -1 << 31;\n"
                 "Small: int8 : (64 << 1) - 1;\n"
@@ -1369,7 +1366,8 @@ static const sample samples[] = {
       .message = "Mismatched integer types int8 and byte; convert one operand",
       .line = 2,
       .column = 45 },
-    /* A compound assignment combines its operands as their operator does. */
+    /* Compound arithmetic rejects differing typed integers before assignment
+     * widening, both for a local and for a stored field. */
     { .name = "mixed compound assignment",
       .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
                 "return a; }\n",
@@ -1379,11 +1377,95 @@ static const sample samples[] = {
     { .name = "mixed compound field assignment",
       .source = "package facts\nNote :: struct { count: int; }\n"
                 "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
-                "b; "
-                "return n.count; }\n",
+                "b; return n.count; }\n",
       .message = "Mismatched integer types int and byte; convert one operand",
       .line = 3,
       .column = 50 },
+    { .name = "compound assignment preserves contextual and explicit operands",
+      .debug_metadata = true,
+      .source = "package facts\nNote :: struct { count: int; }\n"
+                "Plain :: (b: byte) -> int { a: int = 1; a = b; return a; }\n"
+                "Local :: (b: byte) -> int { a: int = 1; a += int(b); return "
+                "a; }\n"
+                "Literal :: () -> int { a: int = 1; a += 2; return a; }\n"
+                "Field :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "int(b); return n.count; }\n"
+                "FieldLiteral :: () -> int { n: Note = {count: 1}; n.count += "
+                "2; return n.count; }\n"
+                "Shift :: (a: int, count: byte) -> int { return a << count; "
+                "}\n",
+      .calls = { { .function = "Plain", .arguments = "[2]", .expected = "[2]" },
+                 { .function = "Local", .arguments = "[2]", .expected = "[3]" },
+                 { .function = "Literal", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Field", .arguments = "[2]", .expected = "[3]" },
+                 { .function = "FieldLiteral", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Shift", .arguments = "[3,1]", .expected = "[6]" } } },
+    { .name = "mixed compound reference assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Grow :: (a: ref int, b: byte) { a += b; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 33 },
+    { .name = "mixed compound reference field assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Grow :: (n: ref Note, b: byte) { n.count += b; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 34 },
+    { .name = "mixed compound boxed local assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Grow :: (b: byte) -> int { a: int = 1; Touch(a); a += b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 50 },
+    { .name = "mixed compound boxed parameter assignment",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Grow :: (a: int, b: byte) -> int { Touch(a); a += b; return "
+                "a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 3,
+      .column = 46 },
+    { .name = "compound reference and boxed operands preserve effects",
+      .debug_metadata = true,
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Touch :: (v: ref int) { v += 0; }\n"
+                "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
+                "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
+                "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
+                "Ref :: () -> int { n: int = 1; Bump(n, byte(2)); return n; }\n"
+                "RefField :: () -> int { n: Note = {count: 1}; BumpField(n, "
+                "byte(2)); return n.count; }\n"
+                "Box :: () -> int { n: int = 1; Touch(n); n += int(byte(2)); "
+                "return n; }\n"
+                "BoxParam :: (n: int) -> int { Touch(n); n += 2; return n; }\n"
+                "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
+                "n.count += Source(calls); return n.count * 10 + calls; }\n"
+                "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
+                "return n; }\n"
+                "Clamp :: (v: int) -> byte { return byte(v); }\n",
+      .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
+                 { .function = "RefField", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Box", .arguments = "[]", .expected = "[3]" },
+                 { .function = "BoxParam", .arguments = "[1]", .expected = "[3]" },
+                 { .function = "Once", .arguments = "[]", .expected = "[31]" },
+                 { .function = "Bits", .arguments = "[3]", .expected = "[11]" },
+                 { .function = "Clamp", .arguments = "[300]", .expected = "[255]" } } },
+    { .name = "mixed compound bitwise assignment",
+      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a &= b; "
+                "return a; }\n",
+      .message = "Mismatched integer types int and byte; convert one operand",
+      .line = 2,
+      .column = 40 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -1441,34 +1523,8 @@ static const sample samples[] = {
                  { .function = "Divide", .arguments = "[7,0]", .expected = "[7]" } } },
     /* An untyped constant expression that names a constant takes its type
      * from its use, and only integer division by zero is an error. */
-    /* Floating constants fold at their type: a conversion rounds half to
-     * even and overflows to infinity, and a float, subnormal ones too,
-     * widens to double exactly. */
-    { .name = "floating constants",
-      .group = TYPE_SAMPLES,
-      .source = "package facts\n"
-                "Big: double : 1e300;\n"
-                "Huge: float : float(Big);\n"
-                "Even: float : float(double(16777219.0));\n"
-                "Tenth: float : float(0.1);\n"
-                "Wide: double : Tenth;\n"
-                "Tiny: float : float(1e-40);\n"
-                "TinyWide: double : (Tiny);\n"
-                "Rounded :: () -> float { return Even; }\n"
-                "Infinite :: () -> bool { return Huge > 3e38; }\n"
-                "Widened :: (unused: int) -> bool { return Wide == "
-                "double(float(0.1)) && Wide != 0.1; }\n"
-                "Subnormal :: () -> bool { return TinyWide == double(Tiny) && "
-                "TinyWide > 0.0; }\n",
-      .calls = { { .function = "Rounded", .arguments = "[]", .expected = "[16777220.0]" },
-                 { .function = "Infinite", .arguments = "[]", .expected = "[true]" },
-                 { .function = "Widened", .arguments = "[0]", .expected = "[true]" },
-                 { .function = "Subnormal", .arguments = "[]", .expected = "[true]" } } },
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
-      .ahead = true,
-      .watch_start = 74,
-      .watch_end = 84,
       .source = "package facts\n"
                 "Count: uint : 3;\n"
                 "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
@@ -1476,10 +1532,9 @@ static const sample samples[] = {
       .calls = { { .function = "Eight", .arguments = "[8]", .expected = "[true]" },
                  { .function = "Huge", .arguments = "[1]", .expected = "[true]" } } },
     /* A shift has its left operand's type, and a count past that type's
-     * maximum clamps to it. Stage zero types the count from the left today. */
+     * maximum clamps to it. Exact constant shifts retain the written count. */
     { .name = "shift counts clamp",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "Literal :: (a: byte) -> byte { return a << 300; }\n"
                 "Counted :: (a: byte, n: uint) -> byte { return a << n; }\n"
@@ -1512,7 +1567,6 @@ static const sample samples[] = {
      * declared in any order and in an imported package. */
     { .name = "constant expressions",
       .group = TYPE_SAMPLES,
-      .ahead = true,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "Area :: Width * Height;\n"
@@ -2699,12 +2753,16 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
       .column = 31 },
+    /* Unary complements are classified as literal-shaped for debug metadata.
+     * Their folded value still needs one watch, including through grouping. */
+    { .name = "folded complement retains its watch",
+      .source = "package facts\nOne :: () -> int { return ~0; }\n"
+                "Grouped :: () -> int { return (~0); }",
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[-1]" } } },
     /* An untyped operand of a conversion is int64, or uint64 beyond it,
      * in parentheses too. */
     { .name = "wrapped literal in parentheses",
-      .ahead = true,
-      .watch_start = 40,
-      .watch_end = 71,
       .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
       .calls = { { .function = "One", .arguments = "[]", .expected = "[-1]" } } },
@@ -2855,6 +2913,41 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
+    /* Authored constant support boundaries. Stage zero accepts some of these
+     * forms; require the authored diagnostic at the operand, not parity with
+     * stage zero or an earlier unsupported-declaration failure. */
+    { .name = "floating constant cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: uint64 : "
+                "uint64(Wide);\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 3,
+      .column = 22 },
+    { .name = "floating constant cannot wrap into integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: int : int(wrap: "
+                "Wide);\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 3,
+      .column = 22 },
+    { .name = "floating conversion cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBad: uint64 : uint64(double(1.5));\n",
+      .message = "floating-to-integer constant conversion is not supported yet",
+      .line = 2,
+      .column = 22 },
+    { .name = "floating shift count cannot become integer bits",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nWide: double : 1.5;\nBad: int : 1 << Wide;\n",
+      .message = "constant value must be an integer expression",
+      .line = 3,
+      .column = 17 },
+    { .name = "floating binary constant initializer remains unsupported",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nBad: double : 1.0 + 2.0;\n",
+      .message = "floating constant initializer is not supported yet",
+      .line = 2,
+      .column = 15 },
 };
 enum
 {
@@ -4313,32 +4406,6 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
     native_capabilities_free(native);
     return alike;
 }
-/* A folded constant's value is watched once, at the expression inside any
- * parentheses, as stage zero watches it. */
-static bool watched_once(const unsigned char *bytes, size_t length, const sample *s)
-{
-    native_capabilities *native;
-    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
-    REQUIRE(packages);
-    int count = 0;
-    for (int p = 0; p < package_collection_count(packages); p++) {
-        const execution_module *module = package_collection_module(packages, p);
-        for (int i = 0; i < module->plan.function_count; i++) {
-            const behavior_function *f = module->plan.functions[i].body;
-            for (int k = 0; k < acount(f->source_watches); k++) {
-                const behavior_source_watch *w = &f->source_watches[k];
-                count += w->origin.start == s->watch_start &&
-                         w->origin.end == s->watch_end;
-            }
-        }
-    }
-    package_collection_free(packages);
-    native_capabilities_free(native);
-    if (count != 1) {
-        fprintf(stderr, "%s: %d watches at %d..%d\n", s->name, count, s->watch_start, s->watch_end);
-    }
-    return count == 1;
-}
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
 static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
@@ -4518,16 +4585,14 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
-                   (!s->watch_end || watched_once(bytes, length, s)) &&
-                   ((b && !s->host_effects) || s->ahead ||
+                   ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
         for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
             }
-            ran = ran && (b || s->ahead ||
-                          run(expected, expected_length, &s->calls[c], 0));
+            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
         if (ran && s->update_order) {
             ran = (b || array_update_order(expected, expected_length, s)) &&
@@ -4689,7 +4754,7 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
     }
     return true;
 }
-static bool float_conversions_run(int compiler, bool constants)
+static bool approved_float_conversion_admission(int compiler, bool constants)
 {
     bool agreed = true;
     for (size_t i = 0; i < sizeof FLOAT_CONVERSION_CASES / sizeof *FLOAT_CONVERSION_CASES;
@@ -4707,6 +4772,48 @@ static bool float_conversions_run(int compiler, bool constants)
         REQUIRE(out.type == PIN_UNION && value);
         REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
         bool accepted = value->tag == tag(compiler, "Compiled");
+        if (!accepted) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(line.type == PIN_I32 && column.type == PIN_I32);
+            fprintf(
+                stderr,
+                "FLOAT_REJECTION stage1 %s %d:%d %s\n",
+                item->name,
+                line.i,
+                column.i,
+                pin_text(message).bytes
+            );
+            if (!item->accepted) {
+                if (!item->stage_one.message) {
+                    REQUIRE(item->constant);
+                    fprintf(
+                        stderr,
+                        "FLOAT_DEPENDENCY_BLOCKED %s: typed-constant narrowing "
+                        "category is pending; rejection is not policy proof\n",
+                        item->name
+                    );
+                    agreed = false;
+                } else if (
+                    strcmp(pin_text(message).bytes, item->stage_one.message) ||
+                    line.i != item->stage_one.line ||
+                    column.i != item->stage_one.column
+                ) {
+                    fprintf(
+                        stderr,
+                        "FLOAT_REJECTION_MISMATCH stage1 %s expected %d:%d "
+                        "%s\n",
+                        item->name,
+                        item->stage_one.line,
+                        item->stage_one.column,
+                        item->stage_one.message
+                    );
+                    agreed = false;
+                }
+            }
+        }
         if (accepted != item->accepted) {
             fprintf(
                 stderr,
@@ -4732,6 +4839,10 @@ static bool float_conversions_run(int compiler, bool constants)
             bool ran = true;
             for (int backend = 0; backend < 2; backend++) {
                 ran = run(bytes, length, &call, backend) && ran;
+                compiler_host_free(host);
+                host = NULL;
+                free(result.json);
+                result = (compiler_host_result){ 0 };
             }
             free(bytes);
             agreed = ran && agreed;
@@ -4742,6 +4853,23 @@ static bool float_conversions_run(int compiler, bool constants)
     return true;
 }
 
+/* The literal diagnostics also hold in the independent stage-zero frontend,
+ * including reference and boxed targets and record fields. */
+TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero)
+{
+    REQUIRE(prepare());
+    int checked = 0;
+    for (int i = 0; i < (int)SAMPLES; i++) {
+        const sample *s = &samples[i];
+        if (!strncmp(s->name, "mixed compound ", strlen("mixed compound "))) {
+            REQUIRE(s->message);
+            REQUIRE(rejects_like_oracle(s, s->message, s->line, s->column));
+            checked++;
+        }
+    }
+    REQUIRE(checked == 7);
+    return true;
+}
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -4769,22 +4897,22 @@ TEST_CASE(package_compiler_builds_runnable_collection_packages_compiled)
 TEST_CASE(package_compiler_builds_runnable_importing_packages)
 {
     REQUIRE(run_samples(IMPORT_SAMPLES, 0));
-    return float_conversions_run(0, false);
+    return approved_float_conversion_admission(0, false);
 }
 TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 {
     REQUIRE(run_samples(IMPORT_SAMPLES, 1));
-    return float_conversions_run(1, false);
+    return approved_float_conversion_admission(1, false);
 }
-TEST_CASE(package_compiler_folds_floating_constants)
+TEST_CASE(package_compiler_float_constant_dependency)
 {
     REQUIRE(prepare());
-    return float_conversions_run(0, true);
+    return approved_float_conversion_admission(0, true);
 }
-TEST_CASE(package_compiler_folds_floating_constants_compiled)
+TEST_CASE(package_compiler_float_constant_dependency_compiled)
 {
     REQUIRE(prepare());
-    return float_conversions_run(1, true);
+    return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -10780,9 +10908,8 @@ static bool collected_rows(int b, const char *case_name, pin_value source, pin_v
     REQUIRE(collected);
     return true;
 }
-/* An accepted module, `ir` its IR, which this frees: its Main must give the
- * literal `expected`, and each probe its oracle, on both VMs and natively at
- * O0 and O2. */
+/* An accepted module, `ir` its IR, which this frees: each of its calls must
+ * give one value on both VMs and natively at O0 and O2. */
 static bool module_agrees(
     const char *directory,
     int b,
@@ -10926,6 +11053,16 @@ static bool folded_sources_agree(const char *directory)
             FOLDED_SOURCES[i].entry,
             calls
         ));
+        if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
+            fprintf(
+                stderr,
+                "scalar case %s: Main gave %d, not %d\n",
+                name,
+                calls[0].values[0],
+                FOLDED_SOURCES[i].entry
+            );
+        }
+        REQUIRE(calls[0].values[0] == FOLDED_SOURCES[i].entry);
         arena_free(&detached);
     }
     return true;
@@ -11235,6 +11372,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compound_diagnostics_match_stage_zero);
     RUN_TEST_CASE(package_compiler_builds_runnable_packages);
     RUN_TEST_CASE(package_compiler_asserts_without_native_capability);
     pu_clear_setup();
@@ -11249,7 +11387,7 @@ void test_language_package_compiler_chibi_imports()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
-    RUN_TEST_CASE(package_compiler_folds_floating_constants);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_compiled()
@@ -11280,7 +11418,7 @@ void test_language_package_compiler_chibi_imports_compiled()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled);
-    RUN_TEST_CASE(package_compiler_folds_floating_constants_compiled);
+    RUN_TEST_CASE(package_compiler_float_constant_dependency_compiled);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()

@@ -202,8 +202,9 @@ every bit out; `T(v)` clamps between integers and `T(wrap: v)` keeps the low
 bits. Safety comes from compile-time rules (no mixed integer types, unsigned
 shift counts, exact constants that must fit, no constant zero divisor) and
 from development builds, which report each overflow, zero divisor and clamp
-once per site without stopping. The runtime part is implemented; the
-compile-time rules and development reports follow.
+once per site without stopping. The runtime part and stage zero's
+compile-time rules are implemented; stage one's compile-time rules and
+development reports follow.
 
 ## Stage one has no character literals
 
@@ -290,9 +291,9 @@ after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
 range, keyed and reverse forms too, but not `ref` loops, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step
-hangs (#503). The stage-one tokenizer has no `..<` token, so a build program
-that the tokenizer corpus reads can't use half-open ranges either; the map
-syntax PR counted positions by hand in `Build.chibi`'s `PrivateSources`.
+hangs (#503). The authored tokenizer now recognizes `..<` with independently pinned byte
+spans and inclusive/spaced controls, so its corpus can read those half-open
+ranges too.
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
@@ -544,15 +545,9 @@ runtime. M2's native integer work hit this in
 `tools/compiler/llvm_native/Emit.chibi`: a 13-argument instruction template
 lost an operand, so the emitter splits such templates into several calls.
 
-- Rust's `format!` and Zig's `std.fmt` check placeholders against arguments at
-  compile time, with no count limit. Odin's `fmt.tprintf` takes any number of
-  variadic arguments and prints `%!(MISSING ARGUMENT)` for one that is missing.
-  Go prints `%!v(MISSING)` and `go vet` reports the mismatch.
-
-Suggestion: when the format string is a literal, both compilers check its
-placeholders against the arguments, as Rust and Zig do, and lift the
-fixed limit. Until then, exceeding the limit should be a compile error rather
-than empty text.
+Suggestion: check literal format strings against their arguments and report
+excess placeholders. This is a documented limitation, not a formatter change
+included in the M2 reconciliation.
 
 ## Templates are package-local
 

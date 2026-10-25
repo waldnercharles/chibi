@@ -276,7 +276,8 @@ endif()
 if(TARGET Chibi::asset_compiler_host)
     add_library(chibi_asset_compiler_consumer OBJECT asset_compiler_host.c)
     target_include_directories(chibi_asset_compiler_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime)
+    target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime
+        Chibi::scene_document Chibi::prototype_document)
     target_compile_options(chibi_asset_compiler_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_language PRIVATE $<TARGET_OBJECTS:chibi_asset_compiler_consumer>)
     target_link_libraries(test_language PRIVATE Chibi::asset_compiler_host)
@@ -303,11 +304,8 @@ set_source_files_properties(scalar_lowering_chibi.c
 target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c)
 set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-# Private exact constants are exercised only by the owning test dispatcher.
-target_sources(test_language PRIVATE numeric.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/language/numeric.c")
+target_sources(test_language PRIVATE numeric.c)
 set_source_files_properties(numeric.c
-    "${CHIBI_LANGUAGE_TEST_ROOT}/src/language/numeric.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_include_directories(test_language PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_sources(test_language PRIVATE effects.c maps.c generic.c symbol_references.c packed.c iteration.c)

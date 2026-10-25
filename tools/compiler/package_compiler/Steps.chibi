@@ -2030,7 +2030,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         count: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
         while (argument >= 0) {
-            if (Is(forest, argument, "named_argument")) {
+            // Native parameters are named; other callables take positions.
+            if (!associated && Is(forest, argument, "named_argument")) {
                 return Fail(forest, argument, document, "named arguments are not supported yet");
             }
             if (Is(forest, argument, "typed_argument")) {

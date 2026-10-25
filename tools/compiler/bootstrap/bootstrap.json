@@ -2,30 +2,30 @@
   "format": 1,
   "version": 6,
   "minimum": 2,
-  "revision": "3ea227cf7e8477d22b692fd43607960e4e6283bb-dirty",
+  "revision": "e2941994f334d8c7429e230b74a32efe15a739ba",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 14218155,
-    "sha256": "fe148bde033f366d84fdb863305fbd54dbb0f772482127ef361e86435eda4fc8"
+    "bytes": 14379432,
+    "sha256": "86bbfcd1d965cb91bdb2d5573ff87987b2d3ee786303aae4f73f943e15b11706"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 100863,
-      "sha256": "6b428075065c130a41d7e0783031c4ffcfd41d9410654c9089f5f6e9d26e0ca5"
+      "bytes": 100348,
+      "sha256": "bf521c72abef2928ab7d6d3eb4a58f929ebc2776aac4993fdedebdac6ff0ae69"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 123011,
-      "sha256": "3d7aa53ab9eb02394f41974b5078f3f80169ee368200878092c137c8223320ca"
+      "bytes": 122982,
+      "sha256": "f0f47e3473d0216ebb83a715cc256d36fd71dabeb7682d6485c9980b57b0f865"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 209321,
-      "sha256": "9589d6765f6fef18128285e2fc7a093e978cdaf26c05cd6c085ca97485d4cee9"
+      "bytes": 208090,
+      "sha256": "7b1153d61d5f1da7d01c2c22549b3a1c989e8d0d23f04579719757521fea075b"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -34,13 +34,13 @@
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 28382,
-      "sha256": "24ddada2c98153b8b49dd4e54defbd630305741ac3d2ff9621126d16976240e8"
+      "bytes": 36512,
+      "sha256": "61b40bbc97ffab9a0eb06e7089840961df2532be900166fd7e3c265d550cae8c"
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 44473,
-      "sha256": "066928e2adc2dddf790bb9b2618292cf521ca1c8a471ddf41424f83898070011"
+      "bytes": 44792,
+      "sha256": "620a91ed677bef67b75ddacae5b0ecd7344fb2f993e8ce4791e2780e18cb1e4e"
     },
     {
       "path": "package_compiler/Tree.chibi",

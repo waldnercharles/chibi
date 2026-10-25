@@ -47,6 +47,7 @@ void test_language_capture();
 void test_language_query_program();
 void test_language_query_boundary();
 void test_language_incremental();
+void test_language_operations();
 void test_language_modules();
 void test_numeric_ranges();
 void test_numeric_exact_core();
@@ -162,6 +163,7 @@ int main(int argc, char **argv)
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
+    bool operations = argc == 2 && !strcmp(argv[1], "--operations");
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
@@ -298,8 +300,8 @@ int main(int argc, char **argv)
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !runtime_attribution && !wasm &&
-         !program && !query_program && !incremental && !modules && !ranges &&
+         !row_array && !record_runtime && !runtime_attribution && !wasm && !program &&
+         !query_program && !incremental && !operations && !modules && !ranges &&
          !numeric_exact_core && !integer_semantics && !integer_shift_counts &&
          !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
          !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
@@ -337,6 +339,7 @@ int main(int argc, char **argv)
             "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
+            "--operations | "
             "--modules | "
             "--ranges | --numeric-exact-core | --integer-semantics | "
             "--integer-shift-counts [case] | --integer-shift-counts-authored | "
@@ -516,6 +519,8 @@ int main(int argc, char **argv)
         test_language_modules();
     } else if (incremental) {
         test_language_incremental();
+    } else if (operations) {
+        test_language_operations();
     } else if (numeric_exact_core) {
         test_numeric_exact_core();
     } else if (integer_shift_counts) {

@@ -292,6 +292,7 @@ TOOLS = {
                          '--script-benchmark'],
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
+    'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
@@ -469,7 +470,7 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -527,7 +528,7 @@ ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
              'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
              'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
@@ -559,7 +560,7 @@ GROUPS = {
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
                   'contact-benchmark'],
-    'language': ['execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
+    'language': ['execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
                  'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',

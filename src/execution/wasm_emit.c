@@ -212,6 +212,10 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
     if (i->indirect) {
         return false;
     }
+    /* The machine helper checks what a development build reports. */
+    if (behavior_integer_site(f, i, 0) && behavior_integer_reportable(f, i)) {
+        return false;
+    }
     if (i->op == BF_SAVE) {
         return !behavior_function_inspectable(f) || !f->locals[i->target].parameter;
     }

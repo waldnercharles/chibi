@@ -25,8 +25,9 @@ Implemented across the VM, SLJIT, generated C and Wasm, in
   truncates, saturates at the bounds and maps NaN to zero.
 
 Hash, checksum and random-generator ports can rely on wrapping without
-spelling it. Because nothing fails, an unused integer operation or conversion
-can be pruned, and the optimizer may delay stores past one.
+spelling it, though a development build reports it (see below). Because
+nothing fails, an unused integer operation or conversion can be pruned, and
+the optimizer may delay stores past one.
 
 ## Compile time
 
@@ -52,9 +53,42 @@ lowering, and a call evaluated at compile time follows the run-time rules.
 
 ## Development builds
 
-Pending: a development build reports each overflow, zero divisor and clamping
-conversion once per source site, as a Studio diagnostic. The program keeps the
-values a shipped build computes, and a shipped build has no checks.
+A development build reports each overflow, zero divisor and clamping
+conversion once per source site. The program keeps the values a shipped build
+computes. A host enables reports with `execution_integer_reports_enable(true)`
+before it publishes modules; Studio does so at startup. Modules published
+afterwards carry the checks
+([`src/execution/integer_report.c`](../src/execution/integer_report.c)):
+
+- Integer add, subtract, multiply, divide, remainder, negation and absolute
+  value report, and so does `T(v)` to an integer type. Address arithmetic
+  never reports. `T(wrap: v)` keeps its own conversion silent, but an
+  overflow inside `v` still reports.
+- A conversion from a float reports NaN and a value whose truncation does not
+  fit.
+- The VM checks the operands. SLJIT emits the checks inline: the overflow or
+  carry flag, a narrow result that truncation changes, the high word of an
+  unsigned multiply, a zero divisor, the signed minimum divided by -1 and the
+  conversion bounds. An event stores one byte for its site and calls nothing.
+- Wasm runs reportable operations through the machine helper, so the VM
+  checks them.
+- Generated C, LLVM native code and shipped builds have no checks. Neither do
+  the generic arithmetic natives in
+  [`src/runtime/arithmetic.c`](../src/runtime/arithmetic.c) yet.
+- A function with report sites drops its guarded fast body, which folds,
+  shares and prunes operations across sites, so every site reports on its own.
+  A conversion whose result is unused may still be pruned and not report.
+
+`execution_module_take_integer_reports` returns each site of a module and its
+imports that reported since the last take, with its source range and node.
+`execution_module_reset_integer_reports` lets every site report again, as at
+the start of a Play session. Report sites live only in memory: a prepared
+module read in a development build reports from its decoded sources, and
+writing it back produces the same bytes. An inspected run reports as an
+uninspected one does.
+
+Intentional wrapping, such as a hash, reports too. Marking the operations
+inside `T(wrap: ...)` as intentional is the next step.
 
 ## Prior art
 

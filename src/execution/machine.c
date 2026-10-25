@@ -742,6 +742,9 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         case BF_CAST:
             behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out);
+            if (f->integer_reports) {
+                behavior_integer_report(f, i, a, b);
+            }
             break;
         case BF_FLAGS: out->b = (a.u & b.u) != 0; break;
         case BF_CONVERT:
@@ -843,6 +846,9 @@ int execution_machine_step(execution_machine *m, int pc)
                                      ? &slots[i->target]
                                      : NULL;
                 behavior_scalar_integer_op(i->op, a, b, out, other);
+                if (f->integer_reports) {
+                    behavior_integer_report(f, i, a, b);
+                }
                 break;
             }
             double x = a.type == PIN_F32 ? a.f : a.d,

@@ -327,8 +327,8 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
 }
 /* Fails unless the integer is a Unicode scalar, 0 through 0x10FFFF outside
- * the surrogates. As a uint64 a negative value lies above the range, and
- * value - 0xD800 falls below 0x800 only for a surrogate. */
+ * the surrogates. As a uint64 a negative value lies above the range, and the
+ * surrogates are the one 0x800 block starting at 0xD800. */
 static void char_check(lower *l, int slot, pin_type storage, script_range range)
 {
     static const char message[] = "Value does not fit in char";
@@ -358,20 +358,20 @@ static void char_check(lower *l, int slot, pin_type storage, script_range range)
                                          .message = message },
         range
     );
-    int first = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
-    int offset = value_op(
+    int mask = constant(l, (pin_value){ .type = PIN_U64, .u64 = ~(uint64_t)0x7FF }, range);
+    int block = value_op(
         l,
         (
             behavior_function_instruction
-        ){ .op = BF_SUB, .type = PIN_U64, .left = wide, .right = first },
+        ){ .op = BF_BIT_AND, .type = PIN_U64, .left = wide, .right = mask },
         range
     );
-    int count = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0x800 }, range);
+    int surrogates = constant(l, (pin_value){ .type = PIN_U64, .u64 = 0xD800 }, range);
     int scalar = value_op(
         l,
         (
             behavior_function_instruction
-        ){ .op = BF_GE, .type = PIN_U64, .left = offset, .right = count },
+        ){ .op = BF_NE, .type = PIN_U64, .left = block, .right = surrogates },
         range
     );
     emit(

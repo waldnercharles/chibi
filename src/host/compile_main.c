@@ -182,8 +182,8 @@ static bool write_text(const char *path, const char *text)
     bool written = file && fputs(text, file) >= 0;
     return file && !fclose(file) && written;
 }
-/* Writes stage one's CompileBehaviors input for the project: its executable
- * sources, and what their modules link against in the catalog they compile
+/* Writes stage one's CompileBehaviorsWithCatalog input: the project sources
+ * and what their modules link against in the catalog they compile
  * against. Reports the executable source count on stdout only after the
  * complete input has been written. */
 static int stage_one_input(const char *project, const char *output)
@@ -209,7 +209,14 @@ static int stage_one_input(const char *project, const char *output)
             identities[i] = source_catalog_source_at(sources, i)->identity;
             texts[i] = source_catalog_source_at(sources, i)->text;
         }
-        json = compiler_behavior_input_json(source_catalog_view(sources), identities, texts, count, &length);
+        json = compiler_behavior_catalog_input_json(
+            source_catalog_view(sources),
+            application.native,
+            identities,
+            texts,
+            count,
+            &length
+        );
         free(identities);
         free(texts);
     }

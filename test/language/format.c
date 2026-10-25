@@ -1,5 +1,6 @@
 #include "authoring/source_format.h"
 #include "authoring/source_minimize.h"
+#include "runtime/core_definition.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <ctype.h>
@@ -11,12 +12,15 @@ static script_syntax *source, *formatted;
 static char *text, *again;
 static authoring_format_map edit_map;
 static script_analysis *state_before, *state_after;
+static native_capabilities *core_native;
 
 static void cleanup()
 {
     script_analysis_free(state_before);
     script_analysis_free(state_after);
     state_before = state_after = NULL;
+    native_capabilities_free(core_native);
+    core_native = NULL;
     script_syntax_free(source);
     script_syntax_free(formatted);
     free(text);
@@ -1398,6 +1402,189 @@ TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers)
     return true;
 }
 
+static bool core_migration_catalog()
+{
+    native_capability_definition alias = { 0 };
+    for (int i = 0; i < CORE_DEFINITION_PACK.definition_count; i++) {
+        if (CORE_DEFINITION_PACK.definitions[i].operation == SCRIPT_OPERATION_OWNER) {
+            alias = CORE_DEFINITION_PACK.definitions[i];
+        }
+    }
+    alias.canonical_name = "OwnerAlias";
+    alias.source_name = "owner_alias";
+    const native_definition_pack definitions[] = {
+        CORE_DEFINITION_PACK,
+        { .definitions = &alias, .definition_count = 1 },
+    };
+    const script_catalog_capability tick_event = {
+        .id = 30,
+        .name = "Tick",
+        .kind = SCRIPT_CAPABILITY_EVENT,
+        .completion_outcome = -1,
+    };
+    const script_catalog catalog = { .capabilities = &tick_event,
+                                     .capability_count = 1,
+                                     .tick_event = 30 };
+    const native_capability_pack pack = { .catalog = &catalog };
+    char error[256];
+    core_native = native_capabilities_from_definition_packs(
+        &pack,
+        1,
+        definitions,
+        NATIVE_COUNT(definitions),
+        error,
+        sizeof error
+    );
+    if (!core_native) {
+        fprintf(stderr, "core migration catalog: %s\n", error);
+    }
+    return core_native != NULL;
+}
+TEST_CASE(source_migration_matches_core_self_effects_in_each_program_context)
+{
+    const char *inputs[] = {
+        "Demo :: behavior { on Tick :: () { e := Self(); same := Self() == "
+        "self; } }",
+        "Demo :: library { Read :: () { e := Self(); same := Self() == self; } "
+        "}",
+        "Demo :: system() where Self() == self {}",
+    };
+    for (int i = 0; i < NATIVE_COUNT(inputs); i++) {
+        cleanup();
+        REQUIRE(core_migration_catalog());
+        const script_catalog *catalog = native_capabilities_catalog(core_native);
+        source = script_parse(inputs[i]);
+        state_before = script_analyze_document(source, catalog, "Demo");
+        REQUIRE(!state_before->valid);
+        script_analysis_free(state_before);
+        state_before = script_analyze_migration_document(source, catalog, "Demo", NULL, 0, false);
+        REQUIRE(state_before->valid && state_before->function_count == 1);
+        bool invocation = i == 1;
+        REQUIRE(
+            !!(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ) == invocation
+        );
+        char error[256];
+        text = authoring_source_migrate_generated(inputs[i], catalog, "Demo", error, sizeof error);
+        if (!text) {
+            fprintf(stderr, "core Self migration: %s\n", error);
+        }
+        REQUIRE(text && !strstr(text, "Self()"));
+        REQUIRE(i == 2 || strstr(text, "e := self"));
+        REQUIRE(strstr(text, "self == self"));
+        formatted = script_parse(text);
+        state_after = script_analyze_document(formatted, catalog, "Demo");
+        REQUIRE(state_after->valid && state_after->function_count == 1);
+        REQUIRE(state_before->functions[0].effects == state_after->functions[0].effects);
+    }
+    return true;
+}
+TEST_CASE(source_migration_preserves_other_invocation_sensitive_calls)
+{
+    REQUIRE(core_migration_catalog());
+    const script_catalog *core = native_capabilities_catalog(core_native);
+    source = script_parse("Demo :: behavior { on Tick :: () { e := owner_alias(); } }");
+    state_before = script_analyze_migration_document(source, core, "Demo", NULL, 0, false);
+    REQUIRE(state_before->valid && state_before->function_count == 1);
+    REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
+    script_analysis_free(state_before);
+    script_syntax_free(source);
+    source = script_parse("Demo :: system() where owner_alias() == self {}");
+    state_before = script_analyze_migration_document(source, core, "Demo", NULL, 0, false);
+    REQUIRE(!state_before->valid);
+    bool rejected = false;
+    for (int i = 0; i < state_before->diagnostic_count; i++) {
+        rejected |= strstr(state_before->diagnostics[i].message, "Query predicate cannot read") !=
+                    NULL;
+    }
+    REQUIRE(rejected);
+    script_catalog_capability caps[NATIVE_COUNT(component_capabilities)];
+    memcpy(caps, component_capabilities, sizeof caps);
+    int multiply = script_catalog_find_capability(&component_catalog, "multiply", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(multiply >= 0);
+    caps[multiply].effects = SCRIPT_EFFECT_INVOCATION_READ;
+    script_catalog catalog = component_catalog;
+    catalog.capabilities = caps;
+    const char *input = "Demo :: behavior { on Tick :: (dt: number) { v := "
+                        "multiply(2.0, 3.0); } }";
+    script_analysis_free(state_before);
+    script_syntax_free(source);
+    source = script_parse(input);
+    REQUIRE(!source->diagnostic_count);
+    state_before = script_analyze_document(source, &catalog, "Demo");
+    REQUIRE(state_before->valid && state_before->function_count == 1);
+    REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
+    text = authoring_source_minimize(input, &catalog, "Demo");
+    REQUIRE(text && strstr(text, "multiply("));
+    formatted = script_parse(text);
+    REQUIRE(!formatted->diagnostic_count);
+    state_after = script_analyze_document(formatted, &catalog, "Demo");
+    REQUIRE(state_after->valid && state_after->function_count == 1);
+    REQUIRE(state_after->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
+    return true;
+}
+TEST_CASE(source_migration_keeps_system_row_owner_distinct)
+{
+    REQUIRE(core_migration_catalog());
+    const script_catalog *core = native_capabilities_catalog(core_native);
+    script_catalog_capability caps[core->capability_count];
+    memcpy(caps, core->capabilities, sizeof caps);
+    script_catalog catalog = *core;
+    catalog.capabilities = caps;
+    int self = script_catalog_find_capability(core, "Self", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(self >= 0);
+    const char
+        *input = "Demo :: system() { e := Self(); same := Self() == self; }";
+    char error[256];
+    text = authoring_source_migrate_generated(input, core, "Demo", error, sizeof error);
+    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
+    /* The pre-operation main definition had UNKNOWN identity and zero
+     * effects. Its migration also refuses the different system-row binding. */
+    caps[self].operation = SCRIPT_OPERATION_UNKNOWN;
+    caps[self].effects = 0;
+    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
+    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
+    return true;
+}
+TEST_CASE(source_migration_rejects_opaque_or_mismatched_self_equivalence)
+{
+    REQUIRE(core_migration_catalog());
+    const script_catalog *core = native_capabilities_catalog(core_native);
+    script_catalog_capability caps[core->capability_count];
+    memcpy(caps, core->capabilities, sizeof caps);
+    script_catalog catalog = *core;
+    catalog.capabilities = caps;
+    int self = script_catalog_find_capability(core, "Self", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(self >= 0);
+    const char *input = "Demo :: behavior { on Tick :: () { e := Self(); } }";
+    caps[self].operation = SCRIPT_OPERATION_UNKNOWN;
+    source = script_parse(input);
+    state_before = script_analyze_migration_document(source, &catalog, "Demo", NULL, 0, false);
+    REQUIRE(state_before->valid && state_before->function_count == 1);
+    REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
+    char error[256];
+    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
+    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
+    caps[self] = core->capabilities[self];
+    script_catalog_parameter result = caps[self].results[0];
+    result.type = (script_type){ .storage = PIN_I32 };
+    caps[self].results = &result;
+    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
+    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
+    caps[self] = core->capabilities[self];
+    caps[self].flow.break_entry = -1;
+    text = authoring_source_migrate_generated(input, &catalog, "Demo", error, sizeof error);
+    REQUIRE(!text && strstr(error, "Use self instead of Self()"));
+    text = authoring_source_migrate_generated(
+        "Demo :: behavior { on Tick :: () { self := 5; e := Self(); } }",
+        core,
+        "Demo",
+        error,
+        sizeof error
+    );
+    REQUIRE(!text && error[0]);
+    return true;
+}
+
 TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner)
 {
     script_catalog_capability caps[sizeof component_capabilities / sizeof *component_capabilities + 1];
@@ -1747,6 +1934,10 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
     RUN_TEST_CASE(source_minimize_preserves_accessor_and_operator_comments);
     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);
+    RUN_TEST_CASE(source_migration_matches_core_self_effects_in_each_program_context);
+    RUN_TEST_CASE(source_migration_preserves_other_invocation_sensitive_calls);
+    RUN_TEST_CASE(source_migration_keeps_system_row_owner_distinct);
+    RUN_TEST_CASE(source_migration_rejects_opaque_or_mismatched_self_equivalence);
     RUN_TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner);
     RUN_TEST_CASE(source_migration_preserves_deferred_setter_actions_and_results);
     RUN_TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers);

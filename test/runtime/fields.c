@@ -1004,26 +1004,36 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
                        "    }\n"
                        "}\n";
     test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
-    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
-    REQUIRE(acount(libraries) == 1);
-    graph *disc = behavior_asset_find_graph_by_name(libraries[0], "Disc");
-    REQUIRE(disc);
-    behavior_asset *field = behavior_asset_new("DiscField");
-    field->domain = BEHAVIOR_DOMAIN_FIELD;
-    node *call = behavior_asset_add_function_call_node(field, disc);
-    node *output = add(field, "Field Output");
-    REQUIRE(call && output && !graph_connect_data(field->graph, call, 0, output, 0));
+    behavior_asset **projections[2] = { authoring_source_graph_libraries(fixture.sources),
+                                        NULL };
     char error[256];
-    const behavior_asset *catalog = libraries[0];
-    behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
-    REQUIRE(linked);
-    field_program *p = compile(linked);
-    REQUIRE(p && sample(p, 0, 0) == -40);
-    field_program_free(p);
-    behavior_asset_free(linked);
-    behavior_asset_free(field);
-    authoring_source_graph_libraries_free(libraries);
+    REQUIRE(authoring_source_graph_libraries_catalog(
+        authoring_sources_source_catalog(fixture.sources),
+        &projections[1],
+        error,
+        sizeof error
+    ));
     test_source_free(&fixture);
+    for (int projection = 0; projection < 2; projection++) {
+        behavior_asset **libraries = projections[projection];
+        REQUIRE(acount(libraries) == 1);
+        graph *disc = behavior_asset_find_graph_by_name(libraries[0], "Disc");
+        REQUIRE(disc);
+        behavior_asset *field = behavior_asset_new("DiscField");
+        field->domain = BEHAVIOR_DOMAIN_FIELD;
+        node *call = behavior_asset_add_function_call_node(field, disc);
+        node *output = add(field, "Field Output");
+        REQUIRE(call && output && !graph_connect_data(field->graph, call, 0, output, 0));
+        const behavior_asset *catalog = libraries[0];
+        behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
+        REQUIRE(linked);
+        field_program *p = compile(linked);
+        REQUIRE(p && sample(p, 0, 0) == -40);
+        field_program_free(p);
+        behavior_asset_free(linked);
+        behavior_asset_free(field);
+        authoring_source_graph_libraries_free(libraries);
+    }
     return true;
 }
 
@@ -1286,57 +1296,95 @@ TEST_CASE(field_source_library_functions_call_functions)
                   "}\n" },
     };
     test_source_fixture fixture = test_sources_prepare(sources, 2);
-    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
-    REQUIRE(acount(libraries) == 2);
-    const behavior_asset *catalog[2] = { NULL };
-    for (int i = 0; i < 2; i++) {
-        catalog[strcmp(libraries[i]->name, "Cave") != 0] = libraries[i];
-    }
-    REQUIRE(catalog[0] && catalog[1]);
-    graph *rock = behavior_asset_find_graph_by_name(catalog[0], "Rock");
-    REQUIRE(rock);
-    REQUIRE(!behavior_asset_find_graph_by_name(catalog[0], "Bad"));
-    REQUIRE(
-        behavior_asset_find_graph_by_name(catalog[1], "Pair") &&
-        behavior_asset_find_graph_by_name(catalog[1], "Disc") &&
-        behavior_asset_find_graph_by_name(catalog[1], "Ring") &&
-        !behavior_asset_find_graph_by_name(catalog[1], "Loop") &&
-        !behavior_asset_find_graph_by_name(catalog[1], "Twice")
-    );
-    behavior_asset *cave = field("CaveField");
-    node *call = behavior_asset_add_function_call_node(cave, rock);
-    REQUIRE(call);
-    wire(cave, add(cave, "Field X"), call, 0);
-    wire(cave, add(cave, "Field Y"), call, 1);
-    wire(cave, call, add(cave, "Field Output"), 0);
+    behavior_asset **projections[2] = { authoring_source_graph_libraries(fixture.sources),
+                                        NULL };
     char error[256];
-    REQUIRE(!behavior_asset_link_libraries(cave, catalog, 1, error, sizeof error));
-    REQUIRE(strstr(error, "missing function library"));
-    behavior_asset *linked = behavior_asset_link_libraries(cave, catalog, 2, error, sizeof error);
-    REQUIRE(linked);
-    field_program *lowered = compile(linked);
-    /* -min(circle(x - 3, y, 4), |circle(x, y, 2)|) */
-    field_ir code[] = {
-        { .op = FIELD_X },
-        { .op = FIELD_Y },
-        { .op = FIELD_CONSTANT, .value = 3 },
-        { .op = FIELD_SUBTRACT, .count = 2, .inputs = { 0, 2 } },
-        { .op = FIELD_CONSTANT, .value = 4 },
-        { .op = FIELD_CIRCLE, .count = 3, .inputs = { 3, 1, 4 } },
-        { .op = FIELD_CONSTANT, .value = 2 },
-        { .op = FIELD_CIRCLE, .count = 3, .inputs = { 0, 1, 6 } },
-        { .op = FIELD_ABS, .count = 1, .inputs = { 7 } },
-        { .op = FIELD_MIN, .count = 2, .inputs = { 5, 8 } },
-        { .op = FIELD_NEGATE, .count = 1, .inputs = { 9 } },
+    REQUIRE(authoring_source_graph_libraries_catalog(
+        authoring_sources_source_catalog(fixture.sources),
+        &projections[1],
+        error,
+        sizeof error
+    ));
+    test_source_free(&fixture);
+    for (int projection = 0; projection < 2; projection++) {
+        behavior_asset **libraries = projections[projection];
+        REQUIRE(acount(libraries) == 2);
+        const behavior_asset *catalog[2] = { NULL };
+        for (int i = 0; i < 2; i++) {
+            catalog[strcmp(libraries[i]->name, "Cave") != 0] = libraries[i];
+        }
+        REQUIRE(catalog[0] && catalog[1]);
+        graph *rock = behavior_asset_find_graph_by_name(catalog[0], "Rock");
+        REQUIRE(rock);
+        REQUIRE(!behavior_asset_find_graph_by_name(catalog[0], "Bad"));
+        REQUIRE(
+            behavior_asset_find_graph_by_name(catalog[1], "Pair") &&
+            behavior_asset_find_graph_by_name(catalog[1], "Disc") &&
+            behavior_asset_find_graph_by_name(catalog[1], "Ring") &&
+            !behavior_asset_find_graph_by_name(catalog[1], "Loop") &&
+            !behavior_asset_find_graph_by_name(catalog[1], "Twice")
+        );
+        behavior_asset *cave = field("CaveField");
+        node *call = behavior_asset_add_function_call_node(cave, rock);
+        REQUIRE(call);
+        wire(cave, add(cave, "Field X"), call, 0);
+        wire(cave, add(cave, "Field Y"), call, 1);
+        wire(cave, call, add(cave, "Field Output"), 0);
+        REQUIRE(!behavior_asset_link_libraries(cave, catalog, 1, error, sizeof error));
+        REQUIRE(strstr(error, "missing function library"));
+        behavior_asset *linked = behavior_asset_link_libraries(cave, catalog, 2, error, sizeof error);
+        REQUIRE(linked);
+        field_program *lowered = compile(linked);
+        /* -min(circle(x - 3, y, 4), |circle(x, y, 2)|) */
+        field_ir code[] = {
+            { .op = FIELD_X },
+            { .op = FIELD_Y },
+            { .op = FIELD_CONSTANT, .value = 3 },
+            { .op = FIELD_SUBTRACT, .count = 2, .inputs = { 0, 2 } },
+            { .op = FIELD_CONSTANT, .value = 4 },
+            { .op = FIELD_CIRCLE, .count = 3, .inputs = { 3, 1, 4 } },
+            { .op = FIELD_CONSTANT, .value = 2 },
+            { .op = FIELD_CIRCLE, .count = 3, .inputs = { 0, 1, 6 } },
+            { .op = FIELD_ABS, .count = 1, .inputs = { 7 } },
+            { .op = FIELD_MIN, .count = 2, .inputs = { 5, 8 } },
+            { .op = FIELD_NEGATE, .count = 1, .inputs = { 9 } },
+        };
+        field_program *expected = field_program_new(code, 11, 10, NULL, 0, error, sizeof error);
+        REQUIRE(expected);
+        REQUIRE(field_program_instruction_count(lowered) == 11 && same_bakes(lowered, expected));
+        field_program_free(expected);
+        field_program_free(lowered);
+        behavior_asset_free(linked);
+        behavior_asset_free(cave);
+        authoring_source_graph_libraries_free(libraries);
+    }
+    return true;
+}
+
+TEST_CASE(field_source_catalog_reports_invalid_library_body)
+{
+    test_source_fixture fixture = test_source_prepare(
+        "content/libraries/Shape.chibi",
+        "Shape :: library { Read :: () -> number { return 0.0; } }"
+    );
+    const source_catalog_edit edit = {
+        .path = "content/libraries/Shape.chibi",
+        .text = "Shape :: library { Read :: () -> number { return Missing(); } "
+                "}",
     };
-    field_program *expected = field_program_new(code, 11, 10, NULL, 0, error, sizeof error);
-    REQUIRE(expected);
-    REQUIRE(field_program_instruction_count(lowered) == 11 && same_bakes(lowered, expected));
-    field_program_free(expected);
-    field_program_free(lowered);
-    behavior_asset_free(linked);
-    behavior_asset_free(cave);
-    authoring_source_graph_libraries_free(libraries);
+    source_catalog *catalog = source_catalog_replaced(
+        "content",
+        authoring_language_catalog_view(fixture.native),
+        &edit,
+        1
+    );
+    REQUIRE(!source_catalog_diagnostic_count(catalog));
+    behavior_asset **libraries = NULL;
+    char error[256];
+    REQUIRE(!authoring_source_graph_libraries_catalog(catalog, &libraries, error, sizeof error));
+    REQUIRE(!libraries);
+    REQUIRE(strstr(error, "content/libraries/Shape.chibi:1:") && strstr(error, "Missing"));
+    source_catalog_free(catalog);
     test_source_free(&fixture);
     return true;
 }
@@ -1501,6 +1549,7 @@ void test_fields()
     RUN_TEST_CASE(field_source_library_calls_follow_names);
     RUN_TEST_CASE(field_source_library_calls_every_field_node);
     RUN_TEST_CASE(field_source_library_functions_call_functions);
+    RUN_TEST_CASE(field_source_catalog_reports_invalid_library_body);
     RUN_TEST_CASE(field_source_library_hot_apply);
     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
     test_graph_packs_clear();

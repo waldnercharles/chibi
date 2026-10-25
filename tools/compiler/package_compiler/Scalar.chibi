@@ -230,7 +230,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
     }
     if (Is(forest, node, "call_expression")) {
-        callee := CalledFunction(forest, text, callables, names, callable.package, node);
+        callee := CalledFunction(forest, text, callables, [], names, callable.package, node);
         if (callee >= 0) {
             return callables[callee].result;
         }
@@ -273,7 +273,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     // exactly, not rows that would wrap. A scalar source declares no
     // constants.
     constants: ConstDecl[] = [];
-    if (Folds(forest, text, constants, names, callable.package, node, expected)) {
+    if (Folds(forest, text, constants, names, callable.package, node, expected) &&
+        !ShadowedConversion(forest, text, callables, callable.package, node)) {
         switch FoldConstant(forest, text, 0, constants, names, callable.package, node, expected) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
@@ -329,7 +330,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarOperands.Failed(Diagnose(forest, node, 0,
                                               "scalar proof supports only literals, parameters, arithmetic, comparisons and direct calls"));
     }
-    callee := CalledFunction(forest, text, callables, names, callable.package, node);
+    callee := CalledFunction(forest, text, callables, [], names, callable.package, node);
     if (!Is(forest, Field(forest, node, "function"), "identifier") || callee < 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, "function"), 0,
                                               "scalar proof calls only functions of its own source"));
@@ -479,8 +480,8 @@ ScalarCells :: (count: int, calls: Invocation[]) -> bool {
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target) -> syntax.Diagnostic {
-    natives: Native[] = [];
-    ports: Port[] = [];
+    natives: ResolvedNative[] = [];
+    ports: ResolvedPort[] = [];
     identities: u64[] = [];
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
@@ -489,11 +490,12 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     empty_names: string[] = [];
     switch EmitBody(forest, text, 0, callables, params, types, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
-                    empty_names, indices, ops, target) {
+                    empty_names, indices, BodyContext.Known([]), indices, ops, target) {
         case .Failed(diagnostic):
             return diagnostic;
-        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects):
-            if (effects != 0 || length(hosts) != 0 || length(roots) != 0 || !ScalarCells(length(cells), calls)) {
+        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
+                      direct_write, facts):
+            if (effects != 0 || direct_write != 0 || length(hosts) != 0 || length(roots) != 0 || !ScalarCells(length(cells), calls)) {
                 return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
                                 "scalar proof requires known effect-free scalar execution");
             }

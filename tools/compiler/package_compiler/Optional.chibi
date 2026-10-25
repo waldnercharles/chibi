@@ -221,13 +221,15 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
             if (item.kind == UnionDecl) { item_storage = UnionStorage; }
             declared = AddOptional(declared, {storage: item_storage, container: 1, record: index}, package);
             declared = AddOptional(declared, {storage: item_storage, container: 4, record: index}, package);
-        } else if (item.kind == 6 || item.kind == CollectionDecl) {
+        } else if ((item.kind == 6 && item.key == 0) || item.kind == CollectionDecl) {
             // Managed pointer identity is already fully structural; a nested
             // array's descriptor carries its immediate element's complete type.
             declared = AddOptional(declared, {storage: item.storage, container: 1, record: index}, package);
             declared = AddOptional(declared, {storage: item.storage, container: 4, record: index}, package);
-        } else if (item.kind == MapDecl) {
-            element: ValueType = {storage: UnionStorage, container: MapContainer, record: index};
+        } else if (item.kind == MapDecl || item.kind == 6) {
+            // A map or nullable pointer element needs the array's descriptor.
+            element: ValueType = {storage: item.storage, container: 0, record: index};
+            if (item.kind == MapDecl) { element = {storage: UnionStorage, container: MapContainer, record: index}; }
             declared = AddSequenceCollection(declared, element, package);
             array := SequenceArrayType(declared, element);
             declared = AddOptional(declared, array, package);
@@ -303,7 +305,7 @@ PayloadPlaceStep :: (types: TypeDecl[], place: Value, element: ValueType, ops: O
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells, hosts,
                         [], [], [], [], 0, result, NoValue(), []);
 }
-NarrowedPlace: int : 11;
+NarrowedPlace: int : 12;
 NarrowedOriginalPhase: int : 50;
 NarrowedReadPhase: int : 51;
 // The place of the payload of the optional place `step` gives.

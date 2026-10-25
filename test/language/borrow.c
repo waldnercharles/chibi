@@ -1807,6 +1807,42 @@ TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes)
     return true;
 }
 
+/* A helper's union result is fresh when no result comes from its arguments,
+ * even through another call, so the caller may keep it in its own array and
+ * still lend its table; a result that passes an argument on is not. */
+TEST_CASE(borrow_argument_sharing_keeps_fresh_call_results)
+{
+    REQUIRE(authored(
+        "Share :: library { Shape :: union { Circle(radius: int) | Empty }"
+        "Root :: (input: string[]) -> int {"
+        "empty := Shape.Empty; shapes: Shape[] = [empty, empty, empty, empty];"
+        "i: int = 0; while i < 4 { shapes[i] = Wrap(input, i); i += 1; }"
+        "shapes[0] = Shape.Empty; total: int = 0; for shape in shapes {"
+        "switch shape { case .Circle(radius): total += radius;"
+        "case .Empty: total += 100; } } return total; }"
+        "Wrap :: (input: string[], at: int) -> Shape {"
+        "return Make(input, at); }"
+        "Make :: (input: string[], at: int) -> Shape {"
+        "if input[at] == \"a\" { return Shape.Circle(at + 1); }"
+        "return Shape.Empty; }"
+        "Pass :: (shape: Shape) -> Shape { return shape; } }"
+    ));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    REQUIRE(authored_function(1)->fresh_results && authored_function(2)->fresh_results);
+    REQUIRE(!authored_function(3)->fresh_results);
+    const char *texts[] = { "a", "b", "a", "a" };
+    pin_value items[4], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 4);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 207 && !strcmp(pin_text(items[0]).bytes, "a"));
+    }
+    return true;
+}
+
 /* The element reads of function `index` that copy the element, or, with
  * `borrowed`, that read it in place. */
 static int element_reads(int index, bool borrowed)
@@ -2542,6 +2578,7 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_union_constructor_tracks_payload_aliases);
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
+    RUN_TEST_CASE(borrow_argument_sharing_keeps_fresh_call_results);
     RUN_TEST_CASE(borrow_field_reads_read_elements_in_place);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     RUN_TEST_CASE(borrow_argument_sharing_lends_around_pointer_writes);

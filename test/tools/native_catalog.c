@@ -206,8 +206,10 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
         HALF = COUNT / 2
     };
     char name[] = "Probe";
-    const script_catalog_parameter result = { .name = "Value",
-                                              .type = { .storage = PIN_F32 } };
+    const script_catalog_parameter result = {
+        .name = "Value",
+        .type = { .storage = PIN_HANDLE, .nominal = script_catalog_id("type", "ecs.entity") }
+    };
     script_catalog_capability declarations[COUNT];
     native_capability_binding bindings[COUNT];
     for (int i = 0; i < COUNT; i++) {
@@ -215,6 +217,10 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
             .id = catalog_test_id(i),
             .name = name,
             .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .operation = SCRIPT_OPERATION_OWNER,
+            .effects = SCRIPT_EFFECT_INVOCATION_READ,
+            .pure = true,
+            .completion_outcome = -1,
             .results = &result,
             .result_count = 1,
         };

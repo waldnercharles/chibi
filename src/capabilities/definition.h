@@ -68,6 +68,7 @@ typedef struct
     /* Original output port index; must identify EXEC, or -1 for no completion. */
     int completion_output;
     unsigned effects;
+    script_operation operation;
     const char *receiver_type;
     script_state_access state_access;
     native_state_kind state_kind;

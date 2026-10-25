@@ -183,8 +183,8 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     return CleanupSequenceValues(emitted, arguments, ops, target, at, node);
 }
 
-ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[],
-                  ports: Port[], package: int, node: int) -> int {
+ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: ResolvedNative[],
+                  ports: ResolvedPort[], package: int, node: int) -> int {
     // A method that changes its array is a statement of its own; the call
     // step rejects one used as a value.
     if (!Is(forest, node, "call_expression") || !Is(forest, forest[node].parent, "expression_statement")) {
@@ -217,8 +217,8 @@ ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], 
 }
 
 MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
-                 names: Name[], values: Value[], top: int, item: Work, operation: int, ops: Ops, target: Target,
-                 at: Bases) -> Step {
+                 natives: ResolvedNative[], ports: ResolvedPort[], names: Name[], values: Value[], top: int,
+                 item: Work, operation: int, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     receiver := Field(forest, Field(forest, item.node, "function"), "object");
     first := FirstMember(forest, Field(forest, item.node, "arguments"));
@@ -245,7 +245,21 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         if (operation == 11 && NeedsPointerValue(types, members, element.storage, element.container, element.record)) {
             return Fail(forest, item.node, document, "resize cannot create missing initialized values");
         }
+        native := ArrayMethod(natives, ports, Text(forest, text, Field(forest, Field(forest, item.node, "function"),
+                                                                       "member")));
         while (argument >= 0) {
+            // A named argument binds as stage zero binds it; this step takes
+            // the arguments in parameter order.
+            value := argument;
+            if (Is(forest, argument, "named_argument")) {
+                value = Field(forest, argument, "value");
+                if (value < 0) { value = Field(forest, argument, "source"); }
+                parameter := NativeParameter(ports, natives[native], Text(forest, text, Field(forest, argument, "name")),
+                                             count + 2);
+                if (parameter != count + 1) {
+                    return Fail(forest, argument, document, "name an array update's arguments in parameter order");
+                }
+            }
             storage := element.storage;
             container := element.container;
             record := element.record;
@@ -259,8 +273,8 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
                 container = 0;
                 record = -1;
             }
-            next.append(Expect(argument, storage, container, record));
-            next.append(Resume(argument, CopyValuePhase, 0, 0));
+            next.append(Expect(value, storage, container, record));
+            next.append(Resume(value, CopyValuePhase, 0, 0));
             count += 1;
             argument = NextMember(forest, argument);
         }
@@ -370,7 +384,10 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         next: Work[] = [Expect(Field(forest, item.node, "value"), place.storage, place.container, place.record),
                         Resume(Field(forest, item.node, "value"), CopyValuePhase, 0, 0),
                         Resume(item.node, 2, 0, 0)];
-        if (place.newkey && !compound) {
+        if (place.newkey && compound) {
+            return Fail(forest, item.node, document, "compound map assignment is not supported yet");
+        }
+        if (place.newkey) {
             return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
         }
         // Validate the destination before evaluating the right side. The
@@ -798,7 +815,7 @@ CleanupSequenceValues :: (prefix: Step, values: Value[], ops: Ops, target: Targe
     }
 }
 
-DropNamesStep :: (names: Name[], first: int, natives: Native[], ports: Port[], ops: Ops, target: Target, at: Bases,
+DropNamesStep :: (names: Name[], first: int, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target, at: Bases,
                   node: snapshot.SnapshotNode) -> Step {
     prefix := Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
     shifted := at;
@@ -848,7 +865,7 @@ DropNamesStep :: (names: Name[], first: int, natives: Native[], ports: Port[], o
     }
     return prefix;
 }
-DropBeforeFinish :: (step: Step, names: Name[], natives: Native[], ports: Port[], ops: Ops, target: Target, at: Bases,
+DropBeforeFinish :: (step: Step, names: Name[], natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target, at: Bases,
                      node: snapshot.SnapshotNode) -> Step {
     switch step {
         case .Failed(diagnostic): return Step.Failed(diagnostic);
@@ -867,7 +884,7 @@ DropBeforeFinish :: (step: Step, names: Name[], natives: Native[], ports: Port[]
     }
 }
 
-DropNativeResultsStep :: (bundle: Value, natives: Native[], ports: Port[], ops: Ops, target: Target,
+DropNativeResultsStep :: (bundle: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target,
                           at: Bases, node: snapshot.SnapshotNode) -> Step {
     prefix := Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
     shifted := at;
@@ -876,7 +893,7 @@ DropNativeResultsStep :: (bundle: Value, natives: Native[], ports: Port[], ops: 
     while (index < called.results) {
         port := ports[called.first + called.parameters + index];
         if (Pointer(port.storage, port.container)) {
-            value := Typed(shifted.slot + 1, port.storage, port.container, -1);
+            value := Typed(shifted.slot + 1, port.storage, port.container, port.record);
             value.owned = true;
             code := CellRead(SlotStorage(port.storage, port.container, target), bundle.slot + index,
                              ops, target, shifted.slot, node);
@@ -934,7 +951,7 @@ SequenceKept :: (prefix: Step, suffix: Step) -> Step {
 }
 // A projection from a temporary must keep its selected value before the
 // temporary's owner is released. Projections from named values stay borrowed.
-CleanupProjectionStep :: (prefix: Step, owner: Value, natives: Native[], ports: Port[], ops: Ops,
+CleanupProjectionStep :: (prefix: Step, owner: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops,
                           target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     if (!owner.owned) { return prefix; }
     switch prefix {
@@ -1014,14 +1031,14 @@ CopyResultCellsStep :: (bundle: Value, result_types: Value[], ops: Ops, target: 
     }
 }
 
-CopyNativeResultsStep :: (bundle: Value, natives: Native[], ports: Port[], ops: Ops, target: Target,
+CopyNativeResultsStep :: (bundle: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target,
                           at: Bases, node: snapshot.SnapshotNode) -> Step {
     called := natives[bundle.record];
     result_types: Value[] = [];
     index: int = 0;
     while (index < called.results) {
         port := ports[called.first + called.parameters + index];
-        result_types.append(Typed(-1, port.storage, port.container, -1));
+        result_types.append(Typed(-1, port.storage, port.container, port.record));
         index += 1;
     }
     return CopyResultCellsStep(bundle, result_types, ops, target, at, node);

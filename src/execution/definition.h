@@ -152,6 +152,9 @@ struct behavior_function
      * binds the execution world. */
     bool binds_world;
     behavior_argument_sharing argument_sharing;
+    /* No result reaches what the function's arguments or state reach, as
+     * execution_prepare_argument_sharing proves with its verdict. */
+    bool fresh_results;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;

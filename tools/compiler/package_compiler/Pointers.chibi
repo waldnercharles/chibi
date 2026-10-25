@@ -6,7 +6,7 @@ import strings "core:strings"
 
 PointerStorage: int : 19;
 PointerDecl: int : 6;
-ManagedPlace: int : 10;
+ManagedPlace: int : 11;
 PointerMakeIntrinsic: int : 46;
 PointerReadIntrinsic: int : 47;
 PointerWriteIntrinsic: int : 48;
@@ -190,6 +190,8 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
         if (declared.kind == RecordDecl) { storage = StructStorage; }
         if (declared.kind == UnionDecl) { storage = UnionStorage; }
         if (declared.kind == MapDecl) { storage = UnionStorage; container = MapContainer; }
+        // A collection describes the array whose elements it holds.
+        if (declared.kind == CollectionDecl) { container = ArrayContainer; }
         if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
             types = AddPointer(types, {storage: storage, container: container, record: index}, false, package);
         }

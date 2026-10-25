@@ -188,7 +188,7 @@ MapMethod :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node
         return true;
     }
     found := Lookup(names, Text(forest, text, root));
-    return found >= 0 && names[found].place != AliasPlace;
+    return found >= 0 && !Alias(names[found].place);
 }
 // The local map `node` names, which a store or removal updates in place, as
 // stage zero updates an owned local; -1 for any other.

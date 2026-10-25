@@ -22,6 +22,7 @@ static bool failed(char *error, size_t size, const char *path, const char *messa
 bool authoring_native_graphs_prepare(
     const char *content,
     const authoring_sources *code,
+    const source_catalog *declarations,
     material_fields *fields,
     char *error,
     size_t size
@@ -31,10 +32,15 @@ bool authoring_native_graphs_prepare(
     if (!authoring_graph_sources_load(content, &sources)) {
         return failed(error, size, content, "Cannot load native graph documents");
     }
-    behavior_asset **libraries = code ? authoring_source_graph_libraries(code) : NULL;
     const behavior_asset **catalog = NULL, **models = NULL;
-    behavior_asset **linked = NULL;
+    behavior_asset **libraries = NULL, **linked = NULL;
     bool valid = false;
+    /* Only graphs link libraries, so a project without them analyzes none. */
+    if (acount(sources) && code) {
+        libraries = authoring_source_graph_libraries(code);
+    } else if (acount(sources) && !authoring_source_graph_libraries_catalog(declarations, &libraries, error, size)) {
+        goto done;
+    }
     for (int i = 0; i < acount(sources); i++) {
         for (int j = 0; j < i; j++) {
             if (!strcmp(sources[i].asset->name, sources[j].asset->name)) {

@@ -1539,9 +1539,9 @@ leader's component. Its modules have stage
 zero's identities and play as stage zero's do
 (`docs/package-compiler.md#behaviors`). Stage one's route,
 `tools/toolchain/StageOne.chibi`, rebuilds every story as stage zero does: it
-recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
-the exported input, and assembles the artifact with `chibi-compile
---modules` (`make test-stage-one`). Stage one passes step 4's gate since
+recovers stage one from the bootstrap artifact, runs
+`CompileBehaviorsWithCatalog` on the exported input, and assembles the
+artifact with `chibi-compile --modules` (`make test-stage-one`). Stage one passes step 4's gate since
 2026-10-20, and its functions have all of stage zero's debugger points and
 watches. Next: the sequence on Linux x86_64 and Windows x64, deferred until
 CI is back or a bigger host is available (2026-10-20), before

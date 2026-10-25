@@ -2073,9 +2073,11 @@ static void share_host(share_flow *s, int pc)
         }
     } else {
         switch (execution_intrinsic_kind(id)) {
+            /* A copy reaches only what its source reaches. */
             case EXECUTION_INTRINSIC_VALUE_COPY:
-                output = s->retyped ||
-                         shared_targets(f->data_values[host->result_first].initial, 0);
+                output = inputs &&
+                         (s->retyped ||
+                          shared_targets(f->data_values[host->result_first].initial, 0));
                 break;
             /* Copies follow the copied headers; a rewritten one may keep the
              * bits of a pointer instead of copying what it points to. */
@@ -2393,14 +2395,15 @@ static void share_instruction(share_flow *s, int pc)
                              callee->argument_sharing != BEHAVIOR_SHARING_SAFE;
             }
             /* A callee's result that reaches shared targets may alias its
-             * arguments or state unless its result-building proof establishes
-             * independence. */
+             * arguments or state unless its result-building proof or its fresh
+             * results establish independence. */
             for (int k = 0; k < call->result_count; k++) {
                 int cell = call->result_first + k;
                 bool raw = k >= callee->result_count ||
                            callee->result_kinds[k] != BEHAVIOR_VALUE ||
                            callee->result_defaults[k].type == BF_POINTER_TYPE;
-                bool retained = k < callee->result_count && !callee->builds_results &&
+                bool retained = k < callee->result_count &&
+                                !callee->builds_results && !callee->fresh_results &&
                                 shared_targets(callee->result_defaults[k], 0);
                 share_taint(s, &s->cells[cell], raw || retained);
                 share_set(s, &s->contents[cell], SHARE_UNKNOWN);
@@ -2594,6 +2597,49 @@ bool execution_builds_safely(const behavior_function *f)
     return f->result_count <= 1 && share_local(f, true, NULL) &&
            share_local(f, false, &returned) && !returned;
 }
+/* Each pending definition's own verdict, and whether its results are fresh: no
+ * result reaches what its arguments or state reach. A verdict takes pending
+ * callees' results as fresh until their own rules show otherwise, and then
+ * their callers decide again; verdicts only ever weaken. `callers` lists, for
+ * each definition in `sorted` order, the pending indices of its callers. */
+static void decide_locally(
+    behavior_function **pending,
+    behavior_function **sorted,
+    const int *starts,
+    const int *callers
+)
+{
+    int count = acount(pending), *queue = NULL;
+    bool *queued = xmalloc((size_t)count * sizeof *queued);
+    for (int at = count - 1; at >= 0; at--) {
+        apush(queue, at);
+        queued[at] = true;
+    }
+    while (acount(queue)) {
+        int at = apop(queue);
+        behavior_function *f = pending[at];
+        queued[at] = false;
+        bool returned = true;
+        bool safe = f->frozen && share_local(f, false, &returned);
+        if (!safe) {
+            f->argument_sharing = BEHAVIOR_SHARING_PENDING_COPY;
+        }
+        if (!f->fresh_results || (safe && !returned)) {
+            continue;
+        }
+        f->fresh_results = false;
+        behavior_function **found = bsearch(&f, sorted, (size_t)count, sizeof *sorted, by_definition);
+        int callee = (int)(found - sorted);
+        for (int c = starts[callee]; c < starts[callee + 1]; c++) {
+            if (!queued[callers[c]]) {
+                queued[callers[c]] = true;
+                apush(queue, callers[c]);
+            }
+        }
+    }
+    afree(queue);
+    free(queued);
+}
 void execution_prepare_argument_sharing(behavior_function *root)
 {
     if (!root || root->argument_sharing != BEHAVIOR_SHARING_UNKNOWN) {
@@ -2608,9 +2654,8 @@ void execution_prepare_argument_sharing(behavior_function *root)
     apush(pending, root);
     for (int at = 0; at < acount(pending); at++) {
         behavior_function *f = pending[at];
-        f->argument_sharing = f->frozen && share_local(f, false, NULL)
-                                ? BEHAVIOR_SHARING_PENDING_SAFE
-                                : BEHAVIOR_SHARING_PENDING_COPY;
+        /* Fresh until decide_locally shows otherwise. */
+        f->fresh_results = true;
         for (int i = 0; i < acount(f->calls); i++) {
             behavior_function *callee = (behavior_function *)f->calls[i].function;
             if (callee->argument_sharing == BEHAVIOR_SHARING_UNKNOWN) {
@@ -2651,6 +2696,7 @@ void execution_prepare_argument_sharing(behavior_function *root)
     for (int e = 0; e + 1 < acount(edges); e += 2) {
         callers[fill[edges[e]]++] = edges[e + 1];
     }
+    decide_locally(pending, sorted, starts, callers);
     for (int at = 0; at < count; at++) {
         if (pending[at]->argument_sharing == BEHAVIOR_SHARING_PENDING_COPY) {
             apush(copying, pending[at]);

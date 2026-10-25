@@ -313,6 +313,7 @@ package_collection *package_read_budget(
         .type = type,
         .import = import,
         .decoded_bytes = native ? native->decoded_bytes : 0,
+        .decoded_records = native ? native->decoded_records : 0,
         .layout_work = native ? native->layout_work : 0,
     };
     package_collection *collection = NULL;

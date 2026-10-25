@@ -145,20 +145,69 @@ recovery omissions: SDK-contracts include ordering for seven source files, and
 the repeated capabilities archive required by reflect's direct and transitive
 CMake links. Independent review confirmed both corrections. The reference's
 architecture and SDK were explicitly aligned with Graph's discovered arm64/Mac
-SDK profile. The final bounded Graph run passed all 13 executable link-command
-comparisons and executable header staging. Compile-command parity still fails:
+SDK profile. The bounded AppleClang Graph run passed all 13 executable
+link-command comparisons and executable header staging. AppleClang
+compile-command parity fails:
 4 of 982 commands match; each of the other 978 reports Graph `-std=gnu23` versus
 AppleClang/CMake `-std=gnu2x` as its first difference. The flag-selection code in
-`tools/graph/engine/Engine.chibi` is unchanged from main. This is an unresolved
-parity gate, not a passing compile-command check; flags and comparator assertions
-were not weakened. The final comparison took 8.03 seconds with maximum child RSS
+`tools/graph/engine/Engine.chibi` is unchanged from main. This remains a failed
+AppleClang parity check; flags and comparator assertions were not weakened. The final comparison took 8.03 seconds with maximum child RSS
 851,853,312 bytes. Graph used a task-local wrapper to cap jobs at two and retained
 its 50-second internal deadline and the test-policy cleanup deadline.
 
+A configure-only check of isolated main
+`d1154cdb8677cbfe479d4be40db7ca480d10f103` reproduced the same flag mismatch
+using `/usr/bin/cc` (AppleClang 21.0.0.21000334), CMake 4.4.3, Release, arm64,
+and the same SDK. CMake's installed `Compiler/AppleClang-C.cmake` maps C23 GNU
+extensions to `gnu2x`; Graph's production `Engine.chibi::Flags` hardcodes
+`gnu23` for C. Its existing `Profile.chibi::CompilerId` distinguishes AppleClang.
+A proposed-only fix is to extend the existing `gnu2x` condition in `Flags` to
+AppleClang while preserving C++ handling. No production flag change was made
+for this recovery.
+
+The supported Homebrew/Mac-CI configuration passed the unchanged comparator on
+`b99c21baa566641635729b8c1939acb8d22aec72`: **982/982 compile commands across
+142 libraries, 13/13 executable links, and executable header staging** (three
+cases, 1015 assertions). Exact local configuration:
+
+- CMake 4.4.3 and Ninja; `CMAKE_BUILD_TYPE=Release`.
+- `CMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang` and
+  `CMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++`, Homebrew LLVM 23.1.1.
+- `CMAKE_OSX_ARCHITECTURES=arm64`.
+- Both `CMAKE_OSX_SYSROOT` and the Graph process's `SDKROOT` set to
+  `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk`.
+- `CHIBI_ENABLE_SANITIZERS=OFF`, `CHIBI_ENABLE_CCACHE=OFF`, the same pinned
+  task-local third-party archive, and `CMAKE_EXPORT_COMPILE_COMMANDS=ON`.
+- `test_policy.py --timeout 120 tool build-graph`, using the cached tooling
+  driver, the configure-only LLVM reference, and the two-job Graph host wrapper.
+
+This toolchain is already selected by the Makefile's native default and the
+Mac CI workflow. Explicit SDK agreement matters: without shared `SDKROOT`, this
+installed LLVM selected the Command Line Tools SDK while the reference selected
+Xcode's SDK, correctly failing the comparator. No arguments were normalized or
+ignored. The successful check took 6.42 seconds with maximum child RSS
+965,165,056 bytes. The header-staging test deliberately uses a failing compiler;
+its expected failure output is not a failed test. No target build was performed
+for either configure-only reference.
+
 Native-catalog's root `test_tools` dependency closure was estimated at 856
 compilations, 112 links, and 18 generation steps (986 total). This substantial
-build was reported and left unstarted. No claim is made for native-catalog
-fixture execution. Task-local caches, builds, diagnostic commands, and logs remain
+build was reported and left unstarted. A repeated `ninja -n test_tools` and
+`ninja -t query test_tools` confirmed this is the closure of the specific
+`test/tools/test_tools` executable, not an all-target build. No claim is made
+for local native-catalog fixture execution.
+
+Hosted coverage is defined in `.github/workflows/ci.yml`: both `native`
+(ubuntu-24.04) and `native-macos` (macos-15) run `make test-native`, which builds
+the full native drivers and dispatches `tools/test_policy.py group native`.
+That group includes `native-catalog`, mapped to
+`build/test/tools/test_tools --native-catalog`; the full native build enables
+`CHIBI_TEST_NATIVE_RUNTIME`, and the dispatcher calls
+`test_tool_native_catalog()`. Workflow dispatch can validate the recovery branch;
+its actual run head and results must be checked separately. Windows engine and
+Windows Studio jobs are disabled in the existing CI definition; paired Studio
+requires its optional `studio_sha` input. The separate compiler self-build
+workflow covers macOS, Linux, and Windows plus cross-platform comparison. Task-local caches, builds, diagnostic commands, and logs remain
 outside the published source tree for independent review.
 
 ## Resources and remaining coverage
@@ -174,7 +223,8 @@ pin change, render, Studio session, release, or deployment was performed.
 Clang-format 22.1.8 and `git diff --check` passed for changed sources. Full required
 native/materials/projects/language-all/tools groups, native-catalog fixture
 execution, sanitizers, Linux/Windows, and browser embedding were not run.
-Full desktop Graph compile-command parity remains failing as detailed above.
+Full desktop Graph parity passed for the supported Homebrew configuration;
+the separate inherited AppleClang compile-command mismatch remains as detailed above.
 Wasm operation and record-prepared execution
 does not establish a separate Wasm runtime-only operation consumer; the separate
 runtime-only proof here is macOS bytecode/SLJIT. These remain explicit coverage

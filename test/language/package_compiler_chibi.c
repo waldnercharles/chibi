@@ -7002,11 +7002,11 @@ static bool native_rejects_cycles(int b)
     REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
-/* A loop whose back edge skips the entry CHECK is rejected; pointing it at
- * the CHECK makes every cycle pass one. */
-static bool native_cycles_need_checks(int b)
+/* A loop whose back edge skips the entry CHECK is emitted: native loops run
+ * unchecked, as Odin's do. */
+static bool native_cycles_run_unchecked(int b)
 {
-    native_code loop[] = {
+    static const native_code loop[] = {
         { .op = NATIVE_CHECK },
         { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .literal = 1 },
         { .op = NATIVE_BRANCH, .target = 4 },
@@ -7018,8 +7018,6 @@ static bool native_cycles_need_checks(int b)
     static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 2, 0, 7, 0, 0 } };
     static const int slots[] = { NATIVE_BOOL, NATIVE_INT };
     native_module m = { one, 1, NULL, 0, slots, 2, loop, 7, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, "native control cycle requires a CHECK"));
-    loop[3].target = 0;
     const pin_union *value;
     REQUIRE(native_emit(b, &m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
@@ -7162,7 +7160,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_rejects_cycles(b));
-        REQUIRE(native_cycles_need_checks(b));
+        REQUIRE(native_cycles_run_unchecked(b));
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));
     }
@@ -7434,7 +7432,7 @@ static void cancel_native(int)
 }
 /* The deadlines of an LLVM tool and of a library's calls, and the output
  * kept of each. */
-static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20;
+static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20, SPIN_SECONDS = 1;
 enum
 {
     NATIVE_OUTPUT = 1 << 16
@@ -10098,15 +10096,15 @@ static bool widest_loops_agree(const char *directory)
     REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));
     return true;
 }
-/* Spin never returns. Both VMs fail its call at their instruction budget, and
- * natively its loop head's CHECK exhausts the call's budget and traps, at O0
- * and O2, well before the call's deadline. */
+/* Spin never returns. Both VMs fail its call at their instruction budget.
+ * Natively its loop runs unchecked, as Odin's does, and LLVM keeps it at O0
+ * and O2, so the call runs until its deadline stops it. */
 static const char SPIN_SOURCE[] = "package scalar\n"
                                   "Main :: () -> int { return 0; }\n"
                                   "Spin :: (n: int) -> int {\n"
                                   "    while (true) { n += 1; }\n"
                                   "}\n";
-static bool endless_loops_trap(const char *directory)
+static bool endless_loops_hang(const char *directory)
 {
     pin_value rows;
     REQUIRE(collected_rows(0, "spin", text(SPIN_SOURCE), &rows));
@@ -10140,9 +10138,8 @@ static bool endless_loops_trap(const char *directory)
         REQUIRE(native_library(directory, "spin", ir, adapter, level * 2, false, library));
         scalar_call call = { .probe = { "spin", "Spin", 1, { 0 }, 0 },
                              .symbol = "probe_Spin" };
-        chibi_process_capture_result
-            trapped = library_calls(directory, library, &call, 1, 2, CALLS_SECONDS);
-        REQUIRE(trapped.error == CHIBI_PROCESS_OK && trapped.status == -SIGILL);
+        chibi_process_capture_result spun = library_calls(directory, library, &call, 1, 2, SPIN_SECONDS);
+        REQUIRE(spun.error == CHIBI_PROCESS_TIMEOUT);
     }
     free(adapter);
     free(ir);
@@ -10501,7 +10498,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
              floats_agree(directory) && control_agrees(directory) &&
              statement_bounds_agree() && loops_agree(directory) &&
              widest_loops_agree(directory) && switches_agree(directory) &&
-             endless_loops_trap(directory);
+             endless_loops_hang(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

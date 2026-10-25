@@ -62,8 +62,8 @@ interface, or the complete allocation/memory/output/free native island.
   rounding to nearest. An integer reaches `float` only through `double`, as
   the runtime converts it, so a direct integer-to-`float` conversion is
   rejected. Each intrinsic is declared once.
-- Every control cycle must pass a CHECK: without its CHECKs a function's
-  control is acyclic, as the runtime's verifier requires of a loop.
+- Control may cycle without a CHECK: native loops run unchecked, as Odin's
+  do, and no `mustprogress` attribute lets LLVM remove an endless one.
 - An explicit positive CHECK budget is required. Each invocation of each
   function initializes a private counter; every CHECK tests remaining budget before decrementing.
   Budget N admits exactly N CHECKs, not N LLVM/machine instructions. The future

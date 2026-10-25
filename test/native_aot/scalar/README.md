@@ -180,9 +180,8 @@ the bound. It does not prove that fabricated rows match their source;
 the caller binds the trusted producer artifact, source bytes and envelope.
 `Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
 `EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
-and each loop head has another, under a budget of 2^20 CHECKs per call;
-neither the export name nor the budget comes from source. An exhausted budget
-traps (provisional until decision D4 settles the native failure model). Each
+under budget 1; neither the export name nor the budget comes from source.
+Loops run unchecked, as Odin's do (decision D4). Each
 variable is a native local, the parameters moved into theirs first. An if
 statement branches into its consequence or jumps past it, and a logical saves
 its left operand in a local that its right operand replaces only on the path
@@ -284,8 +283,8 @@ bounds; a `while` loop that may not run; an endless loop that only a return
 leaves; and nested loops whose `break` and `continue` leave or restart the
 innermost. Each call must give the value C gives on both VMs and natively at
 O0 and O2. A function that never returns fails both VMs at their instruction
-budget and traps natively at O0 and O2 once its loop exhausts the CHECK
-budget.
+budget, and natively runs at O0 and O2 until its one-second deadline stops
+it.
 
 ## Portable recovery regression
 

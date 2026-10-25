@@ -188,43 +188,6 @@ Dominates :: (code: Instruction[], definition: int, use: int) -> bool {
     }
     return true;
 }
-// Whether every cycle of the control in valid code passes a CHECK, as the
-// runtime's verifier requires: without its CHECKs, control is acyclic, so no
-// loop runs unbounded.
-Checked :: (code: Instruction[]) -> bool {
-    zero: int[] = [0];
-    incoming := resize(zero, length(code));
-    vertices: int = 0;
-    for (pc in 0..<length(code)) {
-        if (code[pc].op != Check) {
-            vertices += 1;
-            for (target in Successors(code, pc)) {
-                if (code[target].op != Check) {
-                    incoming[target] += 1;
-                }
-            }
-        }
-    }
-    ready: int[] = [];
-    for (pc in 0..<length(code)) {
-        if (incoming[pc] == 0 && code[pc].op != Check) {
-            ready.append(pc);
-        }
-    }
-    at: int = 0;
-    while (at < length(ready)) {
-        for (target in Successors(code, ready[at])) {
-            if (code[target].op != Check) {
-                incoming[target] -= 1;
-                if (incoming[target] == 0) {
-                    ready.append(target);
-                }
-            }
-        }
-        at += 1;
-    }
-    return length(ready) == vertices;
-}
 // values[first, first + count), which the caller has bounded.
 Part :: (values: int[], first: int, count: int) -> int[] {
     part: int[] = [];
@@ -376,9 +339,6 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native scalar code falls outside its body");
         }
         pc += 1;
-    }
-    if (!Checked(code)) {
-        return Result.Rejected(base, "native control cycle requires a CHECK");
     }
     pc = 0;
     while (pc < length(code)) {

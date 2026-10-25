@@ -11,6 +11,7 @@
 #include "execution/service.h"
 #include "execution/status.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/behaviors/package.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -88,7 +89,7 @@ static int host_calls;
 static service_binding *log_services;
 static execution_module_plan *prepared_plan;
 static execution_module *prepared_module;
-static unsigned char *prepared_bytes, *prepared_mutation;
+static unsigned char *prepared_bytes, *prepared_mutation, *prepared_again;
 
 static void release_invocation()
 {
@@ -104,10 +105,11 @@ static void cleanup()
     execution_module_plan_free(prepared_plan);
     execution_module_free(prepared_module);
     free(prepared_bytes);
+    free(prepared_again);
     afree(prepared_mutation);
     prepared_plan = NULL;
     prepared_module = NULL;
-    prepared_bytes = prepared_mutation = NULL;
+    prepared_bytes = prepared_mutation = prepared_again = NULL;
     arena_free(&managed);
     afree(log_services);
     if (builder) {
@@ -2234,6 +2236,250 @@ typedef struct
     uint64_t left, right;
     int kind;
 } integer_report_vector;
+/* One default source and one explicit addition source: two occurrence/delivered
+ * arrays, three kinds each, so this fixture retains exactly twelve report bytes.
+ * The suspend keeps fast-body storage identical with reports off and on. */
+static bool integer_report_budget_definition()
+{
+    builder = behavior_function_builder_new();
+    pin_value number = { .type = PIN_I32 };
+    behavior_function_builder_signature(builder, &number, 1, &number, 1, NULL, 0);
+    int input = slot(PIN_I32), one = slot(PIN_I32), sum = slot(PIN_I32);
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_I32, .output = input, .value = number });
+    emit((behavior_function_instruction){ .op = BF_SUSPEND });
+    emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                          .type = PIN_I32,
+                                          .output = one,
+                                          .value = { .type = PIN_I32, .i = 1 } });
+    int origin = behavior_function_builder_origin(
+        builder,
+        (behavior_function_source){ .asset_name = "report-budget.chibi",
+                                    .parent = -1,
+                                    .start = 0,
+                                    .end = 5,
+                                    .line = 1,
+                                    .column = 1 }
+    );
+    REQUIRE(origin == 1);
+    emit((behavior_function_instruction){ .op = BF_ADD,
+                                          .type = PIN_I32,
+                                          .left = input,
+                                          .right = one,
+                                          .output = sum,
+                                          .source = origin });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = sum });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(!function->fast && acount(function->sources) == 2);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    return true;
+}
+static bool integer_report_budget_fixture(bool nested)
+{
+    REQUIRE(integer_report_budget_definition());
+    if (nested) {
+        callee = function;
+        function = NULL;
+        REQUIRE(integer_report_budget_definition());
+        /* The plan owns both verified definitions through this root. */
+        apush(function->definitions, callee);
+        callee = NULL;
+    }
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 1;
+    prepared_plan->valid = true;
+    apush(
+        prepared_plan->functions,
+        ((execution_module_function){ .id = 1,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = function })
+    );
+    prepared_plan->function_count = 1;
+    function = NULL;
+    char error[256];
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(prepared_module);
+    return true;
+}
+static execution_module *read_integer_report_budget(size_t length, bool enabled, size_t *remaining)
+{
+    char error[256];
+    execution_integer_reports_enable(enabled);
+    execution_module *module = execution_prepared_read_budget(
+        prepared_bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        remaining,
+        error,
+        sizeof error
+    );
+    execution_integer_reports_enable(false);
+    return module;
+}
+static bool check_integer_report_budget(bool nested)
+{
+    REQUIRE(integer_report_budget_fixture(nested));
+    char error[256];
+    size_t length = 0;
+    REQUIRE(
+        execution_prepared_write(prepared_module, &prepared_bytes, &length, error, sizeof error)
+    );
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    const size_t budget = 32 * 1024;
+    size_t charged[2], retained[2], admitted[2];
+    for (int enabled = 0; enabled < 2; enabled++) {
+        size_t remaining = budget;
+        prepared_module = read_integer_report_budget(length, enabled, &remaining);
+        REQUIRE(prepared_module);
+        const behavior_function
+            *decoded = execution_module_function_at(prepared_module, 0).body;
+        REQUIRE(decoded && !decoded->fast && !decoded->artifact->code);
+        REQUIRE(acount(decoded->sources) == 2 && acount(decoded->definitions) == (int)nested);
+        if (nested) {
+            const behavior_function *child = decoded->definitions[0];
+            REQUIRE(!child->fast && !child->artifact->code && acount(child->sources) == 2);
+            REQUIRE((child->integer_reports != NULL) == (enabled != 0));
+        }
+        REQUIRE((decoded->integer_reports != NULL) == (enabled != 0));
+        REQUIRE(!enabled || decoded->integer_report_sites == 2);
+        /* Accounting follows allocated ownership even after the global switch
+         * is off. The bank remains live through another module reference. */
+        execution_module_retain(prepared_module);
+        execution_module_free(prepared_module);
+        charged[enabled] = budget - remaining;
+        retained[enabled] = execution_module_storage_bytes(prepared_module);
+        REQUIRE(charged[enabled] == retained[enabled]);
+        size_t again_length = 0;
+        REQUIRE(
+            execution_prepared_write(prepared_module, &prepared_again, &again_length, error, sizeof error)
+        );
+        REQUIRE(again_length == length && !memcmp(prepared_bytes, prepared_again, length));
+        free(prepared_again);
+        prepared_again = NULL;
+        execution_module_free(prepared_module);
+        prepared_module = NULL;
+        /* At most sixteen tiny reads locate the boundary without assuming
+         * pointer widths or unrelated arena/vector capacities. */
+        size_t low = 0, high = budget;
+        while (low + 1 < high) {
+            size_t limit = low + (high - low) / 2;
+            remaining = limit;
+            prepared_module = read_integer_report_budget(length, enabled, &remaining);
+            if (prepared_module) {
+                high = limit;
+                execution_module_free(prepared_module);
+                prepared_module = NULL;
+            } else {
+                REQUIRE(remaining == limit);
+                low = limit;
+            }
+        }
+        admitted[enabled] = high;
+        remaining = high;
+        prepared_module = read_integer_report_budget(length, enabled, &remaining);
+        REQUIRE(prepared_module && high - remaining == charged[enabled]);
+        execution_module_free(prepared_module);
+        prepared_module = NULL;
+        remaining = high - 1;
+        prepared_module = read_integer_report_budget(length, enabled, &remaining);
+        REQUIRE(!prepared_module && remaining == high - 1);
+    }
+    /* Independent fixture oracle: not another call to the storage helper. */
+    size_t expected = nested ? 24 : 12;
+    REQUIRE(charged[1] == charged[0] + expected);
+    REQUIRE(retained[1] == retained[0] + expected);
+    REQUIRE(admitted[1] == admitted[0] + expected);
+    return true;
+}
+TEST_CASE(execution_prepared_integer_reports_charge_owned_storage)
+{
+    return check_integer_report_budget(false);
+}
+TEST_CASE(execution_prepared_integer_reports_charge_owned_children)
+{
+    return check_integer_report_budget(true);
+}
+static execution_module *integer_budget_import(void *user, uint64_t id, uint64_t)
+{
+    execution_module *module = user;
+    if (execution_module_id(module) != id) {
+        return NULL;
+    }
+    execution_module_retain(module);
+    return module;
+}
+TEST_CASE(execution_integer_reports_charge_retained_package_imports)
+{
+    REQUIRE(integer_report_budget_fixture(false));
+    char error[256];
+    size_t length = 0;
+    REQUIRE(
+        execution_prepared_write(prepared_module, &prepared_bytes, &length, error, sizeof error)
+    );
+    /* The package owns an empty root; the linker supplies the same library
+     * generation twice. Its definition must be charged once, even with the
+     * startup switch off while the package retains an enabled generation. */
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 2;
+    prepared_plan->valid = true;
+    execution_module_retain(prepared_module);
+    apush(prepared_plan->imports, prepared_module);
+    execution_module_retain(prepared_module);
+    apush(prepared_plan->imports, prepared_module);
+    prepared_plan->import_count = 2;
+    execution_module *owner = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(owner);
+    size_t owner_length = 0;
+    REQUIRE(execution_prepared_write(owner, &prepared_again, &owner_length, error, sizeof error));
+    execution_module_free(owner);
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    const size_t budget = 64 * 1024;
+    size_t charged[2];
+    for (int enabled = 0; enabled < 2; enabled++) {
+        size_t remaining = budget;
+        prepared_module = read_integer_report_budget(length, enabled, &remaining);
+        REQUIRE(prepared_module);
+        const behavior_function
+            *decoded = execution_module_function_at(prepared_module, 0).body;
+        REQUIRE(decoded && !decoded->fast && acount(decoded->sources) == 2);
+        REQUIRE((decoded->integer_reports != NULL) == (enabled != 0));
+        const execution_prepared_linker linker = { .user = prepared_module,
+                                                   .import = integer_budget_import };
+        package_module records[] = {
+            { .name = "Owner", .id = 2, .data = prepared_again, .length = owner_length },
+        };
+        remaining = budget;
+        package_collection *collection = package_read_budget(
+            records,
+            1,
+            &linker,
+            NULL,
+            BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        REQUIRE(collection && !execution_integer_reports_enabled());
+        execution_module *loaded = package_collection_module(collection, 0);
+        REQUIRE(execution_module_import_count(loaded) == 2);
+        REQUIRE(execution_module_import_at(loaded, 0) == prepared_module);
+        REQUIRE(execution_module_import_at(loaded, 1) == prepared_module);
+        charged[enabled] = budget - remaining;
+        package_collection_free(collection);
+        execution_module_free(prepared_module);
+        prepared_module = NULL;
+    }
+    REQUIRE(charged[1] == charged[0] + 12);
+    return true;
+}
+
 /* Each integer operation reports exactly when its declared-width result
  * differs from the exact one, or its divisor is zero, on both backends. The
  * values are those a shipped build computes. */
@@ -2700,6 +2946,9 @@ void test_language_execution()
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);
     RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
     RUN_TEST_CASE(execution_numeric_casts_apply_exact_wrap_and_clamp);
+    RUN_TEST_CASE(execution_prepared_integer_reports_charge_owned_storage);
+    RUN_TEST_CASE(execution_prepared_integer_reports_charge_owned_children);
+    RUN_TEST_CASE(execution_integer_reports_charge_retained_package_imports);
     RUN_TEST_CASE(execution_integer_reports_mark_overflow_and_zero_divisors);
     RUN_TEST_CASE(execution_integer_reports_mark_clamping_conversions);
     RUN_TEST_CASE(execution_integer_reports_keep_literal_shipped_values);

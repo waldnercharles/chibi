@@ -30,6 +30,12 @@ const char *execution_integer_report_text(execution_integer_report_kind kind)
     }
 }
 
+size_t behavior_integer_report_bytes(int sites)
+{
+    size_t width = 2 * EXECUTION_INTEGER_REPORT_KINDS * sizeof(atomic_uchar);
+    return sites < 0 || (size_t)sites > SIZE_MAX / width ? SIZE_MAX
+                                                         : (size_t)sites * width;
+}
 void behavior_function_report_integers(behavior_function *f)
 {
     if (!f || f->integer_reports) {
@@ -47,10 +53,9 @@ void behavior_function_report_integers(behavior_function *f)
     behavior_function_free(f->fast);
     f->fast = NULL;
     f->integer_report_sites = acount(f->sources);
-    f->integer_reports = xcalloc(
-        (size_t)f->integer_report_sites * EXECUTION_INTEGER_REPORT_KINDS * 2,
-        sizeof *f->integer_reports
-    );
+    size_t bytes = behavior_integer_report_bytes(f->integer_report_sites);
+    assert(bytes != SIZE_MAX);
+    f->integer_reports = xcalloc(1, bytes);
 }
 void execution_module_plan_report_integers(execution_module_plan *m)
 {

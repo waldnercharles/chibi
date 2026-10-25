@@ -12,7 +12,7 @@ pub Instruction :: struct {
     left: int;
     right: int;
     target: int;
-    literal: int;
+    literal: int64;
 }
 // One function of a module: consecutive ranges of the module's parameter,
 // slot, local, code and argument tables, in function order. A call's argument
@@ -65,6 +65,9 @@ pub Check: int : 27;
 // output = callee(arguments...): left is the callee's function index, and
 // the argument slots are this function's arguments[right, right + target).
 pub Call: int : 28;
+// output = type(left): right is the left slot's integer type, and literal 0
+// clamps the value to type while 1 keeps its low bits.
+pub Convert: int : 29;
 
 // Module bounds: these are plan bounds, not a source-language acceptance claim.
 MaxFunctions: int : 32;
@@ -81,7 +84,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || op == Call;
+    return op <= Local || (op >= Add && op <= Ne) || op == Call || op == Convert;
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -90,7 +93,26 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne);
+    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || op == Convert;
+}
+Integer :: (type: int) -> bool {
+    return abi.IntegerBits(type) > 0;
+}
+// Whether `literal` is a value of `type`: 0 or 1 for bool, and for an integer
+// type its range, except that a 64-bit unsigned value is its bit pattern.
+Fits :: (literal: int64, type: int) -> bool {
+    if (!Integer(type)) {
+        return literal == 0 || literal == 1;
+    }
+    bits := abi.IntegerBits(type);
+    if (bits == 64) {
+        return true;
+    }
+    if (abi.Unsigned(type)) {
+        return literal >= 0 && literal < (int64(1) << uint(bits));
+    }
+    half := int64(1) << uint(bits - 1);
+    return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
     return op >= Add && op <= Ne && !Unary(op);
@@ -225,7 +247,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Call) {
+        if (item.op < Constant || item.op > Convert) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -238,8 +260,8 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             }
             definitions[item.output] = pc;
         }
-        if (item.op == Constant && item.type == 1 && item.literal != 0 && item.literal != 1) {
-            return Result.Rejected(base + pc, "native bool constant is not canonical");
+        if (item.op == Constant && !Fits(item.literal, item.type)) {
+            return Result.Rejected(base + pc, "native constant is outside its type");
         }
         if (item.op == Argument && !Typed(parameters, item.left, item.type)) {
             return Result.Rejected(base + pc, "native argument type differs from its signature");
@@ -256,11 +278,15 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native return value differs from its signature");
         }
         if (item.op >= Add && item.op <= Ne) {
-            if ((item.type != 6 && !(item.type == 1 && (item.op == Eq || item.op == Ne))) ||
+            if ((!Integer(item.type) && !(item.type == 1 && (item.op == Eq || item.op == Ne))) ||
                 !Typed(slots, item.left, item.type) ||
                 (ReadsRight(item.op) && !Typed(slots, item.right, item.type))) {
                 return Result.Rejected(base + pc, "native scalar operand type mismatch");
             }
+        }
+        if (item.op == Convert && (!Integer(item.type) || !Integer(item.right) || !Typed(slots, item.left, item.right) ||
+                                   (item.literal != 0 && item.literal != 1))) {
+            return Result.Rejected(base + pc, "native conversion is not between integer types");
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
@@ -327,7 +353,11 @@ Cyclic :: (functions: Function[], code: Instruction[]) -> bool {
     }
     return false;
 }
-Operation :: (op: int) -> string {
+Operation :: (op: int, type: int) -> string {
+    if (abi.Unsigned(type) && op >= Lt && op <= Ge) {
+        predicates := ["icmp ult", "icmp ule", "icmp ugt", "icmp uge"];
+        return predicates[op - Lt];
+    }
     if (op == Add) {
         return "add";
     }
@@ -370,35 +400,114 @@ Store :: (value: string, type: int, bank: string, index: int) -> string {
     return format_text("  store {} {}, ptr %{}{}\n", abi.ScalarType(type), value, bank, index);
 }
 // Integer operations never fail: x / 0 is 0, x % 0 is x, MIN / -1 wraps to
-// MIN and MIN % -1 is 0, and a shift count at or past 32, read unsigned,
-// gives 0, or the sign fill for >>. The divisor and count are made safe for
-// LLVM before the operation, so no result is poison and no path traps.
+// MIN and MIN % -1 is 0, and a shift count at or past the width, read
+// unsigned, gives 0, or the sign fill for a signed >>. The divisor and count
+// are made safe for LLVM before the operation, so no result is poison and no
+// path traps.
 Total :: (item: Instruction, pc: int) -> string {
-    if (item.op == Div || item.op == Mod) {
-        guards := format_text("  %zero{} = icmp eq i32 %b{}, 0\n  %negone{} = icmp eq i32 %b{}, -1\n  %unsafe{} = or i1 %zero{}, %negone{}\n  %d{} = select i1 %unsafe{}, i32 1, i32 %b{}\n",
-                              pc, pc, pc, pc, pc, pc, pc, pc, pc, pc);
+    t := abi.ScalarType(item.type);
+    bits := abi.IntegerBits(item.type);
+    if ((item.op == Div || item.op == Mod) && abi.Unsigned(item.type)) {
+        guard := format_text("  %zero{} = icmp eq {} %b{}, 0\n  %d{} = select i1 %zero{}, {} 1, {} %b{}\n", pc, t, pc, pc,
+                             pc, t, t, pc);
         if (item.op == Div) {
-            quotient := format_text("  %q{} = sdiv i32 %a{}, %d{}\n  %negated{} = sub i32 0, %a{}\n  %w{} = select i1 %negone{}, i32 %negated{}, i32 %q{}\n",
-                                    pc, pc, pc, pc, pc, pc, pc, pc, pc);
-            return format_text("{}{}  %v{} = select i1 %zero{}, i32 0, i32 %w{}\n", guards, quotient, pc, pc, pc);
+            return format_text("{}  %q{} = udiv {} %a{}, %d{}\n  %v{} = select i1 %zero{}, {} 0, {} %q{}\n", guard, pc, t,
+                               pc, pc, pc, pc, t, t, pc);
         }
-        remainder := format_text("  %q{} = srem i32 %a{}, %d{}\n  %w{} = select i1 %negone{}, i32 0, i32 %q{}\n", pc, pc,
-                                 pc, pc, pc, pc);
-        return format_text("{}{}  %v{} = select i1 %zero{}, i32 %a{}, i32 %w{}\n", guards, remainder, pc, pc, pc, pc);
+        return format_text("{}  %q{} = urem {} %a{}, %d{}\n  %v{} = select i1 %zero{}, {} %a{}, {} %q{}\n", guard, pc, t,
+                           pc, pc, pc, pc, t, pc, t, pc);
     }
-    wide := format_text("  %wide{} = icmp uge i32 %b{}, 32\n", pc, pc);
-    if (item.op == Shl) {
-        shifted := format_text("  %count{} = and i32 %b{}, 31\n  %q{} = shl i32 %a{}, %count{}\n", pc, pc, pc, pc, pc);
-        return format_text("{}{}  %v{} = select i1 %wide{}, i32 0, i32 %q{}\n", wide, shifted, pc, pc, pc);
+    if (item.op == Div || item.op == Mod) {
+        // format_text renders at most twelve arguments, so each line is its own.
+        guards := format_text("  %zero{} = icmp eq {} %b{}, 0\n  %negone{} = icmp eq {} %b{}, -1\n", pc, t, pc, pc, t, pc);
+        guards = format_text("{}  %unsafe{} = or i1 %zero{}, %negone{}\n  %d{} = select i1 %unsafe{}, {} 1, {} %b{}\n",
+                             guards, pc, pc, pc, pc, pc, t, t, pc);
+        if (item.op == Div) {
+            quotient := format_text("  %q{} = sdiv {} %a{}, %d{}\n  %negated{} = sub {} 0, %a{}\n", pc, t, pc, pc, pc, t, pc);
+            quotient = format_text("{}  %w{} = select i1 %negone{}, {} %negated{}, {} %q{}\n", quotient, pc, pc, t, pc, t,
+                                   pc);
+            return format_text("{}{}  %v{} = select i1 %zero{}, {} 0, {} %w{}\n", guards, quotient, pc, pc, t, t, pc);
+        }
+        remainder := format_text("  %q{} = srem {} %a{}, %d{}\n  %w{} = select i1 %negone{}, {} 0, {} %q{}\n", pc, t, pc,
+                                 pc, pc, pc, t, t, pc);
+        return format_text("{}{}  %v{} = select i1 %zero{}, {} %a{}, {} %w{}\n", guards, remainder, pc, pc, t, pc, t, pc);
     }
-    return format_text("{}  %count{} = select i1 %wide{}, i32 31, i32 %b{}\n  %v{} = ashr i32 %a{}, %count{}\n", wide, pc,
-                       pc, pc, pc, pc, pc);
+    wide := format_text("  %wide{} = icmp uge {} %b{}, {}\n", pc, t, pc, bits);
+    if (item.op == Shr && !abi.Unsigned(item.type)) {
+        return format_text("{}  %count{} = select i1 %wide{}, {} {}, {} %b{}\n  %v{} = ashr {} %a{}, %count{}\n", wide, pc,
+                           pc, t, bits - 1, t, pc, pc, t, pc, pc);
+    }
+    operation := "shl";
+    if (item.op == Shr) {
+        operation = "lshr";
+    }
+    shifted := format_text("  %count{} = and {} %b{}, {}\n  %q{} = {} {} %a{}, %count{}\n", pc, t, pc, bits - 1, pc,
+                           operation, t, pc, pc);
+    return format_text("{}{}  %v{} = select i1 %wide{}, {} 0, {} %q{}\n", wide, shifted, pc, pc, t, t, pc);
+}
+// The least and greatest values of an integer type, as LLVM literals.
+Least :: (type: int) -> string {
+    if (abi.Unsigned(type)) {
+        return "0";
+    }
+    lows := ["-128", "-32768", "-2147483648", "-9223372036854775808"];
+    return lows[Width(type)];
+}
+Greatest :: (type: int) -> string {
+    if (abi.Unsigned(type)) {
+        highs := ["255", "65535", "4294967295", "18446744073709551615"];
+        return highs[Width(type)];
+    }
+    highs := ["127", "32767", "2147483647", "9223372036854775807"];
+    return highs[Width(type)];
+}
+// 0 to 3 for 8 to 64 bits.
+Width :: (type: int) -> int {
+    bits := abi.IntegerBits(type);
+    if (bits == 8) {
+        return 0;
+    }
+    if (bits == 16) {
+        return 1;
+    }
+    if (bits == 32) {
+        return 2;
+    }
+    return 3;
+}
+// A conversion widens its operand to i65, which holds every value of every
+// integer type, then clamps it to the target's range or keeps its low bits.
+// A clamp never becomes a plain truncation.
+Conversion :: (item: Instruction, pc: int) -> string {
+    source := abi.ScalarType(item.right);
+    extend := "sext";
+    if (abi.Unsigned(item.right)) {
+        extend = "zext";
+    }
+    out := format_text("  %x{} = {} {} %a{} to i65\n", pc, extend, source, pc);
+    value := format_text("%x{}", pc);
+    if (item.literal == 0) {
+        out = format_text("{}  %below{} = icmp slt i65 %x{}, {}\n  %raised{} = select i1 %below{}, i65 {}, i65 %x{}\n", out,
+                          pc, pc, Least(item.type), pc, pc, Least(item.type), pc);
+        out = format_text("{}  %above{} = icmp sgt i65 %raised{}, {}\n  %clamped{} = select i1 %above{}, i65 {}, i65 %raised{}\n",
+                          out, pc, pc, Greatest(item.type), pc, pc, Greatest(item.type), pc);
+        value = format_text("%clamped{}", pc);
+    }
+    return format_text("{}  %v{} = trunc i65 {} to {}\n", out, pc, value, abi.ScalarType(item.type));
+}
+// A literal as LLVM spells it: the signed value of its bits at its width.
+Spelled :: (literal: int64, type: int) -> int64 {
+    bits := abi.IntegerBits(type);
+    if (bits == 0 || bits == 64 || !abi.Unsigned(type) || literal < (int64(1) << uint(bits - 1))) {
+        return literal;
+    }
+    return literal - (int64(1) << uint(bits));
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
     out := format_text("p{}:\n", pc);
     type := abi.ScalarType(item.type);
     if (item.op == Constant) {
-        out = format_text("{}{}", out, Store(format_text("{}", item.literal), item.type, "s", item.output));
+        out = format_text("{}{}", out, Store(format_text("{}", Spelled(item.literal, item.type)), item.type, "s", item.output));
     } else if (item.op == Argument) {
         out = format_text("{}{}", out, Store(format_text("%arg{}", item.left), item.type, "s", item.output));
     } else if (item.op == Local) {
@@ -423,20 +532,25 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
         // Compare before subtracting: exactly N CHECKs may pass a budget N.
         out = format_text("{}  %remaining{} = load i32, ptr %budget0\n  %available{} = icmp sgt i32 %remaining{}, 0\n  br i1 %available{}, label %budget_ok{}, label %trap\nbudget_ok{}:\n  %next_budget{} = sub i32 %remaining{}, 1\n  store i32 %next_budget{}, ptr %budget0\n",
                           out, pc, pc, pc, pc, pc, pc, pc, pc, pc);
+    } else if (item.op == Convert) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
+        out = format_text("{}{}", out, Conversion(item, pc));
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         if (Unary(item.op)) {
             if (item.op == Neg) {
-                out = format_text("{}{}", out, format_text("  %v{} = sub i32 0, %a{}\n", pc, pc));
+                out = format_text("{}{}", out, format_text("  %v{} = sub {} 0, %a{}\n", pc, type, pc));
             } else {
-                out = format_text("{}{}", out, format_text("  %v{} = xor i32 %a{}, -1\n", pc, pc));
+                out = format_text("{}{}", out, format_text("  %v{} = xor {} %a{}, -1\n", pc, type, pc));
             }
         } else {
             out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
             if (item.op == Div || item.op == Mod || item.op == Shl || item.op == Shr) {
                 out = format_text("{}{}", out, Total(item, pc));
             } else {
-                out = format_text("{}{}", out, format_text("  %v{} = {} {} %a{}, %b{}\n", pc, Operation(item.op), type, pc, pc));
+                out = format_text("{}{}", out, format_text("  %v{} = {} {} %a{}, %b{}\n", pc, Operation(item.op, item.type),
+                                                           type, pc, pc));
             }
         }
         output := item.type;

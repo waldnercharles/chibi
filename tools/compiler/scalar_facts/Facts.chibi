@@ -1,11 +1,11 @@
 package scalar_facts
 
 // Internal opt-in owned result for one source document holding a bounded,
-// acyclic set of ordinary pure functions over int and bool. A function's body
-// is at most one guard, `if (condition) { return value; }`, then its final
-// `return value;`. Values and conditions are literals, parameters, int
-// arithmetic, int comparisons and direct calls of functions of the set, whose
-// operands are such expressions. This is not a general IR, and no
+// acyclic set of ordinary pure functions over integers and bool. A function's
+// body is at most one guard, `if (condition) { return value; }`, then its final
+// `return value;`. Values and conditions are literals, parameters, integer
+// arithmetic, shifts, conversions and comparisons, and direct calls of
+// functions of the set, whose operands are such expressions. This is not a general IR, and no
 // compiler-private identity crosses this boundary.
 //
 // The compiler host passes arrays of flat records, so a module is one array
@@ -26,16 +26,21 @@ package scalar_facts
 // - the final Return row: the return statement's range and the `count`
 //   operand rows that follow it.
 // Operand rows are in evaluation order, each after the operands it consumes:
-// a Literal's `value` is the integer, or 0 and 1 for false and true; a Read's
-// `value` is its parameter's ordinal; a Compare's `value` is its operator and
-// it consumes the two most recent unconsumed operands, both int, left first,
-// to give a bool; an Arithmetic's `value` is its operator and it consumes the
-// two most recent unconsumed int operands, left first, to give an int; a
-// Unary's `value` is its operator and it consumes the most recent unconsumed
-// int operand to give an int; a Call's `value` is its callee's function
-// ordinal, `name` its callee's name and `count` its arguments, the `count`
-// most recent unconsumed operands in argument order. A condition's last operand is its
-// bool; a return's last operand is the function's returned value.
+// a Literal's `literal` is its value, or 0 and 1 for false and true, and a
+// word's is its bits; a Read's `value` is its parameter's ordinal; a
+// Compare's `value` is its operator and it consumes the two most recent
+// unconsumed operands, integers of one type, left first, to give a bool; an
+// Arithmetic's `value` is its operator and it consumes the two most recent
+// unconsumed operands, both of its integer `type`, left first, to give one of
+// that type; a Unary's `value` is its operator and it consumes the most
+// recent unconsumed operand of its integer `type`; a Convert's `value` is
+// Clamp or Wrap and it consumes the most recent unconsumed operand, an
+// integer of any type, to give one of its `type`; a Call's `value` is its
+// callee's function ordinal, `name` its callee's name and `count` its
+// arguments, the `count` most recent unconsumed operands in argument order.
+// A condition's last operand is its bool; a return's last operand is the
+// function's returned value. A shift's count is converted to the shifted
+// type before the shift consumes it, as the ordinary compiler converts it.
 //
 // Ranges are half-open source-byte offsets into the source text; lines and
 // columns are one-based source-byte positions. Fields a row does not use are
@@ -46,6 +51,7 @@ pub Row :: struct {
     type: int;
     value: int;
     count: int;
+    literal: int64;
     name: string;
     text: string;
     start: int;
@@ -67,11 +73,22 @@ pub GuardRow: int : 9;
 pub CompareRow: int : 10;
 pub ArithmeticRow: int : 11;
 pub UnaryRow: int : 12;
+pub ConvertRow: int : 13;
 
+// The scalar types: int and bool, then the other integer types. The facts
+// carry no compiler storage ordinal.
 pub IntType: int : 1;
 pub BoolType: int : 2;
+pub Int8Type: int : 3;
+pub ByteType: int : 4;
+pub Int16Type: int : 5;
+pub Uint16Type: int : 6;
+pub UintType: int : 7;
+pub Int64Type: int : 8;
+pub WordType: int : 9;
 
-// Compare operators: the source's <, <=, >, >=, == and !=, signed for int.
+// Compare operators: the source's <, <=, >, >=, == and !=, signed or
+// unsigned as their operands' type is.
 pub Less: int : 1;
 pub LessEqual: int : 2;
 pub Greater: int : 3;
@@ -79,8 +96,10 @@ pub GreaterEqual: int : 4;
 pub Equal: int : 5;
 pub NotEqual: int : 6;
 
-// Arithmetic operators: the source's +, -, *, /, %, &, | and ^ on int. None
-// fails: they wrap, x / 0 is 0, x % 0 is x, MIN / -1 is MIN and MIN % -1 is 0.
+// Arithmetic operators: the source's +, -, *, /, %, &, |, ^, << and >> on
+// integers. None fails: they wrap, x / 0 is 0, x % 0 is x, MIN / -1 is MIN
+// and MIN % -1 is 0, and a shift count at or past the width, read unsigned,
+// gives 0, or the sign fill for a signed >>.
 pub Add: int : 1;
 pub Subtract: int : 2;
 pub Multiply: int : 3;
@@ -89,10 +108,54 @@ pub Remainder: int : 5;
 pub And: int : 6;
 pub Or: int : 7;
 pub Xor: int : 8;
+pub ShiftLeft: int : 9;
+pub ShiftRight: int : 10;
 
-// Unary operators: the source's - and ~ on int; negation wraps.
+// Unary operators: the source's - and ~ on integers; negation wraps.
 pub Negate: int : 1;
 pub Complement: int : 2;
+
+// Conversions: `T(value)` clamps the value to T, and `T(wrap: value)` keeps
+// its low bits.
+pub Clamp: int : 0;
+pub Wrap: int : 1;
+
+// The bits of an integer type, 0 for bool or any other.
+pub Bits :: (type: int) -> int {
+    if (type == Int8Type || type == ByteType) {
+        return 8;
+    }
+    if (type == Int16Type || type == Uint16Type) {
+        return 16;
+    }
+    if (type == IntType || type == UintType) {
+        return 32;
+    }
+    if (type == Int64Type || type == WordType) {
+        return 64;
+    }
+    return 0;
+}
+// Whether an integer type is unsigned.
+pub Unsigned :: (type: int) -> bool {
+    return type == ByteType || type == Uint16Type || type == UintType || type == WordType;
+}
+// Whether `literal` is a value of `type`: 0 or 1 for bool, its range for an
+// integer type, and any bits for a word.
+pub Fits :: (literal: int64, type: int) -> bool {
+    bits := Bits(type);
+    if (bits == 0) {
+        return type == BoolType && (literal == 0 || literal == 1);
+    }
+    if (bits == 64) {
+        return true;
+    }
+    if (Unsigned(type)) {
+        return literal >= 0 && literal < int64(1) << uint(bits);
+    }
+    half := int64(1) << uint(bits - 1);
+    return literal >= 0 - half && literal < half;
+}
 
 // Bounds both sides check before reading counts: source bytes, functions per
 // module, parameters and guards per function, and operands per function,

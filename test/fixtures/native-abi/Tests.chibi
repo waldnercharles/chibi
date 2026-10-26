@@ -11,6 +11,6 @@ OtherTargetsAreRejected :: () {
 }
 
 @test
-OnlyPlainBoolAndIntHaveScalarTypes :: () {
-    assert(ScalarTypeChecks() == 0, "only plain bool and int have an internal LLVM type");
+OnlyScalarStoragesHaveScalarTypes :: () {
+    assert(ScalarTypeChecks() == 0, "only bool, the integer types, float and double have an internal LLVM type");
 }

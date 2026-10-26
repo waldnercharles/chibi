@@ -2435,12 +2435,15 @@ Keep saved plans outside the worktree.
 
 ### Demand-driven compiler fixture preparation
 
-Measured against `84f7ba15e05423bd4ab3c3d29f4f360ee83c19ba` on an ARM64 Mac
+Measured candidate `596db47c90508809a9370af8106210cfff6b75f5` against baseline
+`84f7ba15e05423bd4ab3c3d29f4f360ee83c19ba` on an ARM64 Mac
 (macOS 26.7.1, Clang 22.1.8), using separate baseline/candidate checkouts and
 the standalone `test/language` driver in Debug with ASan and UBSan. Both used
 the existing sanitizer dependency archive
 `216c7cf5c4fdb5a5a43d18732a9ea78f0b45c416bdf4a5494af0997e69c1b6e6`;
 all 509 compiler commands matched after normalizing checkout paths.
+The timings and local validation counts in this section belong to that pair;
+they are not measurements of subsequent main integrations.
 
 Three repetitions per selector ran sequentially in fresh processes, alternating
 baseline/candidate order. The separate runtime profiler was idle. The table

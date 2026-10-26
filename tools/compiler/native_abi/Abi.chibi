@@ -20,15 +20,17 @@ pub Supported :: (target: Target) -> bool {
 }
 
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
-BoolStorage: int : 1;
+pub BoolStorage: int : 1;
 Int8Storage: int : 2;
 ByteStorage: int : 3;
 Int16Storage: int : 4;
 Uint16Storage: int : 5;
 IntStorage: int : 6;
-UintStorage: int : 7;
+pub UintStorage: int : 7;
 Int64Storage: int : 8;
 WordStorage: int : 9;
+pub FloatStorage: int : 10;
+pub DoubleStorage: int : 11;
 
 // The bits of an integer storage, or 0 for any other.
 pub IntegerBits :: (storage: int) -> int {
@@ -50,6 +52,10 @@ pub IntegerBits :: (storage: int) -> int {
 pub Unsigned :: (storage: int) -> bool {
     return storage == ByteStorage || storage == Uint16Storage || storage == UintStorage || storage == WordStorage;
 }
+// Whether a storage is float or double.
+pub Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
+}
 // The internal LLVM value type for this scalar subset. An empty result is an
 // unsupported type, not void: callers must reject it before emitting IR.
 // A caller must first reject containers, nominal types and references; the
@@ -59,6 +65,12 @@ pub Unsigned :: (storage: int) -> bool {
 pub ScalarType :: (storage: int) -> string {
     if (storage == BoolStorage) {
         return "i1";
+    }
+    if (storage == FloatStorage) {
+        return "float";
+    }
+    if (storage == DoubleStorage) {
+        return "double";
     }
     bits := IntegerBits(storage);
     if (bits == 0) {

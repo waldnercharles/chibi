@@ -11324,7 +11324,8 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     );
 }
 /* A scalar module with a constant expression the ordinary compiler folds
- * exactly, and the value its Main gives. They stay out of the 96-source
+ * exactly, or a conversion it must call instead, and the value its Main
+ * gives. They stay out of the 96-source
  * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each one:
  * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
 static const struct
@@ -11351,6 +11352,18 @@ static const struct
       "    return 0;\n"
       "}\n",
       INT32_MAX },
+    /* A conversion an authored function shadows is a call to it, with that
+     * function's result type, also inside an expression and as a built-in
+     * conversion's argument. */
+    { "shadowed_conversion",
+      "package scalar\nMain :: () -> int { return int8(1); }\n"
+      "int8 :: (v: int) -> int { return v + 1; }\n",
+      2 },
+    { "shadowed_nested_conversion",
+      "package scalar\nMain :: () -> int { return int(int8(127)) + int8(100) * "
+      "2; }\n"
+      "int8 :: (v: int) -> int { return v + 1; }\n",
+      330 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"

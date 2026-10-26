@@ -1,0 +1,300 @@
+{
+  "base": "c2ad1f31917829ddf2342ff53a3efdd32412dc1a",
+  "tested_files_sha256": {
+    "tools/compiler/package_compiler/Compile.chibi": "fc39dc89a0d8390d925d03d60d795cb33d2d71c9210d9036b4b0f0859c932151",
+    "test/language/package_compiler_chibi.c": "73b699a69244e2de4f13e09cdd45f7c89ecfabe865c9b5e0483f6bd7b0ce7679",
+    "test/language/package_compiler_chibi.h": "f05e964e3f16cb5ca3b1d927b8ecc8de5a4c656cec66377c9ac24635482be0cd",
+    "test/language/main.c": "6736c8f68b2d735aab88bdd35cb5b05e5395b8ffc39ec76cbe5e8f454d77a69a",
+    "tools/test_policy.py": "21282c14588111c1fd70e6171781efc16af46c92bae7b37b559927157234d464"
+  },
+  "builds": {
+    "Release": {
+      "cache_flags": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_FLAGS": "-Wno-error=string-concatenation",
+        "CMAKE_C_FLAGS_DEBUG": "-g",
+        "CMAKE_C_FLAGS_MINSIZEREL": "-Os -DNDEBUG",
+        "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG",
+        "CMAKE_C_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG",
+        "CMAKE_EXE_LINKER_FLAGS": "-Wl,-dead_strip",
+        "CMAKE_C_FLAGS_DEBUG-ADVANCED": "1",
+        "CMAKE_C_FLAGS_MINSIZEREL-ADVANCED": "1",
+        "CMAKE_C_FLAGS_RELEASE-ADVANCED": "1",
+        "CMAKE_C_FLAGS_RELWITHDEBINFO-ADVANCED": "1"
+      },
+      "binary_sha256": "9bc201ed37ebd17ccd23a1a58ab53d313f4bd23d6194cf771d5279526be793f3"
+    },
+    "ASan+UBSan": {
+      "cache_flags": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -Wno-error=string-concatenation",
+        "CMAKE_C_FLAGS_DEBUG": "-g",
+        "CMAKE_C_FLAGS_MINSIZEREL": "-Os -DNDEBUG",
+        "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG",
+        "CMAKE_C_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined -Wl,-dead_strip",
+        "CMAKE_C_FLAGS_DEBUG-ADVANCED": "1",
+        "CMAKE_C_FLAGS_MINSIZEREL-ADVANCED": "1",
+        "CMAKE_C_FLAGS_RELEASE-ADVANCED": "1",
+        "CMAKE_C_FLAGS_RELWITHDEBINFO-ADVANCED": "1"
+      },
+      "binary_sha256": "80b7b6ed9a4e55484ea28ccad8a4c20083e8397a7a2600a70edbe0da386958ed"
+    }
+  },
+  "checks": [
+    {
+      "name": "final-release-regression",
+      "configuration": "Release",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-package-compiler-chibi-write-summaries"
+      ],
+      "exit": 0,
+      "wall_seconds": 5.993648000061512,
+      "user_cpu": 5.374694,
+      "system_cpu": 0.12536899999999998,
+      "children_peak_rss": 996376576,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 781
+      },
+      "log_sha256": "135d3131f96464b8dd96994218aa8fdb5e65679a94dd12e0b395598e7e5c433d",
+      "expected_exit": 0
+    },
+    {
+      "name": "release-imports-supervised",
+      "configuration": "Release",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-package-compiler-chibi-imports-compiled"
+      ],
+      "exit": 0,
+      "wall_seconds": 12.684770666994154,
+      "user_cpu": 11.523904,
+      "system_cpu": 0.440866,
+      "children_peak_rss": 1034698752,
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "suites": 0,
+        "assertions": 13231
+      },
+      "log_sha256": "14fa4f6f35e56d5fb63274bc932b83b0beb4801296aa028320a5e79107c87db3",
+      "expected_exit": 0
+    },
+    {
+      "name": "release-collections",
+      "configuration": "Release",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-package-compiler-chibi-collections-compiled"
+      ],
+      "exit": 0,
+      "wall_seconds": 7.124680416891351,
+      "user_cpu": 6.503681,
+      "system_cpu": 0.29240299999999997,
+      "children_peak_rss": 814546944,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 4371
+      },
+      "log_sha256": "45bfa2fc2b67dc3218f938829e8f8279d30d50258ab722560376b9b7a2fbc498",
+      "expected_exit": 0
+    },
+    {
+      "name": "release-libraries",
+      "configuration": "Release",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-package-compiler-chibi-libraries"
+      ],
+      "exit": 0,
+      "wall_seconds": 67.39885854185559,
+      "user_cpu": 66.186043,
+      "system_cpu": 1.477245,
+      "children_peak_rss": 1132036096,
+      "stats": {
+        "passed": 13,
+        "failed": 0,
+        "total": 13,
+        "suites": 0,
+        "assertions": 17407
+      },
+      "log_sha256": "f0a5d84487f555743edb6b351229a8fd3740d9d12abf1d33f34545b397340f2d",
+      "expected_exit": 0
+    },
+    {
+      "name": "release-bootstrap",
+      "configuration": "Release",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-package-compiler-chibi-bootstrap"
+      ],
+      "exit": 0,
+      "wall_seconds": 24.002325625158846,
+      "user_cpu": 21.816389,
+      "system_cpu": 1.592882,
+      "children_peak_rss": 2895609856,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 23630
+      },
+      "log_sha256": "0ff35bee0730c50e7bf4cd8a2dab40f8a431b5bce1b4e98ebd2fdcc399c60537",
+      "expected_exit": 0
+    },
+    {
+      "name": "sanitized-regression",
+      "configuration": "ASan+UBSan",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-package-compiler-chibi-write-summaries"
+      ],
+      "exit": 0,
+      "wall_seconds": 18.03609795914963,
+      "user_cpu": 15.977744,
+      "system_cpu": 1.143289,
+      "children_peak_rss": 1750876160,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 781
+      },
+      "log_sha256": "3d656e5acdcbe74a9ca0f5add63a248fef4e9d2fe60038863ae6576bfab7fcc2",
+      "expected_exit": 0
+    },
+    {
+      "name": "sanitized-borrow",
+      "configuration": "ASan+UBSan",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-borrow"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.19466629205271602,
+      "user_cpu": 0.08666,
+      "system_cpu": 0.042219,
+      "children_peak_rss": 74219520,
+      "stats": {
+        "passed": 27,
+        "failed": 0,
+        "total": 27,
+        "suites": 0,
+        "assertions": 848
+      },
+      "log_sha256": "0a32b6896a6c5ce0874ec8d1d99c348352f238cefbfb6bcb09c2423366d5a4c9",
+      "expected_exit": 0
+    },
+    {
+      "name": "sanitized-program",
+      "configuration": "ASan+UBSan",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "120",
+        "tool",
+        "language-program"
+      ],
+      "exit": 0,
+      "wall_seconds": 0.9912741249427199,
+      "user_cpu": 0.507833,
+      "system_cpu": 0.17846399999999998,
+      "children_peak_rss": 437272576,
+      "stats": {
+        "passed": 167,
+        "failed": 0,
+        "total": 167,
+        "suites": 0,
+        "assertions": 12450
+      },
+      "log_sha256": "e8fc95f2d38450b7b5bb85eb9545fcbb9b7dbcd77bb34cc5de13573f12afede5",
+      "expected_exit": 0
+    },
+    {
+      "name": "negative-regression",
+      "configuration": "Release",
+      "command": [
+        "python3",
+        "chibi/tools/test_policy.py",
+        "--timeout",
+        "60",
+        "tool",
+        "language-package-compiler-chibi-write-summaries"
+      ],
+      "exit": 1,
+      "wall_seconds": 5.96570000005886,
+      "user_cpu": 5.339935,
+      "system_cpu": 0.137395,
+      "children_peak_rss": 1000554496,
+      "stats": {
+        "passed": 0,
+        "failed": 1,
+        "total": 1,
+        "suites": 0,
+        "assertions": 144
+      },
+      "log_sha256": "ba9f3ed0b010fb230f4fd3d0dedb50e251e0001f94c411bdca1b865c51114ee4",
+      "expected_exit": 1,
+      "meaning": "Original foreach source with the new regression; rejects the Body snapshot. Candidate restored byte-for-byte afterward."
+    }
+  ],
+  "coverage_limits": [
+    "No forced garbage collection during the call",
+    "Full native, material, project, tool and language groups not run",
+    "No GPU, other-platform or pinned-runtime source-only recovery check",
+    "Timing result applies to stage-zero-prepared compiler on SLJIT; does not establish stage-one savings"
+  ],
+  "setup_failures": [
+    "Private function export lookup corrected by a test-only wrapper",
+    "Probe private-header include corrected before measurement seal",
+    "Initial sandboxed supervisor could not inspect processes; started no tests; rerun normally with process inspection",
+    "Sanitizer build bounded at 180 seconds, resumed unchanged with 240-second bound",
+    "Unknown language-retention selector started no tests; language-program passed the retention cases"
+  ],
+  "units": {
+    "wall_seconds": "seconds",
+    "user_cpu": "seconds",
+    "system_cpu": "seconds",
+    "children_peak_rss": "bytes; whole-process high-water mark"
+  }
+}

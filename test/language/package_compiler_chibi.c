@@ -3221,6 +3221,220 @@ static bool prepare()
     );
     return true;
 }
+/* The test source in the compiler package constructs its private Body type. */
+static bool summary_body(int backend, int write, int callee, pin_value *out)
+{
+    pin_value args[] = { { .type = PIN_I32, .i = write },
+                         { .type = PIN_I32, .i = callee } };
+    return compiler_fixture_call(
+        &fixture,
+        backend,
+        PACKAGE,
+        "SummaryBodyForTest",
+        args,
+        2,
+        TARGET_BUDGET,
+        &input,
+        out
+    );
+}
+static bool summary_values(const pin_value *value, const int *expected, int count)
+{
+    REQUIRE(value->type == PIN_I32 && value->container == PIN_CONTAINER_ARRAY);
+    const pin_array *array = value->ptr;
+    REQUIRE(array && array->count == count);
+    for (int i = 0; i < count; i++) {
+        pin_value item = pin_array_get(array, i);
+        REQUIRE(item.type == PIN_I32 && item.i == expected[i]);
+    }
+    return true;
+}
+/* An out-of-range call edge still fails through the checked summaries read,
+ * with normal activation and host cleanup on either backend. */
+static bool summary_rejects_edge(const behavior_function *function, int backend, const pin_value *argument)
+{
+    arena storage = { 0 };
+    arena_init_collectable(&storage);
+    behavior_function_activation activation = { 0 };
+    bool resumable = behavior_function_resumable(function);
+    if (resumable) {
+        behavior_function_activation_init(function, &activation);
+    }
+    pin_value output = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                          .arguments = argument,
+                                          .argument_count = 1,
+                                          .results = &output,
+                                          .budget = TARGET_BUDGET };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(function, &context, NULL, 0);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int status = bound ? behavior_function_run(function, &context, backend != 0)
+                       : FLOW_OK;
+    behavior_run_scope_end(&runs);
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    REQUIRE(bound && status != FLOW_OK && !context.returned);
+    REQUIRE(context.failure == BEHAVIOR_FUNCTION_ARGUMENT);
+    REQUIRE(
+        !runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks &&
+        !runs.counts.size_bytecode_fallbacks
+    );
+    REQUIRE(backend == 0 ? runs.counts.bytecode_entries > 0 : !runs.counts.bytecode_entries);
+    REQUIRE(
+        backend == 0 || TEST_COMPILED_BACKEND != BEHAVIOR_SLJIT ||
+        runs.counts.sljit_entries > 0
+    );
+    REQUIRE(
+        backend == 0 || TEST_COMPILED_BACKEND != BEHAVIOR_WASM ||
+        runs.counts.wasm_entries > 0
+    );
+    return true;
+}
+TEST_CASE(package_compiler_write_summaries_keep_bodies)
+{
+    static const char helpers
+        [] = "package package_compiler\n"
+             "pub SummariesForTest :: (bodies: Body[]) -> int[] { return "
+             "WriteSummaries(bodies); }\n"
+             "pub SummaryBodyForTest :: (write: int, callee: int) -> Body { "
+             "slots: Slot[] = [ValueLocal(IntStorage)]; calls: Invocation[] = "
+             "[]; "
+             "if callee >= 0 { call: Invocation = {callee: callee, first: 0, "
+             "count: 0, "
+             "result_first: 0, result_count: 0}; calls.append(call); } "
+             "return Body.Emitted(slots, [], [], [], calls, [], [], [], [], 0, "
+             "write, []); }\n"
+             "pub SummaryFailedForTest :: () -> Body { return "
+             "Body.Failed({start: 0, end: 0, "
+             "line: 1, column: 1, document: 0, message: \"failed body\"}); }\n";
+    const source_package_input sources[] = {
+        PACKAGE_COMPILER_SOURCE_INPUTS,
+        { "package_compiler/SummariesTest.chibi", helpers, sizeof helpers - 1 }
+    };
+    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
+                                       COMPILER_SYNTAX_DEFINITION_PACK,
+                                       CSTRING_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, sources, NATIVE_COUNT(sources), packs, 3));
+    enum
+    {
+        BODIES = 8,
+        WRITE = 2,
+        UNKNOWN = -1
+    };
+    const int expected[BODIES] = { WRITE,   WRITE,   WRITE, 0,
+                                   UNKNOWN, UNKNOWN, WRITE, WRITE };
+    const int changed[BODIES] = { 0,       WRITE,   WRITE, 0,
+                                  UNKNOWN, UNKNOWN, WRITE, WRITE };
+    pin_value kept[2][2];
+    for (int b = 0; b < 2; b++) {
+        const authoring_package *package = compiler_fixture_package(&fixture, b, PACKAGE);
+        uint64_t id = compiler_fixture_export(&fixture, b, PACKAGE, "SummariesForTest");
+        const behavior_function *function = NULL;
+        for (int i = 0; i < execution_module_function_count(package->module); i++) {
+            execution_module_function_info
+                info = execution_module_function_at(package->module, i);
+            if (info.id == id) {
+                function = info.body;
+            }
+        }
+        REQUIRE(function && acount(function->calls) == 1);
+        function = function->calls[0].function;
+        REQUIRE(function);
+        /* Stage zero must not snapshot Body[] or each Body during traversal.
+         * Payload and result snapshots remain permitted. */
+        for (int i = 0; i < acount(function->host_calls); i++) {
+            const behavior_function_host_call *call = &function->host_calls[i];
+            if (call->capability_id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+                REQUIRE(function->data_values[call->first].initial.type != PIN_UNION);
+            }
+        }
+        pin_value bodies[BODIES];
+        REQUIRE(summary_body(b, 0, 1, &bodies[0]));
+        REQUIRE(summary_body(b, 0, 2, &bodies[1]));
+        REQUIRE(summary_body(b, WRITE, -1, &bodies[2]));
+        REQUIRE(summary_body(b, 0, 3, &bodies[3]));
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            b,
+            PACKAGE,
+            "SummaryFailedForTest",
+            NULL,
+            0,
+            TARGET_BUDGET,
+            &input,
+            &bodies[4]
+        ));
+        REQUIRE(summary_body(b, 0, 4, &bodies[5]));
+        REQUIRE(summary_body(b, UNKNOWN, 2, &bodies[6]));
+        bodies[7] = bodies[0];
+        pin_value argument = rows(bodies, BODIES, PIN_UNION, NULL), before;
+        REQUIRE(!compiler_fixture_snapshot(&detached, &before, &argument));
+        for (int collectable = 0; collectable < 2; collectable++) {
+            fixture.collectable = collectable;
+            pin_value first;
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "SummariesForTest",
+                &argument,
+                1,
+                TARGET_BUDGET,
+                &detached,
+                &first
+            ));
+            REQUIRE(summary_values(&first, expected, BODIES));
+            REQUIRE(pin_value_equal(&argument, &before));
+            /* The detached result is mutable without touching inputs or the
+             * next invocation's result. */
+            pin_array *array = first.ptr;
+            REQUIRE(!array->stride && array->items);
+            array->items[0].i = 99;
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "SummariesForTest",
+                &argument,
+                1,
+                TARGET_BUDGET,
+                &detached,
+                &kept[b][collectable]
+            ));
+            REQUIRE(summary_values(&kept[b][collectable], expected, BODIES));
+            REQUIRE(array->items[0].i == 99 && pin_value_equal(&argument, &before));
+        }
+        /* Replacing one aliased body between calls must be observed without
+         * changing its other occurrence or any earlier result. */
+        pin_array *array = argument.ptr;
+        REQUIRE(array->items[0].ptr == array->items[7].ptr);
+        REQUIRE(summary_body(b, 0, -1, &array->items[0]));
+        pin_value next;
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "SummariesForTest", &argument, 1, TARGET_BUDGET, &detached, &next)
+        );
+        REQUIRE(summary_values(&next, changed, BODIES));
+        REQUIRE(summary_values(&kept[b][1], expected, BODIES));
+        REQUIRE(summary_body(b, 0, BODIES, &array->items[0]));
+        REQUIRE(summary_rejects_edge(function, b, &argument));
+        pin_value empty = rows(NULL, 0, PIN_UNION, NULL);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "SummariesForTest", &empty, 1, TARGET_BUDGET, &detached, &next)
+        );
+        REQUIRE(summary_values(&next, NULL, 0));
+        arena_free(&input);
+    }
+    compiler_fixture_free(&fixture);
+    for (int b = 0; b < 2; b++) {
+        for (int collectable = 0; collectable < 2; collectable++) {
+            REQUIRE(summary_values(&kept[b][collectable], expected, BODIES));
+        }
+    }
+    return true;
+}
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
 static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
@@ -14484,6 +14698,12 @@ void test_language_package_compiler_chibi_native()
 #endif
 }
 
+void test_language_package_compiler_chibi_write_summaries()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_write_summaries_keep_bodies);
+    pu_clear_setup();
+}
 void test_language_package_compiler_chibi_libraries()
 {
     pu_setup(NULL, cleanup);

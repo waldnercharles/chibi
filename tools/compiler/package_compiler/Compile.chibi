@@ -1846,21 +1846,25 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
 // contracts remain unknown; WRITE propagates through actual invocation edges.
 WriteSummaries :: (bodies: Body[]) -> int[] {
     summaries: int[] = [];
-    for (body in bodies) {
-        switch body {
+    // Only summaries change; indexed reads avoid the foreach collection and
+    // element snapshots of prepared bodies.
+    index: int = 0;
+    while (index < length(bodies)) {
+        switch bodies[index] {
             case .Failed(diagnostic):
                 summaries.append(UnknownWrite);
             case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                           direct_write, facts):
                 summaries.append(direct_write);
         }
+        index += 1;
     }
     changed := true;
     while (changed) {
         changed = false;
-        index: int = 0;
-        for (body in bodies) {
-            switch body {
+        index = 0;
+        while (index < length(bodies)) {
+            switch bodies[index] {
                 case .Failed(diagnostic):
                     summaries[index] = UnknownWrite;
                 case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,

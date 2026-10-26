@@ -361,6 +361,8 @@ TOOLS = {
                                                       '--package-compiler-chibi-behaviors-rest'],
     'language-package-compiler-chibi-libraries': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                 '--package-compiler-chibi-libraries'],
+    'language-package-compiler-chibi-write-summaries': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                      '--package-compiler-chibi-write-summaries'],
     'language-package-compiler-chibi-sharing': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                '--package-compiler-chibi-sharing'],
     'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -568,6 +570,7 @@ GROUPS = {
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
+                 'language-package-compiler-chibi-write-summaries',
                  'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap'],
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:

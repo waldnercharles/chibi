@@ -24,6 +24,7 @@ int test_language_package_compiler_chibi_native_call(int count, char **arguments
 int test_language_stack_overflow_child(const char *mode);
 
 void test_language_package_compiler_chibi_libraries();
+void test_language_package_compiler_chibi_write_summaries();
 void test_language_package_compiler_chibi_native_arguments_oracle();
 void test_language_package_compiler_chibi_native_arguments();
 

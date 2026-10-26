@@ -3208,16 +3208,25 @@ static uint64_t tag(int b, const char *variant)
 {
     return variant_tag(b, "Result", variant);
 }
-static bool prepare()
+static bool prepare_backends(unsigned backends)
 {
     const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK };
-    REQUIRE(
-        compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3)
-    );
+    REQUIRE(compiler_fixture_prepare_backends(
+        &fixture,
+        backends,
+        sources,
+        (int)(sizeof sources / sizeof *sources),
+        packs,
+        3
+    ));
     return true;
+}
+static bool prepare()
+{
+    return prepare_backends(COMPILER_FIXTURE_BOTH);
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
@@ -3576,7 +3585,16 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
                                        CORE_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 4 : 3));
+    /* Only this bytecode owner is serialized and compared below. Each
+     * caller still chooses its original target execution backends. */
+    REQUIRE(compiler_fixture_prepare_backends(
+        &oracle,
+        COMPILER_FIXTURE_BYTECODE,
+        inputs,
+        count,
+        packs,
+        s->game ? 4 : 3
+    ));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);
@@ -4503,7 +4521,7 @@ static bool rejects_malformed_effects()
 }
 static bool run_samples(sample_group group, int b)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(1u << b));
     if (group == BASE_SAMPLES && b == 0) {
         REQUIRE(rejects_malformed_effects());
     }
@@ -4911,12 +4929,12 @@ TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 }
 TEST_CASE(package_compiler_float_constant_dependency)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(COMPILER_FIXTURE_BYTECODE));
     return approved_float_conversion_admission(0, true);
 }
 TEST_CASE(package_compiler_float_constant_dependency_compiled)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(COMPILER_FIXTURE_COMPILED));
     return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON

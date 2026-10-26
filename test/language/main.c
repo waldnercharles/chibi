@@ -1,5 +1,6 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "bounded_compiler_chibi.h"
+#include "compiler_fixture.h"
 #include "effect_analysis_chibi.h"
 #include "package_compiler_chibi.h"
 #include "prepared_writer_chibi.h"
@@ -189,6 +190,7 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--constant-proof-chibi");
     bool constant_scalar_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--constant-scalar-chibi");
+    bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
     bool bounded_compiler_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--bounded-compiler-chibi");
     bool prepared_writer_chibi = argc == 2 &&
@@ -300,15 +302,16 @@ int main(int argc, char **argv)
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !runtime_attribution && !wasm && !program &&
-         !query_program && !incremental && !operations && !modules && !ranges &&
-         !numeric_exact_core && !integer_semantics && !integer_shift_counts &&
-         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
-         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
-         !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
-         !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
-         !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
-         !scalar_lowering_chibi && !bounded_compiler_chibi && !prepared_writer_chibi &&
+         !row_array && !record_runtime && !runtime_attribution && !wasm &&
+         !program && !query_program && !incremental && !operations &&
+         !modules && !ranges && !numeric_exact_core && !integer_semantics &&
+         !integer_shift_counts && !integer_shift_counts_authored &&
+         !package_graph && !package_graph_chibi && !asset_compiler_host &&
+         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
+         !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
+         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
+         !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
          !package_compiler_chibi && !package_compiler_chibi_libraries &&
          !package_compiler_chibi_types && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
@@ -348,7 +351,8 @@ int main(int argc, char **argv)
             "--source-tokenizer-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
-            "--scalar-lowering-chibi | --bounded-compiler-chibi | "
+            "--scalar-lowering-chibi | --compiler-fixture | "
+            "--bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
             "| "
@@ -543,6 +547,8 @@ int main(int argc, char **argv)
         test_language_constant_proof_chibi();
     } else if (constant_scalar_chibi) {
         test_language_constant_scalar_chibi();
+    } else if (compiler_fixture) {
+        test_language_compiler_fixture();
     } else if (bounded_compiler_chibi) {
         test_language_bounded_compiler_chibi();
     } else if (prepared_writer_chibi) {

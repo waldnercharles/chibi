@@ -6,6 +6,7 @@
 #include "project_migrate29.h"
 #include "project_migrate30.h"
 #include "project_migrate31.h"
+#include "project_migrate32.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -80,6 +81,7 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 28 ? tree_sitter_chibi_project28()
         : version == 29 ? tree_sitter_chibi_project29()
         : version == 30 ? tree_sitter_chibi_project30()
+                        /* Version 32 kept version 31's grammar. */
                         : tree_sitter_chibi_project31()
     );
     assert(compatible);
@@ -153,6 +155,10 @@ static script_syntax *parse30(const char *text)
 static script_syntax *parse31(const char *text)
 {
     return chibi_migrate_parse(text, 31);
+}
+static script_syntax *parse32(const char *text)
+{
+    return chibi_migrate_parse(text, 32);
 }
 /* Whether text parses with the grammar of project `version`, from 23 on. */
 static bool valid_at(const char *text, int version)
@@ -5101,6 +5107,7 @@ static int accept_migrated(
                          : version == 29 ? parse29(text)
                          : version == 30 ? parse30(text)
                          : version == 31 ? parse31(text)
+                         : version == 32 ? parse32(text)
                                          : script_parse(text);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
@@ -6043,6 +6050,36 @@ static char **migrate_array_calls(char **sources, char **paths, int count, char 
     return migrated;
 }
 
+int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    /* A rerun after an interrupted step finds sources already migrated, which
+     * only the version 33 grammar reads. */
+    if (!valid_at(source, 32) && valid_at(source, 33)) {
+        return 0;
+    }
+    if (chibi_migrate32_angle_forms(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Angle form", 33, migrated, error, size)
+             : 0;
+}
+static char **migrate_angle_forms(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_angle_forms(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
 /* Removes the scripts later steps migrated past version `from + 1` from the
  * step's inputs; returns the remaining count. */
 static int skip_migrated_ahead(char **paths, char **sources, int count, int from)
@@ -6248,6 +6285,11 @@ int chibi_project_migrate_content(
             case 31:
                 error[0] = '\0';
                 migrated = migrate_array_calls(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 32:
+                error[0] = '\0';
+                migrated = migrate_angle_forms(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

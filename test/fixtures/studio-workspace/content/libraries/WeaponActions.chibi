@@ -4,16 +4,16 @@ WeaponActions :: library {
         return import_arg_1
     }
 
-    Spawn_Prototype_At :: (Prototype: Prototype, Transform: struct<Transform> = null) -> (Entity: handle<ecs.entity> = 0) {
+    Spawn_Prototype_At :: (Prototype: Prototype, Transform: Transform = null) -> (Entity: entity = 0) {
         action spawn_prototype_action = spawn_prototype(Prototype)
         spawn_prototype_action()
         after spawn_prototype_action {
-            import_component_write_1(spawn_prototype_action.Entity, convert<transform_to_cf>(Transform))
+            import_component_write_1(spawn_prototype_action.Entity, transform_to_cf(Transform))
             return spawn_prototype_action.Entity
         }
     }
-    Fire_Projectile :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0, Prototype: Prototype = Projectile, Shooter: handle<ecs.entity> = 0) -> (Entity: handle<ecs.entity> = 0) {
-        action spawn_prototype_at = Spawn_Prototype_At(Prototype, convert<transform_to_cf>(Origin))
+    Fire_Projectile :: (Origin: CF_V2 = null, Direction: CF_V2 = null, Damage: int = 0, Prototype: Prototype = Projectile, Shooter: entity = 0) -> (Entity: entity = 0) {
+        action spawn_prototype_at = Spawn_Prototype_At(Prototype, transform_to_cf(Origin))
         spawn_prototype_at()
         after spawn_prototype_at {
             spawn_prototype_at.Entity.Velocity = vec2_norm(Direction).Result * spawn_prototype_at.Entity.Projectile.speed

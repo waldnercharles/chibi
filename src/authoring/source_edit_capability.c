@@ -677,26 +677,19 @@ bool source_edit_capability(
             goto done;
         }
     } else {
-        append(&call, "%s", callee);
         if (c->state_access != SCRIPT_STATE_ACCESS_NONE) {
-            if (!r->reference) {
-                fail(error, size, "Choose the declared state for this access");
-                goto done;
-            }
-            char *state = quoted(catalog, r->reference, error, size);
-            if (!state) {
-                goto done;
-            }
-            append(&call, "<%s>", state);
-            free(state);
+            fail(error, size, "Read or assign the state by name");
+            goto done;
         }
         if (event) {
             char *event_name = quoted(catalog, event->name, error, size);
             if (!event_name) {
                 goto done;
             }
-            append(&call, "<%s>", event_name);
+            append(&call, "emit %s", event_name);
             free(event_name);
+        } else {
+            append(&call, "%s", callee);
         }
         append(&call, "(");
         int count = 0;

@@ -192,8 +192,11 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, "number") || InferredNumberStorage(forest, text, node) != 0) {
         return context;
     }
+    // A conversion that names an authored function is that call, as
+    // ScalarOperand emits it.
     constants: ConstDecl[] = [];
-    if (ConstantExpression(forest, text, constants, names, callable.package, node)) {
+    if (ConstantExpression(forest, text, constants, names, callable.package, node) &&
+        !ShadowedConversion(forest, text, callables, callable.package, node)) {
         typed := ConstantType(forest, text, constants, names, callable.package, node);
         if (typed == 0) {
             return context;

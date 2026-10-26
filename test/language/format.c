@@ -667,10 +667,10 @@ TEST_CASE(source_format_system_types_and_control_flow)
         "on Tick :: (dt:float){for(i in 0..3){p.x+=float(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
-        "F :: (x:array<int>)->(r:int){return(g<int>(x[0]));}}"
+        "F :: (x:int[])->(r:int){return(g(x[0]));}}"
     ));
-    REQUIRE(strstr(text, "array<int>"));
-    REQUIRE(strstr(text, "g<int>(x[0])"));
+    REQUIRE(strstr(text, "x: int[]"));
+    REQUIRE(strstr(text, "g(x[0])"));
     REQUIRE(strstr(text, "float(i)"));
     return true;
 }

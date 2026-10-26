@@ -8666,6 +8666,12 @@ TEST_CASE(program_version_32_angle_forms_take_version_33_spellings)
           "set_variable<n>(get_variable<n>() + n) } }",
           "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
           "state.n = state.n + n } }" },
+        /* So does one declared in a parameterless after handler. */
+        { "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+          "on Tick :: (dt: float s) { set_n() } after set_n { n := 5; "
+          "set_variable<n>(get_variable<n>() + n) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { state.n = 1\n"
+          " n := 5;\n state.n = state.n + n } }" },
         /* A rerun finds the version 33 spelling and leaves it. */
         { "B :: behavior { on Tick :: (dt: float s) { emit self.Damage(3) } }", NULL },
     };

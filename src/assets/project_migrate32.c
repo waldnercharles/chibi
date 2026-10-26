@@ -249,7 +249,9 @@ static bool shadowed(const rewrite *r, TSNode at, TSNode types)
     TSNode name = is(type, "type") && named_count(type) == 1 ? field(type, "name")
                                                              : type;
     TSNode callable = at;
-    while (!ts_node_is_null(callable) &&
+    /* An `after X { ... }` handler may have no parameters but still scopes
+     * its locals. */
+    while (!ts_node_is_null(callable) && !is(callable, "handler") &&
            ts_node_is_null(field(callable, "parameters"))) {
         callable = ts_node_parent(callable);
     }

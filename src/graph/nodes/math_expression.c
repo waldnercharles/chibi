@@ -137,8 +137,8 @@ static const math_function functions[] = {
     { .name = "direction", .arity = 2, .nodes = { "Direction To" } },
     { .name = "normalize", .arity = 1, .nodes = { "Normalize Vector 2", "Shader Normalize" } },
     { .name = "rand", .arity = 0, .nodes = { "Random Real" } },
-    { .name = "vec2", .arity = 2, .nodes = { "Make_CF_V2", "Shader Vector2" } },
-    { .name = "vec3", .arity = 3, .nodes = { "Make_CF_V3", "Shader Vector3" } },
+    { .name = "vec2", .arity = 2, .nodes = { "Make_vec2", "Shader Vector2" } },
+    { .name = "vec3", .arity = 3, .nodes = { "Make_vec3", "Shader Vector3" } },
     { .name = "vec4", .arity = 4, .nodes = { NULL, "Shader Vector4" } },
     { .name = "noise", .arity = 2, .nodes = { NULL, "Shader Noise" } },
     { .name = "noise", .arity = 3, .nodes = { NULL, NULL, "Field Noise" } },
@@ -1385,7 +1385,7 @@ static int dataflow_width(const pin_spec *pin)
     if (pin->type != PIN_STRUCT || !pin->type_name) {
         return 0;
     }
-    if (!strcmp(pin->type_name, "ShaderVec2") || !strcmp(pin->type_name, "CF_V2")) {
+    if (!strcmp(pin->type_name, "ShaderVec2") || !strcmp(pin->type_name, "vec2")) {
         return 2;
     }
     return !strcmp(pin->type_name, "ShaderVec3") ? 3

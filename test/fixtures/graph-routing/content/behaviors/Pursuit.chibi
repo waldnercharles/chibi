@@ -3,7 +3,7 @@
 Pursuit :: behavior {
     on Tick :: (dt: number s) {
         if find_nearest_entity(self.Transform, 600.0, 1, 0).Found {
-            self.Velocity += (direction_to(self.Transform, convert<transform_to_cf>(find_nearest_entity(self.Transform, 600.0, 1, 0).Position)) * f64(self.Movement.Speed) - self.Velocity) * min(1, 120.0 * f64(dt) / max(length(direction_to(self.Transform, convert<transform_to_cf>(find_nearest_entity(self.Transform, 600.0, 1, 0).Position)) * f64(self.Movement.Speed) - self.Velocity), 0.0001))
+            self.Velocity += (direction_to(self.Transform, transform_to_cf(find_nearest_entity(self.Transform, 600.0, 1, 0).Position)) * f64(self.Movement.Speed) - self.Velocity) * min(1, 120.0 * f64(dt) / max(length(direction_to(self.Transform, transform_to_cf(find_nearest_entity(self.Transform, 600.0, 1, 0).Position)) * f64(self.Movement.Speed) - self.Velocity), 0.0001))
         } else {
             self.Velocity = vec2(0, 0)
         }

@@ -27,6 +27,7 @@
 #include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -2744,9 +2745,9 @@ TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
     const char
         *source = "Handles :: behavior { seen: f64 = 0;Result :: () -> "
                   "(value: f64) { yield; return 7; }Use :: (jobs: ref "
-                  "task<f64>[]) { yield; jobs = jobs; yield;answer := await "
+                  "task(f64)[]) { yield; jobs = jobs; yield;answer := await "
                   "jobs[0]; if answer is f64 n { seen = n; }jobs = []; "
-                  "yield; }on Impulse :: () { jobs: task<f64>[] "
+                  "yield; }on Impulse :: () { jobs: task(f64)[] "
                   "= [Result()]; Use(jobs); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4480,7 +4481,7 @@ TEST_CASE(program_task_handle_survives_in_a_detached_capture)
 {
     const char *source = "Capture :: behavior { got: f64 = 0;Work :: () -> "
                          "(value: f64) { yield; return 7 }Start :: () { "
-                         "held := Work(); Observe :: (held: ref task<f64>) "
+                         "held := Work(); Observe :: (held: ref task(f64)) "
                          "{ await Delay(10); result := await held; if result "
                          "is f64 value { got = value; } } Observe(held); "
                          "}on Impulse :: () { Start(); } }";
@@ -4508,10 +4509,10 @@ TEST_CASE(program_task_handles_survive_in_suspended_array_values)
 {
     const char
         *source = "Arrays :: behavior { got: f64 = 0;Work :: () -> f64 { "
-                  "yield; return 7; }Pack :: () -> task<f64>[] { held: "
-                  "task<f64>[] = [Work()]; return held; }on Impulse :: "
+                  "yield; return 7; }Pack :: () -> task(f64)[] { held: "
+                  "task(f64)[] = [Work()]; return held; }on Impulse :: "
                   "(amount: f64, "
-                  "enabled: bool) { first: task<f64>[] = []; i := 0;while i "
+                  "enabled: bool) { first: task(f64)[] = []; i := 0;while i "
                   "< 2 { "
                   "row := Pack(); if i == 0 { first = row; } i += 1; }copy := "
                   "first; first = [];yield; await Delay(10); result := await "
@@ -4573,7 +4574,7 @@ TEST_CASE(program_task_handles_survive_in_suspended_array_values)
 
 TEST_CASE(program_native_nested_collections_retain_task_handles)
 {
-    const char *source = "Nested :: behavior { pulse: task<f64>; held: "
+    const char *source = "Nested :: behavior { pulse: task(f64); held: "
                          "u64[] = []; "
                          "Work :: () -> f64 { yield; return 7; } "
                          "on Impulse :: () { pulse = Work(); } }";
@@ -4651,9 +4652,9 @@ TEST_CASE(program_task_scope_exits_drop_only_unobserved_handles)
 {
     const char *source =
         "Scope :: behavior { got: f64 = 0;Work :: () -> f64 { yield; "
-        "return 7; }Pack :: () -> (number: f64, discarded: task<f64>) "
+        "return 7; }Pack :: () -> (number: f64, discarded: task(f64)) "
         "{return(number: 1, discarded: Work()); }Observe :: (held: ref "
-        "task<f64>) { await Delay(10);result := await held; if result is "
+        "task(f64)) { await Delay(10);result := await held; if result is "
         "f64 value { got = value; } }on Impulse :: () {Pack(); "
         "unused := Pack().number;if true { held := Work(); Observe(held); }i "
         ":= 0; while i < 3 { dropped := Work(); i += 1; continue; }while true "
@@ -4726,7 +4727,7 @@ TEST_CASE(program_task_cancellation_is_distinct_from_zero_false_and_empty_text)
 TEST_CASE(program_task_waiters_receive_independent_success_snapshots)
 {
     const char
-        *source = "Waiters :: behavior { worker: task<f64[]>; total: f64 "
+        *source = "Waiters :: behavior { worker: task; total: f64 "
                   "= 0;Work :: () -> f64[] { yield; return [7]; }Observe :: "
                   "(offset: f64) { result := await worker; if result is not "
                   "Cancelled {values := result; values[0] += offset; total += "
@@ -4793,7 +4794,7 @@ TEST_CASE(program_task_await_copies_large_payload_once)
     };
     const char
         *source = "Delivery :: behavior { input: f64[] = []; worker: "
-                  "task<f64[]>;Work :: () -> f64[] { yield; return "
+                  "task;Work :: () -> f64[] { yield; return "
                   "input; }on Impulse :: (enabled: bool) { if enabled { worker "
                   "= "
                   "Work(); }else { await worker; } } }";
@@ -7012,7 +7013,7 @@ TEST_CASE(program_version_19_components_move_to_chibi)
                            "    // Per second.\n"
                            "    //\n"
                            "    rate: number\n"
-                           "    drift: CF_V2\n"
+                           "    drift: vec2\n"
                            "}\n";
     REQUIRE(!strcmp(read_whole(path), expected));
 
@@ -7435,6 +7436,18 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     current_expected = current;
     current = NULL;
     REQUIRE(!chibi_migrate_handlers(current_expected, NULL, 0, &current, error, sizeof error));
+    if (current) {
+        free(current_expected);
+        current_expected = current;
+    }
+    current = NULL;
+    REQUIRE(!chibi_migrate_angle_forms(current_expected, &current, error, sizeof error));
+    if (current) {
+        free(current_expected);
+        current_expected = current;
+    }
+    current = NULL;
+    REQUIRE(!chibi_migrate_vector_names(current_expected, &current, error, sizeof error));
     if (current) {
         free(current_expected);
         current_expected = current;
@@ -8591,9 +8604,210 @@ TEST_CASE(program_version_31_array_calls_take_their_new_names)
     }
     return true;
 }
-/* Version 33 spells sized numbers with Odin's names in types and conversion
+/* Version 33 spells no type arguments in angle brackets; a state-setting
+ * action is inlined where it runs, with its after body. */
+TEST_CASE(program_version_32_angle_forms_take_version_33_spellings)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "L :: library { F :: (a: struct<CF_V2>, b: handle<ecs.entity>[], c: "
+          "array<int>, d: task<double>) -> enum<Mode> { return Mode.A } }",
+          "L :: library { F :: (a: CF_V2, b: entity[], c: int[], d: "
+          "task(double)) -> Mode { return Mode.A } }" },
+        { "B :: behavior { n: int = 0\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        x := convert<To_Real>(n) + 1.0\n"
+          "        await set_variable<n>(Value: int = get_variable<n>() + 1)\n"
+          "        await send_event<Damage>(self, 3, Source: self)\n"
+          "        send_event<Hit>(Amount: 2, Entity: self.Target.other)\n"
+          "        aim := direction_to<Direction_To>(self.Transform, x)\n"
+          "    }\n"
+          "}",
+          "B :: behavior { n: int = 0\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        x := To_Real(n) + 1.0\n"
+          "        n = n + 1\n"
+          "        await emit self.Damage(3, Source: self)\n"
+          "        emit self.Target.other.Hit(Amount: 2)\n"
+          "        aim := direction_to(self.Transform, x)\n"
+          "    }\n"
+          "}" },
+        { "B :: behavior {\n"
+          "    Age: float = 0.0\n"
+          "    action age_2 = set_variable<Age>(Age + 1.0)\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        if dt > 0.0 {\n"
+          "            age_2()\n"
+          "        }\n"
+          "    }\n"
+          "    after age_2 {\n"
+          "        if age_2.Value > 2.0 {\n"
+          "            destroy_entity(self)\n"
+          "        }\n"
+          "        log(age_2.Value)\n"
+          "    }\n"
+          "}",
+          "B :: behavior {\n"
+          "    Age: float = 0.0\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        if dt > 0.0 {\n"
+          "            Age = Age + 1.0\n"
+          "            if Age > 2.0 {\n"
+          "                destroy_entity(self)\n"
+          "            }\n"
+          "            log(Age)\n"
+          "        }\n"
+          "    }\n"
+          "}" },
+        { "L :: library { F :: (a: CF_V2) -> int { return 1 } }", NULL },
+        /* A read before an await keeps the value the action set. */
+        { "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+          "on Tick :: (dt: float s) { set_n() } after set_n { await "
+          "log(set_n.Value) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n = 1\n"
+          " await log(n) } }" },
+        /* A local that shadows the state keeps the state qualified. */
+        { "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
+          "set_variable<n>(get_variable<n>() + n) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
+          "state.n = state.n + n } }" },
+        /* So does one declared in a parameterless after handler. */
+        { "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+          "on Tick :: (dt: float s) { set_n() } after set_n { n := 5; "
+          "set_variable<n>(get_variable<n>() + n) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { state.n = 1\n"
+          " n := 5;\n state.n = state.n + n } }" },
+        /* A rerun finds the version 33 spelling and leaves it. */
+        { "B :: behavior { on Tick :: (dt: float s) { emit self.Damage(3) } }", NULL },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_angle_forms(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        bool same = cases[i].expected
+                      ? migrated && !strcmp(migrated, cases[i].expected)
+                      : !migrated;
+        if (!same) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(same);
+        free(migrated);
+        migrated = NULL;
+    }
+    const char *refused[] = {
+        "L :: library { F :: (a: handle<Row>) {} }",
+        "L :: library { F :: (a: task<int[]>) {} }",
+        "L :: library { F :: (a: set<int>) {} }",
+        "L :: library { F :: () -> int { return pick<Other>(1) } }",
+        "B :: behavior { n: int = 0; on Tick :: (dt: float s) { "
+        "log(set_variable<n>(1)) } }",
+        "B :: behavior { on Tick :: (dt: float s) { send_event<Damage>(Amount: "
+        "1) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); on "
+        "Tick :: (dt: float s) { set_n(2) } }",
+        "L :: library { F :: (a: array<int | string>) {} }",
+        "B :: behavior { on Tick :: (dt: float s) { "
+        "send_event<game.Damage>(self, 1) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n() } after set_n { set_n() } }",
+        "B :: behavior { a: int = 0; b: int = 0; action update = "
+        "set_variable<a>(1); "
+        "action update = set_variable<b>(2); on Tick :: (dt: float s) { "
+        "update() } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n() } after set_n { n = 2; "
+        "log(set_n.Value) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n(); log(set_n.Value) } }",
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(chibi_migrate_angle_forms(refused[i], &migrated, error, sizeof error) < 0);
+        if (!strstr(error, "has no version 33 spelling")) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, "has no version 33 spelling"));
+    }
+    return true;
+}
+/* Version 34 names Cute's vectors vec2 and vec3 in scripts and in the type
+ * names of declarative assets, and leaves other names alone. */
+TEST_CASE(program_version_33_vectors_take_version_34_names)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "L :: library { F :: (a: CF_V2, b: CF_V3[]) -> CF_V2 { return "
+          "make_cf_v2(x: a.x, y: break_cf_v3(b[0]).y) } }",
+          "L :: library { F :: (a: vec2, b: vec3[]) -> vec2 { return "
+          "make_vec2(x: a.x, y: break_vec3(b[0]).y) } }" },
+        { "B :: behavior { at: CF_V3 = {}\n    on Tick :: (dt: float s) { "
+          "at = scalar_to_cf_v3(dt) + make_cf_v3(x: 1, y: 2, z: 3) } }",
+          "B :: behavior { at: vec3 = {}\n    on Tick :: (dt: float s) { "
+          "at = scalar_to_vec3(dt) + make_vec3(x: 1, y: 2, z: 3) } }" },
+        { "L :: library { F :: (cf_v2: int, v: vec2) -> int { return cf_v2 } }", NULL },
+    };
+    char error[256] = { 0 }, *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_vector_names(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        REQUIRE(!error[0]);
+        if (cases[i].expected ? !migrated || strcmp(migrated, cases[i].expected)
+                              : migrated != NULL) {
+            fprintf(stderr, "case %zu migrated to: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(cases[i].expected ? migrated && !strcmp(migrated, cases[i].expected) : !migrated);
+        free(migrated);
+        migrated = NULL;
+    }
+    char root[] = "/tmp/chibi-vectors-XXXXXX", path[300];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/events", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    write_whole(path, "version 33\ncontent \"content\"\nstart_scene \"Start.kdl\"\n");
+    /* A quoted key decodes to the same type_name; other strings are data. */
+    const char
+        *event = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 4\n"
+                 "(array)variables {\n"
+                 "    - id=1 name=\"Point\" type=\"struct\" "
+                 "\"type_name\"=\"CF_V2\" {\n"
+                 "        default x=0.0 y=0.0\n"
+                 "    }\n"
+                 "    - id=2 name=\"Label\" type=\"string\" "
+                 "default=\"CF_V3\\\" \\\"CF_V2\"\n"
+                 "    - id=3 name=\"Kind\" type=\"string\" default=\"CF_V2\"\n"
+                 "}\n";
+    snprintf(path, sizeof path, "%s/content/events/Hit.kdl", root);
+    write_whole(path, event);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    const char *text = read_whole(path);
+    av_doc *document = asset_text_read(text, error, sizeof error);
+    REQUIRE(document);
+    const av_value *variables = av_obj_get(av_doc_root(document), "variables");
+    REQUIRE(av_arr_size(variables) == 3);
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(variables, 0), "type_name")), "vec2"));
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(variables, 1), "default")), "CF_V3\" \"CF_V2"));
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(variables, 2), "default")), "CF_V2"));
+    av_doc_free(document);
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/content/events", root);
+    REQUIRE(!rmdir(path));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!rmdir(path) && !rmdir(root));
+    return true;
+}
+/* Version 35 spells sized numbers with Odin's names in types and conversion
  * calls, and `float` becomes `number`; other names and text stay. */
-TEST_CASE(program_version_32_numbers_take_odin_names)
+TEST_CASE(program_version_34_numbers_take_odin_names)
 {
     const struct
     {
@@ -10289,7 +10503,9 @@ void test_language_program()
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
     RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
-    RUN_TEST_CASE(program_version_32_numbers_take_odin_names);
+    RUN_TEST_CASE(program_version_32_angle_forms_take_version_33_spellings);
+    RUN_TEST_CASE(program_version_33_vectors_take_version_34_names);
+    RUN_TEST_CASE(program_version_34_numbers_take_odin_names);
     RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

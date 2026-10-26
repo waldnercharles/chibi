@@ -65,7 +65,7 @@
     )
 #define UI_POPOVER_INPUTS(X)                                                   \
     UI_BASE_INPUTS(X)                                                          \
-    UI_DATA(X, "At", PIN_STRUCT, "CF_V2")
+    UI_DATA(X, "At", PIN_STRUCT, "vec2")
 #define UI_REVEAL_INPUTS(X)                                                    \
     UI_BASE_INPUTS(X)                                                          \
     UI_DATA(X, "Row", PIN_I32, "int")

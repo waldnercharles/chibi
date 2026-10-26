@@ -7,15 +7,15 @@ static const event_field TICK_PAYLOAD[] = {
     { .name = "dt", .type = PIN_F32, .type_name = "number", .unit = "s" },
 };
 static const event_field INPUT_PAYLOAD[] = {
-    { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Direction", .type = PIN_STRUCT, .type_name = "vec2" },
 };
 static const event_field CONTACT_PAYLOAD[] = {
     { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "vec2" },
 };
 static const event_field CONTACT_3D_PAYLOAD[] = {
     { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V3" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "vec3" },
 };
 
 const host_event_desc HOST_EVENTS[HOST_EVENT_COUNT] = {

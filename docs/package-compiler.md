@@ -200,7 +200,7 @@ The game arguments are flat tables, since records hold no arrays:
 - each event, with its ID, its ABI and a range of payload fields;
 - each type the game links, with whether modules require it (a namespace
   such as `SceneGlobals` is listed but not required), the type it stands for
-  (as `Transform` stands for `CF_V2`), its ID, layout, storage and size, its
+  (as `Transform` stands for `vec2`), its ID, layout, storage and size, its
   component ID when it is a component, and a range of fields with their
   storage, offsets, whether they are writable, their type as an index into
   these types, whether one is a constant whose value is its name, such as an
@@ -304,7 +304,7 @@ value; a field a native reads by key, such as the scene binding
 `globals.Leader`, is a call of that native on the key. `e.C` reads the
 component of the entity `e` as `self.C` reads the owner's. `self.C = v`
 writes a record whose type stands for the same one as the component's, as
-stage zero assigns `CF_V2` to `Transform`. Among natives sharing a name, such
+stage zero assigns `vec2` to `Transform`. Among natives sharing a name, such
 as the `number` and `f64` `cos`, each argument's own type picks the one
 whose parameters take them. A native that makes a record, such as
 `vec2(x, y)`, is a struct literal of the fields its arguments give. `after`

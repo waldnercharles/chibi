@@ -620,7 +620,7 @@ TEST_CASE(maps_retain_nested_task_results_until_the_last_handle_is_removed)
 {
     const char
         *source = "Maps :: behavior { seen: f64 = 0; "
-                  "jobs: [string: [string: task<f64>]] = [:]; "
+                  "jobs: [string: [string: task(f64)]] = [:]; "
                   "Work :: () -> f64 { yield; return 7; } "
                   "on Run :: () { jobs = [\"outer\": [\"inner\": Work()]]; "
                   "yield; yield; answer := await jobs[\"outer\"][\"inner\"]; "

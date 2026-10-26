@@ -1,5 +1,5 @@
 DirectionMath :: library {
-    Direction_Orientation :: (X: float = 0.0, Y: float = 0.0) -> (Orientation: struct<Orientation> = null) {
+    Direction_Orientation :: (X: float = 0.0, Y: float = 0.0) -> (Orientation: Orientation = null) {
         return make_orientation(atan2(Y, X))
     }
 }

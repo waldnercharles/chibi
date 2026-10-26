@@ -865,8 +865,74 @@ TEST_CASE(language_numeric_conversions_check_modes_and_constants)
     REQUIRE(analysis->valid);
     parse("L :: library { F :: (x: int) -> u8 { return u8(x, x); } }");
     REQUIRE(diagnostic("Conversion takes one value"));
-    parse("L :: library { F :: (x: int) -> int { return cast<int>(x); } }");
-    REQUIRE(diagnostic("cast<T>(value) was removed; write T(value)"));
+    return true;
+}
+/* `emit target.Event(payload)` and `emit Event(target, payload)` send the
+ * event through the catalog's sender; a plain sender call is refused. */
+TEST_CASE(language_emit_sends_events_to_their_target)
+{
+    static const script_catalog_parameter target[] = {
+        { .name = "Entity", .type = { .storage = PIN_HANDLE, .nominal = 40 } }
+    };
+    static const script_catalog_parameter payload[] = {
+        { .name = "Amount", .type = { .storage = PIN_I32 } }
+    };
+    static const script_catalog_capability events[] = {
+        { .id = 60,
+          .name = "Send Event",
+          .kind = SCRIPT_CAPABILITY_ACTION,
+          .parameters = target,
+          .parameter_count = 1,
+          .event_sender = true },
+        { .id = 61,
+          .name = "Damage",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = payload,
+          .parameter_count = 1 },
+    };
+    const script_catalog sender = { .capabilities = events,
+                                    .capability_count = 2,
+                                    .entity_type = 40 };
+    const char *valid[] = {
+        "L :: library { F :: (other: entity) { emit other.Damage(3) } }",
+        "L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) } "
+        "}",
+        /* An event send never calls the function its event shares a name with. */
+        "L :: library { Damage :: (other: entity) { emit Damage(other, 3) } }",
+    };
+    for (size_t i = 0; i < sizeof valid / sizeof *valid; i++) {
+        cleanup();
+        syntax = script_parse(valid[i]);
+        analysis = script_analyze(syntax, &sender);
+        REQUIRE(analysis->valid);
+        const script_expression *send = NULL;
+        for (int e = 0; e < analysis->expression_count; e++) {
+            if (analysis->expressions[e].kind == SCRIPT_EXPR_CALL) {
+                send = &analysis->expressions[e];
+            }
+        }
+        REQUIRE(send && send->capability == 60 && send->member == 61 && send->argument_count == 2);
+        REQUIRE(send->arguments[0].parameter == 0 && send->arguments[1].parameter == 1);
+    }
+    const struct
+    {
+        const char *source, *message;
+    } invalid[] = {
+        { "L :: library { F :: (other: entity) { send_event(other) } }",
+          "Send events with emit target.Event(...)" },
+        { "L :: library { F :: (other: entity) { emit other.Missing(3) } }",
+          "Unknown event declaration" },
+        { "L :: library { F :: (other: entity) { emit other.Damage(\"x\") } }", NULL },
+        { "L :: library { F :: () { emit \"x\".Damage(1) } }", NULL },
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        cleanup();
+        syntax = script_parse(invalid[i].source);
+        analysis = script_analyze(syntax, &sender);
+        REQUIRE(
+            !analysis->valid && (!invalid[i].message || diagnostic(invalid[i].message))
+        );
+    }
     return true;
 }
 /* number is a 32-bit float that f32 also names; f32 widens to f64, and f64
@@ -1904,15 +1970,9 @@ TEST_CASE(language_units_follow_constant_and_state_initializers)
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("Units differ: u/s = u"));
 
-    const script_catalog_capability setter = { .id = 71,
-                                               .name = "set_measure",
-                                               .state_access = SCRIPT_STATE_ACCESS_WRITE };
-    script_catalog with_setter = measured;
-    with_setter.capabilities = &setter;
-    with_setter.capability_count = 1;
     cleanup();
-    syntax = script_parse("Move :: system(body: Body) { elapsed: retain = dt; if true { set_measure<elapsed>(body.x); } }");
-    analysis = script_analyze(syntax, &with_setter);
+    syntax = script_parse("Move :: system(body: Body) { elapsed: retain = dt; if true { elapsed = body.x; } }");
+    analysis = script_analyze(syntax, &measured);
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("Units differ: s = u"));
     return true;
@@ -2382,35 +2442,36 @@ TEST_CASE(language_type_patterns_narrow_and_invalidate)
     parse("Unions :: library { Run :: (value: int?) -> number? { if value { return number(value); } return nil; } }");
     REQUIRE(analysis->valid);
     parse(
-        "Unions :: library { Run :: (pending: task<number>) -> number { "
+        "Unions :: library { Run :: (pending: task(number)) -> number { "
         "result := await pending; if result is not Cancelled { return result; "
         "} return 0; } }"
     );
     REQUIRE(analysis->valid);
     parse(
         "Unions :: library { Work :: () -> number { yield; return 0; } "
-        "Run :: () -> number { pending: task<number> = Work(); result := await "
+        "Run :: () -> number { pending: task(number) = Work(); result := await "
         "pending; "
         "if result is number value { return value; } return 1; } }"
     );
     REQUIRE(analysis->valid);
     parse(
-        "Unions :: library { Run :: (pending: task<number>[]) -> number { "
+        "Unions :: library { Run :: (pending: task(number)[]) -> number { "
         "result := await pending[0]; if result is not Cancelled { return "
         "result; } return 0; } }"
     );
     REQUIRE(analysis->valid);
     parse(
-        "Unions :: library { Run :: (pending: task<number>[]) -> number { "
+        "Unions :: library { Run :: (pending: task(number)[]) -> number { "
         "result := await pending; return 0; } }"
     );
     REQUIRE(!analysis->valid);
-    parse("Unions :: library { Run :: (pending: task<number>[]) -> bool { return !pending; } }");
+    parse("Unions :: library { Run :: (pending: task(number)[]) -> bool { return !pending; } }");
     REQUIRE(!analysis->valid);
     parse(
-        "Unions :: library { Run :: (pending: task<number?>) -> number { "
-        "result := await pending; if result is not Cancelled { value := "
-        "result; if value { return value; } } return 0; } }"
+        "Unions :: library { Work :: () -> number? { yield; return nil; } "
+        "Run :: () -> number { pending := Work(); result := await pending; if "
+        "result is not Cancelled { value := result; if value { return value; } "
+        "} return 0; } }"
     );
     REQUIRE(analysis->valid);
     return true;
@@ -2513,6 +2574,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_char_widens_to_int_and_narrows_explicitly);
     RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
     RUN_TEST_CASE(language_number_is_f32_and_f64_narrows_explicitly);
+    RUN_TEST_CASE(language_emit_sends_events_to_their_target);
     RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_shift_counts_are_unsigned_and_keep_their_type);
     RUN_TEST_CASE(language_integer_constants_are_exact_and_must_fit);

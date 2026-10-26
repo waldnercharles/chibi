@@ -28,9 +28,9 @@ const syntax_corpus_case syntax_corpus_cases[SYNTAX_CORPUS_CASE_COUNT] = {
       true },
     { "typed-named-calls",
       "Calls :: behavior { on Begin :: () {\n"
-      "await set_variable<flash>(Value: bool = true);\n"
+      "await emit self.Flash(Value: bool = true);\n"
       "consume(Owner: other, Position: target.Position, Label: \"text\");\n"
-      "consume(Value: convert<to_vec>(component(Transform)));\n"
+      "consume(Value: to_vec(component(Transform)));\n"
       "} }",
       true },
     { "error-with-descendants",

@@ -85,7 +85,7 @@ static const rejection rejections[REJECTED] = {
     { "bounded function body needs exactly one ordinary return", 2, 19 },
     { "Expected package header", 1, 1 },
     { "bounded compiler supports no call except int(value)", 2, 29 },
-    { "bounded compiler supports no call except int(value)", 2, 28 },
+    { "unsupported bounded expression", 2, 28 },
     { "bounded compiler reserves int and bool for conversions", 2, 1 },
     { "bounded compiler requires one ordinary int or bool result", 2, 1 },
     { "bounded expression exceeds its 24-row limit", 2, 29 },
@@ -574,7 +574,7 @@ static bool corpus()
     single(n++, "local statement", "package facts\nAnswer :: ()->int { value:int=42; return value; }", NULL);
     single(n++, "library wrapper", "Facts :: library { Answer :: ()->int { return 42; } }", NULL);
     single(n++, "unsupported conversion", "package facts\nAnswer :: ()->bool { return bool(true); }", NULL);
-    single(n++, "conversion type arguments", "package facts\nAnswer :: ()->int { return int<bool>(5); }", NULL);
+    single(n++, "emitted conversion", "package facts\nAnswer :: ()->int { return emit int(5); }", NULL);
     single(n++, "function named int", "package facts\nint :: ()->int { return int(42); }", NULL);
     single(n++, "no result", "package facts\nAnswer :: () { return 42; }", NULL);
     single(n++, "25 expression rows", expression25, NULL);

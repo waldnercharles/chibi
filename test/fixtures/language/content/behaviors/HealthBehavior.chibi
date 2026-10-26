@@ -11,8 +11,8 @@ HealthBehavior :: behavior {
             goto False;
         }
     }
-    on Damage :: (Amount: int, Source: handle<ecs.entity>) {
-        if (convert<To_Real>(Amount) > 0) {
+    on Damage :: (Amount: int, Source: entity) {
+        if (To_Real(Amount) > 0) {
             await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: Amount, Source: Source);
         } else {
         }
@@ -24,10 +24,10 @@ HealthBehavior :: behavior {
         } else {
         }
     }
-    Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<ecs.entity> = 0) -> () {
+    Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: entity = 0) -> () {
 
-        action current_remaininghealth = HealthChanged(Current: plain f64 = convert<To_Real>(Current), RemainingHealth: plain f64 = f64(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(Maximum))));
-        if (convert<To_Real>(Current) > 0) {
+        action current_remaininghealth = HealthChanged(Current: plain f64 = To_Real(Current), RemainingHealth: plain f64 = f64(clamp(To_Real(Current) - clamp(To_Real(Amount), 0, To_Real(Current)), 0, To_Real(Maximum))));
+        if (To_Real(Current) > 0) {
             if (self.Dash != nil) {
                 if (f64(self.Dash.remaining) > 0) {
                     return ();
@@ -42,11 +42,11 @@ HealthBehavior :: behavior {
         }
         after current_remaininghealth.True {
             current := Current
-            RemainingHealth := f64(clamp(convert<To_Real>(current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(current)), 0, convert<To_Real>(Maximum)))
-            self.Health.current = convert<To_Integer>(RemainingHealth);
-            await send_event<Damaged>(Entity: self, Amount: int = subtract(A: int = current, B: int = convert<To_Integer>(RemainingHealth)), Source: Source);
-            if (f64(clamp(convert<To_Real>(current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(current)), 0, convert<To_Real>(Maximum))) <= 0) {
-                await send_event<Died>(Entity: self, Source: Source);
+            RemainingHealth := f64(clamp(To_Real(current) - clamp(To_Real(Amount), 0, To_Real(current)), 0, To_Real(Maximum)))
+            self.Health.current = To_Integer(RemainingHealth);
+            await emit self.Damaged(Amount: int = subtract(A: int = current, B: int = To_Integer(RemainingHealth)), Source: Source);
+            if (f64(clamp(To_Real(current) - clamp(To_Real(Amount), 0, To_Real(current)), 0, To_Real(Maximum))) <= 0) {
+                await emit self.Died(Source: Source);
                 return ();
             } else {
                 return ();
@@ -60,7 +60,7 @@ HealthBehavior :: behavior {
 
         if (self.EncounterMember != nil) {
             for (foreach_2 in find_entities_with_component(Component: Encounter)) {
-                send_event<RefreshEncounter>(Entity: foreach_2);
+                emit foreach_2.RefreshEncounter();
             }
             return ();
         } else {

@@ -23,8 +23,8 @@ Explorer :: behavior {
         return hit.Found && hit.Normal.y < -0.5 && self.Velocity.y >= -2
     }
 
-    DigPoint :: () -> (Point: CF_V2) {
-        return self.Transform + vec2(facing * 22, 12)
+    DigPoint :: () -> (Point: vec2) {
+        return self.Transform + vec2(number(facing * 22), 12)
     }
 
     Dig :: () {
@@ -96,7 +96,7 @@ Explorer :: behavior {
     }
 
     Present :: () {
-        globals.Visor.Transform = self.Transform + vec2(facing * 3, -4)
+        globals.Visor.Transform = self.Transform + vec2(number(facing * 3), -4)
         globals.DigTarget.Transform = DigPoint()
     }
 

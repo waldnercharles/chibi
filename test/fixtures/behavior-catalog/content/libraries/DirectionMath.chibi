@@ -1,6 +1,6 @@
 // Shared direction calculations.
 DirectionMath :: library {
-    Direction_Orientation :: (X: number = 0.0, Y: number = 0.0) -> (Orientation: struct<Orientation> = null) {
+    Direction_Orientation :: (X: number = 0.0, Y: number = 0.0) -> (Orientation: Orientation = null) {
         return make_orientation(atan2(Y, X))
     }
 }

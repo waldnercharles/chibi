@@ -205,8 +205,8 @@ TEST_CASE(record_semantic_default_rejections)
 TEST_CASE(record_semantic_scope_and_compatibility)
 {
     static const char *const sources[] = {
-        "Existing :: library { Copy :: (row: struct<SceneObjectRow>) -> "
-        "struct<SceneObjectRow> { return row; } }",
+        "Existing :: library { Copy :: (row: SceneObjectRow) -> "
+        "SceneObjectRow { return row; } }",
         "Existing :: library { struct :: 1; Value :: () -> int { return "
         "struct; } }",
         "Wrong :: behavior { Row :: struct { key: string; } }",

@@ -80,7 +80,7 @@ NATIVE_CONVERSION_VECTORS(VECTOR)
 #undef VECTOR
 
 static const node_desc *const vector_splats[] = {
-    &NODE_Splat_CF_V2,      &NODE_Splat_CF_V3,      &NODE_Splat_ShaderVec2,
+    &NODE_Splat_vec2,       &NODE_Splat_vec3,       &NODE_Splat_ShaderVec2,
     &NODE_Splat_ShaderVec3, &NODE_Splat_ShaderVec4,
 };
 

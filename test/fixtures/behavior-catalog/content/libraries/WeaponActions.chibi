@@ -3,7 +3,7 @@ WeaponActions :: library {
     Check_Firing_Interval :: (Elapsed: number = 0.0, Cooldown: number = 0.0) -> (Ready: bool = false, Remainder: number = 0.0) {
         return (Elapsed >= max(Cooldown, B: number = 0.01), Elapsed - max(Cooldown, B: number = 0.01))
     }
-    Fire_Projectile :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0, Prototype: Prototype = ArenaProjectile, Shooter: handle<ecs.entity> = 0) -> (Entity: handle<ecs.entity> = 0) {
+    Fire_Projectile :: (Origin: vec2 = null, Direction: vec2 = null, Damage: int = 0, Prototype: Prototype = ArenaProjectile, Shooter: entity = 0) -> (Entity: entity = 0) {
         action spawn_prototype_action = spawn_prototype(Prototype)
         spawn_prototype_action()
         after spawn_prototype_action {

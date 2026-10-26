@@ -49,7 +49,6 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_STRUCT: return "Struct";
         case SCRIPT_EXPR_NIL: return "nil";
         case SCRIPT_EXPR_FALLBACK: return "Fallback";
-        case SCRIPT_EXPR_STORE: return "Store";
         case SCRIPT_EXPR_YIELD: return "Yield";
         case SCRIPT_EXPR_JOIN: return "Await Task";
         case SCRIPT_EXPR_CANCEL: return "Cancel Task";

@@ -30,8 +30,8 @@ static bool direction_to()
     arena_init(&memory, 256);
     for (int i = 0; i < (int)(sizeof origins / sizeof origins[0]); i++) {
         pin_value inputs[] = {
-            { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = (void *)&origins[i] },
-            { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = (void *)&targets[i] },
+            { .type = PIN_STRUCT, .type_name = "vec2", .ptr = (void *)&origins[i] },
+            { .type = PIN_STRUCT, .type_name = "vec2", .ptr = (void *)&targets[i] },
         };
         pin_value subtraction[] = { inputs[1], inputs[0] };
         pin_value delta = native_arithmetic_subtract(subtraction, 2, &memory);
@@ -45,10 +45,10 @@ static bool direction_to()
     graph_init(&g);
     node *n = graph_add_node(&g, direction);
     pin_value origin = { .type = PIN_STRUCT,
-                         .type_name = "CF_V2",
+                         .type_name = "vec2",
                          .ptr = (void *)&origins[0] };
     pin_value target = { .type = PIN_STRUCT,
-                         .type_name = "CF_V2",
+                         .type_name = "vec2",
                          .ptr = (void *)&targets[0] };
     REQUIRE(graph_set_pin_default(&g, n, 0, 0, &origin) == 0);
     REQUIRE(graph_set_pin_default(&g, n, 0, 1, &target) == 0);
@@ -75,7 +75,7 @@ static bool test_zero_scale()
     arena_init(&memory, 256);
     CF_V2 source = { 3, -4 };
     pin_value inputs[] = {
-        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &source },
+        { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &source },
         { .type = PIN_F32, .type_name = "number", .f = 0 },
     };
     pin_value result = native_arithmetic_multiply(inputs, 2, &memory);
@@ -83,7 +83,7 @@ static bool test_zero_scale()
     CF_V2 *vector = result.ptr;
     REQUIRE(vector->x == 0 && vector->y == 0);
     graph graph = { 0 };
-    node *make = graph_add_node(&graph, graph_palette_node("Make_CF_V2"));
+    node *make = graph_add_node(&graph, graph_palette_node("Make_vec2"));
     pin_value x = { .type = PIN_F32, .f = 3 }, y = { .type = PIN_F32, .f = -4 };
     REQUIRE(graph_set_pin_default(&graph, make, 0, 0, &x) == 0);
     REQUIRE(graph_set_pin_default(&graph, make, 0, 1, &y) == 0);
@@ -94,7 +94,7 @@ static bool test_zero_scale()
     CF_V2 composed = { make->input_pins[0].default_value.f,
                        make->input_pins[1].default_value.f };
     pin_value composed_inputs[] = {
-        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &composed },
+        { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &composed },
         multiply->input_pins[1].default_value
     };
     result = native_arithmetic_multiply(composed_inputs, 2, &memory);
@@ -125,7 +125,7 @@ TEST_CASE(vector_extremes_defaults_and_zero_scale)
     arena_init(&memory, 256);
     for (int i = 0; i < (int)(sizeof values / sizeof values[0]); i++) {
         pin_value input = { .type = PIN_STRUCT,
-                            .type_name = "CF_V2",
+                            .type_name = "vec2",
                             .ptr = (void *)&values[i] };
         pin_value output = native_normalize(&input, 1, &memory);
         const CF_V2 *result = output.ptr;
@@ -137,7 +137,7 @@ TEST_CASE(vector_extremes_defaults_and_zero_scale)
     arena_init(&memory, sizeof(CF_V2));
     CF_V2 *stored = arena_alloc(&memory, sizeof *stored);
     *stored = (CF_V2){ 3, 4 };
-    pin_value input = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = stored };
+    pin_value input = { .type = PIN_STRUCT, .type_name = "vec2", .ptr = stored };
     pin_value output = native_normalize(&input, 1, &memory);
     const CF_V2 *result = output.ptr;
     REQUIRE(fabsf(result->x - 0.6f) < 0.00001f && fabsf(result->y - 0.8f) < 0.00001f);
@@ -160,7 +160,7 @@ TEST_CASE(vectors_scale_by_integers)
         { .type = PIN_U64, .u64 = 40 },
     };
     for (int i = 0; i < (int)(sizeof scales / sizeof *scales); i++) {
-        pin_value vector = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &source };
+        pin_value vector = { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &source };
         pin_value right[] = { vector, scales[i] }, left[] = { scales[i], vector };
         pin_value scaled = native_arithmetic_multiply(right, 2, &memory);
         REQUIRE(scaled.type == PIN_STRUCT && scaled.ptr);

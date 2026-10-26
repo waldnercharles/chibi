@@ -14,7 +14,7 @@ Weapon :: behavior {
             elapsed_dt()
         } else {
             if find_nearest_entity(self.Transform, 2000.0, 2, self).Found {
-                self.Aim.direction = convert<transform_to_cf>(direction_to(self.Transform, convert<transform_to_cf>(find_nearest_entity(self.Transform, 2000.0, 2, self).Position)))
+                self.Aim.direction = transform_to_cf(direction_to(self.Transform, transform_to_cf(find_nearest_entity(self.Transform, 2000.0, 2, self).Position)))
                 elapsed_dt()
             } else {
                 elapsed_dt()
@@ -39,7 +39,7 @@ Weapon :: behavior {
             elapsed = min(elapsed, f64(self.Weapon.Cooldown))
         }
     }
-    position_offset :: (position: struct<CF_V2> = null, offset: struct<CF_V2> = null) -> (Result: struct<CF_V2> = null) {
+    position_offset :: (position: vec2 = null, offset: vec2 = null) -> (Result: vec2 = null) {
         return add(position, offset)
     }
 }

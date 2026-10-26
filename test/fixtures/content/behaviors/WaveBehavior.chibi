@@ -18,7 +18,7 @@ WaveBehavior :: behavior {
             await Spawn_Within_Wave_Limit(find_nearest_entity(self.Transform, 1000000.0, 1, self).Position)
         }
     }
-    Spawn_Within_Wave_Limit :: (Player_Position: struct<CF_V2> = null) {
+    Spawn_Within_Wave_Limit :: (Player_Position: vec2 = null) {
         while Elapsed >= max(Interval, 0.01) {
             if Spawned >= CountLimit {
                 return
@@ -31,7 +31,7 @@ WaveBehavior :: behavior {
         }
         return
     }
-    Spawn_Enemy :: (Player_Position: struct<CF_V2> = null) {
+    Spawn_Enemy :: (Player_Position: vec2 = null) {
         action spawn_prototype_action = spawn_prototype(Enemy)
         spawn_prototype_action()
         after spawn_prototype_action {

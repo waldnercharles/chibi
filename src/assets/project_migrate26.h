@@ -7,9 +7,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Parses source with the frozen grammar of project `version` (23 to 32;
- * version 32 kept 31's), independently of the current language. Invalid
- * source gets one diagnostic. */
+/* Parses source with the frozen grammar of project `version` (23 to 32),
+ * independently of the current language. Invalid source gets one
+ * diagnostic. */
 script_syntax *chibi_migrate_parse(const char *, int version);
 /* Version 26 syntax snapshots after the version 25 spelling edits. NULL entries
  * are non-executable assets. Owned edit vectors refer to the supplied bytes. */

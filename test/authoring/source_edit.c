@@ -958,13 +958,13 @@ TEST_CASE(source_variable_types_preserve_comments_values_and_checked_uses)
     retype.signature = "int; injected:int";
     REQUIRE(!edit(retype));
     cleanup();
-    REQUIRE(project("Edit :: behavior { values:set<int>; }"));
-    state = find(SOURCE_PRESENTATION_SYMBOL, "values:set<int>");
+    REQUIRE(project("Edit :: behavior { values:[string: int]; }"));
+    state = find(SOURCE_PRESENTATION_SYMBOL, "values:[string: int]");
     REQUIRE(state);
     retype = request(AUTHORING_EDIT_RETYPE_VARIABLE, state);
-    retype.signature = "set<number>";
+    retype.signature = "[string: number]";
     REQUIRE(edit(retype));
-    REQUIRE(strstr(result.text, "values:set<number>"));
+    REQUIRE(strstr(result.text, "values:[string: number]"));
     REQUIRE(inspect_result());
     cleanup();
     static const script_catalog_field fields[] = {
@@ -1246,7 +1246,7 @@ TEST_CASE(source_capability_creation_uses_properties_operators_and_positional_ar
         } else if (id == 34) {
             REQUIRE(strstr(result.text, ") + ("));
             REQUIRE(strstr(result.text, "(f64("));
-            REQUIRE(!strstr(result.text, "Add(") && !strstr(result.text, "cast<"));
+            REQUIRE(!strstr(result.text, "Add("));
         } else if (id == 35) {
             REQUIRE(strstr(result.text, " := self;"));
             REQUIRE(!strstr(result.text, "Self("));

@@ -6,21 +6,26 @@ import strings "core:strings"
 
 Row :: (kind: int, type: int, value: int, count: int, name: string, start: int, end: int, line: int,
         column: int) -> facts.Row {
-    return {kind: kind, type: type, value: value, count: count, name: name, text: "", start: start, end: end,
-            line: line, column: column};
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: name, text: "", start: start,
+            end: end, line: line, column: column};
+}
+Literal :: (type: int, literal: i64, start: int, end: int, line: int, column: int) -> facts.Row {
+    row := Row(facts.LiteralRow, type, 0, 0, "", start, end, line, column);
+    row.literal = literal;
+    return row;
 }
 // Synthetic representation fixture, not a substitute for the real producer:
 // Main calls Pick(7, true), which returns its int parameter.
 pub Accepted :: () -> facts.Row[] {
-    source: facts.Row = {kind: facts.SourceRow, type: 0, value: 0, count: 0, name: "Scalar.chibi",
+    source: facts.Row = {kind: facts.SourceRow, type: 0, value: 0, count: 0, literal: 0, name: "Scalar.chibi",
                          text: "package scalar\nMain :: () -> int { return Pick(7, true); }\nPick :: (x: int, b: bool) -> int { return x; }",
                          start: 0, end: 0, line: 0, column: 0};
     return [
         source, Row(facts.DocumentRow, 0, 0, 0, "project:Scalar.chibi", 0, 0, 0, 0),
         Row(facts.FunctionRow, facts.IntType, 0, 0, "Main", 15, 58, 2, 1),
         Row(facts.ReturnRow, 0, 0, 3, "", 35, 56, 2, 21),
-        Row(facts.LiteralRow, facts.IntType, 7, 0, "", 47, 48, 2, 33),
-        Row(facts.LiteralRow, facts.BoolType, 1, 0, "", 50, 54, 2, 36),
+        Literal(facts.IntType, 7, 47, 48, 2, 33),
+        Literal(facts.BoolType, 1, 50, 54, 2, 36),
         Row(facts.CallRow, facts.IntType, 1, 2, "Pick", 42, 55, 2, 28),
         Row(facts.FunctionRow, facts.IntType, 0, 2, "Pick", 59, 105, 3, 1),
         Row(facts.ParameterRow, facts.IntType, 0, 0, "x", 68, 69, 3, 10),
@@ -30,9 +35,9 @@ pub Accepted :: () -> facts.Row[] {
     ];
 }
 pub Rejected :: () -> facts.Row[] {
-    source: facts.Row = {kind: facts.SourceRow, type: 0, value: 0, count: 0, name: "Bad.chibi", text: "bad",
+    source: facts.Row = {kind: facts.SourceRow, type: 0, value: 0, count: 0, literal: 0, name: "Bad.chibi", text: "bad",
                          start: 0, end: 0, line: 0, column: 0};
-    rejection: facts.Row = {kind: facts.RejectionRow, type: 0, value: 0, count: 0, name: "",
+    rejection: facts.Row = {kind: facts.RejectionRow, type: 0, value: 0, count: 0, literal: 0, name: "",
                             text: "expected package", start: 0, end: 3, line: 1, column: 1};
     return [source, rejection];
 }
@@ -43,6 +48,7 @@ Value: int : 2;
 Count: int : 3;
 Start: int : 4;
 Column: int : 5;
+LiteralValue: int : 6;
 // A copy of rows with one integer field of one row replaced.
 Changed :: (rows: facts.Row[], index: int, field: int, value: int) -> facts.Row[] {
     row := rows[index];
@@ -59,6 +65,8 @@ Changed :: (rows: facts.Row[], index: int, field: int, value: int) -> facts.Row[
             row.start = value;
         case Column:
             row.column = value;
+        case LiteralValue:
+            row.literal = i64(value);
     }
     rows[index] = row;
     return rows;
@@ -131,7 +139,7 @@ Malformed :: (index: int) -> facts.Row[] {
         case 9:
             return Changed(rows, 4, Column, 34); // operand column
         case 10:
-            return Changed(rows, 5, Value, 2); // noncanonical bool
+            return Changed(rows, 5, LiteralValue, 2); // noncanonical bool
         case 11:
             return Changed(rows, 5, Type, facts.IntType); // argument type
         case 12:
@@ -149,7 +157,7 @@ Malformed :: (index: int) -> facts.Row[] {
         case 18:
             return Changed(rows, 8, Value, 1); // parameter ordinal
         case 19:
-            return Changed(rows, 9, Type, 3); // parameter type
+            return Changed(rows, 9, Type, 99); // parameter type
         case 20:
             return Changed(rows, 11, Value, 1); // read of the bool parameter as int
         case 21:
@@ -210,7 +218,7 @@ pub Tests :: () -> int {
     }
     // A coherent fabricated value is not authenticated by shape checks. Only
     // producer/source/envelope binding establishes source semantics.
-    if (!strings.Contains(Emitted(Changed(Accepted(), 4, Value, 8)), "store i32 8, ptr %s0")) {
+    if (!strings.Contains(Emitted(Changed(Accepted(), 4, LiteralValue, 8)), "store i32 8, ptr %s0")) {
         return 7;
     }
     return 0;

@@ -386,10 +386,10 @@ TEST_CASE(invalid_exec_fan_out_stays_inspectable)
 
 TEST_CASE(descriptors_carry_reflected_types_and_policy)
 {
-    const node_desc *make = graph_palette_node("Make_CF_V3");
-    const node_desc *brk = graph_palette_node("Break_CF_V3");
+    const node_desc *make = graph_palette_node("Make_vec3");
+    const node_desc *brk = graph_palette_node("Break_vec3");
     const node_desc *sum = graph_palette_node("Add");
-    REQUIRE(make->type && make->type->name && !strcmp(make->type->name, "CF_V3"));
+    REQUIRE(make->type && make->type->name && !strcmp(make->type->name, "vec3"));
     REQUIRE(make->type->field_count == 3 && make->type->fields);
     REQUIRE(make->type->fields[0].size == sizeof(float) && make->type->fields[0].offset == 0);
     REQUIRE(make->type->size >= sizeof(float));
@@ -405,7 +405,7 @@ TEST_CASE(descriptors_carry_reflected_types_and_policy)
     /* The graph owns struct defaults independently of caller storage. */
     node *reader = graph_add_node(&g, brk);
     float source[] = { 2, 3, 5 };
-    pin_value value = { .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = source };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "vec3", .ptr = source };
     REQUIRE(graph_set_pin_default(&g, reader, 0, 0, &value) == 0);
     source[0] = source[1] = source[2] = -100;
     const float *stored = reader->input_pins[0].default_value.ptr;

@@ -50,8 +50,8 @@ static int width(const pin_spec *pin)
     if (pin->type != PIN_STRUCT || !pin->type_name) {
         return 0;
     }
-    if (!strcmp(pin->type_name, "ShaderVec2") || !strcmp(pin->type_name, "v2") ||
-        !strcmp(pin->type_name, "vec2") || !strcmp(pin->type_name, "CF_V2")) {
+    if (!strcmp(pin->type_name, "ShaderVec2") ||
+        !strcmp(pin->type_name, "v2") || !strcmp(pin->type_name, "vec2")) {
         return 2;
     }
     if (!strcmp(pin->type_name, "ShaderVec3")) {

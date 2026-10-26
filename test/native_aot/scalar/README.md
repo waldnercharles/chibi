@@ -14,24 +14,34 @@ One source document holding one package, no imports, and only ordinary
 function declarations without attributes: at most 32 functions. The first
 function is the module's entry and must be `() -> int`. Every function:
 
-- takes at most eight plain `int` or `bool` parameters (no `ref`, defaults or
-  managed, nominal or container types) and returns one plain `int` or `bool`;
+- takes at most eight plain integer or `bool` parameters (`i8`, `u8`,
+  `i16`, `u16`, `int`, `u32`, `i64` or `u64`; no `ref`, defaults or
+  managed, nominal or container types) and returns one plain integer or
+  `bool`;
 - has a body of at most one guard `if (CONDITION) { return EXPR; }`, then
   exactly one final `return EXPR;`, and no other statement, reachable or not;
-- has a `bool` condition and returns expressions of its result type. Each is
-  an integer literal within `int`, possibly signed, `true` or `false`, one of
-  its parameters, `int` arithmetic `a + b` (or `-`, `*`, `/`, `%`, `&`, `|`,
-  `^`), a negation `-a` or complement `~a`, a comparison `a < b` (or `<=`,
-  `>`, `>=`, `==`, `!=`) of two `int` expressions, or a direct call
+- has a `bool` condition and returns expressions of its result type, or of an
+  integer type that widens to it, as a return widens. Each is an integer
+  literal within its type, possibly signed, `true` or `false`, one of its
+  parameters, integer arithmetic `a + b` (or `-`, `*`, `/`, `%`, `&`, `|`,
+  `^`), a shift `a << n` or `a >> n`, a negation `-a` or complement `~a`, a
+  comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of two integers, a
+  conversion `T(a)` or `T(wrap: a)` to an integer type, or a direct call
   `F(a, b, ...)` of a function of the same source with exactly its arity and
   parameter types, whose operands are again such expressions: at most 64
   operands per function, counted over its condition and returns.
 
-Any expression may be parenthesized. Arithmetic and comparisons are signed
-32-bit and admit only `int` operands, so `bool` equality is rejected.
-Arithmetic follows the language's integer contract and never fails: it
-wraps, `x / 0` is 0, `x % 0` is `x`, `MIN / -1` is `MIN` and `MIN % -1` is 0.
-The emitter guards the divisor with `select`, so no path traps. The arm's
+Any expression may be parenthesized. Each operand has the type the ordinary
+compiler gives it, so mixed integer types and a signed shift count are its
+errors, and `bool` equality is rejected. Comparisons, division, remainders and
+`>>` are unsigned for an unsigned type. Arithmetic follows the language's
+integer contract and never fails: it wraps, `x / 0` is 0, `x % 0` is `x`,
+`MIN / -1` is `MIN` and `MIN % -1` is 0, and a shift count at or past the
+width gives 0, or the sign fill for a signed `>>`. A shift's count converts to
+the shifted type first, as `ShiftStep` converts it: a constant count that does
+not fit becomes the type's largest value, and a typed one clamps. `T(a)`
+clamps to T's range and `T(wrap: a)` keeps the low bits. The emitter guards
+the divisor and count with `select`, so no path traps. The arm's
 expression is evaluated only when the condition holds, and the final
 return's only when it does not.
 
@@ -68,13 +78,12 @@ Third :: (a: int, b: int, c: int) -> int { return c; }
 LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
 Everything else is rejected with a located diagnostic and no partial result:
-shifts, which need the unsigned counts the subset does not have yet, `&&`,
-`||` and `!`, `bool` comparisons, `else` branches, a second guard, a guard that does not return,
-loops and other control flow, locals and other statements, conversions such as
-`int(x)`, function values, qualified or imported calls, native or foreign calls
+floats and conversions to them, `&&`, `||` and `!`, `bool` comparisons, `else`
+branches, a second guard, a guard that does not return, loops and other
+control flow, locals and other statements, function values, qualified or imported calls, native or foreign calls
 (`print`), named arguments, strings and other managed values, attributes,
 structs and constants. Sources are at most 16,384 bytes.
-`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (35
+`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (37
 accepted) with each accepted value and operand trace and each rejection's
 exact message and source excerpt, including both sides of every bound.
 
@@ -159,8 +168,9 @@ child process. Its `chibi_scalar()` must return what the authored compiler's
 closure of the same source returns on both VMs. Probes call internal functions
 such as `Min`, `Max`, `Clamp` and each comparison with `INT32_MIN`,
 `INT32_MAX`, equal and adjacent values, and both outcomes of each guard,
-through a validation-only IR adapter that passes int32 arguments and widens a
-`bool` result. The adapter is not an ABI. The O0 IR must keep `Min`'s
+through a validation-only IR adapter that passes i64 arguments, truncated
+to each parameter's type, and extends the result to i64, so a `bool` is 0 or
+1 and a `u64` is its bits. The adapter is not an ABI. The O0 IR must keep `Min`'s
 parameter-dependent `icmp` and `br`, and `lazy_arm` must call the arm's
 callee only after the branch's true target and the fallback's only on the
 false path.
@@ -168,7 +178,18 @@ false path.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 34 accepted sources build, run and agree at O0 and O2.
+other 36 accepted sources build, run and agree at O0 and O2.
+
+Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
+each integer type, one module declares every operator on that type and
+another its clamping and wrapping conversions from every integer type. Each
+operator runs on every pair of the type's boundary values, its least and
+greatest and those next to them, 0, 1 and -1, or the top bit unsigned. Each
+shift runs on every count from 0 through the width and past it to 255 and
+`UINT32_MAX`, and with a constant count past every type. Each conversion runs
+on every value at the edges of each type that its source type holds. Every
+call must give the integer contract's value, computed in C, on both VMs and
+natively at O0 and O2.
 
 ## Portable recovery regression
 

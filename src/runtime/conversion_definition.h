@@ -19,23 +19,23 @@
     X(To_Byte, "To Byte", "to_byte", PIN_F64, "f64", "Byte", PIN_U8, "u8")                             \
     X(To_Integer, "To Integer", "to_integer", PIN_F64, "f64", "Integer", PIN_I32, "int")               \
     X(To_Integer64, "To Integer64", "to_integer64", PIN_F64, "f64", "Integer64", PIN_I64, "i64")
-#define NATIVE_CONVERSION_VECTORS(X)                                                                                  \
-    X(CF_V2, 2, "Scalar to CF_V2", "scalar_to_cf_v2", "Builds a vector with x and y both set to Value, as floats.")   \
-    X(CF_V3, 3, "Scalar to CF_V3", "scalar_to_cf_v3", "Builds a vector with x, y and z all set to Value, as floats.") \
-    X(ShaderVec2,                                                                                                     \
-      2,                                                                                                              \
-      "Scalar to ShaderVec2",                                                                                         \
-      "scalar_to_shader_vec2",                                                                                        \
-      "Builds a shader vector with x and y both set to Value.")                                                       \
-    X(ShaderVec3,                                                                                                     \
-      3,                                                                                                              \
-      "Scalar to ShaderVec3",                                                                                         \
-      "scalar_to_shader_vec3",                                                                                        \
-      "Builds a shader vector with x, y and z all set to Value.")                                                     \
-    X(ShaderVec4,                                                                                                     \
-      4,                                                                                                              \
-      "Scalar to ShaderVec4",                                                                                         \
-      "scalar_to_shader_vec4",                                                                                        \
+#define NATIVE_CONVERSION_VECTORS(X)                                                                               \
+    X(vec2, 2, "Scalar to vec2", "scalar_to_vec2", "Builds a vector with x and y both set to Value, as floats.")   \
+    X(vec3, 3, "Scalar to vec3", "scalar_to_vec3", "Builds a vector with x, y and z all set to Value, as floats.") \
+    X(ShaderVec2,                                                                                                  \
+      2,                                                                                                           \
+      "Scalar to ShaderVec2",                                                                                      \
+      "scalar_to_shader_vec2",                                                                                     \
+      "Builds a shader vector with x and y both set to Value.")                                                    \
+    X(ShaderVec3,                                                                                                  \
+      3,                                                                                                           \
+      "Scalar to ShaderVec3",                                                                                      \
+      "scalar_to_shader_vec3",                                                                                     \
+      "Builds a shader vector with x, y and z all set to Value.")                                                  \
+    X(ShaderVec4,                                                                                                  \
+      4,                                                                                                           \
+      "Scalar to ShaderVec4",                                                                                      \
+      "scalar_to_shader_vec4",                                                                                     \
       "Builds a shader vector with x, y, z and w all set to Value.")
 extern const native_definition_pack NATIVE_CONVERSION_DEFINITION_PACK;
 #endif

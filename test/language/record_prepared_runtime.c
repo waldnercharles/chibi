@@ -23,7 +23,7 @@
 #include <string.h>
 
 /* Thirteen fixed prepared cases. The largest validation fixture has 128 fields
- * and 256 shared headers, and the type lookup fixture 256 types and up to 512
+ * and 256 shared headers, and the type lookup fixtures up to 512 types and 512
  * headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -458,18 +458,18 @@ enum
     NAMED_TYPES = 256,
     NAMED_HEADERS = 256
 };
-/* A prepared image of a module requiring NAMED_TYPES one-field records,
- * whose `headers` values all have the last one's type. */
-static bool named_headers_image(int headers)
+/* A prepared image of a module requiring `types` one-field records, whose
+ * `headers` values all have the last one's type. */
+static bool named_headers_image(int types, int headers)
 {
     static const type_field shape[] = { { .name = "value", .type = PIN_I32 } };
     plan = execution_module_plan_new();
     plan->id = function_id = 1;
     plan->valid = true;
     const pin_record *record = NULL;
-    for (int i = 0; i < NAMED_TYPES; i++) {
+    for (int i = 0; i < types; i++) {
         char name[16];
-        snprintf(name, sizeof name, "Rows.T%03d", i);
+        snprintf(name, sizeof name, "Rows.T%04d", i);
         record = pin_record_create(&producer, name, 100 + i, shape, 1);
         REQUIRE(record);
         apush(
@@ -482,7 +482,7 @@ static bool named_headers_image(int headers)
                                            .size = record->type.size })
         );
     }
-    plan->type_count = NAMED_TYPES;
+    plan->type_count = types;
     const pin_value header = { .type = PIN_STRUCT,
                                .type_name = record->type.name,
                                .record = record };
@@ -537,9 +537,9 @@ static bool admits_layout_work(size_t layout_work, bool *admitted)
     return true;
 }
 /* The least layout work that decodes the image of `headers` named headers. */
-static bool least_layout_work(int headers, size_t *least)
+static bool least_layout_work(int types, int headers, size_t *least)
 {
-    REQUIRE(named_headers_image(headers));
+    REQUIRE(named_headers_image(types, headers));
     size_t low = 1, high = EXECUTION_WIRE_MAX_BYTES;
     bool admitted;
     REQUIRE(admits_layout_work(high, &admitted) && admitted);
@@ -557,18 +557,31 @@ static bool least_layout_work(int headers, size_t *least)
     *least = low;
     return true;
 }
+/* The layout work each of the named headers adds, from the least work that
+ * decodes `headers` and twice as many with `types` types. */
+static bool header_layout_work(int types, int headers, size_t *each)
+{
+    size_t least[2];
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(least_layout_work(types, headers << i, &least[i]));
+    }
+    REQUIRE(least[1] > least[0]);
+    *each = (least[1] - least[0]) / (size_t)headers;
+    return true;
+}
 /* Each header finds its type by name in log2 of the type count comparisons,
  * not by a scan of every type before it. A scan charges about NAMED_TYPES
- * times the name per header; a quarter of that is the bound. */
+ * times the name per header; a quarter of that is the bound. Every
+ * comparison is still charged: twice the types cost each header at least one
+ * more comparison. */
 TEST_CASE(record_prepared_finds_header_types_by_name)
 {
-    size_t fewer, more;
-    REQUIRE(least_layout_work(NAMED_HEADERS, &fewer));
-    REQUIRE(least_layout_work(2 * NAMED_HEADERS, &more));
-    REQUIRE(more > fewer);
-    size_t each = (more - fewer) / NAMED_HEADERS;
-    size_t name = strlen("Rows.T000") + 2;
+    size_t each, wider;
+    REQUIRE(header_layout_work(NAMED_TYPES, NAMED_HEADERS, &each));
+    REQUIRE(header_layout_work(2 * NAMED_TYPES, NAMED_HEADERS, &wider));
+    size_t name = strlen("Rows.T0000") + 2;
     REQUIRE(each < NAMED_TYPES * name / 4);
+    REQUIRE(wider >= each + name);
     return true;
 }
 /* Exercise the decoded verifier directly: ordinary builder ownership also

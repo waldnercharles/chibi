@@ -8827,8 +8827,13 @@ TEST_CASE(program_version_34_numbers_take_odin_names)
           "return \"double\" + p.byte + m.float(1) } }",
           NULL },
         { "L :: library { F :: (x: number, n: int) -> number { return x } }", NULL },
-        { "L :: library { F :: (x: byte) -> int { byte := 1; return byte } }",
-          "L :: library { F :: (x: u8) -> int { byte := 1; return byte } }" },
+        /* Version 34 allowed a local named number; only renamed floats
+         * could resolve to it. */
+        { "L :: library { F :: () -> int { number := 1; return number } }", NULL },
+        { "L :: library { F :: (x: double) -> int { number := 1; return number "
+          "} }",
+          "L :: library { F :: (x: f64) -> int { number := 1; return number } "
+          "}" },
     };
     char error[256], *migrated = NULL;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
@@ -8846,12 +8851,14 @@ TEST_CASE(program_version_34_numbers_take_odin_names)
         migrated = NULL;
     }
     /* A declaration with one of the new names would hide the type, and the
-     * calls of one with an old name would be renamed with the type's. One
-     * with an old name that nothing calls keeps its name. */
+     * calls of one with an old name would be renamed with the type's. */
     const char *refused[] = {
         "L :: library { u8 :: (x: int) -> int { return x } }",
         "L :: library { double :: (x: int) -> int { return x * 2 } "
         "F :: () -> int { return double(2) } }",
+        "L :: library { F :: () -> int { byte := 1; return byte } }",
+        "L :: library { F :: (x: double) -> int { number := 1; return "
+        "int(float(x)) } }",
         "L :: library { F :: (f64: int) -> int { return f64 } }",
         "L :: library { F :: () -> int { i32 := 1; return i32 } }",
         "L :: library { f32 : int : 1 }",
@@ -8864,20 +8871,712 @@ TEST_CASE(program_version_34_numbers_take_odin_names)
         REQUIRE(!migrated && strstr(error, "named like a number type"));
     }
     /* Graph pins and event fields name their types in KDL. */
-    char *asset = chibi_migrate_number_types(
-        "graphs {\n    - {\n        nodes {\n            - name=\"Add\" {\n"
+    char *asset = NULL;
+    REQUIRE(!chibi_migrate_number_types(
+        "(array)graphs {\n    - {\n        (array)nodes {\n            - "
+        "name=\"Add\" {\n"
         "                inputs {\n                    A id=1 type=\"float\"\n"
         "                    B id=2 type=\"int\" type_name=\"double\"\n"
-        "                }\n            }\n        }\n    }\n}\n"
-    );
+        "                }\n            }\n        }\n    }\n}\n",
+        &asset,
+        error,
+        sizeof error
+    ));
     REQUIRE(
         asset && strstr(asset, "\"number\"") && strstr(asset, "\"f64\"") &&
         strstr(asset, "\"int\"") && !strstr(asset, "float") && !strstr(asset, "double")
     );
     free(asset);
-    REQUIRE(!chibi_migrate_number_types("name \"double\"\nvalue 1.5\n"));
+    asset = NULL;
+    REQUIRE(
+        !chibi_migrate_number_types("name \"double\"\nvalue 1.5\n", &asset, error, sizeof error)
+    );
+    REQUIRE(!asset);
+    /* A pin that keeps its node's storage, even a nominal template's, still
+     * names its scalar: no declaration can take a scalar's old name. */
+    REQUIRE(!chibi_migrate_number_types(
+        "(array)nodes {\n    - {\n        id 71\n        type \"Shader Add\"\n"
+        "        inputs {\n            B type_name=\"float\" default=1.0\n     "
+        "   }\n"
+        "    }\n}\n",
+        &asset,
+        error,
+        sizeof error
+    ));
+    REQUIRE(asset && strstr(asset, "type_name=\"number\" default=1.0") && !strstr(asset, "float"));
+    free(asset);
     return true;
 }
+/* Compare the whole decoded document with an independently authored oracle;
+ * serialization whitespace is not the contract, but every payload value is. */
+static bool migration34_asset_matches(const char *path, const char *expected)
+{
+    char text[4096], error[256] = { 0 };
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return false;
+    }
+    size_t length = fread(text, 1, sizeof text - 1, file);
+    bool complete = feof(file) && !ferror(file);
+    fclose(file);
+    if (!complete) {
+        return false;
+    }
+    text[length] = 0;
+    av_doc *actual = asset_text_read(text, error, sizeof error);
+    av_doc *wanted = asset_text_read(expected, error, sizeof error);
+    bool same = actual && wanted &&
+                av_equals(av_doc_root(actual), av_doc_root(wanted));
+    if (!same) {
+        fprintf(stderr, "%s: unexpected migrated asset:\n%s\n%s\n", path, text, error);
+    }
+    av_doc_free(actual);
+    av_doc_free(wanted);
+    return same;
+}
+
+TEST_CASE(program_version_34_metadata_preserves_payload_fields)
+{
+    const struct
+    {
+        const char *name, *source, *expected;
+    } assets[] = {
+        { "Graph.kdl",
+          "version 3\nname \"Graph\"\ndomain \"material\"\n"
+          "(array)variables {\n"
+          "    - id=1 name=\"Amount\" type=\"double\" type_name=\"double\" "
+          "default=1.25\n"
+          "}\n(array)graphs {\n    - kind=\"event\" name=\"Main\" {\n"
+          "        (array)nodes {\n            - id=2 type=\"double\" {\n"
+          "                inputs {\n                    Value type=\"float\" "
+          "type_name=\"float\"\n"
+          "                    Payload type=\"struct\" type_name=\"Payload\" "
+          "{\n"
+          "                        default type=\"double\" type_name=\"float\" "
+          "{\n"
+          "                            nested type=\"byte\" "
+          "type_name=\"uint\"\n"
+          "                        }\n                    }\n                "
+          "}\n"
+          "                (array)outputs {\n                    - id=3 "
+          "type=\"uint\" type_name=\"User.double\"\n"
+          "                }\n            }\n        }\n    }\n}\n",
+          "version 3\nname \"Graph\"\ndomain \"material\"\n"
+          "(array)variables {\n"
+          "    - id=1 name=\"Amount\" type=\"f64\" type_name=\"f64\" "
+          "default=1.25\n"
+          "}\n(array)graphs {\n    - kind=\"event\" name=\"Main\" {\n"
+          "        (array)nodes {\n            - id=2 type=\"double\" {\n"
+          "                inputs {\n                    Value type=\"number\" "
+          "type_name=\"number\"\n"
+          "                    Payload type=\"struct\" type_name=\"Payload\" "
+          "{\n"
+          "                        default type=\"double\" type_name=\"float\" "
+          "{\n"
+          "                            nested type=\"byte\" "
+          "type_name=\"uint\"\n"
+          "                        }\n                    }\n                "
+          "}\n"
+          "                (array)outputs {\n                    - id=3 "
+          "type=\"u32\" type_name=\"User.double\"\n"
+          "                }\n            }\n        }\n    }\n}\n" },
+        { "Event.kdl",
+          "version 3\nname \"Damage\"\ndomain \"event\"\n"
+          "(array)variables {\n    - id=1 name=\"double\" type=\"double\" "
+          "type_name=\"double\"\n}\n",
+          "version 3\nname \"Damage\"\ndomain \"event\"\n"
+          "(array)variables {\n    - id=1 name=\"double\" type=\"f64\" "
+          "type_name=\"f64\"\n}\n" },
+        { "Scene.kdl",
+          "version 1\nname \"Scene\"\n(array)entities {\n    - name=\"Player\" "
+          "{\n"
+          "        components {\n            Payload type=\"double\" "
+          "type_name=\"float\" {\n"
+          "                nested type=\"byte\" type_name=\"uint\"\n"
+          "            }\n        }\n    }\n}\n",
+          NULL },
+        { "RawGraph.kdl",
+          "version 3\n(array)nodes {\n    - id=1 type=\"float\" {\n"
+          "        (array)inputs {\n            - id=2 type=\"byte\" "
+          "type_name=\"byte\"\n"
+          "        }\n        outputs {\n            Value type=\"double\"\n   "
+          "     }\n    }\n}\n",
+          "version 3\n(array)nodes {\n    - id=1 type=\"float\" {\n"
+          "        (array)inputs {\n            - id=2 type=\"u8\" "
+          "type_name=\"u8\"\n"
+          "        }\n        outputs {\n            Value type=\"f64\"\n      "
+          "  }\n    }\n}\n" },
+    };
+    char root[] = "/tmp/chibi-number-metadata-XXXXXX", path[300], error[256] = { 0 };
+    REQUIRE(mkdtemp(root));
+    for (size_t i = 0; i < sizeof assets / sizeof *assets; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, assets[i].name);
+        write_whole(path, assets[i].source);
+    }
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 34, error, sizeof error));
+    for (size_t i = 0; i < sizeof assets / sizeof *assets; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, assets[i].name);
+        REQUIRE(migration34_asset_matches(
+            path,
+            assets[i].expected ? assets[i].expected : assets[i].source
+        ));
+        if (!assets[i].expected) {
+            REQUIRE(!strcmp(read_whole(path), assets[i].source));
+        }
+    }
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 34, error, sizeof error));
+    for (size_t i = 0; i < sizeof assets / sizeof *assets; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, assets[i].name);
+        REQUIRE(migration34_asset_matches(
+            path,
+            assets[i].expected ? assets[i].expected : assets[i].source
+        ));
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    return true;
+}
+
+TEST_CASE(program_version_34_invalid_asset_preserves_project_for_retry)
+{
+    const char
+        *manifest = "version 34\ncontent \"content\"\nstart_scene "
+                    "\"Start.kdl\"\n",
+        *source = "L :: library { F :: (x: double) -> double { return "
+                  "double(x) } }",
+        *expected = "L :: library { F :: (x: f64) -> f64 { return f64(x) } }",
+        *broken = "name \"Broken\"\n}\n", *repaired = "name \"Broken\"\ncomponents {\n    Payload type=\"double\"\n}\n",
+        *event = "domain \"event\"\n(array)variables {\n    - name=\"Amount\" "
+                 "type=\"double\"\n}\n",
+        *migrated_event = "domain \"event\"\n(array)variables {\n    - "
+                          "name=\"Amount\" type=\"f64\"\n}\n";
+    char root[] = "/tmp/chibi-number-retry-XXXXXX", content[300], paths[4][320],
+         error[512] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(content, sizeof content, "%s/content", root);
+    REQUIRE(!mkdir(content, 0700));
+    snprintf(paths[0], sizeof paths[0], "%s/project.kdl", root);
+    snprintf(paths[1], sizeof paths[1], "%s/Source.chibi", content);
+    snprintf(paths[2], sizeof paths[2], "%s/Broken.kdl", content);
+    snprintf(paths[3], sizeof paths[3], "%s/Event.kdl", content);
+    const char *originals[] = { manifest, source, broken, event };
+    for (int i = 0; i < 4; i++) {
+        write_whole(paths[i], originals[i]);
+    }
+    int result = chibi_project_migrate(root, error, sizeof error);
+    fprintf(stderr, "version 34 invalid asset: result %d, %s\n", result, error);
+    REQUIRE(result < 0);
+    const char *located = strstr(error, "Broken.kdl:");
+    REQUIRE(located && !strcmp(located, "Broken.kdl: line 2, column 1: Unexpected '}'"));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(!strcmp(read_whole(paths[i]), originals[i]));
+        char staged[340];
+        snprintf(staged, sizeof staged, "%s.migrating", paths[i]);
+        REQUIRE(access(staged, F_OK) < 0 && errno == ENOENT);
+    }
+    write_whole(paths[2], repaired);
+    error[0] = 0;
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(
+        !strcmp(read_whole(paths[0]), "version 35\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
+    );
+    REQUIRE(!strcmp(read_whole(paths[1]), expected));
+    REQUIRE(!strcmp(read_whole(paths[2]), repaired));
+    REQUIRE(migration34_asset_matches(paths[3], migrated_event));
+    char *after[4];
+    for (int i = 0; i < 4; i++) {
+        after[i] = xstrdup(read_whole(paths[i]));
+    }
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(!strcmp(read_whole(paths[i]), after[i]));
+        free(after[i]);
+        REQUIRE(!unlink(paths[i]));
+    }
+    REQUIRE(!rmdir(content) && !rmdir(root));
+    return true;
+}
+
+/* Literal historical and canonical documents share fixed values, not a
+ * rename helper. The graph writer independently establishes their schema. */
+static const char *number_collections_before =
+    "// keep numeric spelling and comments\n"
+    "version 3\nname \"NumericCollections\"\ndomain \"event\"\nid_counter 4\n"
+    "(array)variables {\n"
+    "    - id=1 name=\"Grid\" type=\"double\" type_name=\"double\" container=1 "
+    "{\n"
+    "        default {\n"
+    "            element_type storage=\"double\" container=\"array\" "
+    "name=\"double\"\n"
+    "            (array)items {\n"
+    "                (array)- 1.0000000000000002 16777217 1e300 -0.0\n"
+    "                (array)-\n"
+    "            }\n        }\n    }\n"
+    "    - id=2 name=\"Cube\" type=\"double\" type_name=\"double\" container=1 "
+    "{\n"
+    "        default {\n"
+    "            element_type storage=\"double\" container=\"array\" "
+    "name=\"double\"\n"
+    "            (array)items {\n                - {\n"
+    "                    element_type storage=\"double\" container=\"array\" "
+    "name=\"double\"\n"
+    "                    (array)items {\n"
+    "                        (array)- 1.0000000000000002 16777217 1e300 -0.0\n"
+    "                        (array)-\n"
+    "                    }\n                }\n                (array)-\n"
+    "            }\n        }\n    }\n"
+    "    - id=3 name=\"FloatGrid\" type=\"float\" type_name=\"float\" "
+    "container=1 {\n"
+    "        default {\n"
+    "            element_type storage=\"float\" container=\"array\" "
+    "name=\"float\"\n"
+    "            (array)items {\n                (array)- 1.25 -0.0\n          "
+    "      (array)-\n"
+    "            }\n        }\n    }\n}\n"
+    "(array)graphs {\n    - kind=\"event\" name=\"\"\n}\n";
+static const char *number_collections_after =
+    "// keep numeric spelling and comments\n"
+    "version 3\nname \"NumericCollections\"\ndomain \"event\"\nid_counter 4\n"
+    "(array)variables {\n"
+    "    - id=1 name=\"Grid\" type=\"f64\" type_name=\"f64\" container=1 {\n"
+    "        default {\n"
+    "            element_type storage=\"f64\" container=\"array\" "
+    "name=\"f64\"\n"
+    "            (array)items {\n"
+    "                (array)- 1.0000000000000002 16777217 1e300 -0.0\n"
+    "                (array)-\n"
+    "            }\n        }\n    }\n"
+    "    - id=2 name=\"Cube\" type=\"f64\" type_name=\"f64\" container=1 {\n"
+    "        default {\n"
+    "            element_type storage=\"f64\" container=\"array\" "
+    "name=\"f64\"\n"
+    "            (array)items {\n                - {\n"
+    "                    element_type storage=\"f64\" container=\"array\" "
+    "name=\"f64\"\n"
+    "                    (array)items {\n"
+    "                        (array)- 1.0000000000000002 16777217 1e300 -0.0\n"
+    "                        (array)-\n"
+    "                    }\n                }\n                (array)-\n"
+    "            }\n        }\n    }\n"
+    "    - id=3 name=\"FloatGrid\" type=\"number\" type_name=\"number\" "
+    "container=1 {\n"
+    "        default {\n"
+    "            element_type storage=\"number\" container=\"array\" "
+    "name=\"number\"\n"
+    "            (array)items {\n                (array)- 1.25 -0.0\n          "
+    "      (array)-\n"
+    "            }\n        }\n    }\n}\n"
+    "(array)graphs {\n    - kind=\"event\" name=\"\"\n}\n";
+
+TEST_CASE(program_version_34_collection_metadata_preserves_exact_values)
+{
+    pin_value scalars[] = { { .type = PIN_F64, .d = 1.0000000000000002 },
+                            { .type = PIN_F64, .d = 16777217 },
+                            { .type = PIN_F64, .d = 1e300 },
+                            { .type = PIN_F64, .d = -0.0 } };
+    pin_array row = { .element_type = PIN_F64,
+                      .type_name = "f64",
+                      .count = 4,
+                      .capacity = 4,
+                      .items = scalars },
+              empty = { .element_type = PIN_F64, .type_name = "f64" };
+    pin_value rows[] = {
+        { .type = PIN_F64, .type_name = "f64", .container = PIN_CONTAINER_ARRAY, .ptr = &row },
+        { .type = PIN_F64, .type_name = "f64", .container = PIN_CONTAINER_ARRAY, .ptr = &empty }
+    };
+    pin_array grid = { .element_type = PIN_F64,
+                       .type_name = "f64",
+                       .count = 2,
+                       .capacity = 2,
+                       .items = rows };
+    pin_value planes[] = {
+        { .type = PIN_F64, .type_name = "f64", .container = PIN_CONTAINER_ARRAY, .ptr = &grid },
+        { .type = PIN_F64, .type_name = "f64", .container = PIN_CONTAINER_ARRAY, .ptr = &empty }
+    };
+    pin_array cube = { .element_type = PIN_F64,
+                       .type_name = "f64",
+                       .count = 2,
+                       .capacity = 2,
+                       .items = planes };
+    pin_value floats[] = { { .type = PIN_F32, .f = 1.25f },
+                           { .type = PIN_F32, .f = -0.0f } };
+    pin_array float_row = { .element_type = PIN_F32,
+                            .type_name = "number",
+                            .count = 2,
+                            .capacity = 2,
+                            .items = floats },
+              float_empty = { .element_type = PIN_F32, .type_name = "number" };
+    pin_value float_rows[] = { { .type = PIN_F32,
+                                 .type_name = "number",
+                                 .container = PIN_CONTAINER_ARRAY,
+                                 .ptr = &float_row },
+                               { .type = PIN_F32,
+                                 .type_name = "number",
+                                 .container = PIN_CONTAINER_ARRAY,
+                                 .ptr = &float_empty } };
+    pin_array float_grid = { .element_type = PIN_F32,
+                             .type_name = "number",
+                             .count = 2,
+                             .capacity = 2,
+                             .items = float_rows };
+    behavior_asset *authored = behavior_asset_new("NumericCollections");
+    authored->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    REQUIRE(behavior_asset_add_variable(
+        authored,
+        "Grid",
+        PIN_F64,
+        "f64",
+        PIN_CONTAINER_ARRAY,
+        &(pin_value){ .ptr = &grid },
+        NULL
+    ));
+    REQUIRE(behavior_asset_add_variable(
+        authored,
+        "Cube",
+        PIN_F64,
+        "f64",
+        PIN_CONTAINER_ARRAY,
+        &(pin_value){ .ptr = &cube },
+        NULL
+    ));
+    REQUIRE(behavior_asset_add_variable(
+        authored,
+        "FloatGrid",
+        PIN_F32,
+        "number",
+        PIN_CONTAINER_ARRAY,
+        &(pin_value){ .ptr = &float_grid },
+        NULL
+    ));
+    char error[256] = { 0 };
+    char *written = behavior_asset_save(authored);
+    REQUIRE(written);
+    av_doc *writer_doc = asset_text_read(written, error, sizeof error),
+           *literal_doc = asset_text_read(number_collections_after, error, sizeof error);
+    REQUIRE(writer_doc && literal_doc);
+    REQUIRE(av_equals(av_doc_root(writer_doc), av_doc_root(literal_doc)));
+    behavior_asset_free(authored);
+    free(written);
+    av_doc_free(writer_doc);
+    av_doc_free(literal_doc);
+
+    char root[] = "/tmp/chibi-number-collections-XXXXXX", path[300], text[4096];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/Collections.kdl", root);
+    write_whole(path, number_collections_before);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 34, error, sizeof error));
+    FILE *file = fopen(path, "rb");
+    REQUIRE(file);
+    size_t length = fread(text, 1, sizeof text - 1, file);
+    REQUIRE(feof(file) && !ferror(file));
+    text[length] = 0;
+    REQUIRE(!fclose(file));
+    if (strcmp(text, number_collections_after)) {
+        fprintf(stderr, "version 34 collection result:\n%s", text);
+    }
+    REQUIRE(!strcmp(text, number_collections_after));
+    behavior_asset *loaded = behavior_asset_load(text);
+    if (!loaded) {
+        fprintf(stderr, "migrated collection load: %s\n", graph_last_error());
+    }
+    REQUIRE(loaded && acount(loaded->variables) == 3);
+    const pin_array *loaded_grid = loaded->variables[0].default_value.ptr,
+                    *loaded_row = pin_array_get(loaded_grid, 0).ptr,
+                    *loaded_cube = loaded->variables[1].default_value.ptr,
+                    *loaded_plane = pin_array_get(loaded_cube, 0).ptr;
+    REQUIRE(loaded_grid->count == 2 && loaded_row->count == 4);
+    REQUIRE(((const pin_array *)pin_array_get(loaded_grid, 1).ptr)->count == 0);
+    REQUIRE(pin_array_get(loaded_row, 0).d == nextafter(1.0, 2.0));
+    REQUIRE(pin_array_get(loaded_row, 1).d == 16777217.0);
+    REQUIRE(pin_array_get(loaded_row, 2).d == 1e300);
+    REQUIRE(
+        pin_array_get(loaded_row, 3).d == 0.0 &&
+        signbit(pin_array_get(loaded_row, 3).d)
+    );
+    REQUIRE(loaded_cube->count == 2 && loaded_plane->count == 2);
+    REQUIRE(((const pin_array *)pin_array_get(loaded_cube, 1).ptr)->count == 0);
+    const pin_array *loaded_float_grid = loaded->variables[2].default_value.ptr,
+                    *loaded_float_row = pin_array_get(loaded_float_grid, 0).ptr;
+    REQUIRE(
+        loaded->variables[2].type == PIN_F32 &&
+        pin_array_get(loaded_float_row, 0).f == 1.25f
+    );
+    REQUIRE(signbit(pin_array_get(loaded_float_row, 1).f));
+    written = behavior_asset_save(loaded);
+    REQUIRE(written);
+    writer_doc = asset_text_read(written, error, sizeof error);
+    literal_doc = asset_text_read(number_collections_after, error, sizeof error);
+    REQUIRE(
+        writer_doc && literal_doc &&
+        av_equals(av_doc_root(writer_doc), av_doc_root(literal_doc))
+    );
+    free(written);
+    av_doc_free(writer_doc);
+    av_doc_free(literal_doc);
+    behavior_asset_free(loaded);
+    char *unchanged = NULL;
+    REQUIRE(!chibi_migrate_number_types(text, &unchanged, error, sizeof error) && !unchanged);
+    REQUIRE(!unlink(path) && !rmdir(root));
+    return true;
+}
+
+TEST_CASE(program_version_34_collection_ownership_is_explicit)
+{
+    const char *
+        opaque = "// descriptor-looking records are data\n"
+                 "domain \"event\"\n(array)variables {\n"
+                 "    - type=\"struct\" type_name=\"User.Payload\" {\n"
+                 "        default {\n            element_type "
+                 "storage=\"double\" name=\"double\" container=\"array\"\n"
+                 "            (array)items 1\n        }\n    }\n}\n"
+                 "(array)nodes {\n    - type=\"Custom\" {\n        inputs {\n"
+                 "            Scalar container=0 {\n                default {\n"
+                 "                    element_type storage=\"double\" "
+                 "name=\"double\" container=\"array\"\n"
+                 "                    (array)items 2\n                }\n      "
+                 "      }\n"
+                 "            Vector {\n                default x=1 y=2 z=3\n  "
+                 "          }\n"
+                 "            Ramp {\n                (array)default {\n       "
+                 "             - Position=0 {\n"
+                 "                        Color x=1 y=0 z=0 w=1\n              "
+                 "      }\n                }\n            }\n"
+                 "            Plain {\n                default type=\"double\" "
+                 "name=\"double\" storage=\"double\"\n            }\n"
+                 "        }\n    }\n}\n";
+    char *migrated = NULL, error[256] = { 0 };
+    REQUIRE(!chibi_migrate_number_types(opaque, &migrated, error, sizeof error) && !migrated);
+    const char
+        *before = "(array)nodes {\n    - type=\"Custom\" {\n        inputs {\n"
+                  "            Rows type=\"float\" container=1 {\n             "
+                  "   default {\n"
+                  "                    element_type storage=\"float\" "
+                  "container=\"array\" name=\"float\"\n"
+                  "                    (array)items {\n                        "
+                  "(array)- 1.25\n                    }\n"
+                  "                }\n            }\n        }\n    }\n}\n",
+        *after = "(array)nodes {\n    - type=\"Custom\" {\n        inputs {\n"
+                 "            Rows type=\"number\" container=1 {\n             "
+                 "   default {\n"
+                 "                    element_type storage=\"number\" "
+                 "container=\"array\" name=\"number\"\n"
+                 "                    (array)items {\n                        "
+                 "(array)- 1.25\n                    }\n"
+                 "                }\n            }\n        }\n    }\n}\n";
+    REQUIRE(!chibi_migrate_number_types(before, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, after));
+    free(migrated);
+    return true;
+}
+
+TEST_CASE(program_version_34_collection_descriptor_boundaries)
+{
+    const char *opaque[] = {
+        // Omitted-container objects that cannot be codec envelopes are data.
+        "(array)nodes { - { inputs { Value { default { "
+        "element_type storage=\"double\" container=\"array\"; label \"data\" } "
+        "} } } }",
+        "(array)nodes { - { inputs { Value { default { "
+        "element_type storage=\"double\" container=\"array\"; (array)items; "
+        "extra 1 } } } } }",
+        "(array)nodes { - { inputs { Value { default { "
+        "element_type storage=\"double\" container=\"array\" extra=1; "
+        "(array)items } } } } }",
+        // Storage declares these names to be nominal, even when spelled double.
+        "domain \"event\"\n(array)variables { - type=\"struct\" "
+        "type_name=\"double\" "
+        "container=1 { default { element_type storage=\"struct\" "
+        "container=\"array\" "
+        "name=\"double\" record_id=9 record_layout=17; (array)items } } }",
+    };
+    char *migrated = NULL, error[256] = { 0 };
+    for (size_t i = 0; i < sizeof opaque / sizeof *opaque; i++) {
+        REQUIRE(!chibi_migrate_number_types(opaque[i], &migrated, error, sizeof error));
+        REQUIRE(!migrated);
+    }
+    const char
+        *unnamed_before = "version 3\nname \"Unnamed\"\ndomain "
+                          "\"event\"\nid_counter 2\n"
+                          "(array)variables { - id=1 name=\"Rows\" "
+                          "type=\"double\" type_name=\"double\" container=1 {\n"
+                          "    default { element_type storage=\"double\" "
+                          "container=\"array\"; (array)items { (array)- 1.25 } "
+                          "}\n"
+                          "} }\n(array)graphs { - kind=\"event\" name=\"\" }\n",
+        *unnamed_after = "version 3\nname \"Unnamed\"\ndomain "
+                         "\"event\"\nid_counter 2\n"
+                         "(array)variables { - id=1 name=\"Rows\" type=\"f64\" "
+                         "type_name=\"f64\" container=1 {\n"
+                         "    default { element_type storage=\"f64\" "
+                         "container=\"array\"; (array)items { (array)- 1.25 } "
+                         "}\n"
+                         "} }\n(array)graphs { - kind=\"event\" name=\"\" }\n";
+    REQUIRE(!chibi_migrate_number_types(unnamed_before, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, unnamed_after));
+    behavior_asset *loaded = behavior_asset_load(migrated);
+    REQUIRE(loaded && acount(loaded->variables) == 1);
+    const pin_array *rows = loaded->variables[0].default_value.ptr;
+    REQUIRE(rows && rows->count == 1);
+    const pin_array *row = pin_array_get(rows, 0).ptr;
+    REQUIRE(row && row->count == 1 && pin_array_get(row, 0).d == 1.25);
+    behavior_asset_free(loaded);
+    free(migrated);
+    migrated = NULL;
+    const struct
+    {
+        const char *text, *diagnostic;
+    } refused[] = {
+        { "domain \"event\"\n(array)variables { - type=\"double\" container=1 "
+          "{ "
+          "default { element_type storage=\"float\" container=\"array\"; "
+          "(array)items } } }",
+          "line 2, column 81: Collection type descriptor differs from its "
+          "declaration" },
+        { "domain \"event\"\n(array)variables { - type=\"double\" container=1 "
+          "{ "
+          "default { element_type storage=\"double\" container=\"array\" "
+          "extra=1; (array)items } } }",
+          "line 2, column 60: Invalid collection type descriptor" },
+        { "domain \"event\"\n(array)variables { - container=3 { default {} } }", "line 2, column 36: Map collection defaults require a supported owning graph schema" },
+        // Unsupported ownership remains an error even without map values.
+        { "domain \"event\"\n(array)variables { - type=\"union\" container=1 { "
+          "default { element_type storage=\"union\" container=\"map\"; "
+          "(array)items } } }",
+          "line 2, column 59: Map collection defaults require a supported "
+          "owning graph schema" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        error[0] = 0;
+        REQUIRE(chibi_migrate_number_types(refused[i].text, &migrated, error, sizeof error) < 0);
+        if (strcmp(error, refused[i].diagnostic)) {
+            fprintf(stderr, "collection refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && !strcmp(error, refused[i].diagnostic));
+    }
+    return true;
+}
+
+TEST_CASE(program_version_34_set_writer_roundtrip)
+{
+    const char
+        *before = "version 3\nname \"NumberSet\"\ndomain \"event\"\nid_counter "
+                  "2\n"
+                  "(array)variables {\n    - id=1 name=\"Values\" "
+                  "type=\"double\" type_name=\"double\" container=2 {\n"
+                  "        (array)default 3.0 4.0\n    }\n}\n(array)graphs {\n "
+                  "   - kind=\"event\" name=\"\"\n}\n",
+        *after = "version 3\nname \"NumberSet\"\ndomain \"event\"\nid_counter "
+                 "2\n"
+                 "(array)variables {\n    - id=1 name=\"Values\" type=\"f64\" "
+                 "type_name=\"f64\" container=2 {\n"
+                 "        (array)default 3.0 4.0\n    }\n}\n(array)graphs {\n  "
+                 "  - kind=\"event\" name=\"\"\n}\n";
+    pin_value values[] = { { .type = PIN_F64, .d = 3.0 },
+                           { .type = PIN_F64, .d = 4.0 } };
+    pin_array set = { .element_type = PIN_F64,
+                      .type_name = "f64",
+                      .count = 2,
+                      .capacity = 2,
+                      .items = values };
+    behavior_asset *authored = behavior_asset_new("NumberSet");
+    authored->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    REQUIRE(behavior_asset_add_variable(
+        authored,
+        "Values",
+        PIN_F64,
+        "f64",
+        PIN_CONTAINER_SET,
+        &(pin_value){ .ptr = &set },
+        NULL
+    ));
+    char error[256] = { 0 }, *written = behavior_asset_save(authored);
+    REQUIRE(written);
+    av_doc *writer = asset_text_read(written, error, sizeof error),
+           *literal = asset_text_read(after, error, sizeof error);
+    REQUIRE(writer && literal && av_equals(av_doc_root(writer), av_doc_root(literal)));
+    free(written);
+    av_doc_free(writer);
+    behavior_asset_free(authored);
+    char *migrated = NULL;
+    REQUIRE(!chibi_migrate_number_types(before, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, after));
+    behavior_asset *loaded = behavior_asset_load(migrated);
+    REQUIRE(loaded && acount(loaded->variables) == 1);
+    REQUIRE(loaded->variables[0].container == PIN_CONTAINER_SET);
+    const pin_array *result = loaded->variables[0].default_value.ptr;
+    REQUIRE(result && result->count == 2);
+    REQUIRE(pin_array_get(result, 0).d == 3.0 && pin_array_get(result, 1).d == 4.0);
+    written = behavior_asset_save(loaded);
+    REQUIRE(written);
+    writer = asset_text_read(written, error, sizeof error);
+    REQUIRE(writer && av_equals(av_doc_root(writer), av_doc_root(literal)));
+    av_doc_free(writer);
+    av_doc_free(literal);
+    free(written);
+    free(migrated);
+    behavior_asset_free(loaded);
+    return true;
+}
+
+TEST_CASE(program_version_34_ambiguous_collection_keeps_transaction_unchanged)
+{
+    const char *
+        manifest = "version 34\ncontent \"content\"\nstart_scene "
+                   "\"Start.kdl\"\n",
+       *source = "L :: library { F :: () -> double { return 1 } }",
+       *ambiguous = "(array)nodes {\n    - type=\"Custom\" {\n        inputs "
+                    "{\n"
+                    "            Rows {\n                default {\n"
+                    "                    element_type storage=\"double\" "
+                    "container=\"array\" name=\"double\"\n"
+                    "                    (array)items {\n                      "
+                    "  (array)- 1.25\n                    }\n"
+                    "                }\n            }\n        }\n    }\n}\n",
+       *explicit = "(array)nodes {\n    - type=\"Custom\" {\n        inputs {\n"
+                   "            Rows container=1 {\n                default {\n"
+                   "                    element_type storage=\"double\" "
+                   "container=\"array\" name=\"double\"\n"
+                   "                    (array)items {\n                       "
+                   " (array)- 1.25\n                    }\n"
+                   "                }\n            }\n        }\n    }\n}\n",
+       *expected = "(array)nodes {\n    - type=\"Custom\" {\n        inputs {\n"
+                   "            Rows container=1 {\n                default {\n"
+                   "                    element_type storage=\"f64\" "
+                   "container=\"array\" name=\"f64\"\n"
+                   "                    (array)items {\n                       "
+                   " (array)- 1.25\n                    }\n"
+                   "                }\n            }\n        }\n    }\n}\n";
+    char root[] = "/tmp/chibi-number-owned-XXXXXX", content[300], paths[3][320],
+         error[512] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(content, sizeof content, "%s/content", root);
+    REQUIRE(!mkdir(content, 0700));
+    snprintf(paths[0], sizeof paths[0], "%s/project.kdl", root);
+    snprintf(paths[1], sizeof paths[1], "%s/Source.chibi", content);
+    snprintf(paths[2], sizeof paths[2], "%s/Rows.kdl", content);
+    const char *originals[] = { manifest, source, ambiguous };
+    for (int i = 0; i < 3; i++) {
+        write_whole(paths[i], originals[i]);
+    }
+    int result = chibi_project_migrate(root, error, sizeof error);
+    fprintf(stderr, "version 34 ambiguous collection: result %d, %s\n", result, error);
+    REQUIRE(result < 0);
+    REQUIRE(strstr(error, "Rows.kdl: line 6, column 42:") && strstr(error, "explicit pin container"));
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(!strcmp(read_whole(paths[i]), originals[i]));
+    }
+    write_whole(paths[2], explicit);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(!strcmp(read_whole(paths[2]), expected));
+    REQUIRE(!strcmp(read_whole(paths[1]), "L :: library { F :: () -> f64 { return 1 } }"));
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(!unlink(paths[i]));
+    }
+    REQUIRE(!rmdir(content) && !rmdir(root));
+    return true;
+}
+
 static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
 {
     int *calls = user;
@@ -10386,6 +11085,20 @@ void test_language_query_program()
     pu_clear_setup();
 }
 
+void test_language_migration34()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_version_34_numbers_take_odin_names);
+    RUN_TEST_CASE(program_version_34_metadata_preserves_payload_fields);
+    RUN_TEST_CASE(program_version_34_invalid_asset_preserves_project_for_retry);
+    RUN_TEST_CASE(program_version_34_collection_metadata_preserves_exact_values);
+    RUN_TEST_CASE(program_version_34_collection_ownership_is_explicit);
+    RUN_TEST_CASE(program_version_34_collection_descriptor_boundaries);
+    RUN_TEST_CASE(program_version_34_set_writer_roundtrip);
+    RUN_TEST_CASE(program_version_34_ambiguous_collection_keeps_transaction_unchanged);
+    pu_clear_setup();
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -10506,6 +11219,13 @@ void test_language_program()
     RUN_TEST_CASE(program_version_32_angle_forms_take_version_33_spellings);
     RUN_TEST_CASE(program_version_33_vectors_take_version_34_names);
     RUN_TEST_CASE(program_version_34_numbers_take_odin_names);
+    RUN_TEST_CASE(program_version_34_metadata_preserves_payload_fields);
+    RUN_TEST_CASE(program_version_34_invalid_asset_preserves_project_for_retry);
+    RUN_TEST_CASE(program_version_34_collection_metadata_preserves_exact_values);
+    RUN_TEST_CASE(program_version_34_collection_ownership_is_explicit);
+    RUN_TEST_CASE(program_version_34_collection_descriptor_boundaries);
+    RUN_TEST_CASE(program_version_34_set_writer_roundtrip);
+    RUN_TEST_CASE(program_version_34_ambiguous_collection_keeps_transaction_unchanged);
     RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

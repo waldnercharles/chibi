@@ -3223,3 +3223,37 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
+
+## Project 34 numeric migration
+
+`python3 tools/test_policy.py tool language-migration34` runs the format 34→35
+step's C cases through the production source, content and project migration
+entrypoints on disposable files; `language-migration34-generic-repro`, in the
+language group, runs its four source cases alone. The repair is Charles's
+reviewed checkpoint (`fdae32fe`, `1eaf4a8e`), ported from version 32→33 to
+34→35.
+
+Every `.chibi` source is checked before inputs are filtered or files staged.
+The inventory refuses declarations and bindings spelling an old name, a rename
+destination or a newly reserved scalar name, including loop keys and values,
+pattern and `is` bindings, generic type binders and import aliases. A local
+named `number`, which version 34 allowed, is refused only when the same source
+renames a `float` to `number`. Unqualified argument values and conversion
+callees are then rewritten; qualified names, members, argument labels, fields,
+variants, units, strings and comments keep their text. The migrated
+`Quantity(double, 1, -1)` program compiles and runs on both backends.
+
+KDL assets change only graph pin and event metadata, through source-span
+edits, so numeric payload bytes such as `1.0000000000000002`, `16777217`,
+`1e300` and `-0.0` are kept. Explicitly owned array and set default
+descriptors migrate; map collection defaults, and an omitted pin container
+that may hold a codec envelope needing a rename, are refused before any write.
+A pin that omits its storage and names an old scalar in `type_name` is renamed:
+no declaration can take that name. A malformed asset fails with the KDL
+parser's located diagnostic and leaves the project unchanged for a retry.
+
+Every project in this repository at `main`'s version 34 migrates with the
+step, and the result matches the committed projects except where they were
+hand-simplified afterwards. `project-declarations` and
+`language-query-program`, which no group runs, also failed on the checkpoint's
+base.

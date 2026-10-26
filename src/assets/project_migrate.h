@@ -149,8 +149,8 @@ int chibi_migrate_vector_names(const char *source, char **migrated, char *error,
  * result. */
 int chibi_migrate_number_names(const char *source, char **migrated, char *error, size_t error_size);
 /* Version 35 also renames the scalar types that graph pins and event fields
- * store in KDL. Returns an owned copy of `asset`, or NULL when nothing changes
- * or it is not KDL. */
-char *chibi_migrate_number_types(const char *asset);
+ * store in KDL. Writes an owned copy to `migrated`, or NULL when unchanged.
+ * Returns -1 with a located error when the KDL cannot be parsed. */
+int chibi_migrate_number_types(const char *asset, char **migrated, char *error, size_t error_size);
 
 #endif

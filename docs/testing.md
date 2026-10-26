@@ -183,6 +183,22 @@ call `make test-bootstrap`, which prepares stage one through stage zero.
 The separate manual runtime-seed workflow retains the C/CMake recovery route
 for updating the explicitly prebuilt runtime dependency.
 
+### Starting CI with labels
+
+The `CI control` workflow starts runs for anyone who can label a pull request,
+including agents whose GitHub access cannot re-run or dispatch workflows. It
+acts only on branches of this repository and removes the label when it is done.
+
+- `ci-rerun` re-runs the failed jobs of every failed workflow on the head
+  commit. On a PR into `main`, it also dispatches CI and the compiler
+  self-build on the head branch if either never ran on that commit.
+- `ci-seed` dispatches the runtime-seed workflow on the head branch. Publishing
+  the release and moving the pin in `tools/compiler/runtime.json` stay manual.
+
+Retargeting a stacked PR to `main` does the same as `ci-rerun`, so it gets CI
+without a new push. A dispatched run checks the head branch, not the merge with
+`main`.
+
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per

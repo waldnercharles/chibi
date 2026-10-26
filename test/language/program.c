@@ -8803,7 +8803,7 @@ TEST_CASE(program_version_33_vectors_take_version_34_names)
                  "}\n";
     snprintf(path, sizeof path, "%s/content/events/Hit.kdl", root);
     write_whole(path, event);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 33);
     const char *text = read_whole(path);
     av_doc *document = asset_text_read(text, error, sizeof error);
     REQUIRE(document);

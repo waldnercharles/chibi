@@ -27,6 +27,7 @@
 #include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -8771,11 +8772,14 @@ TEST_CASE(program_version_33_vectors_take_version_34_names)
     REQUIRE(!mkdir(path, 0700));
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     write_whole(path, "version 33\ncontent \"content\"\nstart_scene \"Start.kdl\"\n");
+    /* A quoted key decodes to the same type_name; other strings are data. */
     const char
         *event = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 4\n"
                  "(array)variables {\n"
                  "    - id=1 name=\"Point\" type=\"struct\" "
-                 "type_name=\"CF_V2\"\n"
+                 "\"type_name\"=\"CF_V2\" {\n"
+                 "        default x=0.0 y=0.0\n"
+                 "    }\n"
                  "    - id=2 name=\"Label\" type=\"string\" "
                  "default=\"CF_V3\\\" \\\"CF_V2\"\n"
                  "    - id=3 name=\"Kind\" type=\"string\" default=\"CF_V2\"\n"
@@ -8783,17 +8787,15 @@ TEST_CASE(program_version_33_vectors_take_version_34_names)
     snprintf(path, sizeof path, "%s/content/events/Hit.kdl", root);
     write_whole(path, event);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
-    const char
-        *expected = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 4\n"
-                    "(array)variables {\n"
-                    "    - id=1 name=\"Point\" type=\"struct\" "
-                    "type_name=\"vec2\"\n"
-                    "    - id=2 name=\"Label\" type=\"string\" "
-                    "default=\"CF_V3\\\" \\\"CF_V2\"\n"
-                    "    - id=3 name=\"Kind\" type=\"string\" "
-                    "default=\"CF_V2\"\n"
-                    "}\n";
-    REQUIRE(!strcmp(read_whole(path), expected));
+    const char *text = read_whole(path);
+    av_doc *document = asset_text_read(text, error, sizeof error);
+    REQUIRE(document);
+    const av_value *variables = av_obj_get(av_doc_root(document), "variables");
+    REQUIRE(av_arr_size(variables) == 3);
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(variables, 0), "type_name")), "vec2"));
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(variables, 1), "default")), "CF_V3\" \"CF_V2"));
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(variables, 2), "default")), "CF_V2"));
+    av_doc_free(document);
     REQUIRE(!unlink(path));
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     REQUIRE(!unlink(path));

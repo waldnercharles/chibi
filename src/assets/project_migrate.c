@@ -6116,49 +6116,36 @@ static void vector_edits(const char *source, TSNode node, text_edit **edits)
         vector_edits(source, ts_node_child(node, i), edits);
     }
 }
-/* Whether the KDL string opening at `quote` is the value of a key that names
- * a type, such as `type_name="CF_V2"` or `type_name "CF_V2"`. */
-static bool type_name_value(const char *source, const char *quote)
-{
-    static const char *const keys[] = { "type_name", "split_type_name" };
-    const char *end = quote;
-    while (end > source && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '=')) {
-        end--;
-    }
-    const char *start = end;
-    while (start > source && (isalnum((unsigned char)start[-1]) || start[-1] == '_')) {
-        start--;
-    }
-    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
-        if (strlen(keys[i]) == (size_t)(end - start) &&
-            !memcmp(start, keys[i], strlen(keys[i]))) {
-            return true;
-        }
-    }
-    return false;
-}
-/* KDL names the vectors only as type name strings, such as an event
+/* Renames the vectors where a KDL key names a type, such as an event
  * payload's `type_name "CF_V2"`. Other strings are authored data. */
+static bool vector_types(av_value *value)
+{
+    bool changed = false;
+    for (size_t i = 0; av_is_obj(value) && i < av_obj_size(value); i++) {
+        const char *key = av_get_str(av_obj_key_at(value, i));
+        av_value *item = av_obj_value_at(value, i);
+        bool type = !strcmp(key, "type_name") || !strcmp(key, "split_type_name");
+        const char *name = type && av_is_str(item)
+                             ? vector_name(av_get_str(item), av_get_len(item))
+                             : NULL;
+        if (name) {
+            av_set_str(item, name);
+            changed = true;
+        }
+        changed |= vector_types(item);
+    }
+    for (size_t i = 0; av_is_arr(value) && i < av_arr_size(value); i++) {
+        changed |= vector_types(av_arr_get(value, i));
+    }
+    return changed;
+}
 static char *vector_strings(const char *source)
 {
-    text_edit *edits = NULL;
-    for (const char *p = strchr(source, '"'); p; p = strchr(p + 1, '"')) {
-        const char *end = p + 1;
-        while (*end && *end != '"') {
-            end += *end == '\\' && end[1] ? 2 : 1;
-        }
-        if (!*end) {
-            break;
-        }
-        const char *name = vector_name(p + 1, (size_t)(end - p - 1));
-        if (name && type_name_value(source, p)) {
-            apush(edits, ((text_edit){ (int)(p + 1 - source), (int)(end - source), name }));
-        }
-        p = end;
-    }
-    char *migrated = acount(edits) ? text_edits_apply(source, edits, acount(edits))
-                                   : NULL;
-    afree(edits);
+    char error[128];
+    av_doc *document = asset_text_read(source, error, sizeof error);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    char *migrated = root && vector_types(root) ? asset_text_write(root) : NULL;
+    av_doc_free(document);
     return migrated;
 }
 int chibi_migrate_vector_names(const char *source, char **migrated, char *error, size_t size)

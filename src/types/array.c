@@ -1936,6 +1936,9 @@ void pin_value_collection_visit_owners(
         (root.type != PIN_UNION && root.type != PIN_STRUCT)) {
         return;
     }
+    if (root.type == PIN_STRUCT && !type_holds_references(pin_value_type(&root))) {
+        return;
+    }
     pin_value *pending = NULL;
     graph_copy visited = { 0 };
     apush(pending, root);

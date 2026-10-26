@@ -815,6 +815,8 @@ void behavior_function_collection_trace(
         pin_value_trace(&context->collection_owners[i], mark, user);
     }
 }
+/* Set in a scan's `arrays` to stop at the first collection or pointer found. */
+#define MANAGED_SCAN_FIRST 8u
 static const char *managed_scan(behavior_managed_heap *, const pin_value *, bool, unsigned *);
 const char *behavior_function_value_call(behavior_function_context *context, int host_call)
 {
@@ -850,14 +852,14 @@ const char *behavior_function_value_call(behavior_function_context *context, int
                       kind == EXECUTION_INTRINSIC_CONSTRUCT ||
                       kind == EXECUTION_INTRINSIC_UNION_MAKE ||
                       kind == EXECUTION_INTRINSIC_UNION_KEEP)) {
-        unsigned managed = 0;
-        for (int i = 0; i < count; i++) {
+        unsigned managed = MANAGED_SCAN_FIRST;
+        for (int i = 0; i < count && managed == MANAGED_SCAN_FIRST; i++) {
             const char *error = managed_scan(NULL, &arguments[i], false, &managed);
             if (error) {
                 return error;
             }
         }
-        retained_collections = managed != 0;
+        retained_collections = managed != MANAGED_SCAN_FIRST;
     }
     bool array_operation = array_result || mutation || retained_collections ||
                            (intrinsic &&
@@ -873,7 +875,10 @@ const char *behavior_function_value_call(behavior_function_context *context, int
     arena *storage = execution_intrinsic_in_result(spec->capability_id)
                        ? context->result_storage
                        : context->value_storage;
-    if (array_operation || (sequence && array_input)) {
+    /* A union payload read retains nothing new: the union passed these
+     * checks when it was made or imported, so they are not repeated. */
+    bool payload_read = intrinsic && kind == EXECUTION_INTRINSIC_UNION_GET;
+    if (!payload_read && (array_operation || (sequence && array_input))) {
         storage = array_storage(context);
         if (!storage) {
             return context->error_message;
@@ -1146,6 +1151,32 @@ static bool managed_family_owns(const behavior_managed_heap *heap, const arena *
     }
     return false;
 }
+/* Whether a record holds nothing a scan checks: no union or pointer, its own
+ * or a nested record's, and, for a newly retained value, no nested layout
+ * whose freeze is still unchecked. */
+static bool managed_plain_record(const type_desc *layout, bool restricted)
+{
+    for (int i = 0; i < layout->field_count; i++) {
+        const type_field *field = &layout->fields[i];
+        if (field->type == PIN_UNION || field->type == PIN_POINTER) {
+            return false;
+        }
+        if (field->type != PIN_STRUCT) {
+            continue;
+        }
+        const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+        if (!child || (restricted && !child->carrier) ||
+            !managed_plain_record(child, restricted)) {
+            return false;
+        }
+    }
+    return true;
+}
+/* Whether a scan told to stop at the first collection or pointer found one. */
+static bool managed_scan_found(const unsigned *arrays)
+{
+    return arrays && (*arrays & MANAGED_SCAN_FIRST) && *arrays != MANAGED_SCAN_FIRST;
+}
 /* A single value that is neither an aggregate nor a pointer reaches no other
  * value, so ownership scans and traces need no work list for it. */
 static bool managed_leaf(const pin_value *value)
@@ -1165,6 +1196,15 @@ static const char *managed_scan(
 {
     if (managed_leaf(root)) {
         return NULL;
+    }
+    /* A record of scalars and text reaches nothing; only a new native layout
+     * still needs its freeze checked. */
+    if (root->container == PIN_CONTAINER_SINGLE && root->type == PIN_STRUCT &&
+        (!restricted || root->record)) {
+        const type_desc *layout = pin_value_type(root);
+        if (layout && managed_plain_record(layout, restricted)) {
+            return NULL;
+        }
     }
     typedef struct
     {
@@ -1220,6 +1260,9 @@ static const char *managed_scan(
             /* Import and each write establish the subtree's ownership. Reads
              * and alias transfers validate this root in constant time. */
             continue;
+        }
+        if (managed_scan_found(arrays)) {
+            break;
         }
         if (managed_seen_before(&seen, value, current.restricted)) {
             continue;
@@ -1625,7 +1668,7 @@ void behavior_managed_heap_safepoint(
         allocated += scope->storage.allocated;
         kept += scope->storage.kept;
     }
-    if (allocated >= heap->call_collection_bytes && allocated >= kept) {
+    if (allocated >= heap->call_collection_bytes && allocated >= 2 * kept) {
         behavior_managed_heap_collect(heap, function, root);
     }
 }

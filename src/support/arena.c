@@ -53,6 +53,7 @@ static _Thread_local uint64_t block_allocations, collect_marks;
  * to ARENA_LARGE_BYTES; a larger value has a slab of its own. */
 #define ARENA_SMALL_CLASSES 8
 #define ARENA_CLASSES 40
+#define ARENA_RECENT_SLABS 256
 #define ARENA_LARGE_BYTES ((size_t)32 * 1024)
 #define ARENA_SLAB_BYTES ((size_t)64 * 1024)
 /* A class's first slab is small, so arenas holding a few values stay small,
@@ -64,7 +65,10 @@ struct arena_slabs
     arena_slab **open[ARENA_CLASSES]; /* Slabs with a free slot. */
     size_t next_bytes[ARENA_CLASSES]; /* The class's next slab size. */
     arena_slot *last; /* The latest value, which a trace or cleanup names next. */
-    arena_slab *hit; /* The slab the latest mark found, which the next often names. */
+    /* Slabs that marks found, by the 4 KiB page of the address that named
+     * them: a trace names values near the ones it named before. Only marks
+     * fill it, and a sweep empties it before it frees any slab. */
+    arena_slab *recent[ARENA_RECENT_SLABS];
 };
 
 uint64_t arena_block_allocations()
@@ -144,32 +148,37 @@ static bool slab_holds(const arena_slab *slab, uintptr_t address)
 {
     return address - (uintptr_t)slab->data < slab->slot * (size_t)slab->count;
 }
+static int recent_index(uintptr_t address)
+{
+    return (int)((address >> 12) & (ARENA_RECENT_SLABS - 1));
+}
 /* The slab whose slots hold address. Addresses outside every slab, such as
  * static names, miss without a search. */
 static arena_slab *find_slab(const arena_slabs *s, uintptr_t address)
 {
-    if (s->hit && slab_holds(s->hit, address)) {
-        return s->hit;
+    arena_slab *recent = s->recent[recent_index(address)];
+    if (recent && slab_holds(recent, address)) {
+        return recent;
     }
     arena_slab **slabs = s->slabs;
     int count = acount(slabs);
     if (!count || address < (uintptr_t)slabs[0]->data) {
         return NULL;
     }
-    arena_slab *last = slabs[count - 1];
-    if (address >= (uintptr_t)last->data) {
-        return slab_holds(last, address) ? last : NULL;
-    }
-    int low = 0, high = count;
-    while (low < high) {
-        int middle = low + (high - low) / 2;
-        if ((uintptr_t)slabs[middle]->data <= address) {
-            low = middle + 1;
-        } else {
-            high = middle;
+    arena_slab *found = slabs[count - 1];
+    if (address < (uintptr_t)found->data) {
+        int low = 0, high = count;
+        while (low < high) {
+            int middle = low + (high - low) / 2;
+            if ((uintptr_t)slabs[middle]->data <= address) {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
         }
+        found = slabs[low - 1];
     }
-    return slab_holds(slabs[low - 1], address) ? slabs[low - 1] : NULL;
+    return slab_holds(found, address) ? found : NULL;
 }
 /* The live value whose bytes hold address, or that starts at it. */
 static arena_slot *slot_in(arena_slab *slab, uintptr_t address, bool start)
@@ -354,7 +363,7 @@ static void sweep_slabs(arena *a, bool everything)
         return;
     }
     s->last = NULL;
-    s->hit = NULL;
+    memset(s->recent, 0, sizeof s->recent);
     bool spare[ARENA_CLASSES] = { 0 };
     int kept = 0;
     for (int i = 0; i < acount(s->slabs); i++) {
@@ -608,7 +617,7 @@ void arena_collect_mark(void *collection, const void *address)
         if (!slab) {
             continue;
         }
-        s->hit = slab;
+        s->recent[recent_index((uintptr_t)address)] = slab;
         arena_slot *value = slot_in(slab, (uintptr_t)address, false);
         if (!value) {
             return;

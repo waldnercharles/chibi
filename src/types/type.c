@@ -651,6 +651,24 @@ bool type_is_plain(const type_desc *type)
 {
     return plain(type, 0);
 }
+bool type_holds_references(const type_desc *type)
+{
+    if (!type) {
+        return true;
+    }
+    if (type_alias_layout(type)) {
+        return type_holds_references(type_alias_type(type, (type_resolver){ 0 }));
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type == PIN_UNION || field->type == PIN_POINTER ||
+            (field->type == PIN_STRUCT &&
+             type_holds_references(type_field_type(field, (type_resolver){ 0 })))) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static bool value_finite(const type_desc *type, const unsigned char *value, int depth)
 {

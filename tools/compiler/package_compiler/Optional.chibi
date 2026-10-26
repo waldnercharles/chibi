@@ -187,6 +187,10 @@ OptionalTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
 EnsureOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
     found := FindOptional(table^, value);
     if (found >= 0 || value.storage == 0) { return found; }
+    return AddOptional(table, value, package);
+}
+// Appends the optional of `value`, which `table` does not have yet.
+AddOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
     declared: TypeDecl = {name: "", type_name: "", package: package, node: -1, kind: OptionalDecl,
                           first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
                           id: OptionalTag(table^, value), layout: 0, component: 0, key: 0,
@@ -194,6 +198,26 @@ EnsureOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int 
                           value_record: value.record};
     table.append(declared);
     return length(table^) - 1;
+}
+// The slot of an array (0) or a view (1) of each of the first `count` types:
+// the index of an optional of it, or -1 while `types` has none.
+SequenceOptionals :: (types: TypeDecl[], count: int) -> int[] {
+    known: int[] = [];
+    while (length(known) < 2 * count) { known.append(-1); }
+    index: int = 0;
+    for (declared in types) {
+        if (declared.kind == OptionalDecl && declared.value_record >= 0 && declared.value_record < count &&
+            (declared.value_container == 1 || declared.value_container == 4)) {
+            slot := SequenceOptionalSlot(declared.value_record, declared.value_container);
+            if (known[slot] < 0) { known[slot] = index; }
+        }
+        index += 1;
+    }
+    return known;
+}
+SequenceOptionalSlot :: (record: int, container: int) -> int {
+    if (container == 4) { return 2 * record + 1; }
+    return 2 * record;
 }
 // Register the bounded set of sequence results before signatures are read.
 // Expressions can then select an optional without mutating shared type tables.
@@ -206,29 +230,43 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
         EnsureOptional(&declared, {storage: storage, container: 4, record: -1}, package);
         storage += 1;
     }
+    // Each type's array and view optionals are found through `known`, so
+    // declaring them takes one pass over the table rather than one per type.
+    known := SequenceOptionals(declared, length(types));
     index: int = 0;
     while (index < length(types)) {
         item := types[index];
+        array: ValueType = {storage: 0, container: 1, record: index};
         if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl) {
-            item_storage := item.storage;
-            if (item.kind == RecordDecl) { item_storage = StructStorage; }
-            if (item.kind == UnionDecl) { item_storage = UnionStorage; }
-            EnsureOptional(&declared, {storage: item_storage, container: 1, record: index}, package);
-            EnsureOptional(&declared, {storage: item_storage, container: 4, record: index}, package);
+            array.storage = item.storage;
+            if (item.kind == RecordDecl) { array.storage = StructStorage; }
+            if (item.kind == UnionDecl) { array.storage = UnionStorage; }
         } else if ((item.kind == 6 && item.key == 0) || item.kind == CollectionDecl) {
             // Managed pointer identity is already fully structural; a nested
             // array's descriptor carries its immediate element's complete type.
-            EnsureOptional(&declared, {storage: item.storage, container: 1, record: index}, package);
-            EnsureOptional(&declared, {storage: item.storage, container: 4, record: index}, package);
+            array.storage = item.storage;
         } else if (item.kind == MapDecl || item.kind == 6) {
             // A map or nullable pointer element needs the array's descriptor.
             element: ValueType = {storage: item.storage, container: 0, record: index};
             if (item.kind == MapDecl) { element = {storage: UnionStorage, container: MapContainer, record: index}; }
             EnsureSequenceCollection(&declared, element, package);
-            array := SequenceArrayType(declared, element);
-            EnsureOptional(&declared, array, package);
-            array.container = 4;
-            EnsureOptional(&declared, array, package);
+            array = SequenceArrayType(declared, element);
+        } else {
+            index += 1;
+            continue;
+        }
+        view := array;
+        view.container = 4;
+        for (value in [array, view]) {
+            slot := SequenceOptionalSlot(value.record, value.container);
+            if (value.storage == 0 || value.record < 0 || value.record >= length(types) ||
+                (value.container != 1 && value.container != 4)) {
+                EnsureOptional(&declared, value, package);
+            } else if (known[slot] < 0) {
+                known[slot] = AddOptional(&declared, value, package);
+            } else if (declared[known[slot]].value_storage != value.storage) {
+                EnsureOptional(&declared, value, package);
+            }
         }
         index += 1;
     }

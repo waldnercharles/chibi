@@ -857,6 +857,18 @@ Unchanging :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
                types: TypeDecl[], names: Name[], package: int, mutated: string[], node: int) -> bool {
     return Fresh(forest, text, callables, natives, types, names, package, node);
 }
+// Whether a value names a local or parameter its function never changes,
+// assigns or addresses, so no call or statement of the function changes it.
+FixedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[], mutated: string[],
+               addressed: string[], value: int) -> bool {
+    if (!Is(forest, value, "identifier")) {
+        return false;
+    }
+    name := Text(forest, text, value);
+    found := Lookup(names, name);
+    return found >= 0 && (names[found].place == CellPlace || names[found].place == ParameterPlace) &&
+           Fixed(referenced, mutated, addressed, name);
+}
 // Whether a value is a local its function builds in its caller's storage.
 BuiltName :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], built: int[], value: int) -> bool {
     at := Unparenthesized(forest, value);
@@ -2243,6 +2255,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         // A value this item leaves for its consumer, when `produced.storage` is set.
         produced := NoValue();
         iteration := NoValue();
+        // Whether a for loop reads its record element in place, unowned.
+        lent_element := false;
         // A record or array to copy into a fresh cell; the copy is produced.
         retained := NoValue();
         operator := Text(forest, text, Field(forest, item.node, "operator"));
@@ -2486,7 +2500,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 if (array.container != ArrayContainer && array.container != ViewContainer && !IsMap(array)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
                 }
-                if (IsMap(array) || array.container == ArrayContainer) {
+                iterable := Unparenthesized(forest, Field(forest, item.node, "value"));
+                if (array.container == ArrayContainer && FixedArray(forest, text, names, referenced, mutated, addressed,
+                                                                   iterable)) {
+                    // A local or parameter nothing changes stays as it is
+                    // while the loop walks it, so the loop walks it itself.
+                    cells.append(MovedCell(array));
+                    slots.append(AddressSlot(target));
+                    code.extend(MoveCode(array, ops, target, length(slots) - 1, length(cells) - 1, node));
+                    produced = array;
+                    produced.cell = length(cells) - 1;
+                } else if (IsMap(array) || array.container == ArrayContainer) {
                     retained = array;
                 } else {
                     // Ordinary iteration observes an outer snapshot. Aliases
@@ -2509,16 +2533,25 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 if (IsMap(array)) {
                     step = MapForStep(forest, text, document, types, array, item, ops, target, at);
                 } else {
+                    // A record element nothing changes or keeps is read in
+                    // place from the loop's array, which the loop alone holds.
+                    name := ItemField(forest, item.node);
+                    lent_element = Fixed(referenced, mutated, addressed, Text(forest, text, name)) &&
+                                   !built.contains(name) &&
+                                   ReadsInPlace(array, SequenceElement(types, {storage: array.storage,
+                                                                               container: array.container,
+                                                                               record: array.record}), true);
                     step = ForStep(types, array, Packable(array.storage, array.record, types, members),
-                                   Field(forest, item.node, "reverse") >= 0, ops, target, at, node);
+                                   Field(forest, item.node, "reverse") >= 0, lent_element, ops, target, at, node);
                 }
             } else if (item.phase == 3) {
                 // A record element was copied, or read in place, into the
-                // last cell.
+                // last cell; one read in place from the array (item.a) is
+                // not the binding's to drop.
                 stepped = false;
                 value_top -= 1;
                 kept := values[value_top];
-                binding: Name = {owned: true, name: Text(forest, text, ItemField(forest, item.node)), place: CellPlace,
+                binding: Name = {owned: item.a == 0, name: Text(forest, text, ItemField(forest, item.node)), place: CellPlace,
                                  index: kept.cell, storage: kept.storage, container: kept.container, record: kept.record,
                                  writable: false, node: ItemField(forest, item.node)};
                 names.append(binding);
@@ -3091,15 +3124,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                             element := produced;
                             produced = NoValue();
                             if (Pointer(element.storage, element.container) &&
-                                Unchanging(forest, text, callables, natives, types, names, callable.package, mutated,
-                                           Field(forest, item.node, "value"))) {
+                                (lent_element ||
+                                 Unchanging(forest, text, callables, natives, types, names, callable.package, mutated,
+                                            Field(forest, item.node, "value")))) {
                                 // The array cannot change, so the element is read in place.
                                 cells.append(MovedCell(element));
                                 slots.append(AddressSlot(target));
                                 code.extend(MoveCode(element, ops, target, length(slots) - 1,
                                                      length(cells) - 1, node));
                                 produced = element;
-                                next.append(Resume(item.node, 3, 0, 0));
+                                lent: int = 0;
+                                if (lent_element) {
+                                    produced.cell = length(cells) - 1;
+                                    lent = 1;
+                                }
+                                next.append(Resume(item.node, 3, lent, 0));
                             } else if (Pointer(element.storage, element.container)) {
                                 retained = element;
                                 next.append(Resume(item.node, 3, 0, 0));

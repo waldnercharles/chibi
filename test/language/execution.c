@@ -3857,6 +3857,36 @@ TEST_CASE(execution_pointer_fields_require_the_full_base_layout)
     REQUIRE(!strcmp(native.type_name, "NativeOnly") && !acount(pointer_heap.roots));
     return true;
 }
+/* A scan of a record of scalars still checks its nested layouts: one that
+ * does not resolve is an error, and a new value's nested native layout still
+ * has its freeze checked. */
+TEST_CASE(execution_managed_scan_checks_nested_layouts)
+{
+    type_field unnamed = { .name = "", .type = PIN_I32, .size = sizeof(int) };
+    type_desc child = { .name = "ScanChild",
+                        .size = sizeof(int),
+                        .fields = &unnamed,
+                        .field_count = 1 };
+    type_field inner = { .name = "inner",
+                         .type = PIN_STRUCT,
+                         .type_name = "ScanMissing",
+                         .size = sizeof(int) };
+    pin_record outer = { .type = { .name = "ScanOuter",
+                                   .size = sizeof(int),
+                                   .fields = &inner,
+                                   .field_count = 1 } };
+    int bytes = 0;
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = "ScanOuter",
+                        .ptr = &bytes,
+                        .record = &outer };
+    const char *error = behavior_managed_value_error(&value);
+    REQUIRE(error && !strcmp(error, "Managed value requires a resolved nested record layout"));
+    inner.layout = &child;
+    error = behavior_managed_value_error(&value);
+    REQUIRE(error && !strcmp(error, "Cannot retain native record layout"));
+    return true;
+}
 /* Two heaps, one cell each, five direct intrinsic calls and one refused root. */
 TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation)
 {
@@ -4366,6 +4396,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_lent_records_copy_nothing);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
+    RUN_TEST_CASE(execution_managed_scan_checks_nested_layouts);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);
     RUN_TEST_CASE(execution_pointer_comparisons_use_location_identity);
     RUN_TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers);

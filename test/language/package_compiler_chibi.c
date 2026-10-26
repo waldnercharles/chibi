@@ -1339,8 +1339,16 @@ static const sample samples[] = {
                 "        index += 1;\n    }\n    return -1;\n}\n"
                 "CopiedFind :: (notes: Note[]) -> int {\n"
                 "    note := notes[1];\n    notes[1] = {text: \"z\", count: 100};\n"
-                "    return note.count;\n}",
-      .calls = { { .function = "AliasedSum",
+                "    return note.count;\n}\n"
+                "WalkedSum :: (notes: Note[]) -> int {\n"
+                "    total: int = 0;\n    more: Note[] = [{text: \"c\", count: 3}];\n"
+                "    for (note in notes) { total += note.count; }\n"
+                "    for (note in more) { total += note.count; }\n    return total;\n}",
+      .calls = { { .function = "WalkedSum",
+                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
+                                "\"b\",\"count\":2}]]",
+                   .expected = "[6]" },
+                 { .function = "AliasedSum",
                    .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
                                 "\"b\",\"count\":2}]]",
                    .expected = "[103]" },
@@ -1368,6 +1376,7 @@ static const sample samples[] = {
                 "LentReturn :: (xs: int[]) -> int[] { return slice(xs, 1, 1); }\n"
                 "CopiedElement :: () -> int { xss: int[][] = [[1, 2], [3]]; return length(xss[0]); }",
       .calls = { { .function = "LentLength", .arguments = "[[1,2,3]]", .expected = "[6]" },
+                 { .function = "LentLength", .arguments = "[[]]", .expected = "[0]" },
                  { .function = "LentSlice", .arguments = "[[1,2,3]]", .expected = "[337]" },
                  { .function = "LentReturn", .arguments = "[[1,2,3]]", .expected = "[[2]]" },
                  { .function = "CopiedElement", .arguments = "[]", .expected = "[2]" } } },
@@ -1389,12 +1398,16 @@ static const sample samples[] = {
                 "PlainDot :: (x: int) -> int { return Width(Shape.Dot(Make(x))); }\n"
                 "HeldBag :: (n: int) -> int { return Count(Bag.Items([n, n])); }\n"
                 "HeldArray :: (n: int) -> int { return length(Counted(n)); }\n"
+                "HeldExtend :: (n: int) -> int { xs: int[] = [1]; xs.extend(Counted(n)); xs.append(n); return xs[1] + xs[2]; }\n"
+                "HeldPush :: (n: int) -> int { bags: Bag[] = []; bags.append(Bag.Items(Counted(n))); bags.append(Bag.Size(n)); return Count(bags[0]) + Count(bags[1]); }\n"
                 "Counted :: (n: int) -> int[] { xs: int[] = []; xs.append(n); return xs; }",
       .calls = { { .function = "PlainPoint", .arguments = "[3]", .expected = "[7]" },
                  { .function = "PlainLine", .arguments = "[2]", .expected = "[4]" },
                  { .function = "PlainDot", .arguments = "[2]", .expected = "[2]" },
                  { .function = "HeldBag", .arguments = "[4]", .expected = "[2]" },
-                 { .function = "HeldArray", .arguments = "[4]", .expected = "[1]" } } },
+                 { .function = "HeldArray", .arguments = "[4]", .expected = "[1]" },
+                 { .function = "HeldExtend", .arguments = "[4]", .expected = "[8]" },
+                 { .function = "HeldPush", .arguments = "[4]", .expected = "[5]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -3742,8 +3755,9 @@ static bool prepare()
 static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
 {
     int count = 0;
-    const char *probe = getenv("PROBE_SOURCE") ? getenv("PROBE_SOURCE") : s->source;
-    inputs[count++] = (source_package_input){ "facts/Main.chibi", probe, strlen(probe) };
+    inputs[count++] = (source_package_input){ "facts/Main.chibi",
+                                              s->source,
+                                              strlen(s->source) };
     if (s->more) {
         inputs[count++] = (source_package_input){ "facts/More.chibi",
                                                   s->more,
@@ -3888,15 +3902,6 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         fprintf(stderr, "package compiler load: %s\n", error);
     }
     REQUIRE(host);
-    if (getenv("CHIBI_TRACE_PACKAGE_CALLS")) {
-        fprintf(
-            stderr,
-            "package compiler call: backend=%d function=%s arguments=%s\n",
-            backend,
-            call->function,
-            call->arguments
-        );
-    }
     bool valid = compiler_host_invoke(
         host,
         function_id(call->function),
@@ -4215,9 +4220,11 @@ static bool reads_elements(const behavior_function *f)
     }
     return false;
 }
-/* Stage one reads elements of boxed and packable arrays alike through the
- * sequence intrinsic, as stage zero does, so the runtime chooses each array's
- * representation and no function loads a stride itself. */
+/* An array of strings, unions or records with a string field is never packed,
+ * so stage one reads its elements from `items` alone, or through the sequence
+ * intrinsic; any other array may be, so its reads in place still choose the
+ * representation by its stride. In the root module, only the Packed functions
+ * load a stride. */
 static bool reads_boxed(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -4246,10 +4253,11 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
             execution_module_function_info f = execution_module_function_at(module, i);
             bool box = !strncmp(f.entry, "Boxed", 5),
                  pack = !strncmp(f.entry, "Packed", 6);
+            int loads = stride_loads(f.body);
             boxed += box;
             packed += pack;
-            if ((box || pack) && (stride_loads(f.body) || !reads_elements(f.body))) {
-                fprintf(stderr, "package compiler %s reads elements itself\n", f.entry);
+            if ((box && loads) || (pack && !loads)) {
+                fprintf(stderr, "package compiler %s loads a stride %d times\n", f.entry, loads);
                 wrong++;
             }
         }
@@ -4427,6 +4435,20 @@ static bool builds_results(const unsigned char *bytes, size_t length)
     REQUIRE(built == 2 && copied == 1 && !wrong);
     return true;
 }
+/* Whether f's first push or extension drops its item at once: the next host
+ * call drops a value. */
+static bool drops_pushed_item(const behavior_function *f)
+{
+    for (int i = 0; i + 1 < acount(f->host_calls); i++) {
+        execution_intrinsic kind = execution_intrinsic_kind(f->host_calls[i].capability_id);
+        if (kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+            kind == EXECUTION_INTRINSIC_ARRAY_EXTEND) {
+            return f->host_calls[i + 1].capability_id ==
+                   (UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_VALUE_DROP);
+        }
+    }
+    return false;
+}
 static int intrinsic_calls(const behavior_function *f, execution_intrinsic kind)
 {
     int count = 0;
@@ -4439,8 +4461,9 @@ static int intrinsic_calls(const behavior_function *f, execution_intrinsic kind)
 /* Arrays are values a loop retains, so neither a loop over an array nothing
  * changes nor one whose body changes its array snapshots it; CopiedWalk's
  * result shows the walk still sees the array as it was. A local nothing
- * changes reads its element in place, as stage zero lends it, unless its
- * array changes. */
+ * changes reads its element in place without a host call, as stage zero lends
+ * it, unless its array changes. WalkedSum walks a parameter and a local
+ * nothing changes as they are, without copying either. */
 static bool reads_in_place(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -4477,17 +4500,19 @@ static bool reads_in_place(const unsigned char *bytes, size_t length)
                 drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP),
                 borrows = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_BORROW);
             bool lent = !strcmp(f.entry, "LentFind"),
-                 copied = !strcmp(f.entry, "CopiedFind");
-            walks += lent || copied;
-            if ((lent && (gets || drops || !borrows)) ||
-                (copied && (!gets || borrows))) {
+                 copied = !strcmp(f.entry, "CopiedFind"),
+                 walked = !strcmp(f.entry, "WalkedSum");
+            int copies = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_COPY);
+            walks += lent || copied || walked;
+            if ((lent && (gets || drops || borrows)) ||
+                (copied && (!gets || borrows)) || (walked && copies)) {
                 fprintf(stderr, "package compiler %s reads %d, borrows %d, drops %d elements\n", f.entry, gets, borrows, drops);
                 wrong++;
             }
         }
     }
     package_collection_free(packages);
-    REQUIRE(walks == 4 && !wrong);
+    REQUIRE(walks == 5 && !wrong);
     return true;
 }
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
@@ -4780,7 +4805,7 @@ static bool drops_only_collections(const unsigned char *bytes, size_t length)
     }
     package_collection_free(packages);
     native_capabilities_free(native);
-    REQUIRE(plain == 3 && held == 2 && !wrong);
+    REQUIRE(plain == 3 && held == 4 && !wrong);
     return true;
 }
 /* Runs a call with the probe natives: the compiler host links only its own,
@@ -5195,12 +5220,9 @@ static bool run_samples(sample_group group, int b)
     }
     for (int i = 0; i < (int)SAMPLES; i++) {
         const sample *s = &samples[i];
-        if (s->group != group ||
-            (getenv("PROBE_SKIP") && strstr(getenv("PROBE_SKIP"), s->name)) ||
-            (getenv("PROBE_ONLY") && strcmp(getenv("PROBE_ONLY"), s->name))) {
+        if (s->group != group) {
             continue;
         }
-        fprintf(stderr, "PROBE sample %s backend %d\n", s->name, b);
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
@@ -5342,6 +5364,26 @@ static bool run_samples(sample_group group, int b)
 }
 /* Without debugger points and watches, a closure's functions have none, and
  * its loops and branches still run as they do with them. */
+/* The closure the compiler builds for sample `s` without debug information,
+ * or NULL when it does not compile. */
+static unsigned char *debug_free_closure(const sample *s, size_t *length)
+{
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(s, inputs);
+    pin_value args[ARGUMENTS], out;
+    if (!arguments(1, false, inputs, count, args)) {
+        return NULL;
+    }
+    args[DEBUG_ARGUMENT].b = false;
+    if (!compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)) {
+        return NULL;
+    }
+    const pin_union *value = out.ptr;
+    bool compiled = out.type == PIN_UNION && value && value->tag == tag(1, "Compiled");
+    unsigned char *bytes = compiled ? closure_bytes(value, length) : NULL;
+    arena_free(&detached);
+    return bytes;
+}
 TEST_CASE(package_compiler_omits_debug_info)
 {
     REQUIRE(prepare());
@@ -5351,19 +5393,9 @@ TEST_CASE(package_compiler_omits_debug_info)
         while (strcmp(s->name, names[n])) {
             s++;
         }
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(s, inputs);
-        pin_value args[ARGUMENTS], out;
-        REQUIRE(arguments(1, false, inputs, count, args));
-        args[DEBUG_ARGUMENT].b = false;
-        REQUIRE(
-            compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
-        );
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(1, "Compiled"));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
-        arena_free(&detached);
+        unsigned char *bytes = debug_free_closure(s, &length);
+        REQUIRE(bytes);
         native_capabilities *native;
         package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
         REQUIRE(packages);
@@ -5387,6 +5419,78 @@ TEST_CASE(package_compiler_omits_debug_info)
         free(bytes);
         REQUIRE(ran);
     }
+    return true;
+}
+/* Without debug information, a push or extension of a local array updates it
+ * in place and drops a temporary item at once rather than holding it until
+ * the function returns. */
+TEST_CASE(package_compiler_drops_pushed_items)
+{
+    REQUIRE(prepare());
+    const sample *s = samples;
+    while (strcmp(s->name, "plain drops")) {
+        s++;
+    }
+    size_t length;
+    unsigned char *bytes = debug_free_closure(s, &length);
+    REQUIRE(bytes);
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int pushes = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            if (strcmp(f.entry, "HeldExtend") && strcmp(f.entry, "HeldPush")) {
+                continue;
+            }
+            pushes++;
+            wrong += !drops_pushed_item(f.body);
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    bool ran = pushes == 2 && !wrong;
+    for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+        for (int backend = 0; ran && backend < 2; backend++) {
+            ran = run(bytes, length, &s->calls[c], backend);
+        }
+    }
+    free(bytes);
+    REQUIRE(ran);
+    return true;
+}
+/* The instructions compiling a package of `records` records takes, counted
+ * across every call, or zero when it does not compile. */
+static uint64_t declaring_steps(int records)
+{
+    static char source[64 * 1024];
+    int used = snprintf(source, sizeof source, "package facts\n");
+    for (int i = 0; i < records; i++) {
+        used += snprintf(source + used, sizeof source - (size_t)used, "R%d :: struct { v: int; }\n", i);
+    }
+    used += snprintf(source + used, sizeof source - (size_t)used, "Read :: (r: R0) -> int { return r.v; }\n");
+    REQUIRE((size_t)used < sizeof source);
+    source_package_input input = { "facts/Main.chibi", source, (size_t)used };
+    behavior_execution_scope scope = { .remaining = UINT64_MAX };
+    behavior_execution_scope_begin(&scope);
+    pin_value out;
+    bool called = compile(0, false, false, false, &input, 1, COMPILE_BUDGET, &out);
+    behavior_execution_scope_end(&scope);
+    const pin_union *value = called ? out.ptr : NULL;
+    bool compiled = value && out.type == PIN_UNION && value->tag == tag(0, "Compiled");
+    arena_free(&detached);
+    return compiled ? UINT64_MAX - scope.remaining : 0;
+}
+/* Declaring each type's array and view optionals takes one pass over the
+ * type table, not a search of it for each type: twice the records take about
+ * twice the steps, where the search took three times as many. */
+TEST_CASE(package_compiler_declares_records_in_linear_steps)
+{
+    REQUIRE(prepare());
+    uint64_t fewer = declaring_steps(100), more = declaring_steps(200);
+    REQUIRE(fewer && 2 * more <= 5 * fewer);
     return true;
 }
 /* Stage zero currently resolves assert through its native catalog, so its
@@ -12320,6 +12424,8 @@ void test_language_package_compiler_chibi_debug_free()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_omits_debug_info);
+    RUN_TEST_CASE(package_compiler_drops_pushed_items);
+    RUN_TEST_CASE(package_compiler_declares_records_in_linear_steps);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_scalar()

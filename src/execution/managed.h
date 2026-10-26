@@ -27,7 +27,8 @@ typedef struct behavior_managed_heap
     int running_calls;
 } behavior_managed_heap;
 /* What a host that owns its heap's one root call allocates between
- * collections at least: each costs a trace of every live value. */
+ * collections at least: each costs a trace of every live value, so the
+ * heap also grows to twice what the last collection kept first. */
 #define BEHAVIOR_CALL_COLLECTION_BYTES ((size_t)64 * 1024 * 1024)
 void behavior_managed_heap_init(behavior_managed_heap *);
 void behavior_managed_heap_free(behavior_managed_heap *);

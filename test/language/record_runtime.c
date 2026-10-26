@@ -382,13 +382,14 @@ TEST_CASE(record_runtime_array_results)
  * holds survives every collection. */
 TEST_CASE(record_runtime_collects_during_call)
 {
-    static const char source[] = "Rows :: library { " ROW
-                                 "Keep :: (text: string) -> Row[] { kept := Batch(text); "
-                                 "i := 0; while (i < 60) { batch := Batch(\"garbage\"); "
-                                 "if batch[2].label != \"batch\" { return []; } i += 1; } "
-                                 "return kept; } "
-                                 "Batch :: (text: string) -> Row[] { a: Row = {key: text, "
-                                 "label: \"batch\"}; return [a, a, a]; } }";
+    static const char
+        source[] = "Rows :: library { " ROW
+                   "Keep :: (text: string) -> Row[] { kept := Batch(text); "
+                   "i := 0; while (i < 60) { batch := Batch(\"garbage\"); "
+                   "if batch[2].label != \"batch\" { return []; } i += 1; } "
+                   "return kept; } "
+                   "Batch :: (text: string) -> Row[] { a: Row = {key: text, "
+                   "label: \"batch\"}; return [a, a, a]; } }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile(source, backends[b], false));
@@ -396,8 +397,9 @@ TEST_CASE(record_runtime_collects_during_call)
         heap.call_collection_bytes = 4096;
         char text[] = "kept";
         pin_value arg = { .type = PIN_STR,
-                          .text = &(const pin_string){ .bytes = text,
-                                                       .length = (uint32_t)strlen(text) } };
+                          .text = &(
+                              const pin_string
+                          ){ .bytes = text, .length = (uint32_t)strlen(text) } };
         REQUIRE(run(backends[b], &arg, 1));
         REQUIRE(heap.storage.kept);
         pin_array *array = result.ptr;
@@ -406,6 +408,15 @@ TEST_CASE(record_runtime_collects_during_call)
             REQUIRE(!strcmp(pin_text(array_member(array, i, 0)).bytes, "kept"));
             REQUIRE(!strcmp(pin_text(array_member(array, i, 1)).bytes, "batch"));
         }
+        /* Past the budget, the heap still grows to twice what the last
+         * collection kept before tracing it again. */
+        size_t kept = heap.storage.kept;
+        heap.call_collection_bytes = kept;
+        heap.storage.allocated = 2 * kept - 1;
+        heap.running_calls = 1;
+        behavior_managed_heap_safepoint(&heap, NULL, NULL);
+        REQUIRE(heap.storage.allocated == 2 * kept - 1 && heap.storage.kept == kept);
+        heap.running_calls = 0;
         /* A call that runs inside a native of another call never collects:
          * no collection traces that native's locals. */
         cleanup();

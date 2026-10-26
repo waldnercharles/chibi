@@ -231,8 +231,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     produced := NoValue();
     retained := NoValue();
     // Mutating methods are calls on the shared root, with no assignment to
-    // their receiver.
-    changing := false;
+    // their receiver; `xs.append(x)` and `xs.extend(ys)` on a local array
+    // push in place as `xs = append(xs, x)` does. A debug build keeps the
+    // method call's own points.
+    changing := item.phase == 0 && !ops.debug && kind == "expression_statement" &&
+                LocalPush(forest, text, callables, natives, ports, identities, names, package, generic_updates,
+                          item.node);
     if (item.phase == 0) {
         code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
         value := Field(forest, item.node, "value");
@@ -1020,8 +1024,37 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (item.phase == PushPhase && !Parameter(forest, binding)) {
             code.extend(NamePoints(forest, text, names, ops, item.c));
         }
+        // The array keeps its own copy of the item, so a temporary item is
+        // dropped here rather than held until the function returns.
+        return CleanupSequenceValues(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                                  popped, produced, retained, marks),
+                                     [item_value], ops, target, at, node);
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks);
+}
+
+// Whether the statement `node` appends to or extends a local array by method,
+// which updates it in place.
+LocalPush :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[],
+              ports: ResolvedPort[], identities: uint64[], names: Name[], package: int, generic_updates: int[],
+              node: int) -> bool {
+    value := StatementValue(forest, node);
+    if (!Is(forest, value, "call_expression") || !Is(forest, Field(forest, value, "function"), "member_expression") ||
+        generic_updates.contains(node)) {
+        return false;
+    }
+    receiver := StatementTarget(forest, node);
+    if (!Is(forest, receiver, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, receiver));
+    if (found < 0) {
+        return false;
+    }
+    switch InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package, found, receiver, value) {
+        case .NotApplicable: return false;
+        case .InPlace(mode, array, argument, native): return true;
+    }
 }
 
 // The existing integer-literal semantic decision, shared with the narrow scalar
@@ -1508,6 +1541,20 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                              LendsElement(forest, text, names, referenced, mutated, built, addressed, item.node))) {
             read = SequenceBorrowIntrinsic;
         }
+        if (ReadsInPlace(array, element_type, read == SequenceBorrowIntrinsic)) {
+            packable := Packable(array.storage, array.record, types, members);
+            slots = ElementSlots(array.storage, packable, target);
+            locals = ElementLocals(array.storage, packable, target);
+            code = ElementRead(array.slot, position.slot, array.storage, packable, at.slot, at.pc, at.local, ops,
+                               target, node);
+            element := at.slot + length(slots) - 1;
+            if (array.storage == StructStorage) {
+                roots.append({slot: element, storage: StructStorage, container: 0, record: array.record});
+            }
+            emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped,
+                                    Typed(element, array.storage, 0, array.record), NoValue(), marks);
+            return CleanupProjectionStep(emitted, array, natives, ports, ops, target, at, node);
+        }
         emitted := SequenceCallStep([array, position], read,
                                     Typed(-1, element_type.storage, element_type.container, element_type.record), uint64(0), false,
                                     2, ops, target, at, node);
@@ -1520,6 +1567,29 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
     return emitted;
 }
 
+// The count of the array in `array`'s slot, read in place. A debug build
+// keeps the native call and its points.
+ArrayLengthStep :: (array: Value, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    number: Slot = {storage: IntStorage, kind: ValueKind};
+    count := Instruction(ops.load, IntStorage, at.slot, array.slot, 0, 0, node);
+    count.offset = target.count_offset;
+    code: Code[] = [Instruction(ops.guard, 0, 0, array.slot, 0, target.argument_failure, node), count];
+    return Step.Emitted(code, [number], [], [], [], [], [], [], [], 1, Typed(at.slot, IntStorage, 0, -1), NoValue(),
+                        []);
+}
+// Whether an element of `array` is loaded inline rather than by a host call:
+// a number or bool, copied by the load, or a record read in place when it is
+// `borrowed`. Views and nested collections go through the host.
+ReadsInPlace :: (array: Value, element: ValueType, borrowed: bool) -> bool {
+    if (array.container != ArrayContainer || array.place || element.container != 0 ||
+        element.storage != array.storage || element.record != array.record) {
+        return false;
+    }
+    if (element.storage == StructStorage) {
+        return borrowed && element.record >= 0;
+    }
+    return element.storage >= BoolStorage && element.storage <= DoubleStorage;
+}
 // Whether the element `node` reads is done with before its array can change,
 // so it is read in place, as stage zero reads it: one of its scalar fields, or
 // a text field compared at once with a name or a literal.
@@ -2757,6 +2827,11 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         }
     }
     if ((item.c == 1 || item.c == 4 || item.c == 7) && count == 1 && NameMatches(natives[chosen].name, "length") &&
+        values[first].container == ArrayContainer && !values[first].place && !ops.debug) {
+        return CleanupSequenceValues(ArrayLengthStep(values[first], ops, target, at, node), [values[first]], ops,
+                                     target, at, node);
+    }
+    if ((item.c == 1 || item.c == 4 || item.c == 7) && count == 1 && NameMatches(natives[chosen].name, "length") &&
         values[first].container == ViewContainer) {
         emitted := SequenceCallStep([values[first]], SequenceLengthIntrinsic, Typed(-1, IntStorage, 0, -1),
                                     uint64(0), false, 1, ops, target, at, node);
@@ -3603,8 +3678,8 @@ ShiftStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, cons
 // set to zero, or to the last index when `reverse`, then at `head` the bound
 // check, the exit jump and the element load, which takes a second local for a
 // packable record. Marks report the head, the exit jump and the index local.
-ForStep :: (types: TypeDecl[], array: Value, packable: bool, reverse: bool, ops: Ops, target: Target, at: Bases,
-            node: snapshot.SnapshotNode) -> Step {
+ForStep :: (types: TypeDecl[], array: Value, packable: bool, reverse: bool, lent: bool, ops: Ops, target: Target,
+            at: Bases, node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
     locals: Slot[] = [];
@@ -3676,8 +3751,22 @@ ForStep :: (types: TypeDecl[], array: Value, packable: bool, reverse: bool, ops:
                             node));
     leave := at.pc + length(code);
     code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
-    // The typed accessor validates packed and boxed element layouts alike.
     element_type := SequenceElement(types, {storage: array.storage, container: array.container, record: array.record});
+    if (ReadsInPlace(array, element_type, lent)) {
+        // The index is between zero and the count, so the element needs no check.
+        first_load := at.slot + length(slots);
+        slots.extend(LoadSlots(array.storage, packable, target));
+        code.extend(ElementLoad(b + 1, b + 3, array.storage, packable, first_load, at.pc + length(code),
+                                at.local + 1, ops, target, node));
+        locals.extend(ElementLocals(array.storage, packable, target));
+        element := at.slot + length(slots) - 1;
+        if (array.storage == StructStorage) {
+            roots.append({slot: element, storage: StructStorage, container: 0, record: array.record});
+        }
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                            Typed(element, array.storage, 0, array.record), NoValue(), [head, leave, at.local]);
+    }
+    // The typed accessor validates packed and boxed element layouts alike.
     shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local + length(locals),
                       cell: at.cell, host: at.host, call: at.call};
     switch SequenceCallStep([Typed(b + 1, array.storage, array.container, array.record),

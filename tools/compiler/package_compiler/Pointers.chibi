@@ -646,7 +646,7 @@ NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, co
 }
 
 PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
-                        names: Name[], destination: int) -> bool {
+                       names: Name[], destination: int) -> bool {
     if (Is(forest, destination, "dereference_expression")) {
         return true;
     }
@@ -668,7 +668,7 @@ PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
 // Whether `node` is `e.C` on an entity handle `e`: `self`, a handle name or a
 // global's keyed handle.
 HandleComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
-                     names: Name[], node: int) -> bool {
+                    names: Name[], node: int) -> bool {
     if (!Is(forest, node, "member_expression")) {
         return false;
     }

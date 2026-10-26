@@ -138,8 +138,11 @@ Completed Release checks on the candidate without probes:
 The bootstrap check prepares stage one through stage zero and verifies the
 subsequent compiler stages reproduce identical bytes. It is distinct from
 the pinned-runtime, source-only recovery workflow. No new syntax, target ABI,
-bootstrap minimum or artifact-format change is introduced, so bootstrap
-regeneration is not required by `tools/compiler/bootstrap.kdl`.
+bootstrap minimum or artifact-format change is introduced. The initial claim
+that regeneration was unnecessary missed the scalar harness's stricter source
+and artifact identity gate. The follow-up [artifact repair](artifact-repair.md)
+refreshes the reviewed compiler and manifest through the normal seed workflow;
+the compiler source and measurements above are unchanged.
 
 ASan/UBSan (`-fsanitize=address,undefined`, frame pointers,
 `UBSAN_OPTIONS=halt_on_error=1`) passed the focused case (781 assertions),

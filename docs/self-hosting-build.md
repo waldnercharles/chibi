@@ -840,7 +840,7 @@ and review new manifest pins when changing the runtime ABI; routine compiler
 self-builds continue to consume the pinned release. The initial runtime seeds
 were produced by the predecessor recovery workflow at the recorded revision.
 
-Rewrite the artifact only when it can no longer recover the compiler:
+Recovery itself requires refreshing the artifact when:
 - when `minimum` rises past its version;
 - when the host's target changes;
 - when the prepared payload or semantic version changes, even if layout and
@@ -851,8 +851,14 @@ Rewrite the artifact only when it can no longer recover the compiler:
   compile is the artifact's code generation: the compiler it builds compiles
   the sources to other bytes than its own, and recovery fails.
 
-Any other change to the contents of recorded sources needs no new artifact,
-because recovery reaches the fixpoint in a second compile. To rewrite it:
+Other changes to recorded source contents can recover through a second compile
+without refreshing the seed. The hosted scalar regression has a stricter
+reviewed-input contract: `test/native_aot/scalar/Run.ps1` requires the recovered
+stage two to equal the checked-in artifact, and every recorded source hash to
+match the checkout. Refresh the artifact and manifest after compiler source
+changes before publishing to that workflow, even when recovery itself succeeds.
+No runtime pin or bootstrap version change is needed for this identity refresh.
+To rewrite it:
 1. Run `make bootstrap-artifact` on a clean tree, so that it records a
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.

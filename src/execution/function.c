@@ -1512,34 +1512,47 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
         pin_value_trace(root, mark, user);
         return;
     }
-    pin_value *pending = NULL;
+    /* A record held inside an array or another record is reached only through
+     * its holder, which is visited once, so only shareable values need the
+     * seen set. */
+    typedef struct
+    {
+        pin_value value;
+        bool held;
+    } pending_value;
+    pending_value *pending = NULL;
     managed_seen local = { 0 };
     managed_seen *seen = collection_seen ? collection_seen : &local;
-    apush(pending, *root);
+    apush(pending, ((pending_value){ *root, false }));
     while (acount(pending)) {
-        pin_value value = apop(pending);
-        if (managed_seen_before(seen, value, false)) {
+        pending_value next = apop(pending);
+        pin_value value = next.value;
+        if (!next.held && managed_seen_before(seen, value, false)) {
             continue;
         }
         pin_value_trace(&value, mark, user);
         if (value.container == PIN_CONTAINER_MAP) {
             const pin_map *map = value.ptr;
             for (int i = 0; map && i < map->count; i++) {
-                apush(pending, map->entries[i].key);
-                apush(pending, map->entries[i].value);
+                apush(pending, ((pending_value){ map->entries[i].key, false }));
+                apush(pending, ((pending_value){ map->entries[i].value, false }));
             }
         } else if (value.container != PIN_CONTAINER_SINGLE) {
             const pin_array *array = value.ptr;
-            if (array && !pin_array_view_valid(array)) {
+            /* A view's items live in what its pointer reaches, so they are
+             * walked whatever their type. */
+            if (!array || !pin_array_view_valid(array) ||
+                (!array->pointer && !pin_array_items_reach(array))) {
                 continue;
             }
-            for (int i = 0; array && i < array->count; i++) {
-                apush(pending, pin_array_get(array, i));
+            for (int i = 0; i < array->count; i++) {
+                pin_value item = pin_array_get(array, i);
+                apush(pending, ((pending_value){ item, item.type == PIN_STRUCT }));
             }
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;
             for (int i = 0; sum && i < sum->count; i++) {
-                apush(pending, sum->values[i]);
+                apush(pending, ((pending_value){ sum->values[i], false }));
             }
         } else if (value.type == PIN_STRUCT && value.ptr) {
             const type_desc *layout = pin_value_type(&value);
@@ -1558,7 +1571,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 } else {
                     continue;
                 }
-                apush(pending, member);
+                apush(pending, ((pending_value){ member, field->type == PIN_STRUCT }));
             }
         }
     }

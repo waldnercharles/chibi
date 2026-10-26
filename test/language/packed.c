@@ -191,6 +191,36 @@ TEST_CASE(packed_record_updates_box_compatible_null_elements)
 }
 /* A slice's copied elements alone decide its representation, read from the
  * right offset of a packed or boxed source. */
+static void count_mark(void *user, const void *)
+{
+    (*(int *)user)++;
+}
+/* A packed scalar array's items hold nothing to trace, so the managed heap
+ * marks the array and its layout without visiting each item. */
+TEST_CASE(packed_scalar_items_are_not_traced_one_by_one)
+{
+    enum
+    {
+        COUNT = 1000
+    };
+    arena_init_collectable(&storage);
+    pin_value values[COUNT];
+    for (int i = 0; i < COUNT; i++) {
+        values[i] = scalar(PIN_I32, i);
+    }
+    pin_array source = { .element_type = PIN_I32,
+                         .count = COUNT,
+                         .capacity = COUNT,
+                         .items = values };
+    pin_array *copy = pin_array_snapshot_to_arena(&storage, &source);
+    REQUIRE(copy && copy->stride == sizeof(int32_t));
+    pin_value array = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = copy };
+    int marks = 0;
+    behavior_managed_heap_trace_value(&array, count_mark, &marks);
+    arena_free(&storage);
+    REQUIRE(marks < 8);
+    return true;
+}
 TEST_CASE(packed_slices_take_their_representation_from_their_range)
 {
     pin_value items[8];
@@ -878,6 +908,7 @@ void test_language_packed()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(packed_record_updates_box_compatible_null_elements);
     RUN_TEST_CASE(packed_scalars_preserve_values_widths_and_snapshot_ownership);
+    RUN_TEST_CASE(packed_scalar_items_are_not_traced_one_by_one);
     RUN_TEST_CASE(packed_slices_take_their_representation_from_their_range);
     RUN_TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks);
     RUN_TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths);

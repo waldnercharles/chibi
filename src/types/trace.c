@@ -55,6 +55,15 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
         struct_fields(type, value->ptr, mark, user, 0);
     }
 }
+bool pin_array_items_reach(const pin_array *array)
+{
+    pin_value shape = { .type = array->element_type,
+                        .type_name = array->type_name,
+                        .record = array->record };
+    return !array->stride || array->element_type == PIN_POINTER ||
+           (array->element_type == PIN_STRUCT &&
+            !type_is_plain(pin_value_type(&shape)));
+}
 static void trace_struct(const void *data, const void *shape, arena_marker mark, void *user)
 {
     mark(user, shape);
@@ -77,13 +86,8 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     mark(user, array->items);
     mark(user, array->data);
     mark(user, array->buckets);
-    pin_value shape = { .type = array->element_type,
-                        .type_name = array->type_name,
-                        .record = array->record };
-    bool managed = !array->stride || array->element_type == PIN_POINTER ||
-                   (array->element_type == PIN_STRUCT &&
-                    !type_is_plain(pin_value_type(&shape)));
-    for (int i = 0; managed && i < array->count; i++) {
+    bool reach = pin_array_items_reach(array);
+    for (int i = 0; reach && i < array->count; i++) {
         pin_value item = pin_array_get(array, i);
         pin_value_trace(&item, mark, user);
     }

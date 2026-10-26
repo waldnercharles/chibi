@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 typedef struct arena_block arena_block;
-typedef struct arena_allocation arena_allocation;
-typedef struct arena_page arena_page;
+typedef struct arena_slot arena_slot;
+typedef struct arena_slabs arena_slabs;
 typedef struct arena_cleanup arena_cleanup;
 typedef struct arena_resource arena_resource;
 typedef void (*arena_marker)(void *user, const void *address);
@@ -23,13 +23,9 @@ typedef struct arena
 {
     arena_block *first;
     arena_block *current;
-    arena_allocation *allocations; /* Live collectable values. */
-    arena_allocation *unused;      /* Swept values kept for reuse. */
-    arena_page *pages;             /* Live values by each page they touch. */
-    size_t page_capacity;          /* Index slots, a power of two. */
-    size_t page_count;             /* Occupied index slots. */
-    size_t allocated; /* Value and new resource bytes since the last sweep. */
-    size_t kept;      /* Value and resource bytes the last sweep kept. */
+    arena_slabs *slabs; /* Collectable values, by size class. */
+    size_t allocated;   /* Value and new resource bytes since the last sweep. */
+    size_t kept;        /* Value and resource bytes the last sweep kept. */
     arena_cleanup *cleanups; /* Ordinary allocations with external ownership. */
     arena_resource *resources; /* Unique resources retained by live allocations. */
     size_t resource_capacity, resource_count, retained_bytes;
@@ -82,14 +78,14 @@ void arena_replace_cleanup(
     size_t retained_bytes
 );
 /* One mark and sweep over collectable arenas whose values may point into one
- * another. A mark finds its value by address in logarithmic time, and each
- * marked value is traced once. The arenas must outlive the collection. */
+ * another. A mark finds its value by address in time logarithmic in the
+ * arenas' slabs, and each marked value is traced once. The arenas must outlive
+ * the collection. */
 typedef struct arena_collection
 {
     arena **arenas;
     int count;
-    arena_allocation **live;    /* Every live value, by address. */
-    arena_allocation **pending; /* Marked values not traced yet. */
+    arena_slot **pending; /* Marked values not traced yet. */
 } arena_collection;
 void arena_collect_begin(arena_collection *, arena **arenas, int count);
 /* An arena_marker whose user is the collection. */

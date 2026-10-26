@@ -147,7 +147,7 @@ const char *pin_value_text_slice(arena *storage, pin_value *out, pin_value sourc
     if (!text.owner) {
         return pin_value_text(storage, out, text.bytes + start, length);
     }
-    size_t before = atomic_fetch_add_explicit(&text.owner->references, 1, memory_order_relaxed);
+    [[maybe_unused]] size_t before = atomic_fetch_add_explicit(&text.owner->references, 1, memory_order_relaxed);
     assert(before && before < SIZE_MAX);
     text.bytes += start;
     text.length = (uint32_t)length;

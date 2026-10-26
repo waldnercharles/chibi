@@ -85,12 +85,13 @@ package scalar_facts
 // only when the left does not decide the value, and give a bool, its value;
 // a Call's `value` is its callee's function ordinal, `name` its callee's name
 // and `count` its arguments, the `count` most recent unconsumed operands in
-// argument order. A condition's last operand is its bool; a return's last
-// operand is the function's returned value, and a Local's or an Assign's is
-// its variable's. A shift's count is converted to the shifted type before
-// the shift consumes it, and an integer operand of floating arithmetic, a
-// comparison or a float to double widening has its own Convert rows, as the
-// ordinary compiler converts them.
+// argument order; an argument the call omits is a Literal of its parameter's
+// default with the call's range. A condition's last operand is its bool; a
+// return's last operand is the function's returned value, and a Local's or an
+// Assign's is its variable's. A shift's count is converted to the shifted
+// type before the shift consumes it, and an integer operand of floating
+// arithmetic, a comparison or a float to double widening has its own Convert
+// rows, as the ordinary compiler converts them.
 //
 // Ranges are half-open source-byte offsets into the source text; lines and
 // columns are one-based source-byte positions. Fields a row does not use are

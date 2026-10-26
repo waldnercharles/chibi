@@ -1,0 +1,182 @@
+{
+  "generating_source_revision": "646ca77c4e99d430e39ab4d04c2f06e2246f832b",
+  "accepted_main": "ad5d2ddab604d41e52bbda8308e4bfbb40c1d6cd",
+  "tested_source_sha256": {
+    "tools/compiler/package_compiler/Compile.chibi": "fc39dc89a0d8390d925d03d60d795cb33d2d71c9210d9036b4b0f0859c932151",
+    "tools/compiler/package_compiler/Scalar.chibi": "cd9556122bb61fe48c4a72dfe46a61429315f1aa963315ccb233d047c98aebb2",
+    "tools/compiler/scalar_facts/Facts.chibi": "79b956e1bfc74cc9ccf1bc7a4ff503dcaf73367347d997715e473f29d84197e0",
+    "test/language/package_compiler_chibi.c": "5794c44dd51e0571b51bfdf96beb5e284eea7f0bb0ddfb74e4fc30017db1e1f0",
+    "test/scalar_facts/cases/Cases.chibi": "66c77f43da1f13d94d10eab00127d32c62c6c574d6be708afca55954851fa812",
+    "tools/test_policy.py": "21282c14588111c1fd70e6171781efc16af46c92bae7b37b559927157234d464"
+  },
+  "generation": {
+    "source_revision": "646ca77c4e99d430e39ab4d04c2f06e2246f832b",
+    "parents": [
+      "135037029a165e4ef3819af47dbe1a39a43324e4",
+      "ad5d2ddab604d41e52bbda8308e4bfbb40c1d6cd"
+    ],
+    "closure": {
+      "file": "compiler.chibip",
+      "bytes": 16156989,
+      "sha256": "abcff3f6ac05937a3f4f6f033bd8a49b6edd05b992ecddb466b4fb105a89f28f"
+    },
+    "manifest_sha256": "57458a820535c967c5ddadca5d250e98ae2e204da8bb46709b3405c4ce5aba13",
+    "source_count": 20,
+    "source_entries_changed_from_main": [
+      "package_compiler/Compile.chibi"
+    ],
+    "target_unchanged": true,
+    "main_seed_output_equals_normal_generated_artifact": true
+  },
+  "checks": [
+    {
+      "configuration": "Release",
+      "selector": "language-package-compiler-chibi-write-summaries",
+      "exit": 0,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 781
+      },
+      "wall_seconds": 6.251091167097911,
+      "user_cpu_seconds": 5.330143,
+      "system_cpu_seconds": 0.141448,
+      "log_sha256": "ef94fb618fa56060b6468e12e85abcc1989c316decbd85232f5c9fc576f5a582"
+    },
+    {
+      "configuration": "Release",
+      "selector": "language-package-compiler-chibi-scalar",
+      "exit": 0,
+      "stats": {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "suites": 0,
+        "assertions": 22789
+      },
+      "wall_seconds": 6.218531540827826,
+      "user_cpu_seconds": 6.034123,
+      "system_cpu_seconds": 0.150339,
+      "log_sha256": "e1ac9562bf08ef9a36ded85f0691a85e9e43403d1ea8e6a21d4a4eb7324af5ea"
+    },
+    {
+      "configuration": "Release",
+      "selector": "language-package-compiler-chibi-imports-compiled",
+      "exit": 0,
+      "stats": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "suites": 0,
+        "assertions": 13231
+      },
+      "wall_seconds": 11.547244541114196,
+      "user_cpu_seconds": 11.281206,
+      "system_cpu_seconds": 0.253011,
+      "log_sha256": "4c67afc8518e157c63910ad7233b57e40103bbaae736e378bd0aa8c89465602d"
+    },
+    {
+      "configuration": "Release",
+      "selector": "language-package-compiler-chibi-libraries",
+      "exit": 0,
+      "stats": {
+        "passed": 13,
+        "failed": 0,
+        "total": 13,
+        "suites": 0,
+        "assertions": 17407
+      },
+      "wall_seconds": 64.71816495805979,
+      "user_cpu_seconds": 64.184138,
+      "system_cpu_seconds": 0.7132379999999999,
+      "log_sha256": "640d0f7d574dbd1c4541dec67b29e0e01774a6d2c88ffd05c1b05b5d988040ef"
+    },
+    {
+      "configuration": "Release",
+      "selector": "language-package-compiler-chibi-bootstrap",
+      "exit": 0,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 23630
+      },
+      "wall_seconds": 22.077326708007604,
+      "user_cpu_seconds": 21.337146,
+      "system_cpu_seconds": 0.510601,
+      "log_sha256": "7b54f90d4d78520240080a0eae0f8b67d77ed2f1d5e5674b0094a88a6ab84cd0"
+    },
+    {
+      "configuration": "ASan+UBSan",
+      "selector": "language-package-compiler-chibi-write-summaries",
+      "exit": 0,
+      "stats": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 781
+      },
+      "wall_seconds": 18.103163165971637,
+      "user_cpu_seconds": 15.911364,
+      "system_cpu_seconds": 1.274918,
+      "log_sha256": "6394e081be2fd83e0125c3065ab8d27e29838273c4616f6fc9530f2f4abe0d27"
+    },
+    {
+      "configuration": "ASan+UBSan",
+      "selector": "language-package-compiler-chibi-scalar",
+      "exit": 0,
+      "stats": {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "suites": 0,
+        "assertions": 22789
+      },
+      "wall_seconds": 19.73293362511322,
+      "user_cpu_seconds": 18.433486,
+      "system_cpu_seconds": 1.319658,
+      "log_sha256": "39f8175307532ca400d378325ee1a99e7a910e7708441741bea0b54076ab25a4"
+    },
+    {
+      "configuration": "ASan+UBSan",
+      "selector": "language-borrow",
+      "exit": 0,
+      "stats": {
+        "passed": 27,
+        "failed": 0,
+        "total": 27,
+        "suites": 0,
+        "assertions": 848
+      },
+      "wall_seconds": 0.18890095804817975,
+      "user_cpu_seconds": 0.085196,
+      "system_cpu_seconds": 0.045967,
+      "log_sha256": "8b2efc1eddc3ce8e53e74743af447060e29d1bf3539db2d627257583ad77eeb0"
+    },
+    {
+      "configuration": "ASan+UBSan",
+      "selector": "language-program",
+      "exit": 0,
+      "stats": {
+        "passed": 167,
+        "failed": 0,
+        "total": 167,
+        "suites": 0,
+        "assertions": 12450
+      },
+      "wall_seconds": 0.7667961248662323,
+      "user_cpu_seconds": 0.498191,
+      "system_cpu_seconds": 0.181749,
+      "log_sha256": "65bbe45b01392e3e3b3a99498f8281e6f9991dd281fde413f6892e2c583ab660"
+    }
+  ],
+  "builds": {
+    "Release": "Apple Clang 21, -O3 -DNDEBUG, sanitizers off, -Wno-error=string-concatenation, -Wl,-dead_strip",
+    "ASan+UBSan": "Apple Clang 21, RelWithDebInfo, -fsanitize=address,undefined, -fno-omit-frame-pointer, -Wno-error=string-concatenation, -Wl,-dead_strip; UBSAN_OPTIONS=halt_on_error=1, MallocNanoZone=0"
+  },
+  "scope": "Correctness validation only; elapsed times are not a performance experiment. Historical measurements are unchanged. Final-head pinned recovery and hosted status are recorded separately in the PR. Linux x86-64 native execution, GPU and broader suites not run locally."
+}

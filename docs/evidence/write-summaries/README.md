@@ -5,6 +5,11 @@ unchanged `Body[]` input. On the bounded imports workload this removes
 4,567,036 selected payload-copy bytes per compilation (3.74% of the measured
 total). This experiment does **not** establish a wall-time improvement.
 
+These are historical measurements of source commit `884d335e` on base
+`c2ad1f319`. The later [integration with accepted main](integration.md)
+preserves both the two-loop optimization and #709's native default arguments.
+No copy-byte or timing measurements are claimed for that combined tree.
+
 ## Ownership and scope
 
 The input is a by-value parameter. Neither the function nor its integer-only

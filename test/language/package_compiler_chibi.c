@@ -12055,6 +12055,15 @@ static bool query_stage_one_module(int b, const char *identity, const char *sour
     free(bytes);
     return *module != NULL;
 }
+/* Play without the target entity, so a query's rows are the owner and the
+ * entities the test adds. */
+static bool query_play(execution_module *module, player *out)
+{
+    REQUIRE(play(module, out));
+    REQUIRE(ecs_world_destroy_entity(out->world, out->target) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
+    return true;
+}
 static ecs_entity query_add_spot(player *p, float x)
 {
     ecs_entity entity = ecs_world_create_entity(p->world);
@@ -12137,7 +12146,7 @@ TEST_CASE(package_compiler_query_rows_capture_and_restart)
         execution_module *module = NULL;
         player p = { 0 };
         passed = query_stage_one_module(b, "Rows", source, &module) &&
-                 play(module, &p);
+                 query_play(module, &p);
         if (passed) {
             ecs_entity skipped = query_add_spot(&p, 1);
             ecs_entity continued = query_add_spot(&p, 5);
@@ -12191,7 +12200,7 @@ TEST_CASE(package_compiler_query_nested_return_and_empty_iteration)
         execution_module *module = NULL;
         player p = { 0 };
         passed = query_stage_one_module(b, "Nested", source, &module) &&
-                 play(module, &p);
+                 query_play(module, &p);
         if (passed) {
             ecs_entity other = query_add_spot(&p, 7);
             const pin_value delta = { .type = PIN_F32, .f = .25 };
@@ -12228,7 +12237,7 @@ TEST_CASE(package_compiler_query_header_constructs_captured_description)
         execution_module *module = NULL;
         player p = { 0 };
         passed = query_stage_one_module(b, "NestedHeader", source, &module) &&
-                 play(module, &p);
+                 query_play(module, &p);
         if (passed) {
             ecs_entity first = query_add_spot(&p, 2);
             ecs_entity second = query_add_spot(&p, 7);
@@ -12265,7 +12274,7 @@ TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
         execution_module *module = NULL;
         player p = { 0 };
         passed = query_stage_one_module(b, "Apply", source, &module) &&
-                 play(module, &p);
+                 query_play(module, &p);
         if (passed) {
             ecs_entity first = query_add_spot(&p, 2);
             ecs_entity second = query_add_spot(&p, 5);
@@ -12350,7 +12359,7 @@ static bool query_sources_compose(int b, const char *const *identities, const ch
             continue;
         }
         player p = { 0 };
-        passed = play(composed, &p);
+        passed = query_play(composed, &p);
         ecs_entity other = passed ? query_add_spot(&p, 4) : (ecs_entity){ 0 };
         const pin_value delta = { .type = PIN_F32, .f = .25 };
         passed = passed && ecs_entity_to_u64(other) &&
@@ -12420,7 +12429,7 @@ TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper)
         execution_module *module = NULL;
         player p = { 0 };
         passed = query_stage_one_module(b, "Accumulate", source, &module) &&
-                 play(module, &p);
+                 query_play(module, &p);
         if (passed) {
             ecs_entity first = query_add_spot(&p, 2);
             ecs_entity second = query_add_spot(&p, 5);
@@ -12454,7 +12463,7 @@ TEST_CASE(package_compiler_empty_system_runs_only_attached_owner)
         player p = { 0 };
         passed = query_stage_one_module(b, "Empty", source, &module) &&
                  module->plan.system_description == 0 &&
-                 module->plan.query == -1 && play(module, &p);
+                 module->plan.query == -1 && query_play(module, &p);
         if (passed) {
             ecs_entity other = query_add_spot(&p, 7);
             passed = ecs_entity_to_u64(other) && query_step(&p, 0, .25) &&
@@ -12487,7 +12496,7 @@ TEST_CASE(package_compiler_query_generators_bind_target_components)
             execution_module *module = NULL;
             player p = { 0 };
             passed = query_stage_one_module(b, "Targets", sources[sample], &module) &&
-                     play(module, &p);
+                     query_play(module, &p);
             if (passed) {
                 ecs_entity first = query_add_spot(&p, 2);
                 ecs_entity second = query_add_spot(&p, 5);
@@ -12546,7 +12555,7 @@ TEST_CASE(package_compiler_query_optional_guards_and_inferred_values)
         execution_module *module = NULL;
         player p = { 0 };
         passed = query_stage_one_module(b, "Optional", source, &module) &&
-                 play(module, &p);
+                 query_play(module, &p);
         if (passed) {
             ecs_entity present = query_add_spot(&p, 7);
             ecs_entity absent = ecs_world_create_entity(p.world);

@@ -22,8 +22,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Twelve fixed prepared cases. The largest validation fixture has 128 fields
- * and 256 shared headers. No files, frames, worker pools or benchmark loops. */
+/* Fourteen fixed prepared cases. The largest validation fixture has 128 fields
+ * and 256 shared headers, and the type lookup fixture 256 types and up to 512
+ * headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -450,6 +451,124 @@ TEST_CASE(record_prepared_shared_headers_fit_default_work)
     REQUIRE(saved.record && pin_record_valid(saved.record));
     REQUIRE(saved.record->type.field_count == FIELD_COUNT);
     REQUIRE(!strcmp(saved.record->type.fields[FIELD_COUNT - 1].name, names[FIELD_COUNT - 1]));
+    return true;
+}
+enum
+{
+    NAMED_TYPES = 256,
+    NAMED_HEADERS = 256
+};
+/* A prepared image of a module requiring NAMED_TYPES one-field records,
+ * whose `headers` values all have the last one's type. */
+static bool named_headers_image(int headers)
+{
+    static const type_field shape[] = { { .name = "value", .type = PIN_I32 } };
+    plan = execution_module_plan_new();
+    plan->id = function_id = 1;
+    plan->valid = true;
+    const pin_record *record = NULL;
+    for (int i = 0; i < NAMED_TYPES; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "Rows.T%03d", i);
+        record = pin_record_create(&producer, name, 100 + i, shape, 1);
+        REQUIRE(record);
+        apush(
+            plan->types,
+            ((execution_type_requirement){ .id = record->id,
+                                           .storage = PIN_STRUCT,
+                                           .name = record->type.name,
+                                           .record = record,
+                                           .layout = record->layout,
+                                           .size = record->type.size })
+        );
+    }
+    plan->type_count = NAMED_TYPES;
+    const pin_value header = { .type = PIN_STRUCT,
+                               .type_name = record->type.name,
+                               .record = record };
+    builder = behavior_function_builder_new();
+    for (int i = 0; i < headers; i++) {
+        behavior_function_builder_values(builder, &header, 1);
+    }
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    decoded_function = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(decoded_function);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    apush(
+        plan->functions,
+        ((execution_module_function){ .id = function_id,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = decoded_function })
+    );
+    decoded_function = NULL;
+    plan->function_count = 1;
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module && !plan);
+    arena_free(&producer);
+    return encode();
+}
+/* Whether `image` decodes with `layout_work` units of layout work. Any other
+ * failure fails the case. */
+static bool admits_layout_work(size_t layout_work, bool *admitted)
+{
+    input = malloc(image_size);
+    REQUIRE(input);
+    memcpy(input, image, image_size);
+    size_t remaining = EXECUTION_WIRE_MAX_BYTES;
+    execution_prepared_linker bounded = { .layout_work = layout_work };
+    char error[256] = { 0 };
+    module = execution_prepared_read_budget(
+        input,
+        image_size,
+        &bounded,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    free(input);
+    input = NULL;
+    *admitted = module;
+    execution_module_free(module);
+    module = NULL;
+    REQUIRE(*admitted || strstr(error, "layout work limit"));
+    return true;
+}
+/* The least layout work that decodes the image of `headers` named headers. */
+static bool least_layout_work(int headers, size_t *least)
+{
+    REQUIRE(named_headers_image(headers));
+    size_t low = 1, high = EXECUTION_WIRE_MAX_BYTES;
+    bool admitted;
+    REQUIRE(admits_layout_work(high, &admitted) && admitted);
+    while (low < high) {
+        size_t middle = low + (high - low) / 2;
+        REQUIRE(admits_layout_work(middle, &admitted));
+        if (admitted) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    free(image);
+    image = NULL;
+    *least = low;
+    return true;
+}
+/* Each header finds its type by name in log2 of the type count comparisons,
+ * not by a scan of every type before it. A scan charges about NAMED_TYPES
+ * times the name per header; a quarter of that is the bound. */
+TEST_CASE(record_prepared_finds_header_types_by_name)
+{
+    size_t fewer, more;
+    REQUIRE(least_layout_work(NAMED_HEADERS, &fewer));
+    REQUIRE(least_layout_work(2 * NAMED_HEADERS, &more));
+    REQUIRE(more > fewer);
+    size_t each = (more - fewer) / NAMED_HEADERS;
+    size_t name = strlen("Rows.T000") + 2;
+    REQUIRE(each < NAMED_TYPES * name / 4);
     return true;
 }
 /* Exercise the decoded verifier directly: ordinary builder ownership also
@@ -1274,6 +1393,7 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_scalar_owners);
     RUN_TEST_CASE(record_prepared_array_owners);
     RUN_TEST_CASE(record_prepared_shared_headers_fit_default_work);
+    RUN_TEST_CASE(record_prepared_finds_header_types_by_name);
     RUN_TEST_CASE(record_prepared_proof_keeps_each_header_check);
     RUN_TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry);
     RUN_TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog);

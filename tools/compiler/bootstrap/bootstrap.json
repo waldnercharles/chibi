@@ -2,45 +2,55 @@
   "format": 1,
   "version": 7,
   "minimum": 2,
-  "revision": "e2999c25802a094b1fdd2afb68acc1b26206913e",
+  "revision": "8650191915402f5b178512a4a5a506fcf6139d0c-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 23407183,
-    "sha256": "40f7d9ff190559e83fe126d24e0658dfbe3615f22f3d01b573954091af836542"
+    "bytes": 24191259,
+    "sha256": "a7896b5bef87236a6d44155a710566977cf1aecc2a110e7453e7d896dab33a83"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 139078,
-      "sha256": "b2fa332391ab4bd5292e9028d0830bb6c746ac49ab67e6417dd3747418b50c39"
+      "bytes": 144805,
+      "sha256": "0d3344f25a29e165931c4fd37fc14932152d0885976a60742aa5cf53dd891959"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 150415,
-      "sha256": "ea8fe91ad7d83b2cb46bced1fb5e001409d68d253edea174def7c002f7095655"
+      "bytes": 151290,
+      "sha256": "0871673bf1b769fba5e1f814c8f18ee29a818641a11894023573ed662fc96d7c"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 276232,
-      "sha256": "494a635affd4ddd75a81515c2fc2731a1af35935a52d2285463e4d13bf20e428"
+      "bytes": 278052,
+      "sha256": "bf6f7eab954b9cbb7b604b515c7a7188b90649b05529dd047b597674e4b02b92"
     },
     {
       "path": "package_compiler/Maps.chibi",
-      "bytes": 26449,
-      "sha256": "efb325def0f456ad9801a8fa68c7989f45804e3daa77b582cd4bccf3aaa6a88d"
+      "bytes": 26645,
+      "sha256": "fead91bbe435bf1a8e8085a6ebe9fab0cc9a948f53354ba62e2d88e1ec11711f"
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 28721,
-      "sha256": "c99c992077f7d13e10d54aef9c25ce513f50f899c138968941c3c5ea85fef543"
+      "bytes": 28861,
+      "sha256": "e5ada8df00ddc592152fcf59b012ef129f610e1b2a9dd3a362bf9647de971d12"
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 50629,
-      "sha256": "d7fdcd15b58e025c3771736b633946f7eb6bb9166543e3a976440b53e808716e"
+      "bytes": 51134,
+      "sha256": "e44d9e0c04c7ba5a79e62022360ae117e545aed1b97b130e485f3a573c6569ff"
+    },
+    {
+      "path": "package_compiler/Tasks.chibi",
+      "bytes": 11875,
+      "sha256": "ff8c69b0bc921dcb81944da9d00198387b53c4b95b6cf465b65ca491105f18ce"
+    },
+    {
+      "path": "package_compiler/TaskResults.chibi",
+      "bytes": 10453,
+      "sha256": "a75af2a920afff69f0fe56a81b096bcefc260e812d02534a5bc5039d0812547e"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -54,18 +64,18 @@
     },
     {
       "path": "package_compiler/Queries.chibi",
-      "bytes": 92438,
-      "sha256": "43b50829033b2455c0343af2c730f41060deab007b372b4ebdbb4c8ca6be64ea"
+      "bytes": 92494,
+      "sha256": "a78d2abf09d9302b5a8eca505f6246309e6ce8a2f1a3f711bf27f4f7f1b887e3"
     },
     {
       "path": "package_compiler/QueryLoops.chibi",
-      "bytes": 12138,
-      "sha256": "00948cd6712e6ed2b91eeb9b0f398e0b270b50e51057b3d2516a2f6e06da9ecc"
+      "bytes": 12222,
+      "sha256": "05fff29d9134e075213810be4aa1b21688bbc0b6400151ed2e5890a69a06a546"
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 56281,
-      "sha256": "24c4aff82957c0c8e881ce843e501e25fee638ce090705b56b75bb410a043dac"
+      "bytes": 56576,
+      "sha256": "8f3d57dd29ad8c407b04f2caf8a77a274672f60f9b19d27ab437f0e5302c1a2c"
     },
     {
       "path": "package_compiler/Scalar.chibi",
@@ -119,8 +129,8 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 28489,
-      "sha256": "351b1c26b90cfb601461ac6a22eecf77bb50a1b47f2ea5729ffbceee336fa286"
+      "bytes": 29624,
+      "sha256": "c676e64acf679dc69b07398843b42e21161c937a4ccd26d9bfa5d387454499c0"
     },
     {
       "path": "scalar_facts/Facts.chibi",
@@ -137,6 +147,7 @@
       "arguments_offset": 168,
       "delta_seconds_offset": 320,
       "results_offset": 184,
+      "error_status_offset": 472,
       "type_offset": 0,
       "container_offset": 16,
       "name_offset": 24,

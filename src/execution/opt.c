@@ -398,6 +398,11 @@ void behavior_function_runtime_code(behavior_function *f)
         }
     }
     free(saved);
+    int kept = 0;
+    for (int pc = 0; pc < count; pc++) {
+        kept += keep[pc];
+    }
+    asetcap(f->runtime_instructions, kept);
     f->runtime_map = xcalloc((size_t)(count + 1), sizeof *f->runtime_map);
     for (int pc = 0; pc < count; pc++) {
         f->runtime_map[pc] = acount(f->runtime_instructions);

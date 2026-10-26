@@ -2508,6 +2508,70 @@ TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
     REQUIRE(all > first && all - first < one.scratch);
     return true;
 }
+/* The least aggregate budget that loads the module. */
+static size_t least_aggregate_budget(const unsigned char *bytes, size_t length)
+{
+    size_t low = 0, high = EXECUTION_WIRE_MAX_BYTES;
+    while (low + 1 < high) {
+        size_t middle = low + (high - low) / 2, remaining = middle;
+        execution_prepared_linker loose = { .decoded_bytes = EXECUTION_WIRE_MAX_BYTES };
+        char error[192];
+        execution_module *m = execution_prepared_read_budget(
+            bytes,
+            length,
+            &loose,
+            BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        if (m) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+        execution_module_free(m);
+    }
+    return high;
+}
+TEST_CASE(execution_preparation_reserves_the_runtime_code_it_keeps)
+{
+    /* Runtime code vectors are sized once, and preparation reserves that
+     * size rather than doubled capacity. A module of many small definitions
+     * then loads within about its canonical storage plus one definition's
+     * scratch; reserving doubled vectors needs half of every definition's
+     * retained bytes more. */
+    enum
+    {
+        DEFINITIONS = 64,
+        ADDITIONS = 512
+    };
+    char error[192] = { 0 };
+    behavior_function *f = sparse_definition(2, ADDITIONS, error, sizeof error);
+    REQUIRE(f);
+    behavior_function_preparation one = behavior_function_preparation_bytes(f);
+    behavior_function_free(f);
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    REQUIRE(linked_module(4, DEFINITIONS, ADDITIONS, false, &bytes, &length));
+    size_t least = least_aggregate_budget(bytes, length), remaining = least;
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    free(bytes);
+    REQUIRE(m);
+    size_t storage = execution_module_storage_bytes(m);
+    execution_module_free(m);
+    REQUIRE(one.retained > 0 && least >= storage);
+    REQUIRE(least - storage < one.scratch + DEFINITIONS * one.retained / 8);
+    return true;
+}
 /* The verifier admits a definition whose defined-operands matrix is larger
  * than 64 MiB, as the package compiler's EmitBody needs, and refuses one
  * past 256 MiB before allocating it: (count + 1) * 4097 words is 67.2 MB,
@@ -6258,6 +6322,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
     RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
     RUN_TEST_CASE(execution_preparation_reserves_one_definitions_scratch);
+    RUN_TEST_CASE(execution_preparation_reserves_the_runtime_code_it_keeps);
     RUN_TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit);
     RUN_TEST_CASE(execution_verifier_admits_a_large_compiler_function);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);

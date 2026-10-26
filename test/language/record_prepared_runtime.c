@@ -459,8 +459,9 @@ enum
     NAMED_HEADERS = 256
 };
 /* A prepared image of a module requiring NAMED_TYPES one-field records,
+ * listed in name and id order or, when `reversed`, in the reverse of both,
  * whose `headers` values all have the last one's type. */
-static bool named_headers_image(int headers)
+static bool named_headers_image(int headers, bool reversed)
 {
     static const type_field shape[] = { { .name = "value", .type = PIN_I32 } };
     plan = execution_module_plan_new();
@@ -469,8 +470,9 @@ static bool named_headers_image(int headers)
     const pin_record *record = NULL;
     for (int i = 0; i < NAMED_TYPES; i++) {
         char name[16];
-        snprintf(name, sizeof name, "Rows.T%03d", i);
-        record = pin_record_create(&producer, name, 100 + i, shape, 1);
+        int at = reversed ? NAMED_TYPES - 1 - i : i;
+        snprintf(name, sizeof name, "Rows.T%03d", at);
+        record = pin_record_create(&producer, name, 100 + at, shape, 1);
         REQUIRE(record);
         apush(
             plan->types,
@@ -537,9 +539,9 @@ static bool admits_layout_work(size_t layout_work, bool *admitted)
     return true;
 }
 /* The least layout work that decodes the image of `headers` named headers. */
-static bool least_layout_work(int headers, size_t *least)
+static bool least_layout_work(int headers, bool reversed, size_t *least)
 {
-    REQUIRE(named_headers_image(headers));
+    REQUIRE(named_headers_image(headers, reversed));
     size_t low = 1, high = EXECUTION_WIRE_MAX_BYTES;
     bool admitted;
     REQUIRE(admits_layout_work(high, &admitted) && admitted);
@@ -563,8 +565,8 @@ static bool least_layout_work(int headers, size_t *least)
 TEST_CASE(record_prepared_finds_header_types_by_name)
 {
     size_t fewer, more;
-    REQUIRE(least_layout_work(NAMED_HEADERS, &fewer));
-    REQUIRE(least_layout_work(2 * NAMED_HEADERS, &more));
+    REQUIRE(least_layout_work(NAMED_HEADERS, false, &fewer));
+    REQUIRE(least_layout_work(2 * NAMED_HEADERS, false, &more));
     REQUIRE(more > fewer);
     size_t each = (more - fewer) / NAMED_HEADERS;
     size_t name = strlen("Rows.T000") + 2;
@@ -577,9 +579,22 @@ TEST_CASE(record_prepared_finds_header_types_by_name)
 TEST_CASE(record_prepared_finds_repeated_types_by_search)
 {
     size_t least;
-    REQUIRE(least_layout_work(1, &least));
+    REQUIRE(least_layout_work(1, false, &least));
     size_t name = strlen("Rows.T000") + 1;
     REQUIRE(least < NAMED_TYPES * (NAMED_TYPES - 1) / 2 * name / 2);
+    return true;
+}
+/* Making room for a type in the name and id indexes moves the indexes after
+ * its position, and the moves are charged. A table listed in reverse order
+ * moves NAMED_TYPES * (NAMED_TYPES - 1) / 2 indexes in each; one in order
+ * moves none. Half of that is the bound. */
+TEST_CASE(record_prepared_charges_type_index_moves)
+{
+    size_t forward, reversed;
+    REQUIRE(least_layout_work(1, false, &forward));
+    REQUIRE(least_layout_work(1, true, &reversed));
+    REQUIRE(reversed > forward);
+    REQUIRE(reversed - forward >= NAMED_TYPES * (NAMED_TYPES - 1) / 2 * sizeof(int));
     return true;
 }
 /* Exercise the decoded verifier directly: ordinary builder ownership also
@@ -1406,6 +1421,7 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_shared_headers_fit_default_work);
     RUN_TEST_CASE(record_prepared_finds_header_types_by_name);
     RUN_TEST_CASE(record_prepared_finds_repeated_types_by_search);
+    RUN_TEST_CASE(record_prepared_charges_type_index_moves);
     RUN_TEST_CASE(record_prepared_proof_keeps_each_header_check);
     RUN_TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry);
     RUN_TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog);

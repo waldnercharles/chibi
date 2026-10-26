@@ -358,10 +358,12 @@ void prepared_types(prepared_context *c)
             break;
         }
         /* The earlier types are kept in name and id order, so a repeat is
-         * found by two searches rather than a comparison with each. */
+         * found by two searches rather than a comparison with each. Making
+         * room for this type moves the indexes after both positions, which
+         * is charged too: a table listed in reverse order moves count^2. */
         int at = name_position(c, v->name, c->records[i].name_bytes, i);
         int id_at = id_position(c, v->id, i);
-        if (w->error) {
+        if (!work(c, (size_t)(i - at + i - id_at) * sizeof c->records->by_name)) {
             break;
         }
         if ((at < i && !strcmp(p->types[c->records[at].by_name].name, v->name)) ||

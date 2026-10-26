@@ -924,6 +924,15 @@ TEST_CASE(named_binding_analyzer_annotations_match)
         TSNode type = annotation(root, 0);
         REQUIRE(!ts_node_is_null(type));
         TSNode name = ts_node_child_by_field_name(type, "name", 4);
+        /* A pointer annotation names its target's type. */
+        TSNode pointer = ts_node_named_child(type, 0);
+        if (ts_node_is_null(name) && !strcmp(ts_node_type(pointer), "pointer_type")) {
+            name = ts_node_child_by_field_name(
+                ts_node_child_by_field_name(pointer, "target", 6),
+                "name",
+                4
+            );
+        }
         REQUIRE(!ts_node_is_null(name));
         int parameter = -1;
         for (int i = 0; i < analysis->symbol_count; i++) {

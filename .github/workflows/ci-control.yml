@@ -13,10 +13,6 @@ permissions:
   actions: write
   pull-requests: write
 
-concurrency:
-  group: ci-control-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
-
 env:
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
@@ -33,6 +29,8 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       ((github.event.action == 'labeled' && github.event.label.name == 'ci-rerun') ||
       (github.event.action == 'edited' && github.event.changes.base && github.event.pull_request.base.ref == 'main'))
+    # Per job, so unrelated labels and edits never replace a pending request.
+    concurrency: ci-control-rerun-${{ github.event.pull_request.number }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -65,6 +63,7 @@ jobs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.action == 'labeled' && github.event.label.name == 'ci-seed'
+    concurrency: ci-control-seed-${{ github.event.pull_request.number }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

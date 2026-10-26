@@ -8772,23 +8772,26 @@ TEST_CASE(program_version_33_vectors_take_version_34_names)
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     write_whole(path, "version 33\ncontent \"content\"\nstart_scene \"Start.kdl\"\n");
     const char
-        *event = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 3\n"
+        *event = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 4\n"
                  "(array)variables {\n"
                  "    - id=1 name=\"Point\" type=\"struct\" "
                  "type_name=\"CF_V2\"\n"
                  "    - id=2 name=\"Label\" type=\"string\" "
                  "default=\"CF_V3\\\" \\\"CF_V2\"\n"
+                 "    - id=3 name=\"Kind\" type=\"string\" default=\"CF_V2\"\n"
                  "}\n";
     snprintf(path, sizeof path, "%s/content/events/Hit.kdl", root);
     write_whole(path, event);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
     const char
-        *expected = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 3\n"
+        *expected = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 4\n"
                     "(array)variables {\n"
                     "    - id=1 name=\"Point\" type=\"struct\" "
                     "type_name=\"vec2\"\n"
                     "    - id=2 name=\"Label\" type=\"string\" "
                     "default=\"CF_V3\\\" \\\"CF_V2\"\n"
+                    "    - id=3 name=\"Kind\" type=\"string\" "
+                    "default=\"CF_V2\"\n"
                     "}\n";
     REQUIRE(!strcmp(read_whole(path), expected));
     REQUIRE(!unlink(path));

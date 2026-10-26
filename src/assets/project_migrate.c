@@ -6116,8 +6116,29 @@ static void vector_edits(const char *source, TSNode node, text_edit **edits)
         vector_edits(source, ts_node_child(node, i), edits);
     }
 }
+/* Whether the KDL string opening at `quote` is the value of a key that names
+ * a type, such as `type_name="CF_V2"` or `type_name "CF_V2"`. */
+static bool type_name_value(const char *source, const char *quote)
+{
+    static const char *const keys[] = { "type_name", "split_type_name" };
+    const char *end = quote;
+    while (end > source && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '=')) {
+        end--;
+    }
+    const char *start = end;
+    while (start > source && (isalnum((unsigned char)start[-1]) || start[-1] == '_')) {
+        start--;
+    }
+    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+        if (strlen(keys[i]) == (size_t)(end - start) &&
+            !memcmp(start, keys[i], strlen(keys[i]))) {
+            return true;
+        }
+    }
+    return false;
+}
 /* KDL names the vectors only as type name strings, such as an event
- * payload's `type_name "CF_V2"`. */
+ * payload's `type_name "CF_V2"`. Other strings are authored data. */
 static char *vector_strings(const char *source)
 {
     text_edit *edits = NULL;
@@ -6130,7 +6151,7 @@ static char *vector_strings(const char *source)
             break;
         }
         const char *name = vector_name(p + 1, (size_t)(end - p - 1));
-        if (name) {
+        if (name && type_name_value(source, p)) {
             apush(edits, ((text_edit){ (int)(p + 1 - source), (int)(end - source), name }));
         }
         p = end;

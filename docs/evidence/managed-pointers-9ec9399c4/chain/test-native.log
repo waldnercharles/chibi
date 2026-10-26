@@ -1,0 +1,948 @@
+configure-native: running (log: .chibi/logs/1792968140858321051-20427-configure-native.log)
+configure-native: ok (2.9s; log: .chibi/logs/1792968140858321051-20427-configure-native.log)
+build: running (log: .chibi/logs/1792968143834325391-20459-build.log)
+build: ok (10.5s; log: .chibi/logs/1792968143834325391-20459-build.log)
+Range contract: NaN in resolution; using validated default
+Range contract: NaN in bounce_hysteresis; using validated default
+Running: native_save_rejects_invalid_text_without_mutating_store (OK) (0.000532 secs)
+Running: native_prepared_spawn_generations (OK) (0.005650 secs)
+Running: native_prepared_spawn_whole_tree (OK) (0.002283 secs)
+Running: native_prepared_world_runs_source_and_real_physics (OK) (0.008164 secs)
+Running: native_player_loads_package_and_retires_producers (OK) (0.015774 secs)
+Running: native_player_loads_named_scenes (OK) (0.003541 secs)
+Running: native_player_refused_scene_release_preserves_current_state (OK) (0.002171 secs)
+Running: native_player_shutdown_releases_external_panic_sources_including_disabled (OK) (0.004056 secs)
+Running: native_player_plays_sounds (OK) (0.004437 secs)
+Running: native_player_reads_declared_components (OK) (0.004000 secs)
+Running: native_ranges_distinguish_contracts_from_valid_wider_domains (OK) (0.000035 secs)
+Running: native_action_state_combines_sources_per_step (OK) (0.005590 secs)
+Running: native_recorded_taps_replay_per_step (OK) (0.011277 secs)
+Running: native_controller_bindings_replay_per_step (OK) (0.018147 secs)
+Running: native_controller_bindings_reject_invalid_values (OK) (0.000002 secs)
+Running: native_controller_device_handoff_keeps_action_held (OK) (0.003243 secs)
+Running: native_pointer_ray_records_replays_and_clears_focus (OK) (0.012798 secs)
+Running: native_controller_scenario_roundtrip (OK) (0.000946 secs)
+Running: native_pointer_scenario_roundtrip (OK) (0.000762 secs)
+Running: native_pause_keeps_held_actions (OK) (0.004796 secs)
+Running: native_world_binds_physics_for_pushes (OK) (0.003804 secs)
+===============================================================
+Summary: Passed: 21 Failed: 0 Total: 21 Suites: 0 Asserts: 1405
+Running: native_application_catalog_links_generated_kernels_and_input_reads (OK) (0.019214 secs)
+Running: native_catalog_ranges_come_from_validated_target_layouts (OK) (0.000097 secs)
+Running: native_catalog_preserves_builtin_relationship_identity_and_traits (OK) (0.000055 secs)
+Running: native_catalog_identity_lookup_preserves_order_and_duplicate_errors (OK) (0.001852 secs)
+Running: language_catalog_identity_lookup_keeps_namespaces_zero_and_order (OK) (0.001795 secs)
+Running: language_catalog_retains_and_validates_merged_relationships (OK) (0.000182 secs)
+Running: language_catalog_preserves_owned_template_and_specialization_metadata (OK) (0.000129 secs)
+Running: native_project_migration_finalizes_generated_accessors_retryably (OK) (0.161732 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 386
+Running: native_values_preserve_numeric_contracts_and_owned_results (OK) (0.002064 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 46
+Running: audio_bands_follow_tone_frequencies (OK) (0.013720 secs)
+Running: audio_levels_follow_amplitude_and_stay_normalized (OK) (0.013589 secs)
+Running: audio_silence_and_reset_clear_signal_history (OK) (0.027645 secs)
+Running: audio_onset_requires_rising_pcm_energy (OK) (0.013629 secs)
+Running: audio_chunk_boundaries_do_not_change_results_or_allocate (OK) (0.001741 secs)
+Running: audio_format_changes_discard_old_filter_and_window_state (OK) (0.025314 secs)
+Running: audio_antiphase_channels_keep_their_energy (OK) (0.035233 secs)
+Running: audio_source_changes_clear_published_levels (OK) (0.000011 secs)
+Running: audio_snapshot_binding_returns_host_measurements (OK) (0.000005 secs)
+Running: audio_invalid_and_duplicate_sources_preserve_state (OK) (0.000003 secs)
+Running: audio_queue_reset_clears_capture_request_and_snapshot (OK) (0.000004 secs)
+Running: audio_output_measures_the_real_mixer_and_resets_across_sources (OK) (0.006471 secs)
+===============================================================
+Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 298
+Running: noise_shader_transpiles_without_ambiguous_wgsl_comparison (OK) (0.008872 secs)
+Running: particle_vertex_program_transpiles_instanced_geometry_to_wgsl (OK) (0.002581 secs)
+Running: particle_vertex_keeps_instance_buffer_when_program_ignores_index (OK) (0.002283 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 32
+Running: quick_keyboard_release_can_launch_from_the_authored_frame_once (OK) (0.001568 secs)
+Running: quick_pointer_release_can_launch_from_the_authored_frame (OK) (0.001073 secs)
+Running: touch_request_waits_for_its_matching_release_and_owns_the_url (OK) (0.001058 secs)
+Running: a_new_gesture_cancels_the_previous_request (OK) (0.001158 secs)
+Running: pause_escape_and_pointer_cancel_discard_waiting_requests (OK) (0.000994 secs)
+Running: expired_gestures_cannot_launch_before_or_after_timer_delivery (OK) (0.001131 secs)
+Running: released_gestures_without_activation_cannot_wait_for_later_activation (OK) (0.000886 secs)
+Running: hidden_pages_discard_requests_and_reject_launches (OK) (0.000954 secs)
+Running: stop_removes_listeners_and_timers_and_restart_has_no_stale_request (OK) (0.001082 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 67
+Running: browser_frames_leave_the_framework_limiter_disabled (OK) (0.000014 secs)
+Running: native_frames_keep_the_sixty_fps_limit (OK) (0.000001 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 4
+Running: physics_task_pool_runs_every_range (OK) (0.014333 secs)
+Running: physics_rotated_terrain_is_refused (OK) (0.002229 secs)
+Running: physics_authored_motion (OK) (0.011494 secs)
+Running: physics_pushes_divide_by_mass (OK) (0.001469 secs)
+Running: physics_gravity_pulls_bodies_and_fluids (OK) (0.009533 secs)
+Running: physics_hinges_and_sliders_keep_to_their_axis (OK) (0.006878 secs)
+Running: physics_welds_and_distances_hold_bodies (OK) (0.008378 secs)
+Running: physics_joints_follow_their_components (OK) (0.006212 secs)
+Running: physics_joined_bodies_touch_only_with_collide (OK) (0.000988 secs)
+Running: physics_joints_need_two_bodies_and_sound_values (OK) (0.001414 secs)
+Running: physics_joints_name_their_other_by_path (OK) (0.013282 secs)
+Running: physics_contacts_and_queries_at_each_substep_count (OK) (0.160690 secs)
+Running: physics_parallel_collection_matches_serial (OK) (1.663080 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 66
+Running: physics3d_box_falls_rests_and_reports_contact (OK) (0.007139 secs)
+Running: physics3d_shapes_rest_on_their_scaled_extents (OK) (0.006106 secs)
+Running: physics3d_gravity_comes_from_the_scene (OK) (0.001568 secs)
+Running: physics3d_bodies_take_and_return_velocities (OK) (0.003292 secs)
+Running: physics3d_moved_transforms_teleport (OK) (0.005455 secs)
+Running: physics3d_teleports_wake_what_they_land_in (OK) (0.003709 secs)
+Running: physics3d_children_follow_their_parent (OK) (0.004395 secs)
+Running: physics3d_followers_use_the_parent_rotation (OK) (0.000708 secs)
+Running: physics3d_followers_move_with_their_body (OK) (0.000869 secs)
+Running: physics3d_followers_are_part_of_their_body (OK) (0.010147 secs)
+Running: physics3d_followers_move_as_their_body_is_solved (OK) (0.001262 secs)
+Running: physics3d_moving_followers_wake_what_they_meet (OK) (0.007791 secs)
+Running: physics3d_followers_never_touch_their_body (OK) (0.000735 secs)
+Running: physics3d_followers_stop_touching_the_body_they_join (OK) (0.000901 secs)
+Running: physics3d_raycasts_find_the_nearest_collider (OK) (0.000515 secs)
+Running: physics3d_shape_casts_sweep_a_collider (OK) (0.000548 secs)
+Running: physics3d_contact_queries_match_what_touches (OK) (0.008129 secs)
+Running: physics3d_hulls_wrap_mesh_vertices (OK) (0.014033 secs)
+Running: physics3d_meshes_hold_up_convex_bodies (OK) (0.005544 secs)
+Running: physics3d_sensors_overlap_meshes (OK) (0.007962 secs)
+Running: physics3d_hulls_and_meshes_need_prepared_meshes (OK) (0.000691 secs)
+Running: physics3d_hinges_and_sliders_keep_to_their_axis (OK) (0.004177 secs)
+Running: physics3d_balls_welds_and_distances_hold_bodies (OK) (0.005834 secs)
+Running: physics3d_joints_follow_their_components (OK) (0.006044 secs)
+Running: physics3d_joints_ignore_unused_limits_and_start_anywhere (OK) (0.003215 secs)
+Running: physics3d_joints_need_two_bodies_and_sound_values (OK) (0.001163 secs)
+Running: physics3d_characters_slide_along_what_they_meet (OK) (0.015134 secs)
+Running: physics3d_characters_ride_translating_platforms (OK) (0.005600 secs)
+Running: physics3d_characters_ride_rotating_and_dynamic_platforms (OK) (0.010184 secs)
+Running: physics3d_dynamic_platform_forces_do_not_stop_at_the_rider (OK) (0.000896 secs)
+Running: physics3d_platform_carry_stops_at_thin_obstacles (OK) (0.000652 secs)
+Running: physics3d_characters_leave_platforms (OK) (0.008605 secs)
+Running: physics3d_platform_support_drops_replaced_shapes_and_characters (OK) (0.000698 secs)
+Running: physics3d_platform_support_drops_destroyed_bodies (OK) (0.001100 secs)
+Running: physics3d_platform_support_obeys_filters_and_sensors (OK) (0.000815 secs)
+Running: physics3d_platform_support_follows_gravity (OK) (0.002402 secs)
+Running: physics3d_platform_carry_refreshes_sensor_contacts (OK) (0.000773 secs)
+Running: physics3d_platform_carry_stops_at_ceilings (OK) (0.000651 secs)
+Running: physics3d_platform_cannot_push_a_rider_through_a_ceiling (OK) (0.000689 secs)
+Running: physics3d_platform_support_uses_a_followers_body (OK) (0.001369 secs)
+Running: physics3d_platform_tilt_keeps_the_capsule_upright (OK) (0.000829 secs)
+Running: physics3d_characters_meet_only_solid_others (OK) (0.047382 secs)
+Running: physics3d_characters_land_within_a_short_pass (OK) (0.000574 secs)
+Running: physics3d_characters_meet_each_other (OK) (0.002473 secs)
+Running: physics3d_characters_need_a_kinematic_capsule (OK) (0.000890 secs)
+Running: physics3d_pushes_divide_by_mass (OK) (0.000537 secs)
+Running: physics3d_pushes_need_a_dynamic_body (OK) (0.000880 secs)
+Running: physics3d_contacts_end_when_bodies_part_or_go (OK) (0.001734 secs)
+Running: physics3d_masks_and_sensors_filter_contacts (OK) (0.005509 secs)
+Running: physics3d_interpolates_moving_roots_only (OK) (0.000609 secs)
+Running: physics3d_rejects_invalid_colliders (OK) (0.000369 secs)
+Running: physics3d_parallel_steps_match_serial (OK) (0.359674 secs)
+Running: physics3d_runs_as_a_world_module (OK) (0.004295 secs)
+===============================================================
+Summary: Passed: 53 Failed: 0 Total: 53 Suites: 0 Asserts: 1786
+Running: transforms_compose_parents_first (OK) (0.001020 secs)
+Running: transforms_follow_moves_and_reparenting (OK) (0.001909 secs)
+Running: transforms_settle_between_phases_without_physics (OK) (0.001089 secs)
+Running: transforms_compose_3d_matrices (OK) (0.000539 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 39
+Running: box3d_box_falls_rests_and_answers_raycasts (OK) (0.005282 secs)
+Running: box3d_contact_manifold_storage_can_be_reused (OK) (0.003066 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 30
+Running: radiance_files_decode_flat_and_run_length_rows (OK) (0.000283 secs)
+Running: radiance_files_reject_malformed_skies (OK) (0.000084 secs)
+Running: skies_prepare_once_from_mounted_content (OK) (0.001004 secs)
+Running: sky_imports_copy_valid_files_without_replacing_any (OK) (0.000993 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 665
+Running: parse_and_cache (OK) (0.000100 secs)
+Running: invalid_input (OK) (0.000113 secs)
+Running: point_half_open (OK) (0.000041 secs)
+Running: rectangle_overlap (OK) (0.000031 secs)
+Running: transformed_bounds (OK) (0.000005 secs)
+Running: native_queries_and_cache_lifecycle (OK) (0.000680 secs)
+Running: decorative_fixture_prepares_atlas_and_owns_cells (OK) (0.002257 secs)
+Running: mismatched_maps_fail_preparation (OK) (0.001746 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 140
+Running: scene_snapshot_and_complete_deferred_begin (OK) (0.004698 secs)
+Running: scene_failure_preflight_and_pending_begin_cancellation (OK) (0.001151 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 59
+Running: prepared_integers_roundtrip_in_shortest_form (OK) (0.000140 secs)
+Running: prepared_wire_bounds_use_encoded_width (OK) (0.000203 secs)
+Running: prepared_scene_survives_input_retirement_and_instantiation (OK) (0.001519 secs)
+Running: prepared_scene_roundtrips_repeated_component_rows (OK) (0.256817 secs)
+Running: prepared_scene_rejects_component_identity_conflicts (OK) (0.000256 secs)
+Running: prepared_scene_rechecks_shared_layouts_after_nested_catalog_replacement (OK) (0.000166 secs)
+Running: prepared_scene_rejects_incompatible_and_malformed_records (OK) (0.000842 secs)
+Running: prepared_scene_rejects_misplaced_parents_and_sibling_names (OK) (0.000053 secs)
+Running: prepared_scene_rejects_links_to_no_handle (OK) (0.000076 secs)
+Running: prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs (OK) (0.000890 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 13460
+Running: move_groups_topmost_selection_in_scene_order (OK) (0.000414 secs)
+Running: move_rejects_invalid_destinations_without_mutation (OK) (0.000084 secs)
+Running: snapshot_validation_bounds_depth_names_and_identity (OK) (0.005711 secs)
+Running: keep_world_compensates_transformless_2d_groups (OK) (0.000151 secs)
+Running: keep_world_preserves_mirrored_3d_placement (OK) (0.000311 secs)
+Running: keep_world_rejects_singular_and_sheared_3d_atomically (OK) (0.000265 secs)
+Running: keep_world_rejects_finite_compensation_that_loses_position (OK) (0.000112 secs)
+Running: reorder_keeps_local_components_exactly_even_when_singular (OK) (0.000048 secs)
+Running: moved_order_and_paths_round_trip_through_scene_document (OK) (0.001519 secs)
+Running: owned_snapshot_preserves_order_identity_and_local_data (OK) (0.000041 secs)
+Running: owned_snapshot_survives_mutation_and_rejects_stale_generation (OK) (0.000098 secs)
+Running: owned_snapshot_outlives_producer_and_releases_in_either_order (OK) (0.000072 secs)
+Running: owned_snapshot_rejects_other_and_replacement_owners (OK) (0.000051 secs)
+Running: owned_snapshot_rejects_invalid_capture_without_invalidating_prior_data (OK) (0.000013 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 212
+Running: prepared_renderer_resources_publish_atomically_and_retain_retired_tokens (OK) (0.003937 secs)
+Running: sprite_images_join_the_program_set_and_sample_by_variant (OK) (0.000453 secs)
+Running: sky_faces_follow_the_gpu_cube_map_layout (OK) (0.001398 secs)
+Running: sky_faces_hold_texels_as_halves (OK) (0.000172 secs)
+Running: sky_irradiance_integrates_the_cosine_lobe (OK) (0.005474 secs)
+Running: sky_irradiance_saturates_with_the_faces (OK) (0.001870 secs)
+Running: split_sum_table_integrates_the_specular_lobe (OK) (0.114663 secs)
+Running: prepared_skies_publish_with_their_generation (OK) (0.000830 secs)
+Running: discarded_gpu_spans_leave_nothing_to_take (OK) (0.000037 secs)
+Running: world_margins_follow_the_camera_on_whole_cells (OK) (0.000195 secs)
+Running: world_margins_stay_within_the_raster_limit (OK) (0.000012 secs)
+Running: axes_snap_to_whole_work_cells (OK) (0.000007 secs)
+Running: lighting_outside_hrc_ranges_is_fitted_and_noted (OK) (0.000028 secs)
+Running: borders_cover_exactly_the_cells_near_empty_space (OK) (0.005898 secs)
+Running: border_scratch_allocates_nothing_once_warm (OK) (0.005219 secs)
+Running: cached_borders_hit_without_allocating (OK) (0.000854 secs)
+Running: replaced_masks_never_reuse_old_borders (OK) (0.001028 secs)
+Running: border_cache_evicts_the_least_recent (OK) (0.001123 secs)
+Running: border_cache_keeps_its_first_entries_under_pressure (OK) (0.002154 secs)
+Running: oversized_and_unowned_borders_skip_the_cache (OK) (0.002734 secs)
+Running: new_masks_get_their_own_identity (OK) (0.000269 secs)
+Running: border_cache_holds_a_crowd (OK) (3.126590 secs)
+Running: desktop_keys_map_to_their_game_controls (OK) (0.000011 secs)
+Running: stick_dead_zone_rescales_to_full_length (OK) (0.000004 secs)
+===============================================================
+Summary: Passed: 24 Failed: 0 Total: 24 Suites: 0 Asserts: 1692
+Running: persistent_states_own_payloads_and_survive_reordered_generations (OK) (0.002919 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 48
+Running: source_aliases_preserve_nominal_headers_owned_bits_and_nested_calls (OK) (0.075521 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 144
+Running: public_integer_wrapping_division_and_comparisons (OK) (0.058042 secs)
+Running: public_integer_saturating_casts_and_exact_identity (OK) (0.005398 secs)
+Running: public_integer_flags_and_live_math_registers (OK) (0.002173 secs)
+Running: public_integer_loop_budget_preserves_completed_writes (OK) (0.000617 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 112080
+Running: public_numeric_conversions_preserve_edges_and_real_widths (OK) (0.005733 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 2820
+Running: public_select_preserves_each_scalar_width (OK) (0.002635 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 164
+Running: public_math_edge_values_match_native_semantics (OK) (0.016493 secs)
+Running: public_math_calls_preserve_live_registers_and_state (OK) (0.001155 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 32241
+Running: source_owned_tick_values_survive_dispatch_and_publication (OK) (0.089412 secs)
+Running: source_owned_tick_failures_survive_sibling_bank_reuse (OK) (0.083550 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 2916
+Running: source_tick_rebinds_service_after_current_host_call (OK) (0.012203 secs)
+Running: source_tick_preserves_incremental_attachment_state_and_order (OK) (0.007335 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 104
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+source feature dispatch: -106 Saved numbers must be finite
+Running: source_native_reaction_preserves_delay_snapshot_and_target (OK) (0.162586 secs)
+Running: source_native_rhythm_samples_live_clock_after_nested_wait (OK) (0.074046 secs)
+Running: source_native_particles_preserve_nested_wait_and_exact_emission (OK) (0.062368 secs)
+Running: url_requests_validate_copy_replace_and_cancel (OK) (0.000042 secs)
+Running: source_native_url_action_reports_acceptance_and_cancellation (OK) (0.055641 secs)
+Running: source_controller_connected_reads_live_slots (OK) (0.047220 secs)
+Running: source_native_saved_numbers_preserve_values_and_defaults (OK) (0.067571 secs)
+Running: saved_numbers_reject_malformed_text_without_mutation (OK) (0.000091 secs)
+Running: project_saves_reopen_isolate_names_and_respect_override (OK) (0.001491 secs)
+Running: preview_loads_declared_components_before_sources_and_keeps_them_alive (OK) (0.166728 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 481
+source feature dispatch: -106 Native value operation failed
+source feature dispatch: -106 Native value operation failed
+source feature dispatch: -106 Native value operation failed
+source feature dispatch: -106 Native value operation failed
+source feature dispatch: -106 Native value operation failed
+source feature dispatch: -106 Native value operation failed
+Range contract: NaN in value; using validated default
+Range contract: NaN in value; using validated default
+Range contract: NaN in value; using validated default
+Range contract: NaN in value; using validated default
+Running: source_native_motion_retains_numeric_outputs (OK) (0.094147 secs)
+Running: source_native_query_retains_nested_iteration_and_membership (OK) (0.061477 secs)
+Running: source_native_relationship_snapshot_mutations_commit_between_handlers (OK) (0.068460 secs)
+Running: source_native_query_matches_authored_rectangles (OK) (0.080512 secs)
+Running: source_native_physics3d_queries_read_colliders (OK) (0.080938 secs)
+Running: source_tilemap_queries_use_live_authored_cells (OK) (0.053653 secs)
+Running: source_pointer_ray_reads_copied_values_and_inactive_default (OK) (0.052412 secs)
+Running: source_numeric_ranges_clamp_storage_and_survive_program_replacement (OK) (0.086638 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 966
+Running: source_native_material_retains_typed_parameter_writes_after_wait (OK) (0.265807 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 116
+Running: source_view_keeps_constant_definitions (OK) (0.004574 secs)
+Running: source_view_clone_owns_defaults_and_edit_origins (OK) (0.011084 secs)
+Running: source_views_keep_named_invalid_drafts (OK) (0.004261 secs)
+Running: source_view_locals_stay_in_their_callable (OK) (0.003504 secs)
+Running: source_view_entries_have_layout_priority (OK) (0.002500 secs)
+Running: source_view_formulas_preserve_readable_source (OK) (0.006700 secs)
+Running: source_view_linear_flow_follows_authored_order (OK) (0.001134 secs)
+Running: source_view_branch_terminals_do_not_rejoin (OK) (0.002135 secs)
+Running: source_view_loop_break_and_continue_have_distinct_paths (OK) (0.001953 secs)
+Running: source_view_await_completion_precedes_following_statement (OK) (0.001195 secs)
+Running: source_view_set_nodes_keep_statement_and_value_origins (OK) (0.001491 secs)
+Running: source_view_variable_reads_capture_one_named_value (OK) (0.001022 secs)
+Running: source_view_handler_exits_are_explicit_and_completion_is_natural (OK) (0.001046 secs)
+Running: source_view_indexed_setters_keep_address_parts_editable (OK) (0.001090 secs)
+Running: source_view_component_setters_expose_entity_not_component_read (OK) (0.005014 secs)
+Running: source_view_authored_calls_keep_named_typed_editable_ports (OK) (0.006271 secs)
+Running: source_view_effectful_authored_calls_remain_explicit (OK) (0.001864 secs)
+Running: source_view_small_value_calls_fold_with_editable_origins (OK) (0.001670 secs)
+Running: source_view_namespace_fields_are_named_values (OK) (0.001174 secs)
+Running: source_view_short_circuit_effects_are_not_eager_flow (OK) (0.001801 secs)
+Running: native_palette_composition_keeps_declared_capabilities (OK) (0.120692 secs)
+Running: source_view_names_reverse_and_half_open_loops (OK) (0.001739 secs)
+Running: engine_components_present_without_a_document (OK) (0.004319 secs)
+Running: a_document_overrides_engine_presentation_key_by_key (OK) (0.000334 secs)
+===============================================================
+Summary: Passed: 24 Failed: 0 Total: 24 Suites: 0 Asserts: 10215
+Running: native_schedule_preserves_dependencies_and_event_order (OK) (0.001912 secs)
+Running: source_schedule_preserves_query_replacement_and_removal (OK) (0.073801 secs)
+Running: native_schedule_parallel_cohorts_match_serial_outcomes (OK) (0.009815 secs)
+Running: source_schedule_verifies_effects_conflicts_and_observer_barriers (OK) (0.168452 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 1
+Running: source_system_persistent_wait_membership (OK) (0.073136 secs)
+Running: source_system_host_spawn_resume (OK) (0.057944 secs)
+Running: source_behavior_nested_spawn_outlives_frame (OK) (0.058717 secs)
+Running: source_system_live_component_resume (OK) (0.055632 secs)
+Running: source_system_optional_membership_roundtrip (OK) (0.117693 secs)
+Running: source_system_any_query_membership (OK) (0.058325 secs)
+Running: source_system_empty_any_query_matches_nothing (OK) (0.057229 secs)
+Running: source_system_reactive_checkpoint (OK) (0.055652 secs)
+Running: source_system_synchronous_batch_path (OK) (0.058962 secs)
+Running: source_system_camera_follow_runtime (OK) (0.064778 secs)
+Running: source_input_actions_deliver_one_typed_edge_without_graph_objects (OK) (0.050732 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 334
+Running: source_query_tuple_locals_wait_shared_reload_and_generation (OK) (0.076208 secs)
+Running: source_query_changed_consumers_preserve_busy_writes (OK) (0.058486 secs)
+Running: source_query_changed_provider_and_pure_helper (OK) (0.086224 secs)
+Running: source_query_value_snapshot_streams_without_instances (OK) (0.060523 secs)
+Running: source_query_filters_gate_both_binding_paths (OK) (0.058869 secs)
+Running: source_query_chained_rows_keep_events_and_inspection_distinct (OK) (0.062505 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 202
+reduction frame: System Failed: Failed:1:43: Reduction destination is unavailable
+reduction frame: System Failed: Failed:1:43: Reduction destination is unavailable
+reduction frame: System Failed: Failed:1:43: Reduction destination is unavailable
+reduction frame: System Failed: Failed:1:43: Reduction destination is unavailable
+reduction schedule: System ReduceB: injected prepare failure
+reduction schedule: System Failed: Failed:1:43: Reduction destination is unavailable
+Running: source_reductions_publish_before_dependent_filtered_query (OK) (0.287411 secs)
+Running: source_reductions_keep_row_order_and_comparison_select_values (OK) (0.155383 secs)
+Running: source_reductions_discard_failed_system_and_later_peers (OK) (0.202299 secs)
+Running: source_unordered_reductions_regroup_only_when_requested (OK) (0.117143 secs)
+Running: source_reductions_run_on_distinct_worker_threads (OK) (0.039564 secs)
+Running: source_reductions_discard_prepared_cohort_after_prepare_failure (OK) (0.038341 secs)
+Running: source_reductions_preflight_all_records_before_publication (OK) (0.106402 secs)
+Running: source_parallel_rows_keep_order_and_discard_failed_dispatch (OK) (0.113431 secs)
+Running: source_parallel_rows_publish_through_scheduler_hook (OK) (0.049208 secs)
+Running: source_parallel_rows_fall_back_for_inspection_and_profiling (OK) (0.166749 secs)
+Running: source_reductions_cancel_later_paused_peer_after_earlier_failure (OK) (0.049265 secs)
+Running: source_reductions_resume_post_physics_without_replaying_prior_stages (OK) (0.074236 secs)
+Running: source_reductions_discard_paused_log_when_descriptor_edit_restarts_phase (OK) (0.029186 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 3980
+Running: source_reductions_benchmark_same_authored_workload BENCH source-reductions mode=ordered execution=serial rows=256 systems=2 passes=8 trial=0 ns/pass=15114591.62 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=serial rows=256 systems=2 passes=8 trial=1 ns/pass=13149510.13 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=serial rows=256 systems=2 passes=8 trial=2 ns/pass=9440107.50 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=serial rows=256 systems=2 passes=8 trial=3 ns/pass=9485251.62 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=serial rows=256 systems=2 passes=8 trial=4 ns/pass=14832456.75 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=parallel rows=256 systems=2 passes=8 trial=0 ns/pass=9689282.00 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=parallel rows=256 systems=2 passes=8 trial=1 ns/pass=8846722.00 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=parallel rows=256 systems=2 passes=8 trial=2 ns/pass=9648859.13 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=parallel rows=256 systems=2 passes=8 trial=3 ns/pass=6628435.75 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=ordered execution=parallel rows=256 systems=2 passes=8 trial=4 ns/pass=6932302.75 published_writes=8192 contributions=1024 records=1024 log_bytes=81920 reduction_peak_bytes=82016 reduction_retained_bytes=82016 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=serial rows=256 systems=2 passes=8 trial=0 ns/pass=8145542.63 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=serial rows=256 systems=2 passes=8 trial=1 ns/pass=8278190.62 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=serial rows=256 systems=2 passes=8 trial=2 ns/pass=8163276.75 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=serial rows=256 systems=2 passes=8 trial=3 ns/pass=8033898.50 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=serial rows=256 systems=2 passes=8 trial=4 ns/pass=7947023.13 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=parallel rows=256 systems=2 passes=8 trial=0 ns/pass=9319994.25 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=parallel rows=256 systems=2 passes=8 trial=1 ns/pass=4814408.12 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=parallel rows=256 systems=2 passes=8 trial=2 ns/pass=5170330.37 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=parallel rows=256 systems=2 passes=8 trial=3 ns/pass=6044720.75 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=unordered execution=parallel rows=256 systems=2 passes=8 trial=4 ns/pass=6754543.62 published_writes=32 contributions=1024 records=4 log_bytes=320 reduction_peak_bytes=2880 reduction_retained_bytes=2880 row_retained_bytes=4192 instances=0 instance_bytes=0 activation_cache_bytes=22120 xalloc_calls=16 requested_bytes=576 parallel_batches=8 worker_budget=2 worker_mask=3 total=1536 count=6144
+BENCH source-reductions mode=direct execution=serial rows=256 systems=2 passes=8 trial=0 ns/pass=12862442.38 published_writes=8192 contributions=0 records=0 log_bytes=0 reduction_peak_bytes=0 reduction_retained_bytes=0 row_retained_bytes=0 instances=512 instance_bytes=167936 activation_cache_bytes=22248 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=direct execution=serial rows=256 systems=2 passes=8 trial=1 ns/pass=14441322.87 published_writes=8192 contributions=0 records=0 log_bytes=0 reduction_peak_bytes=0 reduction_retained_bytes=0 row_retained_bytes=0 instances=512 instance_bytes=167936 activation_cache_bytes=22248 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=direct execution=serial rows=256 systems=2 passes=8 trial=2 ns/pass=17843911.50 published_writes=8192 contributions=0 records=0 log_bytes=0 reduction_peak_bytes=0 reduction_retained_bytes=0 row_retained_bytes=0 instances=512 instance_bytes=167936 activation_cache_bytes=22248 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=direct execution=serial rows=256 systems=2 passes=8 trial=3 ns/pass=13980139.50 published_writes=8192 contributions=0 records=0 log_bytes=0 reduction_peak_bytes=0 reduction_retained_bytes=0 row_retained_bytes=0 instances=512 instance_bytes=167936 activation_cache_bytes=22248 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+BENCH source-reductions mode=direct execution=serial rows=256 systems=2 passes=8 trial=4 ns/pass=13130271.50 published_writes=8192 contributions=0 records=0 log_bytes=0 reduction_peak_bytes=0 reduction_retained_bytes=0 row_retained_bytes=0 instances=512 instance_bytes=167936 activation_cache_bytes=22248 xalloc_calls=16 requested_bytes=576 parallel_batches=0 worker_budget=2 worker_mask=0 total=1536 count=6144
+(OK) (2.655334 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 990
+Running: source_execution_benchmark_tiny_light_and_heavy_rows BENCH source-execution rows=16 iterations=1 execution=serial mode=unordered passes=4 trial=0 ns/pass=419648.25 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=serial mode=unordered passes=4 trial=1 ns/pass=439029.75 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=serial mode=unordered passes=4 trial=2 ns/pass=422114.50 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=serial mode=unordered passes=4 trial=3 ns/pass=434027.75 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=serial mode=unordered passes=4 trial=4 ns/pass=407900.75 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=1024 iterations=1 execution=serial mode=unordered passes=4 trial=0 ns/pass=24367228.25 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=serial mode=unordered passes=4 trial=1 ns/pass=24554493.75 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=serial mode=unordered passes=4 trial=2 ns/pass=24738473.00 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=serial mode=unordered passes=4 trial=3 ns/pass=24501147.50 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=serial mode=unordered passes=4 trial=4 ns/pass=24402865.25 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=unordered passes=4 trial=0 ns/pass=24493882.00 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=unordered passes=4 trial=1 ns/pass=24698992.50 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=unordered passes=4 trial=2 ns/pass=24488953.00 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=unordered passes=4 trial=3 ns/pass=25233491.75 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=unordered passes=4 trial=4 ns/pass=24956953.50 published_writes=8 contributions=2048 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=ordered passes=4 trial=0 ns/pass=29834606.50 published_writes=8192 contributions=2048 records=2048 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=32 requested_bytes=1307136 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=ordered passes=4 trial=1 ns/pass=27853466.50 published_writes=8192 contributions=2048 records=2048 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=32 requested_bytes=1307136 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=ordered passes=4 trial=2 ns/pass=28562454.50 published_writes=8192 contributions=2048 records=2048 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=32 requested_bytes=1307136 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=ordered passes=4 trial=3 ns/pass=28398063.75 published_writes=8192 contributions=2048 records=2048 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=32 requested_bytes=1307136 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=serial mode=ordered passes=4 trial=4 ns/pass=38075971.50 published_writes=8192 contributions=2048 records=2048 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=32 requested_bytes=1307136 activation_cache_bytes=21522 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=0 total=-641416263680 count=-1466136576
+BENCH source-execution rows=16 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=0 ns/pass=427592.25 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=1 ns/pass=446581.25 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=2 ns/pass=431762.25 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=3 ns/pass=417098.00 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=16 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=4 ns/pass=407773.75 published_writes=8 contributions=32 records=2 row_jobs=0 row_workers=0 worker_budget=2 worker_mask=0 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=21522 row_retained_bytes=176 reduction_retained_bytes=1440 worker_retained_bytes=0 total=65795371872 count=1370862432
+BENCH source-execution rows=1024 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=0 ns/pass=13447594.75 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=1 ns/pass=15517595.25 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=2 ns/pass=14327775.75 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=3 ns/pass=21733817.00 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=1 execution=parallel-requested mode=unordered passes=4 trial=4 ns/pass=17664936.00 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=4210903799808 count=1835849728
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=unordered passes=4 trial=0 ns/pass=20101080.00 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=unordered passes=4 trial=1 ns/pass=16280777.25 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=unordered passes=4 trial=2 ns/pass=18415727.75 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=unordered passes=4 trial=3 ns/pass=13701462.25 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=unordered passes=4 trial=4 ns/pass=14269129.75 published_writes=8 contributions=2048 records=2 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=0 requested_bytes=0 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=1440 worker_retained_bytes=49092 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=ordered passes=4 trial=0 ns/pass=17076100.00 published_writes=8192 contributions=2048 records=2048 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=88 requested_bytes=2610304 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=46212 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=ordered passes=4 trial=1 ns/pass=17304403.25 published_writes=8192 contributions=2048 records=2048 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=88 requested_bytes=2610304 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=46212 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=ordered passes=4 trial=2 ns/pass=17740123.75 published_writes=8192 contributions=2048 records=2048 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=88 requested_bytes=2610304 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=46212 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=ordered passes=4 trial=3 ns/pass=18250182.50 published_writes=8192 contributions=2048 records=2048 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=88 requested_bytes=2610304 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=46212 total=-641416263680 count=-1466136576
+BENCH source-execution rows=1024 iterations=64 execution=parallel-requested mode=ordered passes=4 trial=4 ns/pass=18186858.50 published_writes=8192 contributions=2048 records=2048 row_jobs=2 row_workers=2 worker_budget=2 worker_mask=3 xalloc_calls=88 requested_bytes=2610304 activation_cache_bytes=0 row_retained_bytes=8240 reduction_retained_bytes=0 worker_retained_bytes=46212 total=-641416263680 count=-1466136576
+(OK) (4.052728 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 1488
+Source edit kind 0 rejected: Incompatible types: expected double, got string
+Source edit kind 0 rejected: Provide exactly one value expression
+Source edit kind 0 rejected: Source changed; refresh this gesture's semantic generation
+Source edit kind 34 rejected: Incompatible types: expected double, got string
+Source edit kind 34 rejected: Choose a declared variable
+Source edit kind 35 rejected: Operation has no compatible typed operands
+Source edit kind 35 rejected: Choose one valid variable type
+Source edit kind 35 rejected: Choose one valid variable type
+Source edit kind 1 rejected: Incompatible types: expected double, got string
+Source edit kind 20 rejected: Supply the required capability input before creating this call
+Source edit kind 1 rejected: Name this producer's result before connecting it; the connection would evaluate it twice
+Source edit kind 1 rejected: Connection would resolve a producer name to a different declaration in this scope
+Source edit kind 4 rejected: Unknown value 'current'
+Source edit kind 9 rejected: Paste or create complete records within the selected lexical body
+Source edit kind 26 rejected: Only action declarations support disabled source syntax
+Source edit kind 23 rejected: Renaming would capture or change a resolved reference
+Source edit kind 5 rejected: Source literal does not match the declared value type
+Source edit kind 18 rejected: This required input needs an explicit replacement value
+Source edit kind 30 rejected: Extraction cannot change the owning callable of Return
+Source edit kind 30 rejected: Extraction must retain persistent or deferred storage identity
+Source edit kind 30 rejected: Extraction must retain persistent or deferred storage identity
+Source edit kind 32 rejected: Inlining reference parameters requires local reference aliases
+Source edit kind 32 rejected: Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition
+Source edit kind 32 rejected: Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition
+Source edit kind 32 rejected: Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition
+Source edit kind 32 rejected: Inline a whole call statement or complete assigned call result
+Source edit kind 32 rejected: Caller shadows a resolved name used by the authored definition
+Source edit kind 32 rejected: Inlining must retain callable-owned persistent or deferred storage
+Source edit kind 32 rejected: Inlining must retain callable-owned persistent or deferred storage
+Source edit kind 28 rejected: Signature changes would invalidate or capture a body reference
+Source edit kind 28 rejected: Provide one callable signature within 64 KiB: (parameters) or (parameters) -> (results)
+Source edit kind 29 rejected: Connection would resolve a producer name to a different declaration in this scope
+Running: source_capability_creation_uses_properties_operators_and_positional_arguments (OK) (0.035118 secs)
+Running: source_expression_edits_validate_value_scope_and_generation (OK) (0.007585 secs)
+Running: source_setter_value_edits_preserve_the_destination (OK) (0.006827 secs)
+Running: source_variable_get_set_creation_uses_declared_state_and_checked_values (OK) (0.032338 secs)
+Running: source_variable_creation_uses_identifiers_and_keeps_nonliteral_defaults_editable (OK) (0.019674 secs)
+Running: source_variable_types_preserve_comments_values_and_checked_uses (OK) (0.022070 secs)
+Running: source_retype_compact_inferred_retention_preserves_owner (OK) (0.009971 secs)
+Running: source_connections_reference_retained_results_and_reject_repeated_effects (OK) (0.021507 secs)
+Running: source_connections_read_listed_payload_fields (OK) (0.002521 secs)
+Running: source_created_handlers_list_payload_fields (OK) (0.005085 secs)
+Running: source_statement_moves_keep_comments_and_validate_declaration_order (OK) (0.008350 secs)
+Running: source_fused_call_edits_select_expression_or_statement_by_operation (OK) (0.025189 secs)
+Running: source_fused_action_call_mute_edits_its_owned_declaration (OK) (0.010428 secs)
+Running: source_selection_transactions_preserve_names_and_comments (OK) (0.018240 secs)
+Running: source_optional_arguments_and_typed_values_are_checked_atomically (OK) (0.017039 secs)
+Running: source_extraction_preserves_ref_inputs_and_escaping_locals (OK) (0.029464 secs)
+Running: source_ref_calls_are_created_and_inlining_is_rejected (OK) (0.009332 secs)
+Running: source_inline_spells_char_parameters (OK) (0.011268 secs)
+Running: source_inline_renames_resolved_locals_and_preserves_early_return (OK) (0.036102 secs)
+Running: source_signatures_and_bindings_preserve_resolved_body_and_scope (OK) (0.014406 secs)
+===============================================================
+Summary: Passed: 20 Failed: 0 Total: 20 Suites: 0 Asserts: 358
+Running: new_asset_create_writes_the_template_once_into_its_folder (OK) (0.005210 secs)
+Running: new_asset_source_templates_use_canonical_identifiers_and_headers (OK) (0.004324 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 64
+Running: prototype_children_follow_a_rename (OK) (0.009112 secs)
+Running: qualified_shader_bindings_resolve_functions (OK) (0.000079 secs)
+Running: qualified_shader_bindings_follow_library_and_function_renames (OK) (0.012276 secs)
+Running: qualified_shader_bindings_reject_stale_refactors (OK) (0.001356 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 41
+Running: shader_parameters_persist_and_reject_stale_generations (OK) (0.006934 secs)
+Running: shader_bindings_prepare_their_material_values (OK) (0.002254 secs)
+Running: particle_function_parameters_survive_preparation (OK) (0.009075 secs)
+Running: particle_function_stages_and_rejects_mesh_material_use (OK) (0.001684 secs)
+Running: particle_function_signature_and_context_are_checked (OK) (0.001123 secs)
+Running: particle_function_links_library_helpers (OK) (0.006813 secs)
+Running: model_parameters_match_reconstructed_prepared_generation (OK) (0.003826 secs)
+Running: preview_publishes_and_removes_particle_functions (OK) (0.009122 secs)
+Running: preview_updates_particle_helpers_and_rejects_invalid_programs (OK) (0.009953 secs)
+Running: particle_source_budget_reclaims_destroyed_fields (OK) (0.005197 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 1155
+Running: prepared_artifact_crosses_producer_process_and_runtime_only_link Running: prepared_rejects_hidden_empty_collection_task_schema (OK) (0.000393 secs)
+Running: prepared_operations_write_after_catalog_retirement (OK) (0.020441 secs)
+Running: prepared_source_generations_write_after_analysis_retirement (OK) (0.019624 secs)
+Running: prepared_external_closure_generations (OK) (0.024694 secs)
+Running: prepared_state_action_generations_write_after_catalog_retirement (OK) (0.010401 secs)
+Running: prepared_field_observer_generation_preserves_authoritative_schema (OK) (0.002919 secs)
+Running: prepared_debug_source_points_write_after_analysis_retirement (OK) (0.003176 secs)
+Running: prepared_scalar_getter_write_after_catalog_retirement (OK) (0.002355 secs)
+Running: prepared_native_header_write_after_catalog_retirement (OK) (0.003097 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 238
+Running: prepared_runtime_operations_keep_owner_and_live_values_without_native_callbacks prepared-operations phase=dispatch backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+prepared-operations phase=resume backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+prepared-operations phase=stored-completion backend=bytecode bytecode=2 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+prepared-operations phase=dispatch backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+prepared-operations phase=resume backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+prepared-operations phase=stored-completion backend=sljit bytecode=0 sljit=2 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+(OK) (0.009856 secs)
+Running: prepared_runtime_state_events_bindings_and_imports (OK) (0.012075 secs)
+Running: prepared_runtime_rejects_missing_or_incompatible_linkage (OK) (0.006263 secs)
+Running: prepared_runtime_rejects_malformed_wire (OK) (0.004672 secs)
+Running: prepared_runtime_shared_storage_budget_charges_only_success (OK) (0.008143 secs)
+Running: prepared_runtime_package_resolves_reversed_records_atomically (OK) (0.043944 secs)
+Running: prepared_declared_event_linker_policy (OK) (0.005322 secs)
+Running: prepared_package_validates_complete_external_closure (OK) (0.044943 secs)
+Running: prepared_runtime_state_action_banks_survive_wire_and_replacement (OK) (0.013239 secs)
+Running: prepared_runtime_field_observer_baseline_edges_and_retarget (OK) (0.003673 secs)
+Running: prepared_runtime_debugger_uses_decoded_occurrences_without_compiler (OK) (0.004913 secs)
+Running: prepared_runtime_scalar_getter_executes_after_wire_retirement (OK) (0.002751 secs)
+Running: prepared_runtime_scalar_getter_rejects_old_version_and_forged_range (OK) (0.001489 secs)
+Running: prepared_runtime_owned_native_header_checks_linked_layout (OK) (0.001713 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 767
+(OK) (0.009697 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 5
+Running: ecs_query_benchmark_dense_pair ecs query benchmark dense-pair     109.46 ns/entity   448.33 ms
+(OK) (0.445704 secs)
+Running: ecs_query_benchmark_bitset_scan ecs query benchmark bitset-scan    107.93 ns/entity   221.03 ms
+(OK) (0.218058 secs)
+Running: ecs_query_benchmark_boolean ecs query benchmark boolean        709.98 ns/entity  2181.06 ms
+(OK) (2.145262 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 3
+Running: scheduler_benchmark_identical_registration BENCH scheduler=refresh systems=12 passes=128 trial=0 ns/pass=64446.61 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=refresh systems=12 passes=128 trial=1 ns/pass=41108.68 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=refresh systems=12 passes=128 trial=2 ns/pass=33822.79 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=refresh systems=12 passes=128 trial=3 ns/pass=32109.70 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=refresh systems=12 passes=128 trial=4 ns/pass=32739.07 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+(OK) (0.026899 secs)
+Running: scheduler_benchmark_warm_dispatch BENCH scheduler=run systems=12 passes=128 trial=0 ns/pass=20159.50 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=run systems=12 passes=128 trial=1 ns/pass=36272.17 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=run systems=12 passes=128 trial=2 ns/pass=23238.91 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=run systems=12 passes=128 trial=3 ns/pass=19195.71 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+BENCH scheduler=run systems=12 passes=128 trial=4 ns/pass=20244.12 xalloc_calls=0 requested_bytes=0 checksum=9984 retained_bytes=3376
+(OK) (0.013839 secs)
+Running: scheduler_benchmark_replacement_preserves_owned_snapshots (OK) (0.000350 secs)
+Running: scheduler_unchanged_descriptors_and_small_batches_allocate_nothing (OK) (0.000098 secs)
+Running: scheduler_effect_and_order_changes_rebuild_dependencies (OK) (0.000452 secs)
+Running: scheduler_callback_changes_and_retries_keep_failure_order (OK) (0.000466 secs)
+Running: scheduler_row_hooks_run_on_submitter_and_refresh_registration (OK) (0.000180 secs)
+Running: scheduler_recursive_dispatch_keeps_outer_batch_storage (OK) (0.000053 secs)
+Running: scheduler_large_batches_do_not_retain_unbounded_scratch (OK) (0.005935 secs)
+Running: scheduler_reductions_commit_before_dependent_preparation (OK) (0.000071 secs)
+Running: scheduler_reduction_failure_discards_unpublished_peers (OK) (0.000084 secs)
+Running: scheduler_paused_batch_resumes_without_replaying_predecessors (OK) (0.000064 secs)
+Running: scheduler_finish_pause_defers_later_publication (OK) (0.000044 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 799
+Running: preview_owns_project_components_until_its_world_is_freed (OK) (0.200501 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 39
+Running: node_comments_fold_save_and_reload (OK) (0.003763 secs)
+Running: comment_lines_round_trip_through_asset_documents (OK) (0.001229 secs)
+Running: non_string_comments_are_rejected (OK) (0.000226 secs)
+Running: comment_frames_keep_title_color_and_bounds (OK) (0.000623 secs)
+Running: input_lookup_follows_edits (OK) (0.002270 secs)
+Running: concurrent_first_readers_share_the_index (OK) (0.018092 secs)
+Running: pasted_edges_index_each_copy (OK) (0.002835 secs)
+Running: exec_lookup_follows_edits (OK) (0.000114 secs)
+Running: invalid_exec_fan_out_stays_inspectable (OK) (0.000190 secs)
+Running: descriptors_carry_reflected_types_and_policy (OK) (0.000224 secs)
+Running: ids_and_instance_pins_stay_stable (OK) (0.001085 secs)
+Running: authored_defaults_and_literals_save (OK) (0.001363 secs)
+Running: real_inputs_convert_between_widths (OK) (0.000042 secs)
+Running: data_edges_replace_remove_and_fan_out (OK) (0.000157 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 252
+Running: single_use_constants_fold_unless_kept (OK) (0.000372 secs)
+Running: auto_folds_small_trees_and_explicit_inline_folds_larger (OK) (0.000405 secs)
+Running: settings_and_reroutes_keep_boxes_and_locals_fold (OK) (0.000665 secs)
+Running: removing_a_tree_removes_its_inline_sources (OK) (0.000339 secs)
+Running: function_entries_keep_their_boxes (OK) (0.000352 secs)
+Running: presentations_and_placement_round_trip (OK) (0.008782 secs)
+Running: arrangement_ignores_inline_nodes (OK) (0.001126 secs)
+Running: expressions_format_with_precedence (OK) (0.001566 secs)
+Running: component_reads_format_like_their_bindings (OK) (0.003444 secs)
+Running: shader_and_field_operations_format_as_expressions (OK) (0.000318 secs)
+Running: find_matches_titles_values_and_comments (OK) (0.000056 secs)
+Running: find_matches_expression_pins_source_and_bindings (OK) (0.000026 secs)
+Running: nodes_read_their_types_and_components_sentences (OK) (0.001396 secs)
+Running: events_read_their_own_sentences (OK) (0.000101 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 128
+Running: asset_documents_keep_authored_surfaces (OK) (0.002184 secs)
+Running: function_calls_mirror_their_signatures (OK) (0.003490 secs)
+Running: function_signature_edits_reach_every_call (OK) (0.002421 secs)
+Running: purity_toggles_execution_pins_on_calls (OK) (0.000244 secs)
+Running: material_functions_stay_pure (OK) (0.000051 secs)
+Running: variables_duplicate_and_own_their_defaults (OK) (0.000134 secs)
+Running: macro_signature_edits_reach_every_call (OK) (0.002217 secs)
+Running: input_defaults_reach_calls_that_kept_them (OK) (0.000117 secs)
+Running: promoted_outputs_run_after_a_free_then (OK) (0.000175 secs)
+Running: moved_function_pins_move_on_returns_and_calls (OK) (0.001752 secs)
+Running: moved_macro_pins_move_on_calls (OK) (0.000096 secs)
+Running: branches_collapse_to_macros_and_expand_back (OK) (0.008830 secs)
+Running: pure_calls_expand_into_their_calculations (OK) (0.003353 secs)
+Running: executable_calls_expand_into_their_body (OK) (0.001787 secs)
+Running: calls_that_cannot_expand_keep_their_call (OK) (0.000091 secs)
+Running: library_problems_show_once_under_the_library (OK) (0.001465 secs)
+Running: calls_into_missing_libraries_are_one_error (OK) (0.000414 secs)
+Running: validation_compiles_with_the_libraries_called (OK) (0.000720 secs)
+===============================================================
+Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 182
+Running: vector_extremes_defaults_and_zero_scale (OK) (0.002209 secs)
+Running: vectors_scale_by_integers (OK) (0.000045 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 54
+Running: kdl_parser_owns_each_property_name (OK) (0.001267 secs)
+Running: kdl_reads_typed_values_and_writes_them_canonically (OK) (0.002160 secs)
+Running: kdl_reals_round_trip_exactly_and_read_plainly (OK) (0.000775 secs)
+Running: kdl_floats_keep_their_bits_through_copies (OK) (0.000494 secs)
+Running: kdl_strings_escape_separators_and_decode_scalars (OK) (0.000321 secs)
+Running: kdl_rejects_invalid_shapes_with_a_location (OK) (0.000405 secs)
+Running: asset_value_snapshots_own_their_values (OK) (0.000321 secs)
+Running: asset_value_collections_keep_order_and_exact_numbers (OK) (0.000200 secs)
+Running: asset_value_json_owns_its_strings (OK) (0.000230 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 172
+Running: ui_bound_values (OK) (0.000110 secs)
+Running: ui_composed_document (OK) (0.000510 secs)
+Running: ui_rejected_documents (OK) (0.000178 secs)
+Running: ui_last_valid_document (OK) (0.000060 secs)
+Running: ui_nested_rcss (OK) (0.000711 secs)
+Running: ui_page_document (OK) (0.000656 secs)
+Running: ui_expanded_widgets (OK) (0.002219 secs)
+Running: ui_expanded_sources (OK) (0.001432 secs)
+Running: ui_scoped_styles (OK) (0.000158 secs)
+Running: ui_named_events (OK) (0.000161 secs)
+Running: rcss_flattens_nesting_media_and_comments (OK) (0.001202 secs)
+Running: rcss_errors_name_their_line (OK) (0.000180 secs)
+Running: rcss_lists_custom_properties_as_written (OK) (0.000098 secs)
+Running: rcss_maps_lines_through_expansion_and_joins (OK) (0.000319 secs)
+Running: rcss_imports_resolve_in_order_once (OK) (0.000615 secs)
+===============================================================
+Summary: Passed: 15 Failed: 0 Total: 15 Suites: 0 Asserts: 79
+Running: file_watch_sees_edits_replacements_and_removals (OK) (0.000807 secs)
+Running: text_overlay_reads_in_place_of_files (OK) (0.000903 secs)
+Running: text_edits_apply_against_the_original_text (OK) (0.000029 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 16
+Running: fmt_substitutes_positional_and_typed_arguments (OK) (0.000287 secs)
+Running: fmt_parses_runtime_specifiers_and_empties_missing_placeholders (OK) (0.000029 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 12
+Running: particle_curves_and_steps_are_frame_rate_independent (OK) (0.000254 secs)
+Running: particle_bursts_move_expire_and_reset_deterministically (OK) (0.000125 secs)
+Running: particle_bursts_stay_bounded_and_finite (OK) (0.001179 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 6259
+Running: png_zlib_header_declares_the_32k_window_and_round_trips (OK) (0.000570 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 3
+Running: project_manifests_open_only_supported_versions (OK) (0.001786 secs)
+Running: project_creation_writes_an_empty_start_scene (OK) (0.001858 secs)
+Running: contract_projects_resolve_their_own_content (OK) (0.000772 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 4
+Running: rebase_keeps_local_values_over_evolving_defaults (OK) (0.005058 secs)
+Running: retained_strings_survive_clones_and_renames (OK) (0.000882 secs)
+Running: detached_components_spawn_absent_and_reattach (OK) (0.003659 secs)
+Running: prototype_includes_override_and_save_deterministically (OK) (0.001819 secs)
+Running: prototype_spawns_edits_and_captures_overrides (OK) (0.000876 secs)
+Running: scene_documents_save_reflected_values_readably (OK) (0.001080 secs)
+Running: scene_documents_round_trip_entities_and_physics (OK) (0.001399 secs)
+Running: scene_documents_refuse_invalid_physics_names_and_versions (OK) (0.000589 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 196
+Running: reference_assets_keep_identity_by_path_and_key (OK) (0.000405 secs)
+Running: reference_relationship_sources_resolve_their_declared_asset_identity (OK) (0.002396 secs)
+Running: reference_graphs_index_every_kind_of_symbol (OK) (0.088687 secs)
+Running: reference_documents_index_prototypes_objects_and_ui (OK) (0.001030 secs)
+Running: reference_calls_climb_handlers_and_detect_cycles (OK) (0.082411 secs)
+Running: scene_pages_bind_and_rename_with_their_scenes (OK) (0.001584 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 77
+Running: asset_source_completes_unset_properties (OK) (0.674230 secs)
+Running: asset_source_resolves_canonical_component_identities (OK) (0.130991 secs)
+Running: asset_source_navigates_event_payloads (OK) (0.001345 secs)
+Running: asset_source_reconcile_keeps_authored_text (OK) (0.005534 secs)
+Running: asset_source_parses_incomplete_drafts (OK) (0.000179 secs)
+Running: asset_source_completes_components_fields_and_values (OK) (0.127011 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 531
+Running: sources_load_into_both_worlds_or_neither (OK) (0.227058 secs)
+Running: scene_launch_prepares_what_overrides_name (OK) (0.004883 secs)
+Running: failed_scene_launch_destroys_entities_before_their_strings (OK) (0.004527 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 19
+Running: display_rates_run_sixty_steps_a_second (OK) (0.076815 secs)
+Running: hitches_and_overload_are_capped_and_reported (OK) (0.006789 secs)
+Running: pause_step_resume_and_reset_hold_wall_time (OK) (0.005065 secs)
+Running: time_scale_changes_how_often_steps_run (OK) (0.005778 secs)
+Running: display_frames_interpolate_without_moving_bodies (OK) (0.006438 secs)
+Running: an_engine_without_optional_modules_steps_headlessly (OK) (0.000137 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 436
+Running: arranging_automatic_nodes_keeps_a_definition_saved (OK) (0.121029 secs)
+Running: arranged_component_access_nodes_keep_their_entries (OK) (0.088321 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 26
+Running: deterministic_cos_sin_stay_accurate (OK) (0.000272 secs)
+Running: deterministic_atan2_stays_accurate (OK) (0.000703 secs)
+Running: deterministic_exponentials_stay_accurate (OK) (0.000190 secs)
+Running: field_streams_restore_tiles (OK) (0.932474 secs)
+Running: field_streams_retry_failed_slices (OK) (0.000603 secs)
+Running: field_primitives_bake_as_they_sample (OK) (0.000805 secs)
+Running: field_parameters_and_errors (OK) (0.001324 secs)
+Running: field_noise_and_composition (OK) (0.005591 secs)
+Running: field_rows_match_scalar_samples (OK) (0.001363 secs)
+Running: field_repeated_inputs (OK) (0.000268 secs)
+Running: field_functions (OK) (0.002856 secs)
+Running: field_multiple_results (OK) (0.000228 secs)
+Running: field_links_source_library (OK) (0.111514 secs)
+Running: field_source_library_keeps_parameter_defaults (OK) (0.071600 secs)
+Running: field_source_library_calls_follow_names (OK) (0.323065 secs)
+Running: field_source_library_calls_every_field_node (OK) (0.817459 secs)
+Running: field_source_library_functions_call_functions (OK) (0.222174 secs)
+Running: field_source_catalog_reports_invalid_library_body (OK) (0.081960 secs)
+Running: field_source_library_hot_apply (OK) (0.435320 secs)
+Running: field_terrain_chunks_and_connectivity (OK) (0.010030 secs)
+Running: field_library_republication_retains_the_last_valid_generation (OK) (0.078430 secs)
+===============================================================
+Summary: Passed: 21 Failed: 0 Total: 21 Suites: 0 Asserts: 3671
+Running: sphere_distances_bounds_roundtrip_and_diagnostics (OK) (0.007093 secs)
+Running: primitive_solids (OK) (0.002405 secs)
+Running: transformed_solids (OK) (0.035621 secs)
+Running: boolean_solids (OK) (0.003282 secs)
+Running: solid_diagnostics (OK) (0.049036 secs)
+Running: function_and_array_solids (OK) (0.005607 secs)
+Running: unused_function_diagnostics (OK) (0.000378 secs)
+Running: runtime_numeric_arrays (OK) (0.003762 secs)
+Running: profile_function_smoke (OK) (0.003224 secs)
+Running: material_function_smoke (OK) (0.000710 secs)
+Running: hit_resolver_limit (OK) (0.058753 secs)
+Running: runtime_model_expression (OK) (0.004958 secs)
+Running: shared_model_expressions (OK) (0.031491 secs)
+Running: mixed_hit_ownership (OK) (0.000997 secs)
+Running: rectangular_polygon_lowering (OK) (0.003874 secs)
+Running: static_part_bounds (OK) (0.000595 secs)
+Running: profile_offset (OK) (0.000808 secs)
+Running: profile_booleans (OK) (0.001843 secs)
+Running: rim_sections (OK) (0.003537 secs)
+Running: level_sets (OK) (0.002796 secs)
+Running: swept_segments (OK) (0.000850 secs)
+Running: concave_sections (OK) (0.003405 secs)
+Running: runtime_transaction (OK) (0.000602 secs)
+Running: bezier_sections (OK) (0.001253 secs)
+Running: pivot_sections (OK) (0.001487 secs)
+Running: anchor_sections (OK) (0.005963 secs)
+Running: reused_anchor (OK) (0.001581 secs)
+Running: extrusion_sections (OK) (0.001007 secs)
+Running: revolution_sections (OK) (0.001385 secs)
+Running: polygon_revolution_axis (OK) (0.000608 secs)
+Running: polygon_sections (OK) (0.002796 secs)
+Running: smooth_profile_bounds (OK) (0.000648 secs)
+Running: runtime_profile_dimensions (OK) (0.003693 secs)
+Running: dynamic_revolution_axis (OK) (0.000742 secs)
+Running: composed_geometry_function (OK) (0.000525 secs)
+Running: instanced_references (OK) (0.007809 secs)
+Running: model_references_and_part_reports (OK) (0.000816 secs)
+Running: instance_anchors_keep_declarations (OK) (0.000261 secs)
+Running: sampled_sdf_models (OK) (0.107917 secs)
+===============================================================
+Summary: Passed: 39 Failed: 0 Total: 39 Suites: 0 Asserts: 3420
+Running: transformed_sphere (OK) (0.005023 secs)
+Running: changing_intersection (OK) (0.001383 secs)
+Running: invalid_derived_dimensions (OK) (0.001070 secs)
+Running: runtime_snapshots (OK) (0.033404 secs)
+Running: scoped_runtime_identity (OK) (0.009284 secs)
+Running: nested_instance_parameters (OK) (0.001584 secs)
+Running: scoped_material_parameters (OK) (0.006949 secs)
+Running: saved_material_failures (OK) (0.234687 secs)
+Running: saved_model_sources (OK) (0.011733 secs)
+Running: material_coordinate_inputs (OK) (0.000334 secs)
+Running: csg_ownership (OK) (0.005246 secs)
+Running: transformed_part_coordinates (OK) (0.000954 secs)
+Running: transformed_part_frame (OK) (0.001980 secs)
+Running: extreme_part_frames (OK) (0.000927 secs)
+Running: isolated_part_shaders (OK) (0.001008 secs)
+Running: material_assignment_lifecycle (OK) (0.002957 secs)
+Running: reused_nested_materials (OK) (0.005189 secs)
+Running: catalog_material_edits (OK) (0.011307 secs)
+Running: flattened_parameter_limit (OK) (0.018573 secs)
+Running: combined_ramp_limit (OK) (0.027586 secs)
+Running: scoped_namespace_collision (OK) (0.005305 secs)
+Running: live_rename_updates_applied_sources (OK) (0.014313 secs)
+Running: live_model_registration_names_its_node (OK) (0.003167 secs)
+Running: perspective_model_selection (OK) (0.005357 secs)
+Running: catalog_generation (OK) (0.003024 secs)
+Running: model_rename_standalone (OK) (0.001769 secs)
+Running: model_dependencies (OK) (0.015185 secs)
+Running: instance_override (OK) (0.007668 secs)
+Running: surface_bounds_follow_models (OK) (0.007926 secs)
+===============================================================
+Summary: Passed: 29 Failed: 0 Total: 29 Suites: 0 Asserts: 1393
+Running: stroked_player (OK) (0.000050 secs)
+Running: capsules (OK) (0.000008 secs)
+Running: legacy_shapes (OK) (0.000009 secs)
+Running: invalid_geometry (OK) (0.000016 secs)
+Running: rotated_geometry (OK) (0.000029 secs)
+Running: projected_relief_rejects_nonfinite_values (OK) (0.000010 secs)
+Running: mesh_surfaces_bound_bank_pick_and_compound (OK) (0.004599 secs)
+Running: primitive_vertices_have_unit_normals (OK) (0.000974 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 832
+Running: arena_growth_keeps_allocations_and_reset_reuses_blocks (OK) (0.002522 secs)
+Running: zero_arena_allocates_on_first_use (OK) (0.000024 secs)
+Running: collectable_arena_finds_values_by_address (OK) (0.010802 secs)
+Running: arena_remembers_last_copy_until_reset_or_collection (OK) (0.000051 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 371
+Running: mapping_landmarks (OK) (0.000587 secs)
+Running: bump_planes (OK) (0.000317 secs)
+Running: normal_frames (OK) (0.002246 secs)
+Running: scaled_cylindrical_seam (OK) (0.000249 secs)
+Running: sampled_height_and_linear_data (OK) (0.000320 secs)
+Running: triplanar_height (OK) (0.001908 secs)
+Running: triplanar_axes (OK) (0.000367 secs)
+Running: decal_volume (OK) (0.000862 secs)
+Running: nested_derivative_rejection (OK) (0.000029 secs)
+Running: authored_roundtrip (OK) (0.006112 secs)
+Running: authored_ramps_own_their_stops (OK) (0.008456 secs)
+Running: fresnel_reads_the_sample_context (OK) (0.000204 secs)
+Running: effects_evaluate_transforms_remaps_cells_and_ramps (OK) (0.000318 secs)
+Running: star_field_draws_sparse_points_by_direction (OK) (0.199287 secs)
+Running: images_sample_by_color_space_filter_and_wrap (OK) (0.000130 secs)
+Running: authored_images_own_their_keys_and_settings (OK) (0.002798 secs)
+===============================================================
+Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 184
+Running: constant_channels_preserve_linear_hdr_and_height (OK) (0.000325 secs)
+Running: pixel_centers_orientation_and_slices_match (OK) (0.000275 secs)
+Running: parameters_and_graph_are_owned (OK) (0.000114 secs)
+Running: invalid_grid_and_budget_are_rejected (OK) (0.000032 secs)
+Running: failed_job_preserves_previous_result (OK) (0.000145 secs)
+Running: images_resolve_owned_keys_and_failure_is_private (OK) (0.000225 secs)
+Running: bump_samples_reuse_derivative_workspace (OK) (0.000682 secs)
+Running: nested_triplanar_bump_matches_allocating_evaluator (OK) (0.003474 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 320
+Running: uv_time_and_uniform_values_follow_one_sample (OK) (0.000676 secs)
+Running: source_results_select_principal_nodes_and_zero_node_aliases (OK) (0.000181 secs)
+Running: helper_expansions_keep_values_and_call_chains_separate (OK) (0.000074 secs)
+Running: snapshot_owns_values_and_exact_source_revision (OK) (0.000068 secs)
+Running: unmapped_ir_needs_no_documents_only_when_capture_had_none (OK) (0.000041 secs)
+Running: source_byte_limits_accept_boundaries_and_preserve_previous_capture (OK) (0.068980 secs)
+Running: document_identity_and_count_limits_reject_excess (OK) (0.000107 secs)
+Running: missing_image_preserves_previous_values_and_reports_source (OK) (0.000230 secs)
+Running: invalid_source_maps_cannot_replace_a_valid_snapshot (OK) (0.000106 secs)
+Running: nonfinite_intermediates_remain_visible_when_output_is_finite (OK) (0.000133 secs)
+Running: sampled_sdf_arithmetic_failure_is_not_a_missing_image (OK) (0.000263 secs)
+Running: bump_and_context_effects_declare_their_cpu_limits (OK) (0.000296 secs)
+Running: decal_facing_declares_coordinate_gradient_dependency (OK) (0.000087 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 165
+Running: diagonal_and_cross_seam_cut_match_continuous_mask (OK) (0.009815 secs)
+Running: reduced_halos_preserve_partial_chunk_contours (OK) (0.008271 secs)
+Running: known_empty_neighbor_is_not_missing_or_solid (OK) (0.006217 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 235
+Running: terrain_requests_copy_identity_and_wait_for_the_engine_boundary (OK) (0.009132 secs)
+Running: terrain_storage_reports_unbound_and_invalid_source_failures (OK) (0.003176 secs)
+Running: terrain_storage_applies_queued_edits_and_restores_exact_state_without_physics (OK) (0.007392 secs)
+Running: terrain_storage_failed_loads_preserve_live_terrain_and_failed_writes_preserve_saved_bytes (OK) (0.004382 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 174
+Running: relief_and_cut_are_actual_geometry (OK) (0.063218 secs)
+Running: neighbor_has_matching_height_and_no_wall (OK) (0.043045 secs)
+Running: stable_frame_and_rejected_options (OK) (0.006447 secs)
+Running: authored_height_plane_uses_retained_frame_and_normals (OK) (0.025469 secs)
+Running: height_sampling_failures_preserve_previous_output (OK) (0.003655 secs)
+Running: authored_displacement_stays_inside_depth_envelope (OK) (0.028415 secs)
+Running: recess_recedes_into_cut_air_and_keeps_wide_openings (OK) (0.393970 secs)
+Running: recess_matches_across_chunk_seam_and_needs_halo (OK) (0.124137 secs)
+Running: recess_smoothing_lets_thin_spikes_hang_in_front (OK) (0.277619 secs)
+Running: sphere_cavity_meshes_closed_and_faces_into_air (OK) (0.051248 secs)
+Running: removed_plane_carves_a_cone_and_opens_gi (OK) (0.032751 secs)
+Running: open_field_closes_at_the_back_unless_open_and_rejects_oversize (OK) (0.031207 secs)
+Running: front_rock_casts_and_leaves_the_visible_mesh_alone (OK) (0.058296 secs)
+Running: dual_contouring_keeps_flat_faces_and_crisp_edges (OK) (0.019727 secs)
+Running: refined_volume_matches_the_dense_fine_bake (OK) (0.834668 secs)
+Running: slab_carve_is_local_and_meshes_in_depth_chunks (OK) (0.059562 secs)
+Running: changed_lattice_holds_every_flipped_point (OK) (0.005783 secs)
+Running: boxes_coarsen_within_the_limit_and_keep_far_bricks (OK) (0.003583 secs)
+===============================================================
+Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 25411
+Running: orthographic_preserves_span_at_different_depths (OK) (0.000112 secs)
+Running: orthographic_rays_are_parallel_and_pick_ground (OK) (0.000082 secs)
+Running: default_perspective_keeps_diverging_rays (OK) (0.000093 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 19
+Running: default_density_allocates_no_graphics_work (OK) (0.000139 secs)
+Running: enabled_medium_validates_physical_interval (OK) (0.000020 secs)
+Running: volume_quality_and_phase_are_bounded (OK) (0.000004 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 15
+Running: hollow_mesh_bounds_do_not_suppress_cave_shadows (OK) (0.000271 secs)
+Running: opening_revision_and_retirement (OK) (0.123667 secs)
+Running: recess_options_rebuild_and_keep_proxy_openings (OK) (0.036388 secs)
+Running: complex_occupancy_is_rejected_without_closing_openings (OK) (0.033832 secs)
+Running: empty_volume_keeps_no_meshes_or_boxes (OK) (0.000578 secs)
+Running: volume_rebuild_after_a_cut_matches_a_fresh_build (OK) (0.615757 secs)
+Running: volume_boxes_fit_the_budget_with_many_columns (OK) (1.076848 secs)
+===============================================================
+Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 195
+Test command wall time: 39.163s; includes in-test fixture setup; external configuration/build excluded.

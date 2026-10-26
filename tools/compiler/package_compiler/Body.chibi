@@ -326,6 +326,9 @@ ComponentAssignPhase: int : 8;
 CombinePhase: int : 9;
 // The phase of a named return: store one value, then evaluate the next.
 ReturnsPhase: int : 10;
+// The phase of a write to a component of another entity, with the entity on
+// top.
+EntityComponentPhase: int : 15;
 EffectsPhase: int : -1;
 // A private directive: publish the resolved native without emitting code.
 NativeCallPhase: int : -2;

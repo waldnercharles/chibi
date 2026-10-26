@@ -50,7 +50,7 @@ TEST_CASE(query_migration_preserves_live_bindings_and_step_reads)
                   "Read :: (value: Damage) -> Damage { return value } "
                   "on Tick :: (dt: float s) { local_dt := dt } }";
     char error[512] = { 0 }, *migrated = NULL;
-    int status = chibi_migrate33_queries(source, &migrated, error, sizeof error);
+    int status = chibi_migrate35_queries(source, &migrated, error, sizeof error);
     if (status) {
         fprintf(stderr, "%s\n", error);
     }
@@ -65,7 +65,7 @@ TEST_CASE(query_migration_preserves_live_bindings_and_step_reads)
     REQUIRE(strstr(migrated, "Read :: (value: Damage) -> Damage"));
     REQUIRE(strstr(migrated, "on Tick :: (dt: float s) { local_dt := dt }"));
     char *again = NULL;
-    REQUIRE(!chibi_migrate33_queries(migrated, &again, error, sizeof error));
+    REQUIRE(!chibi_migrate35_queries(migrated, &again, error, sizeof error));
     REQUIRE(!again);
     free(migrated);
     return true;
@@ -81,7 +81,7 @@ TEST_CASE(query_migration_keeps_comments_literals_and_empty_roots)
         "on /* event */ Tick :: ( /* payload */ dt: float s /* seconds */ ) { "
         "text := \"join without where on Tick\"; value.value -= dt }";
     char error[512] = { 0 }, *migrated = NULL;
-    int status = chibi_migrate33_queries(source, &migrated, error, sizeof error);
+    int status = chibi_migrate35_queries(source, &migrated, error, sizeof error);
     if (status) {
         fprintf(stderr, "%s\n", error);
     }
@@ -116,7 +116,7 @@ TEST_CASE(query_migration_is_idempotent_and_refuses_unsafe_sources)
     };
     char error[512] = { 0 }, *migrated = NULL;
     for (size_t i = 0; i < sizeof current / sizeof *current; i++) {
-        REQUIRE(!chibi_migrate33_queries(current[i], &migrated, error, sizeof error));
+        REQUIRE(!chibi_migrate35_queries(current[i], &migrated, error, sizeof error));
         REQUIRE(!migrated);
     }
     const struct
@@ -131,10 +131,10 @@ TEST_CASE(query_migration_is_idempotent_and_refuses_unsafe_sources)
           "optional component used as a whole value" },
         { "S :: system(value: Targets.Health from self) {}", "both present" },
         { "S :: system(value: Targets.Parent.Health) {}", "ambiguous qualified" },
-        { "S :: system(", "invalid version 33 source" },
+        { "S :: system(", "invalid version 35 source" },
     };
     for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
-        REQUIRE(chibi_migrate33_queries(refused[i].source, &migrated, error, sizeof error) < 0);
+        REQUIRE(chibi_migrate35_queries(refused[i].source, &migrated, error, sizeof error) < 0);
         REQUIRE(!migrated && strstr(error, refused[i].message));
     }
     return true;
@@ -166,12 +166,12 @@ TEST_CASE(query_migration_expands_compact_providers_and_preserves_imports)
     };
     char error[512] = { 0 }, *migrated = NULL, *again = NULL;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        int status = chibi_migrate33_queries(cases[i].source, &migrated, error, sizeof error);
+        int status = chibi_migrate35_queries(cases[i].source, &migrated, error, sizeof error);
         if (status || !migrated || !strstr(migrated, cases[i].expected)) {
             fprintf(stderr, "provider case %zu: %s: %s\n", i, error, migrated ? migrated : "(unchanged)");
         }
         REQUIRE(!status && migrated && strstr(migrated, cases[i].expected));
-        REQUIRE(!chibi_migrate33_queries(migrated, &again, error, sizeof error));
+        REQUIRE(!chibi_migrate35_queries(migrated, &again, error, sizeof error));
         REQUIRE(!again);
         free(migrated);
         migrated = NULL;
@@ -194,7 +194,7 @@ TEST_CASE(query_migration_dereferences_whole_values_without_capturing_shadows)
         "for position in 0..3 { Consume(position) } "
         "Consume(position); position: Position = {}; Consume(position) }";
     char error[512] = { 0 }, *migrated = NULL;
-    int status = chibi_migrate33_queries(source, &migrated, error, sizeof error);
+    int status = chibi_migrate35_queries(source, &migrated, error, sizeof error);
     if (status) {
         fprintf(stderr, "%s\n", error);
     }
@@ -232,13 +232,13 @@ TEST_CASE(query_migration_visits_nested_provider_queries)
     char error[512] = { 0 };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         char *migrated = NULL, *again = NULL;
-        int status = chibi_migrate33_queries(cases[i].source, &migrated, error, sizeof error);
+        int status = chibi_migrate35_queries(cases[i].source, &migrated, error, sizeof error);
         if (status || !migrated || strcmp(migrated, cases[i].expected)) {
             fprintf(stderr, "nested provider case %zu: %s: %s\n", i, error, migrated ? migrated : "(unchanged)");
         }
         REQUIRE(!status && migrated);
         REQUIRE(!strcmp(migrated, cases[i].expected));
-        REQUIRE(!chibi_migrate33_queries(migrated, &again, error, sizeof error));
+        REQUIRE(!chibi_migrate35_queries(migrated, &again, error, sizeof error));
         REQUIRE(!again);
         free(migrated);
     }
@@ -263,13 +263,13 @@ TEST_CASE(query_migration_keeps_outer_reads_in_local_initializers)
     char error[512] = { 0 };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         char *migrated = NULL, *again = NULL;
-        int status = chibi_migrate33_queries(cases[i].source, &migrated, error, sizeof error);
+        int status = chibi_migrate35_queries(cases[i].source, &migrated, error, sizeof error);
         if (status || !migrated || strcmp(migrated, cases[i].expected)) {
             fprintf(stderr, "initializer case %zu: %s: %s\n", i, error, migrated ? migrated : "(unchanged)");
         }
         REQUIRE(!status && migrated);
         REQUIRE(!strcmp(migrated, cases[i].expected));
-        REQUIRE(!chibi_migrate33_queries(migrated, &again, error, sizeof error));
+        REQUIRE(!chibi_migrate35_queries(migrated, &again, error, sizeof error));
         REQUIRE(!again);
         free(migrated);
     }
@@ -287,14 +287,14 @@ TEST_CASE(query_migration_stages_project_sources_atomically)
     REQUIRE(write_source(source_path, source));
     REQUIRE(write_source(refused_path, "S :: system() { query !Frozen; }"));
     char error[512] = { 0 };
-    REQUIRE(chibi_project_migrate_content(project_root, NULL, 33, error, sizeof error) < 0);
+    REQUIRE(chibi_project_migrate_content(project_root, NULL, 35, error, sizeof error) < 0);
     REQUIRE(strstr(error, "Refused.chibi") && strstr(error, "removed query declaration"));
     REQUIRE(source_contains(source_path, source));
     REQUIRE(write_source(refused_path, "S :: system() {}"));
-    REQUIRE(!chibi_project_migrate_content(project_root, NULL, 33, error, sizeof error));
+    REQUIRE(!chibi_project_migrate_content(project_root, NULL, 35, error, sizeof error));
     REQUIRE(source_contains(source_path, "health: ^Health"));
     REQUIRE(!source_contains(source_path, "on Tick"));
-    REQUIRE(!chibi_project_migrate_content(project_root, NULL, 33, error, sizeof error));
+    REQUIRE(!chibi_project_migrate_content(project_root, NULL, 35, error, sizeof error));
     REQUIRE(source_contains(source_path, "health: ^Health"));
     return true;
 }

@@ -18,7 +18,7 @@
     X("Rotation",                                                              \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_STRUCT,                                                              \
-      "CF_V3",                                                                 \
+      "vec3",                                                                  \
       PIN_CONTAINER_SINGLE,                                                    \
       0,                                                                       \
       0,                                                                       \

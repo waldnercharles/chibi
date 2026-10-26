@@ -8,5 +8,5 @@ Charge :: component {
     cycles: int
     full: bool
     source: entity
-    drift: CF_V2
+    drift: vec2
 }

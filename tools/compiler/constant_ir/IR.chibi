@@ -43,7 +43,7 @@ pub Index: int : 9;
 pub Array: int : 10;
 pub Record: int : 14;
 pub Nil: int : 15;
-pub Union: int : 22;
+pub Union: int : 21;
 pub ConstantSymbol: int : 14;
 pub Single: int : 0;
 pub Boolean: int : 1;

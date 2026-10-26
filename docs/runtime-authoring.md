@@ -55,7 +55,7 @@ form first. Version 31 removes the step globals `dt`, `delta` and
 `delta_time()`: a read in an `on Tick` handler or a system becomes a listed
 `dt`, and the migration refuses one anywhere else, where the step must be
 passed in.
-Version 34 gives systems an implicit, read-only body-local `dt` and flattens
+Version 36 gives systems an implicit, read-only body-local `dt` and flattens
 their query headers. It migrates live component bindings to `^T`, merges
 `join` entries into the binding list, and replaces `without` and query `where`
 clauses with `if` entries. Behavior handlers still list their payload fields.
@@ -107,7 +107,7 @@ A game declares its own component types under `content/components`, one `.chibi`
 file per component. Fields are laid out in order with natural alignment and start
 zeroed, then clamped into any declared range. A field's type is a script scalar
 (`bool`, `int`, `float`, `double`, `number`, `string`, `entity`, ...), an engine
-struct such as `CF_V2`, or a
+struct such as `vec2`, or a
 measure: a `number` with an optional range and an optional unit. The `//`
 comments directly above the component and each field describe them.
 
@@ -119,7 +119,7 @@ Charge :: component {
     rate: charge/s
     delay: s
     full: bool
-    drift: CF_V2
+    drift: vec2
 }
 ```
 
@@ -741,8 +741,8 @@ Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `Gravity3D` sets it. 2D bodies
 fall only when one entity's `Gravity` sets an `acceleration` in units
 per second squared, which also moves material liquids and gas. Behaviors
-handle `on ContactBegin3D :: (Other: handle<ecs.entity>, Point: struct<CF_V3>)`
-and `on ContactEnd3D :: (Other: handle<ecs.entity>)`, as 2D colliders report
+handle `on ContactBegin3D :: (Other: entity, Point: vec3)`
+and `on ContactEnd3D :: (Other: entity)`, as 2D colliders report
 `on ContactBegin` and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
 renderer draws a body's `Geometry3D` at its Transform3D pose (see
 `docs/rendering-3d.md`).

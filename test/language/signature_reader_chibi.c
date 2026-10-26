@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 29 fixed reads plus one65-array deep read,60 authored calls at500,000
+/* 29 fixed reads plus one65-parenthesis deep read,60 authored calls at500,000
  * instructions. Seven compiler
  * sources per backend plus30 external Tree-sitter parses give44 parses total.
  * The parser supplies complete raw nodes/fields/named/extra flags; no C reader
@@ -701,16 +701,16 @@ static const char *annotations[] = {
     NULL,
     "int",
     "ref Row?[]",
-    "task<int>",
+    "task(int)",
     "task",
-    "task<int, number>",
-    "array<task<int>>",
-    "task<int> | task<int>",
-    "set<int>",
-    "map<Row>",
-    "struct<int | number> | int",
-    "enum<Row>",
-    "handle<Row>",
+    "task(int, number)",
+    "task(int)[]",
+    "task(int) | task(int)",
+    "int[]",
+    "Row[]?",
+    "int | number",
+    "Row?",
+    "ref Row",
     "array",
     "Row",
     "map",
@@ -885,7 +885,7 @@ static bool execute(int index)
         REQUIRE(reading.type.nominal == UINT64_MAX - 11 && !reading.diagnostic_count);
     }
     if (index == 15) {
-        REQUIRE(reading.diagnostic_count == 2);
+        REQUIRE(reading.diagnostic_count == 1);
     }
     if (index == 18) {
         REQUIRE(reading.unit && !strcmp(reading.unit, "u"));
@@ -967,7 +967,7 @@ TEST_CASE(signature_reader_units_names_diagnostics_and_uses_match)
     printf("Signature reader:29 raw trees,58 calls,9 publications, max%d nodes/depth%d\n", max_nodes, max_depth);
     return true;
 }
-TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
+TEST_CASE(signature_reader_deep_parentheses_do_not_consume_callable_depth)
 {
     REQUIRE(prepared && parser && calls == 58 && parses == 29);
     cleanup();
@@ -976,15 +976,14 @@ TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
     compiler_fixture_node deep_nodes[512];
     int length = snprintf(deep_source, sizeof deep_source, "Facts :: library { Run :: (value: ");
     REQUIRE(length > 0);
-    /* Nested arrays name collection types; nominal wrappers nest without them. */
+    /* Parenthesized types nest without naming a collection. */
     for (int i = 0; i < 65; i++) {
-        memcpy(deep_source + length, "struct<", 7);
-        length += 7;
+        deep_source[length++] = '(';
     }
     memcpy(deep_source + length, "int", 3);
     length += 3;
     for (int i = 0; i < 65; i++) {
-        deep_source[length++] = '>';
+        deep_source[length++] = ')';
     }
     REQUIRE(length + sizeof ") {} }" < sizeof deep_source);
     memcpy(deep_source + length, ") {} }", sizeof ") {} }");
@@ -1052,7 +1051,7 @@ TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
         );
     }
     REQUIRE(calls == 60 && parses == 30 && publication_count == 9);
-    printf("Signature deep arrays:65 wrappers,%d bytes,%d nodes/depth%d,2 calls\n", length, count, deepest);
+    printf("Signature deep parentheses:65 wrappers,%d bytes,%d nodes/depth%d,2 calls\n", length, count, deepest);
     return true;
 }
 TEST_CASE(signature_reader_readings_survive_all_producer_owners)
@@ -1083,7 +1082,7 @@ void test_language_signature_reader_chibi()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(signature_reader_type_syntax_and_publication_state_match);
     RUN_TEST_CASE(signature_reader_units_names_diagnostics_and_uses_match);
-    RUN_TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth);
+    RUN_TEST_CASE(signature_reader_deep_parentheses_do_not_consume_callable_depth);
     RUN_TEST_CASE(signature_reader_readings_survive_all_producer_owners);
     pu_clear_setup();
     cleanup();
@@ -1126,7 +1125,7 @@ static int snapshot_max_nodes;
 static bool snapshot_named[2], snapshot_extra[2];
 static const char
     snapshot_a[] = "package app\nimport lib \"project:lib\"\nA :: (value: "
-                   "task<int>) {}\n",
+                   "task(int)) {}\n",
     snapshot_lib[] = "package lib\nLib :: (value: u /* gap */ / s) {}\n",
     snapshot_b[] = "package app\nB :: (value: Missing) {}\n";
 static const source_package_input snapshot_sources[] = {

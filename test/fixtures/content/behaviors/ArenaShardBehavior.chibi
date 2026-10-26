@@ -10,16 +10,13 @@ ArenaShardBehavior :: behavior {
     Roll_Rate: float = 0.0
     Lift: float = 0.0
     Birth_Scale: float = 1.0
-    action age_2 = set_variable<Age>(Age + Step)
     on Tick :: (dt: float s) {
         Step = dt
-        age_2()
-    }
-    after age_2 {
-        if Age_Phase(age_2.Value, Step) >= 1.0 {
+        Age = Age + Step
+        if Age_Phase(Age, Step) >= 1.0 {
             destroy_entity(self)
         } else {
-            await Advance_Shard_Motion(Step, age_2.Value)
+            await Advance_Shard_Motion(Step, Age)
         }
     }
     on Begin :: () {

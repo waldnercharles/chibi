@@ -135,19 +135,27 @@ int chibi_migrate_step_globals(const char *source, char **migrated, char *error,
  * chibi_migrate31_array_calls. Returns -1 with `error` set when the source
  * declares one of those names or the current grammar rejects the result. */
 int chibi_migrate_array_calls(const char *source, char **migrated, char *error, size_t error_size);
+/* Upgrades version 32 `.chibi` source to version 33: see
+ * chibi_migrate32_angle_forms. Returns -1 with `error` set when the source
+ * uses an angle form version 33 cannot spell. */
+int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, size_t error_size);
+/* Upgrades version 33 `.chibi` source to version 34, which names CF_V2 and
+ * CF_V3 vec2 and vec3. Returns -1 with `error` set when the source does not
+ * parse. */
+int chibi_migrate_vector_names(const char *source, char **migrated, char *error, size_t size);
 
-/* Version 33 marks arguments of authored ref parameters. Resolves local
+/* Version 35 marks arguments of authored ref parameters. Resolves local
  * callables by lexical scope and qualified library calls across all sources.
  * Unknown native calls stay unchanged. Returns owned results (NULL for each
  * unchanged source), or NULL with error set for invalid/ambiguous source.
  * Existing markers are retained, so rerunning the step is safe. */
 char **chibi_migrate_ref_calls(const char *const *sources, int count, char *error, size_t error_size);
 
-/* Version 34 uses flat query lists, component pointer bindings and implicit
- * system dt. Preserves the live component access of version 33 bindings by
+/* Version 36 uses flat query lists, component pointer bindings and implicit
+ * system dt. Preserves the live component access of version 35 bindings by
  * spelling every component type ^T. Returns an owned rewrite, or NULL when
  * unchanged. Refuses removed query declarations instead of changing their
- * scope. See project_migrate33.h for the source-only migration contract. */
-int chibi_migrate33_queries(const char *source, char **migrated, char *error, size_t error_size);
+ * scope. See project_migrate35.h for the source-only migration contract. */
+int chibi_migrate35_queries(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

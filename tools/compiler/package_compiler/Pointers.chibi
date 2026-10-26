@@ -660,7 +660,8 @@ NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, co
     return false;
 }
 
-PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], destination: int) -> bool {
+PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                       names: Name[], destination: int) -> bool {
     if (Is(forest, destination, "dereference_expression")) {
         return true;
     }
@@ -668,19 +669,31 @@ PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, names: Nam
         return false;
     }
     object := Field(forest, destination, "object");
-    // `self.C.f` writes the owner's component, not through a pointer.
-    owner := Field(forest, object, "object");
-    if (Is(forest, object, "member_expression") && Is(forest, owner, "identifier")) {
-        bound := Lookup(names, Text(forest, text, owner));
-        if (bound >= 0 && names[bound].place == SelfPlace) {
-            return false;
-        }
+    // `e.C = v` and `e.C.f = v` write an entity's component, not a pointee.
+    if (HandleComponent(forest, text, types, members, names, destination) ||
+        HandleComponent(forest, text, types, members, names, object)) {
+        return false;
     }
     if (!Is(forest, object, "identifier")) {
         return true;
     }
     found := Lookup(names, Text(forest, text, object));
     return found >= 0 && (names[found].storage == PointerStorage || names[found].place == ManagedPlace);
+}
+// Whether `node` is `e.C` on an entity handle `e`: `self`, a handle name or a
+// global's keyed handle.
+HandleComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                    names: Name[], node: int) -> bool {
+    if (!Is(forest, node, "member_expression")) {
+        return false;
+    }
+    owner := Field(forest, node, "object");
+    if (Is(forest, owner, "identifier")) {
+        found := Lookup(names, Text(forest, text, owner));
+        return found >= 0 && names[found].storage == HandleStorage && names[found].container == 0;
+    }
+    keyed := KeyedMember(forest, text, types, members, names, owner);
+    return keyed >= 0 && members[keyed].storage == HandleStorage;
 }
 PointerAssignmentStart :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                            members: TypeMember[], names: Name[], item: Work, ops: Ops, target: Target,

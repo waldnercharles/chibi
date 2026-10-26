@@ -15,7 +15,7 @@ EntityProbe :: behavior {
             colliders := find_entities_with_component(Collider)
             nearest := find_nearest_entity(self.Transform, 64.0, 2, self)
             if nearest.Found {
-                await send_event<Probe_Signal>(spawner, select(1, 0, 1))
+                await emit spawner.Probe_Signal(select(1, 0, 1))
                 destroy_entity(nearest.Entity)
             }
         }

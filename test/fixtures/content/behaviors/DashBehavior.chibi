@@ -10,7 +10,7 @@ DashBehavior :: behavior {
     Just_Started := false
     // The last frame step, for the input handler and timers.
     Step: float = 0
-    Struck_Entities: handle<ecs.entity>[] = []
+    Struck_Entities: entity[] = []
     on Dash :: () {
         if Step >= self.Dash.cooldown_remaining {
             if 0.0 >= self.Dash.remaining {
@@ -25,11 +25,11 @@ DashBehavior :: behavior {
             await Drive_Dash()
         }
     }
-    on Contact_Begin :: (Other: handle<ecs.entity>) {
+    on Contact_Begin :: (Other: entity) {
         await Strike_Target(Other)
     }
     Capture_Dash_Direction :: () {
-        if abs(break_cf_v2(self.Input.move).x) + abs(break_cf_v2(self.Input.move).y) >= 0.0001 {
+        if abs(break_vec2(self.Input.move).x) + abs(break_vec2(self.Input.move).y) >= 0.0001 {
             self.Dash.direction = vec2_norm(self.Input.move)
             return
         } else {
@@ -39,7 +39,7 @@ DashBehavior :: behavior {
     }
     Drive_Dash :: () {
         self.Velocity = self.Dash.direction * self.Dash.speed
-        self.Orientation = DirectionMath.Direction_Orientation(break_cf_v2(self.Dash.direction).x, break_cf_v2(self.Dash.direction).y)
+        self.Orientation = DirectionMath.Direction_Orientation(break_vec2(self.Dash.direction).x, break_vec2(self.Dash.direction).y)
         return
     }
     Restore_Movement :: () {
@@ -80,7 +80,7 @@ DashBehavior :: behavior {
             }
         }
     }
-    Strike_Target :: (Other: handle<ecs.entity> = 0) {
+    Strike_Target :: (Other: entity = 0) {
         if 0.0 < self.Dash.remaining {
             if Other.Health {
                 if Other.Collider {
@@ -89,7 +89,7 @@ DashBehavior :: behavior {
                             return
                         } else {
                             Struck_Entities = append(Struck_Entities, Other)
-                            await send_event<Damage>(Other, self.Dash.damage, self)
+                            await emit Other.Damage(self.Dash.damage, self)
                             return
                         }
                     } else {

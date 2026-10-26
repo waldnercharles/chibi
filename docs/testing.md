@@ -2054,8 +2054,8 @@ takes about 6 s.
     layout, storage, size and name), and the module's events (ID, ABI and
     payload fields) and entity type, that the operators that combine
     records hold `+` as the native `add`, that the globals hold `self` of
-    the owner's type, and that the record makes hold `vec2` making a `CF_V2`
-    of its `x` and `y`. Only the types modules require are compared;
+    the owner's type, and that the record makes hold the `vec2`
+    constructor, making a `vec2` of its `x` and `y`. Only the types modules require are compared;
     namespaces such as `SceneGlobals` are listed too.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,

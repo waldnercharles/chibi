@@ -115,13 +115,15 @@ Third :: (a: int, b: int, c: int) -> int { return c; }
 LLVM inlines them to `ret i32 6`. Both return 6 natively.
 
 Everything else is rejected with a located diagnostic and no partial result:
-floating negation and remainder, ordering `bool`s, loops, `switch` and other
-statements, function values, qualified or imported calls, native or foreign
+floating negation and remainder, ordering `bool`s, statements outside the
+subset, function values, qualified or imported calls, native or foreign
 calls (`print`), named arguments, strings and other managed values,
-attributes, structs and constants. Sources are at most 16,384 bytes.
-`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (44
-accepted) with each accepted value and statement trace and each rejection's
-exact message and source excerpt, including both sides of every bound.
+attributes, structs and constants. A call may omit trailing arguments whose
+parameters have defaults; each omitted one is a literal row of its default.
+Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
+the 96-source corpus (48 accepted) with each accepted value and statement
+trace and each rejection's exact message and source excerpt, including both
+sides of every bound.
 
 A constant expression, such as `(2147483647 + 1) / 2` or `int(42)`, is one
 literal row holding the value the ordinary compiler folds it to exactly, so
@@ -240,7 +242,7 @@ branching on `a < b`.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 42 accepted sources build, run and agree at O0 and O2.
+other 47 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and

@@ -17,8 +17,8 @@ struct prepared_record_cache
     size_t name_bytes, validation_work, hash_work;
     arena *owner;
     const pin_record *owned;
-    /* The type at this position in name order. */
-    int by_name;
+    /* The type at this position in name order, and in id order. */
+    int by_name, by_id;
 };
 static bool work(prepared_context *c, size_t amount)
 {
@@ -299,6 +299,21 @@ static int name_position(prepared_context *c, const char *name, size_t bytes, in
     }
     return low;
 }
+/* The first of the `count` id-ordered types whose id is not below `id`,
+ * found in log2(count) comparisons, each charged as eight bytes. */
+static int id_position(prepared_context *c, uint64_t id, int count)
+{
+    int low = 0, high = count;
+    while (low < high && work(c, sizeof id)) {
+        int middle = low + (high - low) / 2;
+        if (c->plan->types[c->records[middle].by_id].id < id) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return low;
+}
 void prepared_types(prepared_context *c)
 {
     execution_wire *w = &c->wire;
@@ -342,22 +357,26 @@ void prepared_types(prepared_context *c)
             w->error = "invalid prepared type requirement";
             break;
         }
-        for (int j = 0; j < i && !w->error; j++) {
-            if (!work(c, c->records[i].name_bytes)) {
-                break;
-            }
-            if (p->types[j].id == v->id || !strcmp(p->types[j].name, v->name)) {
-                w->error = "duplicate prepared type requirement";
-            }
-        }
+        /* The earlier types are kept in name and id order, so a repeat is
+         * found by two searches rather than a comparison with each. */
+        int at = name_position(c, v->name, c->records[i].name_bytes, i);
+        int id_at = id_position(c, v->id, i);
         if (w->error) {
             break;
         }
-        int at = name_position(c, v->name, c->records[i].name_bytes, i);
+        if ((at < i && !strcmp(p->types[c->records[at].by_name].name, v->name)) ||
+            (id_at < i && p->types[c->records[id_at].by_id].id == v->id)) {
+            w->error = "duplicate prepared type requirement";
+            break;
+        }
         for (int k = i; k > at; k--) {
             c->records[k].by_name = c->records[k - 1].by_name;
         }
         c->records[at].by_name = i;
+        for (int k = i; k > id_at; k--) {
+            c->records[k].by_id = c->records[k - 1].by_id;
+        }
+        c->records[id_at].by_id = i;
         record_type(c, v, i);
     }
 }

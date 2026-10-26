@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Fourteen fixed prepared cases. The largest validation fixture has 128 fields
+/* Fifteen fixed prepared cases. The largest validation fixture has 128 fields
  * and 256 shared headers, and the type lookup fixture 256 types and up to 512
  * headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
@@ -569,6 +569,17 @@ TEST_CASE(record_prepared_finds_header_types_by_name)
     size_t each = (more - fewer) / NAMED_HEADERS;
     size_t name = strlen("Rows.T000") + 2;
     REQUIRE(each < NAMED_TYPES * name / 4);
+    return true;
+}
+/* Each type is checked for a repeated name or id by two searches of the
+ * types before it, not by a comparison with each. Comparing with each charges
+ * about NAMED_TYPES^2 / 2 names; half of that is the bound. */
+TEST_CASE(record_prepared_finds_repeated_types_by_search)
+{
+    size_t least;
+    REQUIRE(least_layout_work(1, &least));
+    size_t name = strlen("Rows.T000") + 1;
+    REQUIRE(least < NAMED_TYPES * (NAMED_TYPES - 1) / 2 * name / 2);
     return true;
 }
 /* Exercise the decoded verifier directly: ordinary builder ownership also
@@ -1394,6 +1405,7 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_array_owners);
     RUN_TEST_CASE(record_prepared_shared_headers_fit_default_work);
     RUN_TEST_CASE(record_prepared_finds_header_types_by_name);
+    RUN_TEST_CASE(record_prepared_finds_repeated_types_by_search);
     RUN_TEST_CASE(record_prepared_proof_keeps_each_header_check);
     RUN_TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry);
     RUN_TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog);

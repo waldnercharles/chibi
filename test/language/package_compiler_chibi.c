@@ -12123,6 +12123,126 @@ TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
     REQUIRE(passed);
     return true;
 }
+/* Each source's queries and system header compile into its own module, in
+ * whatever position the project lists it: each module matches the one its
+ * source compiles to alone, and its queries run. */
+static bool query_sources_compose(int b, const char *const *identities, const char *const *sources, int count)
+{
+    script_catalog catalog = query_game_catalog();
+    pin_value out;
+    REQUIRE(
+        catalog_compile_sources(b, &catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+    );
+    const pin_array *array = out.ptr;
+    if (!array || !array->count) {
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile_sources(b, &catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+        );
+        fprintf(stderr, "query sources rejected: %s\n", pin_text(out).bytes);
+        arena_free(&detached);
+        return false;
+    }
+    size_t length = (size_t)array->count;
+    unsigned char *bytes = xmalloc(length);
+    for (size_t i = 0; i < length; i++) {
+        bytes[i] = array->items[i].u8;
+    }
+    arena_free(&detached);
+    const execution_prepared_linker linker = { .user = &catalog,
+                                               .type = link_game_type,
+                                               .event = link_game_event,
+                                               .host = link_game_host };
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256] = { 0 };
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    free(bytes);
+    if (!packages) {
+        fprintf(stderr, "query sources load: %s\n", error);
+    }
+    REQUIRE(packages && package_collection_count(packages) == count);
+    bool passed = true;
+    for (int i = 0; passed && i < count; i++) {
+        execution_module *alone = NULL;
+        passed = query_stage_one_module(b, identities[i], sources[i], &alone);
+        execution_module *composed = NULL;
+        for (int j = 0; passed && j < count; j++) {
+            execution_module *candidate = package_collection_module(packages, j);
+            if (execution_module_id(candidate) == execution_module_id(alone)) {
+                composed = candidate;
+            }
+        }
+        passed = passed && composed &&
+                 composed->plan.function_count == alone->plan.function_count &&
+                 composed->plan.description_count == alone->plan.description_count &&
+                 composed->plan.system_description == alone->plan.system_description;
+        execution_module_free(alone);
+        if (!passed || !composed->plan.description_count) {
+            continue;
+        }
+        player p = { 0 };
+        passed = play(composed, &p);
+        ecs_entity other = passed ? query_add_spot(&p, 4) : (ecs_entity){ 0 };
+        const pin_value delta = { .type = PIN_F32, .f = .25 };
+        passed = passed && ecs_entity_to_u64(other) &&
+                 (composed->plan.system_description
+                      ? query_step(&p, 0, .25) && query_spot_equals(&p, other, 4, 2)
+                      : execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                                FLOW_OK &&
+                            query_spot_equals(&p, other, 5, 0));
+        stop(&p);
+    }
+    package_collection_free(packages);
+    return passed;
+}
+TEST_CASE(package_compiler_queries_compose_in_any_source_order)
+{
+    static const char *const plain = "Plain :: behavior {}\n";
+    static const char *const
+        rows = "Rows :: behavior {\n"
+               "    on Tick :: () {\n"
+               "        matches := query(live: ^Spot)\n"
+               "        for row in matches { row.live.x += 1 }\n"
+               "    }\n"
+               "}\n";
+    static const char *const apply = "Apply :: system(live: ^Spot) {\n"
+                                     "    live.y += 2\n"
+                                     "}\n";
+    static const char *const orders[][2] = {
+        { "Plain", "Rows" },
+        { "Rows", "Plain" },
+        { "Rows", "Apply" },
+        { "Apply", "Rows" },
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
+            const char *sources[2];
+            for (int i = 0; i < 2; i++) {
+                const char *name = orders[o][i];
+                sources[i] = !strcmp(name, "Plain") ? plain
+                           : !strcmp(name, "Rows")  ? rows
+                                                    : apply;
+            }
+            passed = query_sources_compose(b, orders[o], sources, 2);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
 TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper)
 {
     static const char source
@@ -12381,8 +12501,8 @@ static const char QUERY_SCOPE_PROBE[] =
     "        case .Failed(diagnostic): return [format_text(\"ERROR {}\", "
     "diagnostic.message)];\n"
     "        case .Collected(callables, params, types, members, constants):\n"
-    "            switch CollectQueries(forest, source, \"project:scope\", "
-    "types, members, callables, params, [], [],\n"
+    "            switch CollectQueries(forest, source, \"project:scope\", 0, "
+    "0, length(forest), types, members, callables, params, [], [], [],\n"
     "                                  [], 0, target, "
     "ResolveOps(instruction_names, false)) {\n"
     "                case .Failed(diagnostic): return [format_text(\"ERROR "
@@ -12644,6 +12764,7 @@ void test_language_package_compiler_chibi_queries()
     RUN_TEST_CASE(package_compiler_query_nested_return_and_empty_iteration);
     RUN_TEST_CASE(package_compiler_query_header_constructs_captured_description);
     RUN_TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt);
+    RUN_TEST_CASE(package_compiler_queries_compose_in_any_source_order);
     RUN_TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper);
     RUN_TEST_CASE(package_compiler_empty_system_runs_only_attached_owner);
     RUN_TEST_CASE(package_compiler_query_optional_guards_and_inferred_values);

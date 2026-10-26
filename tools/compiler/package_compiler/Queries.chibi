@@ -157,7 +157,7 @@ QueryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
                                                        members, names, values, top, item, ops, target, at));
     }
     if (kind == "query_expression") {
-        return QueryDispatch.Handled(QueryExpressionStep(forest, params, queries, values, top, item, ops, target, at));
+        return QueryDispatch.Handled(QueryExpressionStep(forest, document, params, queries, values, top, item, ops, target, at));
     }
     if (!item.capture && evaluating >= 0 && (item.phase == QueryMembershipPhase ||
                                              ((kind == "identifier" || kind == "member_expression" ||
@@ -177,7 +177,7 @@ QueryStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         return QueryDispatch.Handled(QueryPresenceStep(forest, types, component, values, top, item, ops, target, at));
     }
     if (kind == "call_expression" && Text(forest, text, Field(forest, item.node, "function")) == "changed") {
-        return QueryDispatch.Handled(QueryChangedStep(forest, text, types, members, params, queries, item, ops, target, at));
+        return QueryDispatch.Handled(QueryChangedStep(forest, text, document, types, members, params, queries, item, ops, target, at));
     }
     return QueryDispatch.Ordinary;
 }
@@ -520,7 +520,7 @@ QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], 
 // Type query expressions through the ordinary body emitter. It performs no
 // execution; its inferred result follows exactly the same operators, calls,
 // indexing, dereferences and aggregate rules as an ordinary local initializer.
-QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
                    callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], queries: QuerySpec[],
                    names: Name[], entity: uint64, node: int, ops: Ops, target: Target) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
@@ -537,12 +537,12 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     if (Is(forest, node, "number")) {
         return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
     }
-    expression: Callable = {name: "", package: 0, document: 0, node: node, first: 0, count: 0,
+    expression: Callable = {name: "", package: document, document: document, node: node, first: 0, count: 0,
                             result: 0, result_container: 0, result_record: -1, results: 0};
     functions := append(callables, expression);
     expressions := ops;
     expressions.debug = false;
-    switch EmitBody(forest, text, 0, functions, params, types, members, [], natives, ports, [], [], [], [], names,
+    switch EmitBody(forest, text, document, functions, params, types, members, [], natives, ports, [], [], [], [], names,
                     "", SolidOffsets(text), 0, 0, length(functions) - 1, [], [], [], BodyContext.Unknown, [],
                     expressions, target, queries) {
         case .Inferred(value):
@@ -627,7 +627,7 @@ QueryPatternNames :: (forest: snapshot.SnapshotNode[], text: string, types: Type
 }
 // Names visible at the query's creation site, in declaration order. Only
 // lexical ancestors contribute, so sibling blocks, loops and arms stay out.
-QueryScope :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
                callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], queries: QuerySpec[],
                globals: Name[], entity: uint64, node: int, ops: Ops, target: Target) -> Name[] {
     names := globals;
@@ -660,7 +660,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
             if (Ancestor(forest, forest[index].parent, node)) {
                 value := QueryType(forest, text, types, names, entity, Field(forest, index, "type"));
                 if (value.storage == 0) {
-                    value = QueryValueType(forest, text, types, members, callables, params, natives, ports, queries, names,
+                    value = QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names,
                                            entity, Field(forest, index, "value"), ops, target);
                 }
                 names.append(QueryScopeName(forest, text, Field(forest, index, "name"), value));
@@ -670,7 +670,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
                 names.append(QueryScopeName(forest, text, Field(forest, index, "name"),
                                             {storage: IntStorage, container: 0, record: -1}));
             } else {
-                iterable := QueryValueType(forest, text, types, members, callables, params, natives, ports, queries,
+                iterable := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries,
                                            names, entity, Field(forest, index, "value"), ops, target);
                 if (iterable.container == MapContainer && iterable.record >= 0) {
                     map := types[iterable.record];
@@ -695,12 +695,12 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
                 }
             }
         } else if (Is(forest, index, "is_expression") && QueryPatternScope(forest, text, index, node)) {
-            subject := QueryValueType(forest, text, types, members, callables, params, natives, ports, queries, names,
+            subject := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names,
                                       entity, Field(forest, index, "value"), ops, target);
             names = QueryPatternNames(forest, text, types, members, names, subject, Field(forest, index, "type"));
         } else if (Is(forest, index, "switch_arm") && Ancestor(forest, Field(forest, index, "body"), node)) {
             selection := forest[index].parent;
-            subject := QueryValueType(forest, text, types, members, callables, params, natives, ports, queries, names,
+            subject := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names,
                                       entity, Field(forest, selection, "value"), ops, target);
             names = QueryPatternNames(forest, text, types, members, names, subject, Field(forest, index, "value"));
         }
@@ -897,7 +897,7 @@ QueryExcludes :: (forest: snapshot.SnapshotNode[], text: string, condition: int,
 // in its header. Collect those dependencies before inferring its row fields.
 // Each declaration pass extends copies of its inputs: assigning to a
 // parameter would make every caller copy its arguments.
-CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string, input_types: TypeDecl[],
+CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string, document: int, input_types: TypeDecl[],
                  input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: ResolvedNative[],
                  ports: ResolvedPort[], input_queries: QuerySpec[], globals: Name[], enclosing: Name[], entity: uint64,
                  node: int, system_header: bool, target: Target, ops: Ops) -> QueryDeclarations {
@@ -909,7 +909,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     if (FindQuery(queries, node) >= 0) {
         return QueryDeclarations.Collected(types, members, callables, params, queries);
     }
-    names := QueryScope(forest, text, types, members, callables, params, natives, ports, queries, globals, entity, node, ops, target);
+    names := QueryScope(forest, text, document, types, members, callables, params, natives, ports, queries, globals, entity, node, ops, target);
     names.extend(enclosing);
     creation_names := names;
     fields: QueryField[] = [];
@@ -934,7 +934,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                                        writable: false, node: Field(forest, field.node, "name")};
                         scope.append(named);
                     }
-                    switch CollectQuery(forest, text, identity, types, members, callables, params, natives, ports,
+                    switch CollectQuery(forest, text, identity, document, types, members, callables, params, natives, ports,
                                         queries, globals, scope, entity, nested, system_header, target, ops) {
                         case .Failed(diagnostic):
                             return QueryDeclarations.Failed(diagnostic);
@@ -953,7 +953,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
             }
             impure := QueryImpure(forest, text, callables, params, natives, names, expression, system_header);
             if (impure >= 0) {
-                return QueryDeclarations.Failed(Diagnose(forest, impure, 0,
+                return QueryDeclarations.Failed(Diagnose(forest, impure, document,
                                                          "Query headers require deterministic values without side effects or suspension"));
             }
         }
@@ -967,7 +967,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 }
                 if (!Is(forest, node, "system") && Is(forest, part, "call_expression") &&
                     Text(forest, text, Field(forest, part, "function")) == "changed") {
-                    return QueryDeclarations.Failed(Diagnose(forest, part, 0,
+                    return QueryDeclarations.Failed(Diagnose(forest, part, document,
                                                              "changed is only available in scheduled system queries"));
                 }
                 if (Is(forest, part, "address_expression")) {
@@ -978,7 +978,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                         if (found >= 0 && (names[found].storage != PointerStorage ||
                                            !Is(forest, operand, "member_expression")) &&
                             QueryFieldIndex(fields, names[found].name) < 0) {
-                            return QueryDeclarations.Failed(Diagnose(forest, part, 0,
+                            return QueryDeclarations.Failed(Diagnose(forest, part, document,
                                                                      "Captured query values are read-only; capture an existing pointer instead"));
                         }
                     }
@@ -1001,7 +1001,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 }
                 membership := format_text("{}.{}", owner, types[field.component].name);
                 if (QueryExcludes(forest, text, expression, membership, true)) {
-                    return QueryDeclarations.Failed(Diagnose(forest, clause, 0,
+                    return QueryDeclarations.Failed(Diagnose(forest, clause, document,
                                                              "A component cannot be both a parameter and excluded"));
                 }
             }
@@ -1010,16 +1010,16 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         name_node := Field(forest, clause, "name");
         name := Text(forest, text, name_node);
         if (Is(forest, node, "system") && name == "dt") {
-            return QueryDeclarations.Failed(Diagnose(forest, name_node, 0,
+            return QueryDeclarations.Failed(Diagnose(forest, name_node, document,
                                                      "'dt' is the implicit system step and cannot be a query binding"));
         }
         if (QueryFieldIndex(fields, name) >= 0) {
-            return QueryDeclarations.Failed(Diagnose(forest, name_node, 0, format_text("Duplicate query binding '{}'", name)));
+            return QueryDeclarations.Failed(Diagnose(forest, name_node, document, format_text("Duplicate query binding '{}'", name)));
         }
         annotation := Field(forest, clause, "type");
         typed := QueryType(forest, text, types, names, entity, annotation);
         if (annotation >= 0 && typed.storage == 0) {
-            return QueryDeclarations.Failed(Diagnose(forest, annotation, 0,
+            return QueryDeclarations.Failed(Diagnose(forest, annotation, document,
                                                      format_text("Unknown query binding type '{}'", Text(forest, text, annotation))));
         }
         component: int = -1;
@@ -1028,33 +1028,33 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         provider: QueryProvider = {variable: 0, relation: 0, traversal: 0, valid: true};
         if (Is(forest, clause, "query_generator")) {
             if (typed.storage != 0 && (typed.storage != HandleStorage || typed.record != TypeWithId(types, entity))) {
-                return QueryDeclarations.Failed(Diagnose(forest, clause, 0, "Relationship generator type must be entity"));
+                return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Relationship generator type must be entity"));
             }
             typed = {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
             from := Field(forest, clause, "source");
             if (!Is(forest, from, "member_expression")) {
-                return QueryDeclarations.Failed(Diagnose(forest, from, 0, "Relationship generator requires entity.Relationship"));
+                return QueryDeclarations.Failed(Diagnose(forest, from, document, "Relationship generator requires entity.Relationship"));
             }
             relation := Relationship(types, Text(forest, text, Field(forest, from, "member")));
             if (relation < 0) {
-                return QueryDeclarations.Failed(Diagnose(forest, from, 0, "Unknown relation type"));
+                return QueryDeclarations.Failed(Diagnose(forest, from, document, "Unknown relation type"));
             }
             root_name := Text(forest, text, Field(forest, from, "object"));
             if (root_name != "self") {
                 previous := QueryFieldIndex(fields, root_name);
                 if (previous < 0 || fields[previous].variable == 0) {
-                    return QueryDeclarations.Failed(Diagnose(forest, from, 0, "Generator source must be an earlier entity binding"));
+                    return QueryDeclarations.Failed(Diagnose(forest, from, document, "Generator source must be an earlier entity binding"));
                 }
                 source = fields[previous].variable;
             }
             variables += 1;
             if (variables > 8) {
-                return QueryDeclarations.Failed(Diagnose(forest, clause, 0, "Query supports at most eight relation variables"));
+                return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Query supports at most eight relation variables"));
             }
             variable = variables;
         } else if (Is(forest, clause, "query_binding")) {
             value := Field(forest, clause, "value");
-            inferred := QueryValueType(forest, text, types, members, callables, params, natives, ports, queries, names, entity, value, ops, target);
+            inferred := QueryValueType(forest, text, document, types, members, callables, params, natives, ports, queries, names, entity, value, ops, target);
             if (typed.storage == 0) {
                 typed = inferred;
             }
@@ -1068,18 +1068,18 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 component = types[component].parent;
             }
             if (pointee.storage != StructStorage || component < 0 || types[component].component == 0) {
-                return QueryDeclarations.Failed(Diagnose(forest, clause, 0, "Query binding requires a component type"));
+                return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Query binding requires a component type"));
             }
             from := Field(forest, clause, "source");
             provider = QuerySource(forest, text, types, fields, from);
             if (!provider.valid) {
-                return QueryDeclarations.Failed(Diagnose(forest, from, 0,
+                return QueryDeclarations.Failed(Diagnose(forest, from, document,
                                                          "Component source requires an earlier entity binding or an exclusive relationship provider"));
             }
             source = provider.variable;
         }
         if (typed.storage == 0) {
-            return QueryDeclarations.Failed(Diagnose(forest, clause, 0, "Cannot infer query binding type"));
+            return QueryDeclarations.Failed(Diagnose(forest, clause, document, "Cannot infer query binding type"));
         }
         field: QueryField = {name: name, node: clause, storage: typed.storage, container: typed.container,
                              record: typed.record, component: component, variable: variable, source: source,
@@ -1128,7 +1128,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                     found := Lookup(creation_names, spelling);
                     if (found >= 0 && creation_names[found].place != AliasPlace) {
                         if (system_header && Lookup(enclosing, spelling) < 0) {
-                            return QueryDeclarations.Failed(Diagnose(forest, item, 0,
+                            return QueryDeclarations.Failed(Diagnose(forest, item, document,
                                                                      "System query headers cannot capture invocation values or retained state"));
                         }
                         captured_names.append(spelling);
@@ -1154,14 +1154,14 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     }
     row_name := QueryRowName(types, fields, forest[node].start);
     id := binding.ID(identity, row_name);
-    declared: TypeDecl = {name: "", type_name: row_name, package: 0, node: node, kind: QueryDecl,
+    declared: TypeDecl = {name: "", type_name: row_name, package: document, node: node, kind: QueryDecl,
                           first: first, count: length(fields), size: target.pointer_size, parent: -1,
                           storage: QueryStorage, id: id, layout: 0, component: 0, key: 0, value_storage: 0,
                           value_container: 0, value_record: -1};
     types.append(declared);
     // A literal again: a copy of `declared` shares its uint64 id, and writing
     // into that copy would make every caller copy its arguments.
-    description: TypeDecl = {name: "", type_name: row_name, package: 0, node: node, kind: QueryDescriptorDecl,
+    description: TypeDecl = {name: "", type_name: row_name, package: document, node: node, kind: QueryDescriptorDecl,
                              first: first, count: length(fields), size: target.pointer_size, parent: row,
                              storage: QueryStorage, id: id, layout: 0, component: 0, key: 0, value_storage: 0,
                              value_container: 0, value_record: -1};
@@ -1186,7 +1186,14 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
         params.append(result);
     }
     evaluator := length(callables);
-    callable: Callable = {name: format_text("__query_evaluate_{}", length(queries)), package: 0, document: 0,
+    // Evaluators are numbered within their source, as each compiles alone.
+    numbered: int = 0;
+    for (collected in queries) {
+        if (callables[collected.evaluator].document == document) {
+            numbered += 1;
+        }
+    }
+    callable: Callable = {name: format_text("__query_evaluate_{}", numbered), package: document, document: document,
                           node: node, first: param_first, count: length(captures), result: 0,
                           result_container: 0, result_record: -1, results: length(fields) + 1};
     callables.append(callable);
@@ -1195,20 +1202,22 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     queries.append(described);
     return QueryDeclarations.Collected(types, members, callables, params, queries);
 }
-// Collects the queries among the first `node_end` nodes, the first source's.
-CollectQueries :: (forest: snapshot.SnapshotNode[], text: string, identity: string, node_end: int, input_types: TypeDecl[],
-                   input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: ResolvedNative[],
-                   ports: ResolvedPort[], globals: Name[], entity: uint64, target: Target, ops: Ops) -> QueryDeclarations {
+// Collects the queries of the source whose nodes are [node_start, node_end),
+// after the ones already collected.
+CollectQueries :: (forest: snapshot.SnapshotNode[], text: string, identity: string, document: int, node_start: int,
+                   node_end: int, input_types: TypeDecl[], input_members: TypeMember[], input_callables: Callable[],
+                   input_params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], input_queries: QuerySpec[],
+                   globals: Name[], entity: uint64, target: Target, ops: Ops) -> QueryDeclarations {
     types := input_types;
     members := input_members;
     callables := input_callables;
     params := input_params;
-    queries: QuerySpec[] = [];
-    node: int = 0;
+    queries := input_queries;
+    node := node_start;
     while (node < node_end) {
         if (forest[node].is_named && (Is(forest, node, "query_expression") ||
                                       (Is(forest, node, "system") && length(Members(forest, Field(forest, node, "parameters"))) > 0))) {
-            switch CollectQuery(forest, text, identity, types, members, callables, params, natives, ports,
+            switch CollectQuery(forest, text, identity, document, types, members, callables, params, natives, ports,
                                 queries, globals, [], entity, node, Is(forest, node, "system"), target, ops) {
                 case .Failed(diagnostic):
                     return QueryDeclarations.Failed(diagnostic);
@@ -1279,7 +1288,7 @@ QueryCurrentStep :: (record: int, ops: Ops, target: Target, at: Bases, node: sna
                          [QueryCell(target.pointer_storage, -1, 0)],
                          {storage: QueryStorage, container: 0, record: record}, 0, ops, target, at, node);
 }
-QueryChangedStep :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+QueryChangedStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
                      params: Param[], queries: QuerySpec[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     base: int = 0;
     for (described in queries) {
@@ -1296,7 +1305,7 @@ QueryChangedStep :: (forest: snapshot.SnapshotNode[], text: string, types: TypeD
         }
         base += length(terms) + 1;
     }
-    return Fail(forest, item.node, 0, "changed requires a component in a scheduled system query guard");
+    return Fail(forest, item.node, document, "changed requires a component in a scheduled system query guard");
 }
 QueryGetStep :: (row: Value, index: int, field: ValueType, popped: int, ops: Ops, target: Target,
                  at: Bases, node: snapshot.SnapshotNode) -> Step {
@@ -1629,12 +1638,12 @@ QueryFieldReadStep :: (binding: Name, row: int, values: Value[], top: int, item:
                         1, ops, target, at, node);
 }
 
-QueryExpressionStep :: (forest: snapshot.SnapshotNode[], params: Param[], queries: QuerySpec[], values: Value[], top: int,
+QueryExpressionStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[], queries: QuerySpec[], values: Value[], top: int,
                         item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     index := FindQuery(queries, item.node);
     if (index < 0) {
-        return Fail(forest, item.node, 0, "Query description was not declared");
+        return Fail(forest, item.node, document, "Query description was not declared");
     }
     described := queries[index];
     if (item.phase == 0) {

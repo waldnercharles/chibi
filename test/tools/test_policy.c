@@ -231,7 +231,9 @@ static const char driver_ci_build
          "                print('jobs=' + arguments[arguments.index('--jobs') "
          "+ 1])\n"
          "    sys.exit(0)\n";
-static const char driver_parallel[] =
+/* Keep each concatenated literal below ISO C's 4095-byte minimum limit.
+ * Writing these chunks in order preserves the generated Python byte-for-byte. */
+static const char *const driver_parallel[] = {
     "if len(sys.argv) > 2 and sys.argv[2].startswith('parallel-'):\n"
     "    action, worker, root = sys.argv[2:5]\n"
     "    root = str(Path(root) / 'parallel')\n"
@@ -298,7 +300,7 @@ static const char driver_parallel[] =
     "frozenset(['fixture'])\n"
     "    if action in ('parallel-unknown', 'parallel-failure'):\n"
     "        for name in names[1:]: policy.PARALLEL_RESOURCES.pop(name, None)\n"
-    "    if action in ('parallel-low-memory', 'parallel-memory-unknown', "
+    "    if action in ('parallel-low-memory', 'parallel-memory-unknown', ",
     "'parallel-all-unknown'):\n"
     "        jobs = None\n"
     "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
@@ -359,7 +361,7 @@ static const char driver_parallel[] =
     "        print(policy.available_test_memory(read_text))\n"
     "        from types import SimpleNamespace\n"
     "        policy.sys.platform = 'darwin'\n"
-    "        output = 'Mach Virtual Memory Statistics: (page size of 4096 "
+    "        output = 'Mach Virtual Memory Statistics: (page size of 4096 ",
     "bytes)\\nPages free: 10.\\nPages inactive: 20.\\nPages speculative: "
     "2.\\n'\n"
     "        policy.subprocess.run = lambda *args, **kwargs: "
@@ -427,7 +429,7 @@ static const char driver_parallel[] =
     "check=True)\n"
     "        sys.exit(result)\n"
     "    if action in ('parallel-timeout', 'parallel-int', 'parallel-term'):\n"
-    "        for name, folder in zip(names, ['a', 'b']):\n"
+    "        for name, folder in zip(names, ['a', 'b']):\n",
     "            Path(root, folder).mkdir()\n"
     "            policy.TOOLS[name] = [worker, 'descendant', str(Path(root, "
     "folder)),\n"
@@ -453,7 +455,8 @@ static const char driver_parallel[] =
     "            Path(root, 'sibling-release').touch()\n"
     "            sibling.wait(timeout=6)\n"
     "        sys.exit(result)\n"
-    "    sys.exit(policy.run_group(names, jobs=jobs))\n";
+    "    sys.exit(policy.run_group(names, jobs=jobs))\n"
+};
 
 static const char driver_source[] =
     "try:\n"
@@ -1718,7 +1721,9 @@ void test_tool_test_policy()
     assert(fputs(driver_routes, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
-    assert(fputs(driver_parallel, script) >= 0);
+    for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
+        assert(fputs(driver_parallel[i], script) >= 0);
+    }
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
     RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);

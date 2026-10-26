@@ -275,7 +275,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             return MapDeleteStep(forest, text, document, types, names, item, ops, node);
         }
         if (kind == "assignment" && PointerDestination(forest, text, types, members, names,
-                                                         StatementTarget(forest, item.node))) {
+                                                       StatementTarget(forest, item.node))) {
             return PointerAssignmentStart(forest, text, document, types, members, names, item, ops, target, at);
         }
         expected := Visit(value);

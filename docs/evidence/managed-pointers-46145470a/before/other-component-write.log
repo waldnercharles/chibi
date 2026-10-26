@@ -1,0 +1,11 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-behaviors-rest
+revision c25987b6e81a7ce5473cdb88d5abe07c9e7cb3cf 120 modified
+stage one behavior rejected: OtherComponent:6:9: field assignment needs a local record
+behavior OtherComponent differs on backend 0
+(FAILED: /home/claude/chibi/test/language/package_compiler_chibi.c (9613): passed)
+Running: package_compiler_compiles_the_other_behaviors 
+Running: package_compiler_keeps_text_state_per_owner (OK) (115.202302 secs)
+===============================================================
+Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 811
+Test command wall time: 237.278s; includes in-test fixture setup; external configuration/build excluded.
+exit 1

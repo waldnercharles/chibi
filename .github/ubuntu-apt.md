@@ -2,7 +2,8 @@
 
 `install-ubuntu-dependencies.py` changes mirror preference for the three Linux
 dependency steps in `ci.yml`. It copies the runner's sources and mirror list to
-`RUNNER_TEMP`, preferring `https://archive.ubuntu.com/ubuntu/`, then
+a unique owned `/tmp/chibi-apt-*` directory, preferring
+`https://archive.ubuntu.com/ubuntu/`, then
 `https://security.ubuntu.com/ubuntu/`, and retaining Azure as the last fallback.
 It does not edit `/etc`, change timeouts, remove packages, or change test gates.
 
@@ -24,7 +25,8 @@ filters. APT documents [mirror priorities and metadata](https://manpages.ubuntu.
 
 The source substitution accepts a single-URI `URIs:` line or a `deb`/`deb-src`
 line with optional bracketed options. It replaces only the exact mirror-list
-URI. Continuations, multi-URI Ubuntu fields, direct Azure entries, and malformed
+URI. Continuations of matched `URIs` fields, duplicate fields in matched deb822
+stanzas, multi-URI Ubuntu fields, direct Azure entries, and malformed
 references fail closed. No recognized mirror reference is also an error.
 Other source fields and unrelated repository files are copied verbatim; suites,
 components, architectures, `Signed-By`, and APT preferences remain in force.
@@ -41,11 +43,21 @@ are logged for every requested package. Normal package selection is unchanged;
 fresh official indexes can differ from a lagging mirror, so compare inventories
 before attributing a timing difference solely to transport.
 
+The temporary source tree uses searchable directories (0755) and readable files
+(0644), not writable permissions for other users. Before update, the helper
+checks every copied file and directory as `_apt`, including ancestor traversal.
+`RUNNER_TEMP` can have a private ancestor and is deliberately not used or chmodded.
+APT keeps its normal sandbox; the helper removes only its uniquely allocated tree
+in a `finally` block, using sudo because APT creates root/_apt-owned list entries.
+No package or system source configuration is changed by the access probe.
+
 ## Validation and measurement
 
 Run `python3 .github/test-ubuntu-dependencies.py` for offline fixtures, including
 both source formats, unrelated repositories, options, invalid mirror lists,
-fresh list isolation, and update failure. These use temporary files and mocked
+fresh list isolation, continuation/duplicate rejection, sandbox access command
+construction, inaccessible leaves/ancestors, and cleanup after preparation/access/install
+failures. These use temporary files and mocked
 commands; they do **not** establish live APT or signature-validation evidence.
 The native Linux job also runs them before installing dependencies.
 

@@ -7,7 +7,6 @@ bounded substitution; APT still owns source parsing and signature validation.
 """
 
 import argparse
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -39,6 +38,27 @@ def rewrite_source(text, suffix, uri):
     prefix = r'URIs:[ \t]+' if suffix == '.sources' else r'deb(?:-src)?[ \t]+(?:\[[^\]\n]+\][ \t]+)?'
     end = r'(?=[ \t]*\r?\n?$)' if suffix == '.sources' else r'(?=[ \t])'
     pattern = re.compile(r'^(' + prefix + ')' + re.escape(MIRROR_URI) + end)
+    if suffix == '.sources':
+        # Inspect whole stanzas before substituting: a following continuation or
+        # duplicate field can change how APT interprets an otherwise exact URI.
+        for stanza in re.split(r'\r?\n[ \t]*\r?\n', text):
+            fields = set()
+            field = None
+            matched = duplicate = continued_uri = False
+            for line in stanza.splitlines():
+                if line.lstrip().startswith('#'):
+                    continue
+                if line.startswith((' ', '\t')):
+                    continued_uri |= field == 'uris'
+                    continue
+                header = re.match(r'^([A-Za-z][A-Za-z0-9-]*):', line)
+                field = header[1].lower() if header else None
+                if field:
+                    duplicate |= field in fields
+                    fields.add(field)
+                matched |= bool(pattern.match(line))
+            if matched and (duplicate or continued_uri):
+                raise ValueError('unsupported Ubuntu source stanza: duplicate field or URIs continuation')
     result = []
     count = 0
     for line in text.splitlines(keepends=True):
@@ -85,6 +105,18 @@ def prepare_sources(apt, destination):
     ) for option in ('-o', f'{key}={value}')]
 
 
+def verify_sandbox_access(destination):
+    # Test as the real sandbox user, including traversal of every ancestor.
+    paths = [destination, *destination.rglob('*')]
+    subprocess.run(['sudo', '-u', '_apt', '--', 'python3', '-c',
+                    'import os, pathlib, sys; '
+                    'paths = [pathlib.Path(p) for p in sys.argv[1:]]; '
+                    'ok = all(os.access(p, os.R_OK | os.X_OK) if p.is_dir() '
+                    'else os.access(p, os.R_OK) for p in paths); '
+                    'sys.exit(0 if ok else "APT sandbox cannot access temporary sources")',
+                    *map(str, paths)], check=True)
+
+
 def install(options, packages, no_recommends):
     # Both operations see the same sources, mirror priorities and fresh lists.
     subprocess.run(['sudo', 'apt-get', *options, '-o', 'Debug::Acquire::gpgv=true',
@@ -100,10 +132,18 @@ def main():
     parser.add_argument('--no-install-recommends', action='store_true')
     parser.add_argument('packages', nargs='+')
     args = parser.parse_args()
-    destination = Path(tempfile.mkdtemp(prefix='chibi-apt-', dir=os.environ['RUNNER_TEMP']))
-    options = prepare_sources(Path('/etc/apt'), destination)
-    print(f'CI APT sources and fresh lists: {destination}', flush=True)
-    install(options, args.packages, args.no_install_recommends)
+    # RUNNER_TEMP may have a private ancestor: chmod on the leaf cannot make
+    # mirror+file readable to _apt. Only this uniquely owned /tmp tree is shared.
+    destination = Path(tempfile.mkdtemp(prefix='chibi-apt-', dir='/tmp'))
+    try:
+        options = prepare_sources(Path('/etc/apt'), destination)
+        verify_sandbox_access(destination)
+        print(f'CI APT sources and fresh lists: {destination}', flush=True)
+        install(options, args.packages, args.no_install_recommends)
+    finally:
+        # APT creates root/_apt-owned list directories; ordinary rmtree cannot
+        # remove them. Never widen permissions on RUNNER_TEMP or other trees.
+        subprocess.run(['sudo', 'rm', '-rf', '--', str(destination)], check=True)
 
 
 if __name__ == '__main__':

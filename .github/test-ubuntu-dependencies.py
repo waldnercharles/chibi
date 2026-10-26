@@ -92,6 +92,78 @@ class Sources(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 apt.rewrite_source(text, suffix, NEW_URI)
 
+    def test_matched_deb822_continuations_and_duplicates_fail(self):
+        for newline in ('\n', '\r\n'):
+            for change in (
+                f'URIs: {URI}\n https://example.org/ubuntu/',
+                f'URIs: {URI}\n# comment\n\thttps://example.org/ubuntu/',
+                f'URIs: {URI}\nURIs: https://example.org/ubuntu/',
+                f'URIs: https://example.org/ubuntu/\nURIs: {URI}',
+                f'URIs: {URI}\nuris: https://example.org/ubuntu/',
+                f'URIs: {URI}\nTypes: deb',
+            ):
+                text = DEB822.replace(f'URIs: {URI}', change, 1).replace('\n', newline)
+                with self.subTest(change=change, newline=newline), self.assertRaises(ValueError):
+                    apt.rewrite_source(text, '.sources', NEW_URI)
+
+    def test_other_continuations_and_stanzas_preserved(self):
+        text = DEB822.replace('Components: main restricted universe multiverse',
+                              'Components: main\n restricted universe multiverse')
+        unrelated = UNRELATED.replace('Suites: noble',
+                                     ' https://example.org/ubuntu/\nSuites: noble')
+        text += '\n' + unrelated
+        rewritten, count = apt.rewrite_source(text, '.sources', NEW_URI)
+        self.assertEqual(count, 2)
+        self.assertEqual(rewritten, text.replace(URI, NEW_URI))
+
+    def test_main_uses_owned_tmp_and_cleans_up_on_every_outcome(self):
+        for stage in ('success', 'prepare', 'access', 'install'):
+            with self.subTest(stage=stage), \
+                    patch.object(sys, 'argv', ['helper', '--no-install-recommends', 'clang-18']), \
+                    patch.object(apt.tempfile, 'mkdtemp', return_value='/tmp/chibi-apt-fixture') as temporary, \
+                    patch.object(apt, 'prepare_sources', return_value=['options']) as prepare, \
+                    patch.object(apt, 'verify_sandbox_access') as access, \
+                    patch.object(apt, 'install') as install, \
+                    patch.object(apt.subprocess, 'run') as run:
+                if stage == 'success':
+                    apt.main()
+                    install.assert_called_once_with(['options'], ['clang-18'], True)
+                else:
+                    {'prepare': prepare, 'access': access, 'install': install}[stage].side_effect = ValueError(stage)
+                    with self.assertRaisesRegex(ValueError, stage):
+                        apt.main()
+                    if stage != 'install':
+                        install.assert_not_called()
+                temporary.assert_called_once_with(prefix='chibi-apt-', dir='/tmp')
+                run.assert_called_once_with(['sudo', 'rm', '-rf', '--', '/tmp/chibi-apt-fixture'], check=True)
+
+    def test_access_probe_checks_every_path_as_sandbox_user(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'lists').mkdir()
+            (root / 'apt-mirrors.txt').touch()
+            with patch.object(apt.subprocess, 'run') as run:
+                apt.verify_sandbox_access(root)
+            command = run.call_args.args[0]
+            self.assertEqual(command[:6], ['sudo', '-u', '_apt', '--', 'python3', '-c'])
+            self.assertEqual(set(command[7:]), {str(root), str(root / 'lists'), str(root / 'apt-mirrors.txt')})
+            # Execute the exact probe offline as this user: real permission
+            # checks pass for accessible paths and fail for an unreadable file.
+            subprocess.run(command[4:], check=True)
+            (root / 'apt-mirrors.txt').chmod(0)
+            result = subprocess.run(command[4:], capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b'APT sandbox cannot access', result.stderr)
+            (root / 'apt-mirrors.txt').chmod(0o644)
+            # Simulate a RUNNER_TEMP-style unsearchable ancestor, despite a
+            # searchable leaf. Restore it even if the regression fails.
+            root.chmod(0o600)
+            try:
+                result = subprocess.run(command[4:7] + [str(root / 'lists')], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+            finally:
+                root.chmod(0o700)
+
     def test_private_sources_and_fresh_lists(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -1,11 +1,12 @@
 package scalar_facts
 
 // Internal opt-in owned result for one source document holding a bounded set
-// of ordinary pure functions over numbers, bool and records of them, which may
-// recurse. A function's body is locals, assignments, if statements, switches
-// over integers, while loops, loops over int ranges, breaks, continues and
-// returns. Values and conditions are literals, variables, arithmetic,
-// shifts, conversions, comparisons, logic, record literals, field reads and
+// of ordinary pure functions over numbers, bool, and records and unions of
+// them, which may recurse. A function's body is locals, assignments, if
+// statements, switches over integers or a union's variants, while loops, loops
+// over int ranges, breaks, continues and returns. Values and conditions are
+// literals, variables, arithmetic, shifts, conversions, comparisons, logic,
+// record literals, field reads, union variants, their tests and payloads, and
 // direct calls of functions of the set, whose operands are such expressions.
 // This is not a general IR, and no compiler-private identity crosses this
 // boundary.
@@ -17,10 +18,17 @@ package scalar_facts
 // a rejection, and it must never be emitted.
 //
 // An accepted module's row 1 is its Document: `name` is the shared source
-// snapshot's document key. Then each record the source declares follows in
-// declaration order: a Record row, its `name`, `count` fields and declaration
-// range, then `count` Member rows: `name`, scalar `type`, ordinal `value` and
-// name range. Record r is type RecordType + r, which a function's result, a
+// snapshot's document key. Then each record and union the source declares
+// follows in declaration order:
+// - a record is a Record row, its `name`, `count` fields and declaration
+//   range, then `count` Member rows: `name`, scalar `type`, ordinal `value`
+//   and name range;
+// - a union is a Union row, its `name`, `count` variants and declaration
+//   range, then each variant in order: a Variant row, its `name`, ordinal
+//   `value`, `count` payload fields and range, then `count` Member rows:
+//   `name`, scalar `type`, name range and `value`, the payload's ordinal
+//   among all the union's payloads in declaration order.
+// The d-th of them is type RecordType + d, which a function's result, a
 // parameter, a variable and an operand may have. Then each function follows
 // in declaration order; the first is the module's entry and takes no
 // parameters and returns int:
@@ -65,7 +73,14 @@ package scalar_facts
 //   The value arms are tried in order, each value evaluated only when the
 //   arms before it missed, and the first arm whose value equals the switch's
 //   runs; the default arm, wherever it is, runs when none does. An arm does
-//   not fall through into the next;
+//   not fall through into the next. A switch on a union variable is one on
+//   its Tag: its operands read the variable, then take its Tag, and each
+//   variant arm's value is a Literal of the variant's ordinal, with the range
+//   of the pattern's name. Its last arm is its default arm when it has none,
+//   since the variable holds one of the variants the arms cover. Each of an
+//   arm's bindings, in order, is a Local row with the binding's range whose
+//   operands read the variable and take that Payload, with the same range,
+//   before the arm's statements;
 // - a Break or Continue row leaves, or ends the pass of, the innermost loop
 //   it is in, through any switch around it. It has no operands;
 // - a Return row is followed by its `count` operands, the returned value.
@@ -98,7 +113,17 @@ package scalar_facts
 // that type then a value of the field's type, to give the record with that
 // field replaced; a Field's `value` is a field ordinal and it consumes the
 // most recent unconsumed operand, a record, to give that field, of its
-// `type`. A record literal is a Zero row with the literal's range, then each
+// `type`. A Make's `value` is a variant ordinal of its union `type` and
+// `count` that variant's payloads, and it consumes the `count` most recent
+// unconsumed operands, the payloads in order, to give the union holding that
+// variant; a Tag consumes the most recent unconsumed operand, a union, to give
+// its variant's ordinal, an int; a Payload's `value` is a payload ordinal of a
+// union and it consumes the most recent unconsumed operand, that union, to
+// give the payload, of its `type`. Payloads are read only where their variant
+// is held; the backend cannot check this, and another variant's payload reads
+// its zero. `v is .V` is the Tag of `v`, a Literal of V's ordinal with the
+// pattern's range, then an Equal Compare, or NotEqual for `is not`. A record
+// literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
 // `v`, then `x`, then update `f` with the target's range, and a compound one
@@ -157,6 +182,11 @@ pub MemberRow: int : 26;
 pub ZeroRow: int : 27;
 pub UpdateRow: int : 28;
 pub FieldRow: int : 29;
+pub UnionRow: int : 30;
+pub VariantRow: int : 31;
+pub MakeRow: int : 32;
+pub TagRow: int : 33;
+pub PayloadRow: int : 34;
 
 // The scalar types: int and bool, then the other integer types, then the
 // floating ones. The facts carry no compiler storage ordinal.
@@ -171,7 +201,7 @@ pub Int64Type: int : 8;
 pub WordType: int : 9;
 pub FloatType: int : 10;
 pub DoubleType: int : 11;
-// Record r of the module is type RecordType + r.
+// The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
@@ -267,14 +297,17 @@ pub Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 
-// Bounds both sides check before reading counts: source bytes, records per
-// module and fields per record, functions per module, parameters, locals and
-// statement rows per function, a switch arm's Case row counting as a
-// statement, and operands per function, counted over all its statements
-// together.
+// Bounds both sides check before reading counts: source bytes, records and
+// unions per module together, fields per record, variants per union and
+// payloads per union, all its variants' together, functions per module,
+// parameters, locals and statement rows per function, a switch arm's Case row
+// counting as a statement, and operands per function, counted over all its
+// statements together.
 pub MaxSource: int : 16384;
 pub MaxRecords: int : 16;
 pub MaxMembers: int : 16;
+pub MaxVariants: int : 16;
+pub MaxPayloads: int : 15;
 pub MaxFunctions: int : 32;
 pub MaxParameters: int : 8;
 pub MaxLocals: int : 16;

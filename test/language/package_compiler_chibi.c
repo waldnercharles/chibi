@@ -10121,6 +10121,11 @@ enum
     SCALAR_ZERO_ROW = 27,
     SCALAR_UPDATE_ROW = 28,
     SCALAR_FIELD_ROW = 29,
+    SCALAR_UNION_ROW = 30,
+    SCALAR_VARIANT_ROW = 31,
+    SCALAR_MAKE_ROW = 32,
+    SCALAR_TAG_ROW = 33,
+    SCALAR_PAYLOAD_ROW = 34,
     SCALAR_RANGE_EXCLUSIVE = 1,
     SCALAR_MAX_LOCALS = 16,
     SCALAR_MAX_STATEMENTS = 32,
@@ -10332,6 +10337,59 @@ enum
     RECORD_ZERO = 22,
     RECORD_Y_UPDATE = 24,
     RECORD_ROWS = (int)(sizeof RECORD_KINDS / sizeof *RECORD_KINDS)
+};
+/* Make builds the Box variant of Shape, and Main tests it with `is`, then
+ * switches on it, binding the Box arm's payloads: Make(3) gives 3. The last
+ * arm is the switch's default, since it has none. */
+static const char UNION_ROWS_SOURCE
+    [] = "package scalar\n"
+         "Shape :: union { Dot | Box(w: int, h: number) }\n"
+         "Main :: () -> int {\n"
+         "    s := Make(3);\n"
+         "    if (s is .Dot) { return 0; }\n"
+         "    switch s { case .Dot: return 1; case .Box(w, h): return w; }\n"
+         "}\n"
+         "Make :: (w: int) -> Shape { return Shape.Box(w, 0.5); }\n";
+/* The kind of each of UNION_ROWS_SOURCE's rows, and the rows edited. */
+static const int UNION_KINDS[] = {
+    SCALAR_SOURCE_ROW,   SCALAR_DOCUMENT_ROW,  SCALAR_UNION_ROW,
+    SCALAR_VARIANT_ROW,  SCALAR_VARIANT_ROW,   SCALAR_MEMBER_ROW,
+    SCALAR_MEMBER_ROW,   SCALAR_FUNCTION_ROW,  SCALAR_LOCAL_ROW,
+    SCALAR_LITERAL_ROW,  SCALAR_CALL_ROW,      SCALAR_IF_ROW,
+    SCALAR_READ_ROW,     SCALAR_TAG_ROW,       SCALAR_LITERAL_ROW,
+    SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_END_ROW,      SCALAR_SWITCH_ROW,    SCALAR_READ_ROW,
+    SCALAR_TAG_ROW,      SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CASE_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_PAYLOAD_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_PAYLOAD_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_READ_ROW,      SCALAR_END_ROW,
+    SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,     SCALAR_LITERAL_ROW,   SCALAR_MAKE_ROW,
+};
+enum
+{
+    UNION_DECLARATION = 2,
+    UNION_DOT = 3,
+    UNION_BOX = 4,
+    UNION_W = 5,
+    UNION_H = 6,
+    UNION_MAIN = 7,
+    UNION_LOCAL = 8,
+    UNION_IS_TAG = 13,
+    UNION_IS_VARIANT = 14,
+    UNION_DOT_RETURN = 17,
+    UNION_SWITCH = 19,
+    UNION_SWITCH_TAG = 21,
+    UNION_DOT_ARM = 22,
+    UNION_DOT_VARIANT = 23,
+    UNION_BOX_ARM = 26,
+    UNION_W_LOCAL = 27,
+    UNION_W_PAYLOAD = 29,
+    UNION_H_LOCAL = 30,
+    UNION_H_PAYLOAD = 32,
+    UNION_MAKE = 41,
+    UNION_ROWS = (int)(sizeof UNION_KINDS / sizeof *UNION_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -10585,6 +10643,56 @@ static const malformed_guard MALFORMED_RECORDS[] = {
     { { EDIT(RECORD_COMPOUND_UPDATE, "type", SCALAR_INT) }, FIELD_WRITE },
     { { EDIT(RECORD_COMPOUND_UPDATE, "count", 1) }, FIELD_WRITE },
 };
+static const char UNION_ROW[] = "invalid scalar union row",
+                  VARIANT_ROW[] = "invalid scalar union variant row",
+                  PAYLOAD_ROW[] = "invalid scalar union member row",
+                  VARIANT[] = "scalar variant differs from its union",
+                  TAG[] = "scalar tag reads no union",
+                  PAYLOAD[] = "scalar payload read differs from its union";
+static const malformed_guard MALFORMED_UNIONS[] = {
+    /* A union whose variants overrun into its payloads, one with no name,
+     * one that does not lie where it is declared, and one named as a
+     * record would be. */
+    { { EDIT(UNION_DECLARATION, "count", 3) }, UNION_ROW },
+    { { { .row = UNION_DECLARATION, .field = "name", .text = "", .from = -1 } }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "type", SCALAR_INT) }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "value", 1) }, UNION_ROW },
+    /* A variant out of order, named as another, outside its union, or with
+     * fewer payloads than follow it, which leaves a member where a function
+     * must start. */
+    { { EDIT(UNION_BOX, "value", 0) }, VARIANT_ROW },
+    { { { .row = UNION_BOX, .field = "name", .text = "Dot", .from = -1 } }, VARIANT_ROW },
+    { { COPY(UNION_BOX, "end", UNION_MAIN) }, VARIANT_ROW },
+    { { EDIT(UNION_BOX, "count", 1) }, LAYOUT },
+    /* A payload numbered as another, of a record type, named as another in
+     * its variant, or outside its variant. */
+    { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, PAYLOAD_ROW },
+    { { { .row = UNION_H, .field = "name", .text = "w", .from = -1 } }, PAYLOAD_ROW },
+    { { COPY(UNION_H, "end", UNION_MAIN) }, PAYLOAD_ROW },
+    /* A variant made with another's payloads, too few of them or as a
+     * scalar. */
+    { { EDIT(UNION_MAKE, "value", 0) }, VARIANT },
+    { { EDIT(UNION_MAKE, "count", 1) }, VARIANT },
+    { { EDIT(UNION_MAKE, "type", SCALAR_INT) }, VARIANT },
+    /* A tag of another type or arity, a payload of another type than its
+     * binding or none of its union, and a zero or field read of a union,
+     * which only a record has. */
+    { { EDIT(UNION_IS_TAG, "type", SCALAR_BOOL) }, TAG },
+    { { EDIT(UNION_IS_TAG, "count", 2) }, TAG },
+    { { EDIT(UNION_IS_TAG, "value", 1) }, TAG },
+    { { EDIT(UNION_H_PAYLOAD, "value", 0) }, PAYLOAD },
+    { { EDIT(UNION_H_PAYLOAD, "value", 2) }, PAYLOAD },
+    { { EDIT(UNION_W_PAYLOAD, "type", SCALAR_FLOAT) }, PAYLOAD },
+    { { EDIT(UNION_DOT_RETURN, "kind", SCALAR_ZERO_ROW),
+        EDIT(UNION_DOT_RETURN, "type", SCALAR_RECORD) },
+      "scalar record zero names no record" },
+    { { EDIT(UNION_IS_TAG, "kind", SCALAR_FIELD_ROW) }, FIELD_READ },
+    /* The tag as a bool, which its variant's literal no longer matches. */
+    { { EDIT(UNION_IS_VARIANT, "type", SCALAR_BOOL),
+        EDIT(UNION_IS_VARIANT, "literal", 0) },
+      "scalar comparison differs from its operands" },
+};
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
@@ -10813,6 +10921,54 @@ static bool recorded_rows(const pin_value *rows)
     REQUIRE(scalar_field(guard_row(rows, RECORD_FIELD), "type").i == SCALAR_INT);
     return true;
 }
+/* UNION_ROWS_SOURCE's union, its variants and their payloads numbered across
+ * it, the union type of Make's result, Main's local and the rows that read or
+ * make one, the Tag and variant ordinals its `is` and arms test, its last
+ * arm as the default, and its bindings' locals. */
+static bool unioned_rows(const pin_value *rows)
+{
+    pin_value *declared = guard_row(rows, UNION_DECLARATION);
+    REQUIRE(
+        retained_text(declared, "name", "Shape") &&
+        scalar_field(declared, "count").i == 2
+    );
+    REQUIRE(retained_text(guard_row(rows, UNION_DOT), "name", "Dot"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_DOT), "count").i == 0);
+    REQUIRE(retained_text(guard_row(rows, UNION_BOX), "name", "Box"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX), "count").i == 2);
+    REQUIRE(retained_text(guard_row(rows, UNION_W), "name", "w"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_W), "type").i == SCALAR_INT);
+    REQUIRE(retained_text(guard_row(rows, UNION_H), "name", "h"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_H), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H), "value").i == 1);
+    static const int UNION_TYPED[] = { UNION_LOCAL,
+                                       UNION_LOCAL + 2,
+                                       UNION_IS_TAG - 1,
+                                       UNION_MAKE };
+    for (int i = 0; i < (int)(sizeof UNION_TYPED / sizeof *UNION_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, UNION_TYPED[i]), "type").i == SCALAR_RECORD);
+    }
+    REQUIRE(scalar_field(guard_row(rows, UNION_MAKE), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_MAKE), "count").i == 2);
+    static const int INT_TYPED[] = { UNION_IS_TAG,  UNION_IS_VARIANT,
+                                     UNION_SWITCH,  UNION_SWITCH_TAG,
+                                     UNION_DOT_ARM, UNION_DOT_VARIANT,
+                                     UNION_BOX_ARM, UNION_W_LOCAL };
+    for (int i = 0; i < (int)(sizeof INT_TYPED / sizeof *INT_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, INT_TYPED[i]), "type").i == SCALAR_INT);
+    }
+    REQUIRE(scalar_field(guard_row(rows, UNION_IS_VARIANT), "literal").i64 == 0);
+    REQUIRE(scalar_field(guard_row(rows, UNION_DOT_ARM), "count").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX_ARM), "count").i == 0);
+    REQUIRE(retained_text(guard_row(rows, UNION_W_LOCAL), "name", "w"));
+    REQUIRE(retained_text(guard_row(rows, UNION_H_LOCAL), "name", "h"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_LOCAL), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_LOCAL), "value").i == 2);
+    REQUIRE(scalar_field(guard_row(rows, UNION_W_PAYLOAD), "value").i == 0);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_PAYLOAD), "value").i == 1);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -10821,7 +10977,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
-        looped[2], switched[2], recorded[2];
+        looped[2], switched[2], recorded[2], unioned[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -10867,6 +11023,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(RECORD_ROWS_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &recorded[b])
+        );
+        args[2] = text(UNION_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &unioned[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -10968,6 +11128,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_RECORDS / sizeof *MALFORMED_RECORDS)
         ));
         REQUIRE(recorded_rows(&recorded[b]));
+        REQUIRE(unioned_rows(&unioned[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &unioned[b],
+            UNION_KINDS,
+            UNION_ROWS,
+            MALFORMED_UNIONS,
+            (int)(sizeof MALFORMED_UNIONS / sizeof *MALFORMED_UNIONS)
+        ));
     }
     return true;
 }
@@ -11649,6 +11818,86 @@ static bool scalar_results_match(const int64_t values[4], int64_t expected)
 {
     return values[0] == expected && values[1] == expected &&
            values[2] == expected && values[3] == expected;
+}
+/* Union forms the scalar subset cannot express, each with its message and
+ * the source its diagnostic covers: a switch on a call, an `is` that binds,
+ * string and record payloads, and one payload and one variant past the
+ * bounds. */
+static const struct
+{
+    const char *source, *message, *excerpt;
+} UNION_REJECTIONS[] = {
+    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
+      "Main :: () -> int { switch Make() { case .Dot: return 0; case .Box(w): "
+      "return w; } }\n"
+      "Make :: () -> Shape { return Shape.Dot; }\n",
+      "scalar proof switches only on union variables",
+      "Make()" },
+    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
+      "Main :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } "
+      "return 0; }\n",
+      "scalar proof binds payloads only in switch arms",
+      ".Box(w)" },
+    { "package scalar\nNamed :: union { Tag(text: string) }\nMain :: () -> int "
+      "{ return 1; }\n",
+      "scalar proof requires number and bool union payloads",
+      "text: string" },
+    { "package scalar\nPoint :: struct { x: int; }\nWrapped :: union { Of(p: "
+      "Point) }\n"
+      "Main :: () -> int { return 1; }\n",
+      "scalar proof requires number and bool union payloads",
+      "p: Point" },
+    { "package scalar\nWide :: union { A(a0: int, a1: int, a2: int, a3: int, "
+      "a4: int, a5: int, a6: int, a7: int) |\n"
+      "    B(b0: int, b1: int, b2: int, b3: int, b4: int, b5: int, b6: int, "
+      "b7: int) }\n"
+      "Main :: () -> int { return 1; }\n",
+      "scalar proof admits at most 15 payloads per union",
+      "b7: int" },
+    { "package scalar\nMany :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | "
+      "V8 | V9 | V10 | V11 | V12 | V13 | "
+      "V14 | V15 | V16 }\nMain :: () -> int { return 1; }\n",
+      "scalar proof admits at most 16 variants per union",
+      "Many :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | "
+      "V11 | V12 | V13 | V14 | V15 | V16 }" },
+};
+/* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
+ * and diagnostic and nothing else. */
+TEST_CASE(package_compiler_scalar_rejects_unsupported_unions)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < (int)(sizeof UNION_REJECTIONS / sizeof *UNION_REJECTIONS);
+             i++) {
+            const char *source = UNION_REJECTIONS[i].source;
+            pin_value args[] = { text("/project"),
+                                 text("Scalar.chibi"),
+                                 text(source),
+                                 { 0 },
+                                 instruction_names() };
+            REQUIRE(target(b, &args[3]));
+            pin_value rows;
+            REQUIRE(
+                compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
+            );
+            const pin_array *array = rows.ptr;
+            REQUIRE(array->count == 2);
+            pin_value *rejection = guard_row(&rows, 1);
+            REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
+            int start = scalar_field(rejection, "start").i,
+                end = scalar_field(rejection, "end").i;
+            pin_string message = pin_text(scalar_field(rejection, "text"));
+            bool expected = !strcmp(message.bytes, UNION_REJECTIONS[i].message) &&
+                            end - start == (int)strlen(UNION_REJECTIONS[i].excerpt) &&
+                            !strncmp(source + start, UNION_REJECTIONS[i].excerpt, (size_t)(end - start));
+            if (!expected) {
+                fprintf(stderr, "union rejection %d: %s at %.*s\n", i, message.bytes, end - start, source + start);
+            }
+            REQUIRE(expected);
+            arena_free(&detached);
+        }
+    }
+    return true;
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 {
@@ -13057,6 +13306,85 @@ static const struct
       "Main :: () -> int { v: Vec = {x: 7}; return " NESTED_IDS "v" NESTED_CLOSES ".x; }\n"
       "Id :: (p: Vec) -> Vec { return p; }\n",
       7 },
+    /* Unions: variants with and without payloads, made, passed, returned,
+     * assigned and tested with `is`, switches whose arms bind payloads, with
+     * a default arm or covering every variant without one, and a switch in
+     * a loop that breaks and continues: 123 + 111 + (250 + 251 + 252 + 253). */
+    { "unions",
+      "package scalar\n"
+      "Shape :: union { Empty | Circle(r: number) | Rect(w: int, h: int) | "
+      "Flag(lit: bool, weight: f64) }\n"
+      "Step :: union { Stop | Go(n: u8) }\n"
+      "Main :: () -> int { return Areas() + Tests() + Steps(); }\n"
+      "Area :: (s: Shape) -> int {\n"
+      "    switch s {\n"
+      "        case .Empty: return 0;\n"
+      "        case .Circle(r): return int(r * r * 3.0);\n"
+      "        case .Rect(w, h): return w * h;\n"
+      "        case .Flag(lit, weight):\n"
+      "            if (lit) { return int(weight * 2.0); }\n"
+      "            return -1;\n"
+      "    }\n"
+      "}\n"
+      "Grow :: (s: Shape) -> Shape {\n"
+      "    switch s {\n"
+      "        case .Rect(w, h): return Shape.Rect(w + 1, h * 2);\n"
+      "        case .Circle(r): return Shape.Circle(r + 0.5);\n"
+      "        case: return s;\n"
+      "    }\n"
+      "}\n"
+      "Areas :: () -> int {\n"
+      "    a := Shape.Rect(3, 4);\n"
+      "    b: Shape = Shape.Circle(2.0);\n"
+      "    c := Grow(Grow(a));\n"
+      "    total := Area(a) + Area(b) + Area(c) + Area(Shape.Empty) + "
+      "Area(Shape.Flag(true, 10.25));\n"
+      "    a = Grow(Shape.Flag(false, 1.0));\n"
+      "    return total + Area(a);\n"
+      "}\n"
+      "Tests :: () -> int {\n"
+      "    s := Grow(Shape.Circle(1.0));\n"
+      "    n: int = 0;\n"
+      "    if (s is .Circle) { n += 1; }\n"
+      "    if (s is not .Rect) { n += 10; }\n"
+      "    if (Shape.Empty is .Empty && !(s is .Empty)) { n += 100; }\n"
+      "    return n;\n"
+      "}\n"
+      "Steps :: () -> int {\n"
+      "    s := Step.Go(250);\n"
+      "    total: int = 0;\n"
+      "    for (i in 0..<10) {\n"
+      "        switch s {\n"
+      "            case .Stop: break;\n"
+      "            case .Go(n):\n"
+      "                total += int(n);\n"
+      "                if (n > 252) { s = Step.Stop; continue; }\n"
+      "                s = Step.Go(n + 1);\n"
+      "        }\n"
+      "    }\n"
+      "    return total;\n"
+      "}\n",
+      1240 },
+    /* A union of the most payloads, which with its tag fills the most
+     * fields a native record holds, all bound in one arm of a function of
+     * nearly the most operands: 1 + 2 + ... + 15, grouped so the producer's
+     * operand recursion stays shallow. */
+    { "widest_union",
+      "package scalar\n"
+      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, f: "
+      "int, g: int, h: int, i: int, j: int,\n"
+      "    k: int, l: int, m: int, n: int, o: int) }\n"
+      "Main :: () -> int { return Sum(Wide.All(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "
+      "11, 12, 13, 14, 15)); }\n"
+      "Sum :: (w: Wide) -> int {\n"
+      "    switch w {\n"
+      "        case .Empty: return 0;\n"
+      "        case .All(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o):\n"
+      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + l + "
+      "m + n + o);\n"
+      "    }\n"
+      "}\n",
+      120 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
@@ -15482,6 +15810,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
+    RUN_TEST_CASE(package_compiler_scalar_rejects_unsupported_unions);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)

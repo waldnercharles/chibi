@@ -1945,7 +1945,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
+`python3 tools/test_policy.py tool compiler-bootstrap` includes seven CLI admission cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -1961,11 +1961,22 @@ of 55, 56 and 64 a's, which sit at the padding boundaries. The cases run about
 twenty host children on tiny folders. The target case loads the closure that
 `test_language --compiler-artifact-write` writes.
 
+The seed read also admits 16 MiB + 1 byte and exactly 32 MiB, reaching source
+validation, and rejects 32 MiB + 1 byte before decoding. An API case checks
+artifact reads at 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 with sparse files:
+accepted reads still fail the unchanged checksum check, then the original
+valid artifact loads again. Ordinary byte-output and asset-source bounds remain 16 MiB;
+only bootstrap closures and existing CLI file outputs use the artifact bound.
+
 `python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
-selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
+selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
-`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
+`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact. The API recovery case
+adds a marker and a 64 KiB string literal to the exported compiler source,
+forcing the current compiler past 16 MiB. It recovers to a fixed point, executes
+both new exports and verifies that the load API writes no output file. The
+instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 
@@ -2045,8 +2056,8 @@ takes about 19 s when it recovers stage one and 2 s once it is kept.
 
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
-cases and two cases in one child producer. One checks that `--output-bytes`
+`python3 tools/test_policy.py tool compiler-artifact` selects seventeen tooling
+cases and three cases in one child producer. One checks that `--output-bytes`
 writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
@@ -2057,6 +2068,14 @@ on both backends, with exactly four authored exports: `Echo(byte[]) -> byte[]`,
 `Scalar() -> byte`, `Integers() -> int[]` and `Loop(bool) -> byte[]`. Stage zero
 serializes this <=32 KiB closure and writes its IDs and bounded inputs. It makes
 no source calls. This is transport fixture generation, not authored serialization.
+A third producer case prepares a separate one-export `Sized(int) -> byte[]`
+fixture on both backends, also below 32 KiB, with no source calls. `Sized`
+uses one native resize per call. On bytecode and SLJIT, the boundary
+case checks 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 against both limits;
+oversized results leave no bytes, and admitted results preserve their size and
+endpoints. Inputs stay below 32 bytes and calls retain a 10,000-instruction
+budget. `language-asset-compiler-host` separately rejects a source of 16 MiB + 1
+before compiler admission.
 
 Two fresh original product processes load only the snapshot artifact and run
 five requests on bytecode and SLJIT. Actual entry counters must confirm the
@@ -2064,8 +2083,8 @@ requested backend without inspection fallback. Requests include a three-file
 import graph, syntax failure, invalid UTF-8, embedded-NUL source length and an
 exact uint64 maximum declared size. Five source calls plus ten product calls
 each permit three million instructions. Four C oracle parses and twelve raw
-bridge parses are unchanged: with 18 preparation parses, the route has at most
-34 parser calls. Each original request contains at most three input files.
+bridge parses are unchanged: with 20 preparation parses, the route has at most
+36 parser calls. Each original request contains at most three input files.
 The original artifact cap remains 16 MiB, request JSON 8 KiB, expected/captured
 output 256 KiB and stderr 4 KiB.
 

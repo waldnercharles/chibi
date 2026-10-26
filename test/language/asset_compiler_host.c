@@ -38,6 +38,20 @@ static asset_compiler_options options()
     value.cache_directory = "";
     return value;
 }
+TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
+{
+    size_t length = 16u * 1024u * 1024u + 1u;
+    written = malloc(length + 1);
+    REQUIRE(written);
+    memset(written, ' ', length);
+    written[length] = 0;
+    asset_compiler_options config = options();
+    asset_compiler_diagnostic error;
+    document = asset_source_read(written, "/project/TooLarge.chibi", &config, &error);
+    REQUIRE(!document);
+    REQUIRE(!strcmp(error.message, "Asset source must be non-null and at most 16 MiB"));
+    return true;
+}
 static av_doc *read_document(const char *source)
 {
     asset_compiler_options config = options();
@@ -473,6 +487,7 @@ TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel)
 void test_language_asset_compiler_host()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(asset_source_keeps_the_16_mib_source_bound);
     RUN_TEST_CASE(asset_source_public_scene_build_and_reuse);
     RUN_TEST_CASE(asset_source_authored_validation_rejects_duplicate_field);
     RUN_TEST_CASE(asset_source_malformed_build_reports_position);

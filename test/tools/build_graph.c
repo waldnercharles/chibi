@@ -230,17 +230,35 @@ static int run_graph(
 static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
 {
     const char *const options[] = {
-        "--compiler",        compiler,        "--cxx-compiler",
-        cxx_compiler,        "--compiler-id", compiler_id,
-        "--build-type",      build_type,      "--warnings",
-        warn ? "on" : "off", "--archiver",    archiver,
-        "--ranlib",          ranlib,          "--architecture",
-        architecture,        "--sysroot",     sysroot,
-        "--sanitizers",      sanitizers,      "--debug-compilation-dir",
-        debug_dir,           "--launcher",    "",
-        "--third-party",     third_party,
+        "--compiler",
+        compiler,
+        "--cxx-compiler",
+        cxx_compiler,
+        "--compiler-id",
+        compiler_id,
+        "--build-type",
+        build_type,
+        "--warnings",
+        warn ? "on" : "off",
+        "--archiver",
+        archiver,
+        "--ranlib",
+        ranlib,
+        "--architecture",
+        architecture,
+        "--sysroot",
+        sysroot,
+        "--sanitizers",
+        sanitizers,
+        "--debug-compilation-dir",
+        debug_dir,
+        "--launcher",
+        "",
+        "--third-party",
+        third_party,
         debug_optimization[0] ? "--debug-optimization" : NULL,
-        debug_optimization, NULL,
+        debug_optimization,
+        NULL,
     };
     return run_graph(root, build_dir, options, extra);
 }
@@ -252,12 +270,17 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
     const char *profile = sanitizers[0]                  ? "sanitizer"
                         : !strcmp(build_type, "Release") ? "release"
                                                          : "debug";
-    const char *const options[] = {
-        "--profile", profile,      "--debug-compilation-dir",
-        debug_dir,   "--warnings", warnings ? "on" : "off",
-        debug_optimization[0] ? "--debug-optimization" : NULL,
-        debug_optimization, NULL
-    };
+    const char *const options[] = { "--profile",
+                                    profile,
+                                    "--debug-compilation-dir",
+                                    debug_dir,
+                                    "--warnings",
+                                    warnings ? "on" : "off",
+                                    debug_optimization[0]
+                                        ? "--debug-optimization"
+                                        : NULL,
+                                    debug_optimization,
+                                    NULL };
     /* Without CXX, the C++ compiler is the one beside CC, as CMake's. */
     char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
     char *saved_cxx = getenv("CXX") ? strdup(getenv("CXX")) : NULL;
@@ -1165,21 +1188,38 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
  * test assertions, before the opt-in experiment is allowed to build. */
 TEST_CASE(debug_optimization_preserves_instrumentation)
 {
-    const char *const options[] = {
-        "--profile", "explicit", "--compiler", "/unused/clang",
-        "--cxx-compiler", "/unused/clang++", "--compiler-id", "Clang",
-        "--build-type", "Debug", "--sanitizers", "address,undefined",
-        "--archiver", "/unused/ar", "--ranlib", "/unused/ranlib", NULL
-    };
+    const char *const options[] = { "--profile",
+                                    "explicit",
+                                    "--compiler",
+                                    "/unused/clang",
+                                    "--cxx-compiler",
+                                    "/unused/clang++",
+                                    "--compiler-id",
+                                    "Clang",
+                                    "--build-type",
+                                    "Debug",
+                                    "--sanitizers",
+                                    "address,undefined",
+                                    "--archiver",
+                                    "/unused/ar",
+                                    "--ranlib",
+                                    "/unused/ranlib",
+                                    NULL };
     const char *const levels[] = { "", "0", "1" };
     for (int level = 0; level < 3; level++) {
         char build_dir[GRAPH_PATH], path[GRAPH_PATH];
         join(build_dir, suite, level == 0 ? "default debug" : levels[level]);
-        const char *const extra[] = {
-            "--commands-only", "on", "--target", "chibi_support",
-            "--all-commands", "on", level ? "--debug-optimization" : NULL,
-            levels[level], level ? "--debug-optimization" : NULL, "0", NULL
-        };
+        const char *const extra[] = { "--commands-only",
+                                      "on",
+                                      "--target",
+                                      "chibi_support",
+                                      "--all-commands",
+                                      "on",
+                                      level ? "--debug-optimization" : NULL,
+                                      levels[level],
+                                      level ? "--debug-optimization" : NULL,
+                                      "0",
+                                      NULL };
         /* Valid repetitions retain Option's existing first-value precedence. */
         REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, extra) == 0);
         join(path, build_dir, "compile_commands.json");
@@ -1194,7 +1234,9 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
         while ((entry = yyjson_arr_iter_next(&entries))) {
             bool debug = false, sanitizer = false, frames = false, assertions = false;
             int optimizations = 0;
-            yyjson_arr_iter arguments = yyjson_arr_iter_with(yyjson_obj_get(entry, "arguments"));
+            yyjson_arr_iter arguments = yyjson_arr_iter_with(
+                yyjson_obj_get(entry, "arguments")
+            );
             yyjson_val *value;
             while ((value = yyjson_arr_iter_next(&arguments))) {
                 const char *arg = yyjson_get_str(value);
@@ -1214,7 +1256,8 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
             const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
             saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
             saw_sdk |= strstr(output, "/objects/chibi_compiler/") != NULL;
-            if (strstr(output, "/objects/test_host/") || strstr(output, "/objects/policy_worker/")) {
+            if (strstr(output, "/objects/test_host/") ||
+                strstr(output, "/objects/policy_worker/")) {
                 REQUIRE(assertions);
                 saw_test = true;
             }

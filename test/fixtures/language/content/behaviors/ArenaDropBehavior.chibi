@@ -47,7 +47,7 @@ ArenaDropBehavior :: behavior {
             return ();
         }
     }
-    Spawn_Source_Beam :: (Position: Transform = null, Appearance: Geometry3D = null, Material: Shader = null, Orientation: Orientation = null, Visual: VisualTransform = null, Center: CF_V2 = null, Center_Y: float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
+    Spawn_Source_Beam :: (Position: Transform = null, Appearance: Geometry3D = null, Material: Shader = null, Orientation: Orientation = null, Visual: VisualTransform = null, Center: vec2 = null, Center_Y: float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
 
         action spawn_prototype_action = spawn_prototype(Prototype: ArenaEnemyShard);
         spawn_prototype_action();

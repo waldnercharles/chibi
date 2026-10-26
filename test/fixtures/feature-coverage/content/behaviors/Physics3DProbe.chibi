@@ -6,7 +6,7 @@ Physics3DProbe :: behavior {
         touching := contact_entities_3d(self, 1)
         apply_force_3d(self, vec3(0, self.Body3D.mass * 2, 0))
     }
-    on ContactBegin3D :: (Point: CF_V3) {
+    on ContactBegin3D :: (Point: vec3) {
         landed := Point
         apply_impulse_3d(self, vec3(0, self.Body3D.mass * 32, 0))
     }

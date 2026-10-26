@@ -9321,52 +9321,84 @@ TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected
     REQUIRE(alike);
     return true;
 }
-/* The watches of default_pair(2)'s omitted f64 default, 5: as the call's
- * ordinal-1 input and as the default's output. */
-typedef struct
+/* Whether `actual` delivers `expected`'s watches, and those of each source
+ * span in the same order. Stage one watches a native's arguments as the
+ * call's inputs after its omitted defaults, where stage zero watches each
+ * argument after its value, so the spans interleave differently. */
+static bool same_trace_by_span(const watch_trace *expected, const watch_trace *actual)
 {
-    int call, input, output;
-} default_watches;
-static void default_capture(
-    void *user,
-    behavior_function_context *,
-    const behavior_source_watch *watch,
-    const pin_value *value
-)
-{
-    default_watches *watches = user;
-    if (!value || value->type != PIN_F64 || value->d != 5) {
-        return;
+    bool same = expected->count == actual->count;
+    for (int i = 0; same && i < expected->count; i++) {
+        const traced_watch *x = &expected->watches[i];
+        int before = 0, at = -1;
+        for (int j = 0; j < i; j++) {
+            before += expected->watches[j].start == x->start &&
+                      expected->watches[j].end == x->end;
+        }
+        for (int k = 0; at < 0 && k < actual->count; k++) {
+            const traced_watch *y = &actual->watches[k];
+            if (y->start == x->start && y->end == x->end && !before--) {
+                at = k;
+            }
+        }
+        same = at >= 0 && same_traced(x, &actual->watches[at]);
     }
-    watches->input += watch->origin.start == watches->call && !watch->output &&
-                      watch->ordinal == 1;
-    watches->output += watch->output;
+    if (!same) {
+        same_trace(expected, actual);
+    }
+    return same;
 }
-static bool action_default_play(execution_module *module, const char *source, bool compiled)
+/* Runs default_pair(2), whose omitted f64 default is 5, on the backend the
+ * module selects with no fallback, and traces its watches in order. The trace
+ * has the default as the call's ordinal-1 input and as its own output. */
+static bool action_default_play(execution_module *module, const char *source, bool compiled, watch_trace *trace)
 {
     const behavior_function *body = module->plan.functions[0].body;
-    default_watches watched = { .call = (int)(strstr(source, "default_pair") - source) };
     arena storage = { 0 };
     behavior_function_activation activation = { 0 };
     behavior_function_activation_init(body, &activation);
     pin_value *variables = xcalloc((size_t)body->variable_count + 1, sizeof *variables);
+    *trace = (watch_trace){ 0 };
     behavior_function_context context = { .activation = &activation,
                                           .variables = variables,
                                           .budget = 1000,
-                                          .source_debug_user = &watched,
-                                          .source_capture = default_capture };
+                                          .source_debug_user = trace,
+                                          .source_capture = trace_watch };
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(body, &context, NULL, UINT64_C(0x1234567800000042)));
     action_record_count = action_trace_count = 0;
     memset(action_default_calls, 0, sizeof action_default_calls);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
     int status = behavior_function_run(body, &context, compiled);
+    behavior_run_scope_end(&runs);
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
     free(variables);
     REQUIRE(status == FLOW_OK && action_record_count == 1 && action_records[0].first == 1);
     REQUIRE(action_default_calls[0] == 1 && !action_default_calls[1]);
-    REQUIRE(watched.input == 1 && watched.output == 1);
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t entries = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        compiled ? entries > 0 && !n->bytecode_entries &&
+                       n->inspected_sljit_entries + n->inspected_wasm_entries == entries
+                 : n->bytecode_entries > 0 && !entries
+    );
+    double five = 5;
+    uint64_t bits;
+    memcpy(&bits, &five, sizeof bits);
+    int call = (int)(strstr(source, "default_pair") - source), input = 0, output = 0;
+    REQUIRE(!trace->overflow);
+    for (int i = 0; i < trace->count; i++) {
+        const traced_watch *w = &trace->watches[i];
+        if (w->type == PIN_F64 && w->bits == bits) {
+            input += w->start == call && !w->output && w->ordinal == 1;
+            output += w->output;
+        }
+    }
+    REQUIRE(input == 1 && output == 1);
     return true;
 }
 TEST_CASE(package_compiler_watches_overloaded_native_defaults)
@@ -9375,23 +9407,32 @@ TEST_CASE(package_compiler_watches_overloaded_native_defaults)
     const char *source = "NativeDefault :: behavior { on Tick :: () { "
                          "sync_probe(First: default_pair(2)); } }";
     execution_module *expected[2] = { 0 };
+    watch_trace traces[2];
     for (int b = 0; b < 2; b++) {
         expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-        REQUIRE(expected[b] && action_default_play(expected[b], source, b));
+        REQUIRE(expected[b] && action_default_play(expected[b], source, b, &traces[b]));
     }
     REQUIRE(prepare());
     bool alike = true;
+    watch_trace backend;
     for (int b = 0; b < 2; b++) {
         execution_module *actual = NULL;
+        watch_trace trace;
         REQUIRE(action_module(b, "NativeDefault", source, &actual));
-        REQUIRE(action_default_play(actual, source, b));
+        REQUIRE(action_default_play(actual, source, b, &trace));
         alike &= same_declarations(expected[b], actual) &&
                  same_points(expected[b], actual) &&
-                 same_watches(expected[b], actual);
+                 same_watches(expected[b], actual) &&
+                 same_trace_by_span(&traces[b], &trace);
+        /* Both backends deliver stage one's watches in one order. */
+        if (b) {
+            alike &= same_trace(&backend, &trace);
+        }
+        backend = trace;
         execution_module_free(actual);
         execution_module_free(expected[b]);
     }
-    REQUIRE(alike);
+    REQUIRE(alike && same_trace(&traces[0], &traces[1]));
     return true;
 }
 typedef struct

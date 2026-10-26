@@ -76,6 +76,8 @@ jobs:
           ccache --zero-stats
       - name: Build products and test drivers (ASan and UBSan)
         run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Graph Debug optimization and command parity (commands only)
+        run: python3 tools/test_policy.py tool build-graph-debug-optimization
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.

@@ -357,14 +357,14 @@ static bool same_command(yyjson_val *ours, char *theirs)
     return index == yyjson_arr_size(ours);
 }
 
-/* Every compile command the graph writes, from the profile it finds, equals
- * CMake's for the same source. */
-TEST_CASE(commands_match_cmake)
+/* Every compile command the graph writes equals CMake's for the same source. */
+static bool commands_match(bool discover)
 {
-    /* Only the profile's name: the graph finds its compiler, SDK, libclang and
-     * flags as CMake did. */
     const char *const commands_only[] = { "--commands-only", "on", NULL };
-    REQUIRE(discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only) == 0);
+    REQUIRE(
+        (discover ? discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only)
+                  : graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only)) == 0
+    );
     char path[GRAPH_PATH];
     join(path, built, "compile_commands.json");
     yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);
@@ -433,6 +433,18 @@ TEST_CASE(commands_match_cmake)
     yyjson_doc_free(graph_doc);
     yyjson_doc_free(cmake_doc);
     return true;
+}
+
+TEST_CASE(commands_match_cmake)
+{
+    /* Only the profile's name: discover the compiler, SDK, libclang and flags. */
+    return commands_match(true);
+}
+
+TEST_CASE(explicit_commands_match_cmake)
+{
+    /* Preserve CMake's exact compiler paths, including versioned Linux Clang. */
+    return commands_match(false);
 }
 
 static void append(const char *root, const char *name, const char *text)
@@ -1498,6 +1510,16 @@ TEST_CASE(language_corpus_lists_as_cmake)
     REQUIRE(same_tree(ours, theirs) == 1);
 #endif
     return true;
+}
+
+/* Focused pre-merge coverage: emit commands, never compile graph products. */
+void test_build_graph_debug_optimization(const char *host, const char *cmake_build)
+{
+    set_up(host, cmake_build);
+    RUN_TEST_CASE(explicit_commands_match_cmake);
+    RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
+    RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
+    tool_remove_tree(suite);
 }
 
 /* A separate route: another commands-only run of the whole graph takes

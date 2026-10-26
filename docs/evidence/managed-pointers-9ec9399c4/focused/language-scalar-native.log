@@ -1,0 +1,21 @@
+$ python3 tools/test_policy.py tool language-scalar-native
+revision 9ec9399c4b254335db51a91e51cd3c571c601733 0 modified
+/bin/sh timed out (status 0): 2343
+
+/bin/sh was cancelled (status 0): 
+/home/claude/chibi/build/test/language/test_language timed out (status 0): 
+lazy trace O0 extra 0 condition 0: return 2, Taken 0, Skipped 1, oracle accept
+lazy trace O0 extra 0 condition 1: return 1, Taken 1, Skipped 0, oracle accept
+lazy trace O2 extra 0 condition 0: return 2, Taken 0, Skipped 1, oracle accept
+lazy trace O2 extra 0 condition 1: return 1, Taken 1, Skipped 0, oracle accept
+lazy trace O0 extra 1 condition 0: return 2, Taken 0, Skipped 1, oracle accept
+lazy trace O0 extra 1 condition 1: return 1, Taken 1, Skipped 1, oracle reject
+lazy trace O2 extra 1 condition 0: return 2, Taken 0, Skipped 1, oracle accept
+lazy trace O2 extra 1 condition 1: return 1, Taken 1, Skipped 1, oracle reject
+Running: package_compiler_native_runs_are_bounded (OK) (0.011855 secs)
+Running: package_compiler_native_arithmetic_is_total (OK) (1.710610 secs)
+Running: package_compiler_scalar_runs_natively_like_the_vm (OK) (145.523930 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 24607
+Test command wall time: 160.811s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

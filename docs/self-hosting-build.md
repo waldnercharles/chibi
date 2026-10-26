@@ -182,8 +182,10 @@ bindings to move. `StageOne.chibi` still uses the C catalog for input export and
 final game assembly. Native runtime construction, SDK/full-engine and Wasm builds, Studio
 consumers and command-parity checks retain their current CMake responsibilities.
 
-`chibi-compile --stage-one-input FILE` writes the unchanged behavior-compiler
-argument array and reports its executable source count on stdout. For zero
+`chibi-compile --stage-one-input FILE` writes the eighteen-argument rich game
+compiler input, including nominal port identities and native effect masks, and
+reports its executable source count on stdout. `StageOne.chibi` uses the matching
+`CompileBehaviorsWithCatalog` and `BehaviorRejectionWithCatalog` entries. For zero
 sources, `StageOne.chibi` invokes `chibi-compile --resources-only --output FILE`
 with the project root before recovering or invoking the behavior compiler.
 This mode assembles scenes, prototypes and resources with no supplied modules;
@@ -643,11 +645,12 @@ requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
 an output limit from 1 through `COMPILER_HOST_MAX_ARTIFACT_BYTES` (32 MiB)
 octets, and the limit also bounds the result's represented storage. Every
-in-process caller passes `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB). The CLI's
-two file outputs pass the artifact bound: `--output-artifact`, which loads the
-result as a compiler before publishing it, and `--output-bytes`, which writes
-whatever bytes the entry returns, in any format. The asset compiler's facade,
-about 18 MB, is written through `--output-bytes`, as are stage one's outputs.
+in-process caller except the bootstrap passes `COMPILER_HOST_MAX_OUTPUT_BYTES`
+(16 MiB). The package compiler's own closure is about 17 MB, so the bootstrap
+compiles it and reads its seed and artifact closures with the artifact bound.
+The CLI's file outputs pass it too: `--output-artifact` writes a validated
+compiler closure, and `--output-bytes` writes any `byte[]` result without
+validating it, such as the asset compiler's closure of about 18 MB.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
 before releasing runtime storage. Empty success is a null pointer and zero

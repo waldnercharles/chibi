@@ -8,6 +8,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -279,16 +280,17 @@ static graph *lower_function(library *all, library *lib, int function)
     return g;
 }
 
-behavior_asset **authoring_source_graph_libraries(const authoring_sources *sources)
+static behavior_asset **graph_libraries(
+    const script_catalog *catalog,
+    const script_analysis *const *analyses,
+    int count
+)
 {
     library *all = NULL;
-    for (int i = 0; i < authoring_sources_count(sources); i++) {
-        const authoring_source *source = authoring_sources_at(sources, i);
-        const script_analysis *a = source->analysis;
-        if (!source->valid || a->kind != SCRIPT_PROGRAM_LIBRARY) {
-            continue;
-        }
-        library lib = { authoring_sources_catalog(sources),
+    for (int i = 0; i < count; i++) {
+        const script_analysis *a = analyses[i];
+        assert(a->valid && a->kind == SCRIPT_PROGRAM_LIBRARY);
+        library lib = { catalog,
                         a,
                         behavior_asset_new(a->name),
                         xcalloc((size_t)a->function_count + 1, sizeof(graph *)),
@@ -310,6 +312,84 @@ behavior_asset **authoring_source_graph_libraries(const authoring_sources *sourc
     }
     afree(all);
     return libraries;
+}
+
+behavior_asset **authoring_source_graph_libraries(const authoring_sources *sources)
+{
+    const script_analysis **analyses = NULL;
+    for (int i = 0; i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        if (source->valid && source->analysis->kind == SCRIPT_PROGRAM_LIBRARY) {
+            apush(analyses, source->analysis);
+        }
+    }
+    behavior_asset **libraries = graph_libraries(
+        authoring_sources_catalog(sources),
+        analyses,
+        acount(analyses)
+    );
+    afree(analyses);
+    return libraries;
+}
+
+bool authoring_source_graph_libraries_catalog(
+    const source_catalog *sources,
+    behavior_asset ***out,
+    char *error,
+    size_t size
+)
+{
+    assert(sources && out && !*out && !source_catalog_diagnostic_count(sources));
+    const script_catalog *catalog = source_catalog_view(sources);
+    int request_count = 0;
+    const script_specialization_request *requests = source_catalog_requests(sources, &request_count);
+    script_analysis **analyses = NULL;
+    bool valid = true;
+    for (int i = 0; i < source_catalog_source_count(sources); i++) {
+        const source_catalog_source *source = source_catalog_source_at(sources, i);
+        if (source->declarations->kind != SCRIPT_PROGRAM_LIBRARY) {
+            continue;
+        }
+        script_analysis *analysis = request_count ? script_analyze_document_requested(
+                                                        source->syntax,
+                                                        catalog,
+                                                        source->identity,
+                                                        requests,
+                                                        request_count
+                                                    )
+                                                  : script_analyze_document(
+                                                        source->syntax,
+                                                        catalog,
+                                                        source->identity
+                                                    );
+        apush(analyses, analysis);
+        if (!analysis->valid) {
+            assert(analysis->diagnostic_count);
+            const script_diagnostic *diagnostic = &analysis->diagnostics[0];
+            if (size) {
+                snprintf(
+                    error,
+                    size,
+                    "%s:%d:%d (byte %d): %s",
+                    source->path,
+                    diagnostic->range.line,
+                    diagnostic->range.column,
+                    diagnostic->range.start,
+                    diagnostic->message
+                );
+            }
+            valid = false;
+            break;
+        }
+    }
+    if (valid) {
+        *out = graph_libraries(catalog, (const script_analysis *const *)analyses, acount(analyses));
+    }
+    for (int i = 0; i < acount(analyses); i++) {
+        script_analysis_free(analyses[i]);
+    }
+    afree(analyses);
+    return valid;
 }
 
 void authoring_source_graph_libraries_free(behavior_asset **libraries)

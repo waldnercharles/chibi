@@ -10,12 +10,14 @@
  * compiler's module holds about a million records and needs about 113 M units
  * of record-layout work. Loading allows each module, and the closure
  * together, this much storage, each module this many records and this much
- * layout work. Its closure, about 15 MB, is returned as a byte[] of that
- * length; a byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. Only the
- * command-line host's file outputs allow COMPILER_HOST_MAX_ARTIFACT_BYTES:
- * --output-artifact writes a validated compiler closure, and --output-bytes
- * writes any byte[] result unvalidated, such as the asset compiler's closure
- * of about 18 MB. JSON invocations keep COMPILER_HOST_MAX_BYTES. */
+ * layout work. Its closure, about 17 MB, is returned as a byte[] of that
+ * length, and the bootstrap compiles and reads it back with
+ * COMPILER_HOST_MAX_ARTIFACT_BYTES. The command-line host's file outputs allow
+ * that bound too: --output-artifact writes a validated compiler closure, and
+ * --output-bytes writes any byte[] result unvalidated, such as the asset
+ * compiler's closure of about 18 MB. Every other byte result may be
+ * COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON invocations keep
+ * COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (256u * 1024u * 1024u)

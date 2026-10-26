@@ -33,7 +33,7 @@ AnyReference :: (params: Param[]) -> bool {
     return false;
 }
 // The function a call names, of this package or an import, -1 for any other.
-CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], aliases: Name[],
+CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[], aliases: Name[],
                    package: int, call: int) -> int {
     callee := Field(forest, call, "function");
     qualifier: int = -1;
@@ -45,12 +45,16 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     if (home < 0 || !Is(forest, callee, "identifier")) {
         return -1;
     }
-    return FindCallable(callables, home, Text(forest, text, callee));
+    if (qualifier < 0) {
+        return SourceCallable(callables, natives, aliases, home, Text(forest, text, callee));
+    }
+    return QualifiedCallable(callables, natives, aliases, home, Text(forest, text, callee),
+                             NativeCallName(forest, text, call));
 }
 // The `&x` arguments of scoped parameters in the body `node`. Each lends `x`
 // for the call rather than taking a managed address.
 ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                    aliases: Name[], package: int, node: int) -> int[] {
+                    natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> int[] {
     found: int[] = [];
     pending: int[] = [node];
     top: int = 1;
@@ -58,7 +62,7 @@ ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         top -= 1;
         at := pending[top];
         if (Is(forest, at, "call_expression")) {
-            called := CalledFunction(forest, text, callables, aliases, package, at);
+            called := CalledFunction(forest, text, callables, natives, aliases, package, at);
             index: int = 0;
             for (argument in Members(forest, Field(forest, at, "arguments"))) {
                 if (called >= 0 && index < callables[called].count &&
@@ -85,9 +89,9 @@ ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 // data cells. Shadowing is ignored: boxing a value nothing references costs
 // only its speed.
 ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
-                    aliases: Name[], package: int, node: int) -> string[] {
+                    natives: ResolvedNative[], aliases: Name[], package: int, node: int) -> string[] {
     found: string[] = [];
-    for (argument in ScopedArguments(forest, text, callables, params, aliases, package, node)) {
+    for (argument in ScopedArguments(forest, text, callables, params, natives, aliases, package, node)) {
         root := RootOf(forest, Field(forest, argument, "operand"));
         if (Is(forest, root, "identifier")) {
             found.append(Text(forest, text, root));
@@ -97,15 +101,15 @@ ReferencedNames :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
 }
 // A scoped parameter names its target, so each `p^` of one reads and writes
 // `p`, as stage zero lowers it: in a copy of `forest`, each such dereference
-// of a function of `package` becomes its operand. A returned `p^` stays, so
-// its result keeps the dereference's source span, and a pointer to a pointer
-// keeps a `p^` that KeptTarget names, which reads the pointer `p` holds.
+// of a function becomes its operand. A returned `p^` stays, so its result
+// keeps the dereference's source span, and a pointer to a pointer keeps a
+// `p^` that KeptTarget names, which reads the pointer `p` holds.
 ScopedTargets :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
-                  params: Param[], package: int) -> snapshot.SnapshotNode[] {
+                  params: Param[]) -> snapshot.SnapshotNode[] {
     scoped := forest;
     for (callable in callables) {
         at: int = 0;
-        while (callable.package == package && at < callable.count) {
+        while (at < callable.count) {
             if (params[callable.first + at].reference) {
                 text := documents[callable.document].text;
                 pending: int[] = [Field(forest, callable.node, "body")];
@@ -614,7 +618,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
         return PointerPrefix(code, slots, PointerPopped(PointerReferenceStep(
             Typed(at.slot + 1, PointerStorage, 0, pointer), ops, target, SlotsPast(at, 2), node), 0));
     }
-    if (found < 0 || !names[found].writable || names[found].place == AliasPlace) {
+    if (found < 0 || !names[found].writable || Alias(names[found].place)) {
         return Fail(forest, item.node, document, "Pointer argument requires a writable location");
     }
     binding := names[found];

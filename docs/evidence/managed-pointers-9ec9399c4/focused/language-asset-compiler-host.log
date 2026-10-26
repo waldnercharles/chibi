@@ -1,0 +1,19 @@
+$ python3 tools/test_policy.py tool language-asset-compiler-host
+revision 9ec9399c4b254335db51a91e51cd3c571c601733 0 modified
+authored rejection: game:assets/Assets.chibi:24:21 Assertion failed: Duplicate asset object field
+compile rejection: :2:36 Unknown function 'Missing'
+Running: asset_source_public_scene_build_and_reuse (OK) (23.722904 secs)
+Running: asset_source_authored_validation_rejects_duplicate_field (OK) (22.675307 secs)
+Running: asset_source_malformed_build_reports_position (OK) (12.097094 secs)
+Running: asset_source_native_scene_values_own_their_storage (OK) (48.349924 secs)
+Running: asset_source_native_prototype_owns_name_and_identity (OK) (23.655549 secs)
+Running: asset_source_native_readers_keep_kind_shape_and_catalog_checks (OK) (70.259628 secs)
+Running: asset_source_public_writer_preserves_kinds_and_owned_source (OK) (33.078370 secs)
+Running: asset_source_writer_and_reader_reject_nul_without_mutation (OK) (46.615481 secs)
+Running: asset_source_writer_canonical_scene_reaches_owned_native_reader (OK) (32.477770 secs)
+Running: asset_source_writer_restores_outer_scope_on_budget_and_cancel (OK) (9.298509 secs)
+Running: asset_source_keeps_the_16_mib_source_bound (OK) (0.010325 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 98
+Test command wall time: 326.280s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

@@ -1,0 +1,15 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-actions
+revision 9ec9399c4b254335db51a91e51cd3c571c601733 0 modified
+Running: package_compiler_exports_native_actions (OK) (0.003807 secs)
+Running: package_compiler_keeps_unavailable_native_functions (OK) (0.001920 secs)
+Running: package_compiler_rejects_nonzero_handle_defaults (OK) (0.001661 secs)
+Running: package_compiler_calls_native_actions (OK) (116.208903 secs)
+Running: package_compiler_keeps_numeric_native_overloads_untyped_until_selected (OK) (114.254293 secs)
+Running: package_compiler_rejects_native_action_arguments (OK) (122.639229 secs)
+Running: package_compiler_rejects_native_name_collisions (OK) (119.229277 secs)
+Running: package_compiler_watches_native_owner_arguments (OK) (117.112499 secs)
+Running: package_compiler_keeps_function_assert_binding_identity (OK) (115.810591 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 4273
+Test command wall time: 715.471s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

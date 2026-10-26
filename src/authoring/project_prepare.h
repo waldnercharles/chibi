@@ -36,8 +36,9 @@ bool authoring_project_prepare(
  * prepared module per executable content source, identified as stage zero
  * identifies its own, script_catalog_id("module", the source's content
  * path). Assembly reads the declarations, scenes, prototypes and resources
- * itself and links the modules from their bytes. Source graph libraries are
- * not linked, since no analysis is available. Borrows `modules`. */
+ * itself and links the modules from their bytes. The native field/shader
+ * backend independently analyzes library sources for their graph projection;
+ * this never compiles replacement executable modules. Borrows `modules`. */
 bool authoring_project_assemble(
     const authoring_project_options *,
     const package_module *modules,

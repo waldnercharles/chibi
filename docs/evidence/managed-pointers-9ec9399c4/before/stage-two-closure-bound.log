@@ -1,0 +1,11 @@
+configure-native: running (log: .chibi/logs/1792959456954473434-2253-configure-native.log)
+configure-native: ok (2.7s; log: .chibi/logs/1792959456954473434-2253-configure-native.log)
+build: running (log: .chibi/logs/1792959459692708848-2282-build.log)
+build: ok (4.6s; log: .chibi/logs/1792959459692708848-2282-build.log)
+package compiler stage two: compiler byte result exceeds type, shape or storage limits
+(FAILED: /home/claude/chibi/test/language/package_compiler_chibi.c (5480): same)
+Running: package_compiler_compiles_itself 
+===============================================================
+Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 1925
+Test command wall time: 89.092s; includes in-test fixture setup; external configuration/build excluded.
+make: *** [Makefile:345: bootstrap-artifact] Error 1

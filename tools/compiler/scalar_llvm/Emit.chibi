@@ -46,20 +46,22 @@ Unlocated :: (row: facts.Row) -> bool {
     return row.start == 0 && row.end == 0 && row.line == 0 && row.column == 0;
 }
 Scalar :: (type: int) -> bool {
-    return type == facts.IntType || type == facts.BoolType;
+    return type >= facts.IntType && type <= facts.WordType;
 }
-// The backend's storage ordinal of a scalar type.
+Integer :: (type: int) -> bool {
+    return facts.Bits(type) != 0;
+}
+// The backend's storage ordinal of a scalar type: the storages of int, bool,
+// int8, byte, int16, uint16, uint, int64 and uint64 in facts type order.
 NativeType :: (type: int) -> int {
-    if (type == facts.BoolType) {
-        return 1;
-    }
-    return 6;
+    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9];
+    return storages[type - facts.IntType];
 }
 // A rejection keeps exactly its source and one located diagnostic.
 ValidRejection :: (rows: facts.Row[], starts: int[], size: int) -> string {
     rejection := rows[1];
     if (length(rows) != 2 || rejection.type != 0 || rejection.value != 0 || rejection.count != 0 ||
-        rejection.name != "" || rejection.text == "") {
+        rejection.literal != 0 || rejection.name != "" || rejection.text == "") {
         return "noncanonical rejected scalar module";
     }
     if (!Positioned(rejection, starts, size)) {
@@ -133,8 +135,9 @@ Segments :: (rows: facts.Row[], head: int) -> int[] {
 }
 // The operands after the segment row at `at`, as a typed evaluation stack:
 // each operand pushes one value; a comparison or binary arithmetic pops two
-// ints, unary arithmetic one, and a call its arguments in order. They must
-// leave one value of type `result`, and each lies within `scope`.
+// integers of one type, unary arithmetic and a conversion one, and a call its
+// arguments in order. They must leave one value of type `result`, and each
+// lies within `scope`.
 ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: int, scope: facts.Row, starts: int[],
                   size: int) -> string {
     declaration := rows[head];
@@ -143,12 +146,12 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
     for (row in first..<first + rows[at].count) {
         operand := rows[row];
         if (operand.text != "" || !Scalar(operand.type) || !Located(operand, starts, size) ||
-            !Within(operand, scope)) {
+            !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
         }
         if (operand.kind == facts.LiteralRow) {
-            if (operand.name != "" || operand.count != 0 ||
-                (operand.type == facts.BoolType && operand.value != 0 && operand.value != 1)) {
+            if (operand.name != "" || operand.count != 0 || operand.value != 0 ||
+                !facts.Fits(operand.literal, operand.type)) {
                 return "noncanonical scalar literal";
             }
         } else if (operand.kind == facts.ReadRow) {
@@ -160,24 +163,31 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
             base := length(stack) - 2;
             if (operand.name != "" || operand.count != 2 || operand.type != facts.BoolType ||
                 operand.value < facts.Less || operand.value > facts.NotEqual || base < 0 ||
-                stack[base] != facts.IntType || stack[base + 1] != facts.IntType) {
-                return "scalar comparison differs from its int operands";
+                !Integer(stack[base]) || stack[base + 1] != stack[base]) {
+                return "scalar comparison differs from its integer operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ArithmeticRow) {
             base := length(stack) - 2;
-            if (operand.name != "" || operand.count != 2 || operand.type != facts.IntType ||
-                operand.value < facts.Add || operand.value > facts.Xor || base < 0 ||
-                stack[base] != facts.IntType || stack[base + 1] != facts.IntType) {
-                return "scalar arithmetic differs from its int operands";
+            if (operand.name != "" || operand.count != 2 || !Integer(operand.type) ||
+                operand.value < facts.Add || operand.value > facts.ShiftRight || base < 0 ||
+                stack[base] != operand.type || stack[base + 1] != operand.type) {
+                return "scalar arithmetic differs from its integer operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.UnaryRow) {
             base := length(stack) - 1;
-            if (operand.name != "" || operand.count != 1 || operand.type != facts.IntType ||
+            if (operand.name != "" || operand.count != 1 || !Integer(operand.type) ||
                 operand.value < facts.Negate || operand.value > facts.Complement || base < 0 ||
-                stack[base] != facts.IntType) {
-                return "scalar arithmetic differs from its int operands";
+                stack[base] != operand.type) {
+                return "scalar arithmetic differs from its integer operands";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ConvertRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || !Integer(operand.type) ||
+                (operand.value != facts.Clamp && operand.value != facts.Wrap) || base < 0 || !Integer(stack[base])) {
+                return "scalar conversion is not between integer types";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {
@@ -215,13 +225,14 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
     head := heads[function];
     declaration := rows[head];
     if (declaration.name == "" || declaration.text != "" || !Scalar(declaration.type) || declaration.value != 0 ||
-        !Located(declaration, starts, size)) {
+        declaration.literal != 0 || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Scalar(param.type) ||
-            param.value != index || param.count != 0 || !Located(param, starts, size) || !Within(param, declaration)) {
+            param.value != index || param.count != 0 || param.literal != 0 || !Located(param, starts, size) ||
+            !Within(param, declaration)) {
             return "invalid scalar parameter row";
         }
     }
@@ -233,7 +244,7 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
         at := segments[index];
         segment := rows[at];
         if (segment.name != "" || segment.text != "" || segment.type != 0 || segment.value != 0 ||
-            !Located(segment, starts, size) || !Within(segment, declaration) || segment.start < earliest) {
+            segment.literal != 0 || !Located(segment, starts, size) || !Within(segment, declaration) || segment.start < earliest) {
             return "invalid scalar return row";
         }
         error := "";
@@ -269,7 +280,7 @@ pub Validate :: (rows: facts.Row[]) -> string {
     }
     source := rows[0];
     if (source.kind != facts.SourceRow || source.type != 0 || source.value != 0 || source.count != 0 ||
-        source.name == "" || !Unlocated(source)) {
+        source.literal != 0 || source.name == "" || !Unlocated(source)) {
         return "noncanonical scalar source row";
     }
     size := strings.ByteLength(source.text);
@@ -283,7 +294,7 @@ pub Validate :: (rows: facts.Row[]) -> string {
     }
     document := rows[1];
     if (document.kind != facts.DocumentRow || document.type != 0 || document.value != 0 || document.count != 0 ||
-        document.name == "" || document.text != "" || !Unlocated(document)) {
+        document.literal != 0 || document.name == "" || document.text != "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
     heads := Heads(rows);
@@ -314,7 +325,7 @@ Comparison :: (operator: int) -> int {
 // The native operation of a facts arithmetic operator.
 Arithmetic :: (operator: int) -> int {
     operations := [native.Add, native.Sub, native.Mul, native.Div, native.Mod, native.BitAnd, native.BitOr,
-                   native.BitXor];
+                   native.BitXor, native.Shl, native.Shr];
     return operations[operator - facts.Add];
 }
 Unary :: (operator: int) -> int {
@@ -374,13 +385,13 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 type := NativeType(operand.type);
                 slots.append(type);
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
-                                            target: 0, literal: operand.value};
+                                            target: 0, literal: operand.literal};
                 if (operand.kind == facts.ReadRow) {
                     item = {op: native.Argument, type: type, output: slot, left: operand.value, right: 0, target: 0,
                             literal: 0};
                 } else if (operand.kind == facts.CompareRow) {
                     base := length(stack) - 2;
-                    item = {op: Comparison(operand.value), type: NativeType(facts.IntType), output: slot,
+                    item = {op: Comparison(operand.value), type: slots[shape.first_slot + stack[base]], output: slot,
                             left: stack[base], right: stack[base + 1], target: 0, literal: 0};
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ArithmeticRow) {
@@ -392,6 +403,11 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                     base := length(stack) - 1;
                     item = {op: Unary(operand.value), type: type, output: slot, left: stack[base], right: 0,
                             target: 0, literal: 0};
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ConvertRow) {
+                    base := length(stack) - 1;
+                    item = {op: native.Convert, type: type, output: slot, left: stack[base],
+                            right: slots[shape.first_slot + stack[base]], target: 0, literal: int64(operand.value)};
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
                     item = {op: native.Call, type: type, output: slot, left: operand.value, right: shape.arguments,

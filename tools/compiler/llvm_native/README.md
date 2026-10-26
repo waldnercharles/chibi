@@ -23,23 +23,30 @@ interface, or the complete allocation/memory/output/free native island.
 - A module of at most 32 functions, each a consecutive range of the parameter,
   slot, local, code and argument tables. Function 0 is the exported entry,
   `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
-  `internal` `chibi_scalar.N`. Each takes plain `int`/`bool` parameters and
-  returns one scalar result. Foreign bool ABI is not promised. Storage
+  `internal` `chibi_scalar.N`. Each takes plain integer and `bool`
+  parameters (`int8` through `uint64`, as `iN` with no sign) and returns one
+  scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
 - `Call` defines a slot from another function's result. Its arguments are
   slots of the caller's own argument range, each of the callee's parameter
   type and defined on every path; they load in order, so evaluation order stays
   visible at O0. The call graph must be acyclic: recursion is rejected.
-- Scalar locals, branches, comparisons, bitwise operations and integer
-  arithmetic. Limits per function are eight parameters, 128 slots, 64 locals,
+- Scalar locals, branches, comparisons, bitwise operations, integer
+  arithmetic and integer conversions. Comparisons, division, remainders and
+  `>>` are unsigned for an unsigned type. Limits per function are eight parameters, 128 slots, 64 locals,
   256 body instructions and 256 call arguments. These are plan bounds, not a
   source-language acceptance claim.
 - Integer operations never fail, as the language's integer contract says.
   Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.
   `x / 0` is 0 and `x % 0` is `x`; `MIN / -1` is `MIN` and `MIN % -1` is 0.
-  A shift count read unsigned at or past 32 gives 0, or the sign fill for
-  `>>`. The divisor and count are made safe with `select` before LLVM sees
-  them, so no result is poison.
+  A shift count read unsigned at or past the width gives 0, or the sign fill
+  for a signed `>>`. The divisor and count are made safe with `select` before
+  LLVM sees them, so no result is poison.
+- `Convert` defines a slot of its integer `type` from the `left` slot, whose
+  integer type is `right`. `literal` 0 clamps the value to the type's range
+  and 1 keeps its low bits. The value is first extended to `i65`, which holds
+  every value of every integer type, so a clamp never becomes a plain
+  truncation.
 - An explicit positive CHECK budget is required. Each invocation of each
   function initializes a private counter; every CHECK tests remaining budget before decrementing.
   Budget N admits exactly N CHECKs, not N LLVM/machine instructions. The future
@@ -50,11 +57,11 @@ interface, or the complete allocation/memory/output/free native island.
   cancellation. The caller still supervises process timeout.
 
 The emitter rejects unsupported instructions/types and validates table bounds,
-operand types, canonical bool constants, unique scalar definitions and control
-flow dominance before writing IR. There are no indirect call, foreign call,
-reference, managed-memory or conversion operations. The caller must reject nominal/container/reference
-metadata before reducing types to the backend's scalar ordinals. Checked,
-wrapping and clamping conversions must not silently become LLVM casts.
+operand types, constants within their type, unique scalar definitions and
+control flow dominance before writing IR. There are no indirect call, foreign
+call, reference, managed-memory or floating operations. The caller must reject
+nominal/container/reference metadata before reducing types to the backend's
+scalar ordinals.
 
 ## Consumers and checks
 

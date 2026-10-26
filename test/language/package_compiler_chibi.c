@@ -41,6 +41,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -3014,13 +3015,17 @@ static pin_value strings(const char *const *items, int count)
     }
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
 }
-static bool put(pin_value *row, const char *name, int value)
+/* Writes an int or int64 field. */
+static bool put(pin_value *row, const char *name, int64_t value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && field->type == PIN_I32);
-    REQUIRE(
-        !pin_write_field(&input, row->ptr, field, (pin_value){ .type = PIN_I32, .i = value })
-    );
+    REQUIRE(field && (field->type == PIN_I32 || field->type == PIN_I64));
+    pin_value v = { .type = PIN_I64, .i64 = value };
+    if (field->type == PIN_I32) {
+        REQUIRE(value >= INT32_MIN && value <= INT32_MAX);
+        v = (pin_value){ .type = PIN_I32, .i = (int32_t)value };
+    }
+    REQUIRE(!pin_write_field(&input, row->ptr, field, v));
     return true;
 }
 static bool put_value(pin_value *row, const char *name, pin_value value)
@@ -9438,6 +9443,11 @@ static const char GUARD_SOURCE[] = "package scalar\n"
                                    "    return b;\n"
                                    "}\n"
                                    "Id :: (x: int) -> int { return x; }\n";
+/* Low(298) is 298's low byte, 42, shifted left once; Main widens it to int. */
+static const char
+    WIDTH_SOURCE[] = "package scalar\n"
+                     "Main :: () -> int { return int(Low(298)); }\n"
+                     "Low :: (x: int) -> byte { return byte(wrap: x) << 1; }\n";
 /* Calc(3, 4) is -(3 + 4) * ~4, which is 35. */
 static const char ARITHMETIC_SOURCE
     [] = "package scalar\n"
@@ -9459,8 +9469,16 @@ enum
     SCALAR_COMPARE_ROW = 10,
     SCALAR_ARITHMETIC_ROW = 11,
     SCALAR_UNARY_ROW = 12,
+    SCALAR_CONVERT_ROW = 13,
     SCALAR_INT = 1,
-    SCALAR_BOOL = 2
+    SCALAR_BOOL = 2,
+    SCALAR_INT8 = 3,
+    SCALAR_BYTE = 4,
+    SCALAR_INT16 = 5,
+    SCALAR_UINT16 = 6,
+    SCALAR_UINT = 7,
+    SCALAR_INT64 = 8,
+    SCALAR_WORD = 9
 };
 /* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
 static const int GUARD_KINDS[] = {
@@ -9502,7 +9520,7 @@ typedef struct malformed_guard
 } malformed_guard;
 #define EDIT(r, f, v) { .row = (r), .field = (f), .value = (v), .from = -1 }
 #define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
-static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its int operands",
+static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its integer operands",
                   SEGMENT[] = "invalid scalar return row";
 /* The kind of each of ARITHMETIC_SOURCE's rows, and the rows edited. */
 static const int ARITHMETIC_KINDS[] = {
@@ -9533,7 +9551,8 @@ static const malformed_guard MALFORMED_GUARDS[] = {
     /* A comparison of a bool. */
     { { EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
         EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
-        EDIT(GUARD_CONDITION + 1, "value", 1) },
+        EDIT(GUARD_CONDITION + 1, "value", 0),
+        EDIT(GUARD_CONDITION + 1, "literal", 1) },
       COMPARISON },
     /* A condition that leaves three ints rather than one bool: the
      * comparison becomes a read of b. */
@@ -9563,10 +9582,10 @@ static const malformed_guard MALFORMED_GUARDS[] = {
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const char
-    ARITHMETIC[] = "scalar arithmetic differs from its int operands";
+    ARITHMETIC[] = "scalar arithmetic differs from its integer operands";
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
-    { { EDIT(ARITHMETIC_ADD, "value", 9) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "value", 11) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_ADD, "count", 1) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_ADD, "type", SCALAR_BOOL) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_NEGATE, "value", 0) }, ARITHMETIC },
@@ -9574,12 +9593,51 @@ static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_NEGATE, "count", 2) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_SECOND_READ, "kind", SCALAR_LITERAL_ROW),
         EDIT(ARITHMETIC_SECOND_READ, "type", SCALAR_BOOL),
-        EDIT(ARITHMETIC_SECOND_READ, "value", 1) },
+        EDIT(ARITHMETIC_SECOND_READ, "value", 0),
+        EDIT(ARITHMETIC_SECOND_READ, "literal", 1) },
       ARITHMETIC },
     { { EDIT(ARITHMETIC_LAST_READ, "kind", SCALAR_LITERAL_ROW),
         EDIT(ARITHMETIC_LAST_READ, "type", SCALAR_BOOL),
         EDIT(ARITHMETIC_LAST_READ, "value", 0) },
       ARITHMETIC },
+};
+/* The kind of each of WIDTH_SOURCE's rows, and the rows edited. */
+static const int WIDTH_KINDS[] = {
+    SCALAR_SOURCE_ROW,  SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,  SCALAR_LITERAL_ROW,    SCALAR_CALL_ROW,
+    SCALAR_CONVERT_ROW, SCALAR_FUNCTION_ROW,   SCALAR_PARAMETER_ROW,
+    SCALAR_RETURN_ROW,  SCALAR_READ_ROW,       SCALAR_CONVERT_ROW,
+    SCALAR_LITERAL_ROW, SCALAR_ARITHMETIC_ROW,
+};
+enum
+{
+    WIDTH_WIDENED = 6,
+    WIDTH_READ = 10,
+    WIDTH_WRAPPED = 11,
+    WIDTH_SHIFT_COUNT = 12,
+    WIDTH_SHIFT = 13,
+    WIDTH_ROWS = (int)(sizeof WIDTH_KINDS / sizeof *WIDTH_KINDS)
+};
+/* A conversion's mode, arity, type and operand, a literal outside its type,
+ * a literal on another row, mixed shift operands, and a return that does not
+ * widen to its result. */
+static const char
+    CONVERSION[] = "scalar conversion is not between integer types";
+static const malformed_guard MALFORMED_WIDTHS[] = {
+    { { EDIT(WIDTH_WIDENED, "value", 2) }, CONVERSION },
+    { { EDIT(WIDTH_WIDENED, "count", 2) }, CONVERSION },
+    { { EDIT(WIDTH_WRAPPED, "type", SCALAR_BOOL) }, CONVERSION },
+    { { EDIT(WIDTH_READ, "kind", SCALAR_LITERAL_ROW),
+        EDIT(WIDTH_READ, "type", SCALAR_BOOL),
+        EDIT(WIDTH_READ, "value", 0) },
+      CONVERSION },
+    { { EDIT(WIDTH_SHIFT_COUNT, "literal", 256) }, "noncanonical scalar literal" },
+    { { EDIT(WIDTH_SHIFT_COUNT, "literal", -1) }, "noncanonical scalar literal" },
+    { { EDIT(WIDTH_READ, "literal", 1) }, "invalid scalar operand row" },
+    { { EDIT(WIDTH_SHIFT_COUNT, "type", SCALAR_INT) }, ARITHMETIC },
+    { { EDIT(WIDTH_SHIFT, "value", 11) }, ARITHMETIC },
+    { { EDIT(WIDTH_WIDENED, "type", SCALAR_BYTE) },
+      "scalar return differs from its function's result" },
 };
 #undef EDIT
 #undef COPY
@@ -9629,6 +9687,9 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
     for (int i = 0; i < count; i++) {
         const row_edit *edit = &malformed->edits[i];
         pin_value value = { .type = PIN_I32, .i = edit->value };
+        if (saved[i].type == PIN_I64) {
+            value = (pin_value){ .type = PIN_I64, .i64 = edit->value };
+        }
         if (edit->text) {
             value = text(edit->text);
         }
@@ -9666,6 +9727,31 @@ static bool rejects_malformed(
     REQUIRE(validated(b, rows, ""));
     return true;
 }
+/* WIDTH_SOURCE's typed rows: 298 is an int argument that Low wraps to a byte,
+ * its shift count is a byte literal, and Main widens Low's byte to int. */
+static bool widened_rows(const pin_value *rows)
+{
+    static const struct
+    {
+        int row, type, value;
+        int64_t literal;
+    } EXPECTED[] = {
+        { 4, SCALAR_INT, 0, 298 },
+        { 5, SCALAR_BYTE, 1, 0 },
+        { WIDTH_WIDENED, SCALAR_INT, 0, 0 },
+        { WIDTH_READ, SCALAR_INT, 0, 0 },
+        { WIDTH_WRAPPED, SCALAR_BYTE, 1, 0 },
+        { WIDTH_SHIFT_COUNT, SCALAR_BYTE, 0, 1 },
+        { WIDTH_SHIFT, SCALAR_BYTE, 9, 0 },
+    };
+    for (int i = 0; i < (int)(sizeof EXPECTED / sizeof *EXPECTED); i++) {
+        pin_value *row = guard_row(rows, EXPECTED[i].row);
+        REQUIRE(scalar_field(row, "type").i == EXPECTED[i].type);
+        REQUIRE(scalar_field(row, "value").i == EXPECTED[i].value);
+        REQUIRE(scalar_field(row, "literal").i64 == EXPECTED[i].literal);
+    }
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -9673,7 +9759,7 @@ static bool rejects_malformed(
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2], guarded[2], computed[2];
+    pin_value produced[2], guarded[2], computed[2], widened[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -9691,6 +9777,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(ARITHMETIC_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &computed[b])
+        );
+        args[2] = text(WIDTH_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &widened[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -9748,6 +9838,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_ARITHMETIC,
             (int)(sizeof MALFORMED_ARITHMETIC / sizeof *MALFORMED_ARITHMETIC)
         ));
+        REQUIRE(widened_rows(&widened[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &widened[b],
+            WIDTH_KINDS,
+            WIDTH_ROWS,
+            MALFORMED_WIDTHS,
+            (int)(sizeof MALFORMED_WIDTHS / sizeof *MALFORMED_WIDTHS)
+        ));
     }
     return true;
 }
@@ -9766,7 +9865,8 @@ enum
 };
 typedef struct native_code
 {
-    int op, type, output, left, right, target, literal;
+    int op, type, output, left, right, target;
+    int64_t literal;
 } native_code;
 typedef struct native_function
 {
@@ -9809,7 +9909,7 @@ enum
 };
 /* count Instruction or Function records whose fields, in declaration order,
  * take consecutive values. */
-static bool native_records(int b, const char *name, const int *values, int count, pin_value *out)
+static bool native_records(int b, const char *name, const int64_t *values, int count, pin_value *out)
 {
     bool code = !strcmp(name, "Instruction");
     const char *const *fields = code ? CODE_FIELDS : FUNCTION_FIELDS;
@@ -9828,12 +9928,12 @@ static bool native_records(int b, const char *name, const int *values, int count
 }
 static bool native_codes(int b, const native_code *code, int count, pin_value *out)
 {
-    int *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
+    int64_t *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
     for (int i = 0; i < count; i++) {
         const native_code *c = &code[i];
-        const int fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
-                                         c->left,   c->right, c->target,
-                                         c->literal };
+        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                             c->left,   c->right, c->target,
+                                             c->literal };
         memcpy(&values[i * CODE_WIDTH], fields, sizeof fields);
     }
     bool built = native_records(b, "Instruction", values, count, out);
@@ -9842,14 +9942,14 @@ static bool native_codes(int b, const native_code *code, int count, pin_value *o
 }
 static bool native_functions(int b, const native_function *functions, int count, pin_value *out)
 {
-    int *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
+    int64_t *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
     for (int i = 0; i < count; i++) {
         const native_function *f = &functions[i];
-        const int fields[FUNCTION_WIDTH] = { f->result,     f->first_parameter,
-                                             f->parameters, f->first_slot,
-                                             f->slots,      f->first_code,
-                                             f->code,       f->first_argument,
-                                             f->arguments };
+        const int64_t fields[FUNCTION_WIDTH] = {
+            f->result,     f->first_parameter, f->parameters,
+            f->first_slot, f->slots,           f->first_code,
+            f->code,       f->first_argument,  f->arguments
+        };
         memcpy(&values[i * FUNCTION_WIDTH], fields, sizeof fields);
     }
     bool built = native_records(b, "Function", values, count, out);
@@ -10002,7 +10102,7 @@ static bool native_rejects_malformed_calls(int b)
         { { 4, offsetof(native_code, type), NATIVE_BOOL }, OUTPUT },
         /* The call's output is an argument slot defined before it. */
         { { 4, offsetof(native_code, output), 2 }, OUTPUT },
-        { { 2, offsetof(native_code, literal), 2 }, "native bool constant is not canonical" },
+        { { 2, offsetof(native_code, literal), 2 }, "native constant is outside its type" },
     };
     for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
         REQUIRE(native_rejects_change(b, changes[i].change, changes[i].message));
@@ -10064,7 +10164,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
 static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* A shared wrong result is not an oracle. Each executed value must match
  * the fixture's literal, including Main's value. */
-static bool scalar_results_match(const int32_t values[4], int32_t expected)
+static bool scalar_results_match(const int64_t values[4], int64_t expected)
 {
     return values[0] == expected && values[1] == expected &&
            values[2] == expected && values[3] == expected;
@@ -10089,10 +10189,10 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
                 &literal
             ));
             REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
-            int32_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+            int64_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
             REQUIRE(scalar_results_match(values, literal.i));
-            int32_t wrong = expected[i] == 42 ? 41 : 1;
-            const int32_t consensus[4] = { wrong, wrong, wrong, wrong };
+            int64_t wrong = expected[i] == 42 ? 41 : 1;
+            const int64_t consensus[4] = { wrong, wrong, wrong, wrong };
             REQUIRE(!scalar_results_match(consensus, literal.i));
             for (int column = 0; column < 4; column++) {
                 values[column] = wrong;
@@ -10114,15 +10214,15 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
  * trap is a status rather than the end of this test. Its entry's value on
  * both VMs and both native levels must match the fixture's literal expected
  * value, and so must each probe's. A probe reaches an internal function
- * through a validation-only IR adapter that passes it int32 arguments, which
- * is how negative values and bool parameters reach it; the adapter is not a
- * foreign ABI. Linux x86-64 is the one target the emitter admits.
- * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
+ * through a validation-only IR adapter that passes it int64 arguments and
+ * returns an int64, which is how every integer type and bool reaches it; the
+ * adapter is not a foreign ABI. Linux x86-64 is the one target the emitter
+ * admits. CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
  * nothing is found through PATH. */
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 34
+    SCALAR_ACCEPTED_CASES = 36
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -10149,8 +10249,8 @@ typedef struct scalar_probe
 {
     const char *source_case, *function;
     int count;
-    int32_t arguments[MAX_PROBE_ARGUMENTS];
-    int32_t expected;
+    int64_t arguments[MAX_PROBE_ARGUMENTS];
+    int64_t expected;
 } scalar_probe;
 static const scalar_probe SCALAR_PROBES[] = {
     { "min", "Min", 2, { INT32_MIN, INT32_MAX }, INT32_MIN },
@@ -10186,6 +10286,14 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "folded_guard", "Pick", 1, { 536870913 }, INT32_MAX },
     { "wrapped_operand", "Half", 1, { 1 }, 1 },
     { "wrapped_operand", "Half", 1, { -3 }, -1 },
+    /* The low byte of an int, widened back. */
+    { "conversion", "Low", 1, { -1 }, 255 },
+    { "conversion", "Low", 1, { 256 }, 0 },
+    { "conversion", "Low", 1, { INT32_MIN }, 0 },
+    { "conversion", "Low", 1, { INT32_MAX }, 255 },
+    { "shift", "Shl", 1, { -1 }, -4 },
+    { "shift", "Shl", 1, { INT32_MIN }, 0 },
+    { "shift", "Shl", 1, { INT32_MAX }, -4 },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
@@ -10262,8 +10370,8 @@ static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
             probes[count++] = SCALAR_PROBES[i];
         }
     }
-    /* Each int operator but the shifts, which the corpus does not admit, on
-     * the first values of TOTAL_VALUES. */
+    /* Each int operator but the shifts, which the int_operators case does
+     * not declare, on the first values of TOTAL_VALUES. */
     for (int k = 0; !strcmp(name, "int_operators") && k < TOTAL_OPERATION_COUNT - 2;
          k++) {
         int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? INT_OPERANDS : 1;
@@ -10483,13 +10591,35 @@ static int function_row(const pin_value *rows, const char *name, int *ordinal)
     }
     return -1;
 }
+/* A scalar_facts type's bits, 1 for bool, and whether it is unsigned. */
+static int scalar_bits(int type)
+{
+    static const int BITS[] = { [SCALAR_INT] = 32,   [SCALAR_BOOL] = 1,
+                                [SCALAR_INT8] = 8,   [SCALAR_BYTE] = 8,
+                                [SCALAR_INT16] = 16, [SCALAR_UINT16] = 16,
+                                [SCALAR_UINT] = 32,  [SCALAR_INT64] = 64,
+                                [SCALAR_WORD] = 64 };
+    assert(type > 0 && type < (int)(sizeof BITS / sizeof *BITS) && BITS[type]);
+    return BITS[type];
+}
+static bool scalar_unsigned(int type)
+{
+    return type == SCALAR_BOOL || type == SCALAR_BYTE ||
+           type == SCALAR_UINT16 || type == SCALAR_UINT || type == SCALAR_WORD;
+}
 static const char *llvm_type(int type)
 {
-    return type == SCALAR_BOOL ? "i1" : "i32";
+    static const char *const NAMES[] = { [1] = "i1",
+                                         [8] = "i8",
+                                         [16] = "i16",
+                                         [32] = "i32",
+                                         [64] = "i64" };
+    return NAMES[scalar_bits(type)];
 }
 /* Appends to `adapter` the validation-only probe @probe_<name>(ptr): it reads
- * each parameter as an int32 of its argument array, truncating a bool's, and
- * returns the function's result, zero-extending a bool. */
+ * each parameter as an int64 of its argument array, truncated to the
+ * parameter's type, and returns the function's result extended to int64 as
+ * its type's value: sign-extended when signed, zero-extended otherwise. */
 static bool append_adapter(const pin_value *rows, const char *name, char **adapter)
 {
     int ordinal;
@@ -10497,23 +10627,30 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
     REQUIRE(head > 0 && ordinal > 0);
     int count = row_int(rows, head, "count"), result = row_int(rows, head, "type");
     char text[4096], call[1024] = "";
-    int n = snprintf(text, sizeof text, "\ndefine i32 @probe_%s(ptr %%args) {\n", name);
+    int n = snprintf(text, sizeof text, "\ndefine i64 @probe_%s(ptr %%args) {\n", name);
     for (int i = 0; i < count; i++) {
         int type = row_int(rows, head + 1 + i, "type");
         n += snprintf(
             text + n,
             sizeof text - (size_t)n,
-            "  %%p%d = getelementptr i32, ptr %%args, i64 %d\n  %%w%d = load "
-            "i32, ptr %%p%d\n",
+            "  %%p%d = getelementptr i64, ptr %%args, i64 %d\n  %%w%d = load "
+            "i64, ptr %%p%d\n",
             i,
             i,
             i,
             i
         );
-        if (type == SCALAR_BOOL) {
-            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = trunc i32 %%w%d to i1\n", i, i);
+        if (scalar_bits(type) == 64) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i64 %%w%d, 0\n", i, i);
         } else {
-            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i32 %%w%d, 0\n", i, i);
+            n += snprintf(
+                text + n,
+                sizeof text - (size_t)n,
+                "  %%a%d = trunc i64 %%w%d to %s\n",
+                i,
+                i,
+                llvm_type(type)
+            );
         }
         size_t used = strlen(call);
         snprintf(call + used, sizeof call - used, "%s%s %%a%d", i ? ", " : "", llvm_type(type), i);
@@ -10526,10 +10663,16 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
         ordinal,
         call
     );
-    if (result == SCALAR_BOOL) {
-        n += snprintf(text + n, sizeof text - (size_t)n, "  %%z = zext i1 %%r to i32\n  ret i32 %%z\n}\n");
+    if (scalar_bits(result) == 64) {
+        n += snprintf(text + n, sizeof text - (size_t)n, "  ret i64 %%r\n}\n");
     } else {
-        n += snprintf(text + n, sizeof text - (size_t)n, "  ret i32 %%r\n}\n");
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%z = %s %s %%r to i64\n  ret i64 %%z\n}\n",
+            scalar_unsigned(result) ? "zext" : "sext",
+            llvm_type(result)
+        );
     }
     REQUIRE(n < (int)sizeof text);
     size_t old = strlen(*adapter);
@@ -10544,12 +10687,26 @@ static void probe_json(const pin_value *rows, const scalar_probe *probe, char *j
     int head = function_row(rows, probe->function, &ordinal);
     int n = snprintf(json, size, "[");
     for (int i = 0; i < probe->count; i++) {
-        bool flag = row_int(rows, head + 1 + i, "type") == SCALAR_BOOL;
+        int type = row_int(rows, head + 1 + i, "type");
         const char *separator = i ? "," : "";
-        if (flag) {
+        if (type == SCALAR_BOOL) {
             n += snprintf(json + n, size - (size_t)n, "%s%s", separator, probe->arguments[i] ? "true" : "false");
+        } else if (type == SCALAR_WORD) {
+            n += snprintf(
+                json + n,
+                size - (size_t)n,
+                "%s%" PRIu64,
+                separator,
+                (uint64_t)probe->arguments[i]
+            );
         } else {
-            n += snprintf(json + n, size - (size_t)n, "%s%d", separator, probe->arguments[i]);
+            n += snprintf(
+                json + n,
+                size - (size_t)n,
+                "%s%" PRId64,
+                separator,
+                probe->arguments[i]
+            );
         }
     }
     snprintf(json + n, size - (size_t)n, "]");
@@ -10571,9 +10728,10 @@ static bool vm_load(const unsigned char *bytes, size_t length, int backend)
     REQUIRE(host);
     return true;
 }
-/* The int32 the loaded closure's `function` of package scalar returns for
- * `json`, with a bool as 0 or 1. */
-static bool vm_value(const char *function, const char *json, int32_t *out)
+/* The value of `type` the loaded closure's `function` of package scalar
+ * returns for `json`, as the int64 its probe adapter gives: a bool as 0 or 1
+ * and a uint64 as its bits. */
+static bool vm_value(const char *function, const char *json, int type, int64_t *out)
 {
     char name[256];
     snprintf(name, sizeof name, "project:scalar:1:%s:callable", function);
@@ -10599,9 +10757,20 @@ static bool vm_value(const char *function, const char *json, int32_t *out)
     if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
         *out = !strcmp(result.json, "[true]");
     } else {
-        char *end;
-        long value = result.json[0] == '[' ? strtol(result.json + 1, &end, 10) : 0;
-        if (result.json[0] != '[' || strcmp(end, "]")) {
+        char *end = result.json;
+        errno = 0;
+        if (result.json[0] == '[') {
+            *out = type == SCALAR_WORD ? (int64_t)strtoull(result.json + 1, &end, 10)
+                                       : strtoll(result.json + 1, &end, 10);
+        }
+        bool read = end != result.json && !errno && !strcmp(end, "]") &&
+                    (type != SCALAR_WORD || result.json[1] != '-');
+        if (read && scalar_bits(type) < 64) {
+            int64_t limit = INT64_C(1)
+                         << (scalar_bits(type) - !scalar_unsigned(type));
+            read = *out < limit && *out >= (scalar_unsigned(type) ? 0 : -limit);
+        }
+        if (!read) {
             fprintf(
                 stderr,
                 "scalar closure %s%s gave %s\n",
@@ -10610,11 +10779,7 @@ static bool vm_value(const char *function, const char *json, int32_t *out)
                 result.json
             );
         }
-        REQUIRE(
-            result.json[0] == '[' && !strcmp(end, "]") && value >= INT32_MIN &&
-            value <= INT32_MAX
-        );
-        *out = (int32_t)value;
+        REQUIRE(read);
     }
     free(result.json);
     result = (compiler_host_result){ 0 };
@@ -10688,15 +10853,17 @@ static bool keeps_guards(const char *name, const char *ir)
 typedef struct scalar_call
 {
     scalar_probe probe;
-    char json[256], symbol[256];
-    int32_t values[4];
+    char json[128], symbol[64];
+    int64_t values[4];
 } scalar_call;
 enum
 {
-    MAX_CASE_CALLS = MAX_CASE_PROBES + 1
+    MAX_CASE_CALLS = MAX_CASE_PROBES + 1,
+    /* A width module's entry and probes, the most of any module. */
+    MAX_WIDTH_CALLS = 640
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
-static int case_calls(const char *name, const pin_value *rows, int32_t expected, scalar_call calls[MAX_CASE_CALLS])
+static int case_calls(const char *name, const pin_value *rows, int64_t expected, scalar_call calls[MAX_CASE_CALLS])
 {
     scalar_probe probes[MAX_CASE_PROBES];
     int count = case_probes(name, probes);
@@ -10712,12 +10879,22 @@ static int case_calls(const char *name, const pin_value *rows, int32_t expected,
     return count + 1;
 }
 /* Each call's value from the authored compiler's closure on both VMs. */
-static bool vm_values(const unsigned char *closure, size_t length, scalar_call *calls, int count)
+static bool vm_values(
+    const unsigned char *closure,
+    size_t length,
+    const pin_value *rows,
+    scalar_call *calls,
+    int count
+)
 {
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(vm_load(closure, length, backend));
         for (int i = 0; i < count; i++) {
-            REQUIRE(vm_value(calls[i].probe.function, calls[i].json, &calls[i].values[backend]));
+            int ordinal;
+            int type = row_int(rows, function_row(rows, calls[i].probe.function, &ordinal), "type");
+            REQUIRE(
+                vm_value(calls[i].probe.function, calls[i].json, type, &calls[i].values[backend])
+            );
         }
         compiler_host_free(host);
         host = NULL;
@@ -10725,7 +10902,7 @@ static bool vm_values(const unsigned char *closure, size_t length, scalar_call *
     return true;
 }
 typedef int32_t (*scalar_entry)();
-typedef int32_t (*scalar_adapter)(const int32_t *);
+typedef int64_t (*scalar_adapter)(const int64_t *);
 enum
 {
     CALL_SPEC = 160
@@ -10743,18 +10920,22 @@ static chibi_process_capture_result library_calls(
     double seconds
 )
 {
-    char self[PATH_MAX], specs[MAX_CASE_CALLS][CALL_SPEC], out[NATIVE_OUTPUT];
+    char self[PATH_MAX], out[NATIVE_OUTPUT];
     ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
-    assert(length > 0 && count <= MAX_CASE_CALLS);
+    assert(length > 0 && count <= MAX_WIDTH_CALLS);
     self[length] = 0;
-    const char *argv[MAX_CASE_CALLS + 4] = { self, "--package-compiler-chibi-native-call", library };
+    char (*specs)[CALL_SPEC] = xmalloc(sizeof *specs * (size_t)count);
+    const char **argv = xmalloc(sizeof *argv * (size_t)(count + 4));
+    argv[0] = self;
+    argv[1] = "--package-compiler-chibi-native-call";
+    argv[2] = library;
     for (int i = 0; i < count; i++) {
         int n = snprintf(specs[i], CALL_SPEC, "%s", calls[i].symbol);
         for (int a = 0; i && a < calls[i].probe.count; a++) {
             n += snprintf(
                 specs[i] + n,
                 CALL_SPEC - (size_t)n,
-                "%c%d",
+                "%c%" PRId64,
                 a ? ',' : ':',
                 calls[i].probe.arguments[a]
             );
@@ -10764,12 +10945,14 @@ static chibi_process_capture_result library_calls(
     }
     argv[3 + count] = NULL;
     chibi_process_capture_result result = run_native(argv, directory, seconds, out);
+    free(argv);
+    free(specs);
     const char *at = out;
     for (int i = 0; native_passed(result) && i < count; i++) {
         char *end;
-        long value = strtol(at, &end, 10);
-        assert(end != at && *end == '\n' && value >= INT32_MIN && value <= INT32_MAX);
-        calls[i].values[column] = (int32_t)value;
+        errno = 0;
+        calls[i].values[column] = strtoll(at, &end, 10);
+        assert(end != at && *end == '\n' && !errno);
         at = end + 1;
     }
     return result;
@@ -10786,7 +10969,7 @@ static int library_child(const char *library, int count, char **specs)
     }
     for (int i = 0; i < count; i++) {
         char symbol[CALL_SPEC];
-        int32_t arguments[MAX_PROBE_ARGUMENTS];
+        int64_t arguments[MAX_PROBE_ARGUMENTS];
         const char *at = specs[i] + strcspn(specs[i], ":");
         size_t length = (size_t)(at - specs[i]);
         assert(length < sizeof symbol);
@@ -10795,16 +10978,16 @@ static int library_child(const char *library, int count, char **specs)
         int n = 0;
         for (char *end; *at; at = end, n++) {
             assert(n < MAX_PROBE_ARGUMENTS);
-            arguments[n] = (int32_t)strtol(at + 1, &end, 10);
+            arguments[n] = strtoll(at + 1, &end, 10);
         }
         void *function = dlsym(opened, symbol);
         if (!function) {
             fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
             return 1;
         }
-        int32_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
+        int64_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
                                          : ((scalar_entry)function)();
-        printf("%d\n", value);
+        printf("%" PRId64 "\n", value);
         fflush(stdout);
     }
     return 0;
@@ -10952,8 +11135,8 @@ static bool observes_lazy_arm(const char *directory, const pin_value *rows, cons
                         calls[3].values[column] == (!condition || extra);
                 fprintf(
                     stderr,
-                    "lazy trace O%d extra %d condition %d: return %d, "
-                    "Taken %d, Skipped %d, oracle %s\n",
+                    "lazy trace O%d extra %d condition %d: return %" PRId64 ", "
+                    "Taken %" PRId64 ", Skipped %" PRId64 ", oracle %s\n",
                     level * 2,
                     extra,
                     condition,
@@ -10975,14 +11158,14 @@ static bool observes_lazy_arm(const char *directory, const pin_value *rows, cons
 static bool calls_agree(const char *name, const scalar_call *calls, int count)
 {
     for (int i = 0; i < count; i++) {
-        const int32_t *values = calls[i].values;
-        int32_t expected = calls[i].probe.expected;
+        const int64_t *values = calls[i].values;
+        int64_t expected = calls[i].probe.expected;
         bool agree = scalar_results_match(values, expected);
         if (!agree) {
             fprintf(
                 stderr,
-                "scalar case %s %s%s: expected %d, VM %d %d, native O0 %d O2 "
-                "%d\n",
+                "scalar case %s %s%s: expected %" PRId64 ", VM %" PRId64
+                " %" PRId64 ", native O0 %" PRId64 " O2 %" PRId64 "\n",
                 name,
                 calls[i].probe.function,
                 calls[i].json,
@@ -11043,6 +11226,30 @@ static bool collected_rows(int b, const char *case_name, pin_value source, pin_v
     REQUIRE(collected);
     return true;
 }
+/* Each of `calls` of an accepted module, `ir` its IR, gives its expected value
+ * on both VMs, from the authored compiler's closure of `source` on VM b, and
+ * natively at O0 and O2. */
+static bool runs_everywhere(
+    const char *directory,
+    int b,
+    const char *name,
+    pin_string source,
+    const pin_value *rows,
+    const char *ir,
+    scalar_call *calls,
+    int count
+)
+{
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(b, source, &closure, &length));
+    bool agree = vm_values(closure, length, rows, calls, count) &&
+                 native_values(directory, name, rows, ir, calls, count) &&
+                 calls_agree(name, calls, count);
+    free(closure);
+    REQUIRE(agree);
+    return true;
+}
 /* An accepted module, `ir` its IR, which this frees: each of its calls must
  * give one value on both VMs and natively at O0 and O2. */
 static bool module_agrees(
@@ -11052,22 +11259,16 @@ static bool module_agrees(
     pin_string source,
     const pin_value *rows,
     char *ir,
-    int32_t expected,
+    int64_t expected,
     scalar_call calls[MAX_CASE_CALLS]
 )
 {
     REQUIRE(keeps_guards(case_name, ir));
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(vm_closure(b, source, &closure, &length));
     int count = case_calls(case_name, rows, expected, calls);
-    bool ran = vm_values(closure, length, calls, count) &&
-               native_values(directory, case_name, rows, ir, calls, count);
-    bool agree = ran && calls_agree(case_name, calls, count);
+    bool agree = runs_everywhere(directory, b, case_name, source, rows, ir, calls, count);
     if (agree && !strcmp(case_name, "lazy_arm")) {
         agree = observes_lazy_arm(directory, rows, ir);
     }
-    free(closure);
     free(ir);
     REQUIRE(agree);
     return true;
@@ -11123,7 +11324,8 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     );
 }
 /* A scalar module with a constant expression the ordinary compiler folds
- * exactly, and the value its Main gives. They stay out of the 96-source
+ * exactly, or a conversion it must call instead, and the value its Main
+ * gives. They stay out of the 96-source
  * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each one:
  * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
 static const struct
@@ -11150,6 +11352,18 @@ static const struct
       "    return 0;\n"
       "}\n",
       INT32_MAX },
+    /* A conversion an authored function shadows is a call to it, with that
+     * function's result type, also inside an expression and as a built-in
+     * conversion's argument. */
+    { "shadowed_conversion",
+      "package scalar\nMain :: () -> int { return int8(1); }\n"
+      "int8 :: (v: int) -> int { return v + 1; }\n",
+      2 },
+    { "shadowed_nested_conversion",
+      "package scalar\nMain :: () -> int { return int(int8(127)) + int8(100) * "
+      "2; }\n"
+      "int8 :: (v: int) -> int { return v + 1; }\n",
+      330 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
@@ -11191,7 +11405,7 @@ static bool folded_sources_agree(const char *directory)
         if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
             fprintf(
                 stderr,
-                "scalar case %s: Main gave %d, not %d\n",
+                "scalar case %s: Main gave %" PRId64 ", not %d\n",
                 name,
                 calls[0].values[0],
                 FOLDED_SOURCES[i].entry
@@ -11217,6 +11431,421 @@ static bool folded_overflow_rejected()
     }
     REQUIRE(strstr(message, "outside the range of int"));
     arena_free(&detached);
+    return true;
+}
+/* The integer types, as the width modules declare them: each one's name, the
+ * name its functions take, its scalar_facts type, bits and signedness. */
+typedef struct scalar_width
+{
+    const char *name, *title;
+    int type, bits;
+    bool is_unsigned;
+} scalar_width;
+static const scalar_width WIDTHS[] = {
+    { "int8", "Int8", SCALAR_INT8, 8, false },
+    { "byte", "Byte", SCALAR_BYTE, 8, true },
+    { "int16", "Int16", SCALAR_INT16, 16, false },
+    { "uint16", "Uint16", SCALAR_UINT16, 16, true },
+    { "int", "Int", SCALAR_INT, 32, false },
+    { "uint", "Uint", SCALAR_UINT, 32, true },
+    { "int64", "Int64", SCALAR_INT64, 64, false },
+    { "uint64", "Uint64", SCALAR_WORD, 64, true },
+};
+enum
+{
+    SCALAR_WIDTHS = (int)(sizeof WIDTHS / sizeof *WIDTHS),
+    WIDTH_INT = 4,
+    WIDTH_INT64 = 6,
+    WIDTH_WORD = 7,
+    WIDTH_SOURCE_BYTES = 4096
+};
+/* `bits` as a value of `w`: its low bits, sign-extended when `w` is signed,
+ * so a uint64 is its bits. */
+static int64_t width_value(const scalar_width *w, uint64_t bits)
+{
+    if (w->bits < 64) {
+        uint64_t mask = (UINT64_C(1) << w->bits) - 1;
+        bits &= mask;
+        if (!w->is_unsigned && bits >> (w->bits - 1)) {
+            bits |= ~mask;
+        }
+    }
+    return (int64_t)bits;
+}
+static int64_t width_least(const scalar_width *w)
+{
+    return w->is_unsigned ? 0 : width_value(w, UINT64_C(1) << (w->bits - 1));
+}
+static int64_t width_greatest(const scalar_width *w)
+{
+    return width_value(w, w->is_unsigned ? UINT64_MAX : (UINT64_C(1) << (w->bits - 1)) - 1);
+}
+/* Whether value `a` of `t` is less than value `b` of `u`. */
+static bool width_below(const scalar_width *t, int64_t a, const scalar_width *u, int64_t b)
+{
+    bool a_negative = !t->is_unsigned && a < 0, b_negative = !u->is_unsigned && b < 0;
+    if (a_negative != b_negative) {
+        return a_negative;
+    }
+    return a_negative ? a < b : (uint64_t)a < (uint64_t)b;
+}
+/* The operations of a width module: the function, its expression over `a`
+ * and `b` of the module's type or the uint shift count `n`, and its arity. */
+enum
+{
+    WIDTH_ADD,
+    WIDTH_SUB,
+    WIDTH_MUL,
+    WIDTH_DIV,
+    WIDTH_MOD,
+    WIDTH_AND,
+    WIDTH_OR,
+    WIDTH_XOR,
+    WIDTH_LT,
+    WIDTH_LE,
+    WIDTH_GT,
+    WIDTH_GE,
+    WIDTH_EQ,
+    WIDTH_NE,
+    WIDTH_SHL,
+    WIDTH_SHR,
+    WIDTH_SHL_FAR,
+    WIDTH_SHR_FAR,
+    WIDTH_NEG,
+    WIDTH_NOT,
+    WIDTH_OPERATIONS
+};
+static const struct
+{
+    const char *name, *expression;
+    int parameters;
+} WIDTH_OPERATION[WIDTH_OPERATIONS] = {
+    [WIDTH_ADD] = { "Add", "a + b", 2 },
+    [WIDTH_SUB] = { "Sub", "a - b", 2 },
+    [WIDTH_MUL] = { "Mul", "a * b", 2 },
+    [WIDTH_DIV] = { "Div", "a / b", 2 },
+    [WIDTH_MOD] = { "Mod", "a % b", 2 },
+    [WIDTH_AND] = { "And", "a & b", 2 },
+    [WIDTH_OR] = { "Or", "a | b", 2 },
+    [WIDTH_XOR] = { "Xor", "a ^ b", 2 },
+    [WIDTH_LT] = { "Lt", "a < b", 2 },
+    [WIDTH_LE] = { "Le", "a <= b", 2 },
+    [WIDTH_GT] = { "Gt", "a > b", 2 },
+    [WIDTH_GE] = { "Ge", "a >= b", 2 },
+    [WIDTH_EQ] = { "Eq", "a == b", 2 },
+    [WIDTH_NE] = { "Ne", "a != b", 2 },
+    [WIDTH_SHL] = { "Shl", "a << n", 2 },
+    [WIDTH_SHR] = { "Shr", "a >> n", 2 },
+    [WIDTH_SHL_FAR] = { "ShlFar", "a << 300", 1 },
+    [WIDTH_SHR_FAR] = { "ShrFar", "a >> 300", 1 },
+    [WIDTH_NEG] = { "Neg", "-a", 1 },
+    [WIDTH_NOT] = { "Not", "~a", 1 },
+};
+/* The far shifts' constant count, which ShiftStep clamps to the type. */
+static const int64_t FAR_COUNT = 300;
+/* The language's integer contract for operation `op` on values of `w`:
+ * nothing fails, and a shift count is a uint at or past the width. */
+static int64_t width_total(const scalar_width *w, int op, int64_t a, int64_t b)
+{
+    uint64_t x = (uint64_t)a, y = (uint64_t)b;
+    bool sign = !w->is_unsigned;
+    switch (op) {
+        case WIDTH_ADD: return width_value(w, x + y);
+        case WIDTH_SUB: return width_value(w, x - y);
+        case WIDTH_MUL: return width_value(w, x * y);
+        case WIDTH_DIV:
+            return !b              ? 0
+                 : sign && b == -1 ? width_value(w, 0 - x)
+                 : sign            ? a / b
+                                   : (int64_t)(x / y);
+        case WIDTH_MOD:
+            return !b              ? a
+                 : sign && b == -1 ? 0
+                 : sign            ? a % b
+                                   : (int64_t)(x % y);
+        case WIDTH_AND: return a & b;
+        case WIDTH_OR: return a | b;
+        case WIDTH_XOR: return a ^ b;
+        case WIDTH_LT: return width_below(w, a, w, b);
+        case WIDTH_LE: return !width_below(w, b, w, a);
+        case WIDTH_GT: return width_below(w, b, w, a);
+        case WIDTH_GE: return !width_below(w, a, w, b);
+        case WIDTH_EQ: return a == b;
+        case WIDTH_NE: return a != b;
+        case WIDTH_SHL_FAR: y = FAR_COUNT; /* fall through */
+        case WIDTH_SHL:
+            return y >= (uint64_t)w->bits ? 0 : width_value(w, x << y);
+        case WIDTH_SHR_FAR: y = FAR_COUNT; /* fall through */
+        case WIDTH_SHR:
+            if (y >= (uint64_t)w->bits) {
+                return sign && a < 0 ? -1 : 0;
+            }
+            return !sign ? (int64_t)(x >> y) : a < 0 ? ~(~a >> y) : a >> y;
+        case WIDTH_NEG: return width_value(w, 0 - x);
+        default: return width_value(w, ~x);
+    }
+}
+/* The boundary values a width module's operations take: the least and
+ * greatest, those next to them, 0, 1 and -1, or the top bit unsigned. */
+static int width_samples(const scalar_width *w, int64_t samples[6])
+{
+    uint64_t top = UINT64_C(1) << (w->bits - 1);
+    if (w->is_unsigned) {
+        const int64_t values[6] = { 0,
+                                    1,
+                                    2,
+                                    width_value(w, top),
+                                    width_greatest(w) - 1,
+                                    width_greatest(w) };
+        memcpy(samples, values, sizeof values);
+    } else {
+        const int64_t values[6] = {
+            width_least(w), width_least(w) + 1, -1, 0, 1, width_greatest(w)
+        };
+        memcpy(samples, values, sizeof values);
+    }
+    return 6;
+}
+/* The uint shift counts: in range, the width's edges and past it, and past
+ * every narrower type's range, which the count's conversion clamps. */
+static int shift_counts(const scalar_width *w, int64_t counts[7])
+{
+    const int64_t values[7] = { 0,           1,   w->bits - 1, w->bits,
+                                w->bits + 1, 255, UINT32_MAX };
+    memcpy(counts, values, sizeof values);
+    return 7;
+}
+/* The operations module of `w`: Main, then one function per operation. */
+static void width_operations_source(const scalar_width *w, char source[WIDTH_SOURCE_BYTES])
+{
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(wrap: Mul(3, 5)); }\n");
+    for (int op = 0; op < WIDTH_OPERATIONS; op++) {
+        const char *result = op >= WIDTH_LT && op <= WIDTH_NE ? "bool" : w->name;
+        char parameters[64];
+        if (WIDTH_OPERATION[op].parameters == 1) {
+            snprintf(parameters, sizeof parameters, "a: %s", w->name);
+        } else if (op == WIDTH_SHL || op == WIDTH_SHR) {
+            snprintf(parameters, sizeof parameters, "a: %s, n: uint", w->name);
+        } else {
+            snprintf(parameters, sizeof parameters, "a: %s, b: %s", w->name, w->name);
+        }
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "%s :: (%s) -> %s { return %s; }\n",
+            WIDTH_OPERATION[op].name,
+            parameters,
+            result,
+            WIDTH_OPERATION[op].expression
+        );
+    }
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+/* A call of `function` with `count` arguments that must give `expected`. */
+static scalar_call width_call(const char *function, int count, int64_t a, int64_t b, int64_t expected)
+{
+    return (scalar_call){ .probe = { "widths", function, count, { a, b }, expected } };
+}
+/* The entry, then each operation of `w` on every pair of its samples, or each
+ * sample with every shift count, or each sample alone. */
+static int width_operation_calls(const scalar_width *w, scalar_call calls[MAX_WIDTH_CALLS])
+{
+    int64_t samples[6], counts[7];
+    int sample_count = width_samples(w, samples),
+        count_count = shift_counts(w, counts), count = 0;
+    calls[count++] = width_call("Main", 0, 0, 0, 15);
+    for (int op = 0; op < WIDTH_OPERATIONS; op++) {
+        bool shift = op == WIDTH_SHL || op == WIDTH_SHR,
+             unary = WIDTH_OPERATION[op].parameters == 1;
+        const int64_t *rights = shift ? counts : samples;
+        int right_count = unary ? 1 : shift ? count_count : sample_count;
+        for (int i = 0; i < sample_count; i++) {
+            for (int j = 0; j < right_count; j++) {
+                int64_t a = samples[i], b = unary ? 0 : rights[j];
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = width_call(
+                    WIDTH_OPERATION[op].name,
+                    WIDTH_OPERATION[op].parameters,
+                    a,
+                    b,
+                    width_total(w, op, a, b)
+                );
+            }
+        }
+    }
+    return count;
+}
+/* The values conversions take: each type's edges and those next to them, as
+ * an int64 sample or, past it, a uint64 one. */
+static const int64_t CONVERTED[] = { 0,
+                                     1,
+                                     -1,
+                                     42,
+                                     127,
+                                     128,
+                                     -128,
+                                     -129,
+                                     255,
+                                     256,
+                                     298,
+                                     32767,
+                                     32768,
+                                     -32768,
+                                     -32769,
+                                     65535,
+                                     65536,
+                                     INT32_MAX,
+                                     INT32_MAX + INT64_C(1),
+                                     INT32_MIN,
+                                     INT32_MIN - INT64_C(1),
+                                     UINT32_MAX,
+                                     UINT32_MAX + INT64_C(1),
+                                     INT64_MAX,
+                                     INT64_MIN };
+static const int64_t CONVERTED_WORDS[] = { INT64_MIN, -1 };
+/* `T(value)` and `T(wrap: value)` for a value of `from` and T `to`. */
+static int64_t clamped(const scalar_width *from, int64_t value, const scalar_width *to)
+{
+    if (width_below(from, value, to, width_least(to))) {
+        return width_least(to);
+    }
+    if (width_below(to, width_greatest(to), from, value)) {
+        return width_greatest(to);
+    }
+    return width_value(to, (uint64_t)value);
+}
+/* The conversions module of `to`: Main, then ClampT and WrapT for each type
+ * T, which convert their T to `to`. */
+static void width_conversions_source(const scalar_width *to, char source[WIDTH_SOURCE_BYTES])
+{
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(wrap: WrapInt(298)); }\n");
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *from = &WIDTHS[i];
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "Clamp%s :: (a: %s) -> %s { return %s(a); }\nWrap%s :: (a: %s) -> "
+            "%s { return %s(wrap: a); }\n",
+            from->title,
+            from->name,
+            to->name,
+            to->name,
+            from->title,
+            from->name,
+            to->name,
+            to->name
+        );
+    }
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+/* The entry, then both conversions of each type's every sample it holds. */
+static int width_conversion_calls(const scalar_width *to, scalar_call *calls, char names[][32])
+{
+    int count = 0;
+    calls[count++] = width_call(
+        "Main",
+        0,
+        0,
+        0,
+        width_value(&WIDTHS[WIDTH_INT], (uint64_t)width_value(to, 298))
+    );
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *from = &WIDTHS[i];
+        for (int wrap = 0; wrap < 2; wrap++) {
+            int name = 2 * i + wrap;
+            snprintf(names[name], sizeof names[name], "%s%s", wrap ? "Wrap" : "Clamp", from->title);
+            for (int k = 0; k < (int)(sizeof CONVERTED / sizeof *CONVERTED) + 2; k++) {
+                bool word = k >= (int)(sizeof CONVERTED / sizeof *CONVERTED);
+                const scalar_width *sampled = word ? &WIDTHS[WIDTH_WORD]
+                                                   : &WIDTHS[WIDTH_INT64];
+                int64_t value = word
+                                  ? CONVERTED_WORDS[k - (int)(sizeof CONVERTED / sizeof *CONVERTED)]
+                                  : CONVERTED[k];
+                if (width_below(sampled, value, from, width_least(from)) ||
+                    width_below(from, width_greatest(from), sampled, value)) {
+                    continue;
+                }
+                int64_t expected = wrap ? width_value(to, (uint64_t)value)
+                                        : clamped(from, value, to);
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = width_call(names[name], 1, value, 0, expected);
+            }
+        }
+    }
+    return count;
+}
+/* `source`, a width module, is accepted on VM b, and each of its `calls`
+ * gives its oracle's value on both VMs and natively at O0 and O2. */
+static bool width_module_agrees(
+    const char *directory,
+    int b,
+    const char *name,
+    const char *source,
+    scalar_call *calls,
+    int count
+)
+{
+    pin_value rows;
+    REQUIRE(collected_rows(b, name, text(source), &rows));
+    char *ir;
+    REQUIRE(emitted_ir(b, &rows, &ir));
+    if (!ir) {
+        const pin_array *array = rows.ptr;
+        fprintf(
+            stderr,
+            "scalar case %s: %s\n",
+            name,
+            pin_text(scalar_field(&array->items[1], "text")).bytes
+        );
+    }
+    REQUIRE(ir);
+    snprintf(calls[0].json, sizeof calls[0].json, "[]");
+    snprintf(calls[0].symbol, sizeof calls[0].symbol, "chibi_scalar");
+    for (int i = 1; i < count; i++) {
+        probe_json(&rows, &calls[i].probe, calls[i].json, sizeof calls[i].json);
+        snprintf(
+            calls[i].symbol,
+            sizeof calls[i].symbol,
+            "probe_%s",
+            calls[i].probe.function
+        );
+    }
+    bool agree = runs_everywhere(
+        directory,
+        b,
+        name,
+        (pin_string){ source, strlen(source) },
+        &rows,
+        ir,
+        calls,
+        count
+    );
+    free(ir);
+    arena_free(&detached);
+    REQUIRE(agree);
+    return true;
+}
+/* Every integer type's operations and its conversions from every type, at
+ * their boundaries, run natively as the integer contract and both VMs give
+ * them. */
+static bool widths_agree(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    char source[WIDTH_SOURCE_BYTES], name[64], names[2 * SCALAR_WIDTHS][32];
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < SCALAR_WIDTHS; i++) {
+        snprintf(name, sizeof name, "%s_operations", WIDTHS[i].name);
+        width_operations_source(&WIDTHS[i], source);
+        int count = width_operation_calls(&WIDTHS[i], calls);
+        agreed = width_module_agrees(directory, i % 2, name, source, calls, count);
+        snprintf(name, sizeof name, "%s_conversions", WIDTHS[i].name);
+        width_conversions_source(&WIDTHS[i], source);
+        count = width_conversion_calls(&WIDTHS[i], calls, names);
+        agreed = agreed &&
+                 width_module_agrees(directory, (i + 1) % 2, name, source, calls, count);
+    }
+    free(calls);
+    REQUIRE(agreed);
     return true;
 }
 
@@ -11370,7 +11999,8 @@ static bool total_ir(char **ir)
     (*ir)[text.length] = 0;
     return true;
 }
-/* The validation-only adapter probe_NAME(ptr) of each operation. */
+/* The validation-only adapter probe_NAME(ptr) of each operation, which takes
+ * and returns int64 as append_adapter's do. */
 static char *total_adapters()
 {
     char *adapters = xmalloc(1);
@@ -11381,17 +12011,18 @@ static char *total_adapters()
         int n = snprintf(
             text,
             sizeof text,
-            "\ndefine i32 @probe_%s(ptr %%args) {\n  %%a0 = load i32, ptr "
-            "%%args\n",
+            "\ndefine i64 @probe_%s(ptr %%args) {\n  %%w0 = load i64, ptr "
+            "%%args\n  %%a0 = trunc i64 %%w0 to i32\n",
             TOTAL_OPERATIONS[k].name
         );
         if (binary) {
-            n += snprintf(text + n, sizeof text - (size_t)n, "  %%p1 = getelementptr i32, ptr %%args, i64 1\n  %%a1 = load i32, ptr %%p1\n");
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%p1 = getelementptr i64, ptr %%args, i64 1\n  %%w1 = load i64, ptr %%p1\n  %%a1 = trunc i64 %%w1 to i32\n");
         }
         snprintf(
             text + n,
             sizeof text - (size_t)n,
-            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  ret i32 %%r\n}\n",
+            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  %%z = sext i32 "
+            "%%r to i64\n  ret i64 %%z\n}\n",
             k + 1,
             binary ? ", i32 %a1" : ""
         );
@@ -11456,7 +12087,8 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
                 if (!agreed) {
                     fprintf(
                         stderr,
-                        "native %s(%d, %d) at O%d gave %d, expected %d\n",
+                        "native %s(%" PRId64 ", %" PRId64
+                        ") at O%d gave %" PRId64 ", expected %" PRId64 "\n",
                         probe->function,
                         probe->arguments[0],
                         probe->arguments[1],
@@ -11494,7 +12126,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
         agreed = scalar_case_agrees(directory, i, &accepted, &deep);
         arena_free(&detached);
     }
-    agreed = agreed && folded_sources_agree(directory) && folded_overflow_rejected();
+    agreed = agreed && folded_sources_agree(directory) &&
+             folded_overflow_rejected() && widths_agree(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");

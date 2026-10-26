@@ -231,6 +231,233 @@ static const char driver_ci_build
          "                print('jobs=' + arguments[arguments.index('--jobs') "
          "+ 1])\n"
          "    sys.exit(0)\n";
+/* Keep each concatenated literal below ISO C's 4095-byte minimum limit.
+ * Writing these chunks in order preserves the generated Python byte-for-byte. */
+static const char *const driver_parallel[] = {
+    "if len(sys.argv) > 2 and sys.argv[2].startswith('parallel-'):\n"
+    "    action, worker, root = sys.argv[2:5]\n"
+    "    root = str(Path(root) / 'parallel')\n"
+    "    Path(root).mkdir(exist_ok=True)\n"
+    "    import contextlib\n"
+    "    original_group = policy.run_group\n"
+    "    def reported_group(*args, **kwargs):\n"
+    "        try:\n"
+    "            with open(Path(root, 'diagnostics.stderr'), 'w') as "
+    "diagnostics:\n"
+    "                with contextlib.redirect_stderr(diagnostics):\n"
+    "                    return original_group(*args, **kwargs)\n"
+    "        finally:\n"
+    "            rows = [json.loads(line[len('Test policy: '):])\n"
+    "                for line in Path(root, "
+    "'diagnostics.stderr').read_text().splitlines()\n"
+    "                if line.startswith('Test policy: ')]\n"
+    "            with open(Path(root, 'metrics.txt'), 'w') as metrics:\n"
+    "                for row in rows:\n"
+    "                    event = row['event']\n"
+    "                    if event == 'admission':\n"
+    "                        print(event, row['selected_jobs'], row['mode'], "
+    "row['reason'],\n"
+    "                            row.get('available_bytes'), "
+    "row.get('reserve_bytes'),\n"
+    "                            row.get('cpu_slots'), "
+    "row.get('memory_probe'), file=metrics)\n"
+    "                    if event == 'selector':\n"
+    "                        print(event, row['name'], row.get('start'), "
+    "row.get('observed_finish'),\n"
+    "                            row['status'], row.get('exit_code'), "
+    "file=metrics)\n"
+    "                    if event == 'group':\n"
+    "                        print(event, row.get('peak_live_workers'), "
+    "row['wall_seconds'],\n"
+    "                            row['result'], row.get('lifecycle_scope'), "
+    "file=metrics)\n"
+    "    policy.run_group = reported_group\n"
+    "    names = ['first', 'second', 'third']\n"
+    "    modes = ['mark', 'mark', 'mark']\n"
+    "    jobs = 1 if action.endswith('-serial') else 2\n"
+    "    if action.startswith('parallel-language'):\n"
+    "        names = list(policy.GROUPS['language'])\n"
+    "        modes = ['mark'] * len(names)\n"
+    "    if action == 'parallel-default':\n"
+    "        jobs = None\n"
+    "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
+    "        policy.os.cpu_count = lambda: 2\n"
+    "        policy.available_test_memory = lambda: 4 * 1024 ** 3\n"
+    "    if action in ('parallel-barrier', 'parallel-default'):\n"
+    "        names, modes = names[:2], ['barrier', 'barrier']\n"
+    "    if action == 'parallel-conflict':\n"
+    "        modes = ['hold', 'conflict', 'mark']\n"
+    "    if action == 'parallel-failure':\n"
+    "        modes = ['mark', 'fail', 'mark']\n"
+    "    if action == 'parallel-unknown':\n"
+    "        modes = ['hold', 'conflict', 'mark']\n"
+    "    for name, mode in zip(names, modes):\n"
+    "        policy.TOOLS[name] = [worker, 'parallel', root, name, mode]\n"
+    "        if not action.startswith('parallel-language'):\n"
+    "            policy.PARALLEL_RESOURCES[name] = frozenset()\n"
+    "    if action == 'parallel-conflict':\n"
+    "        for name in names: policy.PARALLEL_RESOURCES[name] = "
+    "frozenset(['fixture'])\n"
+    "    if action in ('parallel-unknown', 'parallel-failure'):\n"
+    "        for name in names[1:]: policy.PARALLEL_RESOURCES.pop(name, None)\n"
+    "    if action in ('parallel-low-memory', 'parallel-memory-unknown', ",
+    "'parallel-all-unknown'):\n"
+    "        jobs = None\n"
+    "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
+    "        policy.available_test_memory = lambda: None if action == "
+    "'parallel-memory-unknown' else 3 * 1024 ** 3\n"
+    "        if action == 'parallel-all-unknown':\n"
+    "            for name in names: policy.PARALLEL_RESOURCES.pop(name, None)\n"
+    "    if action in ('parallel-conflict', 'parallel-unknown'):\n"
+    "        original = policy.subprocess.Popen\n"
+    "        spawned = []\n"
+    "        class ReleaseOnPoll:\n"
+    "            def __init__(self, child): self.child = child\n"
+    "            def __getattr__(self, name): return getattr(self.child, "
+    "name)\n"
+    "            def poll(self):\n"
+    "                Path(root, 'resource-release').touch()\n"
+    "                return self.child.poll()\n"
+    "        def observed_spawn(*args, **kwargs):\n"
+    "            if spawned and spawned[0].poll() is None:\n"
+    "                Path(root, 'conflict-live').touch()\n"
+    "            child = original(*args, **kwargs)\n"
+    "            spawned.append(child)\n"
+    "            return ReleaseOnPoll(child) if len(spawned) == 1 else child\n"
+    "        policy.subprocess.Popen = observed_spawn\n"
+    "    if action == 'parallel-memory-reader':\n"
+    "        policy.sys.platform = 'linux'\n"
+    "        files = {'/proc/meminfo': 'MemAvailable: 8388608 kB',\n"
+    "            '/proc/self/cgroup': '0::/user/job',\n"
+    "            '/proc/self/mountinfo': '1 0 0:1 / /sys/fs/cgroup rw - "
+    "cgroup2 cgroup rw',\n"
+    "            '/sys/fs/cgroup/user/job/memory.max': str(6 * 1024 ** 3),\n"
+    "            '/sys/fs/cgroup/user/job/memory.current': str(1024 ** 3),\n"
+    "            '/sys/fs/cgroup/user/memory.max': str(4 * 1024 ** 3),\n"
+    "            '/sys/fs/cgroup/user/memory.current': str(1024 ** 3)}\n"
+    "        def read_text(name):\n"
+    "            if name not in files: raise FileNotFoundError(name)\n"
+    "            return files[name]\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        files['/sys/fs/cgroup/user/job/memory.current'] = 'bad'\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        files['/sys/fs/cgroup/user/job/memory.current'] = str(1024 ** 3)\n"
+    "        del files['/sys/fs/cgroup/user/job/memory.max']\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        files['/proc/self/mountinfo'] = '1 0 0:1 /user /sys/fs/cgroup rw "
+    "- cgroup2 cgroup rw'\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        files.update({'/proc/self/cgroup': '2:memory:/job',\n"
+    "            '/proc/self/mountinfo': '1 0 0:1 / /sys/fs/cgroup/memory rw - "
+    "cgroup cgroup rw,memory',\n"
+    "            '/sys/fs/cgroup/memory/job/memory.limit_in_bytes': str(2 * "
+    "1024 ** 3),\n"
+    "            '/sys/fs/cgroup/memory/job/memory.usage_in_bytes': str(1024 "
+    "** 3),\n"
+    "            '/sys/fs/cgroup/memory/memory.limit_in_bytes': str(8 * 1024 "
+    "** 3),\n"
+    "            '/sys/fs/cgroup/memory/memory.usage_in_bytes': str(2 * 1024 "
+    "** 3)})\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        from types import SimpleNamespace\n"
+    "        policy.sys.platform = 'darwin'\n"
+    "        output = 'Mach Virtual Memory Statistics: (page size of 4096 ",
+    "bytes)\\nPages free: 10.\\nPages inactive: 20.\\nPages speculative: "
+    "2.\\n'\n"
+    "        policy.subprocess.run = lambda *args, **kwargs: "
+    "SimpleNamespace(stdout=output)\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        output = 'invalid'\n"
+    "        print(policy.available_test_memory(read_text))\n"
+    "        sys.exit(0)\n"
+    "    if action in ('parallel-cli-serial', 'parallel-env-serial'):\n"
+    "        policy.GROUPS['fixture'] = names\n"
+    "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
+    "        policy.available_test_memory = lambda: 4 * 1024 ** 3\n"
+    "        os.environ['CHIBI_TEST_JOBS'] = '2' if action == "
+    "'parallel-cli-serial' else '1'\n"
+    "        sys.argv = [sys.argv[0], *(['--jobs', '1'] if action == "
+    "'parallel-cli-serial' else []), 'group', 'fixture']\n"
+    "        sys.exit(policy.main())\n"
+    "    if action == 'parallel-admission':\n"
+    "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
+    "        policy.os.cpu_count = lambda: 2\n"
+    "        for memory in [None, 3 * 1024 ** 3, 4 * 1024 ** 3]:\n"
+    "            policy.available_test_memory = lambda: memory\n"
+    "            print(policy.automatic_jobs())\n"
+    "        policy.os.sched_getaffinity = lambda pid: {0}\n"
+    "        policy.os.cpu_count = lambda: 1\n"
+    "        print(policy.automatic_jobs())\n"
+    "        sys.exit(0)\n"
+    "    if action in ('parallel-spawn-int', 'parallel-spawn-term'):\n"
+    "        sibling = subprocess.Popen([worker, 'sibling', root])\n"
+    "        original = policy.subprocess.Popen\n"
+    "        spawned = []\n"
+    "        def interrupted_spawn(*args, **kwargs):\n"
+    "            child = original(*args, **kwargs)\n"
+    "            spawned.append(child)\n"
+    "            Path(root, 'started').write_text(str(child.pid))\n"
+    "            os.kill(os.getpid(), signal.SIGINT if action.endswith('-int') "
+    "else signal.SIGTERM)\n"
+    "            return child\n"
+    "        policy.subprocess.Popen = interrupted_spawn\n"
+    "        try:\n"
+    "            result = policy.run_group(names, jobs=jobs)\n"
+    "        except (policy.TerminationRequested, KeyboardInterrupt):\n"
+    "            result = 130\n"
+    "        finally:\n"
+    "            policy.subprocess.Popen = original\n"
+    "            probe = subprocess.run([worker, 'cleanup-probe', "
+    "root]).returncode\n"
+    "            print('ownership-probe=' + str(probe))\n"
+    "            for child in spawned:\n"
+    "                if child.poll() is None:\n"
+    "                    os.killpg(child.pid, signal.SIGKILL)\n"
+    "                    child.wait()\n"
+    "            Path(root, 'sibling-release').touch()\n"
+    "            sibling.wait(timeout=6)\n"
+    "        sys.exit(result)\n"
+    "    if action == 'parallel-active-failure':\n"
+    "        Path(root, 'b').mkdir()\n"
+    "        policy.TOOLS['first'] = [worker, 'parallel', root, 'first', "
+    "'fail-active']\n"
+    "        policy.TOOLS['second'] = [worker, 'descendant', str(Path(root, "
+    "'b')),\n"
+    "            '1' if sys.platform.startswith('linux') else '0', '0']\n"
+    "        result = policy.run_group(names, jobs=jobs)\n"
+    "        subprocess.run([worker, 'cleanup-probe', str(Path(root, 'b'))], "
+    "check=True)\n"
+    "        sys.exit(result)\n"
+    "    if action in ('parallel-timeout', 'parallel-int', 'parallel-term'):\n"
+    "        for name, folder in zip(names, ['a', 'b']):\n",
+    "            Path(root, folder).mkdir()\n"
+    "            policy.TOOLS[name] = [worker, 'descendant', str(Path(root, "
+    "folder)),\n"
+    "                                  '1' if sys.platform.startswith('linux') "
+    "else '0', '0']\n"
+    "        sibling = subprocess.Popen([worker, 'sibling', root])\n"
+    "        sender = None\n"
+    "        if action != 'parallel-timeout':\n"
+    "            number = signal.SIGINT if action == 'parallel-int' else "
+    "signal.SIGTERM\n"
+    "            sender = subprocess.Popen([worker, 'policy-signal', root, "
+    "str(os.getpid()), str(number)])\n"
+    "        try:\n"
+    "            result = policy.run_group(names, jobs=jobs, seconds=2 if "
+    "action == 'parallel-timeout' else None)\n"
+    "        except (policy.TerminationRequested, KeyboardInterrupt):\n"
+    "            result = 130\n"
+    "        finally:\n"
+    "            if sender is not None: sender.wait(timeout=6)\n"
+    "            for folder in ['a', 'b']:\n"
+    "                subprocess.run([worker, 'cleanup-probe', str(Path(root, "
+    "folder))], check=True)\n"
+    "            Path(root, 'sibling-release').touch()\n"
+    "            sibling.wait(timeout=6)\n"
+    "        sys.exit(result)\n"
+    "    sys.exit(policy.run_group(names, jobs=jobs))\n"
+};
+
 static const char driver_source[] =
     "try:\n"
     "    if sys.argv[2] == '_supervise':\n"
@@ -1058,6 +1285,310 @@ TEST_CASE(studio_resources_require_recorded_generation)
     return true;
 }
 
+static void reset_parallel()
+{
+    char root[PATH_MAX];
+    path(root, "parallel");
+    if (!access(root, F_OK)) {
+        tool_remove_tree(root);
+    }
+}
+
+static char *parallel_metrics()
+{
+    char filename[PATH_MAX];
+    path(filename, "parallel/metrics.txt");
+    return tool_read(filename);
+}
+
+static bool parallel_group_metrics(const char *metrics, int expected_peak, int expected_result)
+{
+    const char *row = strstr(metrics, "group ");
+    int peak = -1, result = -1;
+    double wall = -1;
+    REQUIRE(row && sscanf(row, "group %d %lf %d", &peak, &wall, &result) == 3);
+    REQUIRE(peak == expected_peak && result == expected_result && wall >= 0);
+    return true;
+}
+
+TEST_CASE(parallel_diagnostics_report_observed_overlap_and_resources)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-default", NULL) == 0);
+    char *metrics = parallel_metrics();
+    REQUIRE(metrics && parallel_group_metrics(metrics, 2, 0));
+    const char *first = strstr(metrics, "selector first ");
+    const char *second = strstr(metrics, "selector second ");
+    double first_start, first_finish, second_start, second_finish;
+    char first_status[32], second_status[32];
+    int first_exit = -1, second_exit = -1;
+    REQUIRE(
+        first &&
+        sscanf(first, "selector first %lf %lf %31s %d", &first_start, &first_finish, first_status, &first_exit) ==
+            4
+    );
+    REQUIRE(
+        second &&
+        sscanf(second, "selector second %lf %lf %31s %d", &second_start, &second_finish, second_status, &second_exit) ==
+            4
+    );
+    REQUIRE(first_start <= first_finish && second_start <= second_finish);
+    REQUIRE(first_start < second_finish && second_start < first_finish);
+    REQUIRE(!strcmp(first_status, "passed") && !strcmp(second_status, "passed"));
+    REQUIRE(!first_exit && !second_exit);
+    REQUIRE(
+        strstr(metrics, "admission 2 automatic cpu-memory-admission 4294967296 2147483648 2 available\n")
+    );
+    free(metrics);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strstr(output, "Test policy: "));
+    free(output);
+    const char *actions[] = { "parallel-conflict", "parallel-unknown" };
+    for (int i = 0; i < 2; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == 0);
+        metrics = parallel_metrics();
+        REQUIRE(metrics && parallel_group_metrics(metrics, 1, 0));
+        REQUIRE(!exists("parallel/conflict-live"));
+        free(metrics);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_diagnostics_distinguish_failure_cancel_and_not_started)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-active-failure", NULL) == 7);
+    char *metrics = parallel_metrics();
+    REQUIRE(metrics && parallel_group_metrics(metrics, 2, 7));
+    const char *first = strstr(metrics, "selector first ");
+    const char *second = strstr(metrics, "selector second ");
+    const char *third = strstr(metrics, "selector third ");
+    REQUIRE(first && strstr(first, " failed 7\n"));
+    REQUIRE(second && strstr(second, " cancelled 130\n"));
+    REQUIRE(third && strstr(third, "selector third None None not-started None\n") == third);
+    free(metrics);
+    return true;
+}
+
+TEST_CASE(parallel_diagnostics_explain_serial_escape_and_capacity)
+{
+    const char *actions[] = { "parallel-cli-serial",
+                              "parallel-env-serial",
+                              "parallel-low-memory",
+                              "parallel-memory-unknown",
+                              "parallel-all-unknown" };
+    const char *admissions[] = {
+        "admission 1 explicit explicit None 2147483648 None not-run\n",
+        "admission 1 explicit explicit None 2147483648 None not-run\n",
+        "admission 1 automatic cpu-memory-admission 3221225472 2147483648 2 "
+        "available\n",
+        "admission 1 automatic memory-unavailable None 2147483648 2 unknown\n",
+        "admission 1 automatic no-parallel-eligible-selectors None 2147483648 "
+        "None not-run\n"
+    };
+    for (int i = 0; i < 5; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == 0);
+        char *metrics = parallel_metrics();
+        REQUIRE(metrics && strstr(metrics, admissions[i]));
+        const char *group = strstr(metrics, "group None ");
+        double wall = -1;
+        int result = -1;
+        char scope[32];
+        REQUIRE(group && sscanf(group, "group None %lf %d %31s", &wall, &result, scope) == 3);
+        REQUIRE(wall >= 0 && !result && !strcmp(scope, "unobserved-serial"));
+        REQUIRE(!strstr(metrics, "selector "));
+        free(metrics);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_group_overlaps_and_isolates_scratch)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-default", NULL) == 0);
+    REQUIRE(exists("parallel/first-overlapped"));
+    REQUIRE(exists("parallel/second-overlapped"));
+    char *output = tool_read(logpath);
+    REQUIRE(output);
+    char *first = strstr(output, "completed-first");
+    char *second = strstr(output, "completed-second");
+    REQUIRE(first && second && first < second);
+    char a[4096], b[4096];
+    char *scratch_a = strstr(output, "scratch-first=");
+    char *scratch_b = strstr(output, "scratch-second=");
+    REQUIRE(scratch_a && scratch_b);
+    REQUIRE(sscanf(scratch_a, "scratch-first=%4095[^\n]", a) == 1);
+    REQUIRE(sscanf(scratch_b, "scratch-second=%4095[^\n]", b) == 1);
+    REQUIRE(strcmp(a, b) && access(a, F_OK) && access(b, F_OK));
+    free(output);
+    reset_parallel();
+    REQUIRE(run("parallel-barrier", NULL) == 0);
+    REQUIRE(exists("parallel/first-overlapped") && exists("parallel/second-overlapped"));
+    return true;
+}
+
+TEST_CASE(parallel_group_serializes_conflicts_and_unknowns)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-conflict", NULL) == 0);
+    REQUIRE(exists("parallel/resource-done") && !exists("parallel/conflict-live"));
+    reset_parallel();
+    REQUIRE(run("parallel-unknown", NULL) == 0);
+    REQUIRE(!exists("parallel/conflict-live"));
+    REQUIRE(exists("parallel/first") && exists("parallel/second") && exists("parallel/third"));
+    return true;
+}
+
+TEST_CASE(parallel_group_preserves_manifest_and_failure)
+{
+    const char *actions[] = { "parallel-serial", "parallel-manifest", "parallel-failure" };
+    for (int i = 0; i < 3; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == (i == 2 ? 7 : 0));
+        REQUIRE(exists("parallel/first") && exists("parallel/second"));
+        REQUIRE(exists("parallel/third") == (i != 2));
+        char *output = tool_read(logpath);
+        REQUIRE(output);
+        char *first = strstr(output, "completed-first");
+        char *second = strstr(output, "completed-second");
+        char *third = strstr(output, "completed-third");
+        REQUIRE(first && second && first < second);
+        REQUIRE(i == 2 ? !third : third && second < third);
+        REQUIRE(!strstr(first + 1, "completed-first"));
+        REQUIRE(!strstr(second + 1, "completed-second"));
+        REQUIRE(!third || !strstr(third + 1, "completed-third"));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-active-failure", NULL) == 7);
+    REQUIRE(exists("parallel/first") && exists("parallel/b/started"));
+    REQUIRE(!exists("parallel/b/escaped") && !exists("parallel/third"));
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "[first] exit 7"));
+    REQUIRE(strstr(output, "[third] not run: group stopped"));
+    REQUIRE(strstr(output, "[second] cancelled; exit"));
+    free(output);
+    return true;
+}
+
+TEST_CASE(parallel_language_manifest_matches_serial_exactly)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-language-serial", NULL) == 0);
+    char *serial = tool_read(logpath);
+    REQUIRE(serial);
+    reset_parallel();
+    REQUIRE(run("parallel-language", NULL) == 0);
+    char *parallel = tool_read(logpath);
+    REQUIRE(parallel);
+    char *a = serial, *b = parallel;
+    int count = 0;
+    for (;;) {
+        a = strstr(a, "completed-");
+        b = strstr(b, "completed-");
+        REQUIRE((a == NULL) == (b == NULL));
+        if (!a) {
+            break;
+        }
+        size_t length = strcspn(a, "\n");
+        REQUIRE(length == strcspn(b, "\n") && !memcmp(a, b, length));
+        a += length;
+        b += length;
+        count++;
+    }
+    /* Real platform-gated language manifest, not a three-worker stand-in. */
+    REQUIRE(count >= 44);
+    char *metrics = parallel_metrics();
+    REQUIRE(metrics);
+    int records = 0;
+    const char *record = metrics;
+    while ((record = strstr(record, "selector "))) {
+        records++;
+        record++;
+    }
+    REQUIRE(records == count);
+    free(metrics);
+    free(serial);
+    free(parallel);
+    return true;
+}
+
+TEST_CASE(parallel_admission_bounds_cpu_and_available_memory)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-admission", NULL) == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strcmp(output, "1\n1\n2\n1\n"));
+    free(output);
+    return true;
+}
+
+TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment)
+{
+    const char *actions[] = { "parallel-cli-serial", "parallel-env-serial" };
+    for (int i = 0; i < 2; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == 0);
+        REQUIRE(exists("parallel/first") && exists("parallel/second") && exists("parallel/third"));
+        char *output = tool_read(logpath);
+        REQUIRE(output && !strstr(output, "[first]"));
+        char *first = strstr(output, "completed-first");
+        char *second = strstr(output, "completed-second");
+        char *third = strstr(output, "completed-third");
+        REQUIRE(first && second && third && first < second && second < third);
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_memory_reader_respects_limits_and_unknowns)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-memory-reader", NULL) == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strcmp(output, "3221225472\nNone\nNone\nNone\n1073741824\n131072\nNone\n"));
+    free(output);
+    return true;
+}
+
+TEST_CASE(parallel_spawn_cancellation_never_loses_child_ownership)
+{
+    const char *actions[] = { "parallel-spawn-int", "parallel-spawn-term" };
+    for (int i = 0; i < 2; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == 130);
+        REQUIRE(exists("parallel/started") && exists("parallel/sibling"));
+        char *output = tool_read(logpath);
+        REQUIRE(output && strstr(output, "ownership-probe=0"));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_group_cancellation_cleans_only_owned_workers)
+{
+    const char *actions[] = { "parallel-timeout", "parallel-int", "parallel-term" };
+    for (int i = 0; i < 3; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == (i ? 130 : 124));
+        REQUIRE(exists("parallel/a/started") && exists("parallel/b/started"));
+        REQUIRE(!exists("parallel/a/escaped") && !exists("parallel/b/escaped"));
+        REQUIRE(!exists("parallel/third"));
+        char *output = tool_read(logpath);
+        REQUIRE(output && strstr(output, "[third] not run: group stopped"));
+        free(output);
+        REQUIRE(exists("parallel/sibling"));
+    }
+    return true;
+}
+
 TEST_CASE(exit_sequence_and_optional_timeout)
 {
     REQUIRE(run("exit", "0") == 0);
@@ -1190,6 +1721,9 @@ void test_tool_test_policy()
     assert(fputs(driver_routes, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
+    for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
+        assert(fputs(driver_parallel[i], script) >= 0);
+    }
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
     RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);
@@ -1207,6 +1741,19 @@ void test_tool_test_policy()
     RUN_TEST_CASE(studio_acceptance_source_records_match_files);
     RUN_TEST_CASE(benchmark_runner_timeout_is_optional);
     RUN_TEST_CASE(benchmark_runner_explicit_timeout_cleans_descendants);
+    RUN_TEST_CASE(parallel_diagnostics_report_observed_overlap_and_resources);
+    RUN_TEST_CASE(parallel_diagnostics_distinguish_failure_cancel_and_not_started);
+    RUN_TEST_CASE(parallel_diagnostics_explain_serial_escape_and_capacity);
+    RUN_TEST_CASE(parallel_group_overlaps_and_isolates_scratch);
+    RUN_TEST_CASE(parallel_group_serializes_conflicts_and_unknowns);
+    RUN_TEST_CASE(parallel_group_preserves_manifest_and_failure);
+    RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
+    RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
+    RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);
+    RUN_TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment);
+    RUN_TEST_CASE(parallel_memory_reader_respects_limits_and_unknowns);
+    RUN_TEST_CASE(parallel_spawn_cancellation_never_loses_child_ownership);
+    RUN_TEST_CASE(parallel_group_cancellation_cleans_only_owned_workers);
     RUN_TEST_CASE(exit_sequence_and_optional_timeout);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);

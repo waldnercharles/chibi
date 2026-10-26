@@ -48,6 +48,11 @@ QUIET = python3 tools/quiet.py
 AGENT_SELECTOR ?=
 TEST_ARGS ?=
 TEST_TIMINGS ?= 0
+# Group scheduling belongs to the runner, not recursive make parallelism.
+TEST_JOBS ?= $(CHIBI_TEST_JOBS)
+ifneq ($(strip $(TEST_JOBS)),)
+export CHIBI_TEST_JOBS := $(TEST_JOBS)
+endif
 ifneq ($(strip $(TEST_ARGS)),)
 ifneq ($(MAKECMDGOALS),test-fast)
 $(error TEST_ARGS is only supported with test-fast as the sole make goal)

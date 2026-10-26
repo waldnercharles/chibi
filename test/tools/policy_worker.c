@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -93,6 +94,74 @@ static void worker_path(char *out, const char *base, const char *name)
 {
     int size = snprintf(out, 4096, "%s/%s", base, name);
     assert(size > 0 && size < 4096);
+}
+
+/* Readiness, not elapsed runtime, proves concurrent selector execution. */
+static void wait_marker(const char *directory, const char *name)
+{
+    char path[4096];
+    worker_path(path, directory, name);
+    for (int i = 0; i < 5000 && access(path, F_OK); i++) {
+        pause_seconds(.001);
+    }
+    assert(!access(path, F_OK));
+}
+
+static int parallel_worker(int argc, char **argv)
+{
+    assert(argc == 5);
+    const char *root = argv[2], *name = argv[3], *mode = argv[4];
+    char path[4096];
+    worker_path(path, root, name);
+    int record = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    assert(record >= 0 && !close(record));
+    if (!strcmp(mode, "barrier")) {
+        const char *temporary = getenv("TMPDIR");
+        assert(temporary && *temporary);
+        worker_path(path, temporary, "same-name");
+        int file = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        assert(file >= 0 && write(file, name, strlen(name)) == (ssize_t)strlen(name));
+        assert(!close(file));
+        wait_marker(root, !strcmp(name, "first") ? "second" : "first");
+        file = open(path, O_RDONLY);
+        char text[32] = { 0 };
+        assert(file >= 0 && read(file, text, sizeof text - 1) == (ssize_t)strlen(name));
+        assert(!close(file) && !strcmp(text, name));
+        printf("scratch-%s=%s\n", name, temporary);
+        marker(root, !strcmp(name, "first") ? "first-overlapped" : "second-overlapped");
+    }
+    if (!strcmp(mode, "hold") || !strcmp(mode, "conflict")) {
+        worker_path(path, root, "resource-lock");
+        int lock = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        assert(lock >= 0 && !close(lock));
+        if (!strcmp(mode, "hold")) {
+            marker(root, "resource-ready");
+            wait_marker(root, "resource-release");
+        }
+        if (!strcmp(mode, "conflict")) {
+            char done[4096];
+            worker_path(done, root, "resource-done");
+            assert(!access(done, F_OK));
+        }
+        assert(!unlink(path));
+        marker(root, "resource-done");
+    }
+    if (!strcmp(mode, "barrier")) {
+        if (!strcmp(name, "second")) {
+            printf("completed-%s\n", name);
+            assert(!fflush(stdout));
+            marker(root, "second-output");
+            return 0;
+        }
+        /* The actual streams finish in reverse order; the runner must still
+         * publish complete selector logs in manifest order. */
+        wait_marker(root, "second-output");
+    }
+    if (!strcmp(mode, "fail-active")) {
+        wait_marker(root, "b/started");
+    }
+    printf("completed-%s\n", name);
+    return !strcmp(mode, "fail") || !strcmp(mode, "fail-active") ? 7 : 0;
 }
 
 static void cache_value(const char *build, const char *name, char value[4096])
@@ -411,6 +480,16 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "build-signal")) {
         raise(SIGTERM);
         return 99;
+    }
+    if (!strcmp(argv[1], "parallel")) {
+        return parallel_worker(argc, argv);
+    }
+    if (!strcmp(argv[1], "policy-signal")) {
+        assert(argc == 5);
+        wait_marker(argv[2], "a/started");
+        wait_marker(argv[2], "b/started");
+        assert(!kill(atoi(argv[3]), atoi(argv[4])));
+        return 0;
     }
     if (!strcmp(argv[1], "cleanup-probe")) {
         return cleanup_probe(argv[2]);

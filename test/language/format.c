@@ -1492,7 +1492,7 @@ TEST_CASE(source_migration_matches_core_self_effects_in_each_program_context)
         "self; } }",
         "Demo :: library { Read :: () { e := Self(); same := Self() == self; } "
         "}",
-        "Demo :: system() where Self() == self {}",
+        "Demo :: system(if Self() == self) {}",
     };
     for (int i = 0; i < NATIVE_COUNT(inputs); i++) {
         cleanup();
@@ -1533,7 +1533,7 @@ TEST_CASE(source_migration_preserves_other_invocation_sensitive_calls)
     REQUIRE(state_before->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
     script_analysis_free(state_before);
     script_syntax_free(source);
-    source = script_parse("Demo :: system() where owner_alias() == self {}");
+    source = script_parse("Demo :: system(if owner_alias() == self) {}");
     state_before = script_analyze_migration_document(source, core, "Demo", NULL, 0, false);
     REQUIRE(!state_before->valid);
     bool rejected = false;

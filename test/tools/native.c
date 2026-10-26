@@ -2007,7 +2007,7 @@ static const declared_field charge_fields[] = {
     { .name = "cycles", .type = "int" },
     { .name = "full", .type = "bool" },
     { .name = "source", .type = "entity" },
-    { .name = "drift", .type = "CF_V2" },
+    { .name = "drift", .type = "vec2" },
 };
 static bool rejected(const char *name, const char *type, const char *message)
 {
@@ -2073,7 +2073,7 @@ TEST_CASE(native_ranges_distinguish_contracts_from_valid_wider_domains)
 TEST_CASE(native_player_reads_declared_components)
 {
     char error[192];
-    REQUIRE(rejected("CF_V2", "float", "already an engine type"));
+    REQUIRE(rejected("vec2", "float", "already an engine type"));
     REQUIRE(rejected("float", "float", "built-in script type"));
     REQUIRE(rejected("task", "float", "built-in script type"));
     REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
@@ -2125,7 +2125,7 @@ TEST_CASE(native_player_reads_declared_components)
     ecs_component_id charge_id = script->component_id;
     REQUIRE(
         script->fields[4].type.storage == PIN_STRUCT &&
-        script->fields[4].type.nominal == script_catalog_id("type", "CF_V2")
+        script->fields[4].type.nominal == script_catalog_id("type", "vec2")
     );
     charge row = { .level = 1.25f, .cycles = 2, .full = true, .drift = { 1, -1 } };
     scene_component data = { components.components[0], &row };

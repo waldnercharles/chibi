@@ -20,7 +20,7 @@
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_STRUCT,                                                              \
-      "CF_V2",                                                                 \
+      "vec2",                                                                  \
       PIN_CONTAINER_SINGLE,                                                    \
       0,                                                                       \
       0,                                                                       \

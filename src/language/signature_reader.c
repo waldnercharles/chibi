@@ -197,8 +197,36 @@ static script_type traits(reader *r, TSNode node, script_type out)
     }
     return out;
 }
+/* The result type `task(T)` names, or a null node for another application. */
+static TSNode task_result(const char *source, TSNode node)
+{
+    TSNode function = field(node, "function"), arguments = field(node, "arguments");
+    bool task = ts_node_end_byte(function) - ts_node_start_byte(function) == 4 &&
+                !strncmp(source + ts_node_start_byte(function), "task", 4);
+    TSNode result = { 0 };
+    int count = 0;
+    for (uint32_t i = 0; task && i < ts_node_named_child_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (!ts_node_is_extra(child)) {
+            result = child;
+            count++;
+        }
+    }
+    return count == 1 && !is(result, "named_argument") && !is(result, "typed_argument")
+             ? result
+             : (TSNode){ 0 };
+}
+bool script_signature_task(const char *source, TSNode application)
+{
+    return !ts_node_is_null(task_result(source, application));
+}
 static script_type application(reader *r, TSNode node)
 {
+    TSNode result = task_result(r->source, node);
+    if (!ts_node_is_null(result)) {
+        script_constructor_facts facts = constructors(r);
+        return publish(r, script_constructor_task(r->storage, &facts, type(r, result), 0));
+    }
     const script_signature_generic *found = generic(r, node);
     if (!found) {
         diagnostic(r, node, "Type expression must construct a compile-time type");
@@ -272,54 +300,14 @@ static script_type type(reader *r, TSNode node)
                 return traits(r, node, map(r, child));
             }
         }
-        TSNode name_node = field(node, "name"), arguments = field(node, "arguments");
+        TSNode name_node = field(node, "name");
         if (is(name_node, "type_binder")) {
             name_node = field(name_node, "name");
         }
         const char *value = name(r, name_node);
-        bool collected = !strcmp(value, "array") || !strcmp(value, "set") ||
-                         !strcmp(value, "map");
-        bool nominal = !strcmp(value, "struct") || !strcmp(value, "enum") ||
-                       !strcmp(value, "handle");
         script_type out;
         const script_signature_generic *member = generic(r, name_node);
-        if (!strcmp(value, "task") && !ts_node_is_null(arguments)) {
-            if (ts_node_named_child_count(arguments) != 1) {
-                diagnostic(r, node, "task requires one result type");
-                out = (script_type){ .flags = SCRIPT_TYPE_ERROR };
-            } else {
-                script_type result = type(r, ts_node_named_child(arguments, 0));
-                script_constructor_facts facts = constructors(r);
-                out = publish(r, script_constructor_task(r->storage, &facts, result, 0));
-            }
-        } else if (collected || nominal) {
-            TSNode argument = ts_node_is_null(arguments)
-                                ? (TSNode){ 0 }
-                                : ts_node_named_child(arguments, 0);
-            if (ts_node_is_null(argument)) {
-                diagnostic(r, node, "Type '%s' requires a type argument", value);
-                out = (script_type){ .flags = SCRIPT_TYPE_ERROR };
-            } else {
-                out = type(r, argument);
-            }
-            if (collected) {
-                pin_container container = !strcmp(value, "set") ? PIN_CONTAINER_SET
-                                        : !strcmp(value, "map")
-                                            ? PIN_CONTAINER_MAP
-                                            : PIN_CONTAINER_ARRAY;
-                if (!strcmp(value, "map")) {
-                    diagnostic(r, node, "Use [K: V] for associative maps");
-                }
-                if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
-                    out = collection(r, container, (script_type){ 0 }, out);
-                }
-                out.container = container;
-            } else if (!strcmp(value, "enum")) {
-                out.storage = PIN_ENUM;
-            } else if (!strcmp(value, "handle")) {
-                out.storage = PIN_HANDLE;
-            }
-        } else if (member) {
+        if (member) {
             out = member->type;
         } else {
             script_named_facts facts = named(r);

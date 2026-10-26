@@ -1062,9 +1062,6 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         int value = script_analyzer_expression(a, inner, expected);
         a->awaited = outer;
         script_expression *call = &a->out->expressions[value];
-        if (call->kind == SCRIPT_EXPR_STORE) {
-            return value; /* A state write completes synchronously. */
-        }
         if ((call->type.flags & SCRIPT_TYPE_TASK) &&
             !(call->type.flags & SCRIPT_TYPE_OPTIONAL) &&
             call->type.container == PIN_CONTAINER_SINGLE) {
@@ -1280,6 +1277,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         if (variant >= 0) {
             return variant;
         }
+        return script_analyzer_call_expression(a, node, expected);
+    }
+    if (script_analyzer_is(node, "emit_expression")) {
         return script_analyzer_call_expression(a, node, expected);
     }
     if (script_analyzer_is(node, "unary_expression")) {

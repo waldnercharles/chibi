@@ -217,32 +217,6 @@ script_named_resolution script_named_text(
         name[count -= 2] = 0;
         container = PIN_CONTAINER_ARRAY;
     }
-    const struct
-    {
-        const char *name;
-        pin_container container;
-    } containers[] = { { "set<", PIN_CONTAINER_SET },
-                       { "map<", PIN_CONTAINER_MAP },
-                       { "array<", PIN_CONTAINER_ARRAY } };
-    for (size_t i = 0; i < sizeof containers / sizeof *containers; i++) {
-        size_t prefix = strlen(containers[i].name);
-        if (!strncmp(name, containers[i].name, prefix) && count > (int)prefix &&
-            name[count - 1] == '>') {
-            container = containers[i].container;
-            name[count - 1] = 0;
-            memmove(name, name + prefix, (size_t)count - prefix);
-            count -= (int)prefix + 1;
-            break;
-        }
-    }
-    if ((!strncmp(name, "struct<", 7) || !strncmp(name, "handle<", 7)) &&
-        count > 7 && name[count - 1] == '>') {
-        name[count - 1] = 0;
-        memmove(name, name + 7, (size_t)count - 7);
-    } else if (!strncmp(name, "enum<", 5) && count > 5 && name[count - 1] == '>') {
-        name[count - 1] = 0;
-        memmove(name, name + 5, (size_t)count - 5);
-    }
     if (*name == '"') {
         yyjson_doc *document = yyjson_read(name, strlen(name), 0);
         if (document && yyjson_is_str(yyjson_doc_get_root(document))) {

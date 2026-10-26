@@ -515,7 +515,7 @@ Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
 ### Stage one's scoped pointer parameters reach locals and fields only
 
 Stage one. Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator`
-and `fields_iterator` advance the caller's string. Version 34 replaced `ref`
+and `fields_iterator` advance the caller's string. Version 36 replaced `ref`
 parameters with `^T` pointers: a `^T` parameter whose pointer never outlives
 the call is scoped, and both compiler stages lend it the caller's location
 through the reference ABI. A callee reads, assigns and compound-assigns

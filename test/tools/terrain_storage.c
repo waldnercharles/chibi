@@ -44,7 +44,7 @@ static void cleanup()
 
 static bool prepare(bool persistent)
 {
-    REQUIRE(type_catalog_find("CF_V2"));
+    REQUIRE(type_catalog_find("vec2"));
     world_options options = { .modules = WORLD_MATERIALS };
     simulation = world_new(&options, error, sizeof error);
     REQUIRE(simulation);

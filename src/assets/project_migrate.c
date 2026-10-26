@@ -6,7 +6,8 @@
 #include "project_migrate29.h"
 #include "project_migrate30.h"
 #include "project_migrate31.h"
-#include "project_migrate33.h"
+#include "project_migrate32.h"
+#include "project_migrate35.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -39,7 +40,7 @@ const TSLanguage *tree_sitter_chibi_project28();
 const TSLanguage *tree_sitter_chibi_project29();
 const TSLanguage *tree_sitter_chibi_project30();
 const TSLanguage *tree_sitter_chibi_project31();
-const TSLanguage *tree_sitter_chibi_project33();
+const TSLanguage *tree_sitter_chibi_project35();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -70,8 +71,6 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
 
 script_syntax *chibi_migrate_parse(const char *text, int version)
 {
-    /* Version 33 adds argument markers without removing version 32 syntax,
-     * so one snapshot parses both. */
     if (version >= CHIBI_PROJECT_VERSION) {
         return script_parse(text);
     }
@@ -88,8 +87,10 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 28 ? tree_sitter_chibi_project28()
         : version == 29 ? tree_sitter_chibi_project29()
         : version == 30 ? tree_sitter_chibi_project30()
-        : version == 31 ? tree_sitter_chibi_project31()
-                        : tree_sitter_chibi_project33()
+        /* Version 32 kept version 31's grammar, and versions 34 and 35 kept
+         * version 33's. */
+        : version <= 32 ? tree_sitter_chibi_project31()
+                        : tree_sitter_chibi_project35()
     );
     assert(compatible);
     (void)compatible;
@@ -154,9 +155,7 @@ static script_syntax *parse28(const char *text)
 /* Whether text parses with the grammar of project `version`, from 23 on. */
 static bool valid_at(const char *text, int version)
 {
-    script_syntax *syntax = version < CHIBI_PROJECT_VERSION
-                              ? chibi_migrate_parse(text, version)
-                              : script_parse(text);
+    script_syntax *syntax = chibi_migrate_parse(text, version);
     bool valid = !syntax->diagnostic_count;
     script_syntax_free(syntax);
     return valid;
@@ -6025,11 +6024,11 @@ int chibi_migrate_pointers(const char *source, char **migrated, char *error, siz
 {
     char *result = NULL;
     *migrated = NULL;
-    if (chibi_migrate33_pointers(source, &result, error, size)) {
+    if (chibi_migrate35_pointers(source, &result, error, size)) {
         return -1;
     }
     return result
-             ? accept_migrated(source, result, "Pointer", 34, migrated, error, size)
+             ? accept_migrated(source, result, "Pointer", 36, migrated, error, size)
              : 0;
 }
 static char **migrate_pointers(char **sources, char **paths, int count, char *error, size_t size)
@@ -6051,6 +6050,138 @@ static char **migrate_array_calls(char **sources, char **paths, int count, char 
     for (int i = 0; i < count && !error[0]; i++) {
         if (has_suffix(paths[i], ".chibi") &&
             chibi_migrate_array_calls(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
+int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    /* A rerun after an interrupted step finds sources already migrated, which
+     * only the version 33 grammar reads. */
+    if (!valid_at(source, 32) && valid_at(source, 33)) {
+        return 0;
+    }
+    if (chibi_migrate32_angle_forms(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Angle form", 33, migrated, error, size)
+             : 0;
+}
+static char **migrate_angle_forms(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_angle_forms(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
+/* Version 34 spells Cute's vectors as scripts name them: CF_V2 is vec2 and
+ * CF_V3 is vec3, and so are their make_, break_ and scalar_to_ functions. */
+static const char *const VECTOR_NAMES[][2] = {
+    { "CF_V2", "vec2" },
+    { "CF_V3", "vec3" },
+    { "make_cf_v2", "make_vec2" },
+    { "make_cf_v3", "make_vec3" },
+    { "break_cf_v2", "break_vec2" },
+    { "break_cf_v3", "break_vec3" },
+    { "scalar_to_cf_v2", "scalar_to_vec2" },
+    { "scalar_to_cf_v3", "scalar_to_vec3" },
+};
+static const char *vector_name(const char *text, size_t length)
+{
+    for (size_t i = 0; i < sizeof VECTOR_NAMES / sizeof *VECTOR_NAMES; i++) {
+        if (strlen(VECTOR_NAMES[i][0]) == length &&
+            !memcmp(text, VECTOR_NAMES[i][0], length)) {
+            return VECTOR_NAMES[i][1];
+        }
+    }
+    return NULL;
+}
+static void vector_edits(const char *source, TSNode node, text_edit **edits)
+{
+    if (is(node, "identifier")) {
+        uint32_t start = ts_node_start_byte(node);
+        const char *name = vector_name(source + start, ts_node_end_byte(node) - start);
+        if (name) {
+            apush(*edits, ((text_edit){ (int)start, (int)ts_node_end_byte(node), name }));
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        vector_edits(source, ts_node_child(node, i), edits);
+    }
+}
+/* Renames the vectors where a KDL key names a type, such as an event
+ * payload's `type_name "CF_V2"`. Other strings are authored data. */
+static bool vector_types(av_value *value)
+{
+    bool changed = false;
+    for (size_t i = 0; av_is_obj(value) && i < av_obj_size(value); i++) {
+        const char *key = av_get_str(av_obj_key_at(value, i));
+        av_value *item = av_obj_value_at(value, i);
+        bool type = !strcmp(key, "type_name") || !strcmp(key, "split_type_name");
+        const char *name = type && av_is_str(item)
+                             ? vector_name(av_get_str(item), av_get_len(item))
+                             : NULL;
+        if (name) {
+            av_set_str(item, name);
+            changed = true;
+        }
+        changed |= vector_types(item);
+    }
+    for (size_t i = 0; av_is_arr(value) && i < av_arr_size(value); i++) {
+        changed |= vector_types(av_arr_get(value, i));
+    }
+    return changed;
+}
+static char *vector_strings(const char *source)
+{
+    char error[128];
+    av_doc *document = asset_text_read(source, error, sizeof error);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    char *migrated = root && vector_types(root) ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
+int chibi_migrate_vector_names(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *syntax = chibi_migrate_parse(source, 33);
+    if (syntax->diagnostic_count) {
+        script_syntax_free(syntax);
+        snprintf(error, size, "Cannot parse version 33 source");
+        return -1;
+    }
+    text_edit *edits = NULL;
+    vector_edits(source, ts_tree_root_node(syntax->tree), &edits);
+    script_syntax_free(syntax);
+    char *result = acount(edits) ? text_edits_apply(source, edits, acount(edits))
+                                 : NULL;
+    afree(edits);
+    return result
+             ? accept_migrated(source, result, "Vector name", 34, migrated, error, size)
+             : 0;
+}
+static char **migrate_vector_names(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            migrated[i] = vector_strings(sources[i]);
+        } else if (chibi_migrate_vector_names(sources[i], &migrated[i], error, size)) {
             char *message = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], message);
             free(message);
@@ -6241,9 +6372,9 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
     corpus c = { .sources = sources };
     bool valid = true;
     for (int i = 0; i < count && valid; i++) {
-        syntax[i] = chibi_migrate_parse(sources[i], 32);
+        syntax[i] = chibi_migrate_parse(sources[i], 34);
         if (syntax[i]->diagnostic_count) {
-            snprintf(error, size, "Cannot migrate invalid version 32 source %d", i + 1);
+            snprintf(error, size, "Cannot migrate invalid version 34 source %d", i + 1);
             valid = false;
         } else {
             collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, true, &c.functions);
@@ -6254,7 +6385,7 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
         valid = ref_call_rewrite(&c, i, ts_tree_root_node(syntax[i]->tree), &edits, error, size);
         if (valid && acount(edits)) {
             char *result = text_edits_apply(sources[i], edits, acount(edits));
-            valid = !accept_migrated(sources[i], result, "Ref call", 33, &migrated[i], error, size);
+            valid = !accept_migrated(sources[i], result, "Ref call", 35, &migrated[i], error, size);
         }
         afree(edits);
     }
@@ -6321,8 +6452,9 @@ int chibi_project_migrate_content(
     if (!status && (from == 15 || from == 17 || from == 22 || from == 25)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
-    /* Version 30 types handler payloads from the project's event declarations. */
-    if (!status && from == 29) {
+    /* Version 30 types handler payloads from the project's event declarations,
+     * and version 34 renames vectors in them. */
+    if (!status && (from == 29 || from == 33)) {
         status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
@@ -6484,10 +6616,20 @@ int chibi_project_migrate_content(
                 break;
             case 32:
                 error[0] = '\0';
+                migrated = migrate_angle_forms(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 33:
+                error[0] = '\0';
+                migrated = migrate_vector_names(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 34:
+                error[0] = '\0';
                 migrated = chibi_migrate_ref_calls((const char *const *)sources, count, error, error_size);
                 status = migrated ? 0 : -1;
                 break;
-            case 33:
+            case 35:
                 error[0] = '\0';
                 migrated = migrate_pointers(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;

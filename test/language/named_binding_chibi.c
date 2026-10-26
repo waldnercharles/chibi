@@ -807,7 +807,7 @@ static bool raw_query(int index)
             break;
         case 16:
             q.operation = TEXT;
-            q.text = " set<Comp> ? ";
+            q.text = " Comp [] ? ";
             break;
         case 17:
             q.operation = TEXT;

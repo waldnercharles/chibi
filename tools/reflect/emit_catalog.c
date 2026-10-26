@@ -85,6 +85,7 @@ static void parameter(
     bool owner
 )
 {
+    spelling = spelling ? authored_type(spelling) : NULL;
     fputs("    { .name = ", out);
     emit_string(out, name);
     fputs(", .type = ", out);
@@ -450,7 +451,7 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
                 ", .offset = offsetof(%s, %s), .writable = %s, .c_string = %s, "
                 ".range_contract "
                 "= %s, .min = %.17g, .max = %.17g },\n",
-                s->name,
+                struct_c_name(s),
                 field->name,
                 s->derived_from ? "false" : "true",
                 !strcmp(field->pin, "PIN_STR") ? "true" : "false",
@@ -483,13 +484,17 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
             out,
             ", .size = sizeof(%s), .fields = %snative_%s_fields, .field_count "
             "= %d",
-            s->name,
+            struct_c_name(s),
             symbol_prefix(),
             s->name,
             acount(s->fields)
         );
         if (s->alias_of) {
-            fprintf(out, ", .underlying = UINT64_C(%" PRIu64 ")", script_catalog_id("type", s->alias_of));
+            fprintf(
+                out,
+                ", .underlying = UINT64_C(%" PRIu64 ")",
+                script_catalog_id("type", authored_type(s->alias_of))
+            );
         }
         if (s->component) {
             fprintf(

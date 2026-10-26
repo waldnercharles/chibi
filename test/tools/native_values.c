@@ -59,7 +59,7 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
         NATIVE_CONVERSION_DEFINITION_PACK,
     };
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
-    const type_desc *vector_type = type_catalog_find("CF_V2");
+    const type_desc *vector_type = type_catalog_find("vec2");
     REQUIRE(vector_type != NULL && vector_type->size == 2 * sizeof(float));
     REQUIRE(vector_type->field_count == 2);
     script_catalog_field fields[2] = { 0 };
@@ -156,8 +156,8 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     number.d = 4.5;
     pin_value vector;
-    REQUIRE(call("Scalar to CF_V2", &number, 1, &vector) == NULL);
-    REQUIRE(vector.type == PIN_STRUCT && !strcmp(vector.type_name, "CF_V2"));
+    REQUIRE(call("Scalar to vec2", &number, 1, &vector) == NULL);
+    REQUIRE(vector.type == PIN_STRUCT && !strcmp(vector.type_name, "vec2"));
     REQUIRE(vector.ptr != NULL && arena_contains(&output, vector.ptr));
 #endif
     arena_free(&input);
@@ -169,7 +169,7 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     const float *coordinates = vector.ptr;
     REQUIRE(coordinates[0] == 4.5f && coordinates[1] == 4.5f);
-    REQUIRE(!strcmp(vector.type_name, "CF_V2"));
+    REQUIRE(!strcmp(vector.type_name, "vec2"));
 #endif
     return true;
 }

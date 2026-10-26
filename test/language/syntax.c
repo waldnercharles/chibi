@@ -344,6 +344,9 @@ TEST_CASE(language_obsolete_symbol_spellings_rejected)
         "Old :: library { return :: () {} }",
         "Old :: behavior { on Tick :: () { for ref item in items {} } }",
         "Old :: behavior { on Tick :: () { for item: ref in items {} } }",
+        "Old :: library { Run :: (value: struct<Position>) {} }",
+        "Old :: library { Run :: (value: task<int>) {} }",
+        "Old :: library { Run :: (value: array<int>) {} }",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         parse(invalid[i]);
@@ -422,7 +425,7 @@ TEST_CASE(language_retained_bindings_reject_prefixes_and_value_types)
         "Bad :: behavior { count: retain(owner) int = 0; }",
         "Bad :: library { Run :: (count: retain int) {} }",
         "Bad :: library { Run :: () -> retain int {} }",
-        "Bad :: behavior { counts: array<retain int> = []; }",
+        "Bad :: behavior { counts: [string: retain int] = [:]; }",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         parse(invalid[i]);
@@ -668,9 +671,8 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode waiting = ts_node_named_child(ts_node_named_child(statements, 0), 0);
     REQUIRE(!strcmp(ts_node_type(waiting), "await_expression"));
     TSNode call = field(waiting, "value");
-    REQUIRE(!strcmp(ts_node_type(call), "call_expression"));
-    REQUIRE(node_text(field(call, "function"), "set_variable"));
-    REQUIRE(!ts_node_is_null(field(call, "type_arguments")));
+    REQUIRE(!strcmp(ts_node_type(call), "emit_expression"));
+    REQUIRE(node_text(field(call, "event"), "self.Flash"));
     TSNode arguments = field(call, "arguments");
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(arguments, 0)), "typed_argument"));
     call = ts_node_named_child(ts_node_named_child(statements, 1), 0);
@@ -685,8 +687,7 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     call = ts_node_named_child(ts_node_named_child(statements, 2), 0);
     TSNode converted = field(ts_node_named_child(field(call, "arguments"), 0), "value");
     REQUIRE(!strcmp(ts_node_type(converted), "call_expression"));
-    REQUIRE(node_text(field(converted, "function"), "convert"));
-    REQUIRE(!ts_node_is_null(field(converted, "type_arguments")));
+    REQUIRE(node_text(field(converted, "function"), "to_vec"));
     TSNode operand = ts_node_named_child(field(converted, "arguments"), 0);
     REQUIRE(!strcmp(ts_node_type(operand), "call_expression"));
     REQUIRE(node_text(field(operand, "function"), "component"));

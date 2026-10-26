@@ -23,7 +23,7 @@ Explorer :: behavior {
         return hit.Found && hit.Normal.y < -0.5 && self.Velocity.y >= -2
     }
 
-    DigPoint :: () -> (Point: CF_V2) {
+    DigPoint :: () -> (Point: vec2) {
         return self.Transform + vec2(float(facing * 22), 12)
     }
 

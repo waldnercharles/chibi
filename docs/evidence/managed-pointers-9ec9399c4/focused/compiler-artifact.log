@@ -1,0 +1,23 @@
+$ python3 tools/test_policy.py tool compiler-artifact
+revision 9ec9399c4b254335db51a91e51cd3c571c601733 0 modified
+(FAILED: /home/claude/chibi/test/tools/compiler_artifact.c (603): same)
+Running: actual_compiler_artifact_runs_both_product_backends (OK) (0.027966 secs)
+Running: artifact_truncated_container_rejected_before_decode (OK) (0.000154 secs)
+Running: artifact_duplicate_module_id_rejected_before_decode (OK) (0.002239 secs)
+Running: artifact_trailing_data_rejected_before_decode (OK) (0.002122 secs)
+Running: product_cli_rejects_malformed_artifact_without_output (OK) (0.011299 secs)
+Running: product_rejects_reference_entry_before_decoding_pointer (OK) (0.004051 secs)
+Running: binary_bytes_survive_all_producer_owners (OK) (0.023672 secs)
+Running: binary_result_limit_is_atomic (OK) (0.010256 secs)
+Running: binary_signature_and_input_reject_before_execution (OK) (0.004386 secs)
+Running: binary_reference_result_rejects_before_input_decoding (OK) (0.001476 secs)
+Running: binary_budget_failure_has_no_output (OK) (0.009108 secs)
+Running: binary_publication_reloads_both_backends (OK) (0.012127 secs)
+Running: binary_invalid_artifact_preserves_destination (OK) (0.006510 secs)
+Running: binary_raw_output_writes_bytes_that_are_no_compiler (OK) (0.001201 secs)
+Running: binary_rename_failure_preserves_directory (OK) (0.000659 secs)
+Running: binary_usage_preserves_destination (OK) (0.000964 secs)
+===============================================================
+Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 29405
+Test command wall time: 5.846s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

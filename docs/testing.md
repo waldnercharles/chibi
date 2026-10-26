@@ -57,6 +57,39 @@ make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
+Groups automatically overlap source-audited independent selectors in separate
+processes, initially up to two workers (bounded by available CPU affinity and a
+conservative 2 GiB available-memory admission reserve per worker). Linux checks MemAvailable
+and visible cgroup limits; macOS checks free/inactive/speculative pages. Missing
+or uninspectable capacity selects serial execution.
+No CI sharding or flags are required: `make test-language-all` takes this route.
+The initial allowlist contains the heavy scalar, behavior, packaging, asset-host,
+compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
+exclusive barriers until their resources are audited; they are not omitted.
+`make -j1` still protects cross-target fixtures. `make test-language-all
+TEST_JOBS=1` or `python3 tools/test_policy.py --jobs 1 group language` preserves
+the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
+selects a worker limit; it does not make unaudited selectors parallel-safe.
+
+Each worker owns its supervisor/process group, temporary root and disk-backed
+log. Logs are emitted without interleaving in manifest order. Failure stops new
+work, cancels owned workers, prints their partial logs and reports queued selectors
+as not run. The optional group deadline still covers the whole group, including
+queueing; existing in-test child budgets are unchanged. Scratch is removed after
+worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
+isolated by changing TMPDIR; the [resource audit](test-parallel-resources.md)
+records why each enabled selector is safe.
+
+This is selector-level parallelism, not individual pico_unit cases or threads.
+The initial two-worker cap is a conservative rollout policy, not a measured
+memory bound or a promise to use every core. Peak-memory and matched serial /
+parallel wall-time measurements are required before increasing the automatic
+cap; native compiler/linker children can themselves use threads. The memory
+reserve is an admission heuristic, not a measured peak-RSS limit; `--jobs N`
+overrides automatic admission when the caller has better capacity evidence.
+Finer-grained discovery should serve the Chibi-first test API rather than making C coverage
+the language's testing foundation.
+
 The runner has no default global timeout.
 `make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
 case; set `TEST_BINARY` to use another driver. The arguments are tokenized and

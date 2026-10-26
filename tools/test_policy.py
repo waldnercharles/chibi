@@ -9,8 +9,10 @@ from pathlib import Path
 import platform
 import signal
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -590,6 +592,21 @@ GROUPS['compiler'] = [name for name in TOOLS if name.startswith('language-packag
 GROUPS['benchmarks'] = [name for name in TOOLS if name.endswith('-benchmark') and not name.startswith('wasm-')]
 
 
+# Only source-audited independent selectors may overlap. Missing entries are
+# exclusive barriers, not skipped coverage. See docs/test-parallel-resources.md.
+PARALLEL_RESOURCES = {
+    name: frozenset() for name in (
+        'language-package-compiler-chibi-scalar',
+        'language-package-compiler-chibi-behaviors',
+        'language-package-compiler-chibi-behaviors-rest',
+        'language-asset-packaging-chibi',
+        'language-asset-compiler-host',
+        'compiler-bootstrap',
+        'language-scalar-native',
+    )
+}
+
+
 def tool_command(name):
     if name in GPU_TOOLS:
         return [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--' + name]
@@ -802,9 +819,256 @@ def run_commands(commands, seconds=None, env=None, output=None):
               'includes in-test fixture setup; external configuration/build excluded.', file=output or sys.stdout, flush=True)
 
 
+def available_test_memory(read_text=None):
+    """Available bytes, or None if host/container admission cannot be checked.
+
+    read_text(path) is injectable for deterministic cgroup/proc fixtures.
+    """
+    read_text = read_text or (lambda path: Path(path).read_text())
+    try:
+        if sys.platform == 'darwin':
+            result = subprocess.run(['vm_stat'], capture_output=True, text=True,
+                                    timeout=PROCESS_INSPECTION_SECONDS, check=True)
+            lines = result.stdout.splitlines()
+            page_size = int(lines[0].split('page size of ', 1)[1].split(' bytes', 1)[0])
+            pages = dict(line.split(':', 1) for line in lines[1:] if ':' in line)
+            # Free and reclaimable inactive pages only; do not count compressed
+            # or wired memory as immediately available admission capacity.
+            counts = [int(pages[name].strip().rstrip('.'))
+                      for name in ('Pages free', 'Pages inactive', 'Pages speculative')]
+            if page_size <= 0 or min(counts) < 0:
+                return None
+            return page_size * sum(counts)
+        if not sys.platform.startswith('linux'):
+            return None
+        fields = dict(line.split(':', 1) for line in read_text('/proc/meminfo').splitlines())
+        amount, unit = fields['MemAvailable'].split()
+        available = int(amount) * 1024
+        if unit != 'kB' or available < 0:
+            return None
+        memberships = []
+        for line in read_text('/proc/self/cgroup').splitlines():
+            hierarchy, controllers, member = line.split(':', 2)
+            if hierarchy == '0' and not controllers:
+                memberships.append(('cgroup2', member))
+            elif 'memory' in controllers.split(','):
+                memberships.append(('cgroup', member))
+        if not memberships:
+            return None
+        mounts = []
+        for line in read_text('/proc/self/mountinfo').splitlines():
+            before, after = line.split(' - ', 1)
+            details, kind = before.split(), after.split()
+            if kind[0] not in ('cgroup', 'cgroup2'):
+                continue
+            if kind[0] == 'cgroup' and 'memory' not in kind[2].split(','):
+                continue
+            # mountinfo escapes path whitespace and backslashes as octal.
+            paths = []
+            for value in details[3:5]:
+                for escaped, decoded in ((r'\040', ' '), (r'\011', '\t'),
+                                         (r'\012', '\n'), (r'\134', '\\')):
+                    value = value.replace(escaped, decoded)
+                paths.append(Path(value))
+            mounts.append((kind[0], *paths))
+        for kind, member_text in memberships:
+            member = Path(member_text)
+            if not member.is_absolute() or '..' in member.parts:
+                return None
+            # A subtree-only mount hides ancestor limits. Without the complete
+            # hierarchy, do not mistake visible headroom for actual headroom.
+            roots = [mount for mount_kind, root, mount in mounts
+                     if mount_kind == kind and root == Path('/')]
+            if not roots:
+                return None
+            mount = roots[0]
+            if not mount.is_absolute() or '..' in mount.parts:
+                return None
+            current = mount / str(member).lstrip('/')
+            while True:
+                limit_name, used_name = ('memory.max', 'memory.current') if kind == 'cgroup2' else (
+                    'memory.limit_in_bytes', 'memory.usage_in_bytes')
+                try:
+                    limit = read_text(str(current / limit_name)).strip()
+                except FileNotFoundError:
+                    # The genuine v2 hierarchy root has no memory.max control.
+                    if kind != 'cgroup2' or current != mount:
+                        raise
+                    break
+                if limit != 'max':
+                    limit_bytes = int(limit)
+                    used = int(read_text(str(current / used_name)).strip())
+                    if limit_bytes < 0 or used < 0:
+                        return None
+                    available = min(available, max(0, limit_bytes - used))
+                elif kind != 'cgroup2':
+                    return None
+                if current == mount:
+                    break
+                current = current.parent
+        return available
+    except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def automatic_jobs():
+    # Admission reserve, NOT a measured peak-RSS bound. Keep at most two
+    # workers because selectors can themselves run expensive compiler children.
+    try:
+        cpus = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else os.cpu_count() or 1
+    except OSError:
+        return 1
+    available = available_test_memory()
+    if available is None:
+        return 1
+    return max(1, min(2, cpus, available // (2 * 1024 ** 3)))
+
+
+def run_group(names, jobs=None, seconds=None):
+    """Schedule audited selectors; preserve the complete serial route."""
+    deadline = timeout_deadline(seconds)
+    started = time.monotonic()
+    if jobs is not None and jobs < 1:
+        raise ValueError('jobs must be a positive integer')
+    commands = [tool_command(name) for name in names]
+    if jobs == 1 or not any(name in PARALLEL_RESOURCES for name in names):
+        return run_commands(commands, seconds=seconds)
+    jobs = automatic_jobs() if jobs is None else jobs
+    remaining = None if deadline is None else deadline - time.monotonic()
+    if remaining is not None and remaining <= 0:
+        for name in names:
+            print(f'[{name}] not run: group deadline expired', flush=True)
+        return 124
+    if jobs == 1:
+        return run_commands(commands, seconds=remaining)
+    active, completed = {}, {}
+    next_index = emit_index = 0
+    result = 0
+    # Defer signals to scheduler boundaries: raising between Popen and recording
+    # the child would lose ownership of a just-created worker.
+    cancelled = False
+
+    def request_cancel(_signal, _frame):
+        nonlocal cancelled
+        cancelled = True
+
+    handlers = {number: signal.getsignal(number)
+                for number in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        for number in handlers:
+            signal.signal(number, request_cancel)
+        # Scratch and logs belong to this invocation, never the source/build tree.
+        with tempfile.TemporaryDirectory(prefix='chibi-tests-') as directory:
+            try:
+                while next_index < len(names) or active:
+                    if cancelled:
+                        raise TerminationRequested()
+                    if deadline is not None and time.monotonic() >= deadline:
+                        result = 124
+                        break
+                    while next_index < len(names) and len(active) < jobs:
+                        if cancelled:
+                            raise TerminationRequested()
+                        resources = PARALLEL_RESOURCES.get(names[next_index])
+                        if active and (resources is None or any(
+                                item[3] is None or resources & item[3]
+                                for item in active.values())):
+                            break
+                        scratch = Path(directory) / str(next_index)
+                        scratch.mkdir()
+                        environment = dict(os.environ, TMPDIR=str(scratch),
+                                           TMP=str(scratch), TEMP=str(scratch))
+                        # A worker always owns its group, even inside a managed
+                        # caller. Its supervisor alone adopts/reaps its orphans.
+                        environment.pop(PROCESS_GROUP, None)
+                        log = open(Path(directory) / f'{next_index}.log', 'w+', errors='replace')
+                        try:
+                            child = subprocess.Popen(
+                                [sys.executable, str(Path(__file__).resolve()),
+                                 '_supervise', json.dumps([commands[next_index]])],
+                                cwd=ROOT, env=environment, start_new_session=True,
+                                stdout=log, stderr=log)
+                        except BaseException:
+                            log.close()
+                            raise
+                        active[next_index] = (child, log, scratch, resources)
+                        next_index += 1
+                        if resources is None:
+                            break
+                    for index, (child, log, scratch, resources) in list(active.items()):
+                        status = child.poll()
+                        if status is None:
+                            continue
+                        # POSIX fallback removes any descendants left in the group;
+                        # Linux supervisor also owns escaped/adopted descendants.
+                        try:
+                            os.killpg(child.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        status = status if status >= 0 else 128 - status
+                        completed[index] = (status, log)
+                        if status and not result:
+                            result = status
+                        del active[index]
+                    while emit_index in completed:
+                        status, log = completed.pop(emit_index)
+                        print(f'[{names[emit_index]}] exit {status}', flush=True)
+                        log.seek(0)
+                        shutil.copyfileobj(log, sys.stdout)
+                        log.close()
+                        sys.stdout.flush()
+                        if status and not result:
+                            result = status
+                        emit_index += 1
+                    if result:
+                        break
+                    if active:
+                        time.sleep(.005)
+            finally:
+                # Send cancellation to every owned supervisor before waiting. Ignore
+                # repeated interrupts only while all workers finish their cleanup.
+                for number in (signal.SIGTERM, signal.SIGINT):
+                    signal.signal(number, signal.SIG_IGN)
+                try:
+                    cancelled_workers = set()
+                    for index, (child, log, scratch, resources) in active.items():
+                        if child.poll() is None:
+                            cancelled_workers.add(index)
+                            child.terminate()
+                    for index, (child, log, scratch, resources) in active.items():
+                        child.wait()
+                        try:
+                            os.killpg(child.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        status = child.returncode
+                        completed[index] = (status if status >= 0 else 128 - status, log)
+                    # Preserve partial worker diagnostics on cancellation/timeout.
+                    for index in sorted(completed):
+                        status, log = completed[index]
+                        state = 'cancelled; exit' if index in cancelled_workers else 'exit'
+                        print(f'[{names[index]}] {state} {status}', flush=True)
+                        log.seek(0)
+                        shutil.copyfileobj(log, sys.stdout)
+                        log.close()
+                    for name in names[next_index:]:
+                        print(f'[{name}] not run: group stopped', flush=True)
+                finally:
+                    print(f'Test command wall time: {time.monotonic() - started:.3f}s; '
+                          'includes in-test fixture setup; external configuration/build excluded.', flush=True)
+    finally:
+        for number, handler in handlers.items():
+            signal.signal(number, handler)
+    if cancelled:
+        raise TerminationRequested()
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--timeout', type=float, help='Optional timeout in seconds for this command')
+    parser.add_argument('--jobs', type=int, default=os.environ.get('CHIBI_TEST_JOBS'),
+                        help='Group workers (automatic by default; 1 keeps serial execution)')
     parser.add_argument('action', choices=['inventory', 'unit', 'short', 'tool', 'group',
                                          'native', 'native-env', 'agent-env', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
@@ -814,6 +1078,8 @@ def main():
         arguments = arguments[1:]
     try:
         timeout_deadline(args.timeout)
+        if args.jobs is not None and args.jobs < 1:
+            raise ValueError('jobs must be a positive integer')
     except ValueError as error:
         parser.error(str(error))
     if args.action == '_supervise':
@@ -840,8 +1106,7 @@ def main():
         if arguments[0] == 'language':
             for name, reason in UNRUN.items():
                 print(f'{name} not run: {reason}')
-        commands = [tool_command(name) for name in GROUPS[arguments[0]]]
-        return run_commands(commands, seconds=args.timeout)
+        return run_group(GROUPS[arguments[0]], jobs=args.jobs, seconds=args.timeout)
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unknown tooling command')

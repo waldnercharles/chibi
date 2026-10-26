@@ -4479,7 +4479,7 @@ TEST_CASE(program_bound_task_checks_admission_before_its_body)
 }
 TEST_CASE(program_effect_free_bound_task_uses_the_owning_program_world)
 {
-    const char *source = "L :: behavior { worker: task<double>; running: "
+    const char *source = "L :: behavior { worker: task(double); running: "
                          "double = 0; cancelled: double = 0; "
                          "Bound :: () -> double { yield; return 7; } "
                          "Watch :: () -> () { result := await worker; "
@@ -4694,7 +4694,7 @@ TEST_CASE(program_failing_inline_outcome_detaches_its_completed_request)
 TEST_CASE(program_bound_task_cannot_succeed_after_its_last_expression_removes_the_target)
 {
     const char
-        *source = "L :: behavior { worker: task<double>; got: double = 0; "
+        *source = "L :: behavior { worker: task(double); got: double = 0; "
                   "cancelled: double = 0; "
                   "Bound :: () -> double { yield; return Invalidate(); } "
                   "Watch :: () -> () { result := await worker; "
@@ -4796,7 +4796,7 @@ TEST_CASE(program_bound_child_keeps_its_own_targets_and_follows_parent_cancellat
 TEST_CASE(program_completed_bound_parent_leaves_only_dependent_children_bound)
 {
     const char *
-        source = "L :: behavior { worker: task<double>; started: double = 0; "
+        source = "L :: behavior { worker: task(double); started: double = 0; "
                  "got: double = 0; "
                  "cancelled: double = 0; child_done: double = 0; "
                  "dependent_done: double = 0; "

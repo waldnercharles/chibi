@@ -1597,7 +1597,7 @@ TEST_CASE(catalog_preserves_signature_only_union_and_task_exports)
     snprintf(behavior, sizeof behavior, "%s/behaviors/Owner.chibi", root);
     snprintf(system, sizeof system, "%s/systems/Active.chibi", root);
     const source_catalog_edit edits[] = {
-        { .path = library, .text = "Values :: library { Identity :: (value: int | Cancelled) -> int | Cancelled { return value; } Keep :: (value: task<int>) -> task<int> { return value; } Twice :: (value: int) -> int { return value * 2; } }" },
+        { .path = library, .text = "Values :: library { Identity :: (value: int | Cancelled) -> int | Cancelled { return value; } Keep :: (value: task(int)) -> task(int) { return value; } Twice :: (value: int) -> int { return value * 2; } }" },
         { .path = behavior,
           .text = "// Library types remain exported.\n"
                   "Owner :: behavior { score: int = 1; }" },

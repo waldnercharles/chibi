@@ -414,25 +414,6 @@ pub Text :: (environment: Environment, request: Request) -> Resolution {
         name = strings.TrimSuffix(name, "[]");
         container = 1;
     }
-    prefixes: string[] = ["set<", "map<", "array<"];
-    containers: int[] = [2, 3, 1];
-    index: int = 0;
-    while (index < length(prefixes)) {
-        prefix := prefixes[index];
-        if (strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ">")) {
-            container = containers[index];
-            name = strings.TrimSuffix(strings.TrimPrefix(name, prefix), ">");
-            break;
-        }
-        index += 1;
-    }
-    wrappers: string[] = ["struct<", "handle<", "enum<"];
-    for (wrapper in wrappers) {
-        if (strings.HasPrefix(name, wrapper) && strings.HasSuffix(name, ">")) {
-            name = strings.TrimSuffix(strings.TrimPrefix(name, wrapper), ">");
-            break;
-        }
-    }
     if (strings.HasPrefix(name, "\"")) {
         decoded := compiler_json_string(name);
         // Legacy fallback copies the decoded C-string prefix, including when

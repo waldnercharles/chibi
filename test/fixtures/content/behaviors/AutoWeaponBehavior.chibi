@@ -11,7 +11,7 @@ AutoWeaponBehavior :: behavior {
             await Fire_Ready_Projectiles(self.Transform, direction_to(self.Transform, find_nearest_entity(self.Transform, 600.0, 2, self).Position), self.Weapon.damage)
         }
     }
-    Fire_Ready_Projectiles :: (Origin: CF_V2 = null, Direction: CF_V2 = null, Damage: int = 0) {
+    Fire_Ready_Projectiles :: (Origin: vec2 = null, Direction: vec2 = null, Damage: int = 0) {
         Elapsed = Elapsed + Step
         while WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Ready {
             Elapsed = WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Remainder

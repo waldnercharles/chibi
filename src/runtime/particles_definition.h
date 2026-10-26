@@ -34,7 +34,7 @@
 #define PARTICLES_FLOAT(X, NAME, VALUE)                                        \
     PARTICLES_SCALAR(X, NAME, PIN_F32, "float", f, VALUE, PIN_FLAG_ADVANCED)
 #define PARTICLES_VECTOR(X, NAME)                                              \
-    PARTICLES_DATA(X, NAME, PIN_STRUCT, "CF_V2", ((pin_value){ .type = PIN_STRUCT }), 0)
+    PARTICLES_DATA(X, NAME, PIN_STRUCT, "vec2", ((pin_value){ .type = PIN_STRUCT }), 0)
 #define PARTICLES_BURST_INPUTS(X)                                                         \
     PARTICLES_EXEC(X, "Exec")                                                             \
     PARTICLES_VECTOR(X, "Position")                                                       \

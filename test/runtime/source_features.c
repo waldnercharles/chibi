@@ -205,9 +205,9 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 {
     const char
         *format = "Reaction :: behavior { done:retain bool=false; "
-                  "rotation:retain CF_V3={x:-1.0,y:2.0,z:3.0}; "
+                  "rotation:retain vec3={x:-1.0,y:2.0,z:3.0}; "
                   "target:retain entity=0; Apply :: "
-                  "(Rotation:CF_V3,Target:entity)->(){ "
+                  "(Rotation:vec3,Target:entity)->(){ "
                   "await delay(Duration:0.125); await "
                   "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } on "
                   "Tick :: () { await Apply(Rotation:rotation,Target:target); "
@@ -253,7 +253,7 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
                 execution_instance_set_state(
                     instance,
                     rotation_id,
-                    (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &changed }
+                    (pin_value){ .type = PIN_STRUCT, .type_name = "vec3", .ptr = &changed }
                 ) == 0
             );
             REQUIRE(pump(.125, .125, 1024) >= 0);
@@ -694,11 +694,11 @@ static ecs_entity place_collider(CF_V3 position, Collider3D collider)
 TEST_CASE(source_native_physics3d_queries_read_colliders)
 {
     const char
-        *text = "Probe :: behavior { start:retain CF_V3={x:0.0,y:320.0,z:0.0}; "
-                "finish:retain CF_V3={x:0.0,y:-32.0,z:0.0}; push:retain "
-                "CF_V3={x:320.0,y:0.0,z:0.0}; found:retain bool=false; "
+        *text = "Probe :: behavior { start:retain vec3={x:0.0,y:320.0,z:0.0}; "
+                "finish:retain vec3={x:0.0,y:-32.0,z:0.0}; push:retain "
+                "vec3={x:320.0,y:0.0,z:0.0}; found:retain bool=false; "
                 "target:retain entity=0; distance:retain float=0.0; "
-                "normal:retain CF_V3={x:0.0,y:0.0,z:0.0}; blocked:retain "
+                "normal:retain vec3={x:0.0,y:0.0,z:0.0}; blocked:retain "
                 "entity=0; travel:retain float=0.0; touching:retain int=0; "
                 "on Tick :: () { "
                 "found=raycast_3d(start,finish,1,0,false).Found; "
@@ -793,7 +793,7 @@ static bool publish_material(int width)
 }
 TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
 {
-    const char *payloads[] = { "float=0.25", "double=0.5", "bool=true", "CF_V2={x:0.25,y:-0.5}" };
+    const char *payloads[] = { "float=0.25", "double=0.5", "bool=true", "vec2={x:0.25,y:-0.5}" };
     const float expected[][2] = { { .25f, 0 }, { .5f, 0 }, { 1, 0 }, { .25f, -.5f } };
     for (int backend = 0; backend < 2; backend++) {
         for (int kind = 0; kind < 4; kind++) {
@@ -828,7 +828,7 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 kind == 0   ? "float"
                 : kind == 1 ? "double"
                 : kind == 2 ? "bool"
-                            : "CF_V2"
+                            : "vec2"
             );
             REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             uint64_t tick = execution_module_event(prepared->module, "Tick");
@@ -866,9 +866,9 @@ TEST_CASE(source_tilemap_queries_use_live_authored_cells)
 {
     const char
         *text = "Grid :: behavior { frame:retain int=-1; count:retain int=0; "
-                "point:retain CF_V2={x:11,y:-4}; minimum:retain "
-                "CF_V2={x:10,y:-5}; maximum:retain "
-                "CF_V2={x:13,y:0}; on Tick :: () { "
+                "point:retain vec2={x:11,y:-4}; minimum:retain "
+                "vec2={x:10,y:-5}; maximum:retain "
+                "vec2={x:13,y:0}; on Tick :: () { "
                 "frame=tilemap_frame_at(self,point); "
                 "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
     for (int backend = 0; backend < 2; backend++) {
@@ -1014,7 +1014,7 @@ TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
 {
     const char
         *text = "Pointer :: behavior { active:retain bool=true; origin:retain "
-                "CF_V3={}; direction:retain CF_V3={}; on Tick "
+                "vec3={}; direction:retain vec3={}; on Tick "
                 ":: () "
                 "{ ray:=get_pointer_ray(); active=ray.Active; "
                 "origin=ray.Origin; direction=ray.Direction; } }";

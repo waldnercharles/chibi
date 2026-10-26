@@ -1631,7 +1631,7 @@ static int queue(physics3d *physics, host_event event, const contact_pair *pair)
     for (int i = 0; i < 2; i++) {
         pin_value values[] = {
             { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = targets[1 - i] },
-            { .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = (void *)&pair->point },
+            { .type = PIN_STRUCT, .type_name = "vec3", .ptr = (void *)&pair->point },
         };
         int result = entities_request_event(
             physics->entities,

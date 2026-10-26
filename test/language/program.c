@@ -7012,7 +7012,7 @@ TEST_CASE(program_version_19_components_move_to_chibi)
                            "    // Per second.\n"
                            "    //\n"
                            "    rate: float\n"
-                           "    drift: CF_V2\n"
+                           "    drift: vec2\n"
                            "}\n";
     REQUIRE(!strcmp(read_whole(path), expected));
 
@@ -7441,6 +7441,12 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     }
     current = NULL;
     REQUIRE(!chibi_migrate_angle_forms(current_expected, &current, error, sizeof error));
+    if (current) {
+        free(current_expected);
+        current_expected = current;
+    }
+    current = NULL;
+    REQUIRE(!chibi_migrate_vector_names(current_expected, &current, error, sizeof error));
     if (current) {
         free(current_expected);
         current_expected = current;
@@ -8719,6 +8725,75 @@ TEST_CASE(program_version_32_angle_forms_take_version_33_spellings)
     }
     return true;
 }
+/* Version 34 names Cute's vectors vec2 and vec3 in scripts and in the type
+ * names of declarative assets, and leaves other names alone. */
+TEST_CASE(program_version_33_vectors_take_version_34_names)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "L :: library { F :: (a: CF_V2, b: CF_V3[]) -> CF_V2 { return "
+          "make_cf_v2(x: a.x, y: break_cf_v3(b[0]).y) } }",
+          "L :: library { F :: (a: vec2, b: vec3[]) -> vec2 { return "
+          "make_vec2(x: a.x, y: break_vec3(b[0]).y) } }" },
+        { "B :: behavior { at: CF_V3 = {}\n    on Tick :: (dt: float s) { "
+          "at = scalar_to_cf_v3(dt) + make_cf_v3(x: 1, y: 2, z: 3) } }",
+          "B :: behavior { at: vec3 = {}\n    on Tick :: (dt: float s) { "
+          "at = scalar_to_vec3(dt) + make_vec3(x: 1, y: 2, z: 3) } }" },
+        { "L :: library { F :: (cf_v2: int, v: vec2) -> int { return cf_v2 } }", NULL },
+    };
+    char error[256] = { 0 }, *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_vector_names(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        REQUIRE(!error[0]);
+        if (cases[i].expected ? !migrated || strcmp(migrated, cases[i].expected)
+                              : migrated != NULL) {
+            fprintf(stderr, "case %zu migrated to: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(cases[i].expected ? migrated && !strcmp(migrated, cases[i].expected) : !migrated);
+        free(migrated);
+        migrated = NULL;
+    }
+    char root[] = "/tmp/chibi-vectors-XXXXXX", path[300];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/events", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    write_whole(path, "version 33\ncontent \"content\"\nstart_scene \"Start.kdl\"\n");
+    const char
+        *event = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 3\n"
+                 "(array)variables {\n"
+                 "    - id=1 name=\"Point\" type=\"struct\" "
+                 "type_name=\"CF_V2\"\n"
+                 "    - id=2 name=\"Label\" type=\"string\" "
+                 "default=\"CF_V3\\\" \\\"CF_V2\"\n"
+                 "}\n";
+    snprintf(path, sizeof path, "%s/content/events/Hit.kdl", root);
+    write_whole(path, event);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    const char
+        *expected = "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 3\n"
+                    "(array)variables {\n"
+                    "    - id=1 name=\"Point\" type=\"struct\" "
+                    "type_name=\"vec2\"\n"
+                    "    - id=2 name=\"Label\" type=\"string\" "
+                    "default=\"CF_V3\\\" \\\"CF_V2\"\n"
+                    "}\n";
+    REQUIRE(!strcmp(read_whole(path), expected));
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/content/events", root);
+    REQUIRE(!rmdir(path));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!rmdir(path) && !rmdir(root));
+    return true;
+}
 static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
 {
     int *calls = user;
@@ -8749,7 +8824,7 @@ TEST_CASE(program_migration_retry_resumes_after_finished_steps)
         text,
         sizeof text,
         "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n",
-        CHIBI_PROJECT_VERSION - 2
+        CHIBI_PROJECT_VERSION - 3
     );
     write_whole(manifest, text);
     int calls = 0;
@@ -8762,16 +8837,16 @@ TEST_CASE(program_migration_retry_resumes_after_finished_steps)
         sizeof marked,
         "version %d\nmigrated %d\ncontent \"content\"\nstart_scene "
         "\"Start.kdl\"\n",
-        CHIBI_PROJECT_VERSION - 2,
+        CHIBI_PROJECT_VERSION - 3,
         CHIBI_PROJECT_VERSION
     );
     REQUIRE(!strcmp(read_whole(manifest), marked));
     REQUIRE(!strcmp(read_whole(path), expected));
     int resumed = chibi_project_migrate_finalized(root, fail_first_finalization, &calls, error, sizeof error);
-    if (resumed != 2) {
+    if (resumed != 3) {
         fprintf(stderr, "resumed %d: %s\n", resumed, error);
     }
-    REQUIRE(resumed == 2);
+    REQUIRE(resumed == 3);
     REQUIRE(calls == 2 && !strcmp(read_whole(path), expected));
     snprintf(text, sizeof text, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
     REQUIRE(!strcmp(read_whole(manifest), text));
@@ -10351,6 +10426,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
     RUN_TEST_CASE(program_version_32_angle_forms_take_version_33_spellings);
+    RUN_TEST_CASE(program_version_33_vectors_take_version_34_names);
     RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

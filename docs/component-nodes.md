@@ -146,4 +146,4 @@ This is the test registry, which adds a few test-only nodes to the application's
   asset through the [native controller](runtime-authoring.md). The former MCP
   `add_node`, `split_pin`, and `remove_pin` transport is retired.
 
-Inline vector constructors in the editor still create `Make_CF_V2` and its relatives directly, as does Behavior Expression lowering; both render like Make Struct.
+Inline vector constructors in the editor still create `Make_vec2` and its relatives directly, as does Behavior Expression lowering; both render like Make Struct.

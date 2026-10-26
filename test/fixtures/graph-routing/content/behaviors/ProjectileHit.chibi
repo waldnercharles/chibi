@@ -1,5 +1,5 @@
 ProjectileHit :: behavior {
-    on ContactBegin :: (Other: entity, Point: CF_V2) {
+    on ContactBegin :: (Other: entity, Point: vec2) {
         damage_material(Other, Point + self.Velocity.norm() * 0.5, 4.0, 1.0, 0, self)
         if !is_pierceable_material_fragment(Other) {
             await emit Other.Damage(self.Projectile.Damage, self)

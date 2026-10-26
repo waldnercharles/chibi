@@ -9,13 +9,13 @@
     X("Position",                                                              \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_STRUCT,                                                              \
-      "CF_V2",                                                                 \
+      "vec2",                                                                  \
       PIN_CONTAINER_SINGLE,                                                    \
       0,                                                                       \
       0,                                                                       \
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
-      ((pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2" }))
+      ((pin_value){ .type = PIN_STRUCT, .type_name = "vec2" }))
 #define VISIBILITY_SAMPLE_OUTPUTS(X)                                           \
     X("Visible",                                                               \
       NATIVE_PARAMETER_DATA,                                                   \

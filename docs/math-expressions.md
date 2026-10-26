@@ -30,14 +30,14 @@ node with Integer pins divides as integers, truncating toward zero.
 | `min`, `max`, `pow` | Two scalars |
 | `mix` | `a, b, alpha`; `a` at 0, `b` at 1 |
 | `step` | `edge, x`; 0 below the edge, 1 from it on |
-| `length`, `normalize` | One `CF_V2` |
-| `dot`, `distance` | Two `CF_V2` |
+| `length`, `normalize` | One `vec2` |
+| `dot`, `distance` | Two `vec2` |
 | `atan2` | `y, x` |
-| `direction` | One angle, the unit `CF_V2` `(cos, sin)`; or `from, to`, the unit `CF_V2` between two points |
+| `direction` | One angle, the unit `vec2` `(cos, sin)`; or `from, to`, the unit `vec2` between two points |
 | `clamp` | `value, minimum, maximum` |
 | `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive |
-| `vec2` | `x, y`; constructs a `CF_V2` |
-| `vec3` | `x, y, z`; constructs a `CF_V3` |
+| `vec2` | `x, y`; constructs one |
+| `vec3` | `x, y, z`; constructs one |
 
 ## Shader and field graphs
 
@@ -72,7 +72,7 @@ true and 0 for false, through a conversion on the body's own wire; an input the
 expression uses as a bool, as in `a && !b`, stays a bool. `flag * 8` is 8 or 0.
 
 Inputs and the result infer their connected graph types. Numeric operators support
-scalar broadcasting across reflected numeric structs such as `CF_V2` and
+scalar broadcasting across reflected numeric structs such as `vec2` and
 `Transform`; the result keeps the aggregate type. Use member access such as
 `pos.x + pos.y` to project scalar fields from a connected struct input. The input
 must be connected before a field expression can regenerate successfully. Integer-to-Real and explicit Real-to-integer conversions are

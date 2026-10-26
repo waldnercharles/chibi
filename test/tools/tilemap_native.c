@@ -69,7 +69,7 @@ TEST_CASE(native_queries_and_cache_lifecycle)
     REQUIRE(!strcmp(pack->definitions[0].source_name, "tilemap_frame_at"));
     REQUIRE(pack->definitions[0].inputs[0].storage == PIN_HANDLE);
     REQUIRE(pack->definitions[0].inputs[1].storage == PIN_STRUCT);
-    REQUIRE(!strcmp(pack->definitions[0].inputs[1].type_name, "CF_V2"));
+    REQUIRE(!strcmp(pack->definitions[0].inputs[1].type_name, "vec2"));
     REQUIRE(pack->definitions[0].effects == SCRIPT_EFFECT_READ);
     REQUIRE(!strcmp(pack->bindings[0].implementation.call->service, "game.entities"));
     ecs_entity entity = layer("7 -1");
@@ -77,8 +77,8 @@ TEST_CASE(native_queries_and_cache_lifecycle)
     pin_value arguments[] = { { .type = PIN_HANDLE,
                                 .type_name = "ecs.entity",
                                 .u64 = ecs_entity_to_u64(entity) },
-                              { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &minimum },
-                              { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &maximum } },
+                              { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &minimum },
+                              { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &maximum } },
               result = { 0 };
     node_host_call_fn point = pack->bindings[0].implementation.call->invoke;
     node_host_call_fn box = pack->bindings[1].implementation.call->invoke;

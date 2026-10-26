@@ -115,7 +115,7 @@ TEST_CASE(function_signature_edits_reach_every_call)
     REQUIRE(graph_signature_add(asset, fn, true, &result) == 0);
     REQUIRE(find_pin(ret, 0, "Scaled") == 1 && find_pin(call, 1, "Scaled") == 1);
     /* Retyping drops call wires the new type can't carry. */
-    pin_spec vector = { .type = PIN_STRUCT, .type_name = "CF_V2" };
+    pin_spec vector = { .type = PIN_STRUCT, .type_name = "vec2" };
     REQUIRE(graph_signature_retype(asset, fn, false, 1, &vector) == 0);
     REQUIRE(entry->output_pins[1].type == PIN_STRUCT && call->input_pins[1].type == PIN_STRUCT);
     REQUIRE(!wired(asset->graph, call, 1));
@@ -190,14 +190,14 @@ TEST_CASE(variables_duplicate_and_own_their_defaults)
         asset,
         "Aim",
         PIN_STRUCT,
-        "CF_V2",
+        "vec2",
         PIN_CONTAINER_SINGLE,
         NULL,
         NULL
     );
     uint64_t aim_id = aim->id;
     float xy[2] = { 3, 4 };
-    pin_value vector = { .type = PIN_STRUCT, .ptr = xy, .type_name = "CF_V2" };
+    pin_value vector = { .type = PIN_STRUCT, .ptr = xy, .type_name = "vec2" };
     REQUIRE(behavior_asset_set_variable_default(asset, aim_id, &vector) == 0);
     xy[0] = 0;
     aim = behavior_asset_find_variable_by_id(asset, aim_id);

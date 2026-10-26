@@ -84,11 +84,18 @@ const execution_module *compiler_host_root(const compiler_host *);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);
+/* The yyjson read flags of the host's private transport, which every reader
+ * of its result JSON uses: it keeps invalid UTF-8 bytes and every floating
+ * value, with NaN and the infinities as NaN, Infinity and -Infinity. */
+#define COMPILER_HOST_JSON_READ_FLAGS                                          \
+    (YYJSON_READ_ALLOW_INVALID_UNICODE | YYJSON_READ_ALLOW_INF_AND_NAN)
 /* Explicit entry ID in the artifact's root module. Arguments are a JSON array,
  * packed against decoded declarations. Address/reference argument and result
- * banks reject before JSON decoding; only owned-value contracts are admitted. Invalid UTF-8 bytes are preserved by the
- * private transport, including rejected compiler inputs. Integers retain full
- * uint64 precision; union results project as {tag,values}, not source metadata.
+ * banks reject before JSON decoding; only owned-value contracts are admitted.
+ * Invalid UTF-8 bytes are preserved by the private transport, including
+ * rejected compiler inputs. Integers retain full uint64 precision, and floats
+ * their values, with NaN, Infinity and -Infinity for the non-finite ones; union
+ * results project as {tag,values}, not source metadata.
  * Each call owns its result JSON. Instruction budget is finite/nonzero; the
  * supervising parent supplies the hard wall deadline (also during load/JIT). */
 bool compiler_host_invoke(

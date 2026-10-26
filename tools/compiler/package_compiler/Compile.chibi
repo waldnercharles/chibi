@@ -992,13 +992,21 @@ Evaluated :: union {
     | Waiting
     | Value(exact: uint64[])
 }
-// The integer type a conversion call converts to, 0 for any other node.
-ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+// The number type a conversion call converts to, 0 for any other node.
+NumberConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     callee := Field(forest, node, "function");
     if (!Is(forest, node, "call_expression") || !Is(forest, callee, "identifier")) {
         return 0;
     }
     storage := ScalarStorage(Text(forest, text, callee));
+    if (!Integer(storage) && !Floating(storage)) {
+        return 0;
+    }
+    return storage;
+}
+// The integer type a conversion call converts to, 0 for any other node.
+ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    storage := NumberConversionType(forest, text, node);
     if (!Integer(storage)) {
         return 0;
     }

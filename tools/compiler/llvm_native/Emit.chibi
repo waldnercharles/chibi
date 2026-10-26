@@ -1,6 +1,7 @@
 package llvm_native
 
 import abi "project:native_abi"
+import strings "core:strings"
 
 // A deliberately bounded, runtime-free scalar backend. This is not the
 // prepared/pin_value ABI: arguments and results are native LLVM values.
@@ -65,16 +66,19 @@ pub Check: int : 27;
 // output = callee(arguments...): left is the callee's function index, and
 // the argument slots are this function's arguments[right, right + target).
 pub Call: int : 28;
-// output = type(left): right is the left slot's integer type, and literal 0
-// clamps the value to type while 1 keeps its low bits.
+// output = type(left): right is the left slot's type. Between integer types,
+// literal 0 clamps the value to type while 1 keeps its low bits. A float or
+// double converts to an integer type in either mode by truncating toward
+// zero, saturating at the type's bounds, with NaN as 0. An integer or a float
+// converts to double, and a double to float, rounding to nearest.
 pub Convert: int : 29;
 
 // Module bounds: these are plan bounds, not a source-language acceptance claim.
 MaxFunctions: int : 32;
 MaxParameters: int : 8;
-MaxSlots: int : 128;
-MaxLocals: int : 64;
-MaxCode: int : 256;
+MaxSlots: int : 256;
+MaxLocals: int : 128;
+MaxCode: int : 1024;
 MaxArguments: int : 256;
 
 Index :: (value: int, count: int) -> bool {
@@ -98,9 +102,16 @@ ReadsLeft :: (op: int) -> bool {
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
 }
-// Whether `literal` is a value of `type`: 0 or 1 for bool, and for an integer
-// type its range, except that a 64-bit unsigned value is its bit pattern.
+// Whether `literal` is a value of `type`: 0 or 1 for bool, for an integer
+// type its range, except that a 64-bit unsigned value is its bit pattern, and
+// for a float or double its IEEE encoding.
 Fits :: (literal: int64, type: int) -> bool {
+    if (type == abi.FloatStorage) {
+        return literal >= 0 && literal < int64(1) << uint(32);
+    }
+    if (type == abi.DoubleStorage) {
+        return true;
+    }
     if (!Integer(type)) {
         return literal == 0 || literal == 1;
     }
@@ -116,6 +127,43 @@ Fits :: (literal: int64, type: int) -> bool {
 }
 ReadsRight :: (op: int) -> bool {
     return op >= Add && op <= Ne && !Unary(op);
+}
+// Whether the backend computes `op` in `type`: every operation on integers,
+// IEEE arithmetic other than remainders and every comparison on floats, and
+// equality and negation on bool.
+Computes :: (op: int, type: int) -> bool {
+    if (Integer(type)) {
+        return true;
+    }
+    if (abi.Floating(type)) {
+        return op == Add || op == Sub || op == Mul || op == Div || Comparison(op);
+    }
+    return type == abi.BoolStorage && (op == Eq || op == Ne || op == BitNot);
+}
+// The conversions the backend implements, as the runtime's casts: integers
+// to one another and to double, float and double to one another and to the
+// integers. An integer becomes a float only through double.
+Converts :: (from: int, to: int) -> bool {
+    if (to == abi.FloatStorage) {
+        return from == abi.DoubleStorage;
+    }
+    if (to == abi.DoubleStorage) {
+        return Integer(from) || from == abi.FloatStorage;
+    }
+    return Integer(to) && (Integer(from) || abi.Floating(from));
+}
+// The instructions control may reach next from `pc` of valid code, whose
+// last instruction cannot fall through.
+Successors :: (code: Instruction[], pc: int) -> int[] {
+    item := code[pc];
+    next: int[] = [];
+    if (item.op == Jump || item.op == Branch) {
+        next.append(item.target);
+    }
+    if (item.op != Jump && item.op != Return && item.op != End) {
+        next.append(pc + 1);
+    }
+    return next;
 }
 // Every scalar slot is single-definition in the shared frontend's code.
 // Check dominance too: an arbitrary branch may not bypass its definition.
@@ -136,16 +184,7 @@ Dominates :: (code: Instruction[], definition: int, use: int) -> bool {
             return false;
         }
         seen[pc] = true;
-        op := code[pc].op;
-        if (op == Return || op == End) {
-            continue;
-        }
-        if (op == Jump || op == Branch) {
-            pending.append(code[pc].target);
-        }
-        if (op != Jump && pc + 1 < length(code)) {
-            pending.append(pc + 1);
-        }
+        pending.extend(Successors(code, pc));
     }
     return true;
 }
@@ -278,15 +317,14 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             return Result.Rejected(base + pc, "native return value differs from its signature");
         }
         if (item.op >= Add && item.op <= Ne) {
-            if ((!Integer(item.type) && !(item.type == 1 && (item.op == Eq || item.op == Ne))) ||
-                !Typed(slots, item.left, item.type) ||
+            if (!Computes(item.op, item.type) || !Typed(slots, item.left, item.type) ||
                 (ReadsRight(item.op) && !Typed(slots, item.right, item.type))) {
                 return Result.Rejected(base + pc, "native scalar operand type mismatch");
             }
         }
-        if (item.op == Convert && (!Integer(item.type) || !Integer(item.right) || !Typed(slots, item.left, item.right) ||
+        if (item.op == Convert && (!Converts(item.right, item.type) || !Typed(slots, item.left, item.right) ||
                                    (item.literal != 0 && item.literal != 1))) {
-            return Result.Rejected(base + pc, "native conversion is not between integer types");
+            return Result.Rejected(base + pc, "native conversion is not one the backend implements");
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
@@ -322,38 +360,13 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     }
     return Result.Emitted("");
 }
-// Whether some function reaches itself through calls: the transitive closure
-// of the call relation, which the module bounds to MaxFunctions squared.
-Cyclic :: (functions: Function[], code: Instruction[]) -> bool {
-    count := length(functions);
-    reach := resize([false], count * count);
-    for (caller in 0..<count) {
-        for (pc in 0..<functions[caller].code) {
-            item := code[functions[caller].first_code + pc];
-            if (item.op == Call) {
-                reach[caller * count + item.left] = true;
-            }
-        }
-    }
-    for (via in 0..<count) {
-        for (from in 0..<count) {
-            if (reach[from * count + via]) {
-                for (to in 0..<count) {
-                    if (reach[via * count + to]) {
-                        reach[from * count + to] = true;
-                    }
-                }
-            }
-        }
-    }
-    for (index in 0..<count) {
-        if (reach[index * count + index]) {
-            return true;
-        }
-    }
-    return false;
-}
 Operation :: (op: int, type: int) -> string {
+    if (abi.Floating(type)) {
+        // Ordered comparisons are false for NaN; != is unordered, so true.
+        operations := ["fadd", "fsub", "fmul", "fdiv", "", "", "", "", "", "", "", "", "fcmp olt", "fcmp ole",
+                       "fcmp ogt", "fcmp oge", "fcmp oeq", "fcmp une"];
+        return operations[op - Add];
+    }
     if (abi.Unsigned(type) && op >= Lt && op <= Ge) {
         predicates := ["icmp ult", "icmp ule", "icmp ugt", "icmp uge"];
         return predicates[op - Lt];
@@ -475,10 +488,43 @@ Width :: (type: int) -> int {
     }
     return 3;
 }
-// A conversion widens its operand to i65, which holds every value of every
-// integer type, then clamps it to the target's range or keeps its low bits.
-// A clamp never becomes a plain truncation.
+// The intrinsic that converts a float or double to an integer type, as the
+// runtime does: truncating toward zero, saturating, with NaN as 0.
+Saturating :: (from: int, to: int) -> string {
+    sign := "s";
+    if (abi.Unsigned(to)) {
+        sign = "u";
+    }
+    bits := "f32";
+    if (from == abi.DoubleStorage) {
+        bits = "f64";
+    }
+    return format_text("llvm.fpto{}i.sat.{}.{}", sign, abi.ScalarType(to), bits);
+}
+// The conversion of a floating value, or of an integer to double.
+Floated :: (item: Instruction, pc: int) -> string {
+    source := abi.ScalarType(item.right);
+    target := abi.ScalarType(item.type);
+    if (Integer(item.type)) {
+        return format_text("  %v{} = call {} @{}({} %a{})\n", pc, target, Saturating(item.right, item.type), source, pc);
+    }
+    operation := "fptrunc";
+    if (item.right == abi.FloatStorage) {
+        operation = "fpext";
+    } else if (Integer(item.right) && abi.Unsigned(item.right)) {
+        operation = "uitofp";
+    } else if (Integer(item.right)) {
+        operation = "sitofp";
+    }
+    return format_text("  %v{} = {} {} %a{} to {}\n", pc, operation, source, pc, target);
+}
+// An integer conversion widens its operand to i65, which holds every value of
+// every integer type, then clamps it to the target's range or keeps its low
+// bits. A clamp never becomes a plain truncation.
 Conversion :: (item: Instruction, pc: int) -> string {
+    if (abi.Floating(item.right) || abi.Floating(item.type)) {
+        return Floated(item, pc);
+    }
     source := abi.ScalarType(item.right);
     extend := "sext";
     if (abi.Unsigned(item.right)) {
@@ -495,6 +541,21 @@ Conversion :: (item: Instruction, pc: int) -> string {
     }
     return format_text("{}  %v{} = trunc i65 {} to {}\n", out, pc, value, abi.ScalarType(item.type));
 }
+// A float or double constant as `name`, from its encoding's bits, so every
+// value, NaN and signed zero included, is exact.
+Encoded :: (literal: int64, type: int, name: string) -> string {
+    if (type == abi.FloatStorage) {
+        return format_text("  %{} = bitcast i32 {} to float\n", name, Spelled(literal, abi.UintStorage));
+    }
+    return format_text("  %{} = bitcast i64 {} to double\n", name, literal);
+}
+// The zero a slot, local or result starts as.
+Zero :: (type: int) -> string {
+    if (abi.Floating(type)) {
+        return "0.0";
+    }
+    return "0";
+}
 // A literal as LLVM spells it: the signed value of its bits at its width.
 Spelled :: (literal: int64, type: int) -> int64 {
     bits := abi.IntegerBits(type);
@@ -506,7 +567,10 @@ Spelled :: (literal: int64, type: int) -> int64 {
 EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
     out := format_text("p{}:\n", pc);
     type := abi.ScalarType(item.type);
-    if (item.op == Constant) {
+    if (item.op == Constant && abi.Floating(item.type)) {
+        out = format_text("{}{}", out, Encoded(item.literal, item.type, format_text("v{}", pc)));
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == Constant) {
         out = format_text("{}{}", out, Store(format_text("{}", Spelled(item.literal, item.type)), item.type, "s", item.output));
     } else if (item.op == Argument) {
         out = format_text("{}{}", out, Store(format_text("%arg{}", item.left), item.type, "s", item.output));
@@ -546,7 +610,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
             }
         } else {
             out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
-            if (item.op == Div || item.op == Mod || item.op == Shl || item.op == Shr) {
+            if (Integer(item.type) && (item.op == Div || item.op == Mod || item.op == Shl || item.op == Shr)) {
                 out = format_text("{}{}", out, Total(item, pc));
             } else {
                 out = format_text("{}{}", out, format_text("  %v{} = {} {} %a{}, %b{}\n", pc, Operation(item.op, item.type),
@@ -606,7 +670,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         }
         out = format_text("{}{} %arg{}", out, abi.ScalarType(parameters[shape.first_parameter + index]), index);
     }
-    out = format_text("{}) {\nentry:\n", out);
+    out = format_text("{}) #0 {\nentry:\n", out);
     out = format_text("{}  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", out, step_budget);
     for (index in 0..<shape.slots) {
         out = format_text("{}  %s{} = alloca {}\n", out, index, abi.ScalarType(slots[shape.first_slot + index]));
@@ -614,10 +678,10 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (index in 0..<shape.locals) {
         type := locals[shape.first_local + index];
         out = format_text("{}  %l{} = alloca {}\n", out, index, abi.ScalarType(type));
-        out = format_text("{}{}", out, Store("0", type, "l", index));
+        out = format_text("{}{}", out, Store(Zero(type), type, "l", index));
     }
     out = format_text("{}  %result0 = alloca {}\n", out, abi.ScalarType(result));
-    out = format_text("{}{}", out, Store("0", result, "result", 0));
+    out = format_text("{}{}", out, Store(Zero(result), result, "result", 0));
     out = format_text("{}  br label %p0\n", out);
     own := Part(arguments, shape.first_argument, shape.arguments);
     for (pc in 0..<shape.code) {
@@ -631,6 +695,21 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     return format_text("{}trap:\n  call void @llvm.trap()\n  unreachable\n}\n", out);
 }
 
+// The saturating conversion intrinsics `code` calls, each declared once.
+Declarations :: (code: Instruction[]) -> string {
+    out := "";
+    for (item in code) {
+        if (item.op != Convert || !abi.Floating(item.right) || !Integer(item.type)) {
+            continue;
+        }
+        declaration := format_text("declare {} @{}({})\n", abi.ScalarType(item.type), Saturating(item.right, item.type),
+                                   abi.ScalarType(item.right));
+        if (!strings.Contains(out, declaration)) {
+            out = format_text("{}{}", out, declaration);
+        }
+    }
+    return out;
+}
 pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
              code: Instruction[], arguments: int[], main: bool, step_budget: int) -> Result {
     if (step_budget <= 0) {
@@ -650,15 +729,16 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
                 continue;
         }
     }
-    if (Cyclic(functions, code)) {
-        return Result.Rejected(-1, "native call graph is cyclic");
-    }
     // No host-derived data layout: the explicit LLVM target selects it. No
     // aggregate, raw pointer or foreign ABI is admitted yet.
-    out := format_text("target triple = \"{}\"\n\ndeclare void @llvm.trap()\n", target.triple);
+    out := format_text("target triple = \"{}\"\n\ndeclare void @llvm.trap()\n{}", target.triple,
+                       Declarations(code));
     for (function in 0..<length(functions)) {
         out = format_text("{}\n{}", out, EmitFunction(functions, function, parameters, slots, locals, code,
                                                       arguments, main, step_budget));
     }
-    return Result.Emitted(out);
+    // Recursion is unchecked, as Rust's is: each function probes every page
+    // of its frame, so running out of stack faults in the guard page below
+    // it, which the host reports as a stack overflow.
+    return Result.Emitted(format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out));
 }

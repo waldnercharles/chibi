@@ -116,6 +116,26 @@ instrumentation cost while retaining assertions, but it needs matching
 unsanitized dependencies and must not be described as the matched O0/O1 result.
 Do not use Release/NDEBUG as that control.
 
+## Manual hosted first pass
+
+`Debug optimization experiment (manual, not full CI)` is a separate Linux-only
+`workflow_dispatch` workflow. It requires an exact reviewed SHA containing the
+runner and the landed Ubuntu provisioning helper; the workflow must first be
+registered on the default branch. It does not change or replace normal PR checks.
+
+The runner configures both clean arms before building, shares only pinned
+prebuilt dependencies, and disables ccache in both. It verifies representative
+actual compiler argv against the compile database and exported compiler flags
+before timing the four selectors as pairs with alternating arm order. This
+initial run is **one pair per selector**, not the warm repetitions above or a
+full-suite pass. Its supervised aggregate budget is 35 minutes within a
+45-minute job. Failure, timeout or cancellation preserves logs and JSONL timing
+evidence; missing measurements are not a successful comparison. Configure time
+(including the first dependency download), build time and each selector's wall
+time are separate, with a build-plus-four-selectors total only after both arms
+finish. The artifact includes toolchain/hardware/cache metadata and verified
+argv, but not compiled binaries or dependency archives.
+
 ## Decision gate
 
 Do not change defaults based on the four selectors alone. If results are

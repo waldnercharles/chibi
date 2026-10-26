@@ -1,0 +1,7 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-types-compiled
+revision 46145470ae0ad7aa674b7cb96689d367c52268e6 0 modified
+Running: package_compiler_builds_runnable_typed_packages_compiled (OK) (129.451104 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 4417
+Test command wall time: 131.347s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

@@ -1,8 +1,0 @@
-$ python3 tools/test_policy.py tool language-package-compiler-chibi-behaviors-rest
-revision 9ec9399c4b254335db51a91e51cd3c571c601733 0 modified
-Running: package_compiler_compiles_the_other_behaviors (OK) (127.134780 secs)
-Running: package_compiler_keeps_text_state_per_owner (OK) (112.636191 secs)
-===============================================================
-Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 4750
-Test command wall time: 243.435s; includes in-test fixture setup; external configuration/build excluded.
-exit 0

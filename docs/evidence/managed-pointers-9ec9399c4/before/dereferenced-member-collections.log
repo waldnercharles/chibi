@@ -1,9 +1,0 @@
-$ python3 tools/test_policy.py tool language-package-compiler-chibi-collections
-revision fb3c2bbf8b6c2382621a74b9e813f669fa805831 2 modified
-package compiler managed pointer named result member rejected: named result differs from its declared type at 3:80
-(FAILED: /home/claude/chibi/test/language/package_compiler_chibi.c (4830): value->tag == tag(b, "Compiled") && value->count == 2)
-Running: package_compiler_builds_runnable_collection_packages 
-===============================================================
-Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 4126
-Test command wall time: 195.780s; includes in-test fixture setup; external configuration/build excluded.
-exit 1

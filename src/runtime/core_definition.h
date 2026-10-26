@@ -101,7 +101,7 @@
       ((pin_value){ 0 }))                                                      \
     CORE_DATA_PORT(X, "Index", PIN_I32, "int") CORE_EXEC_PORT(X, "Completed")
 #define CORE_DELAY_INPUTS(X)                                                   \
-    CORE_EXEC_INPUTS(X) CORE_DATA_PORT(X, "Duration", PIN_F64, "double")
+    CORE_EXEC_INPUTS(X) CORE_DATA_PORT(X, "Duration", PIN_F64, "f64")
 #define CORE_DELAY_OUTPUTS(X) CORE_EXEC_PORT(X, "Completed")
 #define CORE_PRINT_INPUTS(X)                                                   \
     CORE_EXEC_INPUTS(X) CORE_DATA_PORT(X, "InString", PIN_STR, "const char *")

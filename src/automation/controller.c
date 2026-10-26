@@ -9108,21 +9108,21 @@ static bool scenario_event_value(
         return false;
     }
     double number = yyjson_get_num(value);
-    if (!strcmp(type, "int") && yyjson_is_int(value) && number >= INT32_MIN &&
-        number <= INT32_MAX) {
+    if ((!strcmp(type, "int") || !strcmp(type, "i32")) &&
+        yyjson_is_int(value) && number >= INT32_MIN && number <= INT32_MAX) {
         *out = (pin_value){ .type = PIN_I32, .i = (int32_t)number };
         return true;
     }
-    if (!strcmp(type, "uint") && yyjson_is_int(value) && number >= 0 &&
+    if (!strcmp(type, "u32") && yyjson_is_int(value) && number >= 0 &&
         number <= UINT32_MAX) {
         *out = (pin_value){ .type = PIN_U32, .u = (uint32_t)number };
         return true;
     }
-    if (!strcmp(type, "float") && fabs(number) <= FLT_MAX) {
+    if ((!strcmp(type, "number") || !strcmp(type, "f32")) && fabs(number) <= FLT_MAX) {
         *out = (pin_value){ .type = PIN_F32, .f = (float)number };
         return true;
     }
-    if (!strcmp(type, "double")) {
+    if (!strcmp(type, "f64")) {
         *out = (pin_value){ .type = PIN_F64, .d = number };
         return true;
     }
@@ -12080,7 +12080,7 @@ static node_match *node_candidates(
     return matches;
 }
 
-/* A pin type as searchNodes writes it: "exec", "any", "float", "Health",
+/* A pin type as searchNodes writes it: "exec", "any", "number", "Health",
  * "ecs.entity" or "array<int>". */
 static bool wire_pin(const char *text, pin_spec *out)
 {

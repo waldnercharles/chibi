@@ -268,7 +268,7 @@ TEST_CASE(docs_markdown_highlights_chibi_fences)
     static const char
         package[] = "package demo\n"
                     "import shapes \"core:shapes\"\n"
-                    "Position :: struct { x: float; }\n"
+                    "Position :: struct { x: number; }\n"
                     "Result :: union { Ready | Missing }\n"
                     "Limit :: (1 + 2)\n"
                     "@test\n"
@@ -313,7 +313,7 @@ TEST_CASE(docs_markdown_highlights_chibi_fences)
         REQUIRE(has_token(html, "namespace", "shapes"));
         REQUIRE(has_token(html, "type", "Position"));
         REQUIRE(has_token(html, "type", "Result"));
-        REQUIRE(has_token(html, "builtin", "float"));
+        REQUIRE(has_token(html, "builtin", "number"));
         REQUIRE(has_token(html, "builtin", "bool"));
         REQUIRE(has_token(html, "constant", "Ready"));
         REQUIRE(has_token(html, "constant", "Limit"));

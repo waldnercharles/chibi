@@ -46,10 +46,10 @@ static const char *sample_rhythm(
     if (!rhythm_sample(world, *context->instance_time, &beat)) {
         return RHYTHM_INVALID;
     }
-    out[0].d = beat.phase;
-    out[1].d = beat.pulse;
-    out[2].d = beat.period;
-    out[3].d = beat.duration;
+    out[0].f = (float)beat.phase;
+    out[1].f = (float)beat.pulse;
+    out[2].f = (float)beat.period;
+    out[3].f = (float)beat.duration;
     return NULL;
 }
 const node_host_call RHYTHM_CALL = {

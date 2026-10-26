@@ -20,6 +20,8 @@ void test_language_package_compiler_chibi_scalar();
 void test_language_package_compiler_chibi_native();
 /* The child mode of the native test: calls into one built library. */
 int test_language_package_compiler_chibi_native_call(int count, char **arguments);
+/* The child mode of the stack overflow test: takes one fault as `mode` says. */
+int test_language_stack_overflow_child(const char *mode);
 
 void test_language_package_compiler_chibi_libraries();
 void test_language_package_compiler_chibi_native_arguments_oracle();

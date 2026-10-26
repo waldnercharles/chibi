@@ -10,22 +10,22 @@ import strings "core:strings"
 // A union result admits owned arrays/text on both bootstrap and authored
 // compiler paths. Named aggregate results are not supported by stage one yet.
 pub Result :: union {
-    Completed(ok: bool, entry_id: uint64, prepared: byte[], document: int, start: int,
+    Completed(ok: bool, entry_id: u64, prepared: u8[], document: int, start: int,
               end: int, line: int, column: int, message: string)
 }
 
 pub Write :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+              signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
     return source.Write(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
 }
 
 pub ValidatePrototype :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-                          signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> string {
+                          signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> string {
     return source.ValidatePrototype(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
 }
 
 pub Expression :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-                   signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+                   signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
     return source.Expression(kinds, parents, keys, texts, signed, unsigned, reals, booleans);
 }
 
@@ -45,43 +45,43 @@ pub Field :: (text: string, component: string, field_path: string) -> source.Fie
     return source.Field(text, component, field_path);
 }
 
-pub Packaged :: (paths: string[], sources: string[]) -> byte[] {
+pub Packaged :: (paths: string[], sources: string[]) -> u8[] {
     return packaging.Packaged(paths, sources);
 }
 
-pub Parameters :: (text: string) -> byte[] {
+pub Parameters :: (text: string) -> u8[] {
     return source.Parameters(text);
 }
 
 pub SetParameter :: (text: string, name: string, kind: int, value_text: string,
-                     signed: int64, unsigned: uint64, real: double, boolean: bool) -> byte[] {
+                     signed: i64, unsigned: u64, real: f64, boolean: bool) -> u8[] {
     return source.SetParameter(text, name, kind, value_text, signed, unsigned, real, boolean);
 }
 
 pub Reconcile :: (text: string, old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
-                  old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                  old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
                   new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
-                  new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+                  new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
     return source.Reconcile(text, old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned,
                             old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
                             new_signed, new_unsigned, new_reals, new_booleans);
 }
 
 pub ReconcileNative :: (text: string, old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
-                        old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                        old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
                         new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
-                        new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+                        new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
     return source.ReconcileNative(text, old_kinds, old_parents, old_keys, old_texts, old_signed, old_unsigned,
                                   old_reals, old_booleans, new_kinds, new_parents, new_keys, new_texts,
                                   new_signed, new_unsigned, new_reals, new_booleans);
 }
 
 pub Materialize :: (text: string, kinds: int[], parents: int[], keys: string[], texts: string[],
-                    signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+                    signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
     return source.Materialize(text, kinds, parents, keys, texts, signed, unsigned, reals, booleans);
 }
 
-Entry :: (project: string, collection_names: string[], collection_paths: string[], path: string) -> uint64 {
+Entry :: (project: string, collection_names: string[], collection_paths: string[], path: string) -> u64 {
     collections: routes.Collection[] = [];
     index: int = 0;
     while (index < length(collection_names)) {
@@ -107,8 +107,8 @@ Entry :: (project: string, collection_names: string[], collection_paths: string[
 // facts. This facade preserves compile diagnostics without JSON interpretation
 // or generated source. The compiled public Build entry returns owned byte[].
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                sources: string[], debug: bool, target: compiler.Target, abi: uint64, names: string[],
-                natives: compiler.Native[], ports: compiler.Port[], identities: uint64[]) -> Result {
+                sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
+                natives: compiler.Native[], ports: compiler.Port[], identities: u64[]) -> Result {
     switch compiler.Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
                             names, natives, ports, identities) {
         case .Rejected(diagnostic):
@@ -124,28 +124,28 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 // source fields (document/start/end/line/column), then prepared bytes or UTF-8
 // diagnostic text. The native adapter only decodes this fixed 29-byte header.
 pub CompileBytes :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                     sources: string[], debug: bool, target: compiler.Target, abi: uint64, names: string[],
-                     natives: compiler.Native[], ports: compiler.Port[], identities: uint64[]) -> byte[] {
+                     sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
+                     natives: compiler.Native[], ports: compiler.Port[], identities: u64[]) -> u8[] {
     switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
                    names, natives, ports, identities) {
         case .Completed(ok, entry_id, prepared, document, start, end, line, column, message):
-            out: byte[] = [0];
+            out: u8[] = [0];
             if (ok) {
                 out[0] = 1;
             }
             wide := entry_id;
             index: int = 0;
             while (index < 8) {
-                out.append(byte(wide & 255));
+                out.append(u8(wide & 255));
                 wide = wide >> 8;
                 index += 1;
             }
             positions: int[] = [document, start, end, line, column];
             for (position in positions) {
-                bits := uint(wrap: position);
+                bits := u32(wrap: position);
                 index = 0;
                 while (index < 4) {
-                    out.append(byte(bits & 255));
+                    out.append(u8(bits & 255));
                     bits = bits >> 8;
                     index += 1;
                 }
@@ -156,7 +156,7 @@ pub CompileBytes :: (project: string, collection_names: string[], collection_pat
                 out.extend(prepared);
             } else {
                 for (part in strings.Bytes(message)) {
-                    out.append(byte(part));
+                    out.append(u8(part));
                 }
             }
             return out;

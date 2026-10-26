@@ -51,12 +51,12 @@ static const type_field position_fields[] = {
       .type = PIN_F32,
       .offset = offsetof(test_position, x),
       .size = sizeof(float),
-      .type_name = "float" },
+      .type_name = "number" },
     { .name = "y",
       .type = PIN_F32,
       .offset = offsetof(test_position, y),
       .size = sizeof(float),
-      .type_name = "float" },
+      .type_name = "number" },
 };
 static const type_desc position_type = {
     .name = "test.position",
@@ -882,7 +882,7 @@ TEST_CASE(types_map_documents_require_authored_declarations_and_reject_malformed
     }
     REQUIRE(pin_value_read_document(&snapshots, recursive, nested, &output, error, sizeof error));
     REQUIRE(output.type == PIN_I32 && output.i == 73);
-    av_obj_set(source_document, av_obj_get(leaf, "key_type"), "storage", av_str(source_document, "double"));
+    av_obj_set(source_document, av_obj_get(leaf, "key_type"), "storage", av_str(source_document, "f64"));
     av_arr_replace(av_arr_get(av_obj_get(leaf, "entries"), 0), 0, av_real(source_document, NAN));
     REQUIRE(pin_value_read_document(&snapshots, recursive, leaf, &output, error, sizeof error));
     REQUIRE(output.type == PIN_I32 && output.i == 73);

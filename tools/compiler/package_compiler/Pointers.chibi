@@ -18,7 +18,7 @@ PointerStorePhase: int : 32;
 
 // Constructor identity is the complete pointee type's semantic tag. Nullable
 // pointers share runtime identity; their declaration key retains source flags.
-SemanticTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
+SemanticTag :: (types: TypeDecl[], value: ValueType) -> u64 {
     if (value.container == MapContainer && value.record >= 0) {
         declared := types[value.record];
         key := SemanticTag(types, {storage: declared.key, container: 0, record: -1});
@@ -27,7 +27,7 @@ SemanticTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
         collection := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, key, item));
         return binding.ID("union-type", format_text("{}:{}:0:0:0:{}", value.storage, value.container, collection));
     }
-    nominal: uint64 = 0;
+    nominal: u64 = 0;
     flags: int = 0;
     if (value.record >= 0) {
         nominal = types[value.record].id;
@@ -405,7 +405,7 @@ PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
         return Fail(forest, member_node, document, "field has no pointer type");
     }
     offset := TypedCell(WordStorage, 0, -1);
-    offset.constant = uint64(field.offset);
+    offset.constant = u64(field.offset);
     cells: Cell[] = [PointerCell(base.record), TypedCell(field.storage, field.container, field.record), offset,
                      TypedCell(BoolStorage, 0, -1), TypedCell(element.storage, element.container, element.record), PointerCell(pointer)];
     code := CellWrite(PointerStorage, base.slot, at.cell, ops, target, at.slot, node);

@@ -254,7 +254,7 @@ static bool particle_fixture()
         pin_spec pin = { .name = names[i],
                          .kind = PIN_DATA,
                          .type = i < 4 ? PIN_F32 : PIN_STRUCT,
-                         .type_name = i < 4  ? "float"
+                         .type_name = i < 4  ? "number"
                                     : i == 4 ? "ShaderVec3"
                                              : "ShaderVec4" };
         REQUIRE(graph_add_pin(g, entry, true, &pin) == i);
@@ -279,7 +279,7 @@ static bool particle_fixture()
     ));
     pin_spec results[] = {
         { .name = "Position", .type = PIN_STRUCT, .type_name = "ShaderVec3", .kind = PIN_DATA },
-        { .name = "Size", .type = PIN_F32, .type_name = "float", .kind = PIN_DATA },
+        { .name = "Size", .type = PIN_F32, .type_name = "number", .kind = PIN_DATA },
         { .name = "Color", .type = PIN_STRUCT, .type_name = "ShaderVec4", .kind = PIN_DATA },
     };
     for (int i = 0; i < 3; i++) {
@@ -449,16 +449,16 @@ TEST_CASE(particle_function_signature_and_context_are_checked)
     unsigned revision = render_shader_revision();
     REQUIRE(!graph_set_pin_type(g, entry, true, 0, PIN_I32, "int"));
     REQUIRE(!render_shader_library_upsert(asset, &error));
-    REQUIRE(strstr(error.message, "float/vector"));
+    REQUIRE(strstr(error.message, "number/vector"));
     REQUIRE(render_shader_revision() == revision && render_shader_is_particle(id));
-    REQUIRE(!graph_set_pin_type(g, entry, true, 0, PIN_F32, "float"));
+    REQUIRE(!graph_set_pin_type(g, entry, true, 0, PIN_F32, "number"));
     const shader_graph *applied = &shader_catalog_assets[id - 1].graph;
     node *position = graph_node_by_id(g, applied->nodes[applied->output[0]].source_id);
     REQUIRE(!graph_connect_data(g, entry, 0, position, 0));
     const char *name = entry->output_pins[0].name;
     entry->output_pins[0].name = "Wrong";
     REQUIRE(!render_shader_library_upsert(asset, &error));
-    REQUIRE(strstr(error.message, "Index:float"));
+    REQUIRE(strstr(error.message, "Index:number"));
     entry->output_pins[0].name = name;
     for (int i = entry->output_count; i <= SHADER_PARAMETER_MAX; i++) {
         char extra[32];

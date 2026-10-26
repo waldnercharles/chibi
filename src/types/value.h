@@ -10,16 +10,16 @@
 #define PIN_TYPE_LIST(X)                                                       \
     X(PIN_FLOW, NULL)                                                          \
     X(PIN_BOOL, "bool")                                                        \
-    X(PIN_I8, "int8")                                                          \
-    X(PIN_U8, "byte")                                                          \
-    X(PIN_I16, "int16")                                                        \
-    X(PIN_U16, "uint16")                                                       \
+    X(PIN_I8, "i8")                                                            \
+    X(PIN_U8, "u8")                                                            \
+    X(PIN_I16, "i16")                                                          \
+    X(PIN_U16, "u16")                                                          \
     X(PIN_I32, "int")                                                          \
-    X(PIN_U32, "uint")                                                         \
-    X(PIN_I64, "int64")                                                        \
-    X(PIN_U64, "uint64")                                                       \
-    X(PIN_F32, "float")                                                        \
-    X(PIN_F64, "double")                                                       \
+    X(PIN_U32, "u32")                                                          \
+    X(PIN_I64, "i64")                                                          \
+    X(PIN_U64, "u64")                                                          \
+    X(PIN_F32, "number")                                                       \
+    X(PIN_F64, "f64")                                                          \
     X(PIN_NAME, "name")                                                        \
     X(PIN_STR, "const char *")                                                 \
     X(PIN_HANDLE, "handle")                                                    \

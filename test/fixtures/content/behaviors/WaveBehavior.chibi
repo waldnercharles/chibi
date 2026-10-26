@@ -2,16 +2,16 @@
 // left and right.
 WaveBehavior :: behavior {
     // The last frame step, for actions and functions.
-    Step: float = 0
+    Step: number = 0
     // Wave
     CountLimit := 8
-    Interval: float = 1.5
-    SpawnDistance: float = 260.0
+    Interval := 1.5
+    SpawnDistance := 260.0
     // State
-    Elapsed: float = 0.0
+    Elapsed := 0.0
     Spawned := 0
-    Side: float = -1.0
-    on Tick :: (dt: float s) {
+    Side := -1.0
+    on Tick :: (dt: number s) {
         Step = dt
         if find_nearest_entity(self.Transform, 1000000.0, 1, self).Found {
             Elapsed = Elapsed + Step
@@ -19,11 +19,11 @@ WaveBehavior :: behavior {
         }
     }
     Spawn_Within_Wave_Limit :: (Player_Position: vec2 = null) {
-        while Elapsed >= max(Interval, B: float = 0.01) {
+        while Elapsed >= max(Interval, 0.01) {
             if Spawned >= CountLimit {
                 return
             } else {
-                Elapsed = Elapsed - max(Interval, B: float = 0.01)
+                Elapsed = Elapsed - max(Interval, 0.01)
                 await Spawn_Enemy(Player_Position)
                 Spawned = add(Spawned, 1)
                 Side = Side * -1.0

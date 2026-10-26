@@ -20,20 +20,61 @@ pub Supported :: (target: Target) -> bool {
 }
 
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
-BoolStorage: int : 1;
+pub BoolStorage: int : 1;
+Int8Storage: int : 2;
+ByteStorage: int : 3;
+Int16Storage: int : 4;
+Uint16Storage: int : 5;
 IntStorage: int : 6;
+pub UintStorage: int : 7;
+Int64Storage: int : 8;
+WordStorage: int : 9;
+pub FloatStorage: int : 10;
+pub DoubleStorage: int : 11;
 
+// The bits of an integer storage, or 0 for any other.
+pub IntegerBits :: (storage: int) -> int {
+    if (storage == Int8Storage || storage == ByteStorage) {
+        return 8;
+    }
+    if (storage == Int16Storage || storage == Uint16Storage) {
+        return 16;
+    }
+    if (storage == IntStorage || storage == UintStorage) {
+        return 32;
+    }
+    if (storage == Int64Storage || storage == WordStorage) {
+        return 64;
+    }
+    return 0;
+}
+// Whether an integer storage is unsigned.
+pub Unsigned :: (storage: int) -> bool {
+    return storage == ByteStorage || storage == Uint16Storage || storage == UintStorage || storage == WordStorage;
+}
+// Whether a storage is float or double.
+pub Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
+}
 // The internal LLVM value type for this scalar subset. An empty result is an
 // unsupported type, not void: callers must reject it before emitting IR.
 // A caller must first reject containers, nominal types and references; the
 // storage ordinal alone does not describe those properties. In particular,
-// i1 is not a promise about a platform's foreign bool representation.
+// i1 is not a promise about a platform's foreign bool representation, and an
+// integer's LLVM type does not say whether it is signed.
 pub ScalarType :: (storage: int) -> string {
     if (storage == BoolStorage) {
         return "i1";
     }
-    if (storage == IntStorage) {
-        return "i32";
+    if (storage == FloatStorage) {
+        return "float";
     }
-    return "";
+    if (storage == DoubleStorage) {
+        return "double";
+    }
+    bits := IntegerBits(storage);
+    if (bits == 0) {
+        return "";
+    }
+    return format_text("i{}", bits);
 }

@@ -48,7 +48,7 @@ Replacement :: struct {
     end: int;
     text: string;
 }
-Apply :: (source: string, changes: Replacement[]) -> byte[] {
+Apply :: (source: string, changes: Replacement[]) -> u8[] {
     parts: string[] = [];
     cursor: int = 0;
     // Source order, independent of object field declaration order.
@@ -80,7 +80,7 @@ Apply :: (source: string, changes: Replacement[]) -> byte[] {
 
 // Recover an integral magnitude using exact powers of two. No conversion of a
 // rounded double to int64/uint64 (or uint64 back to double) crosses the bounds.
-IntegralReal :: (real: double) -> uint64[] {
+IntegralReal :: (real: f64) -> u64[] {
     if (real != real || real <= -18446744073709551616.0 || real >= 18446744073709551616.0) {
         return [];
     }
@@ -91,16 +91,16 @@ IntegralReal :: (real: double) -> uint64[] {
     if (remaining < 0.0) {
         remaining = 0.0 - remaining;
     }
-    power: double = 9223372036854775808.0;
-    bit: uint64 = 9223372036854775808;
-    magnitude: uint64 = 0;
+    power: f64 = 9223372036854775808.0;
+    bit: u64 = 9223372036854775808;
+    magnitude: u64 = 0;
     while (bit != 0) {
         if (remaining >= power) {
             remaining -= power;
             magnitude = magnitude | bit;
         }
         power *= 0.5;
-        bit = bit >> uint64(1);
+        bit = bit >> u64(1);
     }
     if (remaining != 0.0) {
         return [];
@@ -110,9 +110,9 @@ IntegralReal :: (real: double) -> uint64[] {
 
 ReconcileValues :: (native_projection: bool, source: string,
                     old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
-                    old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                    old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
                     new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
-                    new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+                    new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
     // Native reflected real fields may already use an integer constructor.
     // Preserve that spelling for exact integral edits and unchanged siblings.
     if (native_projection && length(old_kinds) == length(new_kinds)) {
@@ -126,11 +126,11 @@ ReconcileValues :: (native_projection: bool, source: string,
                     value := magnitude[0];
                     preserved: bool = false;
                     if (old_kinds[index] == 2 && real >= -9223372036854775808.0 && real < 9223372036854775808.0) {
-                        signed: int64 = -9223372036854775807;
+                        signed: i64 = -9223372036854775807;
                         if (value == 9223372036854775808) {
                             signed -= 1;
                         } else {
-                            signed = int64(value);
+                            signed = i64(value);
                             if (real < 0.0) {
                                 signed = -signed;
                             }
@@ -281,9 +281,9 @@ ReconcileValues :: (native_projection: bool, source: string,
 
 pub Reconcile :: (source: string,
                   old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
-                  old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                  old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
                   new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
-                  new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+                  new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
     return ReconcileValues(false, source, old_kinds, old_parents, old_keys, old_texts,
                            old_signed, old_unsigned, old_reals, old_booleans, new_kinds, new_parents,
                            new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans);
@@ -292,9 +292,9 @@ pub Reconcile :: (source: string,
 // Only the native prototype adapter requests reflected numeric spelling.
 pub ReconcileNative :: (source: string,
                         old_kinds: int[], old_parents: int[], old_keys: string[], old_texts: string[],
-                        old_signed: int64[], old_unsigned: uint64[], old_reals: double[], old_booleans: bool[],
+                        old_signed: i64[], old_unsigned: u64[], old_reals: f64[], old_booleans: bool[],
                         new_kinds: int[], new_parents: int[], new_keys: string[], new_texts: string[],
-                        new_signed: int64[], new_unsigned: uint64[], new_reals: double[], new_booleans: bool[]) -> byte[] {
+                        new_signed: i64[], new_unsigned: u64[], new_reals: f64[], new_booleans: bool[]) -> u8[] {
     return ReconcileValues(true, source, old_kinds, old_parents, old_keys, old_texts,
                            old_signed, old_unsigned, old_reals, old_booleans, new_kinds, new_parents,
                            new_keys, new_texts, new_signed, new_unsigned, new_reals, new_booleans);
@@ -303,7 +303,7 @@ pub ReconcileNative :: (source: string,
 // This is an explicit inherited-member removal operation, never the fallback
 // for generic reconciliation. Only Build's constructor expression changes.
 pub Materialize :: (source: string, kinds: int[], parents: int[], keys: string[], texts: string[],
-                    signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+                    signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
     switch Inspect(source, "Build") {
         case .Rejected(start, end, message):
             assert(false, "Materialization requires one direct Build return expression");

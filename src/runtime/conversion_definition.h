@@ -15,10 +15,10 @@
 #define NATIVE_CONVERSION_SCALARS(X)                                                                   \
     X(To_String, "To String", "to_string", PIN_STR, "const char *", "String", PIN_STR, "const char *") \
     X(To_Name, "To Name", "to_name", PIN_STR, "const char *", "Name", PIN_NAME, "name")                \
-    X(To_Real, "To Real", "to_real", PIN_I32, "int", "Real", PIN_F64, "double")                        \
-    X(To_Byte, "To Byte", "to_byte", PIN_F64, "double", "Byte", PIN_U8, "byte")                        \
-    X(To_Integer, "To Integer", "to_integer", PIN_F64, "double", "Integer", PIN_I32, "int")            \
-    X(To_Integer64, "To Integer64", "to_integer64", PIN_F64, "double", "Integer64", PIN_I64, "int64")
+    X(To_Real, "To Real", "to_real", PIN_I32, "int", "Real", PIN_F32, "number")                        \
+    X(To_Byte, "To Byte", "to_byte", PIN_F64, "f64", "Byte", PIN_U8, "u8")                             \
+    X(To_Integer, "To Integer", "to_integer", PIN_F64, "f64", "Integer", PIN_I32, "int")               \
+    X(To_Integer64, "To Integer64", "to_integer64", PIN_F64, "f64", "Integer64", PIN_I64, "i64")
 #define NATIVE_CONVERSION_VECTORS(X)                                                                               \
     X(vec2, 2, "Scalar to vec2", "scalar_to_vec2", "Builds a vector with x and y both set to Value, as floats.")   \
     X(vec3, 3, "Scalar to vec3", "scalar_to_vec3", "Builds a vector with x, y and z all set to Value, as floats.") \

@@ -1635,6 +1635,8 @@ int main(int argc, char **argv)
         test_tool_types();
     } else if (arena) {
         test_arena();
+    } else if (types) {
+        test_tool_types();
     } else {
         test_tool_execution_policy();
         test_tool_types();

@@ -1216,7 +1216,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             task.effects |= script_analyzer_expr_effects(a, task.left);
             TSNode duration = script_analyzer_field(node, "duration");
             if (!ts_node_is_null(duration)) {
-                task.right = script_analyzer_expression(a, duration, (script_type){ .storage = PIN_F64 });
+                task.right = script_analyzer_expression(a, duration, (script_type){ .storage = PIN_F32 });
                 script_type type = script_analyzer_expr_type(a, task.right);
                 if (!script_type_numeric(type)) {
                     script_analyzer_diagnostic(a, duration, "Cancel duration requires a number");

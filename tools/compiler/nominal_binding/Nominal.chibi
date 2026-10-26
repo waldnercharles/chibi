@@ -34,8 +34,8 @@ pub SymbolType :: struct {
 }
 pub Declaration :: union {
     Skipped(diagnostics: syntax.Diagnostic[])
-    | Bound(existing: int, id: uint64, initial_storage: int, initial_flags: int,
-            publish: bool, storage: int, container: int, flags: int, parameter: uint64,
+    | Bound(existing: int, id: u64, initial_storage: int, initial_flags: int,
+            publish: bool, storage: int, container: int, flags: int, parameter: u64,
             catalog_name: string, source_name: string, authored_record: bool, size: int,
             diagnostics: syntax.Diagnostic[])
 }
@@ -48,7 +48,7 @@ UnionStorage: int : 18;
 UnionFlag: int : 256;
 
 pub Declare :: (environment: binding.Environment, lexical: binding.Context, context: Context,
-                types: SymbolType[], type_ids: uint64[], request: Request) -> Declaration {
+                types: SymbolType[], type_ids: u64[], request: Request) -> Declaration {
     record := request.kind == RecordKind;
     diagnostics: syntax.Diagnostic[] = [];
     if (record && (context.program_kind != LibraryKind || lexical.function >= 0)) {
@@ -71,7 +71,7 @@ pub Declare :: (environment: binding.Environment, lexical: binding.Context, cont
         line: request.name_line, column: request.name_column, document: request.name_document
     };
     existing: int = -1;
-    id: uint64 = 0;
+    id: u64 = 0;
     switch binding.Declare(environment, lexical, admission) {
         case .Appended(value, errors):
             id = value;
@@ -84,7 +84,7 @@ pub Declare :: (environment: binding.Environment, lexical: binding.Context, cont
     storage := initialStorage;
     container: int = 0;
     flags := initialFlags;
-    parameter: uint64 = 0;
+    parameter: u64 = 0;
     if (existing >= 0) {
         switch environment {
             case .Tables(scopes, symbols, functions, ids, keys):

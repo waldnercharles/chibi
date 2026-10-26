@@ -471,7 +471,7 @@ TEST_CASE(binary_signature_and_input_reject_before_execution)
         );
         REQUIRE(byte_failure(0, false));
         REQUIRE(
-            !strcmp(byte_result.diagnostic, "compiler byte entry must return exactly one primitive byte[]")
+            !strcmp(byte_result.diagnostic, "compiler byte entry must return exactly one primitive u8[]")
         );
     }
     const char *inputs[] = { "[", "[]" };

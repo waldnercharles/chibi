@@ -17,7 +17,14 @@
 #define AUDIO_EXEC(X, NAME)                                                    \
     AUDIO_PORT(X, NAME, NATIVE_PARAMETER_EXEC, PIN_FLOW, NULL, ((pin_value){ 0 }))
 #define AUDIO_FLOAT(X, NAME, VALUE)                                            \
-    AUDIO_PORT(X, NAME, NATIVE_PARAMETER_DATA, PIN_F32, "float", ((pin_value){ .type = PIN_F32, .f = VALUE }))
+    AUDIO_PORT(                                                                \
+        X,                                                                     \
+        NAME,                                                                  \
+        NATIVE_PARAMETER_DATA,                                                 \
+        PIN_F32,                                                               \
+        "number",                                                              \
+        ((pin_value){ .type = PIN_F32, .f = VALUE })                           \
+    )
 #define AUDIO_NAME(X, NAME)                                                    \
     AUDIO_PORT(X, NAME, NATIVE_PARAMETER_DATA, PIN_STR, NULL, ((pin_value){ .type = PIN_STR }))
 #define AUDIO_TONE_INPUTS(X)                                                   \

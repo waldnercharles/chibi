@@ -201,6 +201,7 @@ typedef struct
 {
     const behavior_function *active[BORROW_DEPTH];
     int depth, functions, instructions;
+    size_t nested; /* Callee fact bytes live now. */
 } borrow_proof;
 
 static bool readonly(const behavior_function *, const bool *, borrow_proof *);
@@ -456,8 +457,9 @@ static bool readonly(const behavior_function *f, const bool *keep, borrow_proof 
     if (!f->runtime_body || proof->depth == BORROW_DEPTH ||
         ++proof->functions > BORROW_FUNCTIONS ||
         count > BORROW_INSTRUCTIONS - proof->instructions ||
-        acount(f->slots) > BORROW_INSTRUCTIONS ||
-        acount(f->locals) > BORROW_INSTRUCTIONS) {
+        acount(f->slots) > BORROW_INSTRUCTIONS || acount(f->locals) > BORROW_INSTRUCTIONS ||
+        (proof->depth && behavior_function_borrow_bytes(f) >
+                             BEHAVIOR_BORROW_NESTED_BYTES - proof->nested)) {
         return false;
     }
     for (int j = 0; j < proof->depth; j++) {
@@ -478,6 +480,8 @@ static bool readonly(const behavior_function *f, const bool *keep, borrow_proof 
             return false;
         }
     }
+    size_t frame = proof->depth ? behavior_function_borrow_bytes(f) : 0;
+    proof->nested += frame;
     proof->instructions += count;
     proof->active[proof->depth++] = f;
     bool *locals = xcalloc((size_t)acount(f->locals) + 1, sizeof *locals);
@@ -495,9 +499,16 @@ static bool readonly(const behavior_function *f, const bool *keep, borrow_proof 
         }
     }
     proof->depth--;
+    proof->nested -= frame;
     free(slots);
     free(locals);
     return safe;
+}
+
+size_t behavior_function_borrow_bytes(const behavior_function *f)
+{
+    return ((size_t)acount(f->slots) + 1) * sizeof(borrow_value) +
+           ((size_t)acount(f->locals) + 1) * sizeof(bool);
 }
 
 void behavior_function_borrow_snapshots(behavior_function *f, const bool *keep)

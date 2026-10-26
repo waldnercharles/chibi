@@ -1,6 +1,6 @@
 // Stored energy that refills over time.
 Charge :: component {
-    level: float
+    level: number
     // Charge gained per second.
     rate: 0..10 charge/s
     capacity: 0..100 charge

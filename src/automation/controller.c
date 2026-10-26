@@ -11770,7 +11770,7 @@ static int match_score(const node_match *match, const char *query)
 
 /* How Behavior Expression writes a node over its data inputs: "clamp(Value,
  * Min, Max)", "A + B" or "-Value". A component node reads as the node it
- * lowers to, so a Make CF_V2 is "vec2(x, y)". */
+ * lowers to, so a Make vec2 is "vec2(x, y)". */
 static bool expression_form(const graph *g, const node *n, char *text, size_t size)
 {
     const node_desc *desc = component_node_target(g, n);

@@ -645,7 +645,7 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
         size_t first = yyjson_get_uint(yyjson_obj_get(make, "first"));
         vector |= !strcmp(yyjson_get_str(yyjson_obj_get(native, "name")), "vec2") &&
                   record &&
-                  !strcmp(yyjson_get_str(yyjson_obj_get(record, "name")), "CF_V2") &&
+                  !strcmp(yyjson_get_str(yyjson_obj_get(record, "name")), "vec2") &&
                   yyjson_get_int(yyjson_arr_get(make_fields, first)) == 0 &&
                   yyjson_get_int(yyjson_arr_get(make_fields, first + 1)) == 1;
     }

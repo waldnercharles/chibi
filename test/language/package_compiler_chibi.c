@@ -1975,6 +1975,31 @@ static const sample samples[] = {
       .source = "package facts\nNullTest :: () -> int { p: ^int? = nil; "
                 "if p == nil { return 1; } return 0; }",
       .calls = { { .function = "NullTest", .arguments = "[]", .expected = "[1]" } } },
+    /* A member of a dereferenced pointer is the pointee's field, as in stage
+     * zero, even when the native call that returned the pointer names its
+     * output the same, directly or through a local. */
+    { .name = "managed pointer named result member",
+      .group = COLLECTION_SAMPLES,
+      .debug_metadata = true,
+      .source = "package facts\n"
+                "Node :: struct { item: int; }\n"
+                "Direct :: () -> int { node: Node = {item: 7}; "
+                "nodes: ^Node[] = [&node]; return get(nodes, 0).item; }\n"
+                "Inferred :: () -> int { node: Node = {item: 7}; "
+                "nodes: ^Node[] = [&node]; p := get(nodes, 0); "
+                "return p.item; }\n",
+      .calls = { { .function = "Direct", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Inferred", .arguments = "[]", .expected = "[7]" } } },
+    /* A callable's named result cannot be a pointer in stage one, so its name
+     * never meets a pointee's field there. */
+    { .name = "managed pointer named result",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Point :: struct { x: int; }\n"
+                "Id :: (v: ^Point) -> (x: ^Point) { return v; }\n",
+      .message = "named result type is not supported yet",
+      .line = 3,
+      .column = 23 },
     { .name = "imported references",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
@@ -5633,6 +5658,24 @@ static const behavior_sample behavior_samples[] = {
     { "Copy", "Copy :: behavior {\n    on Tick :: () {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
     { "Grow", "Grow :: behavior {\n    on Tick :: () {\n        self.Spot.x += 1\n    }\n}\n" },
     { "Swap", "Swap :: behavior {\n    on Tick :: () {\n        self.Spot = self.Spot\n    }\n}\n" },
+    { "OtherComponent",
+      "OtherComponent :: behavior {\n"
+      "    target: entity\n"
+      "    on Tick :: () {\n"
+      "        moved := self.Spot\n"
+      "        moved.x += 1\n"
+      "        globals.Target.Spot = moved\n"
+      "        globals.Target.Spot.y = moved.x * 2\n"
+      "        target = globals.Target\n"
+      "        target.Spot.x += 0.5\n"
+      "    }\n}\n" },
+    { "LocalComponent",
+      "LocalComponent :: behavior {\n"
+      "    on Tick :: () {\n"
+      "        other := globals.Target\n"
+      "        other.Spot.y -= 1\n"
+      "        other.Spot = other.Spot\n"
+      "    }\n}\n" },
     { "Turn",
       "Turn :: behavior {\n    angle: float = 0.5\n    on Tick :: "
       "(DeltaSeconds: float) {\n        "
@@ -5729,6 +5772,11 @@ static const behavior_rejection behavior_rejections[] = {
       "}\n}\n",
       "operator does not apply to these operands",
       false },
+    { "Scale :: behavior {\n    on Tick :: () {\n        globals.Terrain.Spot "
+      "*= 2\n    "
+      "}\n}\n",
+      "operator does not apply to these operands",
+      false },
     { "Pace :: behavior {\n    on Tick :: () {\n        self.Spot.x = pace\n   "
       " "
       "}\n}\n",
@@ -5749,6 +5797,7 @@ enum
     GET_TERRAIN = 800,
     GET_OTHER = 801,
     GET_RESOLVED = 802,
+    GET_TARGET = 803,
     BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
@@ -5856,6 +5905,15 @@ static const script_catalog_capability game_capabilities[] = {
       .result_count = 1,
       .effects = SCRIPT_EFFECT_READ,
       .completion_outcome = -1 },
+    { .id = GET_TARGET,
+      .name = "Fixture Target",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &global_key,
+      .parameter_count = 1,
+      .results = &terrain_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_outcome = -1 },
     { .id = GET_RESOLVED,
       .name = "Fixture Resolved",
       .kind = SCRIPT_CAPABILITY_FUNCTION,
@@ -5877,6 +5935,11 @@ static const script_catalog_field scene_globals[] = {
       .type = { .storage = PIN_HANDLE, .nominal = OTHER_HANDLE },
       .read = GET_OTHER,
       .read_key = "Other" },
+    { .id = 822,
+      .name = "Target",
+      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+      .read = GET_TARGET,
+      .read_key = "Target" },
 };
 static const script_catalog_global game_globals[] = {
     { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
@@ -5917,7 +5980,8 @@ static script_catalog game_catalog()
                                                 .nominal = SCENE_GLOBALS,
                                                 .flags = SCRIPT_TYPE_NAMESPACE },
                                       .fields = scene_globals,
-                                      .field_count = 2 };
+                                      .field_count = sizeof scene_globals /
+                                                     sizeof *scene_globals };
     return (script_catalog){ .types = types,
                              .type_count = sizeof game_types / sizeof *game_types,
                              .capabilities = game_capabilities,
@@ -5928,14 +5992,17 @@ static script_catalog game_catalog()
                              .entity_type = ENTITY,
                              .tick_event = TICK };
 }
+/* The entity `globals.Target` names: the playing world's target. Fresh worlds
+ * number their entities alike, so both players of a comparison share it. */
+static uint64_t play_target;
 /* The getters preserve the caller's typed result header. Equal payload bits
  * for the two handle types must never make them assignment-compatible. */
-static const char *keyed_owner(
-    const behavior_function_context *context,
+static const char *keyed_handle(
     const pin_value *arguments,
     pin_value *out,
     const char *name,
-    const char *type_name
+    const char *type_name,
+    uint64_t handle
 )
 {
     pin_string key = pin_text(arguments[0]);
@@ -5946,7 +6013,7 @@ static const char *keyed_owner(
         !out->type_name || strcmp(out->type_name, type_name)) {
         return "Keyed global result lost its nominal type";
     }
-    out->u64 = context->owner;
+    out->u64 = handle;
     return NULL;
 }
 static const char *terrain_global(
@@ -5956,7 +6023,19 @@ static const char *terrain_global(
     pin_value *out
 )
 {
-    return keyed_owner(context, arguments, out, "Terrain", "ecs.entity");
+    return keyed_handle(arguments, out, "Terrain", "ecs.entity", context->owner);
+}
+static const char *target_global(
+    const behavior_function_context *,
+    void *,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    if (!play_target) {
+        return "No world is playing a target";
+    }
+    return keyed_handle(arguments, out, "Target", "ecs.entity", play_target);
 }
 static const char *other_global(
     const behavior_function_context *context,
@@ -5965,7 +6044,7 @@ static const char *other_global(
     pin_value *out
 )
 {
-    return keyed_owner(context, arguments, out, "Other", "test.other");
+    return keyed_handle(arguments, out, "Other", "test.other", context->owner);
 }
 static const char *resolved_owner(
     const behavior_function_context *,
@@ -5989,12 +6068,14 @@ static const char *resolved_owner(
 }
 static const node_host_call terrain_call = { .context = terrain_global };
 static const node_host_call other_call = { .context = other_global };
+static const node_host_call target_call = { .context = target_global };
 static const node_host_call resolved_call = { .context = resolved_owner };
 static const node_access global_access = { .flags = NODE_EFFECT_PURE };
 static const node_host_call *global_call(uint64_t id)
 {
     return id == GET_TERRAIN  ? &terrain_call
          : id == GET_OTHER    ? &other_call
+         : id == GET_TARGET   ? &target_call
          : id == GET_RESOLVED ? &resolved_call
                               : NULL;
 }
@@ -6324,13 +6405,14 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
     free(bytes);
     return *module != NULL;
 }
-/* A behavior module playing in its own world, on one owner holding a Spot. */
+/* A behavior module playing in its own world, on one owner holding a Spot,
+ * beside the target holding another. */
 typedef struct
 {
     ecs_world *world;
     execution_program *program;
     execution_instance *instance;
-    ecs_entity owner;
+    ecs_entity owner, target;
 } player;
 static bool play(execution_module *module, player *out)
 {
@@ -6359,6 +6441,17 @@ static bool play(execution_module *module, player *out)
     initial.w = 9;
     initial.owner = ecs_entity_to_u64(out->owner);
     REQUIRE(ecs_world_record_add(out->world, out->owner, SPOT_COMPONENT, &initial, 0) == ECS_OK);
+    out->target = ecs_world_create_entity(out->world);
+    uint64_t target = ecs_entity_to_u64(out->target);
+    REQUIRE(target != initial.owner && (!play_target || play_target == target));
+    play_target = target;
+    spot aimed;
+    memset(&aimed, 0, sizeof aimed);
+    aimed.x = 4;
+    aimed.y = 6;
+    aimed.w = 5;
+    aimed.owner = target;
+    REQUIRE(ecs_world_record_add(out->world, out->target, SPOT_COMPONENT, &aimed, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
     if (!module->plan.query_variable_count) {
         out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
@@ -6368,6 +6461,7 @@ static bool play(execution_module *module, player *out)
 }
 static void stop(player *p)
 {
+    play_target = 0;
     execution_program_free(p->program);
     ecs_world_free(p->world);
     *p = (player){ 0 };
@@ -6470,7 +6564,8 @@ static bool handled(int status)
 {
     return status == FLOW_OK || status == FLOW_ERR_UNKNOWN_EVENT;
 }
-/* Each Tick and Move, both modules' owners hold the same Spot and states. */
+/* Each Tick and Move, both modules' owners and targets hold the same Spots,
+ * and the owners the same states. */
 static bool plays_alike(execution_module *expected, execution_module *actual)
 {
     player e = { 0 }, a = { 0 };
@@ -6485,8 +6580,11 @@ static bool plays_alike(execution_module *expected, execution_module *actual)
         int moving = execution_instance_dispatch(a.instance, MOVE, move, 2, 0, 0, 1000);
         const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
         const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
+        const spot *u = ecs_component_data_const(e.world, e.target, SPOT_COMPONENT);
+        const spot *v = ecs_component_data_const(a.world, a.target, SPOT_COMPONENT);
         alike = left == right && moved == moving && handled(left) &&
-                handled(moved) && x && y && !memcmp(x, y, sizeof *x);
+                handled(moved) && x && y && !memcmp(x, y, sizeof *x) && u &&
+                v && !memcmp(u, v, sizeof *u);
         for (int i = 0; alike && i < expected->plan.state_count; i++) {
             const pin_value *kept = execution_instance_state(
                 e.instance,
@@ -7448,16 +7546,18 @@ static bool native_catalog_alike()
     publish_project(&pack);
     script_catalog catalog = native_game_catalog();
     REQUIRE(catalog_export_contract(&catalog));
-    static const char
-        source[] = "NativeProbe :: behavior {\n"
-                   "    on Tick :: () {\n"
-                   "        first := echo_spot(self.Spot)\n"
-                   "        owner := entity_seed()\n"
-                   "        paired := pair_spot(first, owner)\n"
-                   "        alias := alias_spot(paired.point)\n"
-                   "        target := echo_entity(paired.owner)\n"
-                   "        if entity_ok(target) { self.Spot = alias; }\n"
-                   "    }\n}\n";
+    static const char source[] =
+        "NativeProbe :: behavior {\n"
+        "    Plain :: (point: SpotAlias) -> Spot { return point; }\n"
+        "    Named :: (point: Spot) -> (result: SpotAlias) { return point; }\n"
+        "    on Tick :: () {\n"
+        "        first := echo_spot(self.Spot)\n"
+        "        owner := entity_seed()\n"
+        "        paired := pair_spot(first, owner)\n"
+        "        alias := alias_spot(paired.point)\n"
+        "        target := echo_entity(paired.owner)\n"
+        "        if entity_ok(target) { self.Spot = Named(Plain(alias)); }\n"
+        "    }\n}\n";
     script_syntax *syntax = script_parse(source);
     script_analysis *analysis = script_analyze(syntax, &catalog);
     const script_lower_bindings bindings = { .global = game_global,
@@ -7538,6 +7638,22 @@ static bool native_catalog_alike()
         for (int i = 0; i < 6; i++) {
             REQUIRE(catalog_calls[i] == 2 * TICKS);
         }
+        /* Each tick, echo adds 1 to x, pair 3 to x and 4 to y, and alias 2 to
+         * y; the aliased returns carry the whole Spot back. */
+        player p = { 0 };
+        REQUIRE(play(actual, &p));
+        pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+        for (int tick = 0; tick < TICKS; tick++) {
+            REQUIRE(
+                execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000) == FLOW_OK
+            );
+        }
+        const spot *held = ecs_component_data_const(p.world, p.owner, SPOT_COMPONENT);
+        REQUIRE(
+            held && held->x == 4 * TICKS && held->y == 6 * TICKS &&
+            held->w == 9 && held->owner == ecs_entity_to_u64(p.owner)
+        );
+        stop(&p);
         execution_module_free(actual);
     }
     execution_module_free(expected);
@@ -8596,6 +8712,34 @@ enum
 {
     SAMPLE_COUNT = sizeof behavior_samples / sizeof *behavior_samples
 };
+/* One Tick of stage one's `name` sample writes `wanted` into the target, holding the owner's handle when `copied` from the owner, and leaves
+ * the owner's Spot as it was. */
+static bool writes_target(const char *name, spot wanted, bool copied)
+{
+    const behavior_sample *sample = behavior_samples;
+    while (strcmp(sample->name, name)) {
+        sample++;
+    }
+    execution_module *module = NULL;
+    player p = { 0 };
+    REQUIRE(stage_one_behavior(1, sample->name, sample->source, &module) && play(module, &p));
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    REQUIRE(execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000) == FLOW_OK);
+    const spot *owner = ecs_component_data_const(p.world, p.owner, SPOT_COMPONENT);
+    const spot *target = ecs_component_data_const(p.world, p.target, SPOT_COMPONENT);
+    REQUIRE(owner && target);
+    REQUIRE(
+        owner->x == 0 && owner->y == 0 && owner->w == 9 &&
+        owner->owner == ecs_entity_to_u64(p.owner)
+    );
+    REQUIRE(
+        target->x == wanted.x && target->y == wanted.y && target->w == wanted.w &&
+        target->owner == ecs_entity_to_u64(copied ? p.owner : p.target)
+    );
+    stop(&p);
+    execution_module_free(module);
+    return true;
+}
 TEST_CASE(package_compiler_compiles_behaviors)
 {
     REQUIRE(prepare());
@@ -9634,6 +9778,17 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
           "if self == globals.Other { self.Spot.x = 1; } } }",
           "operator does not apply to these operands",
           false },
+        { "Wrong :: behavior { on Tick :: () { globals.Other.Spot.x = 1; } }",
+          "field assignment needs a local record",
+          false },
+        { "Wrong :: behavior { on Tick :: () { other := globals.Other; "
+          "other.Spot.x = 1; } }",
+          "field assignment needs a local record",
+          false },
+        { "Wrong :: behavior { on Tick :: () { self.Spot = globals.Other.Spot; "
+          "} }",
+          "Unknown field 'Spot'",
+          false },
     };
     for (size_t i = 0;
          passed && i < sizeof invalid_keyed_handles / sizeof *invalid_keyed_handles;
@@ -9643,6 +9798,10 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
             REQUIRE(rejects(b, &invalid_keyed_handles[i]));
         }
     }
+    const spot moved = { .x = 1.5f, .y = 2, .w = 9 },
+               lowered = { .x = 4, .y = 5, .w = 5 };
+    passed = passed && writes_target("OtherComponent", moved, true) &&
+             writes_target("LocalComponent", lowered, false);
     passed = passed && takes_project_identities(1);
     publish_project(NULL);
     passed = passed && native_catalog_alike();
@@ -12284,6 +12443,126 @@ TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
     REQUIRE(passed);
     return true;
 }
+/* Each source's queries and system header compile into its own module, in
+ * whatever position the project lists it: each module matches the one its
+ * source compiles to alone, and its queries run. */
+static bool query_sources_compose(int b, const char *const *identities, const char *const *sources, int count)
+{
+    script_catalog catalog = query_game_catalog();
+    pin_value out;
+    REQUIRE(
+        catalog_compile_sources(b, &catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+    );
+    const pin_array *array = out.ptr;
+    if (!array || !array->count) {
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile_sources(b, &catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+        );
+        fprintf(stderr, "query sources rejected: %s\n", pin_text(out).bytes);
+        arena_free(&detached);
+        return false;
+    }
+    size_t length = (size_t)array->count;
+    unsigned char *bytes = xmalloc(length);
+    for (size_t i = 0; i < length; i++) {
+        bytes[i] = array->items[i].u8;
+    }
+    arena_free(&detached);
+    const execution_prepared_linker linker = { .user = &catalog,
+                                               .type = link_game_type,
+                                               .event = link_game_event,
+                                               .host = link_game_host };
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256] = { 0 };
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    free(bytes);
+    if (!packages) {
+        fprintf(stderr, "query sources load: %s\n", error);
+    }
+    REQUIRE(packages && package_collection_count(packages) == count);
+    bool passed = true;
+    for (int i = 0; passed && i < count; i++) {
+        execution_module *alone = NULL;
+        passed = query_stage_one_module(b, identities[i], sources[i], &alone);
+        execution_module *composed = NULL;
+        for (int j = 0; passed && j < count; j++) {
+            execution_module *candidate = package_collection_module(packages, j);
+            if (execution_module_id(candidate) == execution_module_id(alone)) {
+                composed = candidate;
+            }
+        }
+        passed = passed && composed &&
+                 composed->plan.function_count == alone->plan.function_count &&
+                 composed->plan.description_count == alone->plan.description_count &&
+                 composed->plan.system_description == alone->plan.system_description;
+        execution_module_free(alone);
+        if (!passed || !composed->plan.description_count) {
+            continue;
+        }
+        player p = { 0 };
+        passed = play(composed, &p);
+        ecs_entity other = passed ? query_add_spot(&p, 4) : (ecs_entity){ 0 };
+        const pin_value delta = { .type = PIN_F32, .f = .25 };
+        passed = passed && ecs_entity_to_u64(other) &&
+                 (composed->plan.system_description
+                      ? query_step(&p, 0, .25) && query_spot_equals(&p, other, 4, 2)
+                      : execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                                FLOW_OK &&
+                            query_spot_equals(&p, other, 5, 0));
+        stop(&p);
+    }
+    package_collection_free(packages);
+    return passed;
+}
+TEST_CASE(package_compiler_queries_compose_in_any_source_order)
+{
+    static const char *const plain = "Plain :: behavior {}\n";
+    static const char *const
+        rows = "Rows :: behavior {\n"
+               "    on Tick :: () {\n"
+               "        matches := query(live: ^Spot)\n"
+               "        for row in matches { row.live.x += 1 }\n"
+               "    }\n"
+               "}\n";
+    static const char *const apply = "Apply :: system(live: ^Spot) {\n"
+                                     "    live.y += 2\n"
+                                     "}\n";
+    static const char *const orders[][2] = {
+        { "Plain", "Rows" },
+        { "Rows", "Plain" },
+        { "Rows", "Apply" },
+        { "Apply", "Rows" },
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
+            const char *sources[2];
+            for (int i = 0; i < 2; i++) {
+                const char *name = orders[o][i];
+                sources[i] = !strcmp(name, "Plain") ? plain
+                           : !strcmp(name, "Rows")  ? rows
+                                                    : apply;
+            }
+            passed = query_sources_compose(b, orders[o], sources, 2);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
 TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper)
 {
     static const char source
@@ -12542,8 +12821,8 @@ static const char QUERY_SCOPE_PROBE[] =
     "        case .Failed(diagnostic): return [format_text(\"ERROR {}\", "
     "diagnostic.message)];\n"
     "        case .Collected(callables, params, types, members, constants):\n"
-    "            switch CollectQueries(forest, source, \"project:scope\", "
-    "types, members, callables, params, [], [],\n"
+    "            switch CollectQueries(forest, source, \"project:scope\", 0, "
+    "0, length(forest), types, members, callables, params, [], [], [],\n"
     "                                  [], 0, target, "
     "ResolveOps(instruction_names, false)) {\n"
     "                case .Failed(diagnostic): return [format_text(\"ERROR "
@@ -12807,6 +13086,7 @@ void test_language_package_compiler_chibi_queries()
     RUN_TEST_CASE(package_compiler_query_nested_return_and_empty_iteration);
     RUN_TEST_CASE(package_compiler_query_header_constructs_captured_description);
     RUN_TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt);
+    RUN_TEST_CASE(package_compiler_queries_compose_in_any_source_order);
     RUN_TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper);
     RUN_TEST_CASE(package_compiler_empty_system_runs_only_attached_owner);
     RUN_TEST_CASE(package_compiler_query_optional_guards_and_inferred_values);

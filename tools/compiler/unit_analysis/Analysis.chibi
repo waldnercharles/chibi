@@ -231,12 +231,11 @@ CallExpression: int : 6;
 MemberExpression: int : 7;
 StructExpression: int : 14;
 FallbackExpression: int : 16;
-StoreExpression: int : 17;
-JoinExpression: int : 19;
-IsExpression: int : 23;
-AsExpression: int : 24;
-UnwrapExpression: int : 25;
-QueryFieldExpression: int : 29;
+JoinExpression: int : 18;
+IsExpression: int : 22;
+AsExpression: int : 23;
+UnwrapExpression: int : 24;
+QueryFieldExpression: int : 28;
 GlobalSymbol: int : 0;
 StateSymbol: int : 4;
 SharedStateSymbol: int : 5;
@@ -678,7 +677,7 @@ Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
                     child = source.expression;
                     descend = true;
                 }
-            } else if (expression.kind == UnaryExpression || expression.kind == BinaryExpression || expression.kind == FallbackExpression || expression.kind == StoreExpression) {
+            } else if (expression.kind == UnaryExpression || expression.kind == BinaryExpression || expression.kind == FallbackExpression) {
                 work.phase = Left;
                 child = expression.left;
                 descend = true;
@@ -724,7 +723,7 @@ Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
             saved[top] = value;
             if (expression.kind == FallbackExpression) {
                 work.phase = ArgumentsPhase;
-            } else if (expression.kind != StoreExpression && expression.right < 0) {
+            } else if (expression.right < 0) {
                 switch Operation(environment, current, expression, value, units.Empty(units.Unknown)) {
                     case .Evaluated(unit, next):
                         value = unit;
@@ -737,18 +736,10 @@ Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
                 descend = true;
             }
         } else if (work.phase == Right) {
-            if (expression.kind == StoreExpression) {
-                switch Match(current, range, saved[top], "=", value) {
-                    case .Evaluated(unit, next):
-                        value = unit;
-                        current = next;
-                }
-            } else {
-                switch Operation(environment, current, expression, saved[top], value) {
-                    case .Evaluated(unit, next):
-                        value = unit;
-                        current = next;
-                }
+            switch Operation(environment, current, expression, saved[top], value) {
+                case .Evaluated(unit, next):
+                    value = unit;
+                    current = next;
             }
             work.phase = Finish;
         } else if (work.phase == ArgumentsPhase) {

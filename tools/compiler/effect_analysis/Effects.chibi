@@ -226,7 +226,8 @@ Stages :: (environment: Environment) -> Stage[] {
 }
 
 Call: int : 6;
-Join: int : 19;
+Join: int : 18;
+Relation: int : 20;
 Member: int : 7;
 Dereference: int : 27;
 PointerStorage: int : 19;
@@ -752,7 +753,7 @@ pub Analyze :: (environment: Environment) -> Analysis {
         }
     }
     for (row in Statements(environment)) {
-        if (row.kind == 7 && Expressions(environment)[row.expression].kind == 21 && (statementEffects[row.body] & 20) != 0) {
+        if (row.kind == 7 && Expressions(environment)[row.expression].kind == Relation && (statementEffects[row.body] & 20) != 0) {
             diagnostics = Report(environment, diagnostics, row.range, "Streaming relationship iteration cannot suspend or change entity structure");
         }
     }

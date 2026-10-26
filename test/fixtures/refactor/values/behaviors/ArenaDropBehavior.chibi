@@ -24,7 +24,7 @@ ArenaDropBehavior :: behavior {
         } else {
         }
     }
-    Emit_Source_Frame :: (Position: struct<Transform> = null, Appearance: struct<Geometry3D> = null, Material: struct<Shader> = null, Orientation: struct<Orientation> = null, Visual: struct<VisualTransform> = null) -> () {
+    Emit_Source_Frame :: (Position: Transform = null, Appearance: Geometry3D = null, Material: Shader = null, Orientation: Orientation = null, Visual: VisualTransform = null) -> () {
 
         action forloop = for_loop(FirstIndex: 0, LastIndex: int(subtract(A: plain int = primitive_part(Appearance: Appearance, Index: 0).Count, B: plain int = 1)));
         forloop();
@@ -35,7 +35,7 @@ ArenaDropBehavior :: behavior {
             return ();
         }
     }
-    Spawn_Surface_Pulse :: (Prototype: Prototype = ArenaHitPulse, Position: struct<Transform> = null) -> () {
+    Spawn_Surface_Pulse :: (Prototype: Prototype = ArenaHitPulse, Position: Transform = null) -> () {
 
         action spawn_prototype_action = spawn_prototype(Prototype: Prototype);
         spawn_prototype_action();
@@ -44,7 +44,7 @@ ArenaDropBehavior :: behavior {
             return ();
         }
     }
-    Spawn_Source_Beam :: (Position: struct<Transform> = null, Appearance: struct<Geometry3D> = null, Material: struct<Shader> = null, Orientation: struct<Orientation> = null, Visual: struct<VisualTransform> = null, Center: struct<CF_V2> = null, Center_Y: float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
+    Spawn_Source_Beam :: (Position: Transform = null, Appearance: Geometry3D = null, Material: Shader = null, Orientation: Orientation = null, Visual: VisualTransform = null, Center: vec2 = null, Center_Y: float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
 
         action spawn_prototype_action = spawn_prototype(Prototype: ArenaEnemyShard);
         spawn_prototype_action();

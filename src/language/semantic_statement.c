@@ -117,8 +117,7 @@ static bool reads_result(const script_analysis *a, int index, int symbol, int de
     if (reads_result(a, e->left, symbol, depth + 1)) {
         return true;
     }
-    if ((e->kind == SCRIPT_EXPR_BINARY || e->kind == SCRIPT_EXPR_INDEX ||
-         e->kind == SCRIPT_EXPR_STORE) &&
+    if ((e->kind == SCRIPT_EXPR_BINARY || e->kind == SCRIPT_EXPR_INDEX) &&
         reads_result(a, e->right, symbol, depth + 1)) {
         return true;
     }
@@ -513,28 +512,6 @@ static bool nested_callee(analyzer *a, TSNode body, TSNode node, TSNode call)
     free(name);
     return found;
 }
-/* The state `set_variable<"name">(value)` writes, or -1. */
-static int state_write(analyzer *a, TSNode call, TSNode *value)
-{
-    char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
-    int index = script_analyzer_find_capability(a, call, name, SCRIPT_CAPABILITY_FUNCTION);
-    free(name);
-    TSNode types = script_analyzer_field(call, "type_arguments");
-    TSNode arguments = script_analyzer_field(call, "arguments");
-    if (index < 0 ||
-        a->catalog->capabilities[index].state_access != SCRIPT_STATE_ACCESS_WRITE ||
-        script_analyzer_named_count(types) != 1 ||
-        script_analyzer_named_count(arguments) != 1) {
-        return -1;
-    }
-    TSNode argument = ts_node_named_child(arguments, 0);
-    *value = script_analyzer_field(argument, "value");
-    if (ts_node_is_null(*value)) {
-        *value = argument;
-    }
-    TSNode type = ts_node_named_child(types, 0);
-    return script_analyzer_lookup_storage(a, script_analyzer_field(type, "name"), SCRIPT_STATE);
-}
 static void task_hints(analyzer *a, TSNode body, TSNode node)
 {
     TSNode value = { 0 };
@@ -543,8 +520,6 @@ static void task_hints(analyzer *a, TSNode body, TSNode node)
         script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
         value = script_analyzer_field(node, "value");
         symbol = task_target(a, node);
-    } else if (script_analyzer_is(node, "call_expression")) {
-        symbol = state_write(a, node, &value);
     }
     while (script_analyzer_is(value, "parenthesized_expression")) {
         value = script_analyzer_field(value, "expression");
@@ -1010,7 +985,6 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         if (result.expression >= 0 &&
             a->out->expressions[result.expression].kind != SCRIPT_EXPR_CALL &&
-            a->out->expressions[result.expression].kind != SCRIPT_EXPR_STORE &&
             a->out->expressions[result.expression].kind != SCRIPT_EXPR_JOIN) {
             script_analyzer_diagnostic(a, node, "Expression statements must invoke a callable");
         }

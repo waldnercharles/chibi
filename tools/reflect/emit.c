@@ -78,7 +78,7 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
 {
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
-        fprintf(out, "const type_field %s%s_fields[] = {\n", symbol_prefix(), s->name);
+        fprintf(out, "const type_field %s%s_fields[] = {\n", symbol_prefix(), struct_c_name(s));
         for (int j = 0; j < acount(s->fields); j++) {
             const field_info *f = &s->fields[j];
             fprintf(
@@ -86,7 +86,7 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
                 "    { \"%s\", %s, offsetof(%s, %s), sizeof(%s), \"%s\", ",
                 f->name,
                 f->pin,
-                s->name,
+                struct_c_name(s),
                 f->name,
                 f->spelling,
                 field_type_name(f)
@@ -105,20 +105,20 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
         }
         fputs("};\n\n", out);
 
-        fprintf(out, "const type_desc %sT_%s = {\n", symbol_prefix(), s->name);
+        fprintf(out, "const type_desc %sT_%s = {\n", symbol_prefix(), struct_c_name(s));
         fprintf(out, "    .name = \"%s\",\n", s->name);
-        fprintf(out, "    .size = sizeof(%s),\n", s->name);
-        fprintf(out, "    .fields = %s%s_fields,\n", symbol_prefix(), s->name);
+        fprintf(out, "    .size = sizeof(%s),\n", struct_c_name(s));
+        fprintf(out, "    .fields = %s%s_fields,\n", symbol_prefix(), struct_c_name(s));
         fprintf(out, "    .field_count = %d,\n", acount(s->fields));
         if (s->alias_of) {
-            fprintf(out, "    .alias_of = \"%s\",\n", s->alias_of);
+            fprintf(out, "    .alias_of = \"%s\",\n", authored_type(s->alias_of));
         }
         fputs("};\n\n", out);
     }
 
     fprintf(out, "const type_desc *const %sREGISTRY_TYPES[] = {\n", symbol_prefix());
     for (int i = 0; i < acount(ctx->structs); i++) {
-        fprintf(out, "    &%sT_%s,\n", symbol_prefix(), ctx->structs[i].name);
+        fprintf(out, "    &%sT_%s,\n", symbol_prefix(), struct_c_name(&ctx->structs[i]));
     }
     fputs("};\n", out);
     fprintf(out, "const int %sREGISTRY_TYPE_COUNT = %d;\n\n", symbol_prefix(), acount(ctx->structs));
@@ -250,8 +250,8 @@ static reflection_counts declare_reflection(FILE *out, const collect_ctx *ctx)
     int component_count = 0, service_count = 0;
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
-        fprintf(out, "extern const type_desc %sT_%s;\n", symbol_prefix(), s->name);
-        fprintf(out, "extern const type_field %s%s_fields[];\n", symbol_prefix(), s->name);
+        fprintf(out, "extern const type_desc %sT_%s;\n", symbol_prefix(), struct_c_name(s));
+        fprintf(out, "extern const type_field %s%s_fields[];\n", symbol_prefix(), struct_c_name(s));
         if (!s->component) {
             continue;
         }

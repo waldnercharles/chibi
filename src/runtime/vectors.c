@@ -24,7 +24,7 @@ pin_value native_normalize(const pin_value *inputs, int count, arena *memory)
         result->x = (float)(value.x / length);
         result->y = (float)(value.y / length);
     }
-    return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = result };
+    return (pin_value){ .type = PIN_STRUCT, .type_name = "vec2", .ptr = result };
 }
 
 static CF_V2 v2_input(const pin_value *value)
@@ -69,7 +69,7 @@ pin_value native_direction_to(const pin_value *inputs, int count, arena *memory)
     CF_V2 origin = *(const CF_V2 *)inputs[0].ptr;
     CF_V2 target = *(const CF_V2 *)inputs[1].ptr;
     CF_V2 delta = { target.x - origin.x, target.y - origin.y };
-    pin_value value = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &delta };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &delta };
     return native_normalize(&value, 1, memory);
 }
 
@@ -80,7 +80,7 @@ pin_value native_direction_from_angle(const pin_value *inputs, int count, arena 
     CF_V2 *result = arena_alloc(memory, sizeof *result);
     cos_sin pair = cos_sin_compute((float)inputs[0].d);
     *result = (CF_V2){ pair.c, pair.s };
-    return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = result };
+    return (pin_value){ .type = PIN_STRUCT, .type_name = "vec2", .ptr = result };
 }
 
 pin_value native_random_range_vector(const pin_value *inputs, int count, arena *memory)
@@ -120,7 +120,7 @@ pin_value native_random_range_vector(const pin_value *inputs, int count, arena *
         (float)fma((double)min.y, 1 - y, (double)max.y * y),
         (float)fma((double)min.z, 1 - z, (double)max.z * z),
     };
-    return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = result };
+    return (pin_value){ .type = PIN_STRUCT, .type_name = "vec3", .ptr = result };
 }
 
 #define CALL(KERNEL, NAME, SOURCE, METHOD, INPUTS, OUTPUTS, RANDOM)                                            \

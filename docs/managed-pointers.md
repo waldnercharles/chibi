@@ -82,6 +82,9 @@ q.health = 80   // actor, p and q observe 80.
   arrays of nullable pointers (`^T?[]`). Ordinary pointer results and arrays
   of non-null pointers work. These follow its existing named-result and boxed
   optional-collection limits and need explicit parity work before expansion.
+- A member of a dereferenced pointer is a field of its pointee, even when the
+  call that returned the pointer, such as `get(nodes, 0).item`, names its
+  output the same. Both compilers read the field.
 - Unreachable cycles are reclaimed automatically at execution safe points.
   Collection timing is not an observable resource-cleanup guarantee. Files and
   other external resources retain their own close/scope rules.

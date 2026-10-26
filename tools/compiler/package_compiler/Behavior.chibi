@@ -695,6 +695,16 @@ SystemNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
     }
     return names;
 }
+// The queries whose evaluators `document` declares, as its module owns them.
+SourceQueries :: (queries: QuerySpec[], callables: Callable[], document: int) -> QuerySpec[] {
+    owned: QuerySpec[] = [];
+    for (described in queries) {
+        if (callables[described.evaluator].document == document) {
+            owned.append(described);
+        }
+    }
+    return owned;
+}
 // Parsed roots, signatures and catalog types share one index space. Bodies
 // establish exact imports; dependencies are assembled before their callers.
 SourceNatives :: (documents: snapshot.Document[], callables: Callable[], natives: ResolvedNative[],
@@ -796,8 +806,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         case .Read(promoted):
             declared_types = promoted;
     }
-    // Queries compile in the first source only: their evaluators must follow
-    // its callables, and a library has no owner to query from.
+    // A library has no owner to query from.
     has_queries := false;
     index = 0;
     while (index < length(documents)) {
@@ -809,8 +818,8 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         while (node < documents[index].node_start + documents[index].node_count) {
             if (Is(forest, node, "query_expression") ||
                 (Is(forest, node, "system") && length(Members(forest, Field(forest, node, "parameters"))) > 0)) {
-                if (index > 0) {
-                    return Result.Rejected(Diagnose(forest, node, index, "queries compile only in the first executable source"));
+                if (Is(forest, roots[index], "library")) {
+                    return Result.Rejected(Diagnose(forest, node, index, "queries need a behavior or system source"));
                 }
                 has_queries = true;
             }
@@ -837,10 +846,14 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 callables = declared;
                 params = parameters;
         }
-        if (index == 0 && has_queries) {
-            switch CollectQueries(forest, sources[0], identities[0], documents[0].node_count, declared_types, members,
-                                  callables, params, natives, ports, SourceNames(forest, roots[0], games[0], declared_types, target),
-                                  entity, target, ops) {
+        // A source's evaluators follow its callables, which its module owns.
+        if (has_queries && !Is(forest, roots[index], "library")) {
+            first := documents[index].node_start;
+            switch CollectQueries(forest, sources[index], identities[index], index, first,
+                                  first + documents[index].node_count, declared_types, members, callables, params,
+                                  natives, ports, query_specs,
+                                  SourceNames(forest, roots[index], games[index], declared_types, target), entity,
+                                  target, ops) {
                 case .Failed(diagnostic):
                     return Result.Rejected(diagnostic);
                 case .Collected(query_types, query_members, query_callables, query_params, descriptions):
@@ -905,7 +918,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 body := FunctionBody(forest, documents, callables, params, declared_types, members, constants, natives,
                                      ports, native_ids, extend(Aliases(namespaces, callable.document), behaving),
                                      operators, makes, make_fields, index, solid, undeclared, meaning, context,
-                                     generic, ops, target, query_specs);
+                                     generic, ops, target, SourceQueries(query_specs, callables, callable.document));
                 switch body {
                     case .Failed(diagnostic):
                         return Result.Rejected(diagnostic);
@@ -957,14 +970,10 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 }
             }
             if (ready) {
-                own_queries: QuerySpec[] = [];
-                if (index == 0) {
-                    own_queries = query_specs;
-                }
                 switch Assemble(forest, documents, index, index, identities, module_ids, fingerprints,
                                 resize([true], length(documents)), namespaces, callables, params, declared_types,
                                 members, constants, natives, ports, native_ids, native_effects, effects, ops,
-                                target, abi, games[index], bodies, own_queries) {
+                                target, abi, games[index], bodies, SourceQueries(query_specs, callables, index)) {
                     case .Rejected(diagnostic):
                         return Result.Rejected(diagnostic);
                     case .Compiled(module, bytes, summaries):

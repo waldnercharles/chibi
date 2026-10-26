@@ -298,8 +298,6 @@ static script_unit compute(pass *p, const script_expression *e)
             }
             return result;
         }
-        case SCRIPT_EXPR_STORE:
-            return match(p, e->range, expression_unit(p, e->left), "=", expression_unit(p, e->right));
         case SCRIPT_EXPR_STRUCT: {
             if (!e->argument_count) {
                 return UNKNOWN;

@@ -100,7 +100,7 @@ also own scheduling and independent continuations per root/target tuple.
 Grouped source bindings are a future exploration, recorded in
 [design notes](design-notes.md#decisions-owner-2026-10-22).
 
-Project version 34 migrates legacy live-component query parameters to pointers,
+Project version 36 migrates legacy live-component query parameters to pointers,
 flattens clauses and makes bare whole-component value/lvalue access explicit
 with `name^`. Migration preserves lexical shadows, comments and literals.
 Ambiguous optional whole-value reads and obsolete body query declarations

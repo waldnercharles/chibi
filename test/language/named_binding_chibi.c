@@ -806,7 +806,7 @@ static bool raw_query(int index)
             break;
         case 16:
             q.operation = TEXT;
-            q.text = " ref set<Comp> ? ";
+            q.text = " ref Comp [] ? ";
             break;
         case 17:
             q.operation = TEXT;

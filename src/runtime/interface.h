@@ -8,10 +8,10 @@ NODE_FN NODE_JIT("v2-move") NODE_DESCRIPTION(
     "Returns transform moved by x and y."
 ) Transform move_transform(Transform transform, float x, float y);
 NODE_FN NODE_JIT("identity") NODE_CONVERTS(Transform, CF_V2) NODE_DESCRIPTION(
-    "Converts a Transform to its CF_V2 position."
+    "Converts a Transform to its vec2 position."
 ) CF_V2 transform_to_cf(Transform transform);
 NODE_FN NODE_JIT("identity") NODE_CONVERTS(CF_V2, Transform) NODE_DESCRIPTION(
-    "Converts a CF_V2 position to a Transform."
+    "Converts a vec2 position to a Transform."
 ) Transform transform_from_cf(CF_V2 value);
 
 NODE_READ NODE_NAME("Transform Visual Offset") NODE_CATEGORY("Math/Vector") NODE_KEYWORDS(

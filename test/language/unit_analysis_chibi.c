@@ -909,8 +909,6 @@ TEST_CASE(unit_analysis_raw_ir_and_catalog_match)
                                                     .parameter = 1,
                                                     .range = range_at(40) };
                 r.expressions[fallback].argument_count = 2;
-                int store = expression(&r, SCRIPT_EXPR_STORE, 0, 1, -1);
-                r.expressions[store].range = range_at(40);
                 expression(&r, SCRIPT_EXPR_CAST, fallback, -1, -1);
                 break;
             }
@@ -1125,7 +1123,7 @@ TEST_CASE(unit_analysis_raw_ir_and_catalog_match)
         );
         script_unit_analysis_result expected;
         REQUIRE(compare(&r.facts, c == 6 ? 0 : -1, &expected));
-        const int diagnostics[] = { 0, 0, 0, 2, 1, 2, 2, 1, 1, 1, 0, 1, 0,
+        const int diagnostics[] = { 0, 0, 0, 2, 1, 1, 2, 1, 1, 1, 0, 1, 0,
                                     0, 0, 0, 0, 1, 4, 2, 0, 0, 0, 0, 0 };
         REQUIRE(expected.diagnostic_count == diagnostics[c]);
         if (c == 2) {
@@ -1164,7 +1162,7 @@ TEST_CASE(unit_analysis_raw_ir_and_catalog_match)
                 !strcmp(expected.units[4].terms[0].name, "kg")
             );
         }
-        if (c == 5 || c == 19) {
+        if (c == 19) {
             REQUIRE(
                 expected.diagnostics[0].range.start ==
                 expected.diagnostics[1].range.start

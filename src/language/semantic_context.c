@@ -400,7 +400,9 @@ void script_analyzer_generic_types(analyzer *a, TSNode node, script_signature_ge
     if (ts_node_is_null(node)) {
         return;
     }
-    if (script_analyzer_is(node, "type_application")) {
+    /* The reader constructs `task(T)` itself; T may hold applications. */
+    if (script_analyzer_is(node, "type_application") &&
+        !script_signature_task(script_analyzer_syntax(a, node)->text, node)) {
         script_signature_generic resolved = { ts_node_start_byte(node),
                                               ts_node_end_byte(node),
                                               script_analyzer_generic_type(a, node) };
@@ -613,7 +615,8 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
         script_analyzer_diagnostic(
             a,
             node,
-            view ? "A nonoptional view requires an initializer" : "'%s' requires a default value",
+            view ? "A nonoptional view requires an initializer"
+                 : "'%s' requires a default value",
             record->name
         );
         value = script_analyzer_expression(a, node, expected);

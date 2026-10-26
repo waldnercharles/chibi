@@ -8,7 +8,7 @@ NATIVE_VECTOR_OPERATIONS(BANKS)
     { .canonical_name = NAME,                                                  \
       .source_name = SOURCE,                                                   \
       .method_name = METHOD,                                                   \
-      .receiver_type = METHOD ? "CF_V2" : NULL,                                \
+      .receiver_type = METHOD ? "vec2" : NULL,                                 \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .inputs = KERNEL##_inputs,                                               \
       .input_count = NATIVE_COUNT(KERNEL##_inputs),                            \

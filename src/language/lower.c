@@ -5012,19 +5012,6 @@ static int expression_value(lower *l, int index)
                 (int)e->offset,
                 e->range
             );
-        case SCRIPT_EXPR_STORE: {
-            const script_symbol *action = action_symbol(l, e);
-            if (action && action->disabled) {
-                return action_value(l, action->id, 0, e->type, e->range);
-            }
-            int value = expression(l, e->right);
-            value = convert(l, value, l->a->expressions[e->right].type, e->type, e->range);
-            store_symbol(l, e->symbol, value, e->range);
-            if (e->instance) {
-                action_complete(l, e->instance, &e->type, &value, 1, e->range);
-            }
-            return value;
-        }
         case SCRIPT_EXPR_INDEX: {
             bool borrowed = l->borrowing && l->borrowed_expression == index;
             l->borrowing = false;
@@ -7660,9 +7647,6 @@ static bool symbol_written(lower *l, int symbol)
             const script_expression *e = &l->a->expressions[i];
             if (e->kind == SCRIPT_EXPR_ARRAY_MUTATE) {
                 mark_root(l, e->left);
-            }
-            if (e->kind == SCRIPT_EXPR_STORE && e->symbol >= 0) {
-                l->written[e->symbol] = true;
             }
             for (int j = 0; j < e->argument_count; j++) {
                 if (reference_argument(l, e, j)) {

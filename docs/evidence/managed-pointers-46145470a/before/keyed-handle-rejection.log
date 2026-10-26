@@ -1,0 +1,10 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-behaviors-rest
+revision c25987b6e81a7ce5473cdb88d5abe07c9e7cb3cf 121 modified
+behavior rejection: wanted 'field assignment needs a local record', got 'Rejected:1:37: Unknown field 'Spot''
+(FAILED: /home/claude/chibi/test/language/package_compiler_chibi.c (9603): rejects(b, &invalid_keyed_handles[i]))
+Running: package_compiler_compiles_the_other_behaviors 
+Running: package_compiler_keeps_text_state_per_owner (OK) (116.556162 secs)
+===============================================================
+Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 4286
+Test command wall time: 249.727s; includes in-test fixture setup; external configuration/build excluded.
+exit 1

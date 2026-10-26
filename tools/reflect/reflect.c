@@ -10,6 +10,18 @@
 
 int g_failed;
 const collect_ctx *g_collection;
+
+const char *authored_type(const char *spelling)
+{
+    assert(g_collection);
+    for (int i = 0; i < acount(g_collection->structs); i++) {
+        const struct_info *s = &g_collection->structs[i];
+        if (s->c_name && !strcmp(s->c_name, spelling)) {
+            return s->name;
+        }
+    }
+    return spelling;
+}
 static char g_prefix_storage[128];
 const char *g_prefix = "REFLECTION";
 

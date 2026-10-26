@@ -1,0 +1,25 @@
+$ python3 tools/test_policy.py tool language-package-compiler-chibi-libraries
+revision 46145470ae0ad7aa674b7cb96689d367c52268e6 0 modified
+pure12 provider exports 31 native effect masks with no WRITE
+native selected Append 0c6862d2151ad1af item effects2 WRITE1
+native selected Append 0c6862d2151ad1af item effects0 WRITE0
+native C ordered Append receiver before WRITE item returns [[1,7]] on both runtime backends
+native selected Append 0c6862d2151ad1af item effects0 WRITE0
+native C reversed Append with pure authored Item returns [[1,7]] on both runtime backends
+Running: package_compiler_pure_provider_has_no_write (OK) (0.003074 secs)
+Running: package_compiler_compiles_executable_libraries (OK) (120.465124 secs)
+Running: package_compiler_links_executable_libraries (OK) (124.936810 secs)
+Running: package_compiler_resolves_unqualified_libraries (OK) (119.718958 secs)
+Running: package_compiler_resolves_library_primitive_names (OK) (123.321909 secs)
+Running: package_compiler_resolves_native_canonical_names (OK) (119.548772 secs)
+Running: package_compiler_resolves_library_names (OK) (122.050049 secs)
+Running: package_compiler_resolves_library_array_updates (OK) (121.494999 secs)
+Running: package_compiler_rejects_unsupported_numeric_conversions (OK) (123.193473 secs)
+Running: package_compiler_rejects_invalid_library_closures (OK) (124.398999 secs)
+Running: package_compiler_folds_constants_as_stage_zero_does (OK) (122.690642 secs)
+Running: package_compiler_preserves_receiver_before_writing_item (OK) (123.136531 secs)
+Running: package_compiler_preserves_pure_reversed_append_debug (OK) (121.186578 secs)
+===============================================================
+Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 16207
+Test command wall time: 1485.620s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

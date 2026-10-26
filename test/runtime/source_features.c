@@ -205,9 +205,9 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 {
     const char
         *format = "Reaction :: behavior { done:retain bool=false; "
-                  "rotation:retain struct<CF_V3>={x:-1.0,y:2.0,z:3.0}; "
-                  "target:retain handle<ecs.entity>=0; Apply :: "
-                  "(Rotation:struct<CF_V3>,Target:handle<ecs.entity>)->(){ "
+                  "rotation:retain vec3={x:-1.0,y:2.0,z:3.0}; "
+                  "target:retain entity=0; Apply :: "
+                  "(Rotation:vec3,Target:entity)->(){ "
                   "await delay(Duration:0.125); await "
                   "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } on "
                   "Tick :: () { await Apply(Rotation:rotation,Target:target); "
@@ -253,7 +253,7 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
                 execution_instance_set_state(
                     instance,
                     rotation_id,
-                    (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &changed }
+                    (pin_value){ .type = PIN_STRUCT, .type_name = "vec3", .ptr = &changed }
                 ) == 0
             );
             REQUIRE(pump(.125, .125, 1024) >= 0);
@@ -472,7 +472,7 @@ TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
     const char *
         text = "Query :: behavior { visits:retain int=0; last:retain "
-               "handle<ecs.entity>=0; Count :: ()->(){ for (outer in "
+               "entity=0; Count :: ()->(){ for (outer in "
                "find_entities_with_component(Component:Health)) { for (inner "
                "in find_entities_with_component(Component:Health)) { "
                "visits+=1; last=inner; } } } on Tick :: () { visits=0; last=0; "
@@ -538,7 +538,7 @@ TEST_CASE(source_native_relationship_snapshot_mutations_commit_between_handlers)
 {
     const char *text =
         "Links :: behavior { count:retain int=0; phase:retain int=0; "
-        "targets:retain handle<ecs.entity>[]=[]; on Tick :: () { if phase==0 { "
+        "targets:retain entity[]=[]; on Tick :: () { if phase==0 { "
         "for target in self.ChildOf { "
         "targets=append(targets,target); } for target in targets { "
         "if has_pair(self,ChildOf,target) { remove_pair(self,ChildOf,target); "
@@ -693,20 +693,21 @@ static ecs_entity place_collider(CF_V3 position, Collider3D collider)
  * units, 32 per meter, so a cast stops Box3D's linear slop of .16 short. */
 TEST_CASE(source_native_physics3d_queries_read_colliders)
 {
-    const char *text =
-        "Probe :: behavior { start:retain struct<CF_V3>={x:0.0,y:320.0,z:0.0}; "
-        "finish:retain struct<CF_V3>={x:0.0,y:-32.0,z:0.0}; push:retain "
-        "struct<CF_V3>={x:320.0,y:0.0,z:0.0}; found:retain bool=false; "
-        "target:retain handle<ecs.entity>=0; distance:retain float=0.0; "
-        "normal:retain struct<CF_V3>={x:0.0,y:0.0,z:0.0}; blocked:retain "
-        "handle<ecs.entity>=0; travel:retain float=0.0; touching:retain int=0; "
-        "on Tick :: () { found=raycast_3d(start,finish,1,0,false).Found; "
-        "target=raycast_3d(start,finish,1,0,false).Entity; "
-        "distance=raycast_3d(start,finish,1,0,false).Distance; "
-        "normal=raycast_3d(start,finish,1,0,false).Normal; "
-        "blocked=shape_cast_3d(self,push,1,false).Entity; "
-        "travel=shape_cast_3d(self,push,1,false).Distance; "
-        "touching=length(contact_entities_3d(self,2)); } }";
+    const char
+        *text = "Probe :: behavior { start:retain vec3={x:0.0,y:320.0,z:0.0}; "
+                "finish:retain vec3={x:0.0,y:-32.0,z:0.0}; push:retain "
+                "vec3={x:320.0,y:0.0,z:0.0}; found:retain bool=false; "
+                "target:retain entity=0; distance:retain float=0.0; "
+                "normal:retain vec3={x:0.0,y:0.0,z:0.0}; blocked:retain "
+                "entity=0; travel:retain float=0.0; touching:retain int=0; "
+                "on Tick :: () { "
+                "found=raycast_3d(start,finish,1,0,false).Found; "
+                "target=raycast_3d(start,finish,1,0,false).Entity; "
+                "distance=raycast_3d(start,finish,1,0,false).Distance; "
+                "normal=raycast_3d(start,finish,1,0,false).Normal; "
+                "blocked=shape_cast_3d(self,push,1,false).Entity; "
+                "travel=shape_cast_3d(self,push,1,false).Distance; "
+                "touching=length(contact_entities_3d(self,2)); } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Transform3D, NULL) == 0);
@@ -792,10 +793,7 @@ static bool publish_material(int width)
 }
 TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
 {
-    const char *payloads[] = { "float=0.25",
-                               "double=0.5",
-                               "bool=true",
-                               "struct<CF_V2>={x:0.25,y:-0.5}" };
+    const char *payloads[] = { "float=0.25", "double=0.5", "bool=true", "vec2={x:0.25,y:-0.5}" };
     const float expected[][2] = { { .25f, 0 }, { .5f, 0 }, { 1, 0 }, { .25f, -.5f } };
     for (int backend = 0; backend < 2; backend++) {
         for (int kind = 0; kind < 4; kind++) {
@@ -815,7 +813,7 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 sizeof text,
                 "Material :: behavior { "
                 "done:retain bool=false; payload:retain %s; "
-                "Apply :: (Value:%s,Target:handle<ecs.entity>)->(){ "
+                "Apply :: (Value:%s,Target:entity)->(){ "
                 "await delay(Duration:0.125); "
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Value\",Value:"
@@ -830,7 +828,7 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 kind == 0   ? "float"
                 : kind == 1 ? "double"
                 : kind == 2 ? "bool"
-                            : "struct<CF_V2>"
+                            : "vec2"
             );
             REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             uint64_t tick = execution_module_event(prepared->module, "Tick");
@@ -868,9 +866,9 @@ TEST_CASE(source_tilemap_queries_use_live_authored_cells)
 {
     const char
         *text = "Grid :: behavior { frame:retain int=-1; count:retain int=0; "
-                "point:retain struct<CF_V2>={x:11,y:-4}; minimum:retain "
-                "struct<CF_V2>={x:10,y:-5}; maximum:retain "
-                "struct<CF_V2>={x:13,y:0}; on Tick :: () { "
+                "point:retain vec2={x:11,y:-4}; minimum:retain "
+                "vec2={x:10,y:-5}; maximum:retain "
+                "vec2={x:13,y:0}; on Tick :: () { "
                 "frame=tilemap_frame_at(self,point); "
                 "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
     for (int backend = 0; backend < 2; backend++) {
@@ -1016,7 +1014,7 @@ TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
 {
     const char
         *text = "Pointer :: behavior { active:retain bool=true; origin:retain "
-                "struct<CF_V3>={}; direction:retain struct<CF_V3>={}; on Tick "
+                "vec3={}; direction:retain vec3={}; on Tick "
                 ":: () "
                 "{ ray:=get_pointer_ray(); active=ray.Active; "
                 "origin=ray.Origin; direction=ray.Direction; } }";

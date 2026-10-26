@@ -399,10 +399,9 @@ Work :: struct {
     kind: int;
     child: int;
     member_start: int;
-    name: string;
 }
-WorkValue :: (node: int, kind: int, child: int, member_start: int, name: string) -> Work {
-    row: Work = {node: node, kind: kind, child: child, member_start: member_start, name: name};
+WorkValue :: (node: int, kind: int, child: int, member_start: int) -> Work {
+    row: Work = {node: node, kind: kind, child: child, member_start: member_start};
     return row;
 }
 AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
@@ -413,37 +412,6 @@ AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
                 combined.append(item);
             }
             return Reading.Read(value, has_unit, unit, environment, combined, uses, publications, collection);
-    }
-}
-Wrap :: (reading: Reading, tree: Tree, node: int, name: string, document: int) -> Reading {
-    if (name == "map") {
-        errors: syntax.Diagnostic[] = [];
-        errors.append(Diagnostic(tree, node, document, "Use [K: V] for associative maps"));
-        reading = AppendDiagnostics(reading, errors);
-    }
-    switch reading {
-        case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
-            switch value {
-                case .Typed(old_storage, old_container, flags, nominal, parameter):
-                    storage := old_storage;
-                    container := old_container;
-                    if (name == "array" || name == "set" || name == "map") {
-                        if (name == "array") { return Modifiers(ArrayModifier(reading, 1), tree, node, document); }
-                        if (name == "set") { return Modifiers(ArrayModifier(reading, 2), tree, node, document); }
-                        container = 1;
-                        if (name == "set") {
-                            container = 2;
-                        }
-                        if (name == "map") {
-                            container = 3;
-                        }
-                    } else if (name == "enum") {
-                        storage = 16;
-                    } else if (name == "handle") {
-                        storage = 14;
-                    }
-                    return Modifiers(Replace(reading, named.Value.Typed(storage, container, flags, nominal, parameter)), tree, node, document);
-            }
     }
 }
 FinishTask :: (reading: Reading, tree: Tree, node: int, document: int) -> Reading {
@@ -460,6 +428,29 @@ FinishTask :: (reading: Reading, tree: Tree, node: int, document: int) -> Readin
                             }
                     }
             }
+    }
+}
+// The result `task(T)` names, or -1 for another application.
+TaskResult :: (tree: Tree, application: int) -> int {
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, source):
+            if (Text(tree, Field(tree, application, "function")) != "task") {
+                return -1;
+            }
+            result: int = -1;
+            count: int = 0;
+            child := nodes[Field(tree, application, "arguments")].first_child;
+            while (child >= 0) {
+                if (named_flags[child] && !extra_flags[child]) {
+                    result = child;
+                    count += 1;
+                }
+                child = nodes[child].next_sibling;
+            }
+            if (count != 1 || Kind(tree, result, "named_argument") || Kind(tree, result, "typed_argument")) {
+                return -1;
+            }
+            return result;
     }
 }
 FinishPointer :: (reading: Reading, tree: Tree, node: int, document: int) -> Reading {
@@ -538,10 +529,6 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                         reading = FinishTask(reading, tree, work.node, document);
                         continue;
                     }
-                    if (work.kind == 2) {
-                        reading = Wrap(reading, tree, work.node, work.name, document);
-                        continue;
-                    }
                     if (work.kind == 4) {
                         reading = FinishPointer(reading, tree, work.node, document);
                         continue;
@@ -556,7 +543,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                 members.append(value);
                                 member_collections.append(collection);
                         }
-                        frames.append(WorkValue(work.node, 7, -1, work.member_start, ""));
+                        frames.append(WorkValue(work.node, 7, -1, work.member_start));
                         position = Field(tree, work.node, "value");
                         ready = false;
                         continue;
@@ -584,7 +571,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                     }
                     next_member := NextMember(tree, work.child);
                     if (next_member >= 0) {
-                        frames.append(WorkValue(work.node, 3, nodes[next_member].next_sibling, work.member_start, ""));
+                        frames.append(WorkValue(work.node, 3, nodes[next_member].next_sibling, work.member_start));
                         position = next_member;
                         ready = false;
                         continue;
@@ -616,6 +603,27 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                 position = union_child;
                                 continue;
                             }
+                            application: int = -1;
+                            child = nodes[position].first_child;
+                            while (child >= 0) {
+                                if (named_flags[child] && Kind(tree, child, "type_application")) {
+                                    application = child;
+                                }
+                                child = nodes[child].next_sibling;
+                            }
+                            if (application >= 0) {
+                                result := TaskResult(tree, application);
+                                if (result < 0) {
+                                    errors: syntax.Diagnostic[] = [];
+                                    errors.append(Diagnostic(tree, application, document, "Type expression must construct a compile-time type"));
+                                    reading = Modifiers(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, document);
+                                    ready = true;
+                                    continue;
+                                }
+                                frames.append(WorkValue(position, 1, -1, 0));
+                                position = result;
+                                continue;
+                            }
                             wrapper: int = -1;
                             child = nodes[position].first_child;
                             while (child >= 0 && wrapper < 0) {
@@ -626,70 +634,22 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                             }
                             if (wrapper >= 0) {
                                 if (Kind(tree, wrapper, "pointer_type")) {
-                                    frames.append(WorkValue(position, 4, -1, 0, ""));
+                                    frames.append(WorkValue(position, 4, -1, 0));
                                     position = Field(tree, wrapper, "target");
                                 } else if (Kind(tree, wrapper, "map_type")) {
-                                    frames.append(WorkValue(position, 5, -1, 0, ""));
+                                    frames.append(WorkValue(position, 5, -1, 0));
                                     position = wrapper;
                                 } else {
-                                    frames.append(WorkValue(position, 5, -1, 0, ""));
+                                    frames.append(WorkValue(position, 5, -1, 0));
                                     position = Field(tree, wrapper, "type");
                                 }
                                 continue;
                             }
                             name_node := Field(tree, position, "name");
-                            arguments := Field(tree, position, "arguments");
                             switch Name(tree, name_node, document) {
                                 case .Name(name, prefix):
-                                    // Emit before descending, rather than retaining a prefix
-                                    // on every source frame. Earlier sibling facts stay first.
+                                    // The name's own diagnostics come before its resolution's.
                                     reading = AppendDiagnostics(reading, prefix);
-                                    if (name == "task" && arguments >= 0) {
-                                        count: int = 0;
-                                        argument: int = -1;
-                                        child = nodes[arguments].first_child;
-                                        while (child >= 0) {
-                                            if (named_flags[child]) {
-                                                count += 1;
-                                                if (argument < 0) {
-                                                    argument = child;
-                                                }
-                                            }
-                                            child = nodes[child].next_sibling;
-                                        }
-                                        if (count != 1) {
-                                            errors: syntax.Diagnostic[] = [];
-                                            errors.append(Diagnostic(tree, position, document, "task requires one result type"));
-                                            reading = Modifiers(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, document);
-                                            ready = true;
-                                            continue;
-                                        }
-                                        frames.append(WorkValue(position, 1, -1, 0, ""));
-                                        position = argument;
-                                        continue;
-                                    }
-                                    if (name == "array" || name == "set" || name == "map" || name == "struct" || name == "enum" || name == "handle") {
-                                        argument: int = -1;
-                                        if (arguments >= 0) {
-                                            child = nodes[arguments].first_child;
-                                            while (child >= 0 && argument < 0) {
-                                                if (named_flags[child]) {
-                                                    argument = child;
-                                                }
-                                                child = nodes[child].next_sibling;
-                                            }
-                                        }
-                                        if (argument < 0) {
-                                            errors: syntax.Diagnostic[] = [];
-                                            errors.append(Diagnostic(tree, position, document, format_text("Type '{}' requires a type argument", name)));
-                                            reading = Wrap(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, name, document);
-                                            ready = true;
-                                            continue;
-                                        }
-                                        frames.append(WorkValue(position, 2, -1, 0, name));
-                                        position = argument;
-                                        continue;
-                                    }
                                     tokens: string[] = [];
                                     child = nodes[position].first_child;
                                     while (child >= 0) {
@@ -705,7 +665,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                             }
                         }
                         if (Kind(tree, position, "map_type")) {
-                            frames.append(WorkValue(position, 6, -1, length(members), ""));
+                            frames.append(WorkValue(position, 6, -1, length(members)));
                             position = Field(tree, position, "key");
                             continue;
                         }
@@ -718,7 +678,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                                 ready = true;
                                 continue;
                             }
-                            frames.append(WorkValue(position, 3, nodes[first].next_sibling, length(members), ""));
+                            frames.append(WorkValue(position, 3, nodes[first].next_sibling, length(members)));
                             position = first;
                             continue;
                         }

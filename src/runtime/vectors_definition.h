@@ -9,7 +9,7 @@ extern const CF_V3 NATIVE_VECTOR_MIN, NATIVE_VECTOR_MAX;
 #define NATIVE_VECTOR_PORT(X, NAME, TYPE, NOMINAL, VALUE)                      \
     X(NAME, NATIVE_PARAMETER_DATA, TYPE, NOMINAL, PIN_CONTAINER_SINGLE, 0, 0, SCRIPT_REFERENCE_NONE, false, VALUE)
 #define NATIVE_VECTOR_V2(X, NAME)                                              \
-    NATIVE_VECTOR_PORT(X, NAME, PIN_STRUCT, "CF_V2", ((pin_value){ 0 }))
+    NATIVE_VECTOR_PORT(X, NAME, PIN_STRUCT, "vec2", ((pin_value){ 0 }))
 #define NATIVE_VECTOR_VALUE_INPUTS(X) NATIVE_VECTOR_V2(X, "Value")
 #define NATIVE_VECTOR_VECTOR_OUTPUTS(X) NATIVE_VECTOR_V2(X, "Result")
 #define NATIVE_VECTOR_SCALAR_OUTPUTS(X)                                        \
@@ -21,23 +21,23 @@ extern const CF_V3 NATIVE_VECTOR_MIN, NATIVE_VECTOR_MAX;
 #define NATIVE_VECTOR_DIRECTION_OUTPUTS(X) NATIVE_VECTOR_V2(X, "Direction")
 #define NATIVE_VECTOR_ANGLE_INPUTS(X)                                          \
     NATIVE_VECTOR_PORT(X, "Angle", PIN_F64, "double", ((pin_value){ 0 }))
-#define NATIVE_VECTOR_RANDOM_INPUTS(X)                                                               \
-    NATIVE_VECTOR_PORT(                                                                              \
-        X,                                                                                           \
-        "Min",                                                                                       \
-        PIN_STRUCT,                                                                                  \
-        "CF_V3",                                                                                     \
-        ((pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = (void *)&NATIVE_VECTOR_MIN }) \
-    )                                                                                                \
-    NATIVE_VECTOR_PORT(                                                                              \
-        X,                                                                                           \
-        "Max",                                                                                       \
-        PIN_STRUCT,                                                                                  \
-        "CF_V3",                                                                                     \
-        ((pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = (void *)&NATIVE_VECTOR_MAX }) \
+#define NATIVE_VECTOR_RANDOM_INPUTS(X)                                                              \
+    NATIVE_VECTOR_PORT(                                                                             \
+        X,                                                                                          \
+        "Min",                                                                                      \
+        PIN_STRUCT,                                                                                 \
+        "vec3",                                                                                     \
+        ((pin_value){ .type = PIN_STRUCT, .type_name = "vec3", .ptr = (void *)&NATIVE_VECTOR_MIN }) \
+    )                                                                                               \
+    NATIVE_VECTOR_PORT(                                                                             \
+        X,                                                                                          \
+        "Max",                                                                                      \
+        PIN_STRUCT,                                                                                 \
+        "vec3",                                                                                     \
+        ((pin_value){ .type = PIN_STRUCT, .type_name = "vec3", .ptr = (void *)&NATIVE_VECTOR_MAX }) \
     )
 #define NATIVE_VECTOR_RANDOM_OUTPUTS(X)                                        \
-    NATIVE_VECTOR_PORT(X, "Result", PIN_STRUCT, "CF_V3", ((pin_value){ 0 }))
+    NATIVE_VECTOR_PORT(X, "Result", PIN_STRUCT, "vec3", ((pin_value){ 0 }))
 
 #define NATIVE_NORMALIZE_NAME "Normalize Vector 2"
 #define NATIVE_NORMALIZE_SOURCE "vec2_norm"

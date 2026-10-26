@@ -38,8 +38,8 @@ library Rows {
 
 - The initial declaration scope is a library. Fields are flat `string`, `int`
   and `bool`; nested records, generic containers as fields and packed layouts are
-  outside this slice. Existing reflected `struct<"SceneObjectRow">` syntax is
-  retained.
+  outside this slice. A reflected record is named directly, as in
+  `SceneObjectRow`.
 - An omitted field needs an explicit declared default. `key` and `label` above
   are required. Defaults use bounded scalar compile-time values/operators;
   calls, mutable reads, field/default dependencies and aggregate/index/member

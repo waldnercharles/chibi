@@ -937,7 +937,7 @@ static const script_catalog_capability workload_events[] = {
 static const script_catalog workload_catalog = { .capabilities = workload_events,
                                                  .capability_count = 2 };
 static const char
-    workload_task_source[] = "Attribution :: behavior { worker: task<string>; "
+    workload_task_source[] = "Attribution :: behavior { worker: task(string); "
                              "text: string = \"\";Work "
                              ":: (input: string) -> string { yield; return "
                              "input; }on Start :: (input: string) { "

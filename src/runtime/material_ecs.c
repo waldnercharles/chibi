@@ -1244,7 +1244,7 @@ int materials_dispatch_events(materials *materials)
         pin_value values[] = {
             { .type = PIN_F32, .f = event.energy },
             { .type = PIN_I32, .i = event.cause },
-            { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &point },
+            { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &point },
             { .type = PIN_I32, .i = event.kind },
             { .type = PIN_I32, .i = event.removed },
             { .type = PIN_I32, .i = event.dust },

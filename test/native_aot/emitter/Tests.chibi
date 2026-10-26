@@ -44,6 +44,9 @@ pub Tests :: () -> int {
     if (!BudgetIsExplicit()) {
         return 5;
     }
+    if (!RecursionProbesTheStack()) {
+        return 6;
+    }
     return 0;
 }
 ScalarBodyEmitsWithoutRuntime :: () -> bool {
@@ -138,5 +141,21 @@ BudgetIsExplicit :: () -> bool {
         case .Emitted(text):
             return strings.Contains(text, "icmp sgt i32 %remaining0, 0") &&
                    strings.Contains(text, "sub i32 %remaining0, 1");
+    }
+}
+// A function may call itself, with no depth counter. Every function probes
+// its stack, so an endless recursion faults in the guard page.
+RecursionProbesTheStack :: () -> bool {
+    empty: int[] = [];
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Call, 6, 0, 0, 0, 0, 0),
+             Code(native.Publish, 6, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    switch Single(empty, 6, [6], empty, code, true, 1) {
+        case .Rejected(instruction, message):
+            return false;
+        case .Emitted(text):
+            return strings.Contains(text, "define i32 @main() #0 {") &&
+                   strings.Contains(text, "%v1 = call i32 @main()") &&
+                   strings.Contains(text, "attributes #0 = { \"probe-stack\"=\"inline-asm\" }") &&
+                   !strings.Contains(text, "depth");
     }
 }

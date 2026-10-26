@@ -113,6 +113,11 @@ Padded :: (text: string, size: int) -> string {
     }
     return format_text("{}{}", text, strings.Slice(filler, 0, size - strings.ByteLength(text)));
 }
+// The accepted module with Pick's read of its int parameter replaced by a
+// call of Main, so the two functions recurse.
+Recursive :: () -> facts.Row[] {
+    return Renamed(Changed(Changed(Accepted(), 11, Kind, facts.CallRow), 11, Value, 0), 11, "Main", "");
+}
 // Each fixture changes one fact of an otherwise valid module.
 MalformedCount: int : 28;
 Malformed :: (index: int) -> facts.Row[] {
@@ -163,7 +168,7 @@ Malformed :: (index: int) -> facts.Row[] {
         case 21:
             return Changed(rows, 11, Value, 2); // read outside the parameters
         case 22:
-            return Renamed(Changed(Changed(rows, 11, Kind, facts.CallRow), 11, Value, 0), 11, "Main", ""); // cycle
+            return Renamed(Recursive(), 11, "Other", ""); // recursive callee name
         case 23:
             rejected := Rejected();
             rejected.append(rows[2]);
@@ -176,7 +181,7 @@ Malformed :: (index: int) -> facts.Row[] {
             return Renamed(rows, 0, "Scalar.chibi", Padded(rows[0].text, facts.MaxSource + 1)); // source bound
     }
     long := rows;
-    while (length(long) <= 2434) {
+    while (length(long) <= 5410) {
         long.append(rows[11]);
     }
     return long; // row bound
@@ -215,6 +220,13 @@ pub Tests :: () -> int {
         if (!Invalid(Malformed(index))) {
             return 100 + index;
         }
+    }
+    // Recursive functions call each other directly, with no depth counter.
+    recursive := Emitted(Recursive());
+    if (!strings.Contains(recursive, "call i32 @chibi_scalar()") ||
+        !strings.Contains(recursive, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)") ||
+        strings.Contains(recursive, "depth")) {
+        return 8;
     }
     // A coherent fabricated value is not authenticated by shape checks. Only
     // producer/source/envelope binding establishes source semantics.

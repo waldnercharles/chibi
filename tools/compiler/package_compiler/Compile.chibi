@@ -983,13 +983,21 @@ Evaluated :: union {
     | Waiting
     | Value(exact: u64[])
 }
-// The integer type a conversion call converts to, 0 for any other node.
-ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+// The number type a conversion call converts to, 0 for any other node.
+NumberConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     callee := Field(forest, node, "function");
     if (!Is(forest, node, "call_expression") || !Is(forest, callee, "identifier")) {
         return 0;
     }
     storage := ScalarStorage(Text(forest, text, callee));
+    if (!Integer(storage) && !Floating(storage)) {
+        return 0;
+    }
+    return storage;
+}
+// The integer type a conversion call converts to, 0 for any other node.
+ConversionType :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    storage := NumberConversionType(forest, text, node);
     if (!Integer(storage)) {
         return 0;
     }
@@ -1401,7 +1409,7 @@ EvaluateShift :: (forest: snapshot.SnapshotNode[], text: string, file: int, cons
     return Evaluated.Value(shifted);
 }
 // `T(value)` must fit T; `T(wrap: value)` keeps the low bits. The value has
-// its own type, or int64 when untyped, and must fit it.
+// its own type, or i64 when untyped, and must fit it.
 EvaluateConversion :: (forest: snapshot.SnapshotNode[], text: string, file: int, constants: ConstDecl[],
                        aliases: Name[], package: int, node: int) -> Evaluated {
     storage := ConversionType(forest, text, node);

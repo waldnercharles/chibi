@@ -535,6 +535,27 @@ over an explicit stack.
 
 Suggestion: a deeper budget, counted in frame bytes rather than calls, or
 guaranteed tail calls as F# has, so a recursive walk needs no hand-made stack.
+Native code has no limit (decision D4): it recurses as deep as the stack
+allows, as Rust and Odin do.
+
+## Stage one writes no call depth limit
+
+Compiler. Stage zero gives every function the 64-call depth limit above, but
+stage one writes 0, no limit, in each prepared function's header
+(`Compile.chibi` and `bounded_compiler/Prepare.chibi`). On the VMs a function
+of stage one's output that only calls itself grows memory until the process
+is killed; the instruction budget does not stop it. Native code has no limit
+either (decision D4), but it probes its stack, so an overflow always faults
+in the guard page; a host that installs `stack_overflow_init` reports it by
+name and aborts.
+
+- Odin and C have no limit and overflow the stack; Rust probes its stack and
+  aborts with "has overflowed its stack"; Python stops at 1,000 frames with an
+  exception.
+
+Suggestion: write the same limit from stage one. The compiler package itself
+runs on stage one's output, so check first that it stays within the limit,
+or raise the limit as the entry above suggests.
 
 ## format_text drops arguments past twelve
 
@@ -750,6 +771,47 @@ first: `compile: Running = {source: s, handle: h};`.
 Suggestion: type a struct literal from the parameter, element or return type it
 fills, as Odin does.
 
+## Stage one cannot negate a float
+
+Language. Stage one rejects `-x` for a `number` or `f64` with "operator does
+not apply to this operand", although the runtime's `BF_NEG` negates floats
+and both VMs implement it. The native scalar path (M2) rejects it too. `0.0 - x` is not a
+substitute: it gives +0 for x = +0 where negation gives -0, and IEEE leaves
+the sign of NaN open for subtraction but defines it for negation.
+
+- Odin, C, Go, Rust and Zig all negate floats; LLVM spells it `fneg`, which
+  only flips the sign bit and is exact for every value, NaN included.
+
+Suggestion: lower floating `-x` to `BF_NEG` in stage one and to `fneg`
+natively. Floating `%` stays rejected, as Odin and Go reject it; `math.mod`
+or an explicit `fmod`-style helper covers it.
+
+## There is no compound shift assignment
+
+Language. Every other binary integer operator has a compound assignment, but
+`x <<= n` and `x >>= n` are unexpected syntax in both stages, so a shift is
+written `x = x << n`. Both stages already type a compound assignment through
+the binary operator's step, and a shift's count rules would carry over.
+
+- Odin, C, Go, Rust and Zig all have `<<=` and `>>=`.
+
+Suggestion: add `<<=` and `>>=` to the grammar and both stages' compound
+operator tables; the scalar producer then reads them as it reads `+=`.
+
+## An untyped array element is `int` to stage zero and `double` to stage one
+
+Language. `storages := [6, 1, 2];` is an `int[]` to stage zero but a
+`double[]` to the self-hosted compiler, which then rejects indexing with "an
+untyped number is a double; give the array an integer type". The selectors
+compile the scalar packages with stage zero, so only `Run.ps1` in
+`compiler-recovery.yml` caught it on #700.
+
+- Odin and Go type `[]int{6, 1, 2}` from the element type, and default an
+  untyped constant by spelling: `6` is an integer.
+
+Suggestion: stage one types an untyped integer literal in an array by its
+spelling, as #558 decided for locals, so both compilers agree.
+
 ## A build host reads `Build.chibi` with the syntax it was built with
 
 Toolchain. `make build` runs an existing `build/sdk/chibi-build-host`, which
@@ -815,8 +877,11 @@ can fall off its end, with "Missing return", and counts a `while (true)`
 without a `break` as an end, as Go and Odin do; the tokenizer's loop no longer
 needs to break out to a return after it (#518). Stage one compiles only what
 stage zero has checked, but on its own it would accept such a function.
+The scalar proof's producer applies the rule itself for its subset (M3), so
+native code never sees a function that can fall off its end.
 
-Suggestion: stage one applies the same terminating-statement rule.
+Suggestion: stage one applies the same terminating-statement rule, and the
+scalar producer's `ScalarEnds` gives way to it.
 
 ### Stage one's element stores into call results copy arguments
 

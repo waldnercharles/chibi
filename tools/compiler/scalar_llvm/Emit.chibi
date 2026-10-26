@@ -12,9 +12,10 @@ pub Result :: union {
 }
 
 // The most rows a module of the facts bounds holds: its source and document,
-// then per function its signature, parameters, guards with their arms' returns,
-// final return and operands.
-MaxRows: int : 2 + facts.MaxFunctions * (2 + facts.MaxParameters + 2 * facts.MaxGuards + facts.MaxOperands);
+// then per function its signature, parameters, statements with an if
+// statement's else and end, and operands. A switch arm's Case row counts as a
+// statement.
+MaxRows: int : 2 + facts.MaxFunctions * (1 + facts.MaxParameters + 3 * facts.MaxStatements + facts.MaxOperands);
 
 // The offset each source line starts at, for one-based line/column checks.
 LineStarts :: (text: string) -> int[] {
@@ -46,15 +47,38 @@ Unlocated :: (row: facts.Row) -> bool {
     return row.start == 0 && row.end == 0 && row.line == 0 && row.column == 0;
 }
 Scalar :: (type: int) -> bool {
-    return type >= facts.IntType && type <= facts.WordType;
+    return type >= facts.IntType && type <= facts.DoubleType;
 }
 Integer :: (type: int) -> bool {
     return facts.Bits(type) != 0;
 }
+Number :: (type: int) -> bool {
+    return Integer(type) || facts.Floating(type);
+}
+// Whether the operation `operator` applies to `type`: every arithmetic
+// operator to integers, and +, -, * and / to floats.
+Computes :: (operator: int, type: int) -> bool {
+    if (facts.Floating(type)) {
+        return operator >= facts.Add && operator <= facts.Divide;
+    }
+    return Integer(type) && operator >= facts.Add && operator <= facts.ShiftRight;
+}
+// The conversions the runtime implements: integers to one another and to
+// double, float and double to one another and to the integers.
+Converts :: (from: int, to: int) -> bool {
+    if (to == facts.FloatType) {
+        return from == facts.DoubleType;
+    }
+    if (to == facts.DoubleType) {
+        return Integer(from) || from == facts.FloatType;
+    }
+    return Integer(to) && Number(from);
+}
 // The backend's storage ordinal of a scalar type: the storages of int, bool,
-// int8, byte, int16, uint16, uint, int64 and uint64 in facts type order.
+// i8, u8, i16, u16, u32, i64, u64, number and f64 in facts
+// type order.
 NativeType :: (type: int) -> int {
-    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9];
+    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
     return storages[type - facts.IntType];
 }
 // A rejection keeps exactly its source and one located diagnostic.
@@ -82,8 +106,26 @@ Span :: (rows: facts.Row[], at: int, kind: int, used: int) -> int {
     }
     return at + count + 1;
 }
+// Whether `kind` is a statement row with operands of its own.
+Statement :: (kind: int) -> bool {
+    return kind == facts.LocalRow || kind == facts.AssignRow || kind == facts.IfRow || kind == facts.ReturnRow ||
+           kind == facts.WhileRow || kind == facts.ForRow || kind == facts.SwitchRow;
+}
+// Whether `kind` is an if statement's, a switch's or a loop's row, which an
+// End row closes.
+Opens :: (kind: int) -> bool {
+    return kind == facts.IfRow || kind == facts.SwitchRow || Loop(kind);
+}
+// Whether `kind` is a loop's row.
+Loop :: (kind: int) -> bool {
+    return kind == facts.WhileRow || kind == facts.ForRow;
+}
 // The row index of each function, after checking the module's row layout and
-// every count against the facts bounds before it is used. Empty when invalid.
+// every count against the facts bounds before it is used: each function's
+// statements, with their operands, until the next function, each Else in an
+// open if statement before its End, each Case in an open switch before any
+// statement of the switch, each Break and Continue in an open loop, and every
+// if statement, switch and loop closed. Empty when invalid.
 Heads :: (rows: facts.Row[]) -> int[] {
     heads: int[] = [];
     empty: int[] = [];
@@ -97,53 +139,131 @@ Heads :: (rows: facts.Row[]) -> int[] {
         heads.append(at);
         at += function.count + 1;
         used: int = 0;
-        guards: int = 0;
-        while (at < length(rows) && rows[at].kind == facts.GuardRow && guards < facts.MaxGuards) {
-            arm := Span(rows, at, facts.GuardRow, used);
-            if (arm < 0) {
+        statements: int = 0;
+        // Each open if statement's, switch's or loop's row kind, an if
+        // statement's Else kind once its else has begun or a switch's Case
+        // kind once its first arm has, and how many are loops.
+        open: int[] = [];
+        loops: int = 0;
+        while (at < length(rows) && rows[at].kind != facts.FunctionRow) {
+            kind := rows[at].kind;
+            top := length(open) - 1;
+            if (kind == facts.CaseRow) {
+                if (top < 0 || (open[top] != facts.SwitchRow && open[top] != facts.CaseRow)) {
+                    return empty;
+                }
+                if (statements >= facts.MaxStatements) {
+                    return empty;
+                }
+                statements += 1;
+                open[top] = kind;
+                next := at + 1;
+                if (rows[at].count != 0) {
+                    next = Span(rows, at, kind, used);
+                }
+                if (next < 0) {
+                    return empty;
+                }
+                used += rows[at].count;
+                at = next;
+                continue;
+            }
+            if (kind != facts.EndRow && top >= 0 && open[top] == facts.SwitchRow) {
                 return empty;
             }
-            used += rows[at].count;
-            next := Span(rows, arm, facts.ReturnRow, used);
+            if (kind == facts.ElseRow || kind == facts.EndRow) {
+                if (rows[at].count != 0 || top < 0 || (kind == facts.ElseRow && open[top] != facts.IfRow)) {
+                    return empty;
+                }
+                if (kind == facts.ElseRow) {
+                    open[top] = kind;
+                } else {
+                    if (Loop(open[top])) {
+                        loops -= 1;
+                    }
+                    open = slice(open, 0, top);
+                }
+                at += 1;
+                continue;
+            }
+            if (kind == facts.BreakRow || kind == facts.ContinueRow) {
+                if (rows[at].count != 0 || loops == 0 || statements >= facts.MaxStatements) {
+                    return empty;
+                }
+                statements += 1;
+                at += 1;
+                continue;
+            }
+            if (!Statement(kind) || statements >= facts.MaxStatements) {
+                return empty;
+            }
+            next := Span(rows, at, kind, used);
             if (next < 0) {
                 return empty;
             }
-            used += rows[arm].count;
-            guards += 1;
+            used += rows[at].count;
+            statements += 1;
+            if (Opens(kind)) {
+                open.append(kind);
+            }
+            if (Loop(kind)) {
+                loops += 1;
+            }
             at = next;
         }
-        at = Span(rows, at, facts.ReturnRow, used);
-        if (at < 0) {
+        if (statements == 0 || length(open) != 0) {
             return empty;
         }
     }
     return heads;
 }
-// The segment rows of the function at `head` of a valid layout: each guard
-// and its arm's return, then the final return.
-Segments :: (rows: facts.Row[], head: int) -> int[] {
-    segments: int[] = [];
-    at := head + rows[head].count + 1;
-    while (rows[at].kind == facts.GuardRow) {
-        segments.append(at);
-        at += rows[at].count + 1;
-        segments.append(at);
-        at += rows[at].count + 1;
+// The row after the last of function `function`'s rows in a valid layout.
+Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
+    if (function + 1 < length(heads)) {
+        return heads[function + 1];
     }
-    segments.append(at);
-    return segments;
+    return length(rows);
 }
-// The operands after the segment row at `at`, as a typed evaluation stack:
+Holds :: (values: int[], wanted: int) -> bool {
+    for (value in values) {
+        if (value == wanted) {
+            return true;
+        }
+    }
+    return false;
+}
+// The operands after the statement row at `at`, as a typed evaluation stack:
 // each operand pushes one value; a comparison or binary arithmetic pops two
-// integers of one type, unary arithmetic and a conversion one, and a call its
-// arguments in order. They must leave one value of type `result`, and each
-// lies within `scope`.
-ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: int, scope: facts.Row, starts: int[],
-                  size: int) -> string {
-    declaration := rows[head];
+// values of one type, unary arithmetic and a conversion one, and a call its
+// arguments in order. A logical pops its left bool, and its right rows must
+// push exactly one bool above what lies under it, which is its value, without
+// consuming anything below. A read names a `visible` variable of its type.
+// They must leave one value of type `result`, and each lies within `scope`.
+ValidOperands :: (rows: facts.Row[], heads: int[], at: int, result: int, scope: facts.Row, variables: int[],
+                  visible: int[], starts: int[], size: int) -> string {
     stack: int[] = [];
     first := at + 1;
-    for (row in first..<first + rows[at].count) {
+    last := first + rows[at].count;
+    // Each open logical's first row after its right operands, and the stack
+    // height it leaves its value at.
+    ends: int[] = [];
+    depths: int[] = [];
+    for (row in first..<last + 1) {
+        while (length(ends) > 0 && ends[length(ends) - 1] == row) {
+            depth := depths[length(depths) - 1];
+            if (length(stack) != depth + 1 || stack[depth] != facts.BoolType) {
+                return "scalar logic differs from its bool operands";
+            }
+            ends = slice(ends, 0, length(ends) - 1);
+            depths = slice(depths, 0, length(depths) - 1);
+        }
+        if (row == last) {
+            break;
+        }
+        floor: int = 0;
+        if (length(depths) > 0) {
+            floor = depths[length(depths) - 1];
+        }
         operand := rows[row];
         if (operand.text != "" || !Scalar(operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
@@ -155,39 +275,54 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
                 return "noncanonical scalar literal";
             }
         } else if (operand.kind == facts.ReadRow) {
-            if (operand.name != "" || operand.count != 0 || operand.value < 0 || operand.value >= declaration.count ||
-                rows[head + 1 + operand.value].type != operand.type) {
-                return "scalar read differs from its parameter";
+            if (operand.name != "" || operand.count != 0 || !Holds(visible, operand.value) ||
+                variables[operand.value] != operand.type) {
+                return "scalar read differs from its variable";
             }
+        } else if (operand.kind == facts.LogicalRow) {
+            base := length(stack) - 1;
+            end := row + operand.count + 1;
+            if (operand.name != "" || operand.type != facts.BoolType ||
+                (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr) || operand.count < 1 ||
+                end > last || (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor ||
+                stack[base] != facts.BoolType) {
+                return "scalar logic differs from its bool operands";
+            }
+            stack = slice(stack, 0, base);
+            ends.append(end);
+            depths.append(base);
+            continue;
         } else if (operand.kind == facts.CompareRow) {
             base := length(stack) - 2;
             if (operand.name != "" || operand.count != 2 || operand.type != facts.BoolType ||
-                operand.value < facts.Less || operand.value > facts.NotEqual || base < 0 ||
-                !Integer(stack[base]) || stack[base + 1] != stack[base]) {
-                return "scalar comparison differs from its integer operands";
+                operand.value < facts.Less || operand.value > facts.NotEqual || base < floor ||
+                (!Number(stack[base]) &&
+                 (stack[base] != facts.BoolType || operand.value < facts.Equal)) ||
+                stack[base + 1] != stack[base]) {
+                return "scalar comparison differs from its operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ArithmeticRow) {
             base := length(stack) - 2;
-            if (operand.name != "" || operand.count != 2 || !Integer(operand.type) ||
-                operand.value < facts.Add || operand.value > facts.ShiftRight || base < 0 ||
+            if (operand.name != "" || operand.count != 2 || !Computes(operand.value, operand.type) || base < floor ||
                 stack[base] != operand.type || stack[base + 1] != operand.type) {
-                return "scalar arithmetic differs from its integer operands";
+                return "scalar arithmetic differs from its number operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.UnaryRow) {
             base := length(stack) - 1;
-            if (operand.name != "" || operand.count != 1 || !Integer(operand.type) ||
-                operand.value < facts.Negate || operand.value > facts.Complement || base < 0 ||
+            negates := Integer(operand.type) && (operand.value == facts.Negate || operand.value == facts.Complement);
+            nots := operand.type == facts.BoolType && operand.value == facts.Not;
+            if (operand.name != "" || operand.count != 1 || (!negates && !nots) || base < floor ||
                 stack[base] != operand.type) {
-                return "scalar arithmetic differs from its integer operands";
+                return "scalar arithmetic differs from its number operands";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ConvertRow) {
             base := length(stack) - 1;
-            if (operand.name != "" || operand.count != 1 || !Integer(operand.type) ||
-                (operand.value != facts.Clamp && operand.value != facts.Wrap) || base < 0 || !Integer(stack[base])) {
-                return "scalar conversion is not between integer types";
+            if (operand.name != "" || operand.count != 1 || (operand.value != facts.Clamp && operand.value != facts.Wrap) ||
+                base < floor || !Converts(stack[base], operand.type)) {
+                return "scalar conversion is not one the runtime implements";
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.CallRow) {
@@ -195,11 +330,11 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
                 return "scalar call names no function of the module";
             }
             callee := rows[heads[operand.value]];
+            base := length(stack) - operand.count;
             if (operand.name != callee.name || operand.type != callee.type || operand.count != callee.count ||
-                operand.count > length(stack)) {
+                base < floor) {
                 return "scalar call differs from its callee's signature";
             }
-            base := length(stack) - operand.count;
             for (argument in 0..<operand.count) {
                 if (stack[base + argument] != rows[heads[operand.value] + 1 + argument].type) {
                     return "scalar call argument differs from its parameter";
@@ -211,16 +346,50 @@ ValidOperands :: (rows: facts.Row[], heads: int[], head: int, at: int, result: i
         }
         stack.append(operand.type);
     }
-    if (length(stack) != 1 || stack[0] != result) {
-        if (rows[at].kind == facts.GuardRow) {
+    // A range's two bounds, or one value.
+    wanted: int = 1;
+    if (rows[at].kind == facts.ForRow) {
+        wanted = 2;
+    }
+    if (length(stack) != wanted || stack[0] != result || stack[wanted - 1] != result) {
+        if (rows[at].kind == facts.ForRow) {
+            return "scalar range differs from its int bounds";
+        }
+        if (rows[at].kind == facts.IfRow || rows[at].kind == facts.WhileRow) {
             return "scalar condition is not one bool";
         }
-        return "scalar return differs from its function's result";
+        if (rows[at].kind == facts.SwitchRow) {
+            return "scalar switch value is not one integer";
+        }
+        if (rows[at].kind == facts.CaseRow) {
+            return "scalar case value differs from its switch value";
+        }
+        if (rows[at].kind == facts.ReturnRow) {
+            return "scalar return differs from its function's result";
+        }
+        return "scalar value differs from its variable";
     }
     return "";
 }
-// One function's signature and segments. A guard's condition lies before its
-// arm, its arm within it, and each segment after the one before it.
+// The least start of what follows the row at `at`: a consequence, an arm's
+// or a loop's body follows the row's start and every one of its operands.
+Operated :: (rows: facts.Row[], at: int) -> int {
+    earliest := rows[at].start;
+    for (operand in at + 1..<at + rows[at].count + 1) {
+        if (rows[operand].end > earliest) {
+            earliest = rows[operand].end;
+        }
+    }
+    return earliest;
+}
+// One function's signature and statements. Each statement lies within the
+// statements it is among, after the one before it; an if statement's
+// consequence or a loop's body follows its condition or bounds, an else
+// follows its consequence, a switch's arms follow its value and one another,
+// each its value's type and at most one the default, and an End has its if
+// statement's, switch's or loop's range. A variable is visible from its declaration to the end of the
+// statements it is declared among, a For row's only in its body, and the
+// body ends in a terminating statement.
 ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[], size: int) -> string {
     head := heads[function];
     declaration := rows[head];
@@ -228,6 +397,8 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
         declaration.literal != 0 || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
+    variables: int[] = [];
+    visible: int[] = [];
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
         if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Scalar(param.type) ||
@@ -235,39 +406,170 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
             !Within(param, declaration)) {
             return "invalid scalar parameter row";
         }
+        variables.append(param.type);
+        visible.append(index);
     }
-    segments := Segments(rows, head);
-    // The least start of the next segment, and the end of the last guard.
-    earliest: int = 0;
-    guarded: int = 0;
-    for (index in 0..<length(segments)) {
-        at := segments[index];
-        segment := rows[at];
-        if (segment.name != "" || segment.text != "" || segment.type != 0 || segment.value != 0 ||
-            segment.literal != 0 || !Located(segment, starts, size) || !Within(segment, declaration) || segment.start < earliest) {
-            return "invalid scalar return row";
-        }
-        error := "";
-        if (segment.kind == facts.GuardRow) {
-            arm := rows[segments[index + 1]];
-            condition := segment;
-            condition.end = arm.start;
-            if (!Within(arm, segment)) {
-                return "invalid scalar return row";
+    // Each open if statement's, switch's or loop's row; an if statement's
+    // Else row or a switch's current Case row, or -1; whether an if
+    // statement's consequence ends, or whether each arm of a switch before its
+    // current one does; whether a switch has a default arm; whether a Break
+    // leaves a loop; and how many variables were visible before it. A For
+    // row's variable is never assigned.
+    opens: int[] = [];
+    alternatives: int[] = [];
+    consequences: bool[] = [];
+    defaults: bool[] = [];
+    broken: bool[] = [];
+    marks: int[] = [];
+    fixed: int[] = [];
+    // Whether the last statement of the statements being read terminates,
+    // and the least start of the next statement.
+    ends := false;
+    earliest := declaration.start;
+    at := head + declaration.count + 1;
+    last := Last(rows, heads, function);
+    while (at < last) {
+        row := rows[at];
+        top := length(opens) - 1;
+        container := declaration;
+        if (top >= 0) {
+            container = rows[opens[top]];
+            if (alternatives[top] >= 0) {
+                container = rows[alternatives[top]];
             }
-            error = ValidOperands(rows, heads, head, at, facts.BoolType, condition, starts, size);
-            earliest = segment.start;
-            guarded = segment.end;
-        } else {
-            error = ValidOperands(rows, heads, head, at, declaration.type, segment, starts, size);
-            earliest = segment.end;
-            if (guarded > earliest) {
-                earliest = guarded;
-            }
         }
+        ranged := row.kind == facts.ForRow;
+        declares := row.kind == facts.LocalRow || ranged;
+        typed := declares || row.kind == facts.AssignRow || row.kind == facts.SwitchRow || row.kind == facts.CaseRow;
+        if (row.text != "" || (row.literal != 0 && !ranged) || !Located(row, starts, size) ||
+            (row.kind != facts.EndRow && row.start < earliest) || (!declares && row.name != "") ||
+            (!typed && row.type != 0) || (!declares && row.kind != facts.AssignRow && row.value != 0)) {
+            return "invalid scalar statement row";
+        }
+        if (row.kind == facts.EndRow) {
+            opened := rows[opens[top]];
+            if (row.start != opened.start || row.end != opened.end || row.line != opened.line ||
+                row.column != opened.column) {
+                return "invalid scalar statement row";
+            }
+            if (opened.kind == facts.IfRow) {
+                ends = alternatives[top] >= 0 && consequences[top] && ends;
+            } else if (opened.kind == facts.SwitchRow) {
+                ends = defaults[top] && consequences[top] && ends;
+            } else {
+                // Only a while loop on the literal true that nothing breaks
+                // out of ends.
+                condition := rows[opens[top] + 1];
+                ends = opened.kind == facts.WhileRow && opened.count == 1 && condition.kind == facts.LiteralRow &&
+                       condition.literal == 1 && !broken[top];
+            }
+            visible = slice(visible, 0, marks[top]);
+            opens = slice(opens, 0, top);
+            alternatives = slice(alternatives, 0, top);
+            consequences = slice(consequences, 0, top);
+            defaults = slice(defaults, 0, top);
+            broken = slice(broken, 0, top);
+            marks = slice(marks, 0, top);
+            earliest = row.end;
+            at += 1;
+            continue;
+        }
+        if (row.kind == facts.CaseRow) {
+            // An arm lies within its switch, after the arm before it, and
+            // its value is of the switch's type.
+            opened := rows[opens[top]];
+            if (!Within(row, opened) || row.type != opened.type || (row.count == 0 && defaults[top])) {
+                return "invalid scalar statement row";
+            }
+            consequences[top] = consequences[top] && (alternatives[top] < 0 || ends);
+            defaults[top] = defaults[top] || row.count == 0;
+            alternatives[top] = at;
+            visible = slice(visible, 0, marks[top]);
+            if (row.count != 0) {
+                error := ValidOperands(rows, heads, at, row.type, row, variables, visible, starts, size);
+                if (error != "") {
+                    return error;
+                }
+            }
+            ends = false;
+            earliest = Operated(rows, at);
+            at += row.count + 1;
+            continue;
+        }
+        if (!Within(row, container)) {
+            return "invalid scalar statement row";
+        }
+        if (row.kind == facts.ElseRow) {
+            alternatives[top] = at;
+            consequences[top] = ends;
+            visible = slice(visible, 0, marks[top]);
+            ends = false;
+            earliest = row.start;
+            at += 1;
+            continue;
+        }
+        if (row.kind == facts.BreakRow || row.kind == facts.ContinueRow) {
+            loop := top;
+            while (!Loop(rows[opens[loop]].kind)) {
+                loop -= 1;
+            }
+            if (row.kind == facts.BreakRow) {
+                broken[loop] = true;
+            }
+            ends = false;
+            earliest = row.end;
+            at += 1;
+            continue;
+        }
+        result := declaration.type;
+        if (row.kind == facts.IfRow || row.kind == facts.WhileRow) {
+            result = facts.BoolType;
+        } else if (row.kind == facts.SwitchRow) {
+            if (facts.Bits(row.type) == 0) {
+                return "scalar switch value is not one integer";
+            }
+            result = row.type;
+        } else if (declares) {
+            if (row.name == "" || !Scalar(row.type) || row.value != length(variables) ||
+                length(variables) - declaration.count >= facts.MaxLocals ||
+                (ranged && (row.type != facts.IntType || row.literal < 0 ||
+                            row.literal > i64(facts.RangeExclusive + facts.RangeReverse)))) {
+                return "invalid scalar local row";
+            }
+            result = row.type;
+        } else if (row.kind == facts.AssignRow) {
+            if (!Holds(visible, row.value) || Holds(fixed, row.value) || variables[row.value] != row.type) {
+                return "scalar assignment differs from its variable";
+            }
+            result = row.type;
+        }
+        error := ValidOperands(rows, heads, at, result, row, variables, visible, starts, size);
         if (error != "") {
             return error;
         }
+        ends = row.kind == facts.ReturnRow;
+        earliest = row.end;
+        if (row.kind == facts.LocalRow) {
+            variables.append(row.type);
+            visible.append(row.value);
+        } else if (Opens(row.kind)) {
+            opens.append(at);
+            alternatives.append(-1);
+            consequences.append(row.kind == facts.SwitchRow);
+            defaults.append(false);
+            broken.append(false);
+            marks.append(length(visible));
+            if (ranged) {
+                variables.append(row.type);
+                visible.append(row.value);
+                fixed.append(row.value);
+            }
+            earliest = Operated(rows, at);
+        }
+        at += row.count + 1;
+    }
+    if (!ends) {
+        return "scalar function can end without returning";
     }
     return "";
 }
@@ -311,9 +613,6 @@ pub Validate :: (rows: facts.Row[]) -> string {
             return error;
         }
     }
-    if (facts.Cycle(rows) >= 0) {
-        return "scalar module calls are recursive";
-    }
     return "";
 }
 
@@ -334,14 +633,70 @@ Unary :: (operator: int) -> int {
     }
     return native.BitNot;
 }
+// An open if statement, switch or loop while emitting: its row kind; an if
+// statement's jump past its consequence, or -1 once its else has begun, a
+// loop's jump out, or a switch's jump to the test after its current arm's,
+// or -1; its consequence's jump past its alternative, or a For row's jump out
+// at its bound, or -1; whether its consequence ends, or whether each of a
+// switch's arms so far does; a loop's first instruction; a For row's index
+// and bound locals, or a switch's value local; whether a For row stops at its
+// bound, whether it counts down, and its jump out when its range is empty, or
+// -1; its first pending break or continue; and a switch's first arm exit,
+// whether an arm has begun, and its default arm's first instruction, or -1.
+Frame :: struct {
+    kind: int;
+    skip: int;
+    leave: int;
+    ends: bool;
+    head: int;
+    index: int;
+    bound: int;
+    counted: bool;
+    reverse: bool;
+    escape: int;
+    empty: int;
+    exits: int;
+    armed: bool;
+    fallback: int;
+}
+// One native instruction without a literal.
+Op :: (op: int, type: int, output: int, left: int, right: int, target: int) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: target, literal: 0};
+}
+// `code` with the branch or jump at `at` sent to `target`.
+Aimed :: (code: native.Instruction[], at: int, target: int) -> native.Instruction[] {
+    output := code;
+    jump := output[at];
+    jump.target = target;
+    output[at] = jump;
+    return output;
+}
+// `code` with the branch or jump at `at` sent to the instruction after its
+// last.
+Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
+    return Aimed(code, at, length(code));
+}
 // Explicit backend-fixture policy: the entry is chibi_scalar() -> i32 and the
 // other functions are internal. Every function starts with one CHECK under
-// budget 1. Neither the export name nor the budget is inferred from source
-// identity, and no general runtime/default budget is introduced. Each operand
-// row is one slot, defined in row order, so evaluation order is the rows'.
-// A guard's condition ends in a branch to its arm, which follows the final
-// return's code; when the condition is false, code continues after the
-// branch, so an arm runs only when its guard holds.
+// budget 1, and loops and recursion run unchecked, as Odin's and Rust's do.
+// Neither the export name nor the budget is inferred from source identity,
+// and no general runtime/default budget is introduced. Each operand row is
+// one slot, defined in row order, so evaluation order is the rows'. Each
+// variable is a native local, parameters moved into theirs first, so
+// assigning one needs no other form. An if statement's condition branches
+// into its consequence, and otherwise jumps past it, to its alternative or
+// past its End; a consequence that does not end jumps past the alternative.
+// A logical, as stage one emits it, saves its left bool in a local of its
+// own, which decides it unless its right operand's value replaces it. A loop
+// is lowered as the range step lowers it: a while loop tests its condition
+// at its head, and a For row keeps its index and its other bound in locals of
+// their own, tests the index at its head and steps it at the end of each
+// pass, where a continue goes; a break and the failed test leave the loop.
+// A switch, as the switch step lowers it, saves its value in a local, and
+// each value arm tests it in turn, entering its arm on equality and otherwise
+// jumping to the next test; a default arm is jumped over where it stands and
+// entered when the last test fails. Each arm that does not end leaves the
+// switch.
 pub Emit :: (rows: facts.Row[]) -> Result {
     error := Validate(rows);
     if (error != "") {
@@ -357,61 +712,257 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     code: native.Instruction[] = [];
     arguments: int[] = [];
     heads := Heads(rows);
-    for (head in heads) {
+    for (function in 0..<length(heads)) {
+        head := heads[function];
         declaration := rows[head];
         result := NativeType(declaration.type);
         shape: native.Function = {result: result, first_parameter: length(parameters),
                                   parameters: declaration.count, first_slot: length(slots), slots: 0,
-                                  first_local: 0, locals: 0, first_code: length(code), code: 0,
+                                  first_local: length(locals), locals: 0, first_code: length(code), code: 0,
                                   first_argument: length(arguments), arguments: 0};
-        for (index in 0..<declaration.count) {
-            parameters.append(NativeType(rows[head + 1 + index].type));
-        }
-        check: native.Instruction = {op: native.Check, type: 0, output: 0, left: 0, right: 0, target: 0, literal: 0};
-        straight: native.Instruction[] = [check];
-        arms: native.Instruction[] = [];
-        // Each guard's branch in `straight` and its arm's offset in `arms`.
-        branches: int[] = [];
-        targets: int[] = [];
-        armed := false;
+        body: native.Instruction[] = [Op(native.Check, 0, 0, 0, 0, 0)];
+        // Each variable's local, and the next slot and local.
+        places: int[] = [];
         slot: int = 0;
-        for (at in Segments(rows, head)) {
-            segment := rows[at];
+        local: int = 0;
+        for (index in 0..<declaration.count) {
+            type := NativeType(rows[head + 1 + index].type);
+            parameters.append(type);
+            slots.append(type);
+            locals.append(type);
+            body.extend([Op(native.Argument, type, slot, index, 0, 0), Op(native.Save, type, 0, slot, 0, local)]);
+            places.append(local);
+            slot += 1;
+            local += 1;
+        }
+        // Each open if statement, switch or loop; each pending break or
+        // continue: its jump and whether it continues; and each switch arm's
+        // pending exit. A logical's own pending jumps are its operand's, not
+        // these.
+        frames: Frame[] = [];
+        jumps: int[] = [];
+        continuing: bool[] = [];
+        arms: int[] = [];
+        // Whether control cannot reach the next instruction.
+        ends := false;
+        integer := NativeType(facts.IntType);
+        at := head + declaration.count + 1;
+        last := Last(rows, heads, function);
+        while (at < last) {
+            row := rows[at];
+            top := length(frames) - 1;
+            if (row.kind == facts.ElseRow) {
+                frame := frames[top];
+                if (!ends) {
+                    frame.leave = length(body);
+                    body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                }
+                body = Patched(body, frame.skip);
+                frame.skip = -1;
+                frame.ends = ends;
+                frames[top] = frame;
+                ends = false;
+                at += 1;
+                continue;
+            }
+            if (row.kind == facts.CaseRow || (row.kind == facts.EndRow && frames[top].kind == facts.SwitchRow)) {
+                // The arm before ends here: it leaves the switch unless it
+                // ends, and its failed test reaches the next.
+                frame := frames[top];
+                if (frame.armed && !ends) {
+                    arms.append(length(body));
+                    body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                }
+                frame.ends = frame.ends && (!frame.armed || ends);
+                frame.armed = true;
+                ends = false;
+                if (row.kind == facts.EndRow) {
+                    // When every test fails, the default arm runs, if any.
+                    if (frame.skip >= 0) {
+                        target := length(body);
+                        if (frame.fallback >= 0) {
+                            target = frame.fallback;
+                        }
+                        body = Aimed(body, frame.skip, target);
+                    }
+                    for (exit_at in frame.exits..<length(arms)) {
+                        body = Patched(body, arms[exit_at]);
+                    }
+                    arms = slice(arms, 0, frame.exits);
+                    frames = slice(frames, 0, top);
+                    ends = frame.fallback >= 0 && frame.ends;
+                    at += 1;
+                    continue;
+                }
+                if (frame.skip >= 0) {
+                    body = Patched(body, frame.skip);
+                }
+                frame.skip = -1;
+                if (row.count == 0) {
+                    frame.skip = length(body);
+                    body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                    frame.fallback = length(body);
+                    frames[top] = frame;
+                    at += 1;
+                    continue;
+                }
+                frames[top] = frame;
+            }
+            if (row.kind == facts.EndRow) {
+                frame := frames[top];
+                frames = slice(frames, 0, top);
+                at += 1;
+                if (frame.kind == facts.IfRow) {
+                    if (frame.skip >= 0) {
+                        body = Patched(body, frame.skip);
+                        ends = false;
+                    } else {
+                        if (frame.leave >= 0) {
+                            body = Patched(body, frame.leave);
+                        }
+                        ends = frame.ends && ends;
+                    }
+                    continue;
+                }
+                // A pass ends at its step, which a continue also reaches; a
+                // For row's index steps toward its bound and stops on
+                // reaching it when that ends the range, so it never wraps.
+                for (escape in frame.escape..<length(jumps)) {
+                    if (continuing[escape]) {
+                        body = Patched(body, jumps[escape]);
+                    }
+                }
+                if (frame.kind == facts.ForRow) {
+                    index := slot;
+                    slots.append(integer);
+                    body.append(Op(native.Local, integer, index, frame.index, 0, 0));
+                    slot += 1;
+                    if (frame.counted) {
+                        slots.extend([integer, abi.BoolStorage]);
+                        body.extend([Op(native.Local, integer, slot, frame.bound, 0, 0),
+                                     Op(native.Eq, integer, slot + 1, index, slot, 0)]);
+                        frame.leave = length(body);
+                        body.append(Op(native.Branch, 0, 0, slot + 1, 0, 0));
+                        slot += 2;
+                    }
+                    step := native.Add;
+                    if (frame.reverse) {
+                        step = native.Sub;
+                    }
+                    one := Op(native.Constant, integer, slot, 0, 0, 0);
+                    one.literal = 1;
+                    slots.extend([integer, integer]);
+                    body.extend([one, Op(step, integer, slot + 1, index, slot, 0),
+                                 Op(native.Save, integer, 0, slot + 1, 0, frame.index)]);
+                    slot += 2;
+                }
+                body.append(Op(native.Jump, 0, 0, 0, 0, frame.head));
+                exits: int[] = [frame.skip, frame.leave, frame.empty];
+                for (pending in exits) {
+                    if (pending >= 0) {
+                        body = Patched(body, pending);
+                    }
+                }
+                for (escape in frame.escape..<length(jumps)) {
+                    if (!continuing[escape]) {
+                        body = Patched(body, jumps[escape]);
+                    }
+                }
+                jumps = slice(jumps, 0, frame.escape);
+                continuing = slice(continuing, 0, frame.escape);
+                ends = false;
+                continue;
+            }
+            if (row.kind == facts.BreakRow || row.kind == facts.ContinueRow) {
+                loop := top;
+                while (!Loop(frames[loop].kind)) {
+                    loop -= 1;
+                }
+                if (row.kind == facts.ContinueRow && frames[loop].kind == facts.WhileRow) {
+                    body.append(Op(native.Jump, 0, 0, 0, 0, frames[loop].head));
+                } else {
+                    jumps.append(length(body));
+                    continuing.append(row.kind == facts.ContinueRow);
+                    body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                }
+                ends = true;
+                at += 1;
+                continue;
+            }
+            // A while loop's condition runs on each pass.
+            start := length(body);
             stack: int[] = [];
-            part: native.Instruction[] = [];
+            // Each open logical's row after its right operands, its local,
+            // its jump past them and its slot.
+            closes: int[] = [];
+            answers: int[] = [];
+            escapes: int[] = [];
+            outputs: int[] = [];
             first := at + 1;
-            for (index in first..<first + segment.count) {
+            for (index in first..<first + row.count + 1) {
+                while (length(closes) > 0 && closes[length(closes) - 1] == index) {
+                    open := length(closes) - 1;
+                    right := stack[length(stack) - 1];
+                    stack = slice(stack, 0, length(stack) - 1);
+                    body.append(Op(native.Save, abi.BoolStorage, 0, right, 0, answers[open]));
+                    body = Patched(body, escapes[open]);
+                    body.append(Op(native.Local, abi.BoolStorage, outputs[open], answers[open], 0, 0));
+                    stack.append(outputs[open]);
+                    closes = slice(closes, 0, open);
+                    answers = slice(answers, 0, open);
+                    escapes = slice(escapes, 0, open);
+                    outputs = slice(outputs, 0, open);
+                }
+                if (index == first + row.count) {
+                    break;
+                }
                 operand := rows[index];
                 type := NativeType(operand.type);
                 slots.append(type);
+                if (operand.kind == facts.LogicalRow) {
+                    left := stack[length(stack) - 1];
+                    stack = slice(stack, 0, length(stack) - 1);
+                    locals.append(abi.BoolStorage);
+                    body.append(Op(native.Save, abi.BoolStorage, 0, left, 0, local));
+                    if (operand.value == facts.LogicalAnd) {
+                        body.append(Op(native.Branch, 0, 0, left, 0, length(body) + 2));
+                        escapes.append(length(body));
+                        body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                    } else {
+                        escapes.append(length(body));
+                        body.append(Op(native.Branch, 0, 0, left, 0, 0));
+                    }
+                    closes.append(index + operand.count + 1);
+                    answers.append(local);
+                    outputs.append(slot);
+                    local += 1;
+                    slot += 1;
+                    continue;
+                }
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
                 if (operand.kind == facts.ReadRow) {
-                    item = {op: native.Argument, type: type, output: slot, left: operand.value, right: 0, target: 0,
-                            literal: 0};
+                    item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                 } else if (operand.kind == facts.CompareRow) {
                     base := length(stack) - 2;
-                    item = {op: Comparison(operand.value), type: slots[shape.first_slot + stack[base]], output: slot,
-                            left: stack[base], right: stack[base + 1], target: 0, literal: 0};
+                    item = Op(Comparison(operand.value), slots[shape.first_slot + stack[base]], slot, stack[base],
+                              stack[base + 1], 0);
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ArithmeticRow) {
                     base := length(stack) - 2;
-                    item = {op: Arithmetic(operand.value), type: type, output: slot, left: stack[base],
-                            right: stack[base + 1], target: 0, literal: 0};
+                    item = Op(Arithmetic(operand.value), type, slot, stack[base], stack[base + 1], 0);
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.UnaryRow) {
                     base := length(stack) - 1;
-                    item = {op: Unary(operand.value), type: type, output: slot, left: stack[base], right: 0,
-                            target: 0, literal: 0};
+                    item = Op(Unary(operand.value), type, slot, stack[base], 0, 0);
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.ConvertRow) {
                     base := length(stack) - 1;
-                    item = {op: native.Convert, type: type, output: slot, left: stack[base],
-                            right: slots[shape.first_slot + stack[base]], target: 0, literal: i64(operand.value)};
+                    item = Op(native.Convert, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
+                    item.literal = i64(operand.value);
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
-                    item = {op: native.Call, type: type, output: slot, left: operand.value, right: shape.arguments,
-                            target: operand.count, literal: 0};
+                    item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);
@@ -419,41 +970,114 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
                 }
-                part.append(item);
+                body.append(item);
                 stack.append(slot);
                 slot += 1;
             }
-            if (segment.kind == facts.GuardRow) {
-                straight.extend(part);
-                branches.append(length(straight));
-                targets.append(length(arms));
-                jump: native.Instruction = {op: native.Branch, type: 0, output: 0, left: stack[0], right: 0,
-                                            target: 0, literal: 0};
-                straight.append(jump);
-                armed = true;
-                continue;
-            }
-            publish: native.Instruction = {op: native.Publish, type: result, output: 0, left: stack[0], right: 0,
-                                           target: 0, literal: 0};
-            finish: native.Instruction = {op: native.Return, type: 0, output: 0, left: 0, right: 0, target: 0,
-                                          literal: 0};
-            part.extend([publish, finish]);
-            if (armed) {
-                arms.extend(part);
+            value := stack[0];
+            ends = false;
+            if (row.kind == facts.ForRow) {
+                exclusive := row.literal == i64(facts.RangeExclusive) ||
+                             row.literal == i64(facts.RangeExclusive + facts.RangeReverse);
+                reverse := row.literal >= i64(facts.RangeReverse);
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: false, head: 0, index: local,
+                                bound: local + 1, counted: reverse || !exclusive, reverse: reverse,
+                                escape: length(jumps), empty: -1, exits: 0, armed: false,
+                                fallback: -1};
+                begin := stack[0];
+                stop := stack[1];
+                if (reverse) {
+                    begin = stack[1];
+                    stop = stack[0];
+                }
+                if (reverse && exclusive) {
+                    // Counting down from below the last bound needs a range
+                    // that is not empty, or it would wrap.
+                    slots.extend([abi.BoolStorage, integer, integer]);
+                    body.append(Op(native.Lt, integer, slot, stack[0], stack[1], 0));
+                    body.append(Op(native.Branch, 0, 0, slot, 0, length(body) + 2));
+                    frame.empty = length(body);
+                    one := Op(native.Constant, integer, slot + 1, 0, 0, 0);
+                    one.literal = 1;
+                    body.extend([Op(native.Jump, 0, 0, 0, 0, 0), one,
+                                 Op(native.Sub, integer, slot + 2, stack[1], slot + 1, 0)]);
+                    begin = slot + 2;
+                    slot += 3;
+                }
+                locals.extend([integer, integer]);
+                places.append(local);
+                local += 2;
+                body.extend([Op(native.Save, integer, 0, begin, 0, frame.index),
+                             Op(native.Save, integer, 0, stop, 0, frame.bound)]);
+                frame.head = length(body);
+                compare := native.Lt;
+                if (reverse) {
+                    compare = native.Ge;
+                } else if (!exclusive) {
+                    compare = native.Le;
+                }
+                slots.extend([integer, integer, abi.BoolStorage]);
+                body.extend([Op(native.Local, integer, slot, frame.index, 0, 0),
+                             Op(native.Local, integer, slot + 1, frame.bound, 0, 0),
+                             Op(compare, integer, slot + 2, slot, slot + 1, 0),
+                             Op(native.Branch, 0, 0, slot + 2, 0, length(body) + 5)]);
+                frame.skip = length(body);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                slot += 3;
+                frames.append(frame);
+            } else if (row.kind == facts.ReturnRow) {
+                body.extend([Op(native.Publish, result, 0, value, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
+                ends = true;
+            } else if (row.kind == facts.LocalRow) {
+                type := NativeType(row.type);
+                locals.append(type);
+                places.append(local);
+                body.append(Op(native.Save, type, 0, value, 0, local));
+                local += 1;
+            } else if (row.kind == facts.AssignRow) {
+                body.append(Op(native.Save, NativeType(row.type), 0, value, 0, places[row.value]));
+            } else if (row.kind == facts.SwitchRow) {
+                type := NativeType(row.type);
+                locals.append(type);
+                body.append(Op(native.Save, type, 0, value, 0, local));
+                frame: Frame = {kind: row.kind, skip: -1, leave: -1, ends: true, head: 0, index: local, bound: 0,
+                                counted: false, reverse: false, escape: length(jumps), empty: -1,
+                                exits: length(arms), armed: false, fallback: -1};
+                frames.append(frame);
+                local += 1;
+            } else if (row.kind == facts.CaseRow) {
+                // Equal to the switch's value, the arm runs; otherwise the
+                // test after it does.
+                frame := frames[top];
+                type := NativeType(row.type);
+                slots.extend([type, abi.BoolStorage]);
+                body.extend([Op(native.Local, type, slot, frame.index, 0, 0), Op(native.Eq, type, slot + 1, slot, value, 0),
+                             Op(native.Branch, 0, 0, slot + 1, 0, length(body) + 4)]);
+                frame.skip = length(body);
+                body.append(Op(native.Jump, 0, 0, 0, 0, 0));
+                frames[top] = frame;
+                slot += 2;
             } else {
-                straight.extend(part);
+                frame: Frame = {kind: row.kind, skip: length(body) + 1, leave: -1, ends: false, head: start, index: 0,
+                                bound: 0, counted: false, reverse: false, escape: length(jumps), empty: -1, exits: 0,
+                                armed: false, fallback: -1};
+                body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), Op(native.Jump, 0, 0, 0, 0, 0)]);
+                frames.append(frame);
             }
-            armed = false;
+            at = first + row.count;
         }
-        for (index in 0..<length(branches)) {
-            jump := straight[branches[index]];
-            jump.target = length(straight) + targets[index];
-            straight[branches[index]] = jump;
+        // An endless loop's exit, which nothing reaches, still needs an
+        // instruction to name.
+        for (item in body) {
+            if ((item.op == native.Branch || item.op == native.Jump) && item.target == length(body)) {
+                body.append(Op(native.End, 0, 0, 0, 0, 0));
+                break;
+            }
         }
         shape.slots = slot;
-        shape.code = length(straight) + length(arms);
-        code.extend(straight);
-        code.extend(arms);
+        shape.locals = local;
+        shape.code = length(body);
+        code.extend(body);
         functions.append(shape);
     }
     switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, false, 1) {

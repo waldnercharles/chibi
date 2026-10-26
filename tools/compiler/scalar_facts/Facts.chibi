@@ -1,13 +1,14 @@
 package scalar_facts
 
 // Internal opt-in owned result for one source document holding a bounded set
-// of ordinary pure functions over numbers and bool, which may recurse. A function's
-// body is locals, assignments, if statements, switches over integers, while
-// loops, loops over int ranges, breaks, continues and returns. Values and
-// conditions are literals, variables, arithmetic, shifts, conversions,
-// comparisons, logic and direct calls of functions of the set, whose
-// operands are such expressions. This is not a general IR, and no
-// compiler-private identity crosses this boundary.
+// of ordinary pure functions over numbers, bool and records of them, which may
+// recurse. A function's body is locals, assignments, if statements, switches
+// over integers, while loops, loops over int ranges, breaks, continues and
+// returns. Values and conditions are literals, variables, arithmetic,
+// shifts, conversions, comparisons, logic, record literals, field reads and
+// direct calls of functions of the set, whose operands are such expressions.
+// This is not a general IR, and no compiler-private identity crosses this
+// boundary.
 //
 // The compiler host passes arrays of flat records, so a module is one array
 // of rows. Row 0 is its Source: `name` is the path and `text` the document.
@@ -16,8 +17,13 @@ package scalar_facts
 // a rejection, and it must never be emitted.
 //
 // An accepted module's row 1 is its Document: `name` is the shared source
-// snapshot's document key. Then each function follows in declaration order;
-// the first is the module's entry and takes no parameters and returns int:
+// snapshot's document key. Then each record the source declares follows in
+// declaration order: a Record row, its `name`, `count` fields and declaration
+// range, then `count` Member rows: `name`, scalar `type`, ordinal `value` and
+// name range. Record r is type RecordType + r, which a function's result, a
+// parameter, a variable and an operand may have. Then each function follows
+// in declaration order; the first is the module's entry and takes no
+// parameters and returns int:
 // - a Function row: its `name`, result `type`, `count` parameters and
 //   declaration range;
 // - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
@@ -86,7 +92,17 @@ package scalar_facts
 // a Call's `value` is its callee's function ordinal, `name` its callee's name
 // and `count` its arguments, the `count` most recent unconsumed operands in
 // argument order; an argument the call omits is a Literal of its parameter's
-// default with the call's range. A condition's last operand is its bool; a
+// default with the call's range. A Zero row is the record of its `type` whose
+// fields are all zero; an Update's `value` is a field ordinal of its record
+// `type`, and it consumes the two most recent unconsumed operands, a record of
+// that type then a value of the field's type, to give the record with that
+// field replaced; a Field's `value` is a field ordinal and it consumes the
+// most recent unconsumed operand, a record, to give that field, of its
+// `type`. A record literal is a Zero row with the literal's range, then each
+// field's value in source order and its Update, with the field's range. An
+// assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
+// `v`, then `x`, then update `f` with the target's range, and a compound one
+// reads `v` and its field `f` before `x` and their combination. A condition's last operand is its bool; a
 // return's last operand is the function's returned value, and a Local's or an
 // Assign's is its variable's. A shift's count is converted to the shifted
 // type before the shift consumes it, and an integer operand of floating
@@ -136,6 +152,11 @@ pub BreakRow: int : 21;
 pub ContinueRow: int : 22;
 pub SwitchRow: int : 23;
 pub CaseRow: int : 24;
+pub RecordRow: int : 25;
+pub MemberRow: int : 26;
+pub ZeroRow: int : 27;
+pub UpdateRow: int : 28;
+pub FieldRow: int : 29;
 
 // The scalar types: int and bool, then the other integer types, then the
 // floating ones. The facts carry no compiler storage ordinal.
@@ -150,6 +171,8 @@ pub Int64Type: int : 8;
 pub WordType: int : 9;
 pub FloatType: int : 10;
 pub DoubleType: int : 11;
+// Record r of the module is type RecordType + r.
+pub RecordType: int : 32;
 
 // Compare operators: the source's <, <=, >, >=, == and !=, signed or
 // unsigned as their operands' type is. On floats, each is false when an
@@ -244,11 +267,14 @@ pub Fits :: (literal: int64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 
-// Bounds both sides check before reading counts: source bytes, functions per
-// module, parameters, locals and statement rows per function, a switch arm's
-// Case row counting as a statement, and operands per function, counted over
-// all its statements together.
+// Bounds both sides check before reading counts: source bytes, records per
+// module and fields per record, functions per module, parameters, locals and
+// statement rows per function, a switch arm's Case row counting as a
+// statement, and operands per function, counted over all its statements
+// together.
 pub MaxSource: int : 16384;
+pub MaxRecords: int : 16;
+pub MaxMembers: int : 16;
 pub MaxFunctions: int : 32;
 pub MaxParameters: int : 8;
 pub MaxLocals: int : 16;

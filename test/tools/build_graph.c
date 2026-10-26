@@ -1461,6 +1461,24 @@ TEST_CASE(asset_generator_uses_its_own_collection)
     return true;
 }
 
+TEST_CASE(asset_generator_runs_release_hosts)
+{
+    REQUIRE(
+        registration("sdk/asset_compiler_host.cmake", "if(CMAKE_BUILD_TYPE STREQUAL \"Release\" AND NOT CHIBI_ENABLE_SANITIZERS)")
+    );
+    REQUIRE(
+        registration("sdk/asset_compiler_host.cmake", "--target chibi-build-host chibi-compiler-host")
+    );
+    REQUIRE(registration("sdk/asset_compiler_host.cmake", "COMMAND \"${asset_build_host}\""));
+    REQUIRE(
+        registration("tools/graph/engine/Engine.chibi", "hosts = Join([folder, \"/sdk/release-hosts\"]);")
+    );
+    REQUIRE(
+        registration("tools/graph/engine/Engine.chibi", "command := [Executable(hosts, \"chibi-build-host\")")
+    );
+    return true;
+}
+
 TEST_CASE(failed_steps_name_only_the_output)
 {
     char source[GRAPH_PATH], output[GRAPH_PATH], record[GRAPH_PATH];
@@ -1554,6 +1572,7 @@ void test_build_graph_generated(const char *host, const char *cmake_build)
     set_up(host, cmake_build);
     RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(asset_generator_uses_its_own_collection);
+    RUN_TEST_CASE(asset_generator_runs_release_hosts);
     RUN_TEST_CASE(failed_steps_name_only_the_output);
     RUN_TEST_CASE(asset_generator_source_lists_bounded_ordered_phases);
     RUN_TEST_CASE(native_types_generate_as_cmake);

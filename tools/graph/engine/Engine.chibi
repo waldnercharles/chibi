@@ -538,8 +538,11 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
     return build.replace(text, "\n", "\\n\"\n\"");
 }
 
-// Builds the existing host tools first, then runs the authored asset generator.
-// Sibling outputs are tracked inputs so deleting one regenerates the resource.
+// Builds the host tools first, then runs the authored asset generator with
+// them. Debug and sanitized hosts compile the asset compiler two to twelve
+// times slower than Release ones, so those profiles build Release hosts in a
+// folder of their own, as sdk/asset_compiler_host.cmake does. Sibling outputs are
+// tracked inputs so deleting one regenerates the resource.
 AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
     prerequisites: string[] = [];
     for (target in Targets()) {
@@ -548,24 +551,25 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
             prerequisites.append(target);
         }
     }
-    compiled := Build(tools, profile, root, folder, prerequisites);
+    hosts := folder;
+    hosts_profile := profile;
+    if (profile.build_type != "Release" || profile.sanitizers != "") {
+        hosts = Join([folder, "/sdk/release-hosts"]);
+        hosts_profile.build_type = "Release";
+        hosts_profile.sanitizers = "";
+        hosts_profile.third_party = ThirdParty(root, profile.compiler_id, "");
+    }
+    compiled := Build(tools, hosts_profile, root, hosts, prerequisites);
     if (compiled < 0) {
         return -1;
     }
     output := Join([folder, "/sdk/generated/assets"]);
-    timeout := "240000";
-    if (profile.sanitizers != "") {
-        timeout = "600000";
-    }
-    command := [Executable(folder, "chibi-build-host"), "--compiler", "tools/compiler",
+    command := [Executable(hosts, "chibi-build-host"), "--compiler", "tools/compiler",
                 "--compiler-core", "packages/core", "--root", root,
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
-                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", timeout, "--",
-                Executable(folder, "chibi-compiler-host"), output];
-    if (profile.sanitizers != "") {
-        command.append("--compiler-timeout-ms=600000");
-    }
-    inputs := [Executable(folder, "chibi-build-host"), Executable(folder, "chibi-compiler-host")];
+                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", "240000", "--",
+                Executable(hosts, "chibi-compiler-host"), output];
+    inputs := [Executable(hosts, "chibi-build-host"), Executable(hosts, "chibi-compiler-host")];
     for (directory in ["tools/compiler", "packages/core", "packages/game", "tools/graph/asset_compiler"]) {
         inputs.extend(ChibiSources(Join([root, "/", directory])));
     }

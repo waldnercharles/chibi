@@ -573,6 +573,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (kind == "expression_statement") {
             return PointerPopped(DropSequenceValues(Held(types, members, [result]), ops, target, at, node), 1);
         }
+        // A union read from an array the function may change shares that
+        // element's collections, which removing the element releases, so a
+        // local takes its own copy.
+        if (result.storage == UnionStorage && result.container == 0 && !result.owned &&
+            length(Held(types, members, [result])) > 0 &&
+            (kind == "local_declaration" ||
+             (kind == "assignment" && Is(forest, StatementTarget(forest, item.node), "identifier"))) &&
+            ChangingElement(forest, text, referenced, mutated, addressed, Field(forest, item.node, "value"))) {
+            return PointerContinue(CopyValueStep(result, 1, ops, target, at, node), Resume(item.node, ValuePhase, 0, 0));
+        }
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
             local := result;
@@ -1641,6 +1651,17 @@ LendsElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], r
     return found >= 0 && (names[found].place == ParameterPlace || names[found].place == CellPlace) &&
            Fixed(referenced, mutated, addressed, Text(forest, text, Field(forest, declaration, "name"))) &&
            Fixed(referenced, mutated, addressed, names[found].name);
+}
+// Whether `node` reads an element of an array or map that something may
+// change or that is not a name.
+ChangingElement :: (forest: snapshot.SnapshotNode[], text: string, referenced: string[], mutated: string[],
+                    addressed: string[], node: int) -> bool {
+    at := Unparenthesized(forest, node);
+    if (!Is(forest, at, "index_expression")) {
+        return false;
+    }
+    root := RootOf(forest, at);
+    return !Is(forest, root, "identifier") || !Fixed(referenced, mutated, addressed, Text(forest, text, root));
 }
 // Whether nothing assigns, changes in place or takes the address of `name`.
 Fixed :: (referenced: string[], mutated: string[], addressed: string[], name: string) -> bool {

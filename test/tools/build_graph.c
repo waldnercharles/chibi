@@ -357,21 +357,9 @@ static bool same_command(yyjson_val *ours, char *theirs)
     return index == yyjson_arr_size(ours);
 }
 
-/* Every compile command the graph writes equals CMake's for the same source. */
-static bool commands_match(bool discover)
+/* The caller owns both documents, including when a REQUIRE fails here. */
+static bool command_documents_match(yyjson_val *ours, yyjson_val *theirs)
 {
-    const char *const commands_only[] = { "--commands-only", "on", NULL };
-    REQUIRE(
-        (discover ? discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only)
-                  : graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only)) == 0
-    );
-    char path[GRAPH_PATH];
-    join(path, built, "compile_commands.json");
-    yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);
-    join(path, reference, "compile_commands.json");
-    yyjson_doc *cmake_doc = yyjson_read_file(path, 0, NULL, NULL);
-    REQUIRE(graph_doc && cmake_doc);
-    yyjson_val *ours = yyjson_doc_get_root(graph_doc);
     /* The libraries the graph owns are those its objects belong to. */
     char owners[GRAPH_OWNERS][128];
     int owner_count = 0;
@@ -393,7 +381,7 @@ static bool commands_match(bool discover)
         }
     }
     int matched = 0, expected = 0;
-    yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(cmake_doc));
+    yyjson_arr_iter iter = yyjson_arr_iter_with(theirs);
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *command = yyjson_get_str(yyjson_obj_get(entry, "command"));
         const char *file = yyjson_get_str(yyjson_obj_get(entry, "file"));
@@ -430,8 +418,26 @@ static bool commands_match(bool discover)
     }
     fprintf(stderr, "graph commands: %d of %d match CMake's in %d libraries\n", matched, expected, owner_count);
     REQUIRE(expected > 0 && matched == expected && (size_t)expected == yyjson_arr_size(ours));
+    return true;
+}
+/* Every compile command the graph writes equals CMake's for the same source. */
+static bool commands_match(bool discover)
+{
+    const char *const commands_only[] = { "--commands-only", "on", NULL };
+    REQUIRE(
+        (discover ? discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only)
+                  : graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only)) == 0
+    );
+    char path[GRAPH_PATH];
+    join(path, built, "compile_commands.json");
+    yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);
+    join(path, reference, "compile_commands.json");
+    yyjson_doc *cmake_doc = yyjson_read_file(path, 0, NULL, NULL);
+    bool matches = graph_doc && cmake_doc &&
+                   command_documents_match(yyjson_doc_get_root(graph_doc), yyjson_doc_get_root(cmake_doc));
     yyjson_doc_free(graph_doc);
     yyjson_doc_free(cmake_doc);
+    REQUIRE(matches);
     return true;
 }
 

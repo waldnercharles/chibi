@@ -24,15 +24,18 @@ typedef struct
     double range_default;
 } field_info;
 
+/* The authored name of the type C spells `spelling`. */
+const char *authored_type(const char *spelling);
 static inline const char *field_type_name(const field_info *field)
 {
-    return field->handle ? field->handle : field->spelling;
+    return field->handle ? field->handle : authored_type(field->spelling);
 }
 
 typedef struct
 {
     char *name;
-    char *file; /* header basename where the definition lives */
+    char *c_name; /* C spelling when it differs from the authored name. */
+    char *file;   /* header basename where the definition lives */
     unsigned line;
     field_info *fields;
     long long size;
@@ -42,6 +45,11 @@ typedef struct
     char *constructor_name;
     char *derived_from; /* The source component a derived component follows. */
 } struct_info;
+
+static inline const char *struct_c_name(const struct_info *s)
+{
+    return s->c_name ? s->c_name : s->name;
+}
 
 typedef struct
 {

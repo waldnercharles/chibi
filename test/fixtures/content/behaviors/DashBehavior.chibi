@@ -29,7 +29,7 @@ DashBehavior :: behavior {
         await Strike_Target(Other)
     }
     Capture_Dash_Direction :: () {
-        if abs(break_cf_v2(self.Input.move).x) + abs(break_cf_v2(self.Input.move).y) >= 0.0001 {
+        if abs(break_vec2(self.Input.move).x) + abs(break_vec2(self.Input.move).y) >= 0.0001 {
             self.Dash.direction = vec2_norm(self.Input.move)
             return
         } else {
@@ -39,7 +39,7 @@ DashBehavior :: behavior {
     }
     Drive_Dash :: () {
         self.Velocity = self.Dash.direction * self.Dash.speed
-        self.Orientation = DirectionMath.Direction_Orientation(break_cf_v2(self.Dash.direction).x, break_cf_v2(self.Dash.direction).y)
+        self.Orientation = DirectionMath.Direction_Orientation(break_vec2(self.Dash.direction).x, break_vec2(self.Dash.direction).y)
         return
     }
     Restore_Movement :: () {

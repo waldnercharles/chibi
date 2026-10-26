@@ -139,5 +139,9 @@ int chibi_migrate_array_calls(const char *source, char **migrated, char *error, 
  * chibi_migrate32_angle_forms. Returns -1 with `error` set when the source
  * uses an angle form version 33 cannot spell. */
 int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, size_t error_size);
+/* Upgrades version 33 `.chibi` source to version 34, which names CF_V2 and
+ * CF_V3 vec2 and vec3. Returns -1 with `error` set when the source does not
+ * parse. */
+int chibi_migrate_vector_names(const char *source, char **migrated, char *error, size_t size);
 
 #endif

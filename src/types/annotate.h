@@ -25,6 +25,8 @@
     __attribute__((annotate("node:component-alias:" #T)))
 #define NODE_EXTERNAL_TYPE(T)                                                  \
     __attribute__((annotate("node:external-type:" #T)))
+/* The authored name of an external type whose C name scripts don't spell. */
+#define NODE_TYPE_NAME(NAME) __attribute__((annotate("node:type-name:" NAME)))
 #define NODE_CONVERTS(FROM, TO)                                                \
     __attribute__((annotate("node:conversion-from:" #FROM)))                   \
     __attribute__((annotate("node:conversion-to:" #TO)))

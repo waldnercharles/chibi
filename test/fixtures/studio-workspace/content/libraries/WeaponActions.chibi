@@ -12,7 +12,7 @@ WeaponActions :: library {
             return spawn_prototype_action.Entity
         }
     }
-    Fire_Projectile :: (Origin: CF_V2 = null, Direction: CF_V2 = null, Damage: int = 0, Prototype: Prototype = Projectile, Shooter: entity = 0) -> (Entity: entity = 0) {
+    Fire_Projectile :: (Origin: vec2 = null, Direction: vec2 = null, Damage: int = 0, Prototype: Prototype = Projectile, Shooter: entity = 0) -> (Entity: entity = 0) {
         action spawn_prototype_at = Spawn_Prototype_At(Prototype, transform_to_cf(Origin))
         spawn_prototype_at()
         after spawn_prototype_at {

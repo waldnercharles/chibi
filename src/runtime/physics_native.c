@@ -43,8 +43,8 @@ const char *physics_native_raycast(
     out[1] = (pin_value){ .type = PIN_HANDLE,
                           .type_name = "ecs.entity",
                           .u64 = ecs_entity_to_u64(hit.entity) };
-    out[2] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = point };
-    out[3] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = normal };
+    out[2] = (pin_value){ .type = PIN_STRUCT, .type_name = "vec2", .ptr = point };
+    out[3] = (pin_value){ .type = PIN_STRUCT, .type_name = "vec2", .ptr = normal };
     out[4] = (pin_value){ .type = PIN_F32, .f = hit.distance };
     return NULL;
 }

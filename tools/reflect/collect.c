@@ -537,7 +537,14 @@ static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor, CXClientData 
     return CXChildVisit_Continue;
 }
 
-static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int component, int dense)
+static void collect_alias(
+    collect_ctx *ctx,
+    CXCursor c,
+    const char *name,
+    const char *c_name,
+    int component,
+    int dense
+)
 {
     CXType underlying = clang_getTypedefDeclUnderlyingType(c);
     CXType record_type = clang_getCanonicalType(underlying);
@@ -550,6 +557,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
 
     struct_info s = { 0 };
     s.name = strdup(name);
+    s.c_name = c_name ? strdup(c_name) : NULL;
     s.file = cursor_file_basename(c);
     clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
     s.size = clang_Type_getSizeOf(underlying);
@@ -558,13 +566,14 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
     s.constructor_name = annotation_value(c, "node:constructor:");
     CXString definition_name = clang_getCursorSpelling(definition);
     const char *underlying_name = clang_getCString(definition_name);
-    if (underlying_name && strcmp(name, underlying_name) != 0) {
+    if (underlying_name && strcmp(c_name ? c_name : name, underlying_name) != 0) {
         s.alias_of = strdup(underlying_name);
     }
     clang_disposeString(definition_name);
     clang_visitChildren(definition, field_visitor, &s.fields);
     if (g_failed) {
         free(s.name);
+        free(s.c_name);
         free(s.file);
         free(s.alias_of);
         free(s.constructor_name);
@@ -585,16 +594,22 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
         char *component_alias = annotation_value(c, "node:component-alias:");
         char *type_alias = annotation_value(c, "node:type-alias:");
         char *external_type = annotation_value(c, "node:external-type:");
+        char *type_name = annotation_value(c, "node:type-name:");
         if (underlying.kind == CXType_Enum) {
             collect_enum_alias(ctx, c, typedef_name);
+        } else if (type_name && !external_type) {
+            reflect_error(c, "only external types take an authored type name");
+        } else if (type_name) {
+            collect_alias(ctx, c, type_name, external_type, 0, 0);
         } else if (component_alias || type_alias || external_type) {
             const char *name = external_type ? external_type : typedef_name;
-            collect_alias(ctx, c, name, component_alias != NULL, 0);
+            collect_alias(ctx, c, name, NULL, component_alias != NULL, 0);
         }
         free(typedef_name);
         free(component_alias);
         free(type_alias);
         free(external_type);
+        free(type_name);
     } else if (k == CXCursor_StructDecl && clang_isCursorDefinition(c) && clang_getCursorKind(parent) != CXCursor_TypedefDecl) {
         int is_type = has_annotate(c, "node:type");
         int is_component = has_annotate(c, "node:component") ||
@@ -725,6 +740,7 @@ void reflect_dispose(collect_ctx *ctx)
     for (int i = 0; i < acount(ctx->structs); i++) {
         struct_info *s = &ctx->structs[i];
         free(s->name);
+        free(s->c_name);
         free(s->file);
         free(s->alias_of);
         free(s->constructor_name);

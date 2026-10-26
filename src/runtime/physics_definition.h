@@ -22,16 +22,16 @@
       false,                                                                   \
       ((pin_value){ 0 }))
 #define PHYSICS_RAY_INPUTS(X)                                                    \
-    PHYSICS_PORT(X, "Start", PIN_STRUCT, "CF_V2", PIN_CONTAINER_SINGLE)          \
-    PHYSICS_PORT(X, "End", PIN_STRUCT, "CF_V2", PIN_CONTAINER_SINGLE)            \
+    PHYSICS_PORT(X, "Start", PIN_STRUCT, "vec2", PIN_CONTAINER_SINGLE)           \
+    PHYSICS_PORT(X, "End", PIN_STRUCT, "vec2", PIN_CONTAINER_SINGLE)             \
     PHYSICS_PORT(X, "Categories", PIN_U32, "unsigned int", PIN_CONTAINER_SINGLE) \
     PHYSICS_PORT(X, "Exclude", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)   \
     PHYSICS_PORT(X, "Include Sensors", PIN_BOOL, NULL, PIN_CONTAINER_SINGLE)
 #define PHYSICS_RAY_OUTPUTS(X)                                                 \
     PHYSICS_PORT(X, "Found", PIN_BOOL, NULL, PIN_CONTAINER_SINGLE)             \
     PHYSICS_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)  \
-    PHYSICS_PORT(X, "Point", PIN_STRUCT, "CF_V2", PIN_CONTAINER_SINGLE)        \
-    PHYSICS_PORT(X, "Normal", PIN_STRUCT, "CF_V2", PIN_CONTAINER_SINGLE)       \
+    PHYSICS_PORT(X, "Point", PIN_STRUCT, "vec2", PIN_CONTAINER_SINGLE)         \
+    PHYSICS_PORT(X, "Normal", PIN_STRUCT, "vec2", PIN_CONTAINER_SINGLE)        \
     PHYSICS_PORT(X, "Distance", PIN_F32, NULL, PIN_CONTAINER_SINGLE)
 #define PHYSICS_CONTACT_INPUTS(X)                                              \
     PHYSICS_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)  \
@@ -52,7 +52,7 @@
 #define PHYSICS_PUSH_INPUTS(X, AMOUNT)                                         \
     PHYSICS_EXEC(X, "Exec")                                                    \
     PHYSICS_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)  \
-    PHYSICS_PORT(X, AMOUNT, PIN_STRUCT, "CF_V2", PIN_CONTAINER_SINGLE)
+    PHYSICS_PORT(X, AMOUNT, PIN_STRUCT, "vec2", PIN_CONTAINER_SINGLE)
 #define PHYSICS_PUSH_OUTPUTS(X) PHYSICS_EXEC(X, "Then")
 extern const native_definition_pack PHYSICS_DEFINITION_PACK;
 

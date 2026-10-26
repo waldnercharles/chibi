@@ -16,13 +16,14 @@ import strings "core:strings"
 // zero requires. Values and conditions are literals,
 // variables, arithmetic and shifts, comparisons of two numbers or two bools,
 // `&&`, `||` and `!`, conversions between number types or direct calls of
-// functions of the same source, with such operands, in any parentheses. Each
+// functions of the same source, with such operands, in any parentheses; a
+// call that omits trailing arguments passes their literal defaults. Each
 // operand has the type the ordinary compiler gives it and converts as it
 // converts it: an integer beside a floating value becomes one, a float beside
 // a double, passed for a double or returned as one becomes a double, and an
 // integer returned, assigned or declared as a wider one widens, and so does
-// a range bound. Loops over arrays, other statements, attributes, imports
-// and defaults are excluded; functions may recurse.
+// a range bound. Loops over arrays, other statements, attributes and
+// imports are excluded; functions may recurse.
 //
 // Each body must also pass EmitBody with no effects, host calls or roots,
 // and no cells but its calls' argument and result cells. Its calls go only to
@@ -88,7 +89,7 @@ ScalarSignature :: (forest: snapshot.SnapshotNode[], params: Param[], callable: 
     }
     for (index in 0..<callable.count) {
         param := params[callable.first + index];
-        if (!ScalarParam(param) || param.has_default) {
+        if (!ScalarParam(param)) {
             return forest[param.node].parent;
         }
     }
@@ -391,6 +392,19 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
                                            expected, expected, facts.Clamp, built);
         }
         switch operand {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+        count += 1;
+    }
+    // An omitted argument is its parameter's default, a literal of the
+    // parameter's type at the call, as the call step fills it in.
+    while (count < target.count) {
+        param := params[target.first + count];
+        switch ScalarAppend(forest, node, ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits),
+                            output) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(built):

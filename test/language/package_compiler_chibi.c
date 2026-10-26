@@ -10770,7 +10770,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 46
+    SCALAR_ACCEPTED_CASES = 47
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -12013,9 +12013,9 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
     );
 }
 /* A scalar module with a constant expression the ordinary compiler folds
- * exactly, or a conversion it must call instead, and the value its Main
- * gives. They stay out of the 96-source
- * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each one:
+ * exactly, a conversion it must call instead or calls that omit defaulted
+ * arguments, and the value its Main gives. They stay out of the 96-source
+ * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each constant:
  * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
 static const struct
 {
@@ -12053,6 +12053,21 @@ static const struct
       "2; }\n"
       "int8 :: (v: int) -> int { return v + 1; }\n",
       330 },
+    /* A default of every kind of type, and a call that gives some
+     * arguments and omits the rest: 6 + 20 + 10 + (-1 + 255 + 15 + 2 - 9). */
+    { "defaults",
+      "package scalar\nMain :: () -> int { return Mix() + Mix(10) + Mix(10, "
+      "false) + Small(); }\n"
+      "Mix :: (a: int = 3, twice: bool = true) -> int { if (twice) { return a "
+      "* 2; } "
+      "return a; }\n"
+      "Small :: (b: int8 = -1, u: byte = 255, w: uint64 = "
+      "18446744073709551615, f: float = 0.5,\n"
+      "          d: double = -2.25) -> int {\n"
+      "    return int(b) + int(u) + int(w >> 60) + int(f * 4.0) + int(d * "
+      "4.0);\n"
+      "}\n",
+      298 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
@@ -12063,6 +12078,35 @@ enum
 {
     FOLDED_SOURCE_COUNT = (int)(sizeof FOLDED_SOURCES / sizeof *FOLDED_SOURCES)
 };
+/* Why module `name`'s rows on VM b have no IR: the producer's rejection or
+ * the consumer's validation error. */
+static void report_rejection(int b, const char *name, pin_value *rows)
+{
+    pin_value error;
+    if (row_int(rows, 1, "kind") == SCALAR_REJECTION_ROW) {
+        const pin_array *array = rows->ptr;
+        error = scalar_field(&array->items[1], "text");
+    } else if (!compiler_fixture_call(
+                   &consumer,
+                   b,
+                   "project:scalar_llvm",
+                   "Validate",
+                   rows,
+                   1,
+                   COMPILE_BUDGET,
+                   &input,
+                   &error
+               )) {
+        error = text("Validate failed");
+    }
+    fprintf(
+        stderr,
+        "scalar case %s: rejected: %.*s\n",
+        name,
+        (int)pin_text(error).length,
+        pin_text(error).bytes
+    );
+}
 /* Each folded source is accepted, and its Main gives its value on both VMs
  * and natively at O0 and O2. */
 static bool folded_sources_agree(const char *directory)
@@ -12075,7 +12119,7 @@ static bool folded_sources_agree(const char *directory)
         char *ir;
         REQUIRE(emitted_ir(b, &rows, &ir));
         if (!ir) {
-            fprintf(stderr, "scalar case %s: rejected\n", name);
+            report_rejection(b, name, &rows);
         }
         REQUIRE(ir);
         scalar_call calls[MAX_CASE_CALLS];

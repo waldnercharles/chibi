@@ -42,6 +42,24 @@ bool compiler_fixture_prepare_packs(
     const native_definition_pack *additional,
     int additional_count
 );
+enum
+{
+    COMPILER_FIXTURE_BYTECODE = 1u << 0,
+    COMPILER_FIXTURE_COMPILED = 1u << 1,
+    COMPILER_FIXTURE_BOTH = COMPILER_FIXTURE_BYTECODE | COMPILER_FIXTURE_COMPILED
+};
+/* Prepare only the requested owners. Unselected owners stay NULL; selected
+ * owners still take independent snapshots and live only until fixture_free.
+ * The ordinary prepare helpers always prepare both backends. */
+bool compiler_fixture_prepare_backends(
+    compiler_fixture *,
+    unsigned backends,
+    const source_package_input *,
+    int count,
+    const native_definition_pack *additional,
+    int additional_count
+);
+void test_language_compiler_fixture();
 void compiler_fixture_free(compiler_fixture *);
 const authoring_package *compiler_fixture_package(
     const compiler_fixture *,

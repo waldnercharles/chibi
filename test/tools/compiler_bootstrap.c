@@ -329,6 +329,21 @@ TEST_CASE(bootstrap_write_checks_the_seed)
         tool_run(argv, root, log_path) == 1 &&
         log_has("the seed compiled two/A.chibi other than it is on disk")
     );
+    /* A large seed must reach source validation, but never exceed the
+     * artifact bound. No prepared decoding or compilation happens here. */
+    const size_t lengths[] = { COMPILER_HOST_MAX_OUTPUT_BYTES + 1u,
+                               COMPILER_HOST_MAX_ARTIFACT_BYTES,
+                               COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
+    char closure[256];
+    path(closure, "seed/compiler.chibip");
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(!truncate(closure, (off_t)lengths[i]));
+        REQUIRE(tool_run(argv, root, log_path) == 1);
+        REQUIRE(log_has(
+            i == 2 ? "needs compiler.chibip and compile.json"
+                   : "the seed compiled two/A.chibi other than it is on disk"
+        ));
+    }
     struct stat info;
     REQUIRE(stat(out, &info) != 0);
     return true;
@@ -432,6 +447,31 @@ TEST_CASE(bootstrap_load_rejects_damaged_artifacts_and_old_versions)
     REQUIRE(!load(api_folder));
     REQUIRE(strstr(api_error, "bootstrap version 1, older than 2"));
     contract(1, 1);
+    return true;
+}
+
+/* Sparse invalid closures exercise the read bound without preparing a large
+ * program. The digest diagnostic reports the bytes actually admitted; all
+ * accepted reads must still pass checksum and prepared validation. */
+TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound)
+{
+    REQUIRE(api_bytes && api_target);
+    const size_t lengths[] = { COMPILER_HOST_MAX_OUTPUT_BYTES,
+                               COMPILER_HOST_MAX_OUTPUT_BYTES + 1u,
+                               COMPILER_HOST_MAX_ARTIFACT_BYTES,
+                               COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
+    char file[256], expected[64];
+    path(file, "api-bootstrap/compiler.chibip");
+    for (int i = 0; i < 4; i++) {
+        write_binary("api-bootstrap/compiler.chibip", "", 0);
+        REQUIRE(!truncate(file, (off_t)lengths[i]));
+        REQUIRE(!load(api_folder));
+        snprintf(expected, sizeof expected, "compiler.chibip, %zu bytes", i == 3 ? 0 : lengths[i]);
+        REQUIRE(strstr(api_error, expected));
+        REQUIRE(strstr(api_error, "is not the closure bootstrap.json records"));
+    }
+    write_binary("api-bootstrap/compiler.chibip", api_bytes, api_length);
+    REQUIRE(load(api_folder));
     return true;
 }
 
@@ -895,6 +935,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
     pu_setup(NULL, cleanup_load);
     RUN_TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation);
     RUN_TEST_CASE(bootstrap_load_rejects_damaged_artifacts_and_old_versions);
+    RUN_TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound);
     RUN_TEST_CASE(bootstrap_load_rejects_another_prepared_abi);
     RUN_TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness);
     RUN_TEST_CASE(bootstrap_load_does_not_cache_source_hashes);
@@ -966,6 +1007,14 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     REQUIRE(file);
     bool changed = fputs("\npub BootstrapLoadMarker :: () -> int { return 37; }\n", file) >=
                    0;
+    /* Main's compiler is just below 16 MiB. A retained 64 KiB literal makes
+     * this recovery cross that boundary while keeping the normal budgets. */
+    changed = changed &&
+              fputs("pub BootstrapLoadPadding :: () -> string { return \"", file) >= 0;
+    for (int i = 0; changed && i < 64 * 1024; i++) {
+        changed = fputc('x', file) != EOF;
+    }
+    changed = changed && fputs("\"; }\n", file) >= 0;
     changed = !fclose(file) && changed;
     REQUIRE(changed);
     path(output, "load-must-not-write.chibip");
@@ -984,11 +1033,21 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     REQUIRE(api_host);
     REQUIRE(strstr(api_error, "compiler sources changed since revision"));
     REQUIRE(strstr(api_error, "that compiles them to itself"));
+    const char *compiled = strstr(api_error, "compiled a compiler of ");
+    size_t recovered = 0;
+    REQUIRE(compiled && sscanf(compiled, "compiled a compiler of %zu bytes", &recovered) == 1);
+    REQUIRE(recovered > COMPILER_HOST_MAX_OUTPUT_BYTES && recovered <= COMPILER_HOST_MAX_ARTIFACT_BYTES);
+    printf("%s\n", api_error);
     REQUIRE(access(output, F_OK) != 0);
     uint64_t entry = compiler_host_entry("project:package_compiler:1:BootstrapLoadMarker:callable");
     REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
     REQUIRE(api_result.flow_status == FLOW_OK);
     REQUIRE(api_result.json && !strcmp(api_result.json, "[37]"));
+    free(api_result.json);
+    api_result = (compiler_host_result){ 0 };
+    entry = compiler_host_entry("project:package_compiler:1:BootstrapLoadPadding:callable");
+    REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
+    REQUIRE(api_result.flow_status == FLOW_OK && api_result.length == 64u * 1024u + 4u);
     return true;
 }
 

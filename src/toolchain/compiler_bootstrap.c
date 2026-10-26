@@ -217,7 +217,7 @@ static unsigned char *compile(
         json,
         length,
         BOOTSTRAP_BUDGET,
-        COMPILER_HOST_MAX_OUTPUT_BYTES,
+        COMPILER_HOST_MAX_ARTIFACT_BYTES,
         &out
     );
     if (called && out.flow_status == FLOW_OK && out.length) {
@@ -266,7 +266,7 @@ static void free_seed(seed *s)
 static bool read_seed(const char *folder, seed *s, char *error, size_t size)
 {
     char *closure = join(folder, CLOSURE_FILE), *json = join(folder, "compile.json");
-    s->closure = read_bytes(closure, COMPILER_HOST_MAX_OUTPUT_BYTES, &s->closure_length);
+    s->closure = read_bytes(closure, COMPILER_HOST_MAX_ARTIFACT_BYTES, &s->closure_length);
     s->json = (char *)read_bytes(json, COMPILER_HOST_MAX_BYTES, &s->json_length);
     s->doc = s->json
                ? yyjson_read(s->json, s->json_length, YYJSON_READ_ALLOW_INVALID_UNICODE)
@@ -515,7 +515,7 @@ static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a,
     a->doc = a->text ? yyjson_read(a->text, length, YYJSON_READ_ALLOW_INVALID_UNICODE)
                      : NULL;
     a->root = yyjson_doc_get_root(a->doc);
-    a->closure = read_bytes(file, COMPILER_HOST_MAX_OUTPUT_BYTES, &a->closure_length);
+    a->closure = read_bytes(file, COMPILER_HOST_MAX_ARTIFACT_BYTES, &a->closure_length);
     free(file);
     free(path);
     int64_t format = yyjson_get_sint(yyjson_obj_get(a->root, "format"));

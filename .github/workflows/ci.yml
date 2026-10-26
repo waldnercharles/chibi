@@ -44,10 +44,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Verify CI APT source fixtures
+        run: |
+          python3 .github/test-ubuntu-dependencies.py
+          python3 .github/test-native-ccache.py
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
+          python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
@@ -57,6 +60,20 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
       - name: Verify installed and archived license notices
         run: python3 test/tools/package_licenses.py
+      - name: Configure compiler cache
+        id: ccache-config
+        run: python3 .github/native-ccache.py
+      - name: Restore compiler objects
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+          restore-keys: ${{ steps.ccache-config.outputs.prefix }}-
+      - name: Record compiler cache configuration and reset counters
+        run: |
+          ccache --show-config
+          ccache --zero-stats
       - name: Build products and test drivers (ASan and UBSan)
         run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT=/usr/lib/llvm-18
       # validate-project runs chibi_ctl dozens of times, and published-docs and
@@ -73,6 +90,17 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1
         run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+      - name: Report compiler cache statistics
+        if: always() && steps.ccache-config.outcome == 'success'
+        run: ccache --show-stats --verbose
+      # PRs restore only. Only successful main pushes may publish snapshots;
+      # GitHub's ref scope additionally prevents PR caches reaching main.
+      - name: Save compiler objects from successful main builds
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
 
   native-macos:
     name: Engine build and native tests (macOS)
@@ -84,7 +112,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install build dependencies
         run: |
-          brew install llvm
+          brew install llvm ccache
           LLVM="$(brew --prefix llvm)"
           echo "LLVM=$LLVM" >> "$GITHUB_ENV"
           echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
@@ -93,6 +121,20 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Configure compiler cache
+        id: ccache-config
+        run: python3 .github/native-ccache.py
+      - name: Restore compiler objects
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+          restore-keys: ${{ steps.ccache-config.outputs.prefix }}-
+      - name: Record compiler cache configuration and reset counters
+        run: |
+          ccache --show-config
+          ccache --zero-stats
       - name: Build products and test drivers (ASan and UBSan)
         run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT="$LLVM"
       - name: Preserve failed macOS Graph stage log
@@ -116,6 +158,17 @@ jobs:
       # sequential so they cannot race over fixtures or build outputs.
       - name: Native, material, project and language selectors
         run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT="$LLVM"
+      - name: Report compiler cache statistics
+        if: always() && steps.ccache-config.outcome == 'success'
+        run: ccache --show-stats --verbose
+      # PRs restore only. Only successful main pushes may publish snapshots;
+      # GitHub's ref scope additionally prevents PR caches reaching main.
+      - name: Save compiler objects from successful main builds
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
 
   windows:
     name: Engine build and compile smoke test (Windows)
@@ -230,8 +283,7 @@ jobs:
           PY_SOURCE
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18 clang-tools-18 libclang-18-dev xvfb \
+          python3 .github/install-ubuntu-dependencies.py clang-18 clang-tools-18 libclang-18-dev xvfb \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
@@ -348,8 +400,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=normal)"
       - name: Install graph build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          python3 .github/install-ubuntu-dependencies.py --no-install-recommends \
             clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev ccache python3-venv \
             libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \

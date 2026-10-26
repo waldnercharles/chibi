@@ -20,8 +20,10 @@ ReferenceStorage: int : -6;
 // descriptor; its work carries the parameter's type.
 ReferencePhase: int : 14;
 // The phase of a scoped argument without `&`: the caller's own scoped
-// parameter, passed on, or a managed pointer, which lends its target.
-ScopedPhase: int : 15;
+// parameter, passed on, or a managed pointer, which lends its target. Its
+// number differs from every other statement phase, such as
+// EntityComponentPhase's 15.
+ScopedPhase: int : 16;
 
 // Whether any function of `params` takes a scoped parameter.
 AnyReference :: (params: Param[]) -> bool {

@@ -90,21 +90,27 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
     return matches == 1 && sizeof(prepared_counter) < 64;
 }
 
-/* The 1-based index of `text` in the module's string table, which follows
- * the four header words; 0 when the table lacks it. */
+/* The 1-based index of `text` in the module's string table, which the last
+ * 8 bytes locate; 0 when the table lacks it. */
 static size_t prepared_string_code(unsigned char *bytes, size_t length, const char *text)
 {
-    execution_wire wire = { .data = bytes, .size = length, .reading = true };
-    for (int i = 0; i < 4; i++) {
-        uint64_t word = 0;
-        execution_wire_u64(&wire, &word);
+    uint64_t at = 0;
+    for (int i = 0; length >= 8 && i < 8; i++) {
+        at |= (uint64_t)bytes[length - 8 + i] << (8 * i);
     }
+    if (length < 8 || at > length - 8) {
+        return 0;
+    }
+    execution_wire wire = { .data = bytes,
+                            .size = length - 8,
+                            .offset = (size_t)at,
+                            .reading = true };
     int count = 0;
     execution_wire_int(&wire, &count);
     for (int i = 0; i < count && !wire.error; i++) {
         size_t size = 0;
         execution_wire_size(&wire, &size);
-        if (wire.error || !size || size - 1 > length - wire.offset) {
+        if (wire.error || !size || size - 1 > wire.size - wire.offset) {
             return 0;
         }
         if (size - 1 == strlen(text) && !memcmp(bytes + wire.offset, text, size - 1)) {

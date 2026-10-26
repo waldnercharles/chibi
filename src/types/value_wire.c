@@ -13,7 +13,6 @@
 
 #include <assert.h>
 #include <limits.h>
-#include <stdlib.h>
 #include <string.h>
 
 static void fail(execution_wire *w, const char *error)
@@ -192,22 +191,87 @@ bool execution_wire_record(execution_wire *w)
     w->records++;
     return true;
 }
+enum
+{
+    STRING_TABLE_OFFSET_BYTES = 8
+};
+static size_t text_slot(const char *text, size_t mask)
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (; *text; text++) {
+        hash = (hash ^ (unsigned char)*text) * UINT64_C(1099511628211);
+    }
+    return (size_t)hash & mask;
+}
+/* The scratch a writer's table holds: its string vector and its slots. */
+static size_t strings_scratch(const execution_wire *w)
+{
+    size_t slots = (size_t)acap(w->slots);
+    return slots ? 2 * sizeof(dyna_hdr) + slots / 2 * sizeof *w->strings +
+                       slots * sizeof *w->slots
+                 : 0;
+}
+/* Doubles the slots once they are half full, keeping probes short. The
+ * vector holds half as many strings, so it grows only here. */
+static bool grow_slots(execution_wire *w)
+{
+    size_t before = strings_scratch(w);
+    size_t size = acap(w->slots) ? (size_t)acap(w->slots) * 2 : 64;
+    if (size > INT_MAX || !execution_wire_reserve(
+                              w,
+                              2 * sizeof(dyna_hdr) + size / 2 * sizeof *w->strings +
+                                  size * sizeof *w->slots - before
+                          )) {
+        return false;
+    }
+    int *slots = NULL;
+    asetlen(slots, (int)size);
+    memset(slots, 0, size * sizeof *slots);
+    for (int i = 0; i < acount(w->strings); i++) {
+        size_t at = text_slot(w->strings[i], size - 1);
+        while (slots[at]) {
+            at = (at + 1) & (size - 1);
+        }
+        slots[at] = i + 1;
+    }
+    afree(w->slots);
+    w->slots = slots;
+    asetcap(w->strings, (int)(size / 2));
+    assert(acap(w->slots) == (int)size && acap(w->strings) == (int)(size / 2));
+    return true;
+}
+static size_t string_code(execution_wire *w, const char *text)
+{
+    if ((size_t)acount(w->strings) * 2 >= (size_t)acap(w->slots) && !grow_slots(w)) {
+        return 0;
+    }
+    size_t mask = (size_t)acap(w->slots) - 1, at = text_slot(text, mask);
+    while (w->slots[at] && strcmp(w->strings[w->slots[at] - 1], text)) {
+        at = (at + 1) & mask;
+    }
+    if (!w->slots[at]) {
+        apush(w->strings, text);
+        w->slots[at] = acount(w->strings);
+    }
+    return (size_t)w->slots[at];
+}
 static void interned_string(execution_wire *w, const char **value)
 {
-    if (!w->reading && *value) {
-        if (!w->error) {
-            apush(w->texts, ((execution_wire_text){ acount(w->data), *value }));
-        }
+    size_t code = 0;
+    if (!w->reading && *value && !(code = string_code(w, *value))) {
         return;
     }
-    size_t code = 0;
     execution_wire_size(w, &code);
     if (!w->reading || w->error) {
         return;
     }
-    if (code > w->string_count) {
-        fail(w, "Prepared string index exceeds its table");
+    /* Entries are named in table order, each first named after the last. */
+    if (code > w->strings_named + 1 || code > w->string_count) {
+        fail(w, "Prepared string index is out of order or exceeds its table");
         return;
+    }
+    if (code == w->strings_named + 1) {
+        w->strings_named++;
     }
     *value = code ? w->strings[code - 1] : NULL;
 }
@@ -263,73 +327,27 @@ void execution_wire_string(execution_wire *w, const char **value)
     w->size += length;
     w->offset = w->size;
 }
-void execution_wire_strings_begin(execution_wire *w)
+/* Reads the table between the offset the last 8 bytes give and those bytes,
+ * then limits the wire to the bytes before it. */
+static void read_strings(execution_wire *w)
 {
-    assert(!w->reading && !w->interning);
-    w->interning = true;
-    w->strings_at = acount(w->data);
-    w->paused_hash = w->hash;
-    w->hash = NULL;
-}
-static int compare_text(const void *a, const void *b)
-{
-    return strcmp(*(const char *const *)a, *(const char *const *)b);
-}
-/* The table, then the bytes written since begin with each interned string's
- * index at its place. Those bytes already count in size; the table and the
- * indices are new. */
-void execution_wire_strings_finish(execution_wire *w)
-{
-    assert(!w->reading && w->interning);
-    w->interning = false;
-    w->hash = w->paused_hash;
-    w->paused_hash = NULL;
-    int count = acount(w->texts);
-    if (w->error) {
-        afree(w->texts);
+    if (w->error || w->offset > w->size ||
+        w->size - w->offset < STRING_TABLE_OFFSET_BYTES) {
+        fail(w, "Prepared string table is absent");
         return;
     }
-    const char **table = xmalloc((count ? (size_t)count : 1) * sizeof *table);
-    for (int i = 0; i < count; i++) {
-        table[i] = w->texts[i].text;
+    size_t end = w->size - STRING_TABLE_OFFSET_BYTES;
+    uint64_t at = 0;
+    for (int i = 0; i < STRING_TABLE_OFFSET_BYTES; i++) {
+        at |= (uint64_t)w->data[end + i] << (8 * i);
     }
-    qsort(table, (size_t)count, sizeof *table, compare_text);
-    int distinct = 0;
-    for (int i = 0; i < count; i++) {
-        if (!distinct || strcmp(table[distinct - 1], table[i])) {
-            table[distinct++] = table[i];
-        }
+    if (at < w->offset || at > end) {
+        fail(w, "Prepared string table offset is invalid");
+        return;
     }
-    unsigned char *body = w->data;
-    size_t from = w->strings_at, end = acount(body);
-    w->data = NULL;
-    for (size_t i = 0; i < from; i++) {
-        write_byte(w, body[i]);
-    }
-    execution_wire_count(w, &distinct, 1);
-    for (int i = 0; i < distinct; i++) {
-        execution_wire_string(w, &table[i]);
-    }
-    for (int i = 0; i < count && !w->error; i++) {
-        for (; from < w->texts[i].at; from++) {
-            write_byte(w, body[from]);
-        }
-        const char **found = bsearch(&w->texts[i].text, table, (size_t)distinct, sizeof *table, compare_text);
-        assert(found);
-        size_t code = (size_t)(found - table) + 1;
-        execution_wire_size(w, &code);
-    }
-    for (; from < end && !w->error; from++) {
-        write_byte(w, body[from]);
-    }
-    w->offset = w->size;
-    free(table);
-    afree(body);
-    afree(w->texts);
-}
-void execution_wire_strings_read(execution_wire *w)
-{
-    assert(w->reading && !w->interning);
+    size_t body = w->offset;
+    w->offset = (size_t)at;
+    w->size = end;
     int count = 0;
     execution_wire_count(w, &count, 1);
     const char **table = NULL;
@@ -338,13 +356,64 @@ void execution_wire_strings_read(execution_wire *w)
     }
     for (int i = 0; i < count && !w->error; i++) {
         execution_wire_string(w, &table[i]);
-        if (!w->error && (!table[i] || (i && strcmp(table[i - 1], table[i]) >= 0))) {
-            fail(w, "Prepared string table is not sorted and distinct");
+        if (!w->error && !table[i]) {
+            fail(w, "Prepared string table entry is absent");
         }
     }
-    w->interning = true;
+    if (!w->error && w->offset != end) {
+        fail(w, "Prepared string table has trailing bytes");
+    }
     w->strings = table;
     w->string_count = w->error ? 0 : (size_t)count;
+    w->offset = body;
+    w->size = (size_t)at;
+}
+void execution_wire_strings_begin(execution_wire *w)
+{
+    assert(!w->interning);
+    if (w->reading) {
+        read_strings(w);
+    }
+    w->interning = true;
+}
+static void write_strings(execution_wire *w)
+{
+    uint64_t at = w->size;
+    int count = acount(w->strings);
+    execution_wire_count(w, &count, 1);
+    for (int i = 0; i < count; i++) {
+        execution_wire_string(w, &w->strings[i]);
+    }
+    if (!available(w, STRING_TABLE_OFFSET_BYTES)) {
+        return;
+    }
+    for (int i = 0; i < STRING_TABLE_OFFSET_BYTES; i++) {
+        write_byte(w, (unsigned char)(at >> (8 * i)));
+    }
+    w->size += STRING_TABLE_OFFSET_BYTES;
+    w->offset = w->size;
+}
+void execution_wire_strings_finish(execution_wire *w)
+{
+    assert(w->interning);
+    w->interning = false;
+    if (w->reading) {
+        if (!w->error && w->strings_named != w->string_count) {
+            fail(w, "Prepared string table has an unnamed entry");
+        }
+        return;
+    }
+    if (!w->error) {
+        write_strings(w);
+    }
+    size_t scratch = strings_scratch(w);
+    if (w->storage_budget) {
+        *w->storage_budget += scratch;
+        w->storage_charged -= scratch;
+    }
+    w->owned_bytes -= scratch;
+    afree(w->strings);
+    afree(w->slots);
 }
 /* Language text has an explicit length; metadata uses wire_string above. */
 static void text_value(execution_wire *w, pin_value *value)

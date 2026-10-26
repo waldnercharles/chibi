@@ -588,35 +588,44 @@ TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth)
     return true;
 }
 
-/* Interned strings: a sorted table of each distinct string once, then each
- * string as its 1-based index, 0 for NULL. Hashing sees the same bytes, and the
- * reader shares one decoded string between repeats. */
+/* Interned strings: each string is its 1-based index in a table of the
+ * distinct strings in order of first use, 0 for NULL. The table follows the
+ * body, then its offset in 8 bytes. Hashing streams the same bytes, writer
+ * scratch is charged and released, and the reader shares one decoded string
+ * between repeats. */
 static void interned_strings(execution_wire *w, const char **texts, int count)
 {
     uint64_t before = 7, after = 9;
     execution_wire_u64(w, &before);
-    if (w->reading) {
-        execution_wire_strings_read(w);
-    } else {
-        execution_wire_strings_begin(w);
-    }
+    execution_wire_strings_begin(w);
     for (int i = 0; i < count; i++) {
         execution_wire_string(w, &texts[i]);
     }
     execution_wire_u64(w, &after);
-    if (!w->reading) {
-        execution_wire_strings_finish(w);
-    }
+    execution_wire_strings_finish(w);
+}
+static bool rejects_strings(const unsigned char *bytes, size_t size)
+{
+    const char *texts[5] = { 0 };
+    execution_wire w = { .reading = true,
+                         .data = (unsigned char *)bytes,
+                         .size = size,
+                         .storage = &snapshots };
+    interned_strings(&w, texts, 5);
+    return w.error != NULL;
 }
 TEST_CASE(types_wire_strings_store_each_string_once)
 {
     const char *texts[] = { "beta", NULL, "alpha", "beta", "" };
-    static const unsigned char expected[] = { 7,   6,   1, 6,   'a', 'l', 'p',
-                                              'h', 'a', 5, 'b', 'e', 't', 'a',
-                                              3,   0,   2, 3,   1,   9 };
-    execution_wire writer = { 0 };
+    static const unsigned char expected[] = { 7,   1,   0,   2,   1,   3,   9,
+                                              6,   5,   'b', 'e', 't', 'a', 6,
+                                              'a', 'l', 'p', 'h', 'a', 1,   7,
+                                              0,   0,   0,   0,   0,   0,   0 };
+    size_t budget = 4096;
+    execution_wire writer = { .storage_budget = &budget };
     interned_strings(&writer, texts, 5);
-    REQUIRE(!writer.error && !writer.interning);
+    REQUIRE(!writer.error && !writer.interning && !writer.strings && !writer.slots);
+    REQUIRE(budget == 4096 && !writer.storage_charged && !writer.owned_bytes);
     REQUIRE(writer.size == sizeof expected && (size_t)acount(writer.data) == sizeof expected);
     REQUIRE(!memcmp(writer.data, expected, sizeof expected));
     uint64_t hash = UINT64_C(14695981039346656037), expected_hash = hash;
@@ -626,6 +635,11 @@ TEST_CASE(types_wire_strings_store_each_string_once)
     execution_wire hashed = { .hash = &hash };
     interned_strings(&hashed, texts, 5);
     REQUIRE(!hashed.error && hashed.size == sizeof expected && !hashed.data && hash == expected_hash);
+    /* The table's slots and vector are reserved before they grow. */
+    size_t tight = 64;
+    execution_wire starved = { .hash = &hash, .storage_budget = &tight };
+    interned_strings(&starved, texts, 5);
+    REQUIRE(starved.error && strstr(starved.error, "budget") && tight == 64);
 
     const char *decoded[5] = { 0 };
     execution_wire reader = { .reading = true,
@@ -633,7 +647,8 @@ TEST_CASE(types_wire_strings_store_each_string_once)
                               .size = writer.size,
                               .storage = &snapshots };
     interned_strings(&reader, decoded, 5);
-    REQUIRE(!reader.error && reader.offset == reader.size && reader.string_count == 3);
+    REQUIRE(!reader.error && reader.offset == reader.size && reader.size == 7);
+    REQUIRE(reader.string_count == 3 && reader.strings_named == 3);
     REQUIRE(
         !strcmp(decoded[0], "beta") && !decoded[1] &&
         !strcmp(decoded[2], "alpha") && !*decoded[4]
@@ -641,26 +656,21 @@ TEST_CASE(types_wire_strings_store_each_string_once)
     REQUIRE(decoded[0] == decoded[3]);
     afree(writer.data);
 
-    /* Each string must name a table entry, and the table must be sorted and
-     * distinct. */
-    unsigned char out_of_range[sizeof expected], unsorted[sizeof expected];
-    memcpy(out_of_range, expected, sizeof expected);
-    out_of_range[14] = 4;
-    memcpy(unsorted, expected, sizeof expected);
-    memcpy(unsorted + 9, (const unsigned char[]){ 5, 'a', 'l', 'p', 'h' }, 5);
-    static const unsigned char repeated[] = { 7, 4, 2, 'a', 2, 'a',
-                                              1, 1, 1, 1,   1, 9 };
-    const unsigned char *hostile[] = { out_of_range, unsorted, repeated };
-    const size_t sizes[] = { sizeof out_of_range, sizeof unsorted, sizeof repeated };
-    for (int i = 0; i < 3; i++) {
-        const char *rejected[5] = { 0 };
-        execution_wire bad = { .reading = true,
-                               .data = (unsigned char *)hostile[i],
-                               .size = sizes[i],
-                               .storage = &snapshots };
-        interned_strings(&bad, rejected, 5);
-        REQUIRE(bad.error);
-    }
+    /* An index past the table or ahead of first use, an entry never named and
+     * a table offset past the end are rejected. */
+    unsigned char bad[sizeof expected];
+    memcpy(bad, expected, sizeof bad);
+    bad[1] = 4;
+    REQUIRE(rejects_strings(bad, sizeof bad));
+    memcpy(bad, expected, sizeof bad);
+    bad[3] = 3;
+    REQUIRE(rejects_strings(bad, sizeof bad));
+    memcpy(bad, expected, sizeof bad);
+    bad[sizeof bad - 8] = 200;
+    REQUIRE(rejects_strings(bad, sizeof bad));
+    static const unsigned char unnamed[] = { 7, 1,   0, 1, 1, 1, 9, 4, 2, 'a',
+                                             2, 'b', 7, 0, 0, 0, 0, 0, 0, 0 };
+    REQUIRE(rejects_strings(unnamed, sizeof unnamed));
     return true;
 }
 

@@ -7,8 +7,9 @@ import strings "core:strings"
 // Every 64-bit payload (ids, layouts, scalar bits, union tags) is an index into
 // the module's `wide` pool, whose entry 0 is zero for an absent payload.
 // Nested values, table items and per-function tables are ranges of flat pools.
-// The header is followed by the string table: every distinct metadata string
-// the module writes, sorted bytewise. Each string after it is its index there.
+// Each metadata string is its 1-based index in the string table, which holds
+// every distinct one in order of first use. The table follows the module's
+// tables, then the 8-byte offset it starts at.
 //
 // Every table stays in Write; helpers encode one row, taking single records,
 // scalars, text and the pools they index. Each encodes a row's fields in as
@@ -345,44 +346,7 @@ SlotCount :: (count: int) -> int {
     }
     return size;
 }
-// Bottom-up merge sort, bytewise as strcmp orders strings.
-Sorted :: (items: string[]) -> string[] {
-    from := items;
-    count := length(items);
-    width: int = 1;
-    while (width < count) {
-        to: string[] = [];
-        start: int = 0;
-        while (start < count) {
-            middle := start + width;
-            if (middle > count) {
-                middle = count;
-            }
-            end := middle + width;
-            if (end > count) {
-                end = count;
-            }
-            left := start;
-            right := middle;
-            while (left < middle && right < end) {
-                if (strings.Compare(from[left], from[right]) <= 0) {
-                    to.append(from[left]);
-                    left += 1;
-                } else {
-                    to.append(from[right]);
-                    right += 1;
-                }
-            }
-            to.extend(slice(from, left, middle - left));
-            to.extend(slice(from, right, end - right));
-            start = end;
-        }
-        from = to;
-        width = width * 2;
-    }
-    return from;
-}
-// The string table: each string of `texts` once, sorted.
+// The string table: each string of `texts` once, in order of first use.
 Table :: (texts: string[]) -> string[] {
     mask := SlotCount(length(texts)) - 1;
     slots := resize([int(0)], mask + 1);
@@ -397,7 +361,7 @@ Table :: (texts: string[]) -> string[] {
             slots[at] = length(found);
         }
     }
-    return Sorted(found);
+    return found;
 }
 // Slots holding the 1-based index of each string of the table.
 TableSlots :: (items: string[]) -> int[] {
@@ -563,8 +527,8 @@ EventBytes :: (v: Event, fields: EventField[], wide: uint64[], pool: byte[], sta
     return bytes;
 }
 
-// What Write writes: which values, and its metadata strings, a run of
-// sources of one asset naming it once.
+// What Write writes: which values, and its metadata strings in the order it
+// writes them, a run of sources of one asset naming it once.
 Gathered :: union {
     Of(texts: string[], used: bool[])
 }
@@ -574,34 +538,41 @@ Gather :: (module: Module) -> Gathered {
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
                      sources, results, data, hosts, calls, references, components, points, watches, states,
                      entries):
-            texts: string[] = [];
-            written: int[] = [];
+            // Each step is a value Write writes, or -1 - n for named[n].
+            named: string[] = [];
+            steps: int[] = [];
             for (requirement in requirements) {
-                texts.append(requirement.name);
+                named.append(requirement.name);
+                steps.append(-length(named));
                 index := requirement.first;
                 while (requirement.authored && index < requirement.first + requirement.count) {
                     field := fields[index];
-                    texts.append(field.name);
+                    named.append(field.name);
+                    steps.append(-length(named));
                     if (field.has_type_name) {
-                        texts.append(field.type_name);
+                        named.append(field.type_name);
+                        steps.append(-length(named));
                     }
                     if (field.has_unit) {
-                        texts.append(field.unit);
+                        named.append(field.unit);
+                        steps.append(-length(named));
                     }
                     index += 1;
                 }
             }
             for (declared in event_declarations) {
-                texts.append(declared.name);
+                named.append(declared.name);
+                steps.append(-length(named));
                 index := declared.first;
                 while (index < declared.first + declared.count) {
-                    texts.append(event_fields[index].name);
-                    written.append(event_fields[index].initial);
+                    named.append(event_fields[index].name);
+                    steps.append(-length(named));
+                    steps.append(event_fields[index].initial);
                     index += 1;
                 }
             }
             asset := "";
-            named := false;
+            known := false;
             for (function in functions) {
                 table: int = 0;
                 while (table < Tables) {
@@ -610,30 +581,31 @@ Gather :: (module: Module) -> Gathered {
                     last := span.first + span.count;
                     if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults) {
                         while (item < last) {
-                            written.append(item);
+                            steps.append(item);
                             item += 1;
                         }
                     } else if (table == Roots) {
                         while (item < last) {
-                            written.append(roots[item].shape);
+                            steps.append(roots[item].shape);
                             item += 1;
                         }
                     } else if (table == Instructions) {
                         while (item < last) {
-                            written.append(instructions[item].value);
+                            steps.append(instructions[item].value);
                             if (instructions[item].has_message) {
-                                texts.append(instructions[item].message);
+                                named.append(instructions[item].message);
+                                steps.append(-length(named));
                             }
                             item += 1;
                         }
                     } else if (table == Locals) {
                         while (item < last) {
-                            written.append(locals[item].initial);
+                            steps.append(locals[item].initial);
                             item += 1;
                         }
                     } else if (table == Parameters) {
                         while (item < last) {
-                            written.append(parameters[item].initial);
+                            steps.append(parameters[item].initial);
                             item += 1;
                         }
                     } else if (table == Frames || table == Sources || table == Stacks) {
@@ -643,26 +615,28 @@ Gather :: (module: Module) -> Gathered {
                                 row = frames[item].source;
                             }
                             source := sources[row];
-                            if (source.has_asset && (!named || source.asset != asset)) {
+                            if (source.has_asset && (!known || source.asset != asset)) {
                                 asset = source.asset;
-                                named = true;
-                                texts.append(asset);
+                                known = true;
+                                named.append(asset);
+                                steps.append(-length(named));
                             }
                             item += 1;
                         }
                     } else if (table == Results) {
                         while (item < last) {
-                            texts.append(results[item].name);
+                            named.append(results[item].name);
+                            steps.append(-length(named));
                             item += 1;
                         }
                     } else if (table == DataValues) {
                         while (item < last) {
-                            written.append(data[item].initial);
+                            steps.append(data[item].initial);
                             item += 1;
                         }
                     } else if (table == SourceWatches) {
                         while (item < last) {
-                            written.append(watches[item].initial);
+                            steps.append(watches[item].initial);
                             item += 1;
                         }
                     }
@@ -670,40 +644,55 @@ Gather :: (module: Module) -> Gathered {
                 }
             }
             for (retained in states) {
-                written.append(retained.initial);
+                steps.append(retained.initial);
             }
             for (item in entries) {
                 if (item.has_entry) {
-                    texts.append(item.entry_name);
+                    named.append(item.entry_name);
+                    steps.append(-length(named));
                 }
                 if (item.has_event_name) {
-                    texts.append(item.event_name);
+                    named.append(item.event_name);
+                    steps.append(-length(named));
                 }
             }
-            // Nested values follow their parent, so one pass forward marks
-            // every value a written one holds.
+            // A value writes its own strings, then those of its nested values
+            // in order, so a stack walks each written value in that order.
+            texts: string[] = [];
             used := resize([false], length(values));
-            for (at in written) {
-                used[at] = true;
-            }
-            at: int = 0;
-            while (at < length(values)) {
-                v := values[at];
-                if (used[at]) {
+            stack: int[] = [];
+            for (step in steps) {
+                if (step < 0) {
+                    texts.append(named[-1 - step]);
+                    continue;
+                }
+                if (length(stack) == 0) {
+                    stack.append(step);
+                }
+                stack[0] = step;
+                top: int = 1;
+                while (top > 0) {
+                    top -= 1;
+                    v := values[stack[top]];
+                    used[stack[top]] = true;
                     if (v.has_type_name) {
                         texts.append(v.type_name);
                     }
                     if (v.container == 0 && v.tag == NameTag && v.has_text) {
                         texts.append(v.text);
                     }
-                    nested := v.first;
+                    nested := v.first + v.count - 1;
                     aggregate := v.container != 0 || v.tag == StructTag || v.tag == UnionTag;
-                    while (aggregate && v.present && nested < v.first + v.count) {
-                        used[nested] = true;
-                        nested += 1;
+                    while (aggregate && v.present && nested >= v.first) {
+                        if (top < length(stack)) {
+                            stack[top] = nested;
+                        } else {
+                            stack.append(nested);
+                        }
+                        top += 1;
+                        nested -= 1;
                     }
                 }
-                at += 1;
             }
             return Gathered.Of(texts, used);
     }
@@ -739,9 +728,8 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
                 at -= 1;
             }
 
-            bytes := Words([Magic, uint64(Version), uint64(pointer_size), abi]);
-            bytes.extend(TableBytes(items));
-            bytes.extend(Words([id, owner_type, Zig(length(requirements))]));
+            bytes := Words([Magic, uint64(Version), uint64(pointer_size), abi, id, owner_type,
+                            Zig(length(requirements))]);
             for (requirement in requirements) {
                 bytes.extend(Words([wide[requirement.id], wide[requirement.layout],
                                     Zig(requirement.storage)]));
@@ -906,7 +894,10 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
                 bytes.extend(ReferenceBytes(references[item.subscription], wide));
             }
             // No queries, query -1, no query variables or filter, bindings or actions.
-            return extend(bytes, Ints([0, -1, 0, 0, 0, 0]));
+            bytes.extend(Ints([0, -1, 0, 0, 0, 0]));
+            strings_at := length(bytes);
+            bytes.extend(TableBytes(items));
+            return extend(bytes, Word(uint64(strings_at)));
     }
 }
 

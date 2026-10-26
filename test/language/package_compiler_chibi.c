@@ -3732,16 +3732,25 @@ static uint64_t tag(int b, const char *variant)
 {
     return variant_tag(b, "Result", variant);
 }
-static bool prepare()
+static bool prepare_backends(unsigned backends)
 {
     const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK };
-    REQUIRE(
-        compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3)
-    );
+    REQUIRE(compiler_fixture_prepare_backends(
+        &fixture,
+        backends,
+        sources,
+        (int)(sizeof sources / sizeof *sources),
+        packs,
+        3
+    ));
     return true;
+}
+static bool prepare()
+{
+    return prepare_backends(COMPILER_FIXTURE_BOTH);
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
@@ -4110,7 +4119,16 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
                                        CORE_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 4 : 3));
+    /* Only this bytecode owner is serialized and compared below. Each
+     * caller still chooses its original target execution backends. */
+    REQUIRE(compiler_fixture_prepare_backends(
+        &oracle,
+        COMPILER_FIXTURE_BYTECODE,
+        inputs,
+        count,
+        packs,
+        s->game ? 4 : 3
+    ));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);
@@ -5259,7 +5277,7 @@ static bool traces_like_oracle(const unsigned char *bytes, size_t length, const 
 }
 static bool run_samples(sample_group group, int b)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(1u << b));
     if (group == BASE_SAMPLES && b == 0) {
         REQUIRE(rejects_malformed_effects());
     }
@@ -5682,12 +5700,12 @@ TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 }
 TEST_CASE(package_compiler_float_constant_dependency)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(COMPILER_FIXTURE_BYTECODE));
     return approved_float_conversion_admission(0, true);
 }
 TEST_CASE(package_compiler_float_constant_dependency_compiled)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(COMPILER_FIXTURE_COMPILED));
     return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
@@ -10371,6 +10389,16 @@ enum
     SCALAR_CONTINUE_ROW = 22,
     SCALAR_SWITCH_ROW = 23,
     SCALAR_CASE_ROW = 24,
+    SCALAR_RECORD_ROW = 25,
+    SCALAR_MEMBER_ROW = 26,
+    SCALAR_ZERO_ROW = 27,
+    SCALAR_UPDATE_ROW = 28,
+    SCALAR_FIELD_ROW = 29,
+    SCALAR_UNION_ROW = 30,
+    SCALAR_VARIANT_ROW = 31,
+    SCALAR_MAKE_ROW = 32,
+    SCALAR_TAG_ROW = 33,
+    SCALAR_PAYLOAD_ROW = 34,
     SCALAR_RANGE_EXCLUSIVE = 1,
     SCALAR_MAX_LOCALS = 16,
     SCALAR_MAX_STATEMENTS = 32,
@@ -10385,7 +10413,8 @@ enum
     SCALAR_INT64 = 8,
     SCALAR_WORD = 9,
     SCALAR_FLOAT = 10,
-    SCALAR_DOUBLE = 11
+    SCALAR_DOUBLE = 11,
+    SCALAR_RECORD = 32
 };
 /* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
 static const int GUARD_KINDS[] = {
@@ -10545,6 +10574,95 @@ enum
     SWITCH_LAST_VALUE = 22,
     SWITCH_END = 23,
     SWITCH_ROWS = (int)(sizeof SWITCH_KINDS / sizeof *SWITCH_KINDS)
+};
+/* Make builds a Point from its zero, its fields in another order than
+ * declared, and Main adds 1 to the x field of the copy it returns, then
+ * returns that field: Make(3) gives 4. */
+static const char RECORD_ROWS_SOURCE
+    [] = "package scalar\n"
+         "Point :: struct { x: int; y: number; }\n"
+         "Main :: () -> int { p := Make(3); p.x += 1; return p.x; }\n"
+         "Make :: (x: int) -> Point { return {y: 0.5, x: x}; }\n";
+/* The kind of each of RECORD_ROWS_SOURCE's rows, and the rows edited. */
+static const int RECORD_KINDS[] = {
+    SCALAR_SOURCE_ROW, SCALAR_DOCUMENT_ROW, SCALAR_RECORD_ROW,
+    SCALAR_MEMBER_ROW, SCALAR_MEMBER_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_LOCAL_ROW,  SCALAR_LITERAL_ROW,  SCALAR_CALL_ROW,
+    SCALAR_ASSIGN_ROW, SCALAR_READ_ROW,     SCALAR_READ_ROW,
+    SCALAR_FIELD_ROW,  SCALAR_LITERAL_ROW,  SCALAR_ARITHMETIC_ROW,
+    SCALAR_UPDATE_ROW, SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
+    SCALAR_FIELD_ROW,  SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_RETURN_ROW, SCALAR_ZERO_ROW,     SCALAR_LITERAL_ROW,
+    SCALAR_UPDATE_ROW, SCALAR_READ_ROW,     SCALAR_UPDATE_ROW,
+};
+enum
+{
+    RECORD_DECLARATION = 2,
+    RECORD_X = 3,
+    RECORD_Y = 4,
+    RECORD_LOCAL = 6,
+    RECORD_ASSIGN = 9,
+    RECORD_COMPOUND_FIELD = 12,
+    RECORD_COMPOUND_UPDATE = 15,
+    RECORD_READ = 17,
+    RECORD_FIELD = 18,
+    RECORD_MAKE = 19,
+    RECORD_ZERO = 22,
+    RECORD_Y_UPDATE = 24,
+    RECORD_ROWS = (int)(sizeof RECORD_KINDS / sizeof *RECORD_KINDS)
+};
+/* Make builds the Box variant of Shape, and Main tests it with `is`, then
+ * switches on it, binding the Box arm's payloads: Make(3) gives 3. The last
+ * arm is the switch's default, since it has none. */
+static const char UNION_ROWS_SOURCE
+    [] = "package scalar\n"
+         "Shape :: union { Dot | Box(w: int, h: number) }\n"
+         "Main :: () -> int {\n"
+         "    s := Make(3);\n"
+         "    if (s is .Dot) { return 0; }\n"
+         "    switch s { case .Dot: return 1; case .Box(w, h): return w; }\n"
+         "}\n"
+         "Make :: (w: int) -> Shape { return Shape.Box(w, 0.5); }\n";
+/* The kind of each of UNION_ROWS_SOURCE's rows, and the rows edited. */
+static const int UNION_KINDS[] = {
+    SCALAR_SOURCE_ROW,   SCALAR_DOCUMENT_ROW,  SCALAR_UNION_ROW,
+    SCALAR_VARIANT_ROW,  SCALAR_VARIANT_ROW,   SCALAR_MEMBER_ROW,
+    SCALAR_MEMBER_ROW,   SCALAR_FUNCTION_ROW,  SCALAR_LOCAL_ROW,
+    SCALAR_LITERAL_ROW,  SCALAR_CALL_ROW,      SCALAR_IF_ROW,
+    SCALAR_READ_ROW,     SCALAR_TAG_ROW,       SCALAR_LITERAL_ROW,
+    SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_END_ROW,      SCALAR_SWITCH_ROW,    SCALAR_READ_ROW,
+    SCALAR_TAG_ROW,      SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CASE_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_PAYLOAD_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_PAYLOAD_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_READ_ROW,      SCALAR_END_ROW,
+    SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,     SCALAR_LITERAL_ROW,   SCALAR_MAKE_ROW,
+};
+enum
+{
+    UNION_DECLARATION = 2,
+    UNION_DOT = 3,
+    UNION_BOX = 4,
+    UNION_W = 5,
+    UNION_H = 6,
+    UNION_MAIN = 7,
+    UNION_LOCAL = 8,
+    UNION_IS_TAG = 13,
+    UNION_IS_VARIANT = 14,
+    UNION_DOT_RETURN = 17,
+    UNION_SWITCH = 19,
+    UNION_SWITCH_TAG = 21,
+    UNION_DOT_ARM = 22,
+    UNION_DOT_VARIANT = 23,
+    UNION_BOX_ARM = 26,
+    UNION_W_LOCAL = 27,
+    UNION_W_PAYLOAD = 29,
+    UNION_H_LOCAL = 30,
+    UNION_H_PAYLOAD = 32,
+    UNION_MAKE = 41,
+    UNION_ROWS = (int)(sizeof UNION_KINDS / sizeof *UNION_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -10758,6 +10876,96 @@ static const malformed_guard MALFORMED_SWITCHES[] = {
         EDIT(SWITCH_LAST_RETURN, "value", 0) },
       NO_RETURN },
 };
+static const char RECORD_ROW[] = "invalid scalar record row",
+                  MEMBER_ROW[] = "invalid scalar record member row",
+                  FIELD_READ[] = "scalar field read differs from its record",
+                  FIELD_WRITE[] = "scalar field write differs from its record";
+static const malformed_guard MALFORMED_RECORDS[] = {
+    /* A record whose members overrun into the function after them, one
+     * with no name, and a record that does not lie where it is declared. */
+    { { EDIT(RECORD_DECLARATION, "count", 3) }, MEMBER_ROW },
+    { { { .row = RECORD_DECLARATION, .field = "name", .text = "", .from = -1 } },
+      RECORD_ROW },
+    { { EDIT(RECORD_DECLARATION, "type", SCALAR_INT) }, RECORD_ROW },
+    /* A member of a record type, out of order, named as another, or
+     * outside its record. */
+    { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, MEMBER_ROW },
+    { { EDIT(RECORD_X, "value", 1) }, MEMBER_ROW },
+    { { { .row = RECORD_Y, .field = "name", .text = "x", .from = -1 } }, MEMBER_ROW },
+    { { COPY(RECORD_Y, "end", RECORD_MAKE) }, MEMBER_ROW },
+    /* A function returning a record the module does not declare, which
+     * its caller's call reaches first, and a local or read of another type
+     * than its value or variable. */
+    { { EDIT(RECORD_MAKE, "type", SCALAR_RECORD + 1) },
+      "scalar call differs from its callee's signature" },
+    { { EDIT(RECORD_LOCAL, "type", SCALAR_INT) }, "scalar value differs from its variable" },
+    { { EDIT(RECORD_ASSIGN, "type", SCALAR_INT) },
+      "scalar assignment differs from its variable" },
+    { { EDIT(RECORD_READ, "type", SCALAR_INT) }, READ },
+    /* A zero of a scalar type; a field read of the float field, as a float
+     * or of a scalar; a write of the int to the float field or to a
+     * scalar. */
+    { { EDIT(RECORD_ZERO, "type", SCALAR_INT) }, "scalar record zero names no record" },
+    { { EDIT(RECORD_FIELD, "value", 1) }, FIELD_READ },
+    { { EDIT(RECORD_FIELD, "value", 2) }, FIELD_READ },
+    { { EDIT(RECORD_FIELD, "type", SCALAR_FLOAT) }, FIELD_READ },
+    { { EDIT(RECORD_FIELD, "count", 2) }, FIELD_READ },
+    { { EDIT(RECORD_COMPOUND_FIELD, "value", -1) }, FIELD_READ },
+    { { EDIT(RECORD_Y_UPDATE, "value", 0) }, FIELD_WRITE },
+    { { EDIT(RECORD_COMPOUND_UPDATE, "value", 1) }, FIELD_WRITE },
+    { { EDIT(RECORD_COMPOUND_UPDATE, "type", SCALAR_INT) }, FIELD_WRITE },
+    { { EDIT(RECORD_COMPOUND_UPDATE, "count", 1) }, FIELD_WRITE },
+};
+static const char UNION_ROW[] = "invalid scalar union row",
+                  VARIANT_ROW[] = "invalid scalar union variant row",
+                  PAYLOAD_ROW[] = "invalid scalar union member row",
+                  VARIANT[] = "scalar variant differs from its union",
+                  TAG[] = "scalar tag reads no union",
+                  PAYLOAD[] = "scalar payload read differs from its union";
+static const malformed_guard MALFORMED_UNIONS[] = {
+    /* A union whose variants overrun into its payloads, one with no name,
+     * one that does not lie where it is declared, and one named as a
+     * record would be. */
+    { { EDIT(UNION_DECLARATION, "count", 3) }, UNION_ROW },
+    { { { .row = UNION_DECLARATION, .field = "name", .text = "", .from = -1 } }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "type", SCALAR_INT) }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "value", 1) }, UNION_ROW },
+    /* A variant out of order, named as another, outside its union, or with
+     * fewer payloads than follow it, which leaves a member where a function
+     * must start. */
+    { { EDIT(UNION_BOX, "value", 0) }, VARIANT_ROW },
+    { { { .row = UNION_BOX, .field = "name", .text = "Dot", .from = -1 } }, VARIANT_ROW },
+    { { COPY(UNION_BOX, "end", UNION_MAIN) }, VARIANT_ROW },
+    { { EDIT(UNION_BOX, "count", 1) }, LAYOUT },
+    /* A payload numbered as another, of a record type, named as another in
+     * its variant, or outside its variant. */
+    { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, PAYLOAD_ROW },
+    { { { .row = UNION_H, .field = "name", .text = "w", .from = -1 } }, PAYLOAD_ROW },
+    { { COPY(UNION_H, "end", UNION_MAIN) }, PAYLOAD_ROW },
+    /* A variant made with another's payloads, too few of them or as a
+     * scalar. */
+    { { EDIT(UNION_MAKE, "value", 0) }, VARIANT },
+    { { EDIT(UNION_MAKE, "count", 1) }, VARIANT },
+    { { EDIT(UNION_MAKE, "type", SCALAR_INT) }, VARIANT },
+    /* A tag of another type or arity, a payload of another type than its
+     * binding or none of its union, and a zero or field read of a union,
+     * which only a record has. */
+    { { EDIT(UNION_IS_TAG, "type", SCALAR_BOOL) }, TAG },
+    { { EDIT(UNION_IS_TAG, "count", 2) }, TAG },
+    { { EDIT(UNION_IS_TAG, "value", 1) }, TAG },
+    { { EDIT(UNION_H_PAYLOAD, "value", 0) }, PAYLOAD },
+    { { EDIT(UNION_H_PAYLOAD, "value", 2) }, PAYLOAD },
+    { { EDIT(UNION_W_PAYLOAD, "type", SCALAR_FLOAT) }, PAYLOAD },
+    { { EDIT(UNION_DOT_RETURN, "kind", SCALAR_ZERO_ROW),
+        EDIT(UNION_DOT_RETURN, "type", SCALAR_RECORD) },
+      "scalar record zero names no record" },
+    { { EDIT(UNION_IS_TAG, "kind", SCALAR_FIELD_ROW) }, FIELD_READ },
+    /* The tag as a bool, which its variant's literal no longer matches. */
+    { { EDIT(UNION_IS_VARIANT, "type", SCALAR_BOOL),
+        EDIT(UNION_IS_VARIANT, "literal", 0) },
+      "scalar comparison differs from its operands" },
+};
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
@@ -10960,6 +11168,80 @@ static bool switched_rows(const pin_value *rows)
     REQUIRE(scalar_field(guard_row(rows, SWITCH_LAST_VALUE), "literal").i64 == 20);
     return true;
 }
+/* RECORD_ROWS_SOURCE's record, its fields in declared order, and the record
+ * type of Make's result, Main's local and their rows; the literal's int
+ * field is updated last, as written. */
+static bool recorded_rows(const pin_value *rows)
+{
+    pin_value *record = guard_row(rows, RECORD_DECLARATION);
+    REQUIRE(
+        retained_text(record, "name", "Point") && scalar_field(record, "count").i == 2
+    );
+    REQUIRE(retained_text(guard_row(rows, RECORD_X), "name", "x"));
+    REQUIRE(scalar_field(guard_row(rows, RECORD_X), "type").i == SCALAR_INT);
+    REQUIRE(retained_text(guard_row(rows, RECORD_Y), "name", "y"));
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y), "value").i == 1);
+    static const int RECORD_TYPED[] = { RECORD_LOCAL, RECORD_ASSIGN,
+                                        RECORD_READ,  RECORD_MAKE,
+                                        RECORD_ZERO,  RECORD_Y_UPDATE };
+    for (int i = 0; i < (int)(sizeof RECORD_TYPED / sizeof *RECORD_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, RECORD_TYPED[i]), "type").i == SCALAR_RECORD);
+    }
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y_UPDATE), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y_UPDATE + 2), "value").i == 0);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y_UPDATE - 1), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_FIELD), "type").i == SCALAR_INT);
+    return true;
+}
+/* UNION_ROWS_SOURCE's union, its variants and their payloads numbered across
+ * it, the union type of Make's result, Main's local and the rows that read or
+ * make one, the Tag and variant ordinals its `is` and arms test, its last
+ * arm as the default, and its bindings' locals. */
+static bool unioned_rows(const pin_value *rows)
+{
+    pin_value *declared = guard_row(rows, UNION_DECLARATION);
+    REQUIRE(
+        retained_text(declared, "name", "Shape") &&
+        scalar_field(declared, "count").i == 2
+    );
+    REQUIRE(retained_text(guard_row(rows, UNION_DOT), "name", "Dot"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_DOT), "count").i == 0);
+    REQUIRE(retained_text(guard_row(rows, UNION_BOX), "name", "Box"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX), "count").i == 2);
+    REQUIRE(retained_text(guard_row(rows, UNION_W), "name", "w"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_W), "type").i == SCALAR_INT);
+    REQUIRE(retained_text(guard_row(rows, UNION_H), "name", "h"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_H), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H), "value").i == 1);
+    static const int UNION_TYPED[] = { UNION_LOCAL,
+                                       UNION_LOCAL + 2,
+                                       UNION_IS_TAG - 1,
+                                       UNION_MAKE };
+    for (int i = 0; i < (int)(sizeof UNION_TYPED / sizeof *UNION_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, UNION_TYPED[i]), "type").i == SCALAR_RECORD);
+    }
+    REQUIRE(scalar_field(guard_row(rows, UNION_MAKE), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_MAKE), "count").i == 2);
+    static const int INT_TYPED[] = { UNION_IS_TAG,  UNION_IS_VARIANT,
+                                     UNION_SWITCH,  UNION_SWITCH_TAG,
+                                     UNION_DOT_ARM, UNION_DOT_VARIANT,
+                                     UNION_BOX_ARM, UNION_W_LOCAL };
+    for (int i = 0; i < (int)(sizeof INT_TYPED / sizeof *INT_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, INT_TYPED[i]), "type").i == SCALAR_INT);
+    }
+    REQUIRE(scalar_field(guard_row(rows, UNION_IS_VARIANT), "literal").i64 == 0);
+    REQUIRE(scalar_field(guard_row(rows, UNION_DOT_ARM), "count").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX_ARM), "count").i == 0);
+    REQUIRE(retained_text(guard_row(rows, UNION_W_LOCAL), "name", "w"));
+    REQUIRE(retained_text(guard_row(rows, UNION_H_LOCAL), "name", "h"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_LOCAL), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_LOCAL), "value").i == 2);
+    REQUIRE(scalar_field(guard_row(rows, UNION_W_PAYLOAD), "value").i == 0);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_PAYLOAD), "value").i == 1);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -10968,7 +11250,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
-        looped[2], switched[2];
+        looped[2], switched[2], recorded[2], unioned[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -11010,6 +11292,14 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(SWITCH_ROWS_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &switched[b])
+        );
+        args[2] = text(RECORD_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &recorded[b])
+        );
+        args[2] = text(UNION_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &unioned[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -11102,6 +11392,24 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_SWITCHES,
             (int)(sizeof MALFORMED_SWITCHES / sizeof *MALFORMED_SWITCHES)
         ));
+        REQUIRE(rejects_malformed(
+            b,
+            &recorded[b],
+            RECORD_KINDS,
+            RECORD_ROWS,
+            MALFORMED_RECORDS,
+            (int)(sizeof MALFORMED_RECORDS / sizeof *MALFORMED_RECORDS)
+        ));
+        REQUIRE(recorded_rows(&recorded[b]));
+        REQUIRE(unioned_rows(&unioned[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &unioned[b],
+            UNION_KINDS,
+            UNION_ROWS,
+            MALFORMED_UNIONS,
+            (int)(sizeof MALFORMED_UNIONS / sizeof *MALFORMED_UNIONS)
+        ));
     }
     return true;
 }
@@ -11125,7 +11433,10 @@ enum
     NATIVE_JUMP = 26,
     NATIVE_CHECK = 27,
     NATIVE_CALL = 28,
-    NATIVE_CONVERT = 29
+    NATIVE_CONVERT = 29,
+    NATIVE_INSERT = 30,
+    NATIVE_EXTRACT = 31,
+    NATIVE_RECORD = 32
 };
 typedef struct native_code
 {
@@ -11137,6 +11448,10 @@ typedef struct native_function
     int result, first_parameter, parameters, first_slot, slots, first_code,
         code, first_argument, arguments;
 } native_function;
+typedef struct native_record
+{
+    int first, count;
+} native_record;
 typedef struct native_module
 {
     const native_function *functions;
@@ -11149,6 +11464,10 @@ typedef struct native_module
     int code_count;
     const int *arguments;
     int argument_count;
+    const native_record *records;
+    int record_count;
+    const int *fields;
+    int field_count;
 } native_module;
 static const char NATIVE_PACKAGE[] = "project:llvm_native";
 static pin_value native_ints(const int *values, int count)
@@ -11166,19 +11485,35 @@ static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
                                                "slots",      "first_code",
                                                "code",       "first_argument",
                                                "arguments" };
+static const char *const RECORD_FIELDS[] = { "first", "count" };
 enum
 {
     CODE_WIDTH = (int)(sizeof CODE_FIELDS / sizeof *CODE_FIELDS),
-    FUNCTION_WIDTH = (int)(sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS)
+    FUNCTION_WIDTH = (int)(sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS),
+    RECORD_WIDTH = (int)(sizeof RECORD_FIELDS / sizeof *RECORD_FIELDS)
 };
-/* count Instruction or Function records whose fields, in declaration order,
- * take consecutive values. */
+/* count Instruction, Function or Record records whose fields, in declaration
+ * order, take consecutive values. No records is an empty array. */
 static bool native_records(int b, const char *name, const int64_t *values, int count, pin_value *out)
 {
-    bool code = !strcmp(name, "Instruction");
-    const char *const *fields = code ? CODE_FIELDS : FUNCTION_FIELDS;
-    int width = code ? CODE_WIDTH : FUNCTION_WIDTH;
-    assert(count > 0);
+    const char *const *fields = RECORD_FIELDS;
+    int width = RECORD_WIDTH;
+    if (!strcmp(name, "Instruction")) {
+        fields = CODE_FIELDS;
+        width = CODE_WIDTH;
+    } else if (!strcmp(name, "Function")) {
+        fields = FUNCTION_FIELDS;
+        width = FUNCTION_WIDTH;
+    }
+    if (!count) {
+        *out = rows(
+            NULL,
+            0,
+            PIN_STRUCT,
+            compiler_fixture_record(&consumer, b, NATIVE_PACKAGE, name, &input)
+        );
+        return true;
+    }
     pin_value *items = xmalloc(sizeof *items * (size_t)count);
     for (int i = 0; i < count; i++) {
         items[i] = record_row(&consumer, b, NATIVE_PACKAGE, name);
@@ -11220,10 +11555,21 @@ static bool native_functions(int b, const native_function *functions, int count,
     free(values);
     return built;
 }
+static bool native_record_table(int b, const native_record *records, int count, pin_value *out)
+{
+    int64_t *values = xmalloc(sizeof *values * RECORD_WIDTH * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        values[i * RECORD_WIDTH] = records[i].first;
+        values[i * RECORD_WIDTH + 1] = records[i].count;
+    }
+    bool built = native_records(b, "Record", values, count, out);
+    free(values);
+    return built;
+}
 /* Emits m as a module of internal functions under budget 1. */
 static bool native_emit(int b, const native_module *m, const pin_union **out)
 {
-    pin_value args[9];
+    pin_value args[11];
     REQUIRE(compiler_fixture_call(
         &consumer,
         b,
@@ -11241,11 +11587,13 @@ static bool native_emit(int b, const native_module *m, const pin_union **out)
     args[4] = native_ints(NULL, 0);
     REQUIRE(native_codes(b, m->code, m->code_count, &args[5]));
     args[6] = native_ints(m->arguments, m->argument_count);
-    args[7] = (pin_value){ .type = PIN_BOOL, .b = false };
-    args[8] = (pin_value){ .type = PIN_I32, .i = 1 };
+    REQUIRE(native_record_table(b, m->records, m->record_count, &args[7]));
+    args[8] = native_ints(m->fields, m->field_count);
+    args[9] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[10] = (pin_value){ .type = PIN_I32, .i = 1 };
     pin_value result;
     REQUIRE(
-        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 9, COMPILE_BUDGET, &input, &result)
+        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 11, COMPILE_BUDGET, &input, &result)
     );
     REQUIRE(result.type == PIN_UNION && result.ptr);
     *out = result.ptr;
@@ -11326,12 +11674,22 @@ typedef struct native_change
     size_t field;
     int value;
 } native_change;
+/* Sets one field of code[change.index], at the width of that field. */
+static void change_code(native_code *code, native_change change)
+{
+    native_code *item = &code[change.index];
+    if (change.field == offsetof(native_code, literal)) {
+        item->literal = change.value;
+        return;
+    }
+    memcpy((char *)item + change.field, &change.value, sizeof change.value);
+}
 /* The call module with one instruction field changed. */
 static bool native_rejects_change(int b, native_change change, const char *message)
 {
     native_code code[CALL_CODE];
     memcpy(code, CALLER_AND_CALLEE, sizeof code);
-    *(int *)((char *)&code[change.index] + change.field) = change.value;
+    change_code(code, change);
     native_module m = call_module(code, CALL_ARGUMENTS, 3);
     return native_rejects(b, &m, message);
 }
@@ -11443,6 +11801,134 @@ static bool native_recursion_probes_the_stack(int b)
     m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
     m.functions = gap;
     REQUIRE(native_rejects(b, &m, TABLES));
+    return true;
+}
+/* main() builds {3, 4.5} from its zero, passes it through the internal
+ * identity Same and returns its int field. Slots s0..s6 are main's. */
+static const native_code RECORD_CODE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_RECORD },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 3 },
+    { .op = NATIVE_INSERT, .type = NATIVE_RECORD, .output = 2, .right = 1 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_FLOAT, .output = 3, .literal = 0x40900000 },
+    { .op = NATIVE_INSERT, .type = NATIVE_RECORD, .output = 4, .left = 2, .right = 3, .literal = 1 },
+    { .op = NATIVE_CALL, .type = NATIVE_RECORD, .output = 5, .left = 1, .target = 1 },
+    { .op = NATIVE_EXTRACT, .type = NATIVE_INT, .output = 6, .left = 5, .right = NATIVE_RECORD },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 6 },
+    { .op = NATIVE_RETURN },
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_ARGUMENT, .type = NATIVE_RECORD },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_RECORD },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    RECORD_CODE_COUNT = (int)(sizeof RECORD_CODE / sizeof *RECORD_CODE)
+};
+static const native_function RECORD_FUNCTIONS[] = {
+    { NATIVE_INT, 0, 0, 0, 7, 0, 10, 0, 1 },
+    { NATIVE_RECORD, 0, 1, 7, 1, 10, 4, 1, 0 },
+};
+static const int RECORD_PARAMETERS[] = { NATIVE_RECORD };
+static const int RECORD_SLOTS[] = { NATIVE_RECORD, NATIVE_INT,    NATIVE_RECORD,
+                                    NATIVE_FLOAT,  NATIVE_RECORD, NATIVE_RECORD,
+                                    NATIVE_INT,    NATIVE_RECORD };
+static const int RECORD_ARGUMENTS[] = { 4 };
+static const native_record RECORD_TYPES[] = { { 0, 2 } };
+static const int RECORD_FIELD_TYPES[] = { NATIVE_INT, NATIVE_FLOAT };
+static native_module record_module(const native_code *code)
+{
+    return (native_module){ RECORD_FUNCTIONS,
+                            2,
+                            RECORD_PARAMETERS,
+                            1,
+                            RECORD_SLOTS,
+                            8,
+                            code,
+                            RECORD_CODE_COUNT,
+                            RECORD_ARGUMENTS,
+                            1,
+                            RECORD_TYPES,
+                            1,
+                            RECORD_FIELD_TYPES,
+                            2 };
+}
+/* The record module with one instruction field changed. */
+static bool native_rejects_record_change(int b, native_change change, const char *message)
+{
+    native_code code[RECORD_CODE_COUNT];
+    memcpy(code, RECORD_CODE, sizeof code);
+    change_code(code, change);
+    native_module m = record_module(code);
+    return native_rejects(b, &m, message);
+}
+/* A record is a named LLVM struct of its fields, built from its zero with
+ * insertvalue, read with extractvalue, and passed and returned by value
+ * between internal functions. The exported entry takes and returns scalars
+ * only, and malformed field reads and writes are rejected. */
+static bool native_records_emit(int b)
+{
+    native_module m = record_module(RECORD_CODE);
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(contains(ir, "%record0 = type { i32, float }\n"));
+    REQUIRE(contains(ir, "store %record0 zeroinitializer, ptr %s0"));
+    REQUIRE(contains(ir, "%v3 = insertvalue %record0 %a3, i32 %b3, 0"));
+    REQUIRE(contains(ir, "%v5 = insertvalue %record0 %a5, float %b5, 1"));
+    REQUIRE(contains(ir, "%v6 = call %record0 @chibi_scalar.1(%record0 %c6_0)"));
+    REQUIRE(contains(ir, "%v7 = extractvalue %record0 %a7, 0"));
+    REQUIRE(contains(ir, "define internal %record0 @chibi_scalar.1(%record0 %arg0) #0 {"));
+    REQUIRE(contains(ir, "ret %record0 %return"));
+    static const char write[] = "native field write differs from its record",
+                      read[] = "native field read differs from its record";
+    static const struct
+    {
+        native_change change;
+        const char *message;
+    } changes[] = {
+        /* An int written to the float field, and a field past the record. */
+        { { 3, offsetof(native_code, literal), 1 }, write },
+        { { 3, offsetof(native_code, literal), 2 }, write },
+        /* A write whose record slot is the int. */
+        { { 3, offsetof(native_code, left), 1 }, write },
+        /* A read of the float field as an int, and a read of an int slot. */
+        { { 7, offsetof(native_code, literal), 1 }, read },
+        { { 7, offsetof(native_code, right), NATIVE_INT }, read },
+        { { 7, offsetof(native_code, left), 1 }, read },
+        /* A record's only constant is its zero, and record 1 is undeclared. */
+        { { 1, offsetof(native_code, literal), 1 }, "native constant is outside its type" },
+        { { 1, offsetof(native_code, type), NATIVE_RECORD + 1 }, OUTPUT },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        REQUIRE(native_rejects_record_change(b, changes[i].change, changes[i].message));
+    }
+    /* Same exported alone: the entry would return a record. */
+    static const native_function exported[] = { { NATIVE_RECORD, 0, 1, 0, 1, 0, 4, 0, 0 } };
+    native_module alone = { exported,
+                            1,
+                            RECORD_PARAMETERS,
+                            1,
+                            RECORD_SLOTS + 7,
+                            1,
+                            RECORD_CODE + 10,
+                            4,
+                            NULL,
+                            0,
+                            RECORD_TYPES,
+                            1,
+                            RECORD_FIELD_TYPES,
+                            2 };
+    REQUIRE(native_rejects(b, &alone, TABLES));
+    /* A record whose fields overrun the table, or hold a record. */
+    static const native_record overrun[] = { { 0, 3 } };
+    static const int nested[] = { NATIVE_INT, NATIVE_RECORD };
+    static const char layout[] = "native records differ from their field table";
+    m = record_module(RECORD_CODE);
+    m.records = overrun;
+    REQUIRE(native_rejects(b, &m, layout));
+    m = record_module(RECORD_CODE);
+    m.fields = nested;
+    REQUIRE(native_rejects(b, &m, layout));
     return true;
 }
 /* A loop whose back edge skips the entry CHECK is emitted: native loops run
@@ -11591,6 +12077,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_recursion_probes_the_stack(b));
+        REQUIRE(native_records_emit(b));
         REQUIRE(native_cycles_run_unchecked(b));
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));
@@ -11604,6 +12091,86 @@ static bool scalar_results_match(const int64_t values[4], int64_t expected)
 {
     return values[0] == expected && values[1] == expected &&
            values[2] == expected && values[3] == expected;
+}
+/* Union forms the scalar subset cannot express, each with its message and
+ * the source its diagnostic covers: a switch on a call, an `is` that binds,
+ * string and record payloads, and one payload and one variant past the
+ * bounds. */
+static const struct
+{
+    const char *source, *message, *excerpt;
+} UNION_REJECTIONS[] = {
+    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
+      "Main :: () -> int { switch Make() { case .Dot: return 0; case .Box(w): "
+      "return w; } }\n"
+      "Make :: () -> Shape { return Shape.Dot; }\n",
+      "scalar proof switches only on union variables",
+      "Make()" },
+    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
+      "Main :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } "
+      "return 0; }\n",
+      "scalar proof binds payloads only in switch arms",
+      ".Box(w)" },
+    { "package scalar\nNamed :: union { Tag(text: string) }\nMain :: () -> int "
+      "{ return 1; }\n",
+      "scalar proof requires number and bool union payloads",
+      "text: string" },
+    { "package scalar\nPoint :: struct { x: int; }\nWrapped :: union { Of(p: "
+      "Point) }\n"
+      "Main :: () -> int { return 1; }\n",
+      "scalar proof requires number and bool union payloads",
+      "p: Point" },
+    { "package scalar\nWide :: union { A(a0: int, a1: int, a2: int, a3: int, "
+      "a4: int, a5: int, a6: int, a7: int) |\n"
+      "    B(b0: int, b1: int, b2: int, b3: int, b4: int, b5: int, b6: int, "
+      "b7: int) }\n"
+      "Main :: () -> int { return 1; }\n",
+      "scalar proof admits at most 15 payloads per union",
+      "b7: int" },
+    { "package scalar\nMany :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | "
+      "V8 | V9 | V10 | V11 | V12 | V13 | "
+      "V14 | V15 | V16 }\nMain :: () -> int { return 1; }\n",
+      "scalar proof admits at most 16 variants per union",
+      "Many :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | "
+      "V11 | V12 | V13 | V14 | V15 | V16 }" },
+};
+/* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
+ * and diagnostic and nothing else. */
+TEST_CASE(package_compiler_scalar_rejects_unsupported_unions)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < (int)(sizeof UNION_REJECTIONS / sizeof *UNION_REJECTIONS);
+             i++) {
+            const char *source = UNION_REJECTIONS[i].source;
+            pin_value args[] = { text("/project"),
+                                 text("Scalar.chibi"),
+                                 text(source),
+                                 { 0 },
+                                 instruction_names() };
+            REQUIRE(target(b, &args[3]));
+            pin_value rows;
+            REQUIRE(
+                compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
+            );
+            const pin_array *array = rows.ptr;
+            REQUIRE(array->count == 2);
+            pin_value *rejection = guard_row(&rows, 1);
+            REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
+            int start = scalar_field(rejection, "start").i,
+                end = scalar_field(rejection, "end").i;
+            pin_string message = pin_text(scalar_field(rejection, "text"));
+            bool expected = !strcmp(message.bytes, UNION_REJECTIONS[i].message) &&
+                            end - start == (int)strlen(UNION_REJECTIONS[i].excerpt) &&
+                            !strncmp(source + start, UNION_REJECTIONS[i].excerpt, (size_t)(end - start));
+            if (!expected) {
+                fprintf(stderr, "union rejection %d: %s at %.*s\n", i, message.bytes, end - start, source + start);
+            }
+            REQUIRE(expected);
+            arena_free(&detached);
+        }
+    }
+    return true;
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 {
@@ -12900,9 +13467,13 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
         calls
     );
 }
+#define IDS_10 "Id(Id(Id(Id(Id(Id(Id(Id(Id(Id("
+#define CLOSES_10 "))))))))))"
+#define NESTED_IDS IDS_10 IDS_10 IDS_10 IDS_10 IDS_10
+#define NESTED_CLOSES CLOSES_10 CLOSES_10 CLOSES_10 CLOSES_10 CLOSES_10
 /* A scalar module with a constant expression the ordinary compiler folds
- * exactly, a conversion it must call instead or calls that omit defaulted
- * arguments, and the value its Main gives. They stay out of the 96-source
+ * exactly, a conversion it must call instead, calls that omit defaulted
+ * arguments or records, and the value its Main gives. They stay out of the 96-source
  * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each constant:
  * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
 static const struct
@@ -12956,12 +13527,147 @@ static const struct
       "4.0);\n"
       "}\n",
       298 },
+    /* Records: literals in any field order, copies that leave their source
+     * alone, field writes and compound writes, record parameters and
+     * results, nested calls, and a byte field that wraps:
+     * 50 + (206 + 8 - 9 + 1 + 1000) + 5. */
+    { "records",
+      "package scalar\n"
+      "Vec :: struct { x: number; y: number; }\n"
+      "Cell :: struct { alive: bool; count: u8; weight: f64; id: i64; "
+      "}\n"
+      "Main :: () -> int { return Vectors() + Cells() + Walk(); }\n"
+      "Add :: (p: Vec, q: Vec) -> Vec { return {x: p.x + q.x, y: p.y + q.y}; "
+      "}\n"
+      "Vectors :: () -> int {\n"
+      "    a: Vec = {x: 1.5, y: -2.0};\n"
+      "    b := a;\n"
+      "    b.x = 4.0;\n"
+      "    b.y *= 3.0;\n"
+      "    s := Add(a, b);\n"
+      "    return int(s.x * 10.0) + int(s.y) + int(a.x * 2.0);\n"
+      "}\n"
+      "Grow :: (c: Cell) -> Cell {\n"
+      "    next := c;\n"
+      "    next.count += 3;\n"
+      "    next.weight = next.weight * 2.0;\n"
+      "    next.id -= 1;\n"
+      "    next.alive = next.count > 2;\n"
+      "    return next;\n"
+      "}\n"
+      "Cells :: () -> int {\n"
+      "    c := Grow(Grow({alive: true, count: 200, weight: 0.25, id: -7}));\n"
+      "    total: int = 0;\n"
+      "    if (c.alive) { total += int(c.count) + int(c.weight * 8.0) + "
+      "int(c.id); }\n"
+      "    w := Grow({id: 0, weight: 1.0, count: 254, alive: true});\n"
+      "    total += int(w.count);\n"
+      "    if (!w.alive) { total += 1000; }\n"
+      "    return total;\n"
+      "}\n"
+      "Walk :: () -> int {\n"
+      "    a: Vec = {y: -2.0, x: 1.5};\n"
+      "    for (i in 0..<3) { a = Add(a, {y: 1.0, x: number(i)}); }\n"
+      "    return int(a.x) + int(a.y);\n"
+      "}\n",
+      1261 },
+    /* A record through 50 nested calls. Each call takes one compiler frame,
+     * as an int call does, so this stays within the 64 frames stage zero
+     * gives the compiler; two frames per call would exceed them. */
+    { "nested_records",
+      "package scalar\nVec :: struct { x: int; }\n"
+      "Main :: () -> int { v: Vec = {x: 7}; return " NESTED_IDS "v" NESTED_CLOSES ".x; }\n"
+      "Id :: (p: Vec) -> Vec { return p; }\n",
+      7 },
+    /* Unions: variants with and without payloads, made, passed, returned,
+     * assigned and tested with `is`, switches whose arms bind payloads, with
+     * a default arm or covering every variant without one, and a switch in
+     * a loop that breaks and continues: 123 + 111 + (250 + 251 + 252 + 253). */
+    { "unions",
+      "package scalar\n"
+      "Shape :: union { Empty | Circle(r: number) | Rect(w: int, h: int) | "
+      "Flag(lit: bool, weight: f64) }\n"
+      "Step :: union { Stop | Go(n: u8) }\n"
+      "Main :: () -> int { return Areas() + Tests() + Steps(); }\n"
+      "Area :: (s: Shape) -> int {\n"
+      "    switch s {\n"
+      "        case .Empty: return 0;\n"
+      "        case .Circle(r): return int(r * r * 3.0);\n"
+      "        case .Rect(w, h): return w * h;\n"
+      "        case .Flag(lit, weight):\n"
+      "            if (lit) { return int(weight * 2.0); }\n"
+      "            return -1;\n"
+      "    }\n"
+      "}\n"
+      "Grow :: (s: Shape) -> Shape {\n"
+      "    switch s {\n"
+      "        case .Rect(w, h): return Shape.Rect(w + 1, h * 2);\n"
+      "        case .Circle(r): return Shape.Circle(r + 0.5);\n"
+      "        case: return s;\n"
+      "    }\n"
+      "}\n"
+      "Areas :: () -> int {\n"
+      "    a := Shape.Rect(3, 4);\n"
+      "    b: Shape = Shape.Circle(2.0);\n"
+      "    c := Grow(Grow(a));\n"
+      "    total := Area(a) + Area(b) + Area(c) + Area(Shape.Empty) + "
+      "Area(Shape.Flag(true, 10.25));\n"
+      "    a = Grow(Shape.Flag(false, 1.0));\n"
+      "    return total + Area(a);\n"
+      "}\n"
+      "Tests :: () -> int {\n"
+      "    s := Grow(Shape.Circle(1.0));\n"
+      "    n: int = 0;\n"
+      "    if (s is .Circle) { n += 1; }\n"
+      "    if (s is not .Rect) { n += 10; }\n"
+      "    if (Shape.Empty is .Empty && !(s is .Empty)) { n += 100; }\n"
+      "    return n;\n"
+      "}\n"
+      "Steps :: () -> int {\n"
+      "    s := Step.Go(250);\n"
+      "    total: int = 0;\n"
+      "    for (i in 0..<10) {\n"
+      "        switch s {\n"
+      "            case .Stop: break;\n"
+      "            case .Go(n):\n"
+      "                total += int(n);\n"
+      "                if (n > 252) { s = Step.Stop; continue; }\n"
+      "                s = Step.Go(n + 1);\n"
+      "        }\n"
+      "    }\n"
+      "    return total;\n"
+      "}\n",
+      1240 },
+    /* A union of the most payloads, which with its tag fills the most
+     * fields a native record holds, all bound in one arm of a function of
+     * nearly the most operands: 1 + 2 + ... + 15, grouped so the producer's
+     * operand recursion stays shallow. */
+    { "widest_union",
+      "package scalar\n"
+      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, f: "
+      "int, g: int, h: int, i: int, j: int,\n"
+      "    k: int, l: int, m: int, n: int, o: int) }\n"
+      "Main :: () -> int { return Sum(Wide.All(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "
+      "11, 12, 13, 14, 15)); }\n"
+      "Sum :: (w: Wide) -> int {\n"
+      "    switch w {\n"
+      "        case .Empty: return 0;\n"
+      "        case .All(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o):\n"
+      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + l + "
+      "m + n + o);\n"
+      "    }\n"
+      "}\n",
+      120 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
       "Half :: (x: int) -> int { return (x + 1) / 2; }\n",
       -1073741824 },
 };
+#undef NESTED_CLOSES
+#undef NESTED_IDS
+#undef CLOSES_10
+#undef IDS_10
 enum
 {
     FOLDED_SOURCE_COUNT = (int)(sizeof FOLDED_SOURCES / sizeof *FOLDED_SOURCES)
@@ -15377,6 +16083,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
+    RUN_TEST_CASE(package_compiler_scalar_rejects_unsupported_unions);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)

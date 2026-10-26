@@ -28,6 +28,16 @@ interface, or the complete allocation/memory/output/free native island.
   and `bool` parameters (`i8` through `u64` as `iN` with no sign, and
   `number` and `f64` as LLVM `float` and `double`) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
+- A module declares at most 16 records, each a range of at most 16 scalar
+  field types in the field table, emitted in that order as
+  `%recordN = type { ... }`. Record type `RecordType + N` is a value: internal
+  functions take and return it, slots and locals hold it, and its only
+  `Constant` is zero, `zeroinitializer`. `Insert` gives the `left` record
+  with field `literal` replaced by the `right` slot's value (`insertvalue`),
+  and `Extract` reads field `literal` of the `left` record, whose type is
+  `right` (`extractvalue`); the field's type must be the value's. The
+  exported function takes and returns scalars only, so no aggregate crosses
+  the C ABI.
 - `Call` defines a slot from another function's result. Its arguments are
   slots of the caller's own argument range, each of the callee's parameter
   type and defined on every path; they load in order, so evaluation order stays

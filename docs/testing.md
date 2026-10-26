@@ -15,6 +15,22 @@ pixel, renderer, backend and authored-workflow assertions until a focused test
 covers their contract. A short unit result does not satisfy unrelated integration
 requirements or clear a PR hold. The broad suites below still need migration.
 
+Compiler fixtures normally prepare independent bytecode and compiled owners.
+The package-compiler sample selectors request only their compiler backend;
+their stage-zero oracle prepares only the bytecode owner it serializes. The
+generated sample closures still run on both target backends, with the existing
+output, diagnostic, debug metadata and execution-counter assertions. Each
+preparation owns a fresh source snapshot and native catalog; preparation is not
+cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
+their original preparation of both backends.
+
+`language-compiler-fixture` adds two fixed C cases: six single-backend
+preparations and one default dual-backend preparation of a one-function source,
+with eight calls at budget 100. It checks absent unrequested owners, independent
+snapshots, mutation of the original source, concurrent fixtures, detached text
+after teardown, changed source on re-preparation, and both execution backends.
+It adds no processes, timing loops, network, rendering or GPU work.
+
 ## Run the checks
 
 The engine build compiles the full test drivers, `test_tools` and
@@ -1967,7 +1983,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
+`python3 tools/test_policy.py tool compiler-bootstrap` includes seven CLI admission cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -1983,11 +1999,22 @@ of 55, 56 and 64 a's, which sit at the padding boundaries. The cases run about
 twenty host children on tiny folders. The target case loads the closure that
 `test_language --compiler-artifact-write` writes.
 
+The seed read also admits 16 MiB + 1 byte and exactly 32 MiB, reaching source
+validation, and rejects 32 MiB + 1 byte before decoding. An API case checks
+artifact reads at 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 with sparse files:
+accepted reads still fail the unchanged checksum check, then the original
+valid artifact loads again. Ordinary byte-output and asset-source bounds remain 16 MiB;
+only bootstrap closures and existing CLI file outputs use the artifact bound.
+
 `python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
-selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
+selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
-`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
+`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact. The API recovery case
+adds a marker and a 64 KiB string literal to the exported compiler source,
+forcing the current compiler past 16 MiB. It recovers to a fixed point, executes
+both new exports and verifies that the load API writes no output file. The
+instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 
@@ -2067,8 +2094,8 @@ takes about 19 s when it recovers stage one and 2 s once it is kept.
 
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
-cases and two cases in one child producer. One checks that `--output-bytes`
+`python3 tools/test_policy.py tool compiler-artifact` selects seventeen tooling
+cases and three cases in one child producer. One checks that `--output-bytes`
 writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
@@ -2079,6 +2106,14 @@ on both backends, with exactly four authored exports: `Echo(byte[]) -> byte[]`,
 `Scalar() -> byte`, `Integers() -> int[]` and `Loop(bool) -> byte[]`. Stage zero
 serializes this <=32 KiB closure and writes its IDs and bounded inputs. It makes
 no source calls. This is transport fixture generation, not authored serialization.
+A third producer case prepares a separate one-export `Sized(int) -> byte[]`
+fixture on both backends, also below 32 KiB, with no source calls. `Sized`
+uses one native resize per call. On bytecode and SLJIT, the boundary
+case checks 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 against both limits;
+oversized results leave no bytes, and admitted results preserve their size and
+endpoints. Inputs stay below 32 bytes and calls retain a 10,000-instruction
+budget. `language-asset-compiler-host` separately rejects a source of 16 MiB + 1
+before compiler admission.
 
 Two fresh original product processes load only the snapshot artifact and run
 five requests on bytecode and SLJIT. Actual entry counters must confirm the
@@ -2086,8 +2121,8 @@ requested backend without inspection fallback. Requests include a three-file
 import graph, syntax failure, invalid UTF-8, embedded-NUL source length and an
 exact uint64 maximum declared size. Five source calls plus ten product calls
 each permit three million instructions. Four C oracle parses and twelve raw
-bridge parses are unchanged: with 18 preparation parses, the route has at most
-34 parser calls. Each original request contains at most three input files.
+bridge parses are unchanged: with 20 preparation parses, the route has at most
+36 parser calls. Each original request contains at most three input files.
 The original artifact cap remains 16 MiB, request JSON 8 KiB, expected/captured
 output 256 KiB and stderr 4 KiB.
 
@@ -2438,6 +2473,128 @@ only after checking every source's review, holds and approvals.
 Keep saved plans outside the worktree.
 
 ## Historical timing evidence
+
+### Demand-driven compiler fixture preparation
+
+Measured candidate `596db47c90508809a9370af8106210cfff6b75f5` against baseline
+`84f7ba15e05423bd4ab3c3d29f4f360ee83c19ba` on an ARM64 Mac
+(macOS 26.7.1, Clang 22.1.8), using separate baseline/candidate checkouts and
+the standalone `test/language` driver in Debug with ASan and UBSan. Both used
+the existing sanitizer dependency archive
+`216c7cf5c4fdb5a5a43d18732a9ea78f0b45c416bdf4a5494af0997e69c1b6e6`;
+all 509 compiler commands matched after normalizing checkout paths.
+The timings and local validation counts in this section belong to that pair;
+they are not measurements of subsequent main integrations.
+
+Three repetitions per selector ran sequentially in fresh processes, alternating
+baseline/candidate order. The separate runtime profiler was idle. The table
+reports seconds, median (minimum–maximum); selector names omit the
+`language-package-compiler-chibi-` prefix. The compiler backend in the name is
+distinct from the generated closures' execution backends, which remain both
+bytecode and SLJIT.
+
+| Selector / compiler backend | Baseline total | Candidate total | Reduction |
+| --- | ---: | ---: | ---: |
+| `types` / bytecode | 77.88 (75.98–79.76) | 47.99 (47.87–49.45) | 38.4% |
+| `types-compiled` / SLJIT | 63.68 (60.83–66.51) | 34.83 (33.88–36.28) | 45.3% |
+| `collections-compiled` / SLJIT | 62.00 (60.78–62.71) | 34.40 (33.67–34.47) | 44.5% |
+
+Temporary outer-fixture timers separated preparation from the remaining test
+work. They did not alter runtime observers, argument sharing or call budgets.
+
+| Selector | Preparation median, baseline → candidate | Remaining median, baseline → candidate |
+| --- | ---: | ---: |
+| `types` | 56.09 → 26.97 | 21.66 → 21.04 |
+| `types-compiled` | 57.92 → 29.16 | 5.76 → 5.67 |
+| `collections-compiled` | 56.39 → 28.79 | 5.61 → 5.55 |
+
+Total includes the test policy runner, fixture setup, compilation, artifact
+execution, assertions, tracing and teardown. Remaining time is total minus
+fixture preparation, not a pure invocation benchmark. No cache flushing was
+performed; these three repetitions on one host do not establish a CI-wide
+speedup or a memory improvement. Successful driver builds were separate:
+183.51 s baseline and 179.75 s candidate, with `-j 2`; configuration and earlier
+warning-flag setup retries are excluded, as are all build times from the table.
+
+All nine matched pairs passed with exactly equal ordered traces of closure
+SHA-256, function/arguments, result status/JSON/diagnostics and serialized oracle
+SHA-256: 323 events for `types`, 204 for `types-compiled`, 107 for
+`collections-compiled`. Each selector still ran one test case. Assertion counts
+were respectively 5805 → 5613, 5205 → 5141 and 4371 → 4300. The differences
+(192, 64 and 71) equal exactly `4 + 3 * source_file_count` for each omitted
+owner: snapshot/owner/validity/document-count checks plus each source's
+copy-pointer, length and contents checks. No semantic assertion was removed.
+The temporary probes were removed before final correctness validation.
+
+The clean Debug ASan/UBSan candidate passed 16 selectors, 35 cases and 145,018
+assertions. All commands used `tools/test_policy.py tool`, with
+`CHIBI_LANGUAGE_BUILD_DIR=build-language`, `MallocNanoZone=0` and
+`UBSAN_OPTIONS=halt_on_error=1`. Counts below are cases / assertions; names omit
+the `language-` prefix.
+
+| Selector | Cases / assertions |
+| --- | ---: |
+| `compiler-fixture` | 2 / 201 |
+| `bounded-compiler-chibi` | 1 / 37,599 |
+| `prepared-writer-chibi` | 2 / 1,112 |
+| `package-compiler-chibi` | 3 / 20,139 |
+| `package-compiler-chibi-compiled` | 1 / 14,525 |
+| `package-compiler-chibi-types` | 1 / 5,613 |
+| `package-compiler-chibi-types-compiled` | 1 / 5,141 |
+| `package-compiler-chibi-collections` | 1 / 4,567 |
+| `package-compiler-chibi-collections-compiled` | 1 / 4,300 |
+| `package-compiler-chibi-scalar` | 3 / 14,271 |
+| `package-compiler-chibi-sharing` | 1 / 133 |
+| `package-compiler-chibi-debug-free` | 1 / 2,452 |
+| `package-compiler-chibi-behaviors-rest` | 2 / 5,730 |
+| `package-compiler-chibi-libraries` | 13 / 17,393 |
+| `package-compiler-chibi-native-arguments-oracle` | 1 / 178 |
+| `package-compiler-chibi-native-arguments` | 1 / 11,664 |
+
+The new fixture regression also failed under a temporary eager-preparation
+negative control, at the assertion that the unselected owner is absent; its
+default-both case still passed. The clean measured selectors retained exactly
+their instrumented case/assertion counts. `make check-format` passed.
+
+The unchanged scalar selector also passed on the clean baseline with the same
+3 cases and 14,271 assertions. The existing Release imports routes passed on
+the candidate: `language-package-compiler-chibi-imports` had 2 cases / 13,328
+assertions and `language-package-compiler-chibi-imports-compiled` had 2 /
+13,103, including both float-constant dependency cases. Their separate Release
+driver build took 50.91 s; selector wall times were 8.60 s and 6.21 s. Release
+used the same compiler, the existing Release dependency archive, sanitizers
+off as in those routes, `-Wno-error=string-concatenation` and `-Wl,-dead_strip`.
+These are correctness checks, not matched Release performance measurements.
+
+Validation follows the affected-contract policy above. Broad native, material,
+project, tooling and full-language suites were not run. Wasm, Linux x86-64
+native scalar execution, GPU, Studio and web coverage were not executed on
+this Mac. Existing cases, limits, sanitizer configuration, backend assertions
+and fallback policy are preserved; normal review and required server checks
+still apply.
+
+Reproduction uses the existing dependency cache and toolchain, without
+installation. Configure both checkouts with the same options:
+
+```sh
+cmake -S test/language -B build-language -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER="$CLANG22" \
+  -DCHIBI_THIRD_PARTY_CACHE="$CACHE" \
+  -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=address,undefined \
+  '-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -Wno-error=string-concatenation' \
+  '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined -Wl,-dead_strip' \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build-language --target test_language -j 2
+MallocNanoZone=0 UBSAN_OPTIONS=halt_on_error=1 \
+  CHIBI_LANGUAGE_BUILD_DIR=build-language \
+  python3 tools/test_policy.py tool language-package-compiler-chibi-types
+```
+
+The explicit sanitizer flags are necessary for this standalone driver build.
+The warning option keeps an existing string-concatenation warning visible and
+nonfatal (the top-level build already excludes that warning). Repeat with the
+other two selector names above, sequentially; uninstrumented runs omit trace
+and timer overhead.
 
 The original native coverage is recorded in
 [test inventory](test-inventory.md). The former tooling

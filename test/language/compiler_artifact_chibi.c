@@ -30,10 +30,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* One bounded producer process, two cases: the original eight-package closure
- * and one tiny binary fixture, eighteen preparation parses total. The original
+/* One bounded producer process, three cases: the original eight-package closure
+ * and two tiny binary fixtures, twenty preparation parses total. The original
  * five C snapshots and five authored calls retain three million instructions;
- * the binary fixture has no source calls. Four retained trees add raw flag/root
+ * the binary fixtures have no source calls. Four retained trees add raw flag/root
  * comparisons. One bounded decode rejects the previous syntax ABI without an
  * invocation, preparation or process. Product hosts receive only prepared
  * compiler artifacts and requests. */
@@ -567,11 +567,37 @@ TEST_CASE(binary_transport_fixture_produces_bounded_artifact)
     printf("Binary transport producer: 1 module, %zu bytes, 0 source calls\n", length);
     return true;
 }
+/* Keep the existing four-export transport fixture under its 32 KiB cap. */
+TEST_CASE(binary_sized_fixture_produces_bounded_artifact)
+{
+    static const char source[] = "package binary_sized\n"
+                                 "pub Sized :: (count: int) -> u8[] {\n"
+                                 "  return resize([u8(37)], count);\n"
+                                 "}\n";
+    const source_package_input input = { "binary_sized/Fixture.chibi",
+                                         source,
+                                         sizeof source - 1 };
+    REQUIRE(compiler_fixture_prepare(&fixture, &input, 1));
+    const authoring_package *root = compiler_fixture_package(&fixture, 0, "project:binary_sized");
+    REQUIRE(root && root->module && execution_module_function_count(root->module) == 1);
+    char error[256];
+    REQUIRE(execution_prepared_write(root->module, &blobs[0], &blob_sizes[0], error, sizeof error));
+    package_module row = { root->identity,
+                           execution_module_id(root->module),
+                           blobs[0],
+                           blob_sizes[0] };
+    size_t length;
+    REQUIRE(compiler_artifact_write(&row, 1, row.id, &artifact, &length, error, sizeof error));
+    REQUIRE(length && length <= BINARY_CAP);
+    REQUIRE(write_bytes("sized.artifact", artifact, length));
+    return true;
+}
 void test_language_compiler_artifact_write(const char *path)
 {
     directory = path;
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(compiler_actual_closure_produces_deterministic_artifact);
     RUN_TEST_CASE(binary_transport_fixture_produces_bounded_artifact);
+    RUN_TEST_CASE(binary_sized_fixture_produces_bounded_artifact);
     pu_clear_setup();
 }

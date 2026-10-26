@@ -119,8 +119,19 @@ Everything else is rejected with a located diagnostic and no partial result:
 floating negation and remainder, ordering `bool`s, statements outside the
 subset, function values, qualified or imported calls, native or foreign
 calls (`print`), named arguments, strings and other managed values,
-attributes, structs and constants. A call may omit trailing arguments whose
+attributes and constants. A call may omit trailing arguments whose
 parameters have defaults; each omitted one is a literal row of its default.
+Records whose fields are numbers or `bool`s are values: a literal, in any
+field order, a copy, a field read or write and a record parameter, result
+or local. Unions whose payloads are numbers or `bool`s are values too: a
+variant with or without payloads, a union parameter, result, local or
+assignment, `is` and `is not` without bindings, and a switch on a union
+variable whose arms bind payloads, with a default arm or covering every
+variant. A module declares at most 16 records and unions together, a
+record at most 16 fields and a union at most 16 variants and 15 payloads; a
+record or union with any other field or payload, an `is` that binds and a
+switch on a union expression other than a variable are rejected. The
+exported `Main` still takes and returns scalars.
 Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
 the 96-source corpus (51 accepted) with each accepted value and statement
 trace and each rejection's exact message and source excerpt, including both
@@ -143,16 +154,19 @@ and every name through `Lookup` over the scopes the ordinary compiler keeps,
 with each local bound after its value as `StatementStep` binds it; literals through `ReadIntegerLiteral`, and callees through
 `CalledFunction`, the resolution the ordinary call step makes. Each body must
 pass `EmitBody` first, which types every name, argument and result, with no
-effects, host calls or roots, and no cells but its calls' argument and result
-cells. The checks in `Scalar.chibi` only reject forms the subset cannot
+effects, no host calls but a record's construction, copies and field writes
+and a union's construction, tests and payload reads, no roots but records and
+unions, and no cells but those, moved records and unions and its calls'
+argument and result cells. The checks in `Scalar.chibi` only reject forms the subset cannot
 express; the backend never reparses source or reads VM instructions, and no
 private `Code`/`Slot` identity crosses the boundary.
 
 ## The owned handoff
 
 The compiler host passes arrays of flat records, so a module is one array of
-rows: its source, then either one rejection or its document key and each
-function's signature, parameters and statements in source order, each
+rows: its source, then either one rejection or its document key, each
+record and its fields and each union with its variants and their payloads,
+and each function's signature, parameters and statements in source order, each
 followed by its operands in evaluation order; an if statement's rows bracket
 its consequence and any alternative with Else and End rows, a switch's arms
 with a Case row each and an End row, and a loop's body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
@@ -180,6 +194,11 @@ rows own their strings and, once snapshotted, their record shape.
   local gets 15: statements before the first arm, arms outside a switch, a
   second default, switch and arm types, arm fields and ranges, a read of the
   default arm's local in the next arm, and an arm that does not return.
+  A union module whose switch binds payloads gets 24: union, variant and
+  payload rows out of order, unnamed, duplicated, outside their declaration
+  or of a record type, a variant made with another's payloads or as a
+  scalar, Tag and Payload rows of another type, arity or payload, and a zero,
+  field read or comparison of a union or its tag.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks and callee
@@ -201,7 +220,12 @@ before stepping, so no index wraps. `continue` jumps to a `while` loop's head
 or a `for` loop's step. A switch saves its value in a local; each value arm
 compares it with the arm's value, evaluated only when the arms before it
 missed, and the default arm, jumped over where it stands, runs when the last
-test fails, as stage zero and stage one lower it.
+test fails, as stage zero and stage one lower it. A record is an LLVM struct
+of its fields, and a union one of its int tag and then every variant's
+payloads, so either is a value that needs no allocator: a variant inserts
+its tag and payloads into the zero union, and a switch on a union variable
+compares its tag with each arm's variant ordinal, its bindings extracting
+their payloads.
 
 ## Native objects
 

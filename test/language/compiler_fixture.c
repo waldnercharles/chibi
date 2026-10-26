@@ -12,6 +12,7 @@
 #include "types/text.h"
 #include "types/union.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -87,6 +88,7 @@ const authoring_package *compiler_fixture_package(
     const char *identity
 )
 {
+    assert(backend >= 0 && backend < 2 && fixture->owners[backend]);
     for (int i = 0; i < authoring_packages_count(fixture->owners[backend]); i++) {
         const authoring_package *package = authoring_packages_at(fixture->owners[backend], i);
         if (!strcmp(package->identity, identity)) {
@@ -130,6 +132,19 @@ bool compiler_fixture_prepare_packs(
     int additional_count
 )
 {
+    return compiler_fixture_prepare_backends(fixture, COMPILER_FIXTURE_BOTH, files, count, additional, additional_count);
+}
+bool compiler_fixture_prepare_backends(
+    compiler_fixture *fixture,
+    unsigned selected,
+    const source_package_input *files,
+    int count,
+    const native_definition_pack *additional,
+    int additional_count
+)
+{
+    assert(selected && !(selected & ~COMPILER_FIXTURE_BOTH));
+    assert(!fixture->native && !fixture->owners[0] && !fixture->owners[1]);
     REQUIRE(additional_count >= 0 && (!additional_count || additional));
     native_definition_pack *packs = xmalloc(((size_t)additional_count + 2) * sizeof *packs);
     packs[0] = NATIVE_TEXT_DEFINITION_PACK;
@@ -155,6 +170,9 @@ bool compiler_fixture_prepare_packs(
                                                 .collections = collections,
                                                 .collection_count = 1 };
     for (int b = 0; b < 2; b++) {
+        if (!(selected & (1u << b))) {
+            continue;
+        }
         source_package_snapshot *snapshot = source_package_snapshot_new(&options);
         REQUIRE(snapshot);
         const source_package_snapshot_error *error = source_package_snapshot_error_at(snapshot);
@@ -399,6 +417,93 @@ bool compiler_fixture_call(
     behavior_function_activation_free(&state.activation);
     arena_free(&state.producer);
     return valid;
+}
+static compiler_fixture prepared_fixtures[2];
+static arena prepared_results;
+static void preparation_cleanup()
+{
+    for (int i = 0; i < 2; i++) {
+        compiler_fixture_free(&prepared_fixtures[i]);
+    }
+    arena_free(&prepared_results);
+}
+static bool preparation_value(const compiler_fixture *fixture, int b, pin_value *out)
+{
+    return compiler_fixture_call(fixture, b, "project:fixture", "Value", NULL, 0, 100, &prepared_results, out);
+}
+TEST_CASE(compiler_fixture_prepares_only_selected_backend)
+{
+    for (int b = 0; b < 2; b++) {
+        char source[] = "package fixture\npub Value :: () -> string { return "
+                        "\"first\"; }";
+        source_package_input file = { "fixture/Fixture.chibi", source, sizeof source - 1 };
+        compiler_fixture *first = &prepared_fixtures[0],
+                         *second = &prepared_fixtures[1];
+        first->observe_failures = true;
+        first->collectable = true;
+        REQUIRE(compiler_fixture_prepare_backends(first, 1u << b, &file, 1, NULL, 0));
+        REQUIRE(first->owners[b] && !first->owners[1 - b]);
+        REQUIRE(first->observe_failures && first->collectable);
+        memcpy(strstr(source, "first"), "later", 5);
+        REQUIRE(compiler_fixture_prepare_backends(second, 1u << b, &file, 1, NULL, 0));
+        REQUIRE(second->owners[b] && !second->owners[1 - b]);
+        REQUIRE(first->native != second->native && first->owners[b] != second->owners[b]);
+        REQUIRE(
+            authoring_packages_snapshot(first->owners[b]) !=
+            authoring_packages_snapshot(second->owners[b])
+        );
+        pin_value old_value, new_value;
+        REQUIRE(preparation_value(first, b, &old_value));
+        REQUIRE(preparation_value(second, b, &new_value));
+        compiler_fixture_free(first);
+        compiler_fixture_free(second);
+        REQUIRE(!first->native && !first->owners[0] && !first->owners[1]);
+        REQUIRE(!first->observe_failures && !first->collectable);
+        REQUIRE(pin_text_equal(pin_text(old_value), (pin_string){ "first", 5 }));
+        REQUIRE(pin_text_equal(pin_text(new_value), (pin_string){ "later", 5 }));
+        /* Reuse only the empty fixture shell, with changed source. */
+        REQUIRE(compiler_fixture_prepare_backends(first, 1u << b, &file, 1, NULL, 0));
+        REQUIRE(first->owners[b] && !first->owners[1 - b]);
+        REQUIRE(preparation_value(first, b, &new_value));
+        compiler_fixture_free(first);
+        compiler_fixture_free(first);
+        REQUIRE(pin_text_equal(pin_text(new_value), (pin_string){ "later", 5 }));
+        REQUIRE(pin_text_equal(pin_text(old_value), (pin_string){ "first", 5 }));
+        arena_free(&prepared_results);
+    }
+    return true;
+}
+TEST_CASE(compiler_fixture_default_keeps_both_backends)
+{
+    const char source[] = "package fixture\npub Value :: () -> string { return "
+                          "\"both\"; }";
+    source_package_input file = { "fixture/Fixture.chibi", source, sizeof source - 1 };
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    REQUIRE(compiler_fixture_prepare(fixture, &file, 1));
+    REQUIRE(
+        fixture->owners[0] && fixture->owners[1] &&
+        fixture->owners[0] != fixture->owners[1]
+    );
+    REQUIRE(
+        authoring_packages_snapshot(fixture->owners[0]) !=
+        authoring_packages_snapshot(fixture->owners[1])
+    );
+    pin_value values[2];
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(preparation_value(fixture, b, &values[b]));
+    }
+    compiler_fixture_free(fixture);
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(pin_text_equal(pin_text(values[b]), (pin_string){ "both", 4 }));
+    }
+    return true;
+}
+void test_language_compiler_fixture()
+{
+    pu_setup(NULL, preparation_cleanup);
+    RUN_TEST_CASE(compiler_fixture_prepares_only_selected_backend);
+    RUN_TEST_CASE(compiler_fixture_default_keeps_both_backends);
+    pu_clear_setup();
 }
 bool compiler_fixture_nodes(TSNode root, compiler_fixture_node *nodes, int capacity, int depth_cap, int *count)
 {

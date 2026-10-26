@@ -335,6 +335,8 @@ TOOLS = {
                                       '--constant-scalar-chibi'],
     'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--scalar-lowering-chibi'],
+    'language-compiler-fixture': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                  '--compiler-fixture'],
     'language-bounded-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--bounded-compiler-chibi'],
     'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -566,7 +568,7 @@ GROUPS = {
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
-                 'language-shader-source-chibi', 'language-package-compiler-chibi-scalar',
+                 'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
                  'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap'],
 }

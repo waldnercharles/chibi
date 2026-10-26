@@ -578,13 +578,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                                     ops, target, SlotsPast(at, length(slots)), node));
             } else if (Pointer(local.storage, local.container)) {
                 // The local is the cell that holds its own copy, or the value
-                // itself when it is fresh, or when neither it nor what it
-                // reads ever changes.
+                // itself when it is fresh or a temporary it takes over, or
+                // when neither it nor what it reads ever changes.
                 code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
                 // A lent element is read in place and never dropped.
                 lent := LendsElement(forest, text, names, referenced, mutated, built, addressed,
                                      Field(forest, item.node, "value"));
-                if (lent || Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, "value")) ||
+                if (lent || result.owned || Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, "value")) ||
                     (!Holds(mutated, name) &&
                      Unchanging(forest, text, callables, natives, types, names, package, mutated, Field(forest, item.node, "value")))) {
                     cells.append(MovedCell(result));
@@ -706,8 +706,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document, "assigned value differs from its local");
             }
             if (binding.place == CellPlace) {
-                // A fresh value replaces the cell's payload without a copy.
-                if (Fresh(forest, text, callables, natives, types, names, package, StatementValue(forest, item.node))) {
+                // A fresh value or a temporary replaces the cell's payload
+                // without a copy.
+                if (stored.owned || Fresh(forest, text, callables, natives, types, names, package, StatementValue(forest, item.node))) {
                     produced = stored;
                 } else {
                     retained = stored;
@@ -2256,7 +2257,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                             expected = Expect(argument.node, port.storage, port.container, port.record);
                         }
                         next.append(expected);
-                        next.append(Resume(argument.node, CopyValuePhase, 0, 0));
+                        next.extend(NativeArgumentWork(forest, text, names, item.node, argument.node));
                     }
             }
             finish := Resume(item.node, 1, method, length(sources));
@@ -2430,7 +2431,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     expectation := NativeExpectation(forest, text, item.node, sources, natives, ports, callee_name,
                                                      ordinal);
                     next.append(expectation);
-                    next.append(Resume(expectation.node, CopyValuePhase, 0, 0));
+                    next.extend(NativeArgumentWork(forest, text, names, item.node, expectation.node));
                     ordinal += 1;
                 }
                 choose := Resume(item.node, 1, native, length(sources));
@@ -2461,7 +2462,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                             expected = Expect(argument.node, port.storage, port.container, port.record);
                         }
                         next.append(expected);
-                        next.append(Resume(argument.node, CopyValuePhase, 0, 0));
+                        next.extend(NativeArgumentWork(forest, text, names, item.node, argument.node));
                     }
             }
             finish := Resume(item.node, 1, native, length(sources));
@@ -2501,7 +2502,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             }
             next.append(expected);
             if (native >= 0) {
-                next.append(Resume(argument, CopyValuePhase, 0, 0));
+                next.extend(NativeArgumentWork(forest, text, names, item.node, argument));
             } else if (found >= 0 && count < expected_count && !params[callables[found].first + count].reference &&
                        !LentArgument(forest, text, names, argument)) {
                 next.append(Resume(argument, CopyValuePhase, 1, 0));
@@ -2933,7 +2934,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         index += 1;
     }
     if (linked) {
-        host: Host = {owned_arguments: true, intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
+        host: Host = {owned_arguments: false, intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
                       result_count: result_count, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -2968,9 +2969,6 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result, NoValue(),
                             marks);
-    if (linked) {
-        return emitted;
-    }
     // The call lent its arguments; the caller drops those it owns.
     return CleanupSequenceValues(emitted, slice(values, first, count), ops, target, at, node);
 }
@@ -4934,6 +4932,18 @@ LentArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], a
         later = NextMember(forest, later);
     }
     return true;
+}
+// The work after a native argument's value: none for a local the native
+// borrows as it stands, since a native never changes a value it is passed,
+// unless a ref argument of the same call reaches it. A temporary passes as
+// it is; anything else is copied for the call.
+NativeArgumentWork :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], call: int, argument: int) -> Work[] {
+    root := Unparenthesized(forest, argument);
+    if (LentArgument(forest, text, names, argument) &&
+        !ReferencesName(forest, text, Field(forest, call, "arguments"), Text(forest, text, root))) {
+        return [];
+    }
+    return [Resume(argument, CopyValuePhase, 1, 0)];
 }
 // An address for each of `count` arguments and the result's, then the result.
 CallSlots :: (count: int, result: Slot, target: Target) -> Slot[] {

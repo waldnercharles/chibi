@@ -108,14 +108,16 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. A `debug_metadata`
+ * Copied function, which assigns its array, does not. A `lends` sample's Lent
+ * functions pass locals to natives and keep natives' results without a copy,
+ * and its Copied function copies the element it passes. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
  * backends. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built,
+    bool core, updates, boxed, game, moves, aliases, variants, built, lends,
         same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
@@ -1351,6 +1353,19 @@ static const sample samples[] = {
                    .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
                                 "\"y\",\"count\":2}]]",
                    .expected = "[2]" } } },
+    { .name = "native values",
+      .group = IMPORT_SAMPLES,
+      .lends = true,
+      .source = "package facts\n"
+                "LentLength :: (xs: int[]) -> int { return length(xs) + xs.length(); }\n"
+                "LentSlice :: (xs: int[]) -> int {\n"
+                "    part := slice(xs, 1, 2);\n    part.append(5);\n"
+                "    rest := xs.slice(0, 1);\n    rest = append(rest, 7);\n"
+                "    return length(part) * 10 + rest[1] + xs.length() * 100;\n}\n"
+                "CopiedElement :: () -> int { xss: int[][] = [[1, 2], [3]]; return length(xss[0]); }",
+      .calls = { { .function = "LentLength", .arguments = "[[1,2,3]]", .expected = "[6]" },
+                 { .function = "LentSlice", .arguments = "[[1,2,3]]", .expected = "[337]" },
+                 { .function = "CopiedElement", .arguments = "[]", .expected = "[2]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -4682,6 +4697,35 @@ static package_collection *read_packages(
     }
     return packages;
 }
+/* A native never changes a value it is passed, so a call lends it a local,
+ * and the result it returns is a temporary a local takes over. An element it
+ * is passed is copied. */
+static bool lends_native_values(const unsigned char *bytes, size_t length)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int lent = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool lend = !strncmp(f.entry, "Lent", 4),
+                 copy = !strncmp(f.entry, "Copied", 6);
+            int copies = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_COPY);
+            lent += lend;
+            copied += copy;
+            if ((lend && copies) || (copy && !copies)) {
+                fprintf(stderr, "package compiler %s copies %d values\n", f.entry, copies);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(lent == 2 && copied == 1 && !wrong);
+    return true;
+}
 /* Runs a call with the probe natives: the compiler host links only its own,
  * so the closure is read with them and its function run directly. */
 static bool run_probe(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
@@ -5191,6 +5235,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
+                   (!s->lends || lends_native_values(bytes, length)) &&
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));

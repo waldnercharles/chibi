@@ -3882,8 +3882,12 @@ TEST_CASE(execution_managed_scan_checks_nested_layouts)
                         .record = &outer };
     const char *error = behavior_managed_value_error(&value);
     REQUIRE(error && !strcmp(error, "Managed value requires a resolved nested record layout"));
+    const type_desc *types[] = { &child };
+    type_catalog_pack project = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&project);
     inner.layout = &child;
     error = behavior_managed_value_error(&value);
+    type_catalog_set_project(NULL);
     REQUIRE(error && !strcmp(error, "Cannot retain native record layout"));
     return true;
 }

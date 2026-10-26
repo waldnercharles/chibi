@@ -911,17 +911,33 @@ def available_test_memory(read_text=None):
         return None
 
 
-def automatic_jobs():
-    # Admission reserve, NOT a measured peak-RSS bound. Keep at most two
-    # workers because selectors can themselves run expensive compiler children.
+def diagnostic(event, **fields):
+    # Policy metadata never goes into a test program's stdout or environment dump.
+    print('Test policy: ' + json.dumps(dict(event=event, **fields), sort_keys=True),
+          file=sys.stderr, flush=True)
+
+
+def automatic_admission():
+    # Admission reserve, NOT a measured peak-RSS bound. Compiler children may
+    # themselves use threads. Unknown capacity keeps the original serial route.
+    admission = dict(mode='automatic', selected_jobs=1, reason='cpu-unavailable',
+                     cpu_slots=None, available_bytes=None, reserve_bytes=2 * 1024 ** 3,
+                     memory_probe='not-run')
     try:
         cpus = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else os.cpu_count() or 1
     except OSError:
-        return 1
+        return admission
     available = available_test_memory()
-    if available is None:
-        return 1
-    return max(1, min(2, cpus, available // (2 * 1024 ** 3)))
+    admission.update(cpu_slots=cpus, available_bytes=available,
+                     memory_probe='unknown' if available is None else 'available',
+                     reason='memory-unavailable' if available is None else 'cpu-memory-admission')
+    if available is not None:
+        admission['selected_jobs'] = max(1, min(2, cpus, available // admission['reserve_bytes']))
+    return admission
+
+
+def automatic_jobs():
+    return automatic_admission()['selected_jobs']
 
 
 def run_group(names, jobs=None, seconds=None):
@@ -931,19 +947,65 @@ def run_group(names, jobs=None, seconds=None):
     if jobs is not None and jobs < 1:
         raise ValueError('jobs must be a positive integer')
     commands = [tool_command(name) for name in names]
-    if jobs == 1 or not any(name in PARALLEL_RESOURCES for name in names):
-        return run_commands(commands, seconds=seconds)
-    jobs = automatic_jobs() if jobs is None else jobs
+    eligible = any(name in PARALLEL_RESOURCES for name in names)
+    if jobs is None and eligible:
+        admission = automatic_admission()
+    else:
+        admission = dict(mode='automatic' if jobs is None else 'explicit',
+                         selected_jobs=jobs or 1, reason='explicit', cpu_slots=None,
+                         available_bytes=None, reserve_bytes=2 * 1024 ** 3,
+                         memory_probe='not-run')
+    if not eligible:
+        admission.update(selected_jobs=1, reason='no-parallel-eligible-selectors')
+    diagnostic('admission', requested_jobs=jobs, selectors=len(names), **admission)
+    jobs = admission['selected_jobs']
     remaining = None if deadline is None else deadline - time.monotonic()
     if remaining is not None and remaining <= 0:
         for name in names:
             print(f'[{name}] not run: group deadline expired', flush=True)
+            diagnostic('selector', name=name, start=None, observed_finish=None,
+                       status='not-started', exit_code=None)
+        diagnostic('group', wall_seconds=time.monotonic() - started,
+                   peak_live_workers=0, result=124, lifecycle_scope='selector-supervisor')
         return 124
     if jobs == 1:
-        return run_commands(commands, seconds=remaining)
+        # Preserve the original one-supervisor sequence. Do not invent selector
+        # intervals or claim a measured peak for this uninstrumented legacy route.
+        result = 2
+        try:
+            result = run_commands(commands, seconds=remaining)
+            return result
+        except (KeyboardInterrupt, TerminationRequested):
+            result = 130
+            raise
+        finally:
+            diagnostic('group', wall_seconds=time.monotonic() - started,
+                       peak_live_workers=None, result=result, lifecycle_scope='unobserved-serial')
     active, completed = {}, {}
     next_index = emit_index = 0
-    result = 0
+    result = peak_live = 0
+    records = [dict(name=name, start=None, observed_finish=None,
+                    status='not-started', exit_code=None) for name in names]
+
+    def poll_workers():
+        nonlocal result
+        for index, (child, log, scratch, resources) in list(active.items()):
+            status = child.poll()
+            if status is None:
+                continue
+            finished = time.monotonic()
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            status = status if status >= 0 else 128 - status
+            records[index].update(observed_finish=finished, exit_code=status,
+                                  status='failed' if status else 'passed')
+            completed[index] = (status, log)
+            if status and not result:
+                result = status
+            del active[index]
+
     # Defer signals to scheduler boundaries: raising between Popen and recording
     # the child would lose ownership of a just-created worker.
     cancelled = False
@@ -969,6 +1031,11 @@ def run_group(names, jobs=None, seconds=None):
                     while next_index < len(names) and len(active) < jobs:
                         if cancelled:
                             raise TerminationRequested()
+                        # Refresh exits before each admission, not merely once
+                        # per loop, so dead workers cannot inflate the live peak.
+                        poll_workers()
+                        if result:
+                            break
                         resources = PARALLEL_RESOURCES.get(names[next_index])
                         if active and (resources is None or any(
                                 item[3] is None or resources & item[3]
@@ -982,6 +1049,7 @@ def run_group(names, jobs=None, seconds=None):
                         # caller. Its supervisor alone adopts/reaps its orphans.
                         environment.pop(PROCESS_GROUP, None)
                         log = open(Path(directory) / f'{next_index}.log', 'w+', errors='replace')
+                        launched = time.monotonic()
                         try:
                             child = subprocess.Popen(
                                 [sys.executable, str(Path(__file__).resolve()),
@@ -992,24 +1060,13 @@ def run_group(names, jobs=None, seconds=None):
                             log.close()
                             raise
                         active[next_index] = (child, log, scratch, resources)
+                        records[next_index].update(start=launched, status='running')
+                        poll_workers()
+                        peak_live = max(peak_live, len(active))
                         next_index += 1
                         if resources is None:
                             break
-                    for index, (child, log, scratch, resources) in list(active.items()):
-                        status = child.poll()
-                        if status is None:
-                            continue
-                        # POSIX fallback removes any descendants left in the group;
-                        # Linux supervisor also owns escaped/adopted descendants.
-                        try:
-                            os.killpg(child.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                        status = status if status >= 0 else 128 - status
-                        completed[index] = (status, log)
-                        if status and not result:
-                            result = status
-                        del active[index]
+                    poll_workers()
                     while emit_index in completed:
                         status, log = completed.pop(emit_index)
                         print(f'[{names[emit_index]}] exit {status}', flush=True)
@@ -1024,6 +1081,10 @@ def run_group(names, jobs=None, seconds=None):
                         break
                     if active:
                         time.sleep(.005)
+            except BaseException:
+                if not result:
+                    result = 130 if cancelled else 2
+                raise
             finally:
                 # Send cancellation to every owned supervisor before waiting. Ignore
                 # repeated interrupts only while all workers finish their cleanup.
@@ -1042,7 +1103,11 @@ def run_group(names, jobs=None, seconds=None):
                         except ProcessLookupError:
                             pass
                         status = child.returncode
-                        completed[index] = (status if status >= 0 else 128 - status, log)
+                        status = status if status >= 0 else 128 - status
+                        records[index].update(observed_finish=time.monotonic(), exit_code=status,
+                                              status='cancelled' if index in cancelled_workers
+                                              else 'failed' if status else 'passed')
+                        completed[index] = (status, log)
                     # Preserve partial worker diagnostics on cancellation/timeout.
                     for index in sorted(completed):
                         status, log = completed[index]
@@ -1054,6 +1119,11 @@ def run_group(names, jobs=None, seconds=None):
                     for name in names[next_index:]:
                         print(f'[{name}] not run: group stopped', flush=True)
                 finally:
+                    for record in records:
+                        diagnostic('selector', **record)
+                    diagnostic('group', wall_seconds=time.monotonic() - started,
+                               peak_live_workers=peak_live, result=130 if cancelled else result,
+                               lifecycle_scope='selector-supervisor')
                     print(f'Test command wall time: {time.monotonic() - started:.3f}s; '
                           'includes in-test fixture setup; external configuration/build excluded.', flush=True)
     finally:

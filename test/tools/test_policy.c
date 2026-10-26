@@ -236,6 +236,40 @@ static const char driver_parallel[] =
     "    action, worker, root = sys.argv[2:5]\n"
     "    root = str(Path(root) / 'parallel')\n"
     "    Path(root).mkdir(exist_ok=True)\n"
+    "    import contextlib\n"
+    "    original_group = policy.run_group\n"
+    "    def reported_group(*args, **kwargs):\n"
+    "        try:\n"
+    "            with open(Path(root, 'diagnostics.stderr'), 'w') as "
+    "diagnostics:\n"
+    "                with contextlib.redirect_stderr(diagnostics):\n"
+    "                    return original_group(*args, **kwargs)\n"
+    "        finally:\n"
+    "            rows = [json.loads(line[len('Test policy: '):])\n"
+    "                for line in Path(root, "
+    "'diagnostics.stderr').read_text().splitlines()\n"
+    "                if line.startswith('Test policy: ')]\n"
+    "            with open(Path(root, 'metrics.txt'), 'w') as metrics:\n"
+    "                for row in rows:\n"
+    "                    event = row['event']\n"
+    "                    if event == 'admission':\n"
+    "                        print(event, row['selected_jobs'], row['mode'], "
+    "row['reason'],\n"
+    "                            row.get('available_bytes'), "
+    "row.get('reserve_bytes'),\n"
+    "                            row.get('cpu_slots'), "
+    "row.get('memory_probe'), file=metrics)\n"
+    "                    if event == 'selector':\n"
+    "                        print(event, row['name'], row.get('start'), "
+    "row.get('observed_finish'),\n"
+    "                            row['status'], row.get('exit_code'), "
+    "file=metrics)\n"
+    "                    if event == 'group':\n"
+    "                        print(event, row.get('peak_live_workers'), "
+    "row['wall_seconds'],\n"
+    "                            row['result'], row.get('lifecycle_scope'), "
+    "file=metrics)\n"
+    "    policy.run_group = reported_group\n"
     "    names = ['first', 'second', 'third']\n"
     "    modes = ['mark', 'mark', 'mark']\n"
     "    jobs = 1 if action.endswith('-serial') else 2\n"
@@ -260,10 +294,18 @@ static const char driver_parallel[] =
     "        if not action.startswith('parallel-language'):\n"
     "            policy.PARALLEL_RESOURCES[name] = frozenset()\n"
     "    if action == 'parallel-conflict':\n"
-    "        for name in names[:2]: policy.PARALLEL_RESOURCES[name] = "
+    "        for name in names: policy.PARALLEL_RESOURCES[name] = "
     "frozenset(['fixture'])\n"
     "    if action in ('parallel-unknown', 'parallel-failure'):\n"
     "        for name in names[1:]: policy.PARALLEL_RESOURCES.pop(name, None)\n"
+    "    if action in ('parallel-low-memory', 'parallel-memory-unknown', "
+    "'parallel-all-unknown'):\n"
+    "        jobs = None\n"
+    "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
+    "        policy.available_test_memory = lambda: None if action == "
+    "'parallel-memory-unknown' else 3 * 1024 ** 3\n"
+    "        if action == 'parallel-all-unknown':\n"
+    "            for name in names: policy.PARALLEL_RESOURCES.pop(name, None)\n"
     "    if action in ('parallel-conflict', 'parallel-unknown'):\n"
     "        original = policy.subprocess.Popen\n"
     "        spawned = []\n"
@@ -275,8 +317,7 @@ static const char driver_parallel[] =
     "                Path(root, 'resource-release').touch()\n"
     "                return self.child.poll()\n"
     "        def observed_spawn(*args, **kwargs):\n"
-    "            if spawned and not Path(root, 'resource-release').exists() "
-    "and spawned[0].poll() is None:\n"
+    "            if spawned and spawned[0].poll() is None:\n"
     "                Path(root, 'conflict-live').touch()\n"
     "            child = original(*args, **kwargs)\n"
     "            spawned.append(child)\n"
@@ -1250,6 +1291,116 @@ static void reset_parallel()
     }
 }
 
+static char *parallel_metrics()
+{
+    char filename[PATH_MAX];
+    path(filename, "parallel/metrics.txt");
+    return tool_read(filename);
+}
+
+static bool parallel_group_metrics(const char *metrics, int expected_peak, int expected_result)
+{
+    const char *row = strstr(metrics, "group ");
+    int peak = -1, result = -1;
+    double wall = -1;
+    REQUIRE(row && sscanf(row, "group %d %lf %d", &peak, &wall, &result) == 3);
+    REQUIRE(peak == expected_peak && result == expected_result && wall >= 0);
+    return true;
+}
+
+TEST_CASE(parallel_diagnostics_report_observed_overlap_and_resources)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-default", NULL) == 0);
+    char *metrics = parallel_metrics();
+    REQUIRE(metrics && parallel_group_metrics(metrics, 2, 0));
+    const char *first = strstr(metrics, "selector first ");
+    const char *second = strstr(metrics, "selector second ");
+    double first_start, first_finish, second_start, second_finish;
+    char first_status[32], second_status[32];
+    int first_exit = -1, second_exit = -1;
+    REQUIRE(
+        first &&
+        sscanf(first, "selector first %lf %lf %31s %d", &first_start, &first_finish, first_status, &first_exit) ==
+            4
+    );
+    REQUIRE(
+        second &&
+        sscanf(second, "selector second %lf %lf %31s %d", &second_start, &second_finish, second_status, &second_exit) ==
+            4
+    );
+    REQUIRE(first_start <= first_finish && second_start <= second_finish);
+    REQUIRE(first_start < second_finish && second_start < first_finish);
+    REQUIRE(!strcmp(first_status, "passed") && !strcmp(second_status, "passed"));
+    REQUIRE(!first_exit && !second_exit);
+    REQUIRE(
+        strstr(metrics, "admission 2 automatic cpu-memory-admission 4294967296 2147483648 2 available\n")
+    );
+    free(metrics);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strstr(output, "Test policy: "));
+    free(output);
+    const char *actions[] = { "parallel-conflict", "parallel-unknown" };
+    for (int i = 0; i < 2; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == 0);
+        metrics = parallel_metrics();
+        REQUIRE(metrics && parallel_group_metrics(metrics, 1, 0));
+        REQUIRE(!exists("parallel/conflict-live"));
+        free(metrics);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_diagnostics_distinguish_failure_cancel_and_not_started)
+{
+    reset_parallel();
+    REQUIRE(run("parallel-active-failure", NULL) == 7);
+    char *metrics = parallel_metrics();
+    REQUIRE(metrics && parallel_group_metrics(metrics, 2, 7));
+    const char *first = strstr(metrics, "selector first ");
+    const char *second = strstr(metrics, "selector second ");
+    const char *third = strstr(metrics, "selector third ");
+    REQUIRE(first && strstr(first, " failed 7\n"));
+    REQUIRE(second && strstr(second, " cancelled 130\n"));
+    REQUIRE(third && strstr(third, "selector third None None not-started None\n") == third);
+    free(metrics);
+    return true;
+}
+
+TEST_CASE(parallel_diagnostics_explain_serial_escape_and_capacity)
+{
+    const char *actions[] = { "parallel-cli-serial",
+                              "parallel-env-serial",
+                              "parallel-low-memory",
+                              "parallel-memory-unknown",
+                              "parallel-all-unknown" };
+    const char *admissions[] = {
+        "admission 1 explicit explicit None 2147483648 None not-run\n",
+        "admission 1 explicit explicit None 2147483648 None not-run\n",
+        "admission 1 automatic cpu-memory-admission 3221225472 2147483648 2 "
+        "available\n",
+        "admission 1 automatic memory-unavailable None 2147483648 2 unknown\n",
+        "admission 1 automatic no-parallel-eligible-selectors None 2147483648 "
+        "None not-run\n"
+    };
+    for (int i = 0; i < 5; i++) {
+        reset_parallel();
+        REQUIRE(run(actions[i], NULL) == 0);
+        char *metrics = parallel_metrics();
+        REQUIRE(metrics && strstr(metrics, admissions[i]));
+        const char *group = strstr(metrics, "group None ");
+        double wall = -1;
+        int result = -1;
+        char scope[32];
+        REQUIRE(group && sscanf(group, "group None %lf %d %31s", &wall, &result, scope) == 3);
+        REQUIRE(wall >= 0 && !result && !strcmp(scope, "unobserved-serial"));
+        REQUIRE(!strstr(metrics, "selector "));
+        free(metrics);
+    }
+    return true;
+}
+
 TEST_CASE(parallel_group_overlaps_and_isolates_scratch)
 {
     reset_parallel();
@@ -1351,6 +1502,16 @@ TEST_CASE(parallel_language_manifest_matches_serial_exactly)
     }
     /* Real platform-gated language manifest, not a three-worker stand-in. */
     REQUIRE(count >= 44);
+    char *metrics = parallel_metrics();
+    REQUIRE(metrics);
+    int records = 0;
+    const char *record = metrics;
+    while ((record = strstr(record, "selector "))) {
+        records++;
+        record++;
+    }
+    REQUIRE(records == count);
+    free(metrics);
     free(serial);
     free(parallel);
     return true;
@@ -1575,6 +1736,9 @@ void test_tool_test_policy()
     RUN_TEST_CASE(studio_acceptance_source_records_match_files);
     RUN_TEST_CASE(benchmark_runner_timeout_is_optional);
     RUN_TEST_CASE(benchmark_runner_explicit_timeout_cleans_descendants);
+    RUN_TEST_CASE(parallel_diagnostics_report_observed_overlap_and_resources);
+    RUN_TEST_CASE(parallel_diagnostics_distinguish_failure_cancel_and_not_started);
+    RUN_TEST_CASE(parallel_diagnostics_explain_serial_escape_and_capacity);
     RUN_TEST_CASE(parallel_group_overlaps_and_isolates_scratch);
     RUN_TEST_CASE(parallel_group_serializes_conflicts_and_unknowns);
     RUN_TEST_CASE(parallel_group_preserves_manifest_and_failure);

@@ -80,6 +80,17 @@ worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
 isolated by changing TMPDIR; the [resource audit](test-parallel-resources.md)
 records why each enabled selector is safe.
 
+The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
+program stdout: selected automatic/explicit worker count and admission reason,
+CPU/memory probe availability and reserve, then manifest-ordered selector
+supervisor start/observed-finish timestamps and statuses, observed peak live
+workers and group wall time. Timestamps use the monotonic clock; intervals include
+supervisor startup/cleanup and are not CPU time or a speedup measurement. Exits
+are polled afresh before admission. These receipts distinguish actual scheduled
+overlap from a serial capacity fallback in ordinary CI logs without CI flags.
+The preserved legacy serial route explicitly reports `unobserved-serial` and a
+null peak: it does not invent per-selector intervals or claim observed overlap.
+
 This is selector-level parallelism, not individual pico_unit cases or threads.
 The initial two-worker cap is a conservative rollout policy, not a measured
 memory bound or a promise to use every core. Peak-memory and matched serial /

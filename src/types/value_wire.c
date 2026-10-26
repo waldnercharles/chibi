@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void fail(execution_wire *w, const char *error)
@@ -191,6 +192,25 @@ bool execution_wire_record(execution_wire *w)
     w->records++;
     return true;
 }
+static void interned_string(execution_wire *w, const char **value)
+{
+    if (!w->reading && *value) {
+        if (!w->error) {
+            apush(w->texts, ((execution_wire_text){ acount(w->data), *value }));
+        }
+        return;
+    }
+    size_t code = 0;
+    execution_wire_size(w, &code);
+    if (!w->reading || w->error) {
+        return;
+    }
+    if (code > w->string_count) {
+        fail(w, "Prepared string index exceeds its table");
+        return;
+    }
+    *value = code ? w->strings[code - 1] : NULL;
+}
 void execution_wire_string(execution_wire *w, const char **value)
 {
     size_t bytes = 0;
@@ -201,6 +221,10 @@ void execution_wire_string(execution_wire *w, const char **value)
             return;
         }
         bytes++;
+    }
+    if (w->interning) {
+        interned_string(w, value);
+        return;
     }
     execution_wire_size(w, &bytes);
     if (w->error) {
@@ -238,6 +262,89 @@ void execution_wire_string(execution_wire *w, const char **value)
     }
     w->size += length;
     w->offset = w->size;
+}
+void execution_wire_strings_begin(execution_wire *w)
+{
+    assert(!w->reading && !w->interning);
+    w->interning = true;
+    w->strings_at = acount(w->data);
+    w->paused_hash = w->hash;
+    w->hash = NULL;
+}
+static int compare_text(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+/* The table, then the bytes written since begin with each interned string's
+ * index at its place. Those bytes already count in size; the table and the
+ * indices are new. */
+void execution_wire_strings_finish(execution_wire *w)
+{
+    assert(!w->reading && w->interning);
+    w->interning = false;
+    w->hash = w->paused_hash;
+    w->paused_hash = NULL;
+    int count = acount(w->texts);
+    if (w->error) {
+        afree(w->texts);
+        return;
+    }
+    const char **table = xmalloc((count ? (size_t)count : 1) * sizeof *table);
+    for (int i = 0; i < count; i++) {
+        table[i] = w->texts[i].text;
+    }
+    qsort(table, (size_t)count, sizeof *table, compare_text);
+    int distinct = 0;
+    for (int i = 0; i < count; i++) {
+        if (!distinct || strcmp(table[distinct - 1], table[i])) {
+            table[distinct++] = table[i];
+        }
+    }
+    unsigned char *body = w->data;
+    size_t from = w->strings_at, end = acount(body);
+    w->data = NULL;
+    for (size_t i = 0; i < from; i++) {
+        write_byte(w, body[i]);
+    }
+    execution_wire_count(w, &distinct, 1);
+    for (int i = 0; i < distinct; i++) {
+        execution_wire_string(w, &table[i]);
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        for (; from < w->texts[i].at; from++) {
+            write_byte(w, body[from]);
+        }
+        const char **found = bsearch(&w->texts[i].text, table, (size_t)distinct, sizeof *table, compare_text);
+        assert(found);
+        size_t code = (size_t)(found - table) + 1;
+        execution_wire_size(w, &code);
+    }
+    for (; from < end && !w->error; from++) {
+        write_byte(w, body[from]);
+    }
+    w->offset = w->size;
+    free(table);
+    afree(body);
+    afree(w->texts);
+}
+void execution_wire_strings_read(execution_wire *w)
+{
+    assert(w->reading && !w->interning);
+    int count = 0;
+    execution_wire_count(w, &count, 1);
+    const char **table = NULL;
+    if (count && !w->error) {
+        table = execution_wire_allocate(w, (size_t)count * sizeof *table);
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        execution_wire_string(w, &table[i]);
+        if (!w->error && (!table[i] || (i && strcmp(table[i - 1], table[i]) >= 0))) {
+            fail(w, "Prepared string table is not sorted and distinct");
+        }
+    }
+    w->interning = true;
+    w->strings = table;
+    w->string_count = w->error ? 0 : (size_t)count;
 }
 /* Language text has an explicit length; metadata uses wire_string above. */
 static void text_value(execution_wire *w, pin_value *value)

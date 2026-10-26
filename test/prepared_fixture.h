@@ -90,28 +90,49 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
     return matches == 1 && sizeof(prepared_counter) < 64;
 }
 
+/* The 1-based index of `text` in the module's string table, which follows
+ * the four header words; 0 when the table lacks it. */
+static size_t prepared_string_code(unsigned char *bytes, size_t length, const char *text)
+{
+    execution_wire wire = { .data = bytes, .size = length, .reading = true };
+    for (int i = 0; i < 4; i++) {
+        uint64_t word = 0;
+        execution_wire_u64(&wire, &word);
+    }
+    int count = 0;
+    execution_wire_int(&wire, &count);
+    for (int i = 0; i < count && !wire.error; i++) {
+        size_t size = 0;
+        execution_wire_size(&wire, &size);
+        if (wire.error || !size || size - 1 > length - wire.offset) {
+            return 0;
+        }
+        if (size - 1 == strlen(text) && !memcmp(bytes + wire.offset, text, size - 1)) {
+            return (size_t)i + 1;
+        }
+        wire.offset += size - 1;
+    }
+    return 0;
+}
 /* Find a payload-free owned native header, not its module requirement or a
  * component instruction. The schema marker includes its zero field count. */
 static bool prepared_native_header_layout(unsigned char *bytes, size_t length, size_t *target)
 {
-    static const char name[] = "PersistCounter";
-    for (size_t offset = 0; offset < length; offset++) {
+    size_t name = prepared_string_code(bytes, length, "PersistCounter");
+    for (size_t offset = 0; name && offset < length; offset++) {
         execution_wire wire = { .data = bytes,
                                 .size = length,
                                 .offset = offset,
                                 .reading = true };
         int tag = 0, container = 0, fields = -1;
-        size_t name_bytes = 0;
+        size_t code = 0;
         execution_wire_int(&wire, &tag);
         execution_wire_int(&wire, &container);
-        execution_wire_size(&wire, &name_bytes);
+        execution_wire_size(&wire, &code);
         if (wire.error || tag != PIN_STRUCT ||
-            container != PIN_CONTAINER_SINGLE || name_bytes != sizeof name ||
-            wire.offset > length || sizeof name - 1 > length - wire.offset ||
-            memcmp(bytes + wire.offset, name, sizeof name - 1)) {
+            container != PIN_CONTAINER_SINGLE || code != name) {
             continue;
         }
-        wire.offset += sizeof name - 1;
         bool authored = true, present = true;
         uint64_t layout = 0;
         execution_wire_bool(&wire, &authored);

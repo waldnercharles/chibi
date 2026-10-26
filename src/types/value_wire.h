@@ -12,6 +12,12 @@ enum
     EXECUTION_WIRE_MAX_RECORDS = 1000000,
     EXECUTION_WIRE_MAX_DEPTH = 64
 };
+/* A string a writer interns, waiting at data[at] for its table index. */
+typedef struct execution_wire_text
+{
+    size_t at;
+    const char *text;
+} execution_wire_text;
 typedef struct execution_wire
 {
     unsigned char *data;
@@ -30,13 +36,29 @@ typedef struct execution_wire
     size_t storage_charged;
     /* Optional writer hash sink receives exact encoded bytes without a buffer. */
     uint64_t *hash;
+    /* Interned metadata strings; see execution_wire_strings_begin. */
+    bool interning;
+    const char **strings;
+    size_t string_count;
+    size_t strings_at;
+    execution_wire_text *texts;
+    uint64_t *paused_hash;
 } execution_wire;
 void execution_wire_u64(execution_wire *, uint64_t *);
 void execution_wire_int(execution_wire *, int *);
 void execution_wire_size(execution_wire *, size_t *);
 void execution_wire_bool(execution_wire *, bool *);
-/* NUL-free metadata/name text only; PIN_STR values use length-prefixed bytes. */
+/* NUL-free metadata/name text only; PIN_STR values use length-prefixed bytes.
+ * While interning, a string is its 1-based index in the table, 0 for NULL. */
 void execution_wire_string(execution_wire *, const char **);
+/* Stores each metadata string once. A writer begins interning where the table
+ * goes; at finish it inserts the table, every distinct string it wrote sorted
+ * bytewise, and writes each string as its index. A hash sink receives the same
+ * bytes at finish. A reader reads the table at that point and resolves each
+ * index to one shared decoded string. */
+void execution_wire_strings_begin(execution_wire *);
+void execution_wire_strings_finish(execution_wire *);
+void execution_wire_strings_read(execution_wire *);
 /* minimum_fields bounds a decoded count by the bytes left: each field is at least one. */
 void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
 /* Counts one decoded value record, failing past the wire's record bound. */

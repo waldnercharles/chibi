@@ -588,6 +588,82 @@ TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth)
     return true;
 }
 
+/* Interned strings: a sorted table of each distinct string once, then each
+ * string as its 1-based index, 0 for NULL. Hashing sees the same bytes, and the
+ * reader shares one decoded string between repeats. */
+static void interned_strings(execution_wire *w, const char **texts, int count)
+{
+    uint64_t before = 7, after = 9;
+    execution_wire_u64(w, &before);
+    if (w->reading) {
+        execution_wire_strings_read(w);
+    } else {
+        execution_wire_strings_begin(w);
+    }
+    for (int i = 0; i < count; i++) {
+        execution_wire_string(w, &texts[i]);
+    }
+    execution_wire_u64(w, &after);
+    if (!w->reading) {
+        execution_wire_strings_finish(w);
+    }
+}
+TEST_CASE(types_wire_strings_store_each_string_once)
+{
+    const char *texts[] = { "beta", NULL, "alpha", "beta", "" };
+    static const unsigned char expected[] = { 7,   6,   1, 6,   'a', 'l', 'p',
+                                              'h', 'a', 5, 'b', 'e', 't', 'a',
+                                              3,   0,   2, 3,   1,   9 };
+    execution_wire writer = { 0 };
+    interned_strings(&writer, texts, 5);
+    REQUIRE(!writer.error && !writer.interning);
+    REQUIRE(writer.size == sizeof expected && (size_t)acount(writer.data) == sizeof expected);
+    REQUIRE(!memcmp(writer.data, expected, sizeof expected));
+    uint64_t hash = UINT64_C(14695981039346656037), expected_hash = hash;
+    for (size_t i = 0; i < sizeof expected; i++) {
+        expected_hash = (expected_hash ^ expected[i]) * UINT64_C(1099511628211);
+    }
+    execution_wire hashed = { .hash = &hash };
+    interned_strings(&hashed, texts, 5);
+    REQUIRE(!hashed.error && hashed.size == sizeof expected && !hashed.data && hash == expected_hash);
+
+    const char *decoded[5] = { 0 };
+    execution_wire reader = { .reading = true,
+                              .data = writer.data,
+                              .size = writer.size,
+                              .storage = &snapshots };
+    interned_strings(&reader, decoded, 5);
+    REQUIRE(!reader.error && reader.offset == reader.size && reader.string_count == 3);
+    REQUIRE(
+        !strcmp(decoded[0], "beta") && !decoded[1] &&
+        !strcmp(decoded[2], "alpha") && !*decoded[4]
+    );
+    REQUIRE(decoded[0] == decoded[3]);
+    afree(writer.data);
+
+    /* Each string must name a table entry, and the table must be sorted and
+     * distinct. */
+    unsigned char out_of_range[sizeof expected], unsorted[sizeof expected];
+    memcpy(out_of_range, expected, sizeof expected);
+    out_of_range[14] = 4;
+    memcpy(unsorted, expected, sizeof expected);
+    memcpy(unsorted + 9, (const unsigned char[]){ 5, 'a', 'l', 'p', 'h' }, 5);
+    static const unsigned char repeated[] = { 7, 4, 2, 'a', 2, 'a',
+                                              1, 1, 1, 1,   1, 9 };
+    const unsigned char *hostile[] = { out_of_range, unsorted, repeated };
+    const size_t sizes[] = { sizeof out_of_range, sizeof unsorted, sizeof repeated };
+    for (int i = 0; i < 3; i++) {
+        const char *rejected[5] = { 0 };
+        execution_wire bad = { .reading = true,
+                               .data = (unsigned char *)hostile[i],
+                               .size = sizes[i],
+                               .storage = &snapshots };
+        interned_strings(&bad, rejected, 5);
+        REQUIRE(bad.error);
+    }
+    return true;
+}
+
 TEST_CASE(types_struct_array_snapshot_retains_nested_payload)
 {
     char label[] = "retained";
@@ -1089,6 +1165,7 @@ void test_tool_types()
     RUN_TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays);
     RUN_TEST_CASE(types_plain_struct_array_codecs_preserve_inline_values_and_nulls);
     RUN_TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth);
+    RUN_TEST_CASE(types_wire_strings_store_each_string_once);
     RUN_TEST_CASE(types_struct_array_snapshot_retains_nested_payload);
     RUN_TEST_CASE(types_document_snapshot_survives_source_release);
     RUN_TEST_CASE(types_map_documents_own_nested_maps_arrays_and_native_structs);

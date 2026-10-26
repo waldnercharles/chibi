@@ -759,6 +759,7 @@ static bool write_depth(
     }
     execution_wire *w = &c.wire;
     header(w);
+    execution_wire_strings_begin(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
     if (!w->error && !c.plan->id) {
@@ -773,6 +774,7 @@ static bool write_depth(
         prepared_function(&c, c.functions[i]);
     }
     payload(&c);
+    execution_wire_strings_finish(w);
     bool success = !w->error;
     if (success) {
         *length = w->size;
@@ -942,6 +944,7 @@ execution_module *execution_prepared_read_budget(
         w->error = "prepared file exceeds byte budget";
     }
     header(w);
+    execution_wire_strings_read(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
     if (!w->error && !c.plan->id) {

@@ -625,6 +625,16 @@ QueryPatternNames :: (forest: snapshot.SnapshotNode[], text: string, types: Type
     }
     return scoped;
 }
+// The root of `node`'s source. Each source's nodes follow its root in source
+// order, and offsets restart in every source, so a scan for what precedes
+// `node` starts here.
+QuerySourceRoot :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    root := node;
+    while (forest[root].parent >= 0) {
+        root = forest[root].parent;
+    }
+    return root;
+}
 // Names visible at the query's creation site, in declaration order. Only
 // lexical ancestors contribute, so sibling blocks, loops and arms stay out.
 QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
@@ -654,7 +664,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
             names.append(name);
         }
     }
-    index: int = 0;
+    index := QuerySourceRoot(forest, node);
     while (index < length(forest) && forest[index].start < forest[node].start) {
         if (Is(forest, index, "local_declaration") && !Ancestor(forest, index, node)) {
             if (Ancestor(forest, forest[index].parent, node)) {
@@ -749,7 +759,7 @@ QueryHelperLocal :: (forest: snapshot.SnapshotNode[], text: string, callables: C
         }
         enclosing = forest[enclosing].parent;
     }
-    index = 0;
+    index = QuerySourceRoot(forest, node);
     while (index < length(forest) && forest[index].start < forest[node].start) {
         if (Is(forest, index, "local_declaration") &&
             Ancestor(forest, Field(forest, callable.node, "body"), index) &&

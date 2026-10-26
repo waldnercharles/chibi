@@ -12455,7 +12455,16 @@ TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
 /* Each source's queries and system header compile into its own module, in
  * whatever position the project lists it: each module matches the one its
  * source compiles to alone, and its queries run. */
-static bool query_sources_compose(int b, const char *const *identities, const char *const *sources, int count)
+/* Compile `sources` together, then play each query-bearing module alone. A
+ * system adds 2 to every row's y; a behavior's rows end at (x, y). */
+static bool query_sources_compose(
+    int b,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    float x,
+    float y
+)
 {
     script_catalog catalog = query_game_catalog();
     pin_value out;
@@ -12528,7 +12537,7 @@ static bool query_sources_compose(int b, const char *const *identities, const ch
                       ? query_step(&p, 0, .25) && query_spot_equals(&p, other, 4, 2)
                       : execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
                                 FLOW_OK &&
-                            query_spot_equals(&p, other, 5, 0));
+                            query_spot_equals(&p, other, x, y));
         stop(&p);
     }
     package_collection_free(packages);
@@ -12565,7 +12574,51 @@ TEST_CASE(package_compiler_queries_compose_in_any_source_order)
                            : !strcmp(name, "Rows")  ? rows
                                                     : apply;
             }
-            passed = query_sources_compose(b, orders[o], sources, 2);
+            passed = query_sources_compose(b, orders[o], sources, 2, 5, 0);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+/* A query captures a local and calls a helper whose loop changes a local
+ * that shadows a state. An earlier source whose offsets run past the query's
+ * must hide neither from the later one: each scan stays in its own source. */
+TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order)
+{
+    char padded[600];
+    snprintf(padded, sizeof padded, "Padded :: behavior {%512s\n    pad: int = 0\n}\n", "");
+    static const char *const
+        captured = "Captured :: behavior {\n"
+                   "    sum: float = 0\n"
+                   "    Twice :: (value: float) -> float {\n"
+                   "        sum: float = 0\n"
+                   "        count: int = 0\n"
+                   "        while count < 2 { sum += value; count += 1 }\n"
+                   "        return sum\n"
+                   "    }\n"
+                   "    on Tick :: () {\n"
+                   "        threshold: float = 3\n"
+                   "        matches := query(before: Spot, live: ^Spot, if "
+                   "before.x > threshold, "
+                   "amount := Twice(before.x))\n"
+                   "        for row in matches { row.live.y = row.amount }\n"
+                   "    }\n"
+                   "}\n";
+    static const char *const orders[][2] = {
+        { "Padded", "Captured" },
+        { "Captured", "Padded" },
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
+            const char *sources[2];
+            for (int i = 0; i < 2; i++) {
+                sources[i] = !strcmp(orders[o][i], "Padded") ? padded : captured;
+            }
+            passed = query_sources_compose(b, orders[o], sources, 2, 4, 8);
         }
     }
     type_catalog_set_project(NULL);
@@ -13096,6 +13149,7 @@ void test_language_package_compiler_chibi_queries()
     RUN_TEST_CASE(package_compiler_query_header_constructs_captured_description);
     RUN_TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt);
     RUN_TEST_CASE(package_compiler_queries_compose_in_any_source_order);
+    RUN_TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order);
     RUN_TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper);
     RUN_TEST_CASE(package_compiler_empty_system_runs_only_attached_owner);
     RUN_TEST_CASE(package_compiler_query_optional_guards_and_inferred_values);

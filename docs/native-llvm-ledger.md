@@ -55,7 +55,8 @@ Each feature has one of these states:
 | Parameter defaults | `Compile.chibi` `LiteralDefault`, `Steps.chibi` call step | native | none in the subset: a default is a literal, filled in at the call site as the call step fills it | none | `language-scalar-native`: `defaults` calls functions that omit every argument, some arguments or none, with defaults of `int`, `bool`, `int8`, `byte`, `uint64`, `float` and `double`, against both VMs at O0 and O2; corpus `default_parameter` accepted and probed |
 | Named arguments | `Steps.chibi` call step | stage one | argument reordering | none | corpus `named_argument` rejects |
 | Multiple and named results | `Body.chibi`, `Steps.chibi` | stage one | aggregate return ABI (M4) | struct storage | corpus `named_result` rejects |
-| Records and unions | `Steps.chibi`, `src/types/record.c`, `union.c` | stage one | layout, copying, ownership (M4) | allocator, copy | corpus `struct` rejects |
+| Records of number and bool fields: literals in any field order, copies, field reads, field and compound field writes, record parameters, results and locals | `Steps.chibi` struct literal and member steps, `src/types/record.c` | native | none in the subset: a record is an LLVM value of its fields in declaration order, so a copy is a value and needs no allocator | none | `language-scalar-native`: the records module builds, copies, writes and passes `float`, `bool`, `byte`, `double` and `int64` fields through calls, nested calls and a loop, and `nested_records` passes one through 50 nested calls, against both VMs at O0 and O2; `language-package-compiler-chibi-scalar` checks the record rows and 21 malformed variants; `llvm_native` IR checks and 8 changed-plan rejections; corpus `struct` rejects a `string` field |
+| Unions, and records with string, array, union or record fields | `Steps.chibi`, `src/types/record.c`, `union.c` | stage one | managed fields and tagged layout (M4) | allocator, copy | corpus `struct` rejects |
 | Strings | `src/types/text.c` | stage one | managed text (M4) | allocator, refcount | corpus `string_result` rejects |
 | Arrays, bounds checks | `Steps.chibi`, `src/types/array.c` | stage one | managed arrays, bounds traps (M4) | allocator | corpus `array_result` rejects |
 | Maps | `Maps.chibi` | stage one (restricted) | managed maps (M4) | hashing, allocator | corpus `map_result` rejects |
@@ -68,7 +69,7 @@ Each feature has one of these states:
 | Exported generic specialization | none | excluded | none | none | none |
 | Units | `src/language` unit analysis | stage zero | erased before lowering | none | none |
 | Source diagnostics and positions | `Diagnose`, `scalar_facts` rows | native for the subset | native trap locations | debug info | corpus excerpts, `Validate` positions |
-| Effects, hosts, roots | `ScalarEmits`, `src/execution/module_effects.c` | stage one | effect calls (M8) | game runtime | `ScalarEmits` rejects any |
+| Effects, hosts, roots | `ScalarEmits`, `src/execution/module_effects.c` | stage one | effect calls (M8) | game runtime | `ScalarEmits` rejects any but a record's construction, copies and field writes and its roots |
 | Entities, components, systems, queries | `Behavior.chibi`, `src/ecs` | stage one (behaviors) | game SDK ABI (M8) | ECS runtime | none |
 | Waiting and tasks | `src/execution/program_tasks.c` | stage zero | coroutine lowering (M8) | scheduler | none |
 | Behavior replacement and hot reload | `src/execution` | stage zero | stays on the VM; ORC/JIT is separate (obligation E) | none | none |

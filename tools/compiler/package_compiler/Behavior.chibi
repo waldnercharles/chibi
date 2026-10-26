@@ -1055,10 +1055,11 @@ CatalogPorts :: (ports: CatalogPort[], types: TypeDecl[], entity: uint64) -> Res
         if (port.nominal != 0) {
             found := TypeWithId(types, port.nominal);
             duplicate := false;
+            // A component's optional query view shares its identity.
             if (found >= 0) {
                 at := found + 1;
                 while (at < length(types)) {
-                    duplicate = duplicate || types[at].id == port.nominal;
+                    duplicate = duplicate || (types[at].id == port.nominal && types[at].kind != OptionalComponentDecl);
                     at += 1;
                 }
             }

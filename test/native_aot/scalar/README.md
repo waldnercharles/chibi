@@ -119,8 +119,13 @@ Everything else is rejected with a located diagnostic and no partial result:
 floating negation and remainder, ordering `bool`s, statements outside the
 subset, function values, qualified or imported calls, native or foreign
 calls (`print`), named arguments, strings and other managed values,
-attributes, structs and constants. A call may omit trailing arguments whose
+attributes, unions and constants. A call may omit trailing arguments whose
 parameters have defaults; each omitted one is a literal row of its default.
+Records whose fields are numbers or `bool`s are values: a literal, in any
+field order, a copy, a field read or write and a record parameter, result
+or local. A module declares at most 16 records of at most 16 fields; a
+record with any other field is rejected. The exported `Main` still takes
+and returns scalars.
 Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
 the 96-source corpus (51 accepted) with each accepted value and statement
 trace and each rejection's exact message and source excerpt, including both
@@ -143,16 +148,17 @@ and every name through `Lookup` over the scopes the ordinary compiler keeps,
 with each local bound after its value as `StatementStep` binds it; literals through `ReadIntegerLiteral`, and callees through
 `CalledFunction`, the resolution the ordinary call step makes. Each body must
 pass `EmitBody` first, which types every name, argument and result, with no
-effects, host calls or roots, and no cells but its calls' argument and result
-cells. The checks in `Scalar.chibi` only reject forms the subset cannot
+effects, no host calls but a record's construction, copies and field writes,
+no roots but records, and no cells but those, moved records and its calls'
+argument and result cells. The checks in `Scalar.chibi` only reject forms the subset cannot
 express; the backend never reparses source or reads VM instructions, and no
 private `Code`/`Slot` identity crosses the boundary.
 
 ## The owned handoff
 
 The compiler host passes arrays of flat records, so a module is one array of
-rows: its source, then either one rejection or its document key and each
-function's signature, parameters and statements in source order, each
+rows: its source, then either one rejection or its document key, each
+record and its fields, and each function's signature, parameters and statements in source order, each
 followed by its operands in evaluation order; an if statement's rows bracket
 its consequence and any alternative with Else and End rows, a switch's arms
 with a Case row each and an End row, and a loop's body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
@@ -243,7 +249,7 @@ branching on `a < b`.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 47 accepted sources build, run and agree at O0 and O2.
+other 50 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and

@@ -34,6 +34,14 @@ pub Function :: struct {
 pub Result :: union {
     Rejected(instruction: int, message: string) | Emitted(text: string)
 }
+// A record type: the module's field types fields[first, first + count), each
+// a scalar. Type RecordType + r is records[r], an LLVM struct of its fields
+// in order, passed and returned by value between the module's functions.
+pub Record :: struct {
+    first: int;
+    count: int;
+}
+pub RecordType: int : 32;
 
 pub Constant: int : 0;
 pub Argument: int : 1;
@@ -72,6 +80,12 @@ pub Call: int : 28;
 // zero, saturating at the type's bounds, with NaN as 0. An integer or a float
 // converts to double, and a double to float, rounding to nearest.
 pub Convert: int : 29;
+// output = the left slot's record with field `literal` replaced by the right
+// slot's value; type is the record type.
+pub Insert: int : 30;
+// output = field `literal` of the left slot's record, whose type is right;
+// type is the field's type.
+pub Extract: int : 31;
 
 // Module bounds: these are plan bounds, not a source-language acceptance claim.
 MaxFunctions: int : 32;
@@ -80,6 +94,8 @@ MaxSlots: int : 256;
 MaxLocals: int : 128;
 MaxCode: int : 1024;
 MaxArguments: int : 256;
+MaxRecords: int : 16;
+MaxFields: int : 16;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -88,7 +104,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || op == Call || op == Convert;
+    return op <= Local || (op >= Add && op <= Ne) || op >= Call;
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -97,7 +113,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || op == Convert;
+    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || op >= Convert;
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -126,7 +142,53 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return op >= Add && op <= Ne && !Unary(op);
+    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert;
+}
+// Whether `type` is a scalar or one of the module's records.
+Valued :: (records: Record[], type: int) -> bool {
+    return abi.ScalarType(type) != "" || Index(type - RecordType, length(records));
+}
+// The LLVM type of a scalar or record type the module holds.
+TypeName :: (type: int) -> string {
+    if (type >= RecordType) {
+        return format_text("%record{}", type - RecordType);
+    }
+    return abi.ScalarType(type);
+}
+// The type of field `field` of record type `type`, or 0 when `type` is no
+// record of the module or has no such field.
+FieldType :: (records: Record[], fields: int[], type: int, field: i64) -> int {
+    if (!Index(type - RecordType, length(records))) {
+        return 0;
+    }
+    record := records[type - RecordType];
+    if (field < 0 || field >= i64(record.count)) {
+        return 0;
+    }
+    return fields[record.first + int(field)];
+}
+// Records partition the field table in order, each with 1 to MaxFields
+// scalar fields.
+RecordLayout :: (records: Record[], fields: int[]) -> bool {
+    if (length(records) > MaxRecords) {
+        return false;
+    }
+    first: int = 0;
+    for (record in records) {
+        if (record.first != first || record.count < 1 || record.count > MaxFields) {
+            return false;
+        }
+        first += record.count;
+    }
+    if (first != length(fields)) {
+        return false;
+    }
+    for (type in fields) {
+        if (abi.ScalarType(type) == "") {
+            return false;
+        }
+    }
+    return true;
 }
 // Whether the backend computes `op` in `type`: every operation on integers,
 // IEEE arithmetic other than remainders and every comparison on floats, and
@@ -252,7 +314,8 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
     return true;
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
-             module_locals: int[], module_code: Instruction[], module_arguments: int[], main: bool) -> Result {
+             module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
+             fields: int[], main: bool) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -260,21 +323,25 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     code := Codes(module_code, shape.first_code, shape.code);
     arguments := Part(module_arguments, shape.first_argument, shape.arguments);
     result := shape.result;
-    if (abi.ScalarType(result) == "" || (main && function == 0 && (length(parameters) != 0 || result != 6))) {
+    // The exported entry takes and returns scalars: no foreign aggregate ABI
+    // is promised.
+    exported := function == 0;
+    if (!Valued(records, result) || (exported && result >= RecordType) ||
+        (main && exported && (length(parameters) != 0 || result != 6))) {
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
-        if (abi.ScalarType(type) == "") {
+        if (!Valued(records, type) || (exported && type >= RecordType)) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
     for (type in slots) {
-        if (abi.ScalarType(type) == "") {
+        if (!Valued(records, type)) {
             return Result.Rejected(-1, "native scalar slot cannot hold a managed value or pointer");
         }
     }
     for (type in locals) {
-        if (abi.ScalarType(type) == "") {
+        if (!Valued(records, type)) {
             return Result.Rejected(-1, "native scalar local cannot hold a managed value or pointer");
         }
     }
@@ -286,7 +353,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Convert) {
+        if (item.op < Constant || item.op > Extract) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -299,7 +366,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             }
             definitions[item.output] = pc;
         }
-        if (item.op == Constant && !Fits(item.literal, item.type)) {
+        // A record's only constant is its zero.
+        if (item.op == Constant && ((item.type < RecordType && !Fits(item.literal, item.type)) ||
+                                    (item.type >= RecordType && item.literal != 0))) {
             return Result.Rejected(base + pc, "native constant is outside its type");
         }
         if (item.op == Argument && !Typed(parameters, item.left, item.type)) {
@@ -325,6 +394,18 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Convert && (!Converts(item.right, item.type) || !Typed(slots, item.left, item.right) ||
                                    (item.literal != 0 && item.literal != 1))) {
             return Result.Rejected(base + pc, "native conversion is not one the backend implements");
+        }
+        if (item.op == Insert) {
+            field := FieldType(records, fields, item.type, item.literal);
+            if (field == 0 || !Typed(slots, item.left, item.type) || !Typed(slots, item.right, field)) {
+                return Result.Rejected(base + pc, "native field write differs from its record");
+            }
+        }
+        if (item.op == Extract) {
+            field := FieldType(records, fields, item.right, item.literal);
+            if (field == 0 || field != item.type || !Typed(slots, item.left, item.right)) {
+                return Result.Rejected(base + pc, "native field read differs from its record");
+            }
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
@@ -407,10 +488,10 @@ Operation :: (op: int, type: int) -> string {
     return "icmp ne";
 }
 Load :: (name: string, type: int, bank: string, index: int) -> string {
-    return format_text("  %{} = load {}, ptr %{}{}\n", name, abi.ScalarType(type), bank, index);
+    return format_text("  %{} = load {}, ptr %{}{}\n", name, TypeName(type), bank, index);
 }
 Store :: (value: string, type: int, bank: string, index: int) -> string {
-    return format_text("  store {} {}, ptr %{}{}\n", abi.ScalarType(type), value, bank, index);
+    return format_text("  store {} {}, ptr %{}{}\n", TypeName(type), value, bank, index);
 }
 // Integer operations never fail: x / 0 is 0, x % 0 is x, MIN / -1 wraps to
 // MIN and MIN % -1 is 0, and a shift count at or past the width, read
@@ -549,8 +630,12 @@ Encoded :: (literal: i64, type: int, name: string) -> string {
     }
     return format_text("  %{} = bitcast i64 {} to double\n", name, literal);
 }
-// The zero a slot, local or result starts as.
+// The zero a slot, local or result starts as, which is also a record's
+// constant.
 Zero :: (type: int) -> string {
+    if (type >= RecordType) {
+        return "zeroinitializer";
+    }
     if (abi.Floating(type)) {
         return "0.0";
     }
@@ -564,10 +649,12 @@ Spelled :: (literal: i64, type: int) -> i64 {
     }
     return literal - (i64(1) << u32(bits));
 }
-EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
+EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[]) -> string {
     out := format_text("p{}:\n", pc);
-    type := abi.ScalarType(item.type);
-    if (item.op == Constant && abi.Floating(item.type)) {
+    type := TypeName(item.type);
+    if (item.op == Constant && item.type >= RecordType) {
+        out = format_text("{}{}", out, Store(Zero(item.type), item.type, "s", item.output));
+    } else if (item.op == Constant && abi.Floating(item.type)) {
         out = format_text("{}{}", out, Encoded(item.literal, item.type, format_text("v{}", pc)));
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else if (item.op == Constant) {
@@ -585,7 +672,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
         out = format_text("{}{}", out, Store(format_text("%a{}", pc), item.type, "result", 0));
     } else if (item.op == Return || item.op == End) {
         out = format_text("{}{}", out, Load(format_text("return{}", pc), result, "result", 0));
-        return format_text("{}{}", out, format_text("  ret {} %return{}\n", abi.ScalarType(result), pc));
+        return format_text("{}{}", out, format_text("  ret {} %return{}\n", TypeName(result), pc));
     } else if (item.op == Branch) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), 1, "s", item.left));
         return format_text("{}{}", out, format_text("  br i1 %a{}, label %p{}, label %p{}\n", pc, item.target, pc + 1));
@@ -599,6 +686,17 @@ EmitInstruction :: (item: Instruction, pc: int, result: int) -> string {
     } else if (item.op == Convert) {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}{}", out, Conversion(item, pc));
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == Insert) {
+        field := FieldType(records, fields, item.type, item.literal);
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+        out = format_text("{}{}", out, Load(format_text("b{}", pc), field, "s", item.right));
+        out = format_text("{}  %v{} = insertvalue {} %a{}, {} %b{}, {}\n", out, pc, type, pc, TypeName(field), pc,
+                          item.literal);
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op == Extract) {
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
+        out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     } else {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
@@ -649,38 +747,39 @@ CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], 
         if (index > 0) {
             list = format_text("{}, ", list);
         }
-        list = format_text("{}{} %c{}_{}", list, abi.ScalarType(type), pc, index);
+        list = format_text("{}{} %c{}_{}", list, TypeName(type), pc, index);
     }
-    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, abi.ScalarType(item.type), Symbol(item.left, main), list);
+    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, main), list);
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
-                 code: Instruction[], arguments: int[], main: bool, step_budget: int) -> string {
+                 code: Instruction[], arguments: int[], records: Record[], fields: int[], main: bool,
+                 step_budget: int) -> string {
     shape := functions[function];
     result := shape.result;
     linkage := "";
     if (function != 0) {
         linkage = "internal ";
     }
-    out := format_text("define {}{} @{}(", linkage, abi.ScalarType(result), Symbol(function, main));
+    out := format_text("define {}{} @{}(", linkage, TypeName(result), Symbol(function, main));
     for (index in 0..<shape.parameters) {
         if (index > 0) {
             out = format_text("{}, ", out);
         }
-        out = format_text("{}{} %arg{}", out, abi.ScalarType(parameters[shape.first_parameter + index]), index);
+        out = format_text("{}{} %arg{}", out, TypeName(parameters[shape.first_parameter + index]), index);
     }
     out = format_text("{}) #0 {\nentry:\n", out);
     out = format_text("{}  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", out, step_budget);
     for (index in 0..<shape.slots) {
-        out = format_text("{}  %s{} = alloca {}\n", out, index, abi.ScalarType(slots[shape.first_slot + index]));
+        out = format_text("{}  %s{} = alloca {}\n", out, index, TypeName(slots[shape.first_slot + index]));
     }
     for (index in 0..<shape.locals) {
         type := locals[shape.first_local + index];
-        out = format_text("{}  %l{} = alloca {}\n", out, index, abi.ScalarType(type));
+        out = format_text("{}  %l{} = alloca {}\n", out, index, TypeName(type));
         out = format_text("{}{}", out, Store(Zero(type), type, "l", index));
     }
-    out = format_text("{}  %result0 = alloca {}\n", out, abi.ScalarType(result));
+    out = format_text("{}  %result0 = alloca {}\n", out, TypeName(result));
     out = format_text("{}{}", out, Store(Zero(result), result, "result", 0));
     out = format_text("{}  br label %p0\n", out);
     own := Part(arguments, shape.first_argument, shape.arguments);
@@ -689,7 +788,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         if (item.op == Call) {
             out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, main));
         } else {
-            out = format_text("{}{}", out, EmitInstruction(item, pc, result));
+            out = format_text("{}{}", out, EmitInstruction(item, pc, result, records, fields));
         }
     }
     return format_text("{}trap:\n  call void @llvm.trap()\n  unreachable\n}\n", out);
@@ -711,7 +810,8 @@ Declarations :: (code: Instruction[]) -> string {
     return out;
 }
 pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
-             code: Instruction[], arguments: int[], main: bool, step_budget: int) -> Result {
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], main: bool,
+             step_budget: int) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -721,8 +821,11 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     if (!Layout(functions, parameters, slots, locals, code, arguments)) {
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
+    if (!RecordLayout(records, fields)) {
+        return Result.Rejected(-1, "native records differ from their field table");
+    }
     for (function in 0..<length(functions)) {
-        switch Validate(functions, function, parameters, slots, locals, code, arguments, main) {
+        switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, main) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -730,12 +833,23 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
         }
     }
     // No host-derived data layout: the explicit LLVM target selects it. No
-    // aggregate, raw pointer or foreign ABI is admitted yet.
-    out := format_text("target triple = \"{}\"\n\ndeclare void @llvm.trap()\n{}", target.triple,
-                       Declarations(code));
+    // raw pointer or foreign ABI is admitted yet, and records stay internal.
+    out := format_text("target triple = \"{}\"\n\n", target.triple);
+    for (index in 0..<length(records)) {
+        record := records[index];
+        types := "";
+        for (field in 0..<record.count) {
+            if (field > 0) {
+                types = format_text("{}, ", types);
+            }
+            types = format_text("{}{}", types, abi.ScalarType(fields[record.first + field]));
+        }
+        out = format_text("{}%record{} = type { {} }\n", out, index, types);
+    }
+    out = format_text("{}declare void @llvm.trap()\n{}", out, Declarations(code));
     for (function in 0..<length(functions)) {
         out = format_text("{}\n{}", out, EmitFunction(functions, function, parameters, slots, locals, code,
-                                                      arguments, main, step_budget));
+                                                      arguments, records, fields, main, step_budget));
     }
     // Recursion is unchecked, as Rust's is: each function probes every page
     // of its frame, so running out of stack faults in the guard page below

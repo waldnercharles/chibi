@@ -12,10 +12,11 @@ pub Result :: union {
 }
 
 // The most rows a module of the facts bounds holds: its source and document,
-// then per function its signature, parameters, statements with an if
-// statement's else and end, and operands. A switch arm's Case row counts as a
-// statement.
-MaxRows: int : 2 + facts.MaxFunctions * (1 + facts.MaxParameters + 3 * facts.MaxStatements + facts.MaxOperands);
+// its records with their members, then per function its signature,
+// parameters, statements with an if statement's else and end, and operands.
+// A switch arm's Case row counts as a statement.
+MaxRows: int : 2 + facts.MaxRecords * (1 + facts.MaxMembers) +
+               facts.MaxFunctions * (1 + facts.MaxParameters + 3 * facts.MaxStatements + facts.MaxOperands);
 
 // The offset each source line starts at, for one-based line/column checks.
 LineStarts :: (text: string) -> int[] {
@@ -49,6 +50,23 @@ Unlocated :: (row: facts.Row) -> bool {
 Scalar :: (type: int) -> bool {
     return type >= facts.IntType && type <= facts.DoubleType;
 }
+// Whether `type` is a scalar or one of the module's records, whose Record
+// rows are at `records`.
+Valued :: (records: int[], type: int) -> bool {
+    return Scalar(type) || (type >= facts.RecordType && type - facts.RecordType < length(records));
+}
+// The type of field `field` of record type `type`, or 0 when `type` is no
+// record of the module or has no such field.
+MemberType :: (rows: facts.Row[], records: int[], type: int, field: int) -> int {
+    if (type < facts.RecordType || type - facts.RecordType >= length(records)) {
+        return 0;
+    }
+    head := records[type - facts.RecordType];
+    if (field < 0 || field >= rows[head].count) {
+        return 0;
+    }
+    return rows[head + 1 + field].type;
+}
 Integer :: (type: int) -> bool {
     return facts.Bits(type) != 0;
 }
@@ -76,8 +94,11 @@ Converts :: (from: int, to: int) -> bool {
 }
 // The backend's storage ordinal of a scalar type: the storages of int, bool,
 // i8, u8, i16, u16, u32, i64, u64, number and f64 in facts
-// type order.
+// type order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
+    if (type >= facts.RecordType) {
+        return native.RecordType + type - facts.RecordType;
+    }
     storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
     return storages[type - facts.IntType];
 }
@@ -120,16 +141,75 @@ Opens :: (kind: int) -> bool {
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
 }
-// The row index of each function, after checking the module's row layout and
-// every count against the facts bounds before it is used: each function's
+// The row index of each Record row from row 2, up to the first row that is
+// not one or whose count is outside the bounds, which ValidRecords rejects.
+Records :: (rows: facts.Row[]) -> int[] {
+    records: int[] = [];
+    at: int = 2;
+    while (at < length(rows) && rows[at].kind == facts.RecordRow && length(records) <= facts.MaxRecords) {
+        records.append(at);
+        count := rows[at].count;
+        if (count < 1 || count > facts.MaxMembers) {
+            break;
+        }
+        at += count + 1;
+    }
+    return records;
+}
+// The row after the last record's members, where functions start.
+Start :: (rows: facts.Row[], records: int[]) -> int {
+    if (length(records) == 0) {
+        return 2;
+    }
+    last := records[length(records) - 1];
+    return last + rows[last].count + 1;
+}
+// Each record has 1 to MaxMembers uniquely named scalar fields, each a Member
+// row within its declaration, and a function follows the last; record names
+// are unique too.
+ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) -> string {
+    if (length(records) > facts.MaxRecords) {
+        return format_text("scalar module declares more than {} records", facts.MaxRecords);
+    }
+    for (index in 0..<length(records)) {
+        head := records[index];
+        record := rows[head];
+        if (record.count < 1 || record.count > facts.MaxMembers || record.count >= length(rows) - head - 1 ||
+            record.name == "" || record.text != "" || record.type != 0 || record.value != 0 || record.literal != 0 ||
+            !Located(record, starts, size)) {
+            return "invalid scalar record row";
+        }
+        for (earlier in 0..<index) {
+            if (rows[records[earlier]].name == record.name) {
+                return "invalid scalar record row";
+            }
+        }
+        for (field in 0..<record.count) {
+            member := rows[head + 1 + field];
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Scalar(member.type) ||
+                member.value != field || member.count != 0 || member.literal != 0 || !Located(member, starts, size) ||
+                !Within(member, record)) {
+                return "invalid scalar record member row";
+            }
+            for (earlier in 0..<field) {
+                if (rows[head + 1 + earlier].name == member.name) {
+                    return "invalid scalar record member row";
+                }
+            }
+        }
+    }
+    return "";
+}
+// The row index of each function from `start`, after checking the module's
+// row layout and every count against the facts bounds before it is used: each function's
 // statements, with their operands, until the next function, each Else in an
 // open if statement before its End, each Case in an open switch before any
 // statement of the switch, each Break and Continue in an open loop, and every
 // if statement, switch and loop closed. Empty when invalid.
-Heads :: (rows: facts.Row[]) -> int[] {
+Heads :: (rows: facts.Row[], start: int) -> int[] {
     heads: int[] = [];
     empty: int[] = [];
-    at: int = 2;
+    at := start;
     while (at < length(rows)) {
         function := rows[at];
         if (function.kind != facts.FunctionRow || function.count < 0 || function.count > facts.MaxParameters ||
@@ -239,8 +319,8 @@ Holds :: (values: int[], wanted: int) -> bool {
 // push exactly one bool above what lies under it, which is its value, without
 // consuming anything below. A read names a `visible` variable of its type.
 // They must leave one value of type `result`, and each lies within `scope`.
-ValidOperands :: (rows: facts.Row[], heads: int[], at: int, result: int, scope: facts.Row, variables: int[],
-                  visible: int[], starts: int[], size: int) -> string {
+ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, result: int, scope: facts.Row,
+                  variables: int[], visible: int[], starts: int[], size: int) -> string {
     stack: int[] = [];
     first := at + 1;
     last := first + rows[at].count;
@@ -265,7 +345,7 @@ ValidOperands :: (rows: facts.Row[], heads: int[], at: int, result: int, scope: 
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
-        if (operand.text != "" || !Scalar(operand.type) || !Located(operand, starts, size) ||
+        if (operand.text != "" || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
         }
@@ -341,6 +421,26 @@ ValidOperands :: (rows: facts.Row[], heads: int[], at: int, result: int, scope: 
                 }
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ZeroRow) {
+            if (operand.name != "" || operand.count != 0 || operand.value != 0 ||
+                MemberType(rows, records, operand.type, 0) == 0) {
+                return "scalar record zero names no record";
+            }
+        } else if (operand.kind == facts.FieldRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || base < floor ||
+                MemberType(rows, records, stack[base], operand.value) != operand.type) {
+                return "scalar field read differs from its record";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.UpdateRow) {
+            base := length(stack) - 2;
+            field := MemberType(rows, records, operand.type, operand.value);
+            if (operand.name != "" || operand.count != 2 || field == 0 || base < floor ||
+                stack[base] != operand.type || stack[base + 1] != field) {
+                return "scalar field write differs from its record";
+            }
+            stack = slice(stack, 0, base);
         } else {
             return "invalid scalar operand row";
         }
@@ -390,10 +490,10 @@ Operated :: (rows: facts.Row[], at: int) -> int {
 // statement's, switch's or loop's range. A variable is visible from its declaration to the end of the
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
-ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[], size: int) -> string {
+ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int) -> string {
     head := heads[function];
     declaration := rows[head];
-    if (declaration.name == "" || declaration.text != "" || !Scalar(declaration.type) || declaration.value != 0 ||
+    if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
         declaration.literal != 0 || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
@@ -401,7 +501,7 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
     visible: int[] = [];
     for (index in 0..<declaration.count) {
         param := rows[head + 1 + index];
-        if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Scalar(param.type) ||
+        if (param.kind != facts.ParameterRow || param.name == "" || param.text != "" || !Valued(records, param.type) ||
             param.value != index || param.count != 0 || param.literal != 0 || !Located(param, starts, size) ||
             !Within(param, declaration)) {
             return "invalid scalar parameter row";
@@ -486,7 +586,7 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
             alternatives[top] = at;
             visible = slice(visible, 0, marks[top]);
             if (row.count != 0) {
-                error := ValidOperands(rows, heads, at, row.type, row, variables, visible, starts, size);
+                error := ValidOperands(rows, records, heads, at, row.type, row, variables, visible, starts, size);
                 if (error != "") {
                     return error;
                 }
@@ -530,7 +630,7 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
             }
             result = row.type;
         } else if (declares) {
-            if (row.name == "" || !Scalar(row.type) || row.value != length(variables) ||
+            if (row.name == "" || !Valued(records, row.type) || row.value != length(variables) ||
                 length(variables) - declaration.count >= facts.MaxLocals ||
                 (ranged && (row.type != facts.IntType || row.literal < 0 ||
                             row.literal > i64(facts.RangeExclusive + facts.RangeReverse)))) {
@@ -543,7 +643,7 @@ ValidFunction :: (rows: facts.Row[], heads: int[], function: int, starts: int[],
             }
             result = row.type;
         }
-        error := ValidOperands(rows, heads, at, result, row, variables, visible, starts, size);
+        error := ValidOperands(rows, records, heads, at, result, row, variables, visible, starts, size);
         if (error != "") {
             return error;
         }
@@ -599,7 +699,12 @@ pub Validate :: (rows: facts.Row[]) -> string {
         document.literal != 0 || document.name == "" || document.text != "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
-    heads := Heads(rows);
+    records := Records(rows);
+    error := ValidRecords(rows, records, starts, size);
+    if (error != "") {
+        return error;
+    }
+    heads := Heads(rows, Start(rows, records));
     if (length(heads) == 0) {
         return "invalid scalar module layout";
     }
@@ -608,9 +713,9 @@ pub Validate :: (rows: facts.Row[]) -> string {
         return "scalar module entry must take no parameters and return int";
     }
     for (function in 0..<length(heads)) {
-        error := ValidFunction(rows, heads, function, starts, size);
-        if (error != "") {
-            return error;
+        failure := ValidFunction(rows, records, heads, function, starts, size);
+        if (failure != "") {
+            return failure;
         }
     }
     return "";
@@ -696,7 +801,8 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // each value arm tests it in turn, entering its arm on equality and otherwise
 // jumping to the next test; a default arm is jumped over where it stands and
 // entered when the last test fails. Each arm that does not end leaves the
-// switch.
+// switch. Each record is the backend's record of its fields' types: a Zero
+// row is its constant, an Update row an Insert and a Field row an Extract.
 pub Emit :: (rows: facts.Row[]) -> Result {
     error := Validate(rows);
     if (error != "") {
@@ -711,7 +817,17 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     locals: int[] = [];
     code: native.Instruction[] = [];
     arguments: int[] = [];
-    heads := Heads(rows);
+    records: native.Record[] = [];
+    fields: int[] = [];
+    declared := Records(rows);
+    for (head in declared) {
+        record: native.Record = {first: length(fields), count: rows[head].count};
+        records.append(record);
+        for (field in head + 1..<head + rows[head].count + 1) {
+            fields.append(NativeType(rows[field].type));
+        }
+    }
+    heads := Heads(rows, Start(rows, declared));
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
@@ -969,6 +1085,16 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.FieldRow) {
+                    base := length(stack) - 1;
+                    item = Op(native.Extract, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
+                    item.literal = i64(operand.value);
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.UpdateRow) {
+                    base := length(stack) - 2;
+                    item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
+                    item.literal = i64(operand.value);
+                    stack = slice(stack, 0, base);
                 }
                 body.append(item);
                 stack.append(slot);
@@ -1080,7 +1206,8 @@ pub Emit :: (rows: facts.Row[]) -> Result {
         code.extend(body);
         functions.append(shape);
     }
-    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, false, 1) {
+    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, false,
+                       1) {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):

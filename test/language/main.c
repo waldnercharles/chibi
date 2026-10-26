@@ -311,20 +311,20 @@ int main(int argc, char **argv)
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
          !row_array && !record_runtime && !runtime_attribution && !wasm &&
-         !migration34 && !migration34_generic_repro && !program && !query_program && !incremental && !operations &&
-         !modules && !ranges && !numeric_exact_core && !integer_semantics &&
-         !integer_shift_counts && !integer_shift_counts_authored &&
-         !package_graph && !package_graph_chibi && !asset_compiler_host &&
-         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
-         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
-         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
-         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
-         !package_compiler_chibi_collections_compiled &&
+         !migration34 && !migration34_generic_repro && !program &&
+         !query_program && !incremental && !operations && !modules && !ranges &&
+         !numeric_exact_core && !integer_semantics && !integer_shift_counts &&
+         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
+         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
+         !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
+         !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
+         !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
+         !scalar_lowering_chibi && !compiler_fixture && !bounded_compiler_chibi &&
+         !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
+         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
+         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
          !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
          !package_compiler_chibi_actions && !package_compiler_chibi_sharing &&

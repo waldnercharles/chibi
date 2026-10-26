@@ -68,11 +68,13 @@ typedef struct
     "NotANumber :: () -> " T " { z: f64 = 0.0; return " T "(z / z); }\n"       \
     "Count :: (n: ref int, v: " T ") -> " T " { n += 1; return v; }\n"         \
     "CountWide :: (n: ref int, v: i64) -> i64 { n += 1; return v; }\n"         \
-    "UnusedDiv :: (a: " T ", b: " T ") -> int { n := 0; q := a / Count(ref n, "    \
+    "UnusedDiv :: (a: " T ", b: " T                                            \
+    ") -> int { n := 0; q := a / Count(ref n, "                                \
     "b); return n; }\n"                                                        \
-    "UnusedShl :: (a: " T ", s: u8) -> int { n := 0; q := Count(ref n, a) << "     \
+    "UnusedShl :: (a: " T ", s: u8) -> int { n := 0; q := Count(ref n, a) << " \
     "s; return n; }\n"                                                         \
-    "UnusedConverted :: (v: i64) -> int { n := 0; x := " T "(CountWide(ref n, "    \
+    "UnusedConverted :: (v: i64) -> int { n := 0; x := " T                     \
+    "(CountWide(ref n, "                                                       \
     "v)); return n; }\n"
 #define SIGNED_SOURCE(T)                                                       \
     WIDTH_SOURCE(T) "Neg :: (a: " T ") -> " T " { return -a; }\n"

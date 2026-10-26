@@ -152,13 +152,16 @@ const script_catalog_capability *script_catalog_capability_by_id(const script_ca
 const char *script_scalar_name(pin_type storage)
 {
     static const char *const names[] = {
-        [PIN_FLOW] = "void",     [PIN_BOOL] = "bool",  [PIN_I8] = "i8",
-        [PIN_U8] = "u8",         [PIN_I16] = "i16",    [PIN_U16] = "u16",
-        [PIN_I32] = "int",       [PIN_U32] = "u32",    [PIN_I64] = "i64",
-        [PIN_U64] = "u64",       [PIN_F32] = "number", [PIN_F64] = "f64",
-        [PIN_NAME] = "name",     [PIN_STR] = "string", [PIN_HANDLE] = "handle",
-        [PIN_STRUCT] = "struct", [PIN_ENUM] = "enum",  [PIN_TASK] = "task",
-        [PIN_UNION] = "union",     [PIN_POINTER] = "pointer"
+        [PIN_FLOW] = "void",     [PIN_BOOL] = "bool",
+        [PIN_I8] = "i8",         [PIN_U8] = "u8",
+        [PIN_I16] = "i16",       [PIN_U16] = "u16",
+        [PIN_I32] = "int",       [PIN_U32] = "u32",
+        [PIN_I64] = "i64",       [PIN_U64] = "u64",
+        [PIN_F32] = "number",    [PIN_F64] = "f64",
+        [PIN_NAME] = "name",     [PIN_STR] = "string",
+        [PIN_HANDLE] = "handle", [PIN_STRUCT] = "struct",
+        [PIN_ENUM] = "enum",     [PIN_TASK] = "task",
+        [PIN_UNION] = "union",   [PIN_POINTER] = "pointer"
     };
     return storage >= PIN_FLOW && storage <= PIN_POINTER ? names[storage] : "error";
 }

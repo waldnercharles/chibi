@@ -2177,7 +2177,8 @@ TEST_CASE(language_units_reject_callable_mismatches)
           "distance "
           "= elapsed; } }",
           "Units differ: u = s" },
-        { "M :: library { Bad :: (body: Body) { Later(ref body.speed); } Later :: "
+        { "M :: library { Bad :: (body: Body) { Later(ref body.speed); } Later "
+          ":: "
           "(distance: ref number u) {} }",
           "Units differ: u argument u/s" },
         { "M :: library { Bad :: (elapsed: ref number s) -> ref number u { "

@@ -1313,8 +1313,10 @@ TEST_CASE(debug_optimization_rejects_invalid_profiles)
         join(build_dir, suite, "invalid optimization");
         REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, cases[i]) == -1);
         char *log = tool_read(log_path);
-        REQUIRE(log && strstr(log, "--debug-optimization requires 0 or 1 and build type Debug"));
+        bool diagnostic = log &&
+                          strstr(log, "--debug-optimization requires 0 or 1 and build type Debug");
         free(log);
+        REQUIRE(diagnostic);
         REQUIRE(access(build_dir, F_OK));
     }
     return true;
@@ -1516,6 +1518,7 @@ TEST_CASE(language_corpus_lists_as_cmake)
 void test_build_graph_debug_optimization(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
+    fprintf(stderr, "Graph command tests: host=%s; reference=%s\n", host_path, reference);
     RUN_TEST_CASE(explicit_commands_match_cmake);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);

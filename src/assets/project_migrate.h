@@ -135,5 +135,9 @@ int chibi_migrate_step_globals(const char *source, char **migrated, char *error,
  * chibi_migrate31_array_calls. Returns -1 with `error` set when the source
  * declares one of those names or the current grammar rejects the result. */
 int chibi_migrate_array_calls(const char *source, char **migrated, char *error, size_t error_size);
+/* Upgrades version 32 `.chibi` source to version 33: see
+ * chibi_migrate32_angle_forms. Returns -1 with `error` set when the source
+ * uses an angle form version 33 cannot spell. */
+int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

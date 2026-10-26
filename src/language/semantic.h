@@ -87,7 +87,6 @@ typedef enum
     SCRIPT_EXPR_STRUCT,
     SCRIPT_EXPR_NIL,
     SCRIPT_EXPR_FALLBACK,
-    SCRIPT_EXPR_STORE,
     SCRIPT_EXPR_YIELD,
     SCRIPT_EXPR_JOIN,   /* await of a task handle in left */
     SCRIPT_EXPR_CANCEL, /* cancel of a task handle in left */

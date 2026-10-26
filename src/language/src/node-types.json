@@ -64,6 +64,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -149,6 +153,10 @@
         },
         {
           "type": "character",
+          "named": true
+        },
+        {
+          "type": "emit_expression",
           "named": true
         },
         {
@@ -262,6 +270,10 @@
           "named": true
         },
         {
+          "type": "emit_expression",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
@@ -356,6 +368,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -489,6 +505,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -568,6 +588,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -672,6 +696,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -786,6 +814,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -969,6 +1001,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1057,6 +1093,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1136,6 +1176,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -1343,16 +1387,6 @@
             "named": true
           }
         ]
-      },
-      "type_arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "type_argument_list",
-            "named": true
-          }
-        ]
       }
     }
   },
@@ -1528,6 +1562,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1607,6 +1645,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -1799,6 +1841,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1945,6 +1991,36 @@
     }
   },
   {
+    "type": "emit_expression",
+    "named": true,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "argument_list",
+            "named": true
+          }
+        ]
+      },
+      "event": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "entry_declaration",
     "named": true,
     "fields": {
@@ -2032,6 +2108,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -2165,6 +2245,10 @@
           "named": true
         },
         {
+          "type": "emit_expression",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
@@ -2276,6 +2360,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -2365,6 +2453,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -2477,6 +2569,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -2744,6 +2840,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -2868,6 +2968,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -2947,6 +3051,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -3069,6 +3177,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -3222,6 +3334,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -3368,6 +3484,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -3447,6 +3567,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -3641,6 +3765,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -3736,6 +3864,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -3873,6 +4005,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -3970,6 +4106,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -4073,6 +4213,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -4275,6 +4419,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -4370,6 +4518,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -4617,6 +4769,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -4733,6 +4889,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -4812,6 +4972,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -4940,6 +5104,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -5151,6 +5319,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -5264,6 +5436,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -5362,6 +5538,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -5451,6 +5631,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -5627,6 +5811,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -5822,16 +6010,6 @@
     "type": "type",
     "named": true,
     "fields": {
-      "arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "type_argument_list",
-            "named": true
-          }
-        ]
-      },
       "map": {
         "multiple": false,
         "required": false,
@@ -5941,21 +6119,6 @@
     }
   },
   {
-    "type": "type_argument_list",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "type",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "type_binder",
     "named": true,
     "fields": {
@@ -6034,6 +6197,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -6129,6 +6296,10 @@
             "named": true
           },
           {
+            "type": "emit_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -6214,6 +6385,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -6471,6 +6646,10 @@
           },
           {
             "type": "character",
+            "named": true
+          },
+          {
+            "type": "emit_expression",
             "named": true
           },
           {
@@ -6779,6 +6958,10 @@
   },
   {
     "type": "else",
+    "named": false
+  },
+  {
+    "type": "emit",
     "named": false
   },
   {

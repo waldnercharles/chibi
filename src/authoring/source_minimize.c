@@ -372,8 +372,7 @@ static bool same_effects(unsigned x, unsigned y)
 {
     return !((x ^ y) & ~(unsigned)SCRIPT_EFFECT_READ);
 }
-/* `set_variable<"x">(v)` assigns `state.x = v`, `set_dash(v)` assigns
- * `self.Dash = v` and `set_dash_remaining(v)` assigns
+/* `set_dash(v)` assigns `self.Dash = v` and `set_dash_remaining(v)` assigns
  * `self.Dash.remaining = v`. A partial struct merges into the old value,
  * which an assignment does not. */
 static bool same_write(const pair *p, const script_statement *x, const script_statement *y)
@@ -384,11 +383,6 @@ static bool same_write(const pair *p, const script_statement *x, const script_st
     }
     const script_expression *call = &p->a->expressions[x->expression];
     const script_expression *target = &p->b->expressions[y->expression];
-    if (call->kind == SCRIPT_EXPR_STORE) {
-        return target->kind == SCRIPT_EXPR_SYMBOL && !call->instance &&
-               same_symbol(p, call->symbol, target->symbol) &&
-               same_expression(p, call->right, y->second);
-    }
     const script_catalog_capability *c = capability(p, call);
     if (!c || c->component_access != SCRIPT_COMPONENT_ACCESS_WRITE) {
         return false;
@@ -1087,45 +1081,10 @@ static void operator_rewrite(collector *c, TSNode node, const script_expression 
     free(between);
     apush(c->rewrites, r);
 }
-/* `get_variable<"Lift">()` reads `state."Lift"`; a statement
- * `set_variable<"Lift">(v)` assigns it. */
-static void state_rewrite(collector *c, TSNode node)
-{
-    TSNode types = field(node, "type_arguments");
-    if (ts_node_is_null(types) || ts_node_named_child_count(types) != 1) {
-        return;
-    }
-    TSNode name = field(ts_node_named_child(types, 0), "name");
-    if (ts_node_is_null(name)) {
-        return;
-    }
-    char *path = NULL;
-    append_text(&path, "state.", 6);
-    append_text(&path, c->text + start(name), end(name) - start(name));
-    const script_expression *store = expression_at(c, node, SCRIPT_EXPR_STORE);
-    TSNode statement = ts_node_parent(node);
-    if (is(statement, "await_expression")) {
-        statement = ts_node_parent(statement);
-    }
-    if (store && is(statement, "expression_statement")) {
-        script_range value = value_range(c, store->right);
-        append_text(&path, " = ", 3);
-        apush(path, 0);
-        rewrite r = { 0 };
-        edit(&r, start(ts_node_named_child(statement, 0)), value.start, path);
-        edit(&r, value.end, end(node), "");
-        apush(c->rewrites, r);
-    } else if (!store && expression_at(c, node, SCRIPT_EXPR_SYMBOL)) {
-        apush(path, 0);
-        add(c, start(node), end(node), path);
-    }
-    afree(path);
-}
 static void call_rewrites(collector *c, TSNode node)
 {
     const script_expression *call = expression_at(c, node, SCRIPT_EXPR_CALL);
     if (!call) {
-        state_rewrite(c, node);
         return;
     }
     const script_catalog_capability *cap = script_catalog_capability_by_id(c->catalog, call->capability);

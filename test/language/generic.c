@@ -608,8 +608,10 @@ TEST_CASE(generic_version_34_cross_file_collisions_preserve_project)
     const char
         *safe = "package p\nimport \"core:\"\nG :: () -> int { return 3 }";
     REQUIRE(migration_write(paths[2], safe));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
-    REQUIRE(migration_file_is(paths[0], "version 35\ncontent \"content\"\nstart_scene \"Start.kdl\"\n"));
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 34);
+    char current[80];
+    snprintf(current, sizeof current, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(migration_file_is(paths[0], current));
     REQUIRE(migration_file_is(paths[1], "package p\nF :: () -> f64 { return f64(7) }"));
     REQUIRE(migration_file_is(paths[2], safe));
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));

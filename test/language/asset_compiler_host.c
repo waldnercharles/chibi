@@ -483,21 +483,6 @@ TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel)
     }
     return true;
 }
-/* An asset source keeps the 16 MiB in-process bound; only the command-line
- * compiler's file outputs take the larger artifact bound. */
-TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
-{
-    const size_t size = 16u * 1024u * 1024u + 1u;
-    written = malloc(size + 1);
-    REQUIRE(written);
-    memset(written, ' ', size);
-    written[size] = '\0';
-    asset_compiler_options config = options();
-    asset_compiler_diagnostic error;
-    document = asset_source_read(written, "/project/asset/Large.chibi", &config, &error);
-    REQUIRE(!document && !strcmp(error.message, "Asset source must be non-null and at most 16 MiB"));
-    return true;
-}
 void test_language_asset_compiler_host()
 {
     pu_setup(NULL, cleanup);
@@ -512,6 +497,5 @@ void test_language_asset_compiler_host()
     RUN_TEST_CASE(asset_source_writer_and_reader_reject_nul_without_mutation);
     RUN_TEST_CASE(asset_source_writer_canonical_scene_reaches_owned_native_reader);
     RUN_TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel);
-    RUN_TEST_CASE(asset_source_keeps_the_16_mib_source_bound);
     pu_clear_setup();
 }

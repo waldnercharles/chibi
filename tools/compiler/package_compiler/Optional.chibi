@@ -54,16 +54,6 @@ FindSequenceCollection :: (types: TypeDecl[], element: ValueType) -> int {
     }
     return -1;
 }
-AddSequenceCollection :: (types: TypeDecl[], element: ValueType, package: int) -> TypeDecl[] {
-    if (element.storage == 0 || FindSequenceCollection(types, element) >= 0) { return types; }
-    zero := binding.ID("union-type", "0:0:0:0:0");
-    id := binding.ID("collection-type", format_text("1:{}:{}", zero, OptionalTag(types, element)));
-    declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
-                          node: -1, kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1,
-                          storage: element.storage, id: id, layout: 0, component: 0, key: 0,
-                          value_storage: element.storage, value_container: element.container, value_record: element.record};
-    return append(types, declared);
-}
 // An additional [] needs a descriptor once the element is itself collected.
 SequenceArrayType :: (types: TypeDecl[], element: ValueType) -> ValueType {
     if (element.container == 0 && SequenceFlags(types, element) == 0) {
@@ -73,10 +63,18 @@ SequenceArrayType :: (types: TypeDecl[], element: ValueType) -> ValueType {
     if (declared < 0) { return {storage: 0, container: 0, record: -1}; }
     return {storage: element.storage, container: 1, record: declared};
 }
+// The collection of `element` in `table`, which gains it when it has none.
+// The table changes in place, so declaring each type costs its own entry.
 EnsureSequenceCollection :: (table: ^(TypeDecl[]), element: ValueType, package: int) -> int {
     found := FindSequenceCollection(table^, element);
-    if (found >= 0) { return found; }
-    table^ = AddSequenceCollection(table^, element, package);
+    if (found >= 0 || element.storage == 0) { return found; }
+    zero := binding.ID("union-type", "0:0:0:0:0");
+    id := binding.ID("collection-type", format_text("1:{}:{}", zero, OptionalTag(table^, element)));
+    declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
+                          node: -1, kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1,
+                          storage: element.storage, id: id, layout: 0, component: 0, key: 0,
+                          value_storage: element.storage, value_container: element.container, value_record: element.record};
+    table.append(declared);
     return length(table^) - 1;
 }
 SequenceSuffixType :: (types: TypeDecl[], base: ValueType, depth: int, view: bool, optional: bool) -> ValueType {
@@ -131,7 +129,7 @@ DeclareSequenceCollections :: (types: TypeDecl[], depth: int, package: int) -> T
         nesting: int = 0;
         while (nesting < depth) {
             if (element.container != 0 || SequenceFlags(declared, element) != 0) {
-                declared = AddSequenceCollection(declared, element, package);
+                EnsureSequenceCollection(&declared, element, package);
             }
             element = SequenceArrayType(declared, element);
             nesting += 1;
@@ -185,31 +183,27 @@ OptionalTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
     }
     return binding.ID("union-type", format_text("{}:{}:{}:0:{}", semantic.storage, semantic.container, nominal, flags));
 }
-AddOptional :: (types: TypeDecl[], value: ValueType, package: int) -> TypeDecl[] {
-    if (value.storage == 0 || FindOptional(types, value) >= 0) {
-        return types;
-    }
-    declared: TypeDecl = {name: "", type_name: "", package: package, node: -1, kind: OptionalDecl,
-                          first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
-                          id: OptionalTag(types, value), layout: 0, component: 0, key: 0,
-                          value_storage: value.storage, value_container: value.container,
-                          value_record: value.record};
-    return append(types, declared);
-}
+// The optional of `value` in `table`, which gains it when it has none.
 EnsureOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
     found := FindOptional(table^, value);
-    if (found >= 0) { return found; }
-    table^ = AddOptional(table^, value, package);
+    if (found >= 0 || value.storage == 0) { return found; }
+    declared: TypeDecl = {name: "", type_name: "", package: package, node: -1, kind: OptionalDecl,
+                          first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
+                          id: OptionalTag(table^, value), layout: 0, component: 0, key: 0,
+                          value_storage: value.storage, value_container: value.container,
+                          value_record: value.record};
+    table.append(declared);
     return length(table^) - 1;
 }
 // Register the bounded set of sequence results before signatures are read.
 // Expressions can then select an optional without mutating shared type tables.
 DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
-    declared := AddOptional(types, {storage: TextStorage, container: 0, record: -1}, package);
+    declared := types;
+    EnsureOptional(&declared, {storage: TextStorage, container: 0, record: -1}, package);
     storage := BoolStorage;
     while (storage <= HandleStorage) {
-        declared = AddOptional(declared, {storage: storage, container: 1, record: -1}, package);
-        declared = AddOptional(declared, {storage: storage, container: 4, record: -1}, package);
+        EnsureOptional(&declared, {storage: storage, container: 1, record: -1}, package);
+        EnsureOptional(&declared, {storage: storage, container: 4, record: -1}, package);
         storage += 1;
     }
     index: int = 0;
@@ -219,22 +213,22 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
             item_storage := item.storage;
             if (item.kind == RecordDecl) { item_storage = StructStorage; }
             if (item.kind == UnionDecl) { item_storage = UnionStorage; }
-            declared = AddOptional(declared, {storage: item_storage, container: 1, record: index}, package);
-            declared = AddOptional(declared, {storage: item_storage, container: 4, record: index}, package);
+            EnsureOptional(&declared, {storage: item_storage, container: 1, record: index}, package);
+            EnsureOptional(&declared, {storage: item_storage, container: 4, record: index}, package);
         } else if ((item.kind == 6 && item.key == 0) || item.kind == CollectionDecl) {
             // Managed pointer identity is already fully structural; a nested
             // array's descriptor carries its immediate element's complete type.
-            declared = AddOptional(declared, {storage: item.storage, container: 1, record: index}, package);
-            declared = AddOptional(declared, {storage: item.storage, container: 4, record: index}, package);
+            EnsureOptional(&declared, {storage: item.storage, container: 1, record: index}, package);
+            EnsureOptional(&declared, {storage: item.storage, container: 4, record: index}, package);
         } else if (item.kind == MapDecl || item.kind == 6) {
             // A map or nullable pointer element needs the array's descriptor.
             element: ValueType = {storage: item.storage, container: 0, record: index};
             if (item.kind == MapDecl) { element = {storage: UnionStorage, container: MapContainer, record: index}; }
-            declared = AddSequenceCollection(declared, element, package);
+            EnsureSequenceCollection(&declared, element, package);
             array := SequenceArrayType(declared, element);
-            declared = AddOptional(declared, array, package);
+            EnsureOptional(&declared, array, package);
             array.container = 4;
-            declared = AddOptional(declared, array, package);
+            EnsureOptional(&declared, array, package);
         }
         index += 1;
     }

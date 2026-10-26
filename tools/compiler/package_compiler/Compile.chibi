@@ -635,13 +635,7 @@ ReadTypeSuffixes :: (forest: snapshot.SnapshotNode[], node: int, table: ^(TypeDe
         } else if (!forest[child].is_extra && token == "?") {
             if (value.storage == PointerStorage && value.container == 0) {
                 element := PointerElement(table^, Typed(-1, value.storage, value.container, value.record));
-                nullable := FindPointer(table^, element, true);
-                if (nullable < 0) {
-                    added := AddPointer(table^, element, true, package);
-                    table^ = added;
-                    nullable = length(table^) - 1;
-                }
-                value.record = nullable;
+                value.record = EnsurePointer(table, element, true, package);
             } else {
                 optional := EnsureOptional(table, value, package);
                 value = {storage: UnionStorage, container: 0, record: optional};

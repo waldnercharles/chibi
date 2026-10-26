@@ -42,11 +42,12 @@ PointerElement :: (types: TypeDecl[], pointer: Value) -> ValueType {
     declared := types[pointer.record];
     return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
 }
-AddPointer :: (types: TypeDecl[], value: ValueType, nullable: bool, package: int) -> TypeDecl[] {
-    if (value.storage == 0 || FindPointer(types, value, nullable) >= 0) {
-        return types;
-    }
-    id := binding.ID("pointer-type", format_text("{}", SemanticTag(types, value)));
+// The pointer to `value` in `table`, which gains it when it has none. The
+// table changes in place, so declaring each type costs its own entry.
+EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, package: int) -> int {
+    found := FindPointer(table^, value, nullable);
+    if (found >= 0 || value.storage == 0) { return found; }
+    id := binding.ID("pointer-type", format_text("{}", SemanticTag(table^, value)));
     key: int = 0;
     if (nullable) { key = 1; }
     declared: TypeDecl = {name: "", type_name: format_text("__pointer_{}", id), package: package,
@@ -54,7 +55,8 @@ AddPointer :: (types: TypeDecl[], value: ValueType, nullable: bool, package: int
                           storage: PointerStorage, id: id, layout: 0, component: 0, key: key,
                           value_storage: value.storage, value_container: value.container,
                           value_record: value.record};
-    return append(types, declared);
+    table.append(declared);
+    return length(table^) - 1;
 }
 TypePointerNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     if (Is(forest, node, "pointer_type")) { return node; }
@@ -90,15 +92,15 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
         pointer := TypePointerNode(forest, node);
         if (pointer >= 0) {
             element := ReadType(forest, text, &types, aliases, package, Field(forest, pointer, "target"));
-            types = AddPointer(types, element, false, package);
-            if (HasToken(forest, node, "?")) { types = AddPointer(types, element, true, package); }
+            EnsurePointer(&types, element, false, package);
+            if (HasToken(forest, node, "?")) { EnsurePointer(&types, element, true, package); }
         } else if (HasToken(forest, node, "?")) {
             grouped := TypeGroupNode(forest, node);
             if (grouped >= 0) {
                 value := ReadType(forest, text, &types, aliases, package, grouped);
                 if (value.storage == PointerStorage && value.container == 0 && value.record >= 0) {
                     element := PointerElement(types, Typed(-1, value.storage, 0, value.record));
-                    types = AddPointer(types, element, true, package);
+                    EnsurePointer(&types, element, true, package);
                 }
             }
         }
@@ -171,13 +173,13 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
     if (!addresses) { return types; }
     for (node in spelled) {
         value := ReadType(forest, text, &types, aliases, package, node);
-        types = AddPointer(types, value, false, package);
+        EnsurePointer(&types, value, false, package);
     }
     scalar: int = 1;
     while (scalar <= TextStorage) {
         if (scalar != 12) {
-            types = AddPointer(types, {storage: scalar, container: 0, record: -1}, false, package);
-            types = AddPointer(types, {storage: scalar, container: ArrayContainer, record: -1}, false, package);
+            EnsurePointer(&types, {storage: scalar, container: 0, record: -1}, false, package);
+            EnsurePointer(&types, {storage: scalar, container: ArrayContainer, record: -1}, false, package);
         }
         scalar += 1;
     }
@@ -193,18 +195,11 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
         // A collection describes the array whose elements it holds.
         if (declared.kind == CollectionDecl) { container = ArrayContainer; }
         if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
-            types = AddPointer(types, {storage: storage, container: container, record: index}, false, package);
+            EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
         }
         index += 1;
     }
     return types;
-}
-// The pointer type to `value`, declared when none is yet.
-EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType) -> int {
-    found := FindPointer(table^, value, false);
-    if (found >= 0) { return found; }
-    table^ = AddPointer(table^, value, false, 0);
-    return length(table^) - 1;
 }
 // Prefix slots/code have already been numbered by the caller.
 PointerPrefix :: (code: Code[], slots: Slot[], step: Step) -> Step {

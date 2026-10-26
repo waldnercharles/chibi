@@ -288,7 +288,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     constant := ConstantCode(ops, PointerStorage, 0, at.slot, node);
                     constant.value_record = resolved.record;
                     if (Holds(addressed, name)) {
-                        EnsurePointer(table, {storage: PointerStorage, container: 0, record: resolved.record});
+                        EnsurePointer(table, {storage: PointerStorage, container: 0, record: resolved.record}, false, 0);
                         return PointerPrefix([constant], [{storage: PointerStorage, kind: ValueKind}],
                                              ManagedBoxStep(table^, members, Typed(at.slot, PointerStorage, 0, resolved.record),
                                                             name, name_node, 0, ops, target, SlotsPast(at, 1), node));
@@ -572,7 +572,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 initial.storage = local.storage;
                 initial.container = local.container;
                 initial.record = local.record;
-                EnsurePointer(table, {storage: local.storage, container: local.container, record: local.record});
+                EnsurePointer(table, {storage: local.storage, container: local.container, record: local.record}, false, 0);
                 return PointerPrefix(code, slots,
                                      ManagedBoxStep(table^, members, initial, name, Field(forest, item.node, "name"), 1,
                                                     ops, target, SlotsPast(at, length(slots)), node));
@@ -747,9 +747,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 return Fail(forest, item.node, document, "returned value differs from the result type");
             }
             if (Pointer(result.storage, result.container) &&
-                Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, "value"))) {
-                // A fresh value is already the copy a return would make, and
-                // a built local already lies in the caller's storage.
+                (result.owned ||
+                 Fresh(forest, text, callables, natives, types, names, package, Field(forest, item.node, "value")))) {
+                // A fresh value or a temporary is already the copy a return
+                // would make, and a built local already lies in the caller's
+                // storage.
                 cells.append(MovedCell(result));
                 slots.append(AddressSlot(target));
                 code.extend(MoveCode(result, ops, target, at.slot + length(slots) - 1,

@@ -109,7 +109,8 @@ typedef enum
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
  * Copied function, which assigns its array, does not. A `lends` sample's Lent
- * functions pass locals to natives and keep natives' results without a copy,
+ * functions pass locals to natives and keep or return natives' results
+ * without a copy,
  * and its Copied function copies the element it passes. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
  * backends. */
@@ -1362,9 +1363,11 @@ static const sample samples[] = {
                 "    part := slice(xs, 1, 2);\n    part.append(5);\n"
                 "    rest := xs.slice(0, 1);\n    rest = append(rest, 7);\n"
                 "    return length(part) * 10 + rest[1] + xs.length() * 100;\n}\n"
+                "LentReturn :: (xs: int[]) -> int[] { return slice(xs, 1, 1); }\n"
                 "CopiedElement :: () -> int { xss: int[][] = [[1, 2], [3]]; return length(xss[0]); }",
       .calls = { { .function = "LentLength", .arguments = "[[1,2,3]]", .expected = "[6]" },
                  { .function = "LentSlice", .arguments = "[[1,2,3]]", .expected = "[337]" },
+                 { .function = "LentReturn", .arguments = "[[1,2,3]]", .expected = "[[2]]" },
                  { .function = "CopiedElement", .arguments = "[]", .expected = "[2]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
@@ -4723,7 +4726,7 @@ static bool lends_native_values(const unsigned char *bytes, size_t length)
     }
     package_collection_free(packages);
     native_capabilities_free(native);
-    REQUIRE(lent == 2 && copied == 1 && !wrong);
+    REQUIRE(lent == 3 && copied == 1 && !wrong);
     return true;
 }
 /* Runs a call with the probe natives: the compiler host links only its own,

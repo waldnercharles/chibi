@@ -42,7 +42,7 @@ enum
     ARTIFACT_CAP = 16 * 1024 * 1024,
     INPUT_CAP = 8 * 1024,
     OUTPUT_CAP = 256 * 1024,
-    BINARY_CAP = 32 * 1024
+    BINARY_CAP = 64 * 1024
 };
 static compiler_fixture fixture;
 static const char *directory;

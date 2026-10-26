@@ -122,6 +122,12 @@ void compiler_fixture_free(compiler_fixture *fixture)
     native_capabilities_free(fixture->native);
     *fixture = (compiler_fixture){ 0 };
 }
+void compiler_fixture_init_heap(compiler_fixture *fixture)
+{
+    fixture->managed = xmalloc(sizeof *fixture->managed);
+    behavior_managed_heap_init(fixture->managed);
+    fixture->managed->call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
+}
 bool compiler_fixture_prepare(compiler_fixture *fixture, const source_package_input *files, int count)
 {
     return compiler_fixture_prepare_packs(fixture, files, count, NULL, 0);
@@ -135,9 +141,7 @@ bool compiler_fixture_prepare_packs(
 )
 {
     REQUIRE(additional_count >= 0 && (!additional_count || additional));
-    fixture->managed = xmalloc(sizeof *fixture->managed);
-    behavior_managed_heap_init(fixture->managed);
-    fixture->managed->call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
+    compiler_fixture_init_heap(fixture);
     native_definition_pack *packs = xmalloc(((size_t)additional_count + 2) * sizeof *packs);
     packs[0] = NATIVE_TEXT_DEFINITION_PACK;
     packs[1] = NATIVE_ARRAY_DEFINITION_PACK;

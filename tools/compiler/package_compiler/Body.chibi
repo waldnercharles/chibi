@@ -2322,7 +2322,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     condition_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                            cell: length(cells), host: length(hosts), call: length(calls)};
                     switch OptionalPresentStep(condition, false, 0, ops, target, condition_at, node) {
-                        case .Failed(diagnostic): return Body.Failed(diagnostic);
+                        case .Failed(diagnostic):
+                            return Body.Failed(diagnostic);
                         case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                                       added_calls, added_names, scheduled, popped, value, kept, marks):
                             code.extend(added_code);
@@ -2502,7 +2503,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 }
                 iterable := Unparenthesized(forest, Field(forest, item.node, "value"));
                 if (array.container == ArrayContainer && FixedArray(forest, text, names, referenced, mutated, addressed,
-                                                                   iterable)) {
+                                                                    iterable)) {
                     // A local or parameter nothing changes stays as it is
                     // while the loop walks it, so the loop walks it itself.
                     cells.append(MovedCell(array));
@@ -2565,7 +2566,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                   cell: length(cells), host: length(hosts), call: length(calls)};
                 switch DropNamesStep(names, loop.mark, natives, ports, ops, target, drop_at, node) {
-                    case .Failed(diagnostic): return Body.Failed(diagnostic);
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
                     case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
                                   drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
                         code.extend(drop_code);
@@ -2634,7 +2636,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 held := Typed(loop.held_slot, loop.held_storage, loop.held_container, loop.held_record);
                 held.owned = loop.held_owned;
                 switch DropSequenceValues([held], ops, target, owner_drop_at, node) {
-                    case .Failed(diagnostic): return Body.Failed(diagnostic);
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
                     case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
                                   drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
                         code.extend(drop_code);
@@ -2818,20 +2821,21 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 return Body.Failed(Diagnose(forest, item.node, document, "break or continue outside a loop"));
             }
             loop := loops[length(loops) - 1];
-                drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                                  cell: length(cells), host: length(hosts), call: length(calls)};
-                switch DropNamesStep(names, loop.mark, natives, ports, ops, target, drop_at, node) {
-                    case .Failed(diagnostic): return Body.Failed(diagnostic);
-                    case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
-                                  drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
-                        code.extend(drop_code);
-                        slots.extend(drop_slots);
-                        locals.extend(drop_locals);
-                        cells.extend(drop_cells);
-                        hosts.extend(drop_hosts);
-                        roots.extend(drop_roots);
-                        calls.extend(drop_calls);
-                }
+            drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                              cell: length(cells), host: length(hosts), call: length(calls)};
+            switch DropNamesStep(names, loop.mark, natives, ports, ops, target, drop_at, node) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
+                              drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
+                    code.extend(drop_code);
+                    slots.extend(drop_slots);
+                    locals.extend(drop_locals);
+                    cells.extend(drop_cells);
+                    hosts.extend(drop_hosts);
+                    roots.extend(drop_roots);
+                    calls.extend(drop_calls);
+            }
             code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
             if (kind == "break_statement") {
                 breaks.append(length(code));
@@ -2860,7 +2864,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                 cell: length(cells), host: length(hosts), call: length(calls)};
                 switch OptionalPresentStep(optional, false, 0, ops, target, probe, node) {
-                    case .Failed(diagnostic): return Body.Failed(diagnostic);
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
                     case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                                   added_calls, added_names, scheduled, popped, value, kept, marks):
                         code.extend(added_code);
@@ -2874,7 +2879,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 unwrap_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                     cell: length(cells), host: length(hosts), call: length(calls)};
                 switch OptionalUnwrapStep(types, optional, 0, ops, target, unwrap_at, node) {
-                    case .Failed(diagnostic): return Body.Failed(diagnostic);
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
                     case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                                   added_calls, added_names, scheduled, popped, value, kept, marks):
                         code.extend(added_code);
@@ -2912,7 +2918,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 code[item.b] = done;
                 first := length(slots);
                 slots.extend([AddressSlot(target), {storage: SlotStorage(item.storage, item.container, target),
-                                                   kind: SlotKind(item.storage, item.container)}]);
+                                                    kind: SlotKind(item.storage, item.container)}]);
                 code.extend(CellRead(SlotStorage(item.storage, item.container, target), item.a, ops, target, first, node));
                 produced = Typed(first + 1, item.storage, item.container, item.record);
                 if (Pointer(item.storage, item.container)) {
@@ -3021,7 +3027,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     (OptionalElement(types, values[value_top - 1]).storage != 0 &&
                      Is(forest, Unparenthesized(forest, Field(forest, item.node, "left")), "nil")))) {
             optional := values[value_top - 2];
-            if (OptionalElement(types, optional).storage == 0) { optional = values[value_top - 1]; }
+            if (OptionalElement(types, optional).storage == 0) {
+                optional = values[value_top - 1];
+            }
             step = OptionalPresentStep(optional, operator == "==", 2, ops, target, at, node);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
@@ -3198,9 +3206,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
     }
     cleanup_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
-                          cell: length(cells), host: length(hosts), call: length(calls)};
+                         cell: length(cells), host: length(hosts), call: length(calls)};
     switch DropNamesStep(names, 0, natives, ports, ops, target, cleanup_at, declaration) {
-        case .Failed(diagnostic): return Body.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Body.Failed(diagnostic);
         case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
                       drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
             code.extend(drop_code);
@@ -3254,7 +3263,9 @@ ReachesBodyEnd :: (code: Code[], ops: Ops) -> bool {
         if (at >= 0 && at < length(code) && !visited[at]) {
             visited[at] = true;
             instruction := code[at];
-            if (instruction.op == ops.end) { return true; }
+            if (instruction.op == ops.end) {
+                return true;
+            }
             successors: int[] = [];
             if (instruction.op == ops.jump) {
                 successors = [instruction.target];
@@ -3264,8 +3275,11 @@ ReachesBodyEnd :: (code: Code[], ops: Ops) -> bool {
                 successors = [at + 1];
             }
             for (successor in successors) {
-                if (top < length(pending)) { pending[top] = successor; }
-                else { pending.append(successor); }
+                if (top < length(pending)) {
+                    pending[top] = successor;
+                } else {
+                    pending.append(successor);
+                }
                 top += 1;
             }
         }

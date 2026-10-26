@@ -12,11 +12,17 @@ OptionalDecl: int : 7;
 CollectionDecl: int : 8;
 
 SequenceNominal :: (types: TypeDecl[], value: ValueType) -> uint64 {
-    if (value.record < 0) { return 0; }
+    if (value.record < 0) {
+        return 0;
+    }
     declared := types[value.record];
-    if (declared.kind == MapDecl) { return 0; }
+    if (declared.kind == MapDecl) {
+        return 0;
+    }
     if (declared.kind == CollectionDecl && declared.value_record >= 0 &&
-        types[declared.value_record].kind == OptionalDecl) { return 0; }
+        types[declared.value_record].kind == OptionalDecl) {
+        return 0;
+    }
     if (declared.kind == CollectionDecl || declared.kind == OptionalDecl) {
         return SequenceNominal(types, {storage: declared.value_storage, container: declared.value_container,
                                        record: declared.value_record});
@@ -24,13 +30,21 @@ SequenceNominal :: (types: TypeDecl[], value: ValueType) -> uint64 {
     return declared.id;
 }
 SequenceFlags :: (types: TypeDecl[], value: ValueType) -> int {
-    if (value.record < 0) { return 0; }
+    if (value.record < 0) {
+        return 0;
+    }
     declared := types[value.record];
-    if (declared.kind == OptionalDecl) { return 2; }
-    if (declared.kind == CollectionDecl) { return 0; }
+    if (declared.kind == OptionalDecl) {
+        return 2;
+    }
+    if (declared.kind == CollectionDecl) {
+        return 0;
+    }
     // PointerDecl is kind 6. Its identity already encodes the entire pointee;
     // key describes this pointer's own nullable flag, never its pointee's.
-    if (declared.kind == 6 && declared.key != 0 && value.container == 0) { return 2; }
+    if (declared.kind == 6 && declared.key != 0 && value.container == 0) {
+        return 2;
+    }
     return 0;
 }
 SequenceElement :: (types: TypeDecl[], value: ValueType) -> ValueType {
@@ -60,14 +74,18 @@ SequenceArrayType :: (types: TypeDecl[], element: ValueType) -> ValueType {
         return {storage: element.storage, container: 1, record: element.record};
     }
     declared := FindSequenceCollection(types, element);
-    if (declared < 0) { return {storage: 0, container: 0, record: -1}; }
+    if (declared < 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
     return {storage: element.storage, container: 1, record: declared};
 }
 // The collection of `element` in `table`, which gains it when it has none.
 // The table changes in place, so declaring each type costs its own entry.
 EnsureSequenceCollection :: (table: ^(TypeDecl[]), element: ValueType, package: int) -> int {
     found := FindSequenceCollection(table^, element);
-    if (found >= 0 || element.storage == 0) { return found; }
+    if (found >= 0 || element.storage == 0) {
+        return found;
+    }
     zero := binding.ID("union-type", "0:0:0:0:0");
     id := binding.ID("collection-type", format_text("1:{}:{}", zero, OptionalTag(table^, element)));
     declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
@@ -82,11 +100,15 @@ SequenceSuffixType :: (types: TypeDecl[], base: ValueType, depth: int, view: boo
     nesting: int = 0;
     while (nesting < depth) {
         value = SequenceArrayType(types, value);
-        if (value.storage == 0) { return value; }
+        if (value.storage == 0) {
+            return value;
+        }
         nesting += 1;
     }
     if (view) {
-        if (value.container != 1) { return {storage: 0, container: 0, record: -1}; }
+        if (value.container != 1) {
+            return {storage: 0, container: 0, record: -1};
+        }
         value.container = 4;
     }
     return OptionalType(types, value, optional);
@@ -113,8 +135,12 @@ DeclareSequenceCollections :: (types: TypeDecl[], depth: int, package: int) -> T
         item := types[index];
         if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl || item.kind == 6) {
             item_storage := item.storage;
-            if (item.kind == RecordDecl) { item_storage = StructStorage; }
-            if (item.kind == UnionDecl) { item_storage = UnionStorage; }
+            if (item.kind == RecordDecl) {
+                item_storage = StructStorage;
+            }
+            if (item.kind == UnionDecl) {
+                item_storage = UnionStorage;
+            }
             base: ValueType = {storage: item_storage, container: 0, record: index};
             bases.append(base);
         } else if (item.kind == MapDecl) {
@@ -159,9 +185,13 @@ FindOptional :: (types: TypeDecl[], value: ValueType) -> int {
     return -1;
 }
 OptionalType :: (types: TypeDecl[], value: ValueType, optional: bool) -> ValueType {
-    if (!optional) { return value; }
+    if (!optional) {
+        return value;
+    }
     declared := FindOptional(types, value);
-    if (declared < 0) { return {storage: 0, container: 0, record: -1}; }
+    if (declared < 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
     return {storage: UnionStorage, container: 0, record: declared};
 }
 // The successful constructor is the complete nonoptional script_type_tag,
@@ -186,7 +216,9 @@ OptionalTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
 // The optional of `value` in `table`, which gains it when it has none.
 EnsureOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
     found := FindOptional(table^, value);
-    if (found >= 0 || value.storage == 0) { return found; }
+    if (found >= 0 || value.storage == 0) {
+        return found;
+    }
     return AddOptional(table, value, package);
 }
 // Appends the optional of `value`, which `table` does not have yet.
@@ -203,20 +235,26 @@ AddOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
 // the index of an optional of it, or -1 while `types` has none.
 SequenceOptionals :: (types: TypeDecl[], count: int) -> int[] {
     known: int[] = [];
-    while (length(known) < 2 * count) { known.append(-1); }
+    while (length(known) < 2 * count) {
+        known.append(-1);
+    }
     index: int = 0;
     for (declared in types) {
         if (declared.kind == OptionalDecl && declared.value_record >= 0 && declared.value_record < count &&
             (declared.value_container == 1 || declared.value_container == 4)) {
             slot := SequenceOptionalSlot(declared.value_record, declared.value_container);
-            if (known[slot] < 0) { known[slot] = index; }
+            if (known[slot] < 0) {
+                known[slot] = index;
+            }
         }
         index += 1;
     }
     return known;
 }
 SequenceOptionalSlot :: (record: int, container: int) -> int {
-    if (container == 4) { return 2 * record + 1; }
+    if (container == 4) {
+        return 2 * record + 1;
+    }
     return 2 * record;
 }
 // Register the bounded set of sequence results before signatures are read.
@@ -239,8 +277,12 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
         array: ValueType = {storage: 0, container: 1, record: index};
         if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl) {
             array.storage = item.storage;
-            if (item.kind == RecordDecl) { array.storage = StructStorage; }
-            if (item.kind == UnionDecl) { array.storage = UnionStorage; }
+            if (item.kind == RecordDecl) {
+                array.storage = StructStorage;
+            }
+            if (item.kind == UnionDecl) {
+                array.storage = UnionStorage;
+            }
         } else if ((item.kind == 6 && item.key == 0) || item.kind == CollectionDecl) {
             // Managed pointer identity is already fully structural; a nested
             // array's descriptor carries its immediate element's complete type.
@@ -248,7 +290,9 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
         } else if (item.kind == MapDecl || item.kind == 6) {
             // A map or nullable pointer element needs the array's descriptor.
             element: ValueType = {storage: item.storage, container: 0, record: index};
-            if (item.kind == MapDecl) { element = {storage: UnionStorage, container: MapContainer, record: index}; }
+            if (item.kind == MapDecl) {
+                element = {storage: UnionStorage, container: MapContainer, record: index};
+            }
             EnsureSequenceCollection(&declared, element, package);
             array = SequenceArrayType(declared, element);
         } else {
@@ -279,7 +323,9 @@ OptionalPresentStep :: (value: Value, negated: bool, popped: int, ops: Ops, targ
     slots: Slot[] = [ValueLocal(UnionStorage), ValueLocal(BoolStorage)];
     code: Code[] = [ConstantCode(ops, UnionStorage, 0, at.slot, node)];
     operation := ops.ne;
-    if (negated) { operation = ops.eq; }
+    if (negated) {
+        operation = ops.eq;
+    }
     code.append(Instruction(operation, UnionStorage, at.slot + 1, value.slot, at.slot, -1, node));
     return Step.Emitted(code, slots, [], [], [], [], [], [], [], popped,
                         Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
@@ -331,7 +377,7 @@ PayloadPlaceStep :: (types: TypeDecl[], place: Value, element: ValueType, ops: O
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(target.pointer_storage, at.cell + 4, ops, target, at.slot + 1, node));
     hosts: Host[] = [{owned_arguments: false, intrinsic: ReferenceUnionIntrinsic, linked: -1, first: at.cell,
-                     result_first: at.cell + 4, result_count: 1, written: false}];
+                      result_first: at.cell + 4, result_count: 1, written: false}];
     result := Typed(at.slot + 2, element.storage, element.container, element.record);
     result.place = true;
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells, hosts,
@@ -344,7 +390,8 @@ NarrowedReadPhase: int : 51;
 PayloadPlaceAfter :: (types: TypeDecl[], step: Step, element: ValueType, ops: Ops, target: Target, at: Bases,
                       node: snapshot.SnapshotNode) -> Step {
     switch step {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, place, retained, marks):
             shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local + length(locals),
                               cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call + length(calls)};

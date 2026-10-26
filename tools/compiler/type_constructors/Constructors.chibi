@@ -70,11 +70,11 @@ pub Plan :: union {
 }
 
 pub CollectionID :: (container: int, key: named.Value, key_collection: uint64,
-                      element: named.Value, element_collection: uint64) -> uint64 {
+                     element: named.Value, element_collection: uint64) -> uint64 {
     return binding.ID("collection-type", format_text("{}:{}:{}", container, Tag(key, key_collection), Tag(element, element_collection)));
 }
 pub Collection :: (environment: Environment, container: int, key: named.Value, key_collection: uint64,
-                    element: named.Value, element_collection: uint64, pointer_size: int) -> Plan {
+                   element: named.Value, element_collection: uint64, pointer_size: int) -> Plan {
     variants: Variant[] = [];
     fields: Field[] = [];
     ids: uint64[] = [];

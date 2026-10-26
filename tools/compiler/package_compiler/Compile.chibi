@@ -540,7 +540,9 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
 // Traits are independent flags. Native signatures accept either order and
 // repeated occurrences of ref/view, so look at every trait child.
 HasTypeTrait :: (forest: snapshot.SnapshotNode[], text: string, node: int, trait: string) -> bool {
-    if (node < 0) { return false; }
+    if (node < 0) {
+        return false;
+    }
     child := forest[node].first_child;
     while (child >= 0) {
         if (forest[child].field == "trait" && Text(forest, text, child) == trait) {
@@ -551,12 +553,16 @@ HasTypeTrait :: (forest: snapshot.SnapshotNode[], text: string, node: int, trait
     return false;
 }
 SequenceTypeTraits :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    if (node < 0) { return false; }
+    if (node < 0) {
+        return false;
+    }
     child := forest[node].first_child;
     while (child >= 0) {
         if (forest[child].field == "trait") {
             trait := Text(forest, text, child);
-            if (trait != "ref" && trait != "view") { return false; }
+            if (trait != "ref" && trait != "view") {
+                return false;
+            }
         }
         child = forest[child].next_sibling;
     }
@@ -578,7 +584,9 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(T
     if (pointer >= 0) {
         element := ReadType(forest, text, table, names, package, Field(forest, pointer, "target"));
         declared := FindPointer(table^, element, false);
-        if (declared < 0) { return none; }
+        if (declared < 0) {
+            return none;
+        }
         return ReadTypeSuffixes(forest, node, table, {storage: PointerStorage, container: 0, record: declared},
                                 package, view);
     }
@@ -592,7 +600,9 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(T
         key := ReadType(forest, text, table, names, package, Field(forest, map, "key"));
         value := ReadType(forest, text, table, names, package, Field(forest, map, "value"));
         declared := FindMap(table^, key, value);
-        if (declared < 0) { return none; }
+        if (declared < 0) {
+            return none;
+        }
         return ReadTypeSuffixes(forest, node, table, {storage: UnionStorage, container: MapContainer, record: declared},
                                 package, view);
     }
@@ -603,13 +613,17 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(T
     if (part >= 0) {
         home = QualifierOf(forest, text, names, package, first);
         name = Text(forest, text, part);
-        if (home < 0 || NextMember(forest, part) >= 0) { return none; }
+        if (home < 0 || NextMember(forest, part) >= 0) {
+            return none;
+        }
     } else if (ScalarStorage(name) != 0) {
         return ReadTypeSuffixes(forest, node, table, {storage: ScalarStorage(name), container: 0, record: -1},
                                 package, view);
     }
     declared := FindType(table^, home, name);
-    if (declared < 0) { return none; }
+    if (declared < 0) {
+        return none;
+    }
     storage := StructStorage;
     if (table^[declared].kind == NativeDecl || table^[declared].kind == NamespaceDecl) {
         storage = table^[declared].storage;
@@ -623,7 +637,9 @@ ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(T
 ReadTypeSuffixes :: (forest: snapshot.SnapshotNode[], node: int, table: ^(TypeDecl[]), base: ValueType,
                      package: int, view: bool) -> ValueType {
     value := base;
-    if (value.storage == 0) { return value; }
+    if (value.storage == 0) {
+        return value;
+    }
     child := forest[node].first_child;
     while (child >= 0) {
         token := forest[child].kind;
@@ -643,17 +659,23 @@ ReadTypeSuffixes :: (forest: snapshot.SnapshotNode[], node: int, table: ^(TypeDe
         }
         child = forest[child].next_sibling;
     }
-    if (view) { return ReadViewType(table, value, package); }
+    if (view) {
+        return ReadViewType(table, value, package);
+    }
     return value;
 }
 ReadViewType :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> ValueType {
     element := OptionalElement(table^, Typed(-1, value.storage, value.container, value.record));
     if (element.storage != 0) {
         viewed := ReadViewType(table, element, package);
-        if (viewed.storage == 0) { return viewed; }
+        if (viewed.storage == 0) {
+            return viewed;
+        }
         return {storage: UnionStorage, container: 0, record: EnsureOptional(table, viewed, package)};
     }
-    if (value.container != ArrayContainer) { return {storage: 0, container: 0, record: -1}; }
+    if (value.container != ArrayContainer) {
+        return {storage: 0, container: 0, record: -1};
+    }
     return {storage: value.storage, container: ViewContainer, record: value.record};
 }
 // The map type keyed by `key` holding `value`, -1 when none is declared.
@@ -873,7 +895,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             at += 1;
                         }
-                        if (pointer_field) { storage = PointerStorage; }
+                        if (pointer_field) {
+                            storage = PointerStorage;
+                        }
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
@@ -909,10 +933,14 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             brackets: int = 0;
             child := syntax_node.first_child;
             while (child >= 0) {
-                if (!forest[child].is_extra && forest[child].kind == "[") { brackets += 1; }
+                if (!forest[child].is_extra && forest[child].kind == "[") {
+                    brackets += 1;
+                }
                 child = forest[child].next_sibling;
             }
-            if (brackets > depth) { depth = brackets; }
+            if (brackets > depth) {
+                depth = brackets;
+            }
 
         }
     }
@@ -1664,7 +1692,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             declared.record >= 0 && table^[declared.record].key != 0 && Is(forest, default_value, "nil")) {
             param.has_default = true;
         } else if (default_value >= 0 && OptionalElement(table^, Typed(-1, declared.storage, declared.container,
-                                                                    declared.record)).storage != 0 &&
+                                                                       declared.record)).storage != 0 &&
                    Is(forest, default_value, "nil")) {
             param.has_default = true;
         } else if (default_value >= 0) {
@@ -2298,8 +2326,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         } else if (declared.kind == PointerDecl && declared.key == 0) {
             wide.append(declared.id);
             pointer_requirement: writer.Requirement = {id: length(wide) - 1, layout: 0, storage: PointerStorage,
-                                                        name: declared.type_name, size: target.pointer_size,
-                                                        authored: false, first: 0, count: 0};
+                                                       name: declared.type_name, size: target.pointer_size,
+                                                       authored: false, first: 0, count: 0};
             requirements.append(pointer_requirement);
         } else if (declared.kind == NativeDecl) {
             wide.append(declared.id);

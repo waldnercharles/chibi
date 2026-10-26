@@ -106,9 +106,15 @@ KeyPhase: int : 2;
 // zero's has: a number, bool or string. A record without field defaults
 // has none, so reading its missing key fails.
 HasZero :: (types: TypeDecl[], value: ValueType) -> bool {
-    if (value.container == ViewContainer) { return false; }
-    if (value.container != 0) { return true; }
-    if (value.record >= 0 && types[value.record].kind == OptionalDecl) { return true; }
+    if (value.container == ViewContainer) {
+        return false;
+    }
+    if (value.container != 0) {
+        return true;
+    }
+    if (value.record >= 0 && types[value.record].kind == OptionalDecl) {
+        return true;
+    }
     if (value.storage == PointerStorage) {
         return value.record >= 0 && types[value.record].key != 0;
     }
@@ -255,7 +261,7 @@ MapPlaceDeleteStep :: (forest: snapshot.SnapshotNode[], document: int, types: Ty
         place := values[top - 1];
         if (Single(place, PointerStorage)) {
             return PointerContinue(ReadSequencePlace(place, 1, ops, target, at, node),
-                                    Resume(item.node, PlacePointerPhase, MapDeletePlacePhase, 0));
+                                   Resume(item.node, PlacePointerPhase, MapDeletePlacePhase, 0));
         }
         if (!place.place || !IsMap(place)) {
             return Fail(forest, item.node, document, "delete requires a writable map");
@@ -271,7 +277,7 @@ MapPlaceDeleteStep :: (forest: snapshot.SnapshotNode[], document: int, types: Ty
         return Fail(forest, key, document, "Map key type does not match");
     }
     return IgnoreSequenceValue(SequenceCallStep([place, value], MapDeletePlaceIntrinsic,
-                              Typed(-1, BoolStorage, 0, -1), uint64(0), false, 2, ops, target, at, node));
+                                                Typed(-1, BoolStorage, 0, -1), uint64(0), false, 2, ops, target, at, node));
 }
 // The in-place store or removal on the local map names[item.a]: the local's
 // header address, the key and a store's value go to the intrinsic, which

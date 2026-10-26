@@ -144,7 +144,9 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                                      identity, package_scope, has_native, has_documents, entity_id):
                             published_collection: uint64 = 0;
-                            if (collection_container != 0) { published_collection = id; }
+                            if (collection_container != 0) {
+                                published_collection = id;
+                            }
                             switch AddTypeCollection(types, ids, definition, published_collection) {
                                 case .Added(new_types, new_ids, type_index):
                                     identity_slot := length(new_ids);
@@ -300,7 +302,9 @@ Construct :: (reading: Reading, plan: constructors.Plan) -> Reading {
                         publications.append(plan);
                     }
                     result_collection: uint64 = 0;
-                    if (collection_container != 0) { result_collection = id; }
+                    if (collection_container != 0) {
+                        result_collection = id;
+                    }
                     return Reading.Read(value, false, "", Publish(environment, plan), all_diagnostics, uses, publications, result_collection);
             }
     }
@@ -318,7 +322,9 @@ OptionalModifier :: (reading: Reading) -> Reading {
                                     case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, all_uses,
                                                  identity, package_scope, has_native, has_documents, entity_id):
                                         found := named.TypeIndex(merged, ids, nominal);
-                                        if (found < 0 || !merged[found].component) { result_flags = result_flags | 2048; }
+                                        if (found < 0 || !merged[found].component) {
+                                            result_flags = result_flags | 2048;
+                                        }
                                 }
                         }
                     }
@@ -334,7 +340,7 @@ CollectionModifier :: (reading: Reading, container: int, key: named.Value, key_c
                 case .Tables(names, constructor_tables, pointer_size):
                     id := constructors.CollectionID(container, key, key_collection, value, collection);
                     completed := Construct(reading, constructors.Collection(constructor_tables, container, key, key_collection,
-                                                                           value, collection, pointer_size));
+                                                                            value, collection, pointer_size));
                     switch completed {
                         case .Read(result, result_has_unit, result_unit, updated, errors, all_uses, all_publications, old_collection):
                             return Reading.Read(result, result_has_unit, result_unit, updated, errors, all_uses, all_publications, id);
@@ -362,9 +368,15 @@ Modifiers :: (reading: Reading, tree: Tree, node: int, document: int) -> Reading
             child := nodes[node].first_child;
             while (child >= 0) {
                 token := Text(tree, child);
-                if (token == "view") { view = true; }
-                if (token == "?") { result = OptionalModifier(result); }
-                if (token == "[" || token == "[]") { result = ArrayModifier(result, 1); }
+                if (token == "view") {
+                    view = true;
+                }
+                if (token == "?") {
+                    result = OptionalModifier(result);
+                }
+                if (token == "[" || token == "[]") {
+                    result = ArrayModifier(result, 1);
+                }
                 if (token == "ref") {
                     switch result {
                         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):

@@ -44,6 +44,8 @@ bool compiler_fixture_prepare_packs(
     const native_definition_pack *additional,
     int additional_count
 );
+/* Gives calls the managed heap a program's activations share. */
+void compiler_fixture_init_heap(compiler_fixture *);
 void compiler_fixture_free(compiler_fixture *);
 const authoring_package *compiler_fixture_package(
     const compiler_fixture *,

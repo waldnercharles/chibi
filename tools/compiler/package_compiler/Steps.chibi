@@ -604,11 +604,11 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             if (Single(result, ResultsStorage) && !result.owned && declared < 0) {
                 return PointerContinue(CopyNativeResultsStep(result, natives, ports, ops, target, at, node),
-                                        Resume(item.node, ValuePhase, 0, 0));
+                                       Resume(item.node, ValuePhase, 0, 0));
             }
             if (Single(result, FunctionResultsStorage) && !result.owned && declared < 0) {
                 return PointerContinue(CopyFunctionResultsStep(result, callables, params, ops, target, at, node),
-                                        Resume(item.node, ValuePhase, 0, 0));
+                                       Resume(item.node, ValuePhase, 0, 0));
             }
             if ((Single(result, ResultsStorage) || Single(result, FunctionResultsStorage)) && declared < 0) {
                 // Each binding owns an independent result bank.
@@ -646,7 +646,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     retained = result;
                 }
                 lending: int = 0;
-                if (lent) { lending = 1; }
+                if (lent) {
+                    lending = 1;
+                }
                 next.append(Resume(item.node, RetainedPhase, 0, lending));
             } else if (Holds(referenced, name) || (local.storage == UnionStorage && Holds(mutated, name))) {
                 // A ref argument reaches it, or it is a union a write may
@@ -692,7 +694,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 switch PayloadPlaceAfter(types, NamePlaceStep(forest, document, types, names[binding.index], destination,
                                                               ops, target, at),
                                          element, ops, target, at, node) {
-                    case .Failed(diagnostic): return Step.Failed(diagnostic);
+                    case .Failed(diagnostic):
+                        return Step.Failed(diagnostic);
                     case .Emitted(place_code, place_slots, place_locals, place_cells, place_hosts, place_roots,
                                   place_calls, place_bound, place_next, place_popped, place, place_retained,
                                   place_marks):
@@ -703,8 +706,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                                            place_hosts, place_roots, place_calls, place_bound,
                                                            place_next, 0, NoValue(), NoValue(), place_marks),
                                               IgnoreSequenceValue(SequenceCallStep([place, result],
-                                                  ReferenceWriteIntrinsic, Typed(-1, BoolStorage, 0, -1),
-                                                  uint64(0), false, 1, ops, target, shifted, node)));
+                                                                                   ReferenceWriteIntrinsic, Typed(-1, BoolStorage, 0, -1),
+                                                                                   uint64(0), false, 1, ops, target, shifted, node)));
                 }
             }
             if (binding.place == ManagedPlace) {
@@ -1052,8 +1055,10 @@ LocalPush :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable
         return false;
     }
     switch InPlaceUpdate(forest, text, callables, natives, ports, identities, names, package, found, receiver, value) {
-        case .NotApplicable: return false;
-        case .InPlace(mode, array, argument, native): return true;
+        case .NotApplicable:
+            return false;
+        case .InPlace(mode, array, argument, native):
+            return true;
     }
 }
 
@@ -3773,7 +3778,8 @@ ForStep :: (types: TypeDecl[], array: Value, packable: bool, reverse: bool, lent
                              Typed(b + 3, IntStorage, 0, -1)], SequenceGetIntrinsic,
                             Typed(-1, element_type.storage, element_type.container, element_type.record),
                             uint64(0), false, 0, ops, target, shifted, node) {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                       added_calls, added_names, scheduled, popped, value, kept, added_marks):
             return Step.Emitted(extend(code, added_code), extend(slots, added_slots), extend(locals, added_locals),
@@ -5183,7 +5189,8 @@ ParameterStep :: (params: Param[], callable: Callable, item: Work, ops: Ops, tar
                                                         Typed(-1, param.storage, param.container, param.record),
                                                         uint64(0), false, 0, ops, target, shifted, node));
     switch copied {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, all_roots, calls, bound, next, popped, copy, retained,
                       marks):
             binding: Name = {owned: true, name: param.name, place: CellPlace, index: copy.cell,

@@ -46,10 +46,14 @@ PointerElement :: (types: TypeDecl[], pointer: Value) -> ValueType {
 // table changes in place, so declaring each type costs its own entry.
 EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, package: int) -> int {
     found := FindPointer(table^, value, nullable);
-    if (found >= 0 || value.storage == 0) { return found; }
+    if (found >= 0 || value.storage == 0) {
+        return found;
+    }
     id := binding.ID("pointer-type", format_text("{}", SemanticTag(table^, value)));
     key: int = 0;
-    if (nullable) { key = 1; }
+    if (nullable) {
+        key = 1;
+    }
     declared: TypeDecl = {name: "", type_name: format_text("__pointer_{}", id), package: package,
                           node: -1, kind: PointerDecl, first: 0, count: 0, size: 0, parent: -1,
                           storage: PointerStorage, id: id, layout: 0, component: 0, key: key,
@@ -59,16 +63,24 @@ EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, packag
     return length(table^) - 1;
 }
 TypePointerNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (Is(forest, node, "pointer_type")) { return node; }
+    if (Is(forest, node, "pointer_type")) {
+        return node;
+    }
     for (child in Members(forest, node)) {
-        if (Is(forest, child, "pointer_type")) { return child; }
+        if (Is(forest, child, "pointer_type")) {
+            return child;
+        }
     }
     return -1;
 }
 TypeGroupNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
-    if (Is(forest, node, "parenthesized_type")) { return Field(forest, node, "type"); }
+    if (Is(forest, node, "parenthesized_type")) {
+        return Field(forest, node, "type");
+    }
     for (child in Members(forest, node)) {
-        if (Is(forest, child, "parenthesized_type")) { return Field(forest, child, "type"); }
+        if (Is(forest, child, "parenthesized_type")) {
+            return Field(forest, child, "type");
+        }
     }
     return -1;
 }
@@ -82,8 +94,12 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "type")) { nodes.append(at); }
-        for (child in Members(forest, at)) { pending.append(child); }
+        if (Is(forest, at, "type")) {
+            nodes.append(at);
+        }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
     }
     index := length(nodes) - 1;
     while (index >= 0) {
@@ -93,7 +109,9 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
         if (pointer >= 0) {
             element := ReadType(forest, text, &types, aliases, package, Field(forest, pointer, "target"));
             EnsurePointer(&types, element, false, package);
-            if (HasToken(forest, node, "?")) { EnsurePointer(&types, element, true, package); }
+            if (HasToken(forest, node, "?")) {
+                EnsurePointer(&types, element, true, package);
+            }
         } else if (HasToken(forest, node, "?")) {
             grouped := TypeGroupNode(forest, node);
             if (grouped >= 0) {
@@ -115,26 +133,34 @@ AddressedNames :: (forest: snapshot.SnapshotNode[], text: string, root: int) -> 
         pending = slice(pending, 0, length(pending) - 1);
         if (Is(forest, at, "address_expression")) {
             operand := RootOf(forest, Field(forest, at, "operand"));
-            if (Is(forest, operand, "identifier")) { found.append(Text(forest, text, operand)); }
+            if (Is(forest, operand, "identifier")) {
+                found.append(Text(forest, text, operand));
+            }
         }
-        for (child in Members(forest, at)) { pending.append(child); }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
     }
     return found;
 }
-PointerCell :: (record: int) -> Cell { return TypedCell(PointerStorage, 0, record); }
+PointerCell :: (record: int) -> Cell {
+    return TypedCell(PointerStorage, 0, record);
+}
 PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, target: Target,
                     at: Bases, node: snapshot.SnapshotNode) -> Step {
     element := PointerElement(types, pointer);
-    if (element.storage == 0) { return Step.Failed({start: node.start, end: node.end, line: node.row + 1,
-                                                  column: node.column + 1, document: -1,
-                                                  message: "dereference requires a pointer"}); }
+    if (element.storage == 0) {
+        return Step.Failed({start: node.start, end: node.end, line: node.row + 1,
+                            column: node.column + 1, document: -1,
+                            message: "dereference requires a pointer"});
+    }
     if (pointer.record >= 0 && types[pointer.record].key != 0) {
         return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
                             document: -1, message: "Nullable pointer requires a presence guard before dereference"});
     }
     address := AddressSlot(target);
     slots: Slot[] = [address, address, {storage: SlotStorage(element.storage, element.container, target),
-                                      kind: SlotKind(element.storage, element.container)}];
+                                        kind: SlotKind(element.storage, element.container)}];
     code := CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, at.slot, node);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(SlotStorage(element.storage, element.container, target), at.cell + 2, ops, target,
@@ -166,11 +192,19 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "address_expression")) { addresses = true; }
-        if (Is(forest, at, "type")) { spelled.append(at); }
-        for (child in Members(forest, at)) { pending.append(child); }
+        if (Is(forest, at, "address_expression")) {
+            addresses = true;
+        }
+        if (Is(forest, at, "type")) {
+            spelled.append(at);
+        }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
     }
-    if (!addresses) { return types; }
+    if (!addresses) {
+        return types;
+    }
     for (node in spelled) {
         value := ReadType(forest, text, &types, aliases, package, node);
         EnsurePointer(&types, value, false, package);
@@ -189,11 +223,20 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
         declared := types[index];
         storage := declared.storage;
         container: int = 0;
-        if (declared.kind == RecordDecl) { storage = StructStorage; }
-        if (declared.kind == UnionDecl) { storage = UnionStorage; }
-        if (declared.kind == MapDecl) { storage = UnionStorage; container = MapContainer; }
+        if (declared.kind == RecordDecl) {
+            storage = StructStorage;
+        }
+        if (declared.kind == UnionDecl) {
+            storage = UnionStorage;
+        }
+        if (declared.kind == MapDecl) {
+            storage = UnionStorage;
+            container = MapContainer;
+        }
         // A collection describes the array whose elements it holds.
-        if (declared.kind == CollectionDecl) { container = ArrayContainer; }
+        if (declared.kind == CollectionDecl) {
+            container = ArrayContainer;
+        }
         if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
             EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
         }
@@ -204,7 +247,8 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
 // Prefix slots/code have already been numbered by the caller.
 PointerPrefix :: (code: Code[], slots: Slot[], step: Step) -> Step {
     switch step {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(body, added, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
             return Step.Emitted(extend(code, body), extend(slots, added), locals, cells, hosts, roots, calls,
                                 bound, next, popped, produced, retained, marks);
@@ -217,9 +261,13 @@ ManagedLayoutError :: (types: TypeDecl[], members: TypeMember[], value: ValueTyp
         storage = types[record].value_storage;
         record = types[record].value_record;
     }
-    if (storage != StructStorage || record < 0) { return ""; }
+    if (storage != StructStorage || record < 0) {
+        return "";
+    }
     declared := types[record];
-    if (declared.kind != RecordDecl) { return "Managed values require authored record layouts"; }
+    if (declared.kind != RecordDecl) {
+        return "Managed values require authored record layouts";
+    }
     index := declared.first;
     while (index < declared.first + declared.count) {
         field := members[index];
@@ -233,7 +281,7 @@ ManagedLayoutError :: (types: TypeDecl[], members: TypeMember[], value: ValueTyp
 ManagedBoxStep :: (types: TypeDecl[], members: TypeMember[], initial: Value, name: string, declaration: int, popped: int,
                    ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     layout_error := ManagedLayoutError(types, members,
-                                      {storage: initial.storage, container: initial.container, record: initial.record});
+                                       {storage: initial.storage, container: initial.container, record: initial.record});
     if (layout_error != "") {
         return Step.Failed({start: node.start, end: node.end, line: node.row + 1, column: node.column + 1,
                             document: -1, message: layout_error});
@@ -271,7 +319,7 @@ ManagedReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Target, 
     code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
     slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
     return PointerPrefix(code, slots, PointerReadStep(types, Typed(at.slot + 1, PointerStorage, 0, pointer),
-                                                     0, ops, target, SlotsPast(at, 2), node));
+                                                      0, ops, target, SlotsPast(at, 2), node));
 }
 PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: int, ops: Ops,
                      target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
@@ -309,7 +357,7 @@ ManagedAssignStep :: (types: TypeDecl[], binding: Name, value: Value, ops: Ops, 
     code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
     slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
     return PointerPrefix(code, slots, PointerWriteStep(types, Typed(at.slot + 1, PointerStorage, 0, pointer),
-                                                      value, 1, ops, target, SlotsPast(at, 2), node));
+                                                       value, 1, ops, target, SlotsPast(at, 2), node));
 }
 // A reference marker over a dereference borrows that managed location through
 // the existing ref ABI. The managed descriptor stays rooted during the call.
@@ -338,12 +386,18 @@ PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
         return Fail(forest, member_node, document, "Nullable pointer requires a presence guard before dereference");
     }
     layout_error := ManagedLayoutError(types, members, element);
-    if (layout_error != "") { return Fail(forest, member_node, document, layout_error); }
+    if (layout_error != "") {
+        return Fail(forest, member_node, document, layout_error);
+    }
     field_index := FindField(types, members, element.record, Text(forest, text, Field(forest, member_node, "member")));
-    if (field_index < 0) { return Fail(forest, member_node, document, "Unknown field"); }
+    if (field_index < 0) {
+        return Fail(forest, member_node, document, "Unknown field");
+    }
     field := members[field_index];
     pointer := FindPointer(types, {storage: field.storage, container: field.container, record: field.record}, false);
-    if (pointer < 0) { return Fail(forest, member_node, document, "field has no pointer type"); }
+    if (pointer < 0) {
+        return Fail(forest, member_node, document, "field has no pointer type");
+    }
     offset := TypedCell(WordStorage, 0, -1);
     offset.constant = uint64(field.offset);
     cells: Cell[] = [PointerCell(base.record), TypedCell(field.storage, field.container, field.record), offset,
@@ -395,12 +449,18 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     }
     member := Is(forest, operand, "member_expression");
     root := operand;
-    if (member) { root = Unparenthesized(forest, Field(forest, operand, "object")); }
+    if (member) {
+        root = Unparenthesized(forest, Field(forest, operand, "object"));
+    }
     found: int = -1;
-    if (Is(forest, root, "identifier")) { found = Lookup(names, Text(forest, text, root)); }
+    if (Is(forest, root, "identifier")) {
+        found = Lookup(names, Text(forest, text, root));
+    }
     if (member && (found < 0 || names[found].storage == PointerStorage)) {
         source := root;
-        if (Is(forest, source, "dereference_expression")) { source = Field(forest, source, "operand"); }
+        if (Is(forest, source, "dereference_expression")) {
+            source = Field(forest, source, "operand");
+        }
         return Step.Emitted([], [], [], [], [], [], [], [],
                             [Visit(source), Resume(item.node, PointerAddressPhase, 0, 0)], 0,
                             NoValue(), NoValue(), []);
@@ -415,28 +475,32 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
     if (member) {
         return PointerPrefix(code, slots, PointerFieldStep(forest, text, document, types, members,
-                                                          Typed(at.slot + 1, PointerStorage, 0, pointer), operand, 0,
-                                                          ops, target, SlotsPast(at, 2)));
+                                                           Typed(at.slot + 1, PointerStorage, 0, pointer), operand, 0,
+                                                           ops, target, SlotsPast(at, 2)));
     }
     return Step.Emitted(code, slots, [], [], [], [], [], [], [], 0,
                         Typed(at.slot + 1, PointerStorage, 0, pointer), NoValue(), []);
 }
 Accepts :: (types: TypeDecl[], storage: int, container: int, record: int, value: Value) -> bool {
-    if (SameType(storage, container, record, value)) { return true; }
+    if (SameType(storage, container, record, value)) {
+        return true;
+    }
     return storage == PointerStorage && value.storage == PointerStorage && container == 0 && value.container == 0 &&
            record >= 0 && value.record >= 0 && types[record].key != 0 &&
            types[record].id == types[value.record].id;
 }
 PointerPopped :: (step: Step, count: int) -> Step {
     switch step {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, produced, retained, marks);
     }
 }
 PointerContinue :: (step: Step, continuation: Work) -> Step {
     switch step {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, append(next, continuation),
                                 popped, produced, retained, marks);
@@ -515,7 +579,9 @@ PointerAssignmentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     }
     if (item.b == 0) {
         element := PointerElement(types, values[top - 1]);
-        if (element.storage == 0) { return Fail(forest, item.node, document, "assignment target requires a pointer"); }
+        if (element.storage == 0) {
+            return Fail(forest, item.node, document, "assignment target requires a pointer");
+        }
         if (types[values[top - 1].record].key != 0) {
             return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
         }
@@ -546,20 +612,30 @@ PointerNilComparisonStep :: (forest: snapshot.SnapshotNode[], document: int, typ
     constant := ConstantCode(ops, PointerStorage, 0, at.slot, node);
     constant.value_record = pointer.record;
     op := ops.eq;
-    if (item.c != 0) { op = ops.ne; }
+    if (item.c != 0) {
+        op = ops.ne;
+    }
     return Step.Emitted([constant, Instruction(op, PointerStorage, at.slot + 1, pointer.slot, at.slot, -1, node)],
                         [{storage: PointerStorage, kind: ValueKind}, {storage: BoolStorage, kind: ValueKind}],
                         [], [], [], [], [], [], [], 1, Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
 }
 NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, container: int, record: int) -> bool {
-    if (container == ViewContainer) { return true; }
-    if (container != 0) { return false; }
-    if (storage == PointerStorage) { return record >= 0 && types[record].key == 0; }
+    if (container == ViewContainer) {
+        return true;
+    }
+    if (container != 0) {
+        return false;
+    }
+    if (storage == PointerStorage) {
+        return record >= 0 && types[record].key == 0;
+    }
     if (storage == StructStorage && record >= 0) {
         index := types[record].first;
         while (index < types[record].first + types[record].count) {
             field := members[index];
-            if (NeedsPointerValue(types, members, field.storage, field.container, field.record)) { return true; }
+            if (NeedsPointerValue(types, members, field.storage, field.container, field.record)) {
+                return true;
+            }
             index += 1;
         }
     }
@@ -580,7 +656,9 @@ PointerDestination :: (forest: snapshot.SnapshotNode[], text: string, types: Typ
         HandleComponent(forest, text, types, members, names, object)) {
         return false;
     }
-    if (!Is(forest, object, "identifier")) { return true; }
+    if (!Is(forest, object, "identifier")) {
+        return true;
+    }
     found := Lookup(names, Text(forest, text, object));
     return found >= 0 && (names[found].storage == PointerStorage || names[found].place == ManagedPlace);
 }
@@ -613,7 +691,9 @@ PointerAssignmentStart :: (forest: snapshot.SnapshotNode[], text: string, docume
     }
     object := Field(forest, destination, "object");
     found: int = -1;
-    if (Is(forest, object, "identifier")) { found = Lookup(names, Text(forest, text, object)); }
+    if (Is(forest, object, "identifier")) {
+        found = Lookup(names, Text(forest, text, object));
+    }
     if (found >= 0 && names[found].place == ManagedPlace && names[found].storage == StructStorage) {
         binding := names[found];
         pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
@@ -646,30 +726,48 @@ PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int
         pending = slice(pending, 0, length(pending) - 1);
         node := forest[at];
         if (node.start >= start && node.end <= finish) {
-            if (node.kind == "call_expression") { return true; }
+            if (node.kind == "call_expression") {
+                return true;
+            }
             if (node.kind == "assignment") {
                 target := Unparenthesized(forest, StatementTarget(forest, at));
-                if (aliases || (Is(forest, target, "identifier") && Text(forest, text, target) == name)) { return true; }
+                if (aliases || (Is(forest, target, "identifier") && Text(forest, text, target) == name)) {
+                    return true;
+                }
             }
         }
-        for (child in Members(forest, at)) { pending.append(child); }
+        for (child in Members(forest, at)) {
+            pending.append(child);
+        }
     }
     return false;
 }
 PointerGuard :: (forest: snapshot.SnapshotNode[], text: string, condition: int, name: string, truth: bool) -> bool {
     at := Unparenthesized(forest, condition);
-    if (!Is(forest, at, "binary_expression")) { return false; }
+    if (!Is(forest, at, "binary_expression")) {
+        return false;
+    }
     left := Unparenthesized(forest, Field(forest, at, "left"));
     right := Unparenthesized(forest, Field(forest, at, "right"));
-    if (Is(forest, left, "nil")) { swapped := left; left = right; right = swapped; }
-    if (!Is(forest, left, "identifier") || !Is(forest, right, "nil") || Text(forest, text, left) != name) { return false; }
+    if (Is(forest, left, "nil")) {
+        swapped := left;
+        left = right;
+        right = swapped;
+    }
+    if (!Is(forest, left, "identifier") || !Is(forest, right, "nil") || Text(forest, text, left) != name) {
+        return false;
+    }
     operator := Text(forest, text, Field(forest, at, "operator"));
     return (truth && operator == "!=") || (!truth && operator == "==");
 }
 PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
     function := node;
-    while (function >= 0 && !Is(forest, function, "function_declaration")) { function = forest[function].parent; }
-    if (function < 0) { return false; }
+    while (function >= 0 && !Is(forest, function, "function_declaration")) {
+        function = forest[function].parent;
+    }
+    if (function < 0) {
+        return false;
+    }
     body := Field(forest, function, "body");
     aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body), binding.name);
     walked_child := node;
@@ -678,7 +776,9 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
         condition := Field(forest, parent, "condition");
         if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
             consequence := Field(forest, parent, "consequence");
-            if (Is(forest, parent, "while_statement")) { consequence = Field(forest, parent, "body"); }
+            if (Is(forest, parent, "while_statement")) {
+                consequence = Field(forest, parent, "body");
+            }
             truth := consequence >= 0 && forest[walked_child].start >= forest[consequence].start &&
                      forest[walked_child].end <= forest[consequence].end;
             if (PointerGuard(forest, text, condition, binding.name, truth) &&
@@ -687,7 +787,9 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
                                             binding.name, aliased);
             }
             // An outer proof is not carried through a loop back edge.
-            if (Is(forest, parent, "while_statement")) { return false; }
+            if (Is(forest, parent, "while_statement")) {
+                return false;
+            }
         }
         walked_child = parent;
         parent = forest[parent].parent;
@@ -705,7 +807,8 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
 }
 PointerNarrow :: (step: Step, record: int) -> Step {
     switch step {
-        case .Failed(diagnostic): return Step.Failed(diagnostic);
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
             narrowed := Typed(produced.slot, produced.storage, produced.container, record);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, narrowed, retained, marks);
@@ -746,7 +849,7 @@ PointerStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
         resumed := item;
         resumed.phase = PointerBridgePhase;
         return PointerContinue(PointerFieldStep(forest, text, document, types, members, values[top - 1],
-                                                 item.node, 1, ops, target, at), resumed);
+                                                item.node, 1, ops, target, at), resumed);
     }
     if (item.phase == PointerNilPhase) {
         return PointerNilComparisonStep(forest, document, types, values, top, item, ops, at);

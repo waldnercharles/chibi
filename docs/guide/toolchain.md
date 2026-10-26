@@ -33,7 +33,7 @@ with the following files. Hold A or D to move the blue square.
 ### project.kdl
 
 ```kdl
-version 33
+version 35
 name "My Game"
 content "content"
 start_scene "scenes/Start.kdl"

@@ -1198,6 +1198,50 @@ static const sample samples[] = {
       .calls = { { .function = "Make", .arguments = "[1,2]", .expected = "[{\"x\":1,\"y\":2,\"title\":\"p\",\"open\":true}]" },
                  { .function = "Moved", .arguments = "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]", .expected = "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { .function = "Total", .arguments = "[5]", .expected = "[123]" } } },
+    { .name = "view element lending",
+      .group = COLLECTION_SAMPLES,
+      .source =
+                "package facts\n"
+                "Pair :: union { Row(xs: int[]) | None }\n"
+                "Hold :: (window: view int[][], owner: ^(int[][])) -> int {\n"
+                "    row := window[0];\n"
+                "    owner^[0] = [9];\n"
+                "    return row[0] * 10 + length(row);\n"
+                "}\n"
+                "Viewed :: () -> int {\n"
+                "    values: int[][] = [[1, 2], [3]];\n"
+                "    pointer := &values;\n"
+                "    selected := pointer.view(0..<2);\n"
+                "    if selected {\n"
+                "        return Hold(selected, pointer);\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n"
+                "HoldPair :: (window: view Pair[], owner: ^(Pair[])) -> int {\n"
+                "    pair := window[0];\n"
+                "    owner^[0] = Pair.None;\n"
+                "    switch pair {\n"
+                "        case .Row(xs):\n"
+                "            return length(xs);\n"
+                "        case:\n"
+                "            return -2;\n"
+                "    }\n"
+                "}\n"
+                "ViewedPair :: () -> int {\n"
+                "    values: Pair[] = [Pair.Row([1, 2]), Pair.None];\n"
+                "    pointer := &values;\n"
+                "    selected := pointer.view(0..<2);\n"
+                "    if selected {\n"
+                "        return HoldPair(selected, pointer);\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n",
+      .calls = {
+          { .function = "Viewed", .arguments = "[]",
+            .expected = "[12]" },
+          { .function = "ViewedPair", .arguments = "[]",
+            .expected = "[2]" },
+      } },
     { .name = "removed union elements",
       .group = COLLECTION_SAMPLES,
       .source =

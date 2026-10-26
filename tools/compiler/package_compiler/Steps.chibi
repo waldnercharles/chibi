@@ -580,7 +580,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             length(Held(types, members, [result])) > 0 &&
             (kind == "local_declaration" ||
              (kind == "assignment" && Is(forest, StatementTarget(forest, item.node), "identifier"))) &&
-            ChangingElement(forest, text, referenced, mutated, addressed, Field(forest, item.node, "value"))) {
+            ChangingElement(forest, text, names, referenced, mutated, addressed, Field(forest, item.node, "value"))) {
             return PointerContinue(CopyValueStep(result, 1, ops, target, at, node), Resume(item.node, ValuePhase, 0, 0));
         }
         if (kind == "local_declaration") {
@@ -1635,7 +1635,7 @@ BorrowsElement :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDec
 // Whether the element `node` reads initializes a local in place, as stage
 // zero lends a declaration: nothing changes the local, nor the parameter or
 // local whose array holds the element, so the element outlives every read of
-// the local.
+// the local. A view's owner can still change the array under it.
 LendsElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[],
                  mutated: string[], built: int[], addressed: string[], node: int) -> bool {
     declaration := forest[node].parent;
@@ -1649,19 +1649,25 @@ LendsElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], r
     }
     found := Lookup(names, Text(forest, text, root));
     return found >= 0 && (names[found].place == ParameterPlace || names[found].place == CellPlace) &&
+           names[found].container != ViewContainer &&
            Fixed(referenced, mutated, addressed, Text(forest, text, Field(forest, declaration, "name"))) &&
            Fixed(referenced, mutated, addressed, names[found].name);
 }
 // Whether `node` reads an element of an array or map that something may
-// change or that is not a name.
-ChangingElement :: (forest: snapshot.SnapshotNode[], text: string, referenced: string[], mutated: string[],
-                    addressed: string[], node: int) -> bool {
+// change, that is not a name, or that a view's owner may change.
+ChangingElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[],
+                    mutated: string[], addressed: string[], node: int) -> bool {
     at := Unparenthesized(forest, node);
     if (!Is(forest, at, "index_expression")) {
         return false;
     }
     root := RootOf(forest, at);
-    return !Is(forest, root, "identifier") || !Fixed(referenced, mutated, addressed, Text(forest, text, root));
+    if (!Is(forest, root, "identifier")) {
+        return true;
+    }
+    found := Lookup(names, Text(forest, text, root));
+    return (found >= 0 && names[found].container == ViewContainer) ||
+           !Fixed(referenced, mutated, addressed, Text(forest, text, root));
 }
 // Whether nothing assigns, changes in place or takes the address of `name`.
 Fixed :: (referenced: string[], mutated: string[], addressed: string[], name: string) -> bool {

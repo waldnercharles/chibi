@@ -5681,7 +5681,8 @@ static bool symbol_fixed(lower *l, int symbol)
  * value too: that value then outlives every read of the local. */
 /* Whether declaration `s` can read its initializer in place: a fixed local
  * initialized from a place under a fixed local or parameter, which nothing
- * changes while the local lives. */
+ * changes while the local lives. A view is not such a place: its owner can
+ * still change the array under it. */
 static bool lends_declaration(lower *l, const script_statement *s)
 {
     if (s->expression < 0 || !copied_value(l->a->symbols[s->symbol].type) ||
@@ -5690,13 +5691,14 @@ static bool lends_declaration(lower *l, const script_statement *s)
     }
     const script_expression *e = &l->a->expressions[s->expression];
     while (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
-        if (e->type.storage == PIN_POINTER || e->left < 0) {
+        if (e->type.storage == PIN_POINTER ||
+            e->type.container == PIN_CONTAINER_VIEW || e->left < 0) {
             return false;
         }
         e = &l->a->expressions[e->left];
     }
     return e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
-           symbol_fixed(l, e->symbol);
+           e->type.container != PIN_CONTAINER_VIEW && symbol_fixed(l, e->symbol);
 }
 static store_mode declaration_mode(lower *l, const script_statement *s, bool same)
 {

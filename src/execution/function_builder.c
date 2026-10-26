@@ -368,9 +368,11 @@ int behavior_function_builder_call(
     }
     apush(
         f->calls,
-        ((
-            behavior_function_invocation
-        ){ callee, first, argument_count, result_first, result_count, false })
+        ((behavior_function_invocation){ .function = callee,
+                                         .first = first,
+                                         .count = argument_count,
+                                         .result_first = result_first,
+                                         .result_count = result_count })
     );
     return index;
 }

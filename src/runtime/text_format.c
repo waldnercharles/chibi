@@ -260,10 +260,11 @@ static pin_string fmt_render_text(const pin_value *value, const char *mods, size
             assert(length >= 0 && length < FMT_RENDER_BUF);
             char *bytes = arena_alloc(storage, (size_t)length + 1);
             memcpy(bytes, buffer, (size_t)length + 1);
-            return (pin_string){ bytes, (uint32_t)length };
+            return (pin_string){ .bytes = bytes, .length = (uint32_t)length };
         }
         const char *text = fmt_render_arg(value, mods, size, storage);
-        return (pin_string){ text ? text : "", text ? (uint32_t)strlen(text) : 0 };
+        return (pin_string){ .bytes = text ? text : "",
+                             .length = text ? (uint32_t)strlen(text) : 0 };
     }
     pin_string text = pin_text(*value);
     char conv[80], letter;
@@ -296,7 +297,7 @@ static pin_string fmt_render_text(const pin_value *value, const char *mods, size
     memset(bytes, ' ', total);
     memcpy(bytes + (left ? 0 : total - length), text.bytes, length);
     bytes[total] = 0;
-    return (pin_string){ bytes, (uint32_t)total };
+    return (pin_string){ .bytes = bytes, .length = (uint32_t)total };
 }
 pin_value native_format_text(const pin_value *inputs, int input_count, arena *storage)
 {
@@ -304,8 +305,9 @@ pin_value native_format_text(const pin_value *inputs, int input_count, arena *st
     pin_value result = { .type = PIN_STR, .type_name = "const char *" };
     bool scalar_text = inputs[0].container == PIN_CONTAINER_SINGLE &&
                        (inputs[0].type == PIN_STR || inputs[0].type == PIN_NAME);
-    pin_string format = scalar_text ? pin_text(inputs[0])
-                                    : (pin_string){ fmt_text_of(inputs), 0 };
+    pin_string format = scalar_text
+                          ? pin_text(inputs[0])
+                          : (pin_string){ .bytes = fmt_text_of(inputs), .length = 0 };
     if (!scalar_text) {
         format.length = (uint32_t)strlen(format.bytes);
     }

@@ -16,6 +16,8 @@ pub Profile :: struct {
     compiler_id: string;
     // Debug, Release, RelWithDebInfo or MinSizeRel.
     build_type: string;
+    // Empty preserves Debug defaults; 0 or 1 is an opt-in experiment.
+    debug_optimization: string;
     architecture: string;
     sysroot: string;
     warnings: bool;
@@ -104,7 +106,7 @@ LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
         (profile.build_type == "Debug" || profile.build_type == "RelWithDebInfo") && Clang(profile)) {
         flags.append(Join(["-fdebug-compilation-dir=", profile.debug_compilation_dir]));
     }
-    flags.extend(BuildTypeFlags(profile.build_type));
+    flags.extend(BuildTypeFlags(profile));
     if (profile.architecture != "") {
         flags.extend(["-arch", profile.architecture]);
     }
@@ -515,7 +517,7 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
     if (build.before(value, ":") == "compiler") {
         arguments := [profile.compiler];
         arguments.extend(DebugDirectoryFlags(profile, build_dir));
-        arguments.extend(BuildTypeFlags(profile.build_type));
+        arguments.extend(BuildTypeFlags(profile));
         if (profile.sanitizers != "") {
             arguments.extend([Join(["-fsanitize=", profile.sanitizers]), "-fno-omit-frame-pointer"]);
         }
@@ -796,8 +798,12 @@ DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
 }
 
 // What CMake adds for each build type with Clang and GCC.
-BuildTypeFlags :: (build_type: string) -> string[] {
+BuildTypeFlags :: (profile: Profile) -> string[] {
+    build_type := profile.build_type;
     if (build_type == "Debug") {
+        if (profile.debug_optimization != "") {
+            return ["-g", Join(["-O", profile.debug_optimization])];
+        }
         return ["-g"];
     }
     if (build_type == "Release") {
@@ -828,7 +834,7 @@ pub Flags :: (profile: Profile, build_dir: string, target: string, language: str
     if (language != "objc") {
         flags.extend(DebugDirectoryFlags(profile, build_dir));
     }
-    flags.extend(BuildTypeFlags(profile.build_type));
+    flags.extend(BuildTypeFlags(profile));
     // Every C source compiles as C23 with GNU extensions.
     standard := "gnu23";
     if (language == "cxx") {

@@ -12,7 +12,7 @@ import strings "core:strings"
 // this machine (engine.Discover); these options override what they name:
 //   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
 //   --architecture ARCH --sysroot DIR --warnings on|off --sanitizers LIST
-//   --debug-compilation-dir DIR
+//   --debug-compilation-dir DIR --debug-optimization 0|1 (Debug only)
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --clang-resource-include DIR --third-party DIR --reflect PATH
 // The explicit profile performs no toolchain discovery; every required tool
@@ -100,7 +100,7 @@ Libraries :: () -> int {
     discover := profile_name != "explicit";
     found: engine.Profile = {
         compiler: "", cxx_compiler: "", compiler_id: "", build_type: "Release",
-        architecture: "", sysroot: "", warnings: true, sanitizers: "",
+        debug_optimization: "", architecture: "", sysroot: "", warnings: true, sanitizers: "",
         debug_compilation_dir: "", libclang_include: "", libclang_library: "",
         clang_resource_include: "", third_party: "", reflect: ""
     };
@@ -135,6 +135,7 @@ Libraries :: () -> int {
         cxx_compiler: Option(arguments, "--cxx-compiler", cxx_compiler),
         compiler_id: compiler_id,
         build_type: Option(arguments, "--build-type", found.build_type),
+        debug_optimization: Option(arguments, "--debug-optimization", ""),
         architecture: Option(arguments, "--architecture", found.architecture),
         sysroot: Option(arguments, "--sysroot", found.sysroot),
         warnings: Option(arguments, "--warnings", warnings) == "on",
@@ -147,6 +148,16 @@ Libraries :: () -> int {
         third_party: Option(arguments, "--third-party", third_party),
         reflect: Option(arguments, "--reflect", "")
     };
+    // Reject an omitted value too: Option alone falls back at end-of-argv.
+    for (i in 0..<length(arguments)) {
+        if (arguments[i] == "--debug-optimization" &&
+            (i + 1 == length(arguments) ||
+             (arguments[i + 1] != "0" && arguments[i + 1] != "1") ||
+             profile.build_type != "Debug")) {
+            build.report("graph: --debug-optimization requires 0 or 1 and build type Debug");
+            return 2;
+        }
+    }
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", launcher),
         compiler: profile.compiler,

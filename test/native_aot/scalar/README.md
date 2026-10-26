@@ -22,7 +22,8 @@ function is the module's entry and must be `() -> int`. Every function:
   exactly one final `return EXPR;`, and no other statement, reachable or not;
 - has a `bool` condition and returns expressions of its result type, or of an
   integer type that widens to it, as a return widens. Each is an integer
-  literal within its type, possibly signed, `true` or `false`, one of its
+  literal within its type, possibly signed (a whole decimal such as `1.0` or
+  `1e2` is the integer it spells), `true` or `false`, one of its
   parameters, integer arithmetic `a + b` (or `-`, `*`, `/`, `%`, `&`, `|`,
   `^`), a shift `a << n` or `a >> n`, a negation `-a` or complement `~a`, a
   comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of two integers, a
@@ -83,7 +84,7 @@ branches, a second guard, a guard that does not return, loops and other
 control flow, locals and other statements, function values, qualified or imported calls, native or foreign calls
 (`print`), named arguments, strings and other managed values, attributes,
 structs and constants. Sources are at most 16,384 bytes.
-`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (37
+`test/scalar_facts/cases/Cases.chibi` holds the 96-source corpus (40
 accepted) with each accepted value and operand trace and each rejection's
 exact message and source excerpt, including both sides of every bound.
 

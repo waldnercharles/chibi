@@ -17,6 +17,8 @@ struct prepared_record_cache
     size_t name_bytes, validation_work;
     arena *owner;
     const pin_record *owned;
+    /* The type at this position in name order. */
+    int by_name;
 };
 static bool work(prepared_context *c, size_t amount)
 {
@@ -253,6 +255,26 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     }
     v->name = v->record->type.name;
 }
+/* The first of the `count` name-ordered types whose name is not before
+ * `name`, found in log2(count) comparisons, each charged `bytes`; `found`
+ * says whether its name is `name`. Names are unique, so once one equals
+ * `name`, every later comparison moves the low end up to it. */
+static int name_position(prepared_context *c, const char *name, size_t bytes, int count, bool *found)
+{
+    int low = 0, high = count;
+    *found = false;
+    while (low < high && work(c, bytes)) {
+        int middle = low + (high - low) / 2;
+        int order = strcmp(c->plan->types[c->records[middle].by_name].name, name);
+        if (order < 0) {
+            low = middle + 1;
+        } else {
+            high = middle;
+            *found = !order;
+        }
+    }
+    return low;
+}
 void prepared_types(prepared_context *c)
 {
     execution_wire *w = &c->wire;
@@ -304,21 +326,27 @@ void prepared_types(prepared_context *c)
                 w->error = "duplicate prepared type requirement";
             }
         }
-        if (!w->error) {
-            record_type(c, v, i);
+        if (w->error) {
+            break;
         }
+        bool found;
+        int at = name_position(c, v->name, c->records[i].name_bytes, i, &found);
+        for (int k = i; k > at; k--) {
+            c->records[k].by_name = c->records[k - 1].by_name;
+        }
+        c->records[at].by_name = i;
+        record_type(c, v, i);
     }
 }
 static int requirement(prepared_context *c, const pin_value *v)
 {
     size_t bytes = name_bytes(c, v->type_name);
-    for (int i = 0; i < c->plan->type_count && !c->wire.error; i++) {
-        if (!work(c, bytes + 1)) {
-            break;
-        }
-        const execution_type_requirement *type = &c->plan->types[i];
-        if (type->storage == v->type && !strcmp(type->name, v->type_name)) {
-            return i;
+    bool found;
+    int at = name_position(c, v->type_name, bytes + 1, c->plan->type_count, &found);
+    if (found && !c->wire.error) {
+        int index = c->records[at].by_name;
+        if (c->plan->types[index].storage == v->type) {
+            return index;
         }
     }
     if (!c->wire.error) {

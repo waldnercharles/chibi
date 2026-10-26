@@ -12,10 +12,11 @@ pub Result :: union {
 }
 
 // The most rows a module of the facts bounds holds: its source and document,
-// its records with their members, then per function its signature,
-// parameters, statements with an if statement's else and end, and operands.
-// A switch arm's Case row counts as a statement.
-MaxRows: int : 2 + facts.MaxRecords * (1 + facts.MaxMembers) +
+// its records with their members and unions with their variants and payloads,
+// then per function its signature, parameters, statements with an if
+// statement's else and end, and operands. A switch arm's Case row counts as a
+// statement.
+MaxRows: int : 2 + facts.MaxRecords * (1 + facts.MaxVariants + facts.MaxMembers) +
                facts.MaxFunctions * (1 + facts.MaxParameters + 3 * facts.MaxStatements + facts.MaxOperands);
 
 // The offset each source line starts at, for one-based line/column checks.
@@ -50,8 +51,8 @@ Unlocated :: (row: facts.Row) -> bool {
 Scalar :: (type: int) -> bool {
     return type >= facts.IntType && type <= facts.DoubleType;
 }
-// Whether `type` is a scalar or one of the module's records, whose Record
-// rows are at `records`.
+// Whether `type` is a scalar or one of the module's records and unions, whose
+// Record and Union rows are at `records`.
 Valued :: (records: int[], type: int) -> bool {
     return Scalar(type) || (type >= facts.RecordType && type - facts.RecordType < length(records));
 }
@@ -62,10 +63,52 @@ MemberType :: (rows: facts.Row[], records: int[], type: int, field: int) -> int 
         return 0;
     }
     head := records[type - facts.RecordType];
-    if (field < 0 || field >= rows[head].count) {
+    if (rows[head].kind != facts.RecordRow || field < 0 || field >= rows[head].count) {
         return 0;
     }
     return rows[head + 1 + field].type;
+}
+// The Union row of union type `type`, or -1 when `type` is no union of the
+// module.
+UnionHead :: (rows: facts.Row[], records: int[], type: int) -> int {
+    if (type < facts.RecordType || type - facts.RecordType >= length(records)) {
+        return -1;
+    }
+    head := records[type - facts.RecordType];
+    if (rows[head].kind != facts.UnionRow) {
+        return -1;
+    }
+    return head;
+}
+// The Variant row of variant `variant` of the union at `head`, or -1 when it
+// has no such variant.
+VariantOf :: (rows: facts.Row[], head: int, variant: int) -> int {
+    if (variant < 0 || variant >= rows[head].count) {
+        return -1;
+    }
+    at := head + 1;
+    for (index in 0..<variant) {
+        at += rows[at].count + 1;
+    }
+    return at;
+}
+// The type of payload `payload` of union type `type`, or 0 when `type` is no
+// union of the module or has no such payload.
+PayloadType :: (rows: facts.Row[], records: int[], type: int, payload: int) -> int {
+    head := UnionHead(rows, records, type);
+    if (head < 0) {
+        return 0;
+    }
+    at := head + 1;
+    for (variant in 0..<rows[head].count) {
+        for (field in at + 1..<at + rows[at].count + 1) {
+            if (rows[field].value == payload) {
+                return rows[field].type;
+            }
+        }
+        at += rows[at].count + 1;
+    }
+    return 0;
 }
 Integer :: (type: int) -> bool {
     return facts.Bits(type) != 0;
@@ -141,48 +184,79 @@ Opens :: (kind: int) -> bool {
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
 }
-// The row index of each Record row from row 2, up to the first row that is
-// not one or whose count is outside the bounds, which ValidRecords rejects.
+// The row after the declaration at `at`: a Record row and its members, or a
+// Union row and its variants, each with its members; -1 when a count is
+// outside the bounds or a union's variant row is missing.
+After :: (rows: facts.Row[], at: int) -> int {
+    count := rows[at].count;
+    if (rows[at].kind == facts.RecordRow) {
+        if (count < 1 || count > facts.MaxMembers) {
+            return -1;
+        }
+        return at + count + 1;
+    }
+    if (count < 1 || count > facts.MaxVariants) {
+        return -1;
+    }
+    next := at + 1;
+    for (variant in 0..<count) {
+        if (next >= length(rows) || rows[next].kind != facts.VariantRow || rows[next].count < 0 ||
+            rows[next].count > facts.MaxPayloads) {
+            return -1;
+        }
+        next += rows[next].count + 1;
+    }
+    return next;
+}
+// The row index of each Record and Union row from row 2, up to the first row
+// that is neither or whose declaration's counts are outside the bounds, which
+// ValidRecords rejects.
 Records :: (rows: facts.Row[]) -> int[] {
     records: int[] = [];
     at: int = 2;
-    while (at < length(rows) && rows[at].kind == facts.RecordRow && length(records) <= facts.MaxRecords) {
+    while (at < length(rows) && (rows[at].kind == facts.RecordRow || rows[at].kind == facts.UnionRow) &&
+           length(records) <= facts.MaxRecords) {
         records.append(at);
-        count := rows[at].count;
-        if (count < 1 || count > facts.MaxMembers) {
+        at = After(rows, at);
+        if (at < 0) {
             break;
         }
-        at += count + 1;
     }
     return records;
 }
-// The row after the last record's members, where functions start.
+// The row after the last declaration, where functions start.
 Start :: (rows: facts.Row[], records: int[]) -> int {
     if (length(records) == 0) {
         return 2;
     }
-    last := records[length(records) - 1];
-    return last + rows[last].count + 1;
+    return After(rows, records[length(records) - 1]);
 }
 // Each record has 1 to MaxMembers uniquely named scalar fields, each a Member
-// row within its declaration, and a function follows the last; record names
-// are unique too.
+// row within its declaration, each union is valid, and a function follows the
+// last; record and union names are unique too.
 ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) -> string {
     if (length(records) > facts.MaxRecords) {
-        return format_text("scalar module declares more than {} records", facts.MaxRecords);
+        return format_text("scalar module declares more than {} records and unions", facts.MaxRecords);
     }
     for (index in 0..<length(records)) {
         head := records[index];
         record := rows[head];
-        if (record.count < 1 || record.count > facts.MaxMembers || record.count >= length(rows) - head - 1 ||
-            record.name == "" || record.text != "" || record.type != 0 || record.value != 0 || record.literal != 0 ||
-            !Located(record, starts, size)) {
-            return "invalid scalar record row";
-        }
         for (earlier in 0..<index) {
             if (rows[records[earlier]].name == record.name) {
                 return "invalid scalar record row";
             }
+        }
+        if (record.kind == facts.UnionRow) {
+            error := ValidUnion(rows, head, starts, size);
+            if (error != "") {
+                return error;
+            }
+            continue;
+        }
+        if (record.count < 1 || record.count > facts.MaxMembers || record.count >= length(rows) - head - 1 ||
+            record.name == "" || record.text != "" || record.type != 0 || record.value != 0 || record.literal != 0 ||
+            !Located(record, starts, size)) {
+            return "invalid scalar record row";
         }
         for (field in 0..<record.count) {
             member := rows[head + 1 + field];
@@ -197,6 +271,53 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
                 }
             }
         }
+    }
+    return "";
+}
+// A union at `head` has 1 to MaxVariants uniquely named variants in order,
+// each a Variant row within its declaration with its uniquely named scalar
+// payloads, each a Member row within its variant numbered across the union,
+// at most MaxPayloads in all, and a function follows it.
+ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string {
+    declared := rows[head];
+    beyond := After(rows, head);
+    if (beyond < 0 || beyond >= length(rows) || declared.name == "" || declared.text != "" || declared.type != 0 ||
+        declared.value != 0 || declared.literal != 0 || !Located(declared, starts, size)) {
+        return "invalid scalar union row";
+    }
+    variants: int[] = [];
+    payloads: int = 0;
+    at := head + 1;
+    for (ordinal in 0..<declared.count) {
+        variant := rows[at];
+        if (variant.name == "" || variant.text != "" || variant.type != 0 || variant.value != ordinal ||
+            variant.literal != 0 || !Located(variant, starts, size) || !Within(variant, declared)) {
+            return "invalid scalar union variant row";
+        }
+        for (earlier in variants) {
+            if (rows[earlier].name == variant.name) {
+                return "invalid scalar union variant row";
+            }
+        }
+        variants.append(at);
+        for (field in at + 1..<at + variant.count + 1) {
+            member := rows[field];
+            if (member.kind != facts.MemberRow || member.name == "" || member.text != "" || !Scalar(member.type) ||
+                member.value != payloads || member.count != 0 || member.literal != 0 ||
+                !Located(member, starts, size) || !Within(member, variant)) {
+                return "invalid scalar union member row";
+            }
+            for (earlier in at + 1..<field) {
+                if (rows[earlier].name == member.name) {
+                    return "invalid scalar union member row";
+                }
+            }
+            payloads += 1;
+        }
+        at += variant.count + 1;
+    }
+    if (payloads > facts.MaxPayloads) {
+        return format_text("scalar union has more than {} payloads", facts.MaxPayloads);
     }
     return "";
 }
@@ -439,6 +560,36 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.name != "" || operand.count != 2 || field == 0 || base < floor ||
                 stack[base] != operand.type || stack[base + 1] != field) {
                 return "scalar field write differs from its record";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.MakeRow) {
+            head := UnionHead(rows, records, operand.type);
+            variant: int = -1;
+            if (head >= 0) {
+                variant = VariantOf(rows, head, operand.value);
+            }
+            base := length(stack) - operand.count;
+            if (operand.name != "" || variant < 0 || operand.count != rows[variant].count || base < floor) {
+                return "scalar variant differs from its union";
+            }
+            for (field in 0..<operand.count) {
+                if (stack[base + field] != rows[variant + 1 + field].type) {
+                    return "scalar variant differs from its union";
+                }
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.TagRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || operand.value != 0 || operand.type != facts.IntType ||
+                base < floor || UnionHead(rows, records, stack[base]) < 0) {
+                return "scalar tag reads no union";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.PayloadRow) {
+            base := length(stack) - 1;
+            if (operand.name != "" || operand.count != 1 || base < floor ||
+                PayloadType(rows, records, stack[base], operand.value) != operand.type) {
+                return "scalar payload read differs from its union";
             }
             stack = slice(stack, 0, base);
         } else {
@@ -803,6 +954,9 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // entered when the last test fails. Each arm that does not end leaves the
 // switch. Each record is the backend's record of its fields' types: a Zero
 // row is its constant, an Update row an Insert and a Field row an Extract.
+// Each union is the backend's record of its tag, an int, then all its
+// payloads: a Make row inserts its tag and payloads into the zero constant,
+// and a Tag or Payload row extracts its field.
 pub Emit :: (rows: facts.Row[]) -> Result {
     error := Validate(rows);
     if (error != "") {
@@ -821,11 +975,18 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     fields: int[] = [];
     declared := Records(rows);
     for (head in declared) {
-        record: native.Record = {first: length(fields), count: rows[head].count};
-        records.append(record);
-        for (field in head + 1..<head + rows[head].count + 1) {
-            fields.append(NativeType(rows[field].type));
+        record: native.Record = {first: length(fields), count: 0};
+        if (rows[head].kind == facts.UnionRow) {
+            fields.append(NativeType(facts.IntType));
         }
+        // A record's fields, or each of a union's variants and its payloads.
+        for (field in head + 1..<After(rows, head)) {
+            if (rows[field].kind == facts.MemberRow) {
+                fields.append(NativeType(rows[field].type));
+            }
+        }
+        record.count = length(fields) - record.first;
+        records.append(record);
     }
     heads := Heads(rows, Start(rows, declared));
     for (function in 0..<length(heads)) {
@@ -1085,10 +1246,34 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                     }
                     shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
-                } else if (operand.kind == facts.FieldRow) {
+                } else if (operand.kind == facts.FieldRow || operand.kind == facts.TagRow ||
+                           operand.kind == facts.PayloadRow) {
+                    // A union's tag is its field 0, and its payloads follow.
                     base := length(stack) - 1;
                     item = Op(native.Extract, type, slot, stack[base], slots[shape.first_slot + stack[base]], 0);
                     item.literal = int64(operand.value);
+                    if (operand.kind == facts.PayloadRow) {
+                        item.literal += 1;
+                    }
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.MakeRow) {
+                    // The zero union with its tag, then each payload in its
+                    // field; the last Insert is the operand's value.
+                    variant := VariantOf(rows, declared[operand.type - facts.RecordType], operand.value);
+                    tag := Op(native.Constant, integer, slot + 1, 0, 0, 0);
+                    tag.literal = int64(operand.value);
+                    slots.extend([integer, type]);
+                    body.extend([Op(native.Constant, type, slot, 0, 0, 0), tag]);
+                    item = Op(native.Insert, type, slot + 2, slot, slot + 1, 0);
+                    slot += 2;
+                    base := length(stack) - operand.count;
+                    for (field in 0..<operand.count) {
+                        body.append(item);
+                        slots.append(type);
+                        item = Op(native.Insert, type, slot + 1, slot, stack[base + field], 0);
+                        item.literal = int64(rows[variant + 1 + field].value + 1);
+                        slot += 1;
+                    }
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.UpdateRow) {
                     base := length(stack) - 2;

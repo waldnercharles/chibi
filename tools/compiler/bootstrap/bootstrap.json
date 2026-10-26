@@ -2,12 +2,12 @@
   "format": 1,
   "version": 7,
   "minimum": 2,
-  "revision": "e2999c25802a094b1fdd2afb68acc1b26206913e",
+  "revision": "babebf49a68a3833800b8203b7963cb1411ddbdc-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 23407183,
-    "sha256": "40f7d9ff190559e83fe126d24e0658dfbe3615f22f3d01b573954091af836542"
+    "bytes": 23412358,
+    "sha256": "1316ca1db0f3db6154bce97ef7322a3960795a1c93a1442b1135990c00c858a0"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -54,8 +54,8 @@
     },
     {
       "path": "package_compiler/Queries.chibi",
-      "bytes": 92438,
-      "sha256": "43b50829033b2455c0343af2c730f41060deab007b372b4ebdbb4c8ca6be64ea"
+      "bytes": 92857,
+      "sha256": "c6d2168183145d0fd6278d157925f3c6f371721a93195126e6209151398ed1a4"
     },
     {
       "path": "package_compiler/QueryLoops.chibi",
